@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "app",
+  "name": "Grafana Docs Plugin",
+  "id": "grafana-grafanadocsplugin-app",
+  "backend": false,
+  "autoEnabled": true,
+  "info": {
+    "keywords": ["app"],
+    "description": "A documentation plugin that provides contextual help and quick access to Grafana resources",
+    "author": {
+      "name": "Grafana"
+    },
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "screenshots": [],
+    "version": "%VERSION%",
+    "updated": "%TODAY%"
+  },
+  "includes": [],
+  "extensions": {
+    "addedComponents": [
+      {
+        "targets": ["grafana/extension-sidebar/v0-alpha"],
+        "description": "Opens Documentation",
+        "title": "Documentation-Panel"
+      }
+    ],
+    "addedLinks": [
+      {
+        "targets": ["grafana/extension-sidebar/v0-alpha"],
+        "description": "Opens Documentation App",
+        "title": "Documentation-Link"
+      }
+    ]
+  },
+  "dependencies": {
+    "grafanaDependency": ">=11.0.0",
+    "plugins": []
+  }
+}
