@@ -178,85 +178,16 @@ function extractLearningJourneyContent(html: string, url: string): LearningJourn
  * Extract main content from learning journey HTML
  */
 function extractMainContent(doc: Document, isCoverPage: boolean): string {
-  // Remove unwanted elements
-  const unwantedSelectors = [
-    'nav', 'header', 'footer', 'aside',
-    '.navbar', '.nav', '.navigation', '.nav-bar',
-    '.sidebar', '.menu', '.breadcrumb', '.breadcrumbs',
-    '.cookie', '.banner', '.alert', '.notification',
-    'script', 'style', 'noscript',
-    '.search', '.filter', '.pagination',
-    '.social', '.share', '.feedback',
-    '.toc', '.table-of-contents',
-    '[role="navigation"]', '[aria-label*="navigation"]',
-    '[aria-label*="breadcrumb"]', '[class*="breadcrumb"]',
-    '.docs-sidebar', '.sidebar-nav',
-    '.page-nav', '.site-nav',
-    '.theme-doc-sidebar-container',
-    '.navbar__inner', '.navbar__items',
-    '.breadcrumbs__item', '.breadcrumbs__link',
-    '.pagination-nav'
-  ];
-  
-  // Only remove milestone sections for milestone pages, not cover pages
-  if (!isCoverPage) {
-    unwantedSelectors.push(
-      // Remove milestone sections since we have our own navigation
-      '[class*="milestone"]', '.milestone', '[data-milestone]',
-      '.milestone-list', '.milestone-nav', '.milestone-section',
-      // Remove any "Page X of Y" indicators
-      '[class*="page-indicator"]', '.page-nav', '.page-number',
-      // Remove related journeys and recommendations sections
-      '[class*="related"]', '.related', '.related-journeys', '.related-content',
-      '.recommendations', '.suggested, .suggestions',
-      '[class*="journey-card"]', '.journey-card', '.journey-list',
-      '.next-steps', '.what-next', '.continue-learning'
-    );
-  }
-  
-  unwantedSelectors.forEach(selector => {
-    const elements = doc.querySelectorAll(selector);
-    elements.forEach(el => el.remove());
-  });
-  
-  // Try to find the main content area
-  const selectors = [
-    'main[role="main"]',
-    '.docs-content',
-    'article',
-    '.markdown-body',
-    '[data-testid="docs-content"]',
-    '.content',
-    '.page-content',
-    '#content',
-    '.main-content',
-    '.docusaurus-content',
-    '.theme-doc-markdown',
-    '.markdown',
-    '.theme-doc-markdown.markdown',
-    '.container .row .col'
-  ];
-  
-  let contentElement = null;
-  for (const selector of selectors) {
-    const element = doc.querySelector(selector);
-    if (element) {
-      contentElement = element;
-      break;
-    }
-  }
+  // Find the main content section
+  const contentElement = doc.querySelector('.journey-grid__content');
   
   if (!contentElement) {
-    contentElement = doc.body;
-  }
-  
-  if (!contentElement) {
-    return 'Content not available';
+    return 'Content not available - journey-grid__content section not found';
   }
   
   // Process the content
   const processedContent = processLearningJourneyContent(contentElement, isCoverPage);
-  return cleanupContent(processedContent, isCoverPage);
+  return processedContent;
 }
 
 /**
@@ -264,137 +195,6 @@ function extractMainContent(doc: Document, isCoverPage: boolean): string {
  */
 function processLearningJourneyContent(element: Element, isCoverPage: boolean): string {
   const clonedElement = element.cloneNode(true) as Element;
-  
-  // For cover pages, be more selective about what we remove
-  if (isCoverPage) {
-    // Remove navigation elements and call-to-action sections for cover pages
-    const unwantedElements = clonedElement.querySelectorAll(
-      'nav, .breadcrumb, .breadcrumbs, [aria-label*="breadcrumb"], .nav-links, .pagination, ' +
-      '[class*="related"], .related, .related-journeys, .related-content, ' +
-      '.recommendations, .suggested, .suggestions, ' +
-      '[class*="journey-card"], .journey-card, .journey-list, ' +
-      '.next-steps, .what-next, .continue-learning'
-    );
-    unwantedElements.forEach(el => el.remove());
-    
-    // Remove "Are you ready?" and "Let's go!" sections since we'll add our own
-    const allElements = clonedElement.querySelectorAll('*');
-    allElements.forEach(el => {
-      const text = el.textContent?.trim() || '';
-      if (
-        /^Are\s+you\s+ready\?$/i.test(text) ||
-        /^Let's\s+go!?$/i.test(text) ||
-        /^Related\s+journeys?$/i.test(text) ||
-        /^Consider\s+taking/i.test(text)
-      ) {
-        el.remove();
-      }
-    });
-  } else {
-    // For milestone pages, remove more aggressively
-    const navElements = clonedElement.querySelectorAll(
-      'nav, .breadcrumb, .breadcrumbs, [aria-label*="breadcrumb"], .nav-links, .pagination, [class*="milestone"], .milestone, [class*="related"], .related, .recommendations, .suggested'
-    );
-    navElements.forEach(el => el.remove());
-    
-    // Remove milestone-related text patterns for milestone pages
-    const textNodes = getTextNodes(clonedElement);
-    textNodes.forEach(node => {
-      if (node.textContent) {
-        // Remove milestone headers and references
-        node.textContent = node.textContent
-          .replace(/Milestone\s+\d+/gi, '')
-          .replace(/\d+\s+min\s*$/gi, '') // Remove duration at end of lines
-          .replace(/^\s*\d+\s+min\s*/gi, '') // Remove duration at start of lines
-          .trim();
-        
-        // Remove the node if it's now empty
-        if (!node.textContent.trim()) {
-          node.parentNode?.removeChild(node);
-        }
-      }
-    });
-  }
-  
-  // Remove elements that contain only unwanted content
-  const allElements = clonedElement.querySelectorAll('*');
-  allElements.forEach(el => {
-    const text = el.textContent?.trim() || '';
-    
-    if (isCoverPage) {
-      // For cover pages, only remove truly empty elements and specific unwanted content
-      if (
-        text === '' || 
-        text.length < 3 ||
-        /^Beginner$/i.test(text) ||
-        /^Docs\s+&\s+blog\s+posts$/i.test(text)
-      ) {
-        el.remove();
-      }
-    } else {
-      // For milestone pages, remove milestone-related content
-      if (
-        /^Milestone\s+\d+$/i.test(text) ||
-        /^\d+\s+min$/i.test(text) ||
-        /^Page\s+\d+\s+of\s+\d+$/i.test(text) ||
-        /^Related\s+journeys?$/i.test(text) ||
-        /^Consider\s+taking/i.test(text) ||
-        /^Are\s+you\s+ready\?$/i.test(text) ||
-        /^Let's\s+go!?$/i.test(text) ||
-        /^Beginner$/i.test(text) ||
-        /^Docs\s+&\s+blog\s+posts$/i.test(text) ||
-        text === '' ||
-        text.length < 3
-      ) {
-        el.remove();
-      }
-    }
-  });
-  
-  // Process headings
-  const headings = clonedElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
-  headings.forEach(heading => {
-    const headingText = heading.textContent?.trim() || '';
-    
-    if (isCoverPage) {
-      // For cover pages, keep most headings but remove unwanted ones
-      if (
-        !/^Related\s+journeys?/i.test(headingText) &&
-        !/^Are\s+you\s+ready/i.test(headingText) &&
-        !/^What's\s+next/i.test(headingText) &&
-        !/^Continue\s+learning/i.test(headingText)
-      ) {
-        heading.setAttribute('class', `journey-heading journey-heading-${heading.tagName.toLowerCase()}`);
-      } else {
-        heading.remove();
-      }
-    } else {
-      // For milestone pages, skip milestone-related headings
-      if (
-        !/^Milestone\s+\d+/i.test(headingText) &&
-        !/^Related\s+journeys?/i.test(headingText) &&
-        !/^Are\s+you\s+ready/i.test(headingText) &&
-        !/^What's\s+next/i.test(headingText) &&
-        !/^Continue\s+learning/i.test(headingText)
-      ) {
-        heading.setAttribute('class', `journey-heading journey-heading-${heading.tagName.toLowerCase()}`);
-      } else {
-        heading.remove();
-      }
-    }
-  });
-  
-  // Process links - make all external links open in new tabs
-  const links = clonedElement.querySelectorAll('a[href]');
-  links.forEach(link => {
-    const href = link.getAttribute('href');
-    if (href) {
-      // Mark all links as external to open in new tabs
-      link.setAttribute('target', '_blank');
-      link.setAttribute('rel', 'noopener noreferrer');
-      link.setAttribute('data-journey-link', 'true');
-    }
-  });
   
   // For cover pages, add our own "Start Journey" button
   if (isCoverPage) {
@@ -411,7 +211,7 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
     clonedElement.appendChild(startButton);
   }
   
-  // Process images
+  // Process images to fix relative URLs
   const images = clonedElement.querySelectorAll('img');
   images.forEach(img => {
     const src = img.getAttribute('src');
@@ -435,80 +235,21 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
       img.removeAttribute('data-src');
       img.classList.remove('lazyload', 'lazyloaded', 'ls-is-cached');
     }
-    
-    img.setAttribute('class', 'journey-image');
-    img.setAttribute('style', 'max-width: 100%; height: auto; border-radius: 4px; margin: 16px 0;');
   });
   
-  // Process code blocks
-  const codeBlocks = clonedElement.querySelectorAll('pre, code');
-  codeBlocks.forEach(code => {
-    code.setAttribute('class', 'journey-code');
+  // Process links to open in new tabs
+  const links = clonedElement.querySelectorAll('a[href]');
+  links.forEach(link => {
+    const href = link.getAttribute('href');
+    if (href) {
+      // Mark all links as external to open in new tabs
+      link.setAttribute('target', '_blank');
+      link.setAttribute('rel', 'noopener noreferrer');
+      link.setAttribute('data-journey-link', 'true');
+    }
   });
   
   return clonedElement.innerHTML;
-}
-
-/**
- * Helper function to get all text nodes
- */
-function getTextNodes(element: Element): Text[] {
-  const textNodes: Text[] = [];
-  const walker = document.createTreeWalker(
-    element,
-    NodeFilter.SHOW_TEXT,
-    null
-  );
-  
-  let node;
-  while (node = walker.nextNode()) {
-    textNodes.push(node as Text);
-  }
-  
-  return textNodes;
-}
-
-/**
- * Clean up content for better display
- */
-function cleanupContent(content: string, isCoverPage: boolean): string {
-  let cleanedContent = content
-    .replace(/<script[^>]*>.*?<\/script>/gis, '')
-    .replace(/<style[^>]*>.*?<\/style>/gis, '')
-    .replace(/<!--.*?-->/gis, '')
-    .replace(/<(\w+)[^>]*>\s*<\/\1>/g, '');
-  
-  // Only apply aggressive cleanup for milestone pages
-  if (!isCoverPage) {
-    cleanedContent = cleanedContent
-      // Remove milestone-related patterns
-      .replace(/<h[1-6][^>]*>Milestone\s+\d+[^<]*<\/h[1-6]>/gi, '')
-      .replace(/<p[^>]*>\s*Milestone\s+\d+[^<]*<\/p>/gi, '')
-      .replace(/<div[^>]*>\s*Milestone\s+\d+[^<]*<\/div>/gi, '')
-      .replace(/<span[^>]*>\s*\d+\s+min\s*<\/span>/gi, '')
-      .replace(/<p[^>]*>\s*\d+\s+min\s*<\/p>/gi, '')
-      .replace(/<div[^>]*>\s*\d+\s+min\s*<\/div>/gi, '')
-      // Remove "Page X of Y" patterns
-      .replace(/<[^>]*>\s*Page\s+\d+\s+of\s+\d+\s*<\/[^>]*>/gi, '')
-      // Remove related journeys and call-to-action patterns
-      .replace(/<h[1-6][^>]*>Related\s+journeys?[^<]*<\/h[1-6]>/gi, '')
-      .replace(/<h[1-6][^>]*>Are\s+you\s+ready\?[^<]*<\/h[1-6]>/gi, '')
-      .replace(/<h[1-6][^>]*>What's\s+next[^<]*<\/h[1-6]>/gi, '')
-      .replace(/<h[1-6][^>]*>Continue\s+learning[^<]*<\/h[1-6]>/gi, '')
-      .replace(/<p[^>]*>\s*Consider\s+taking[^<]*<\/p>/gi, '')
-      .replace(/<p[^>]*>\s*Are\s+you\s+ready\?[^<]*<\/p>/gi, '')
-      .replace(/<p[^>]*>\s*Let's\s+go!?[^<]*<\/p>/gi, '')
-      .replace(/<div[^>]*>\s*Beginner\s*<\/div>/gi, '')
-      .replace(/<div[^>]*>\s*Docs\s+&\s+blog\s+posts\s*<\/div>/gi, '');
-  }
-  
-  return cleanedContent
-    // Remove empty paragraphs and divs
-    .replace(/<p[^>]*>\s*<\/p>/g, '')
-    .replace(/<div[^>]*>\s*<\/div>/g, '')
-    // Clean up excessive whitespace
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 /**
