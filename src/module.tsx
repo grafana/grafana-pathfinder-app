@@ -3,8 +3,8 @@ import { LoadingPlaceholder } from '@grafana/ui';
 import React, { Suspense, lazy } from 'react';
 
 const LazyApp = lazy(() => import('./components/App/App'));
-const LazyMemoizedDocsPanel = lazy(() =>
-  import('./components/App/App').then((module) => ({ default: module.MemoizedDocsPanel }))
+const LazyMemoizedContextPanel = lazy(() =>
+  import('./components/App/App').then((module) => ({ default: module.MemoizedContextPanel }))
 );
 
 const App = (props: AppRootProps) => (
@@ -21,16 +21,16 @@ plugin.addComponent({
   targets: `grafana/extension-sidebar/v0-alpha`,
   title: 'Documentation-Panel',
   description: 'Opens Documentation App',
-  component: function DocumentationSidebar() {
+  component: function ContextSidebar() {
     return (
       <Suspense fallback={<LoadingPlaceholder text="" />}>
-        <LazyMemoizedDocsPanel />
+        <LazyMemoizedContextPanel />
       </Suspense>
     );
   },
 });
 
-// This is needed to show the Documentation in the top navigation
+// This is needed to show the Context Panel in the top navigation
 // If we want to exclude it from certain pages, we can do that in the configure function
 plugin.addLink({
   targets: `grafana/extension-sidebar/v0-alpha`,

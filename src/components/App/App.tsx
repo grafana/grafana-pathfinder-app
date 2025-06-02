@@ -2,7 +2,7 @@ import { AppRootProps } from '@grafana/data';
 import React, { useMemo } from 'react';
 import { SceneApp } from '@grafana/scenes';
 import { docsPage } from '../../pages/docsPage';
-import { DocsPanelComponent } from '../../utils/docs.utils';
+import { ContextPanelComponent } from '../../utils/docs.utils';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 
 function getSceneApp() {
@@ -11,8 +11,8 @@ function getSceneApp() {
   });
 }
 
-export function MemoizedDocsPanel() {
-  return <DocsPanelComponent />;
+export function MemoizedContextPanel() {
+  return <ContextPanelComponent />;
 }
 
 function App(props: AppRootProps) {
