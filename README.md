@@ -15,6 +15,42 @@ The Grafana Learning Journeys Plugin transforms how users interact with document
 - **🔌 Extensible Architecture** - Decoupled design allowing easy integration with different content sources
 - **📱 Responsive Design** - Optimized for sidebar integration with adaptive layouts
 
+## Running the plugin locally
+
+Clone the repository:
+```bash
+git clone https://github.com/grafana/docs-plugin.git
+```
+
+Also clone the Grafana recommender service:
+
+```bash
+git clone https://github.com/grafana/grafana-recommender.git
+```
+
+First run the recommender service:
+
+```bash
+cd grafana-recommender
+docker compose up -d
+```
+
+Then build the plugin:
+
+```bash
+cd docs-plugin
+npm install
+npm run build
+```
+
+Spin up the development server:
+> Note we currently use a custom image due to the hard coding of the side panel activiation.
+```bash
+GRAFANA_IMAGE=jayclifford349/grafana-oss GRAFANA_VERSION=docs2 npm run server
+```
+
+Access the plugin in Grafana at [http://localhost:3000](http://localhost:3000)
+
 ## Architecture Overview
 
 ### High-Level Architecture
