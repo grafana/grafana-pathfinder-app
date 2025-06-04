@@ -40,9 +40,12 @@ interface RecommenderResponse {
   recommendations: Recommendation[];
 }
 
-interface ContextPayload {
-  path: string;
-  datasources: string[];
+interface GrafanaUser {
+  id: number;
+  login: string;
+  email: string;
+  name: string;
+  [key: string]: any;
 }
 
 interface ContextPanelState extends SceneObjectState {
@@ -59,6 +62,7 @@ interface ContextPanelState extends SceneObjectState {
   recommendations: Recommendation[];
   isLoadingRecommendations: boolean;
   recommendationsError: string | null;
+  userId: number | null;
   onOpenLearningJourney?: (url: string, title: string) => void;
 }
 
@@ -84,6 +88,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
       recommendations: [],
       isLoadingRecommendations: false,
       recommendationsError: null,
+      userId: null,
       onOpenLearningJourney,
     });
 
@@ -122,9 +127,10 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
       this.fetchDataSources(),
       this.fetchDashboardInfo(),
       this.fetchGrafanaVersion(),
+      this.fetchUserId(),
     ]);
 
-    // Fetch recommendations after we have the data sources
+    // Fetch recommendations after we have the user ID
     await this.fetchRecommendations();
 
     this.setState({ isLoading: false });
@@ -176,25 +182,34 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     }
   }
 
+  private async fetchUserId() {
+    try {
+      const user: GrafanaUser = await getBackendSrv().get('/api/user');
+      this.setState({ userId: user.id });
+      console.log('Current user ID:', user.id);
+    } catch (error) {
+      console.warn('Failed to fetch user ID:', error);
+      this.setState({ userId: null });
+    }
+  }
+
   private async fetchRecommendations() {
     this.setState({ isLoadingRecommendations: true, recommendationsError: null });
 
     try {
-      // Prepare the payload for the recommender service
-      const payload: ContextPayload = {
-        path: this.state.currentPath,
-        datasources: this.state.dataSources.map(ds => ds.name),
-      };
+      // Check if we have a user ID
+      if (!this.state.userId) {
+        throw new Error('User ID not available');
+      }
 
-      console.log('Sending context to recommender service:', payload);
+      console.log('Fetching recommendations for user ID:', this.state.userId);
 
-      // Send request to your recommender service
-      const response = await fetch(`${RECOMMENDER_SERVICE_URL}/recommend`, {
-        method: 'POST',
+      // Send GET request to the recommender service with user_id query parameter
+      const response = await fetch(`${RECOMMENDER_SERVICE_URL}/recommend?user_id=${this.state.userId}`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -313,7 +328,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
               <Icon name="question-circle" size="lg" className={styles.headerIcon} />
               <h2 className={styles.sectionTitle}>Stuck on what to do next?</h2>
               <p className={styles.sectionSubtitle}>
-                Here are some learning journeys that might help based on your current context
+                Here are some learning journeys that might help based on your preferences
               </p>
             </div>
 
