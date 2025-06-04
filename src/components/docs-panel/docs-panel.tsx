@@ -10,7 +10,8 @@ import {
   LearningJourneyContent,
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
-  clearLearningJourneyCache 
+  clearLearningJourneyCache,
+  clearSpecificJourneyCache
 } from '../../utils/docs-fetcher';
 import { ContextPanel } from './context-panel';
 
@@ -137,6 +138,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     // Don't allow closing the recommendations tab
     if (tabId === 'recommendations') return;
 
+    // Get the tab before removing it so we can clear its cache
+    const tabToClose = this.state.tabs.find(tab => tab.id === tabId);
+
     const updatedTabs = this.state.tabs.filter(tab => tab.id !== tabId);
     
     // If we're closing the active tab, switch to recommendations or another tab
@@ -149,6 +153,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       tabs: updatedTabs,
       activeTabId: newActiveTabId,
     });
+
+    // Clear cache for the specific learning journey so it starts fresh next time
+    if (tabToClose && tabToClose.baseUrl) {
+      console.log(`Clearing cache for closed journey: ${tabToClose.baseUrl}`);
+      clearSpecificJourneyCache(tabToClose.baseUrl);
+    }
   }
 
   public setActiveTab(tabId: string) {

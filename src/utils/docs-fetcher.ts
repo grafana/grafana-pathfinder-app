@@ -137,10 +137,26 @@ function extractLearningJourneyContent(html: string, url: string): LearningJourn
       // Determine current milestone from URL
       currentMilestone = findCurrentMilestoneFromUrl(url, cachedMilestones);
       
-      // Update active milestone
+      // Reset all milestone active states first, then set the current one
       milestones.forEach(milestone => {
-        milestone.isActive = milestone.number === currentMilestone;
+        milestone.isActive = false;
       });
+      
+      // Set the current milestone as active
+      if (currentMilestone > 0 && currentMilestone <= milestones.length) {
+        const activeMilestone = milestones.find(m => m.number === currentMilestone);
+        if (activeMilestone) {
+          activeMilestone.isActive = true;
+          console.log(`✅ Set milestone ${currentMilestone} as active: ${activeMilestone.title}`);
+        } else {
+          console.warn(`⚠️ Could not find milestone ${currentMilestone} to set as active`);
+        }
+      } else {
+        console.log(`📍 Current milestone ${currentMilestone} is cover page or out of range`);
+      }
+      
+      console.log(`🧭 Navigation state: Current=${currentMilestone}, Total=${totalMilestones}, URL=${url}`);
+      console.log(`📋 Milestones summary:`, milestones.map(m => `${m.number}: ${m.isActive ? '✅' : '⭕'} ${m.title}`));
     }
     
     // Extract main content
@@ -430,10 +446,24 @@ async function fetchDirectFast(url: string): Promise<string | null> {
  * Get next milestone URL
  */
 export function getNextMilestoneUrl(content: LearningJourneyContent): string | null {
-  const currentIndex = content.milestones.findIndex(m => m.isActive);
-  if (currentIndex >= 0 && currentIndex < content.milestones.length - 1) {
-    return content.milestones[currentIndex + 1].url;
+  console.log(`🔄 Getting next milestone from current: ${content.currentMilestone} of ${content.totalMilestones}`);
+  
+  // If we're on the cover page (milestone 0), go to milestone 1
+  if (content.currentMilestone === 0 && content.milestones.length > 0) {
+    console.log(`📍 From cover page -> milestone 1: ${content.milestones[0].url}`);
+    return content.milestones[0].url;
   }
+  
+  // If we're on a milestone, go to the next one
+  if (content.currentMilestone > 0 && content.currentMilestone < content.totalMilestones) {
+    const nextMilestone = content.milestones.find(m => m.number === content.currentMilestone + 1);
+    if (nextMilestone) {
+      console.log(`📍 From milestone ${content.currentMilestone} -> milestone ${nextMilestone.number}: ${nextMilestone.url}`);
+      return nextMilestone.url;
+    }
+  }
+  
+  console.log(`❌ No next milestone available from current: ${content.currentMilestone}`);
   return null;
 }
 
@@ -441,10 +471,24 @@ export function getNextMilestoneUrl(content: LearningJourneyContent): string | n
  * Get previous milestone URL
  */
 export function getPreviousMilestoneUrl(content: LearningJourneyContent): string | null {
-  const currentIndex = content.milestones.findIndex(m => m.isActive);
-  if (currentIndex > 0) {
-    return content.milestones[currentIndex - 1].url;
+  console.log(`🔄 Getting previous milestone from current: ${content.currentMilestone} of ${content.totalMilestones}`);
+  
+  // If we're on milestone 1, can't go back (cover page isn't navigable via previous)
+  if (content.currentMilestone <= 1) {
+    console.log(`❌ Cannot go back from milestone ${content.currentMilestone}`);
+    return null;
   }
+  
+  // If we're on a milestone > 1, go to the previous one
+  if (content.currentMilestone > 1 && content.currentMilestone <= content.totalMilestones) {
+    const prevMilestone = content.milestones.find(m => m.number === content.currentMilestone - 1);
+    if (prevMilestone) {
+      console.log(`📍 From milestone ${content.currentMilestone} -> milestone ${prevMilestone.number}: ${prevMilestone.url}`);
+      return prevMilestone.url;
+    }
+  }
+  
+  console.log(`❌ No previous milestone available from current: ${content.currentMilestone}`);
   return null;
 }
 
@@ -479,48 +523,123 @@ export function clearLearningJourneyCache(): void {
 }
 
 /**
+ * Clear cache for a specific learning journey
+ */
+export function clearSpecificJourneyCache(baseUrl: string): void {
+  try {
+    const journeyBaseUrl = getLearningJourneyBaseUrl(baseUrl);
+    
+    // Clear content cache for all URLs related to this journey
+    const urlsToRemove: string[] = [];
+    contentCache.forEach((_, url) => {
+      if (url.startsWith(journeyBaseUrl)) {
+        urlsToRemove.push(url);
+      }
+    });
+    
+    urlsToRemove.forEach(url => {
+      contentCache.delete(url);
+    });
+    
+    // Clear milestone cache for this journey
+    milestoneCache.delete(journeyBaseUrl);
+    
+    // Clear localStorage cache for this journey
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('journey-cache-') && key.includes(encodeURIComponent(journeyBaseUrl))) {
+        keysToRemove.push(key);
+      }
+    }
+    
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key);
+    });
+    
+    console.log(`Cleared cache for journey: ${journeyBaseUrl} (${urlsToRemove.length} content entries, ${keysToRemove.length} localStorage entries)`);
+  } catch (error) {
+    console.warn('Failed to clear specific journey cache:', error);
+  }
+}
+
+/**
  * Find current milestone number from URL
  */
 function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
+  console.log(`Finding milestone for URL: ${url}`);
+  console.log(`Available milestones:`, milestones.map(m => ({ number: m.number, url: m.url })));
+  
   // First try exact URL match
   for (const milestone of milestones) {
     if (milestone.url === url) {
+      console.log(`✅ Exact URL match found: milestone ${milestone.number}`);
       return milestone.number;
     }
   }
   
-  // Then try partial URL match
+  // Then try exact match with trailing slash variations
+  const urlWithSlash = url.endsWith('/') ? url : url + '/';
+  const urlWithoutSlash = url.endsWith('/') ? url.slice(0, -1) : url;
+  
   for (const milestone of milestones) {
-    const milestoneUrlPart = milestone.url.split('/').pop() || '';
-    const currentUrlPart = url.split('/').pop() || '';
-    
-    if (milestoneUrlPart && currentUrlPart && 
-        (url.includes(milestoneUrlPart) || milestoneUrlPart.includes(currentUrlPart))) {
+    if (milestone.url === urlWithSlash || milestone.url === urlWithoutSlash) {
+      console.log(`✅ URL match with slash variation found: milestone ${milestone.number}`);
       return milestone.number;
     }
   }
   
-  // Fallback to URL pattern matching
-  const urlParts = url.split('/');
-  const lastPart = urlParts[urlParts.length - 2] || urlParts[urlParts.length - 1];
+  // Then try partial URL match by comparing path segments
+  const urlParts = url.replace(/\/$/, '').split('/');
+  const currentUrlSegment = urlParts[urlParts.length - 1];
   
-  if (lastPart.includes('business-value')) {
-    return 1;
-  } else if (lastPart.includes('when-to') || lastPart.includes('install')) {
-    return 2;
-  } else if (lastPart.includes('verify') || lastPart.includes('configure')) {
-    return 3;
-  } else if (lastPart.includes('explore')) {
-    return 4;
-  } else if (lastPart.includes('create')) {
-    return 5;
-  } else if (lastPart.includes('import')) {
-    return 6;
-  } else if (lastPart.includes('query')) {
-    return 7;
-  } else {
-    // Try to extract from URL pattern
-    const milestoneMatch = lastPart.match(/(\d+)/);
-    return milestoneMatch ? parseInt(milestoneMatch[1]) : 1;
+  for (const milestone of milestones) {
+    const milestoneUrlParts = milestone.url.replace(/\/$/, '').split('/');
+    const milestoneUrlSegment = milestoneUrlParts[milestoneUrlParts.length - 1];
+    
+    if (currentUrlSegment && milestoneUrlSegment && currentUrlSegment === milestoneUrlSegment) {
+      console.log(`✅ Path segment match found: milestone ${milestone.number} (${currentUrlSegment})`);
+      return milestone.number;
+    }
   }
+  
+  // Fallback to URL pattern matching for known patterns
+  console.log(`⚠️ No direct match found, trying pattern matching...`);
+  const urlLower = url.toLowerCase();
+  
+  if (urlLower.includes('business-value') || urlLower.includes('why-')) {
+    console.log(`📍 Pattern match: business-value/why -> milestone 1`);
+    return 1;
+  } else if (urlLower.includes('when-to') || urlLower.includes('install') || urlLower.includes('connect')) {
+    console.log(`📍 Pattern match: when-to/install/connect -> milestone 2`);
+    return 2;
+  } else if (urlLower.includes('verify') || urlLower.includes('configure') || urlLower.includes('test')) {
+    console.log(`📍 Pattern match: verify/configure/test -> milestone 3`);
+    return 3;
+  } else if (urlLower.includes('explore') || urlLower.includes('discover')) {
+    console.log(`📍 Pattern match: explore/discover -> milestone 4`);
+    return 4;
+  } else if (urlLower.includes('create') || urlLower.includes('build')) {
+    console.log(`📍 Pattern match: create/build -> milestone 5`);
+    return 5;
+  } else if (urlLower.includes('import') || urlLower.includes('upload')) {
+    console.log(`📍 Pattern match: import/upload -> milestone 6`);
+    return 6;
+  } else if (urlLower.includes('query') || urlLower.includes('search')) {
+    console.log(`📍 Pattern match: query/search -> milestone 7`);
+    return 7;
+  }
+  
+  // Last resort: try to extract number from URL
+  const milestoneMatch = url.match(/milestone[-_]?(\d+)|step[-_]?(\d+)|(\d+)(?:[-_]|$)/i);
+  if (milestoneMatch) {
+    const milestoneNum = parseInt(milestoneMatch[1] || milestoneMatch[2] || milestoneMatch[3]);
+    if (milestoneNum > 0 && milestoneNum <= milestones.length) {
+      console.log(`📍 Number extraction match: milestone ${milestoneNum}`);
+      return milestoneNum;
+    }
+  }
+  
+  console.log(`❌ No milestone match found, defaulting to milestone 1`);
+  return 1;
 } 
