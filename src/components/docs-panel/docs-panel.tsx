@@ -258,6 +258,124 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     }
   }, [model, activeTab?.content]);
 
+  // Process code snippets and add copy buttons
+  useEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement) return;
+
+    // More precise targeting: find actual <pre> elements with code, not nested containers
+    const preElements = contentElement.querySelectorAll('pre');
+    
+    preElements.forEach((preElement, index) => {
+      // Skip if this pre element already has our copy button
+      if (preElement.parentElement?.querySelector('.code-copy-button')) return;
+      
+      // Must contain code to be processed
+      const codeElement = preElement.querySelector('code') || preElement;
+      const codeText = codeElement.textContent || '';
+      if (!codeText.trim()) return;
+      
+      console.log(`Processing pre element ${index + 1}:`, {
+        hasCode: !!preElement.querySelector('code'),
+        codeLength: codeText.length,
+        parentClasses: preElement.parentElement?.className || 'none'
+      });
+      
+      // Remove any remaining copy buttons from the immediate area
+      const nearbyButtons = preElement.parentElement?.querySelectorAll('button[title*="copy" i], button[aria-label*="copy" i], .copy-button, .copy-btn, .btn-copy, button[onclick*="copy" i], button[data-copy], button[x-data]') || [];
+      nearbyButtons.forEach(btn => {
+        console.log('Removing nearby button:', btn.className, btn.textContent?.substring(0, 20));
+        btn.remove();
+      });
+      
+      // Create copy button
+      const copyButton = document.createElement('button');
+      copyButton.className = 'code-copy-button';
+      copyButton.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        <span class="copy-text">Copy</span>
+      `;
+      copyButton.title = 'Copy code to clipboard';
+      
+      // Add click handler for copy functionality
+      copyButton.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        try {
+          await navigator.clipboard.writeText(codeText);
+          
+          // Update button to show success
+          copyButton.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20,6 9,17 4,12"></polyline>
+            </svg>
+            <span class="copy-text">Copied!</span>
+          `;
+          copyButton.classList.add('copied');
+          
+          // Reset after 2 seconds
+          setTimeout(() => {
+            copyButton.innerHTML = `
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span class="copy-text">Copy</span>
+            `;
+            copyButton.classList.remove('copied');
+          }, 2000);
+          
+        } catch (err) {
+          console.warn('Failed to copy code:', err);
+          
+          // Fallback for browsers that don't support clipboard API
+          const textArea = document.createElement('textarea');
+          textArea.value = codeText;
+          document.body.appendChild(textArea);
+          textArea.select();
+          try {
+            document.execCommand('copy');
+            copyButton.innerHTML = `
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20,6 9,17 4,12"></polyline>
+              </svg>
+              <span class="copy-text">Copied!</span>
+            `;
+            copyButton.classList.add('copied');
+            
+            setTimeout(() => {
+              copyButton.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span class="copy-text">Copy</span>
+              `;
+              copyButton.classList.remove('copied');
+            }, 2000);
+          } catch (fallbackErr) {
+            console.error('Fallback copy also failed:', fallbackErr);
+          } finally {
+            document.body.removeChild(textArea);
+          }
+        }
+      });
+      
+      // Find the best container to add the button to
+      let targetContainer = preElement.parentElement;
+      
+      // Add button directly to the pre element instead of creating wrappers
+      // Ensure the pre element is positioned relatively for button positioning  
+      (preElement as HTMLElement).style.position = 'relative';
+      preElement.appendChild(copyButton);
+      console.log(`Added copy button directly to pre element`);
+    });
+  }, [activeTab?.content]);
+
   // Handle keyboard shortcuts for tab navigation
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -757,8 +875,21 @@ const getStyles = (theme: GrafanaTheme2) => ({
       margin: `${theme.spacing(3)} 0`,
     },
     
-    // Responsive adjustments for classified images
+    // Special handling for inline code
+    '& code:not(pre code)': {
+      backgroundColor: theme.colors.background.canvas,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: '3px',
+      padding: `2px 4px`,
+      fontFamily: theme.typography.fontFamilyMonospace,
+      fontSize: '0.9em',
+      color: theme.colors.text.primary,
+      fontWeight: theme.typography.fontWeightMedium,
+    },
+    
+    // Consolidated responsive styles for mobile devices
     '@media (max-width: 768px)': {
+      // Image responsive adjustments
       '& img': {
         '&[src*="screenshot"], &[src*="dashboard"], &[src*="interface"]': {
           minWidth: '250px',
@@ -788,9 +919,27 @@ const getStyles = (theme: GrafanaTheme2) => ({
           maxWidth: '100%',
         },
       },
+      
+      // Code snippet responsive adjustments  
+      '& .code-copy-button': {
+        padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
+        minWidth: '60px',
+        fontSize: '11px',
+      },
+      
+      '& .code-snippet pre, & .code-snippet-container pre, & .code-snippet-wrapper pre': {
+        paddingRight: theme.spacing(8),
+        fontSize: '13px',
+      },
+      
+      '& pre[class*="language-"]': {
+        padding: `${theme.spacing(2)} ${theme.spacing(8)} ${theme.spacing(2)} ${theme.spacing(2)}`,
+        fontSize: '13px',
+      },
     },
     
     '@media (max-width: 480px)': {
+      // Image responsive adjustments
       '& img': {
         '&[src*="screenshot"], &[src*="dashboard"], &[src*="interface"]': {
           minWidth: '200px',
@@ -817,6 +966,44 @@ const getStyles = (theme: GrafanaTheme2) => ({
       
       '& .journey-large': {
         margin: `${theme.spacing(2)} auto`,
+      },
+      
+      // Code snippet responsive adjustments
+      '& .code-copy-button': {
+        padding: theme.spacing(0.5),
+        minWidth: '32px',
+        top: theme.spacing(0.5),
+        right: theme.spacing(0.5),
+        
+        '& .copy-text': {
+          display: 'none', // Hide text, show only icon
+        },
+      },
+      
+      '& .code-snippet pre, & .code-snippet-container pre, & .code-snippet-wrapper pre': {
+        paddingRight: theme.spacing(6),
+        fontSize: '12px',
+        padding: `${theme.spacing(1.5)} ${theme.spacing(6)} ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
+      },
+      
+      '& pre[class*="language-"]': {
+        padding: `${theme.spacing(1.5)} ${theme.spacing(6)} ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
+        fontSize: '12px',
+      },
+      
+      // Progress header adjustments
+      '& .progress-header': {
+        gap: theme.spacing(0.5),
+        
+        '& > span': {
+          fontSize: '12px',
+        },
+      },
+      
+      // Milestone navigation adjustments
+      '& .milestone-navigation button': {
+        minWidth: '32px',
+        height: '32px',
       },
     },
     
@@ -1020,6 +1207,183 @@ const getStyles = (theme: GrafanaTheme2) => ({
         textDecoration: 'underline',
       },
     },
+    
+    // Code snippet styling with copy button support
+    '& .code-snippet, & .code-snippet-container, & .code-snippet-wrapper': {
+      position: 'relative',
+      margin: `${theme.spacing(3)} 0`,
+      backgroundColor: theme.colors.background.canvas,
+      borderRadius: theme.shape.radius.default,
+      border: `1px solid ${theme.colors.border.weak}`,
+      overflow: 'hidden',
+      boxShadow: theme.shadows.z1,
+      
+      '& pre': {
+        margin: 0,
+        padding: theme.spacing(2),
+        backgroundColor: 'transparent',
+        border: 'none',
+        borderRadius: 0,
+        overflow: 'auto',
+        fontFamily: theme.typography.fontFamilyMonospace,
+        fontSize: theme.typography.bodySmall.fontSize,
+        lineHeight: 1.5,
+        color: theme.colors.text.primary,
+        whiteSpace: 'pre',
+        wordWrap: 'normal',
+        
+        '& code': {
+          backgroundColor: 'transparent',
+          padding: 0,
+          border: 'none',
+          borderRadius: 0,
+          fontFamily: 'inherit',
+          fontSize: 'inherit',
+          color: 'inherit',
+          whiteSpace: 'inherit',
+          wordWrap: 'inherit',
+        },
+      },
+      
+      // Handle cases where pre is the direct element
+      '&.code-snippet-wrapper pre, &.code-snippet pre': {
+        backgroundColor: theme.colors.background.canvas,
+        border: `1px solid ${theme.colors.border.weak}`,
+        borderRadius: theme.shape.radius.default,
+      },
+    },
+    
+    // Copy button styling
+    '& .code-copy-button': {
+      position: 'absolute',
+      top: theme.spacing(1),
+      right: theme.spacing(1),
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+      backgroundColor: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      color: theme.colors.text.secondary,
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      zIndex: 2,
+      minWidth: '70px',
+      justifyContent: 'center',
+      
+      '&:hover': {
+        backgroundColor: theme.colors.action.hover,
+        borderColor: theme.colors.border.medium,
+        color: theme.colors.text.primary,
+        transform: 'translateY(-1px)',
+        boxShadow: theme.shadows.z1,
+      },
+      
+      '&:active': {
+        transform: 'translateY(0)',
+        boxShadow: 'none',
+      },
+      
+      '&.copied': {
+        backgroundColor: theme.colors.success.main,
+        borderColor: theme.colors.success.border,
+        color: theme.colors.success.contrastText,
+        
+        '&:hover': {
+          backgroundColor: theme.colors.success.main,
+          borderColor: theme.colors.success.border,
+          color: theme.colors.success.contrastText,
+        },
+      },
+      
+      '& svg': {
+        flexShrink: 0,
+        width: '16px',
+        height: '16px',
+      },
+      
+      '& .copy-text': {
+        whiteSpace: 'nowrap',
+        fontSize: '12px',
+      },
+    },
+    
+    // Code block enhancements for readability
+    '& .code-snippet pre, & .code-snippet-container pre, & .code-snippet-wrapper pre': {
+      // Add some visual enhancements
+      position: 'relative',
+      
+      // Add subtle background pattern for code
+      backgroundImage: `linear-gradient(90deg, transparent 79px, ${theme.colors.border.weak} 81px)`,
+      backgroundSize: '81px 1.2em',
+      backgroundAttachment: 'local',
+      
+      // Ensure proper spacing for copy button
+      paddingRight: theme.spacing(10), // Make room for copy button
+      
+      // Custom scrollbar
+      '&::-webkit-scrollbar': {
+        height: '8px',
+        width: '8px',
+      },
+      
+      '&::-webkit-scrollbar-track': {
+        backgroundColor: theme.colors.background.secondary,
+        borderRadius: theme.shape.radius.default,
+      },
+      
+      '&::-webkit-scrollbar-thumb': {
+        backgroundColor: theme.colors.border.medium,
+        borderRadius: theme.shape.radius.default,
+        border: `2px solid ${theme.colors.background.secondary}`,
+        
+        '&:hover': {
+          backgroundColor: theme.colors.border.strong,
+        },
+      },
+    },
+    
+    // Handle various code snippet structures from Grafana docs
+    '& .code-snippet__border': {
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      overflow: 'hidden',
+      position: 'relative',
+      margin: `${theme.spacing(2)} 0`,
+      
+      '& pre': {
+        margin: 0,
+        border: 'none',
+        borderRadius: 0,
+      },
+    },
+    
+    // Ensure proper styling for language-specific code blocks
+    '& pre[class*="language-"]': {
+      position: 'relative',
+      backgroundColor: theme.colors.background.canvas,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      margin: `${theme.spacing(2)} 0`,
+      padding: `${theme.spacing(2)} ${theme.spacing(10)} ${theme.spacing(2)} ${theme.spacing(2)}`,
+      
+      '&:before': {
+        content: 'attr(class)',
+        position: 'absolute',
+        top: theme.spacing(0.5),
+        left: theme.spacing(1),
+        fontSize: '10px',
+        color: theme.colors.text.secondary,
+        opacity: 0.7,
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        fontWeight: theme.typography.fontWeightMedium,
+        pointerEvents: 'none',
+      },
+    },
   }),
   tabBar: css({
     label: 'combined-journey-tab-bar',
@@ -1128,15 +1492,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
       fontWeight: theme.typography.fontWeightMedium,
       color: theme.colors.text.primary,
     },
-    
-    // Responsive adjustments
-    '@media (max-width: 480px)': {
-      gap: theme.spacing(0.5),
-      
-      '& > span': {
-        fontSize: '12px',
-      },
-    },
   }),
   milestoneNavigation: css({
     display: 'flex',
@@ -1160,16 +1515,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
       '&:disabled': {
         opacity: 0.5,
         cursor: 'not-allowed',
-      },
-    },
-    
-    // Responsive adjustments
-    '@media (max-width: 480px)': {
-      gap: theme.spacing(0.5),
-      
-      '& button': {
-        minWidth: '32px',
-        height: '32px',
       },
     },
   }),

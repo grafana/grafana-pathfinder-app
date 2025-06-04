@@ -218,6 +218,68 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
   );
   unwantedElements.forEach(el => el.remove());
   
+  // Preserve code snippets by adding consistent classes
+  const codeSnippets = clonedElement.querySelectorAll('.code-snippet, .code-snippet__border, pre[class*="language-"], pre:has(code)');
+  codeSnippets.forEach(snippet => {
+    // Remove any existing copy buttons from the original content
+    const existingCopyButtons = snippet.querySelectorAll(
+      'button[title*="copy" i], button[aria-label*="copy" i], .copy-button, .copy-btn, .btn-copy, [class*="copy"], button[onclick*="copy" i], button[data-copy], .code-copy-button, button[x-data*="code_snippet"], .lang-toolbar, .lang-toolbar__mini, .code-clipboard'
+    );
+    existingCopyButtons.forEach(btn => {
+      console.log('Removing existing copy button:', btn.className, btn.textContent);
+      btn.remove();
+    });
+    
+    // Also remove Alpine.js copy buttons and toolbars specifically
+    const alpineButtons = snippet.querySelectorAll('button[x-data], .lang-toolbar, .lang-toolbar__mini, .code-clipboard, span.code-clipboard');
+    alpineButtons.forEach(element => {
+      console.log('Removing Alpine.js element:', element.className, element.tagName);
+      element.remove();
+    });
+    
+    // Simplify nested code snippet structure - find the actual pre element
+    const preElement = snippet.querySelector('pre') || (snippet.tagName === 'PRE' ? snippet : null);
+    if (preElement) {
+      // More aggressive wrapper removal - unwrap multiple levels if needed
+      let currentElement = snippet;
+      while (currentElement.tagName === 'DIV' && currentElement !== preElement) {
+        const parent = currentElement.parentElement;
+        if (!parent) break;
+        
+        // If this div only contains the pre element (possibly nested), unwrap it
+        if (currentElement.querySelectorAll('pre').length === 1 && 
+            currentElement.querySelector('pre') === preElement) {
+          console.log('Unwrapping div:', currentElement.className);
+          parent.insertBefore(preElement, currentElement);
+          currentElement.remove();
+          break;
+        } else {
+          // Move to the next level if there are multiple children
+          const nextElement: Element | null = currentElement.querySelector(':scope > div, :scope > pre');
+          if (nextElement && nextElement !== preElement) {
+            currentElement = nextElement;
+          } else {
+            break;
+          }
+        }
+      }
+      
+      // Ensure the pre element has the right class for our processing
+      preElement.classList.add('code-snippet');
+      // Remove extra classes to keep it clean
+      preElement.classList.remove('code-snippet__border', 'code-snippet__mini', 'code-snippet-container');
+      (preElement as HTMLElement).style.position = 'relative'; // Needed for copy button positioning
+      
+      // Ensure there's a code element inside pre
+      if (!preElement.querySelector('code')) {
+        const codeElement = document.createElement('code');
+        codeElement.innerHTML = preElement.innerHTML;
+        preElement.innerHTML = '';
+        preElement.appendChild(codeElement);
+      }
+    }
+  });
+  
   // Consolidated video extraction and removal
   extractedVideoUrl = extractAndRemoveAllVideos(clonedElement);
   
