@@ -218,6 +218,61 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
   );
   unwantedElements.forEach(el => el.remove());
   
+  // First, scan ALL video-related buttons/elements before removing any
+  console.log('🔍 Scanning for all video elements...');
+  
+  // Scan for youtube-lazyload buttons (highest priority)
+  const lazyloadButtons = clonedElement.querySelectorAll('.youtube-lazyload, .responsive-video');
+  console.log(`Found ${lazyloadButtons.length} youtube-lazyload/responsive-video buttons`);
+  
+  lazyloadButtons.forEach((button, index) => {
+    const videoId = button.getAttribute('data-embed');
+    const dataUrl = button.getAttribute('data-url');
+    const dataTitle = button.getAttribute('data-title');
+    const clickHandler = button.getAttribute('@click');
+    const classes = button.className;
+    
+    console.log(`🎥 Button ${index + 1}:`, {
+      classes,
+      videoId,
+      dataUrl,
+      dataTitle,
+      clickHandler,
+      hasExtractedVideo: !!extractedVideoUrl
+    });
+    
+    if (videoId && !extractedVideoUrl) {
+      let finalVideoUrl = '';
+      
+      if (dataUrl) {
+        console.log(`🎥 Processing data-url: ${dataUrl}`);
+        finalVideoUrl = convertEmbedToWatchUrl(dataUrl);
+      } else {
+        finalVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      }
+      
+      // Check for timing parameters in other places
+      // 1. Look for timing in surrounding text/attributes
+      const timingFromText = extractTimingFromContext(button);
+      
+      // 2. Look for timing in modal ID or click handler
+      const timingFromModal = extractTimingFromModal(clickHandler);
+      
+      // 3. Check for timing in sibling elements or parent context
+      const timingFromSiblings = extractTimingFromSiblings(button);
+      
+      const timing = timingFromText || timingFromModal || timingFromSiblings;
+      
+      if (timing) {
+        finalVideoUrl += finalVideoUrl.includes('?') ? `&t=${timing}` : `?t=${timing}`;
+        console.log(`⏰ Added timing from context: ${timing}s -> ${finalVideoUrl}`);
+      }
+      
+      extractedVideoUrl = finalVideoUrl;
+      console.log(`🎥 Final video URL: ${extractedVideoUrl}`);
+    }
+  });
+
   // Extract and remove video containers
   const videoContainers = clonedElement.querySelectorAll('.docs-video__trigger');
   videoContainers.forEach(container => {
@@ -225,21 +280,71 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
     
     if (button) {
       const videoId = button.getAttribute('data-embed');
+      const dataUrl = button.getAttribute('data-url'); // Full YouTube URL with parameters
       
       if (videoId && !extractedVideoUrl) {
-        // Take the first video we find for this page
-        extractedVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        console.log(`🎥 Extracted video URL: ${extractedVideoUrl}`);
+        // Check if we have a full URL with parameters first
+        if (dataUrl) {
+          console.log(`🎥 Found data-url: ${dataUrl}`);
+          // Convert embed URL to watch URL while preserving timing parameters
+          extractedVideoUrl = convertEmbedToWatchUrl(dataUrl);
+          console.log(`🎥 Converted to watch URL: ${extractedVideoUrl}`);
+        } else {
+          // Fallback to basic video ID
+          extractedVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          console.log(`🎥 Extracted basic video URL: ${extractedVideoUrl}`);
+        }
       }
     }
     
     // Remove the entire video container from content
     container.remove();
   });
-  
-  // Also remove any remaining video-related elements
+
+  // Now remove all video-related elements
   const videoButtons = clonedElement.querySelectorAll('button[data-embed], .youtube-lazyload, .responsive-video');
+  console.log(`🗑️ Removing ${videoButtons.length} video buttons`);
   videoButtons.forEach(button => button.remove());
+  
+  // Extract and remove "Watch video" modal buttons
+  const modalVideoButtons = clonedElement.querySelectorAll(
+    'button.btn--empty, button[class*="btn--empty"], button[class*="text-action-blue"]'
+  );
+  modalVideoButtons.forEach(button => {
+    const buttonText = button.textContent?.toLowerCase() || '';
+    const clickHandler = button.getAttribute('@click') || button.getAttribute('onclick') || '';
+    
+    // Check if this is a video button
+    if (buttonText.includes('watch video') || buttonText.includes('video')) {
+      console.log(`🎥 Found modal video button: "${buttonText}"`);
+      
+      // Try to extract video ID from modal handler like @click="open_modal('journey-modal-_ojYThjkpN0')"
+      const modalMatch = clickHandler.match(/open_modal\(['"]journey-modal-([^'"]+)['"]\)/);
+      if (modalMatch && modalMatch[1] && !extractedVideoUrl) {
+        const potentialVideoId = modalMatch[1];
+        // Check if this looks like a YouTube video ID (typically 11 characters)
+        if (potentialVideoId.length >= 10 && potentialVideoId.match(/^[a-zA-Z0-9_-]+$/)) {
+          extractedVideoUrl = `https://www.youtube.com/watch?v=${potentialVideoId}`;
+          console.log(`🎥 Extracted video URL from modal: ${extractedVideoUrl}`);
+        }
+      }
+      
+      // Remove the button regardless of whether we extracted a video
+      button.remove();
+      console.log(`🗑️ Removed modal video button`);
+    }
+  });
+  
+  // Also remove any remaining buttons containing "Watch video" text (fallback)
+  const allButtons = clonedElement.querySelectorAll('button');
+  allButtons.forEach(button => {
+    const buttonText = button.textContent?.toLowerCase() || '';
+    if (buttonText.includes('watch video')) {
+      console.log(`🎥 Found additional video button: "${buttonText}"`);
+      button.remove();
+      console.log(`🗑️ Removed additional video button`);
+    }
+  });
   
   // Remove any standalone "Watch video" links and extract URLs
   const links = clonedElement.querySelectorAll('a[href]');
@@ -269,8 +374,14 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
         // Try to extract YouTube ID and convert to clean YouTube URL
         const youtubeId = extractYouTubeVideoId(videoUrl);
         if (youtubeId && !extractedVideoUrl) {
-          extractedVideoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
-          console.log(`🎥 Extracted YouTube URL: ${extractedVideoUrl}`);
+          // Check if the original URL has timing parameters we should preserve
+          if (videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be')) {
+            extractedVideoUrl = preserveYouTubeTimingParams(videoUrl);
+            console.log(`🎥 Extracted YouTube URL with params: ${extractedVideoUrl}`);
+          } else {
+            extractedVideoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+            console.log(`🎥 Extracted basic YouTube URL: ${extractedVideoUrl}`);
+          }
         } else if (!extractedVideoUrl) {
           extractedVideoUrl = videoUrl;
           console.log(`🎥 Extracted video URL: ${extractedVideoUrl}`);
@@ -400,6 +511,63 @@ function extractYouTubeVideoId(url: string): string | null {
   }
   
   return null;
+}
+
+/**
+ * Preserve YouTube timing parameters when extracting YouTube URLs from links
+ */
+function preserveYouTubeTimingParams(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    let videoId: string | null = null;
+    let startTime: string | null = null;
+    
+    // Handle different YouTube URL formats
+    if (urlObj.hostname.includes('youtube.com')) {
+      if (urlObj.pathname.startsWith('/embed/')) {
+        // Embed URL: https://www.youtube.com/embed/VIDEO_ID?start=123
+        const pathMatch = urlObj.pathname.match(/\/embed\/([a-zA-Z0-9_-]+)/);
+        videoId = pathMatch?.[1] || null;
+        startTime = urlObj.searchParams.get('start');
+      } else if (urlObj.pathname === '/watch') {
+        // Watch URL: https://www.youtube.com/watch?v=VIDEO_ID&t=123
+        videoId = urlObj.searchParams.get('v');
+        startTime = urlObj.searchParams.get('t');
+      }
+    } else if (urlObj.hostname.includes('youtu.be')) {
+      // Short URL: https://youtu.be/VIDEO_ID?t=123
+      const pathMatch = urlObj.pathname.match(/\/([a-zA-Z0-9_-]+)/);
+      videoId = pathMatch?.[1] || null;
+      startTime = urlObj.searchParams.get('t');
+    }
+    
+    if (!videoId) {
+      console.warn('Could not extract video ID from URL:', url);
+      return url;
+    }
+    
+    // Construct clean watch URL
+    let watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    
+    if (startTime) {
+      // Convert start time from seconds to t parameter format if needed
+      const timeParam = startTime.match(/^\d+$/) ? startTime : startTime;
+      watchUrl += `&t=${timeParam}`;
+      console.log(`⏰ Preserving start time: ${timeParam}s`);
+    }
+    
+    return watchUrl;
+  } catch (error) {
+    console.warn('Failed to preserve YouTube timing parameters:', error);
+    return url;
+  }
+}
+
+/**
+ * Convert YouTube embed URL to watch URL while preserving timing parameters
+ */
+function convertEmbedToWatchUrl(embedUrl: string): string {
+  return preserveYouTubeTimingParams(embedUrl);
 }
 
 /**
@@ -699,4 +867,93 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
   
   console.log(`❌ No milestone match found, defaulting to milestone 1`);
   return 1;
+}
+
+/**
+ * Extract timing parameters from button context, attributes, or surrounding text
+ */
+function extractTimingFromContext(button: Element): string | null {
+  // Check various attributes that might contain timing info
+  const attributes = [
+    'data-time', 'data-start', 'data-timestamp', 'data-seconds', 
+    'data-timing', 'data-position', 'data-offset'
+  ];
+  
+  for (const attr of attributes) {
+    const value = button.getAttribute(attr);
+    if (value && /^\d+$/.test(value)) {
+      console.log(`⏰ Found timing in ${attr}: ${value}s`);
+      return value;
+    }
+  }
+  
+  // Check if timing is in the button text or title
+  const text = button.textContent || '';
+  const title = button.getAttribute('title') || '';
+  const combined = `${text} ${title}`;
+  
+  const timeMatch = combined.match(/(?:start|at|@)\s*(\d+)(?:s|sec|seconds?)?/i);
+  if (timeMatch) {
+    console.log(`⏰ Found timing in text: ${timeMatch[1]}s`);
+    return timeMatch[1];
+  }
+  
+  return null;
+}
+
+/**
+ * Extract timing parameters from modal click handlers
+ */
+function extractTimingFromModal(clickHandler: string | null): string | null {
+  if (!clickHandler) return null;
+  
+  // Look for timing patterns in modal ID like: journey-modal-_ojYThjkpN0-45s
+  const timingInModal = clickHandler.match(/journey-modal-[^'"-]*[-_](\d+)(?:s|sec)?['"]/i);
+  if (timingInModal) {
+    console.log(`⏰ Found timing in modal ID: ${timingInModal[1]}s`);
+    return timingInModal[1];
+  }
+  
+  // Look for timing parameters in the modal call itself
+  const modalParams = clickHandler.match(/open_modal\([^)]*[,\s]+(\d+)/);
+  if (modalParams) {
+    console.log(`⏰ Found timing in modal params: ${modalParams[1]}s`);
+    return modalParams[1];
+  }
+  
+  return null;
+}
+
+/**
+ * Extract timing parameters from sibling elements or parent context
+ */
+function extractTimingFromSiblings(button: Element): string | null {
+  // Check parent element for timing attributes
+  const parent = button.parentElement;
+  if (parent) {
+    const parentTiming = extractTimingFromContext(parent);
+    if (parentTiming) {
+      console.log(`⏰ Found timing in parent: ${parentTiming}s`);
+      return parentTiming;
+    }
+  }
+  
+  // Check preceding/following text nodes for timing info
+  const container = button.closest('div, section, article') || button.parentElement;
+  if (container) {
+    const containerText = container.textContent || '';
+    const timeMatch = containerText.match(/(?:video\s+at|starts?\s+at|jump\s+to)\s*(\d+)(?::\d+)?\s*(?:s|sec|seconds?|minutes?)?/i);
+    if (timeMatch) {
+      let seconds = timeMatch[1];
+      // Convert mm:ss format to seconds if needed
+      if (timeMatch[0].includes(':')) {
+        const [minutes, secs] = timeMatch[1].split(':').map(Number);
+        seconds = String(minutes * 60 + (secs || 0));
+      }
+      console.log(`⏰ Found timing in container text: ${seconds}s`);
+      return seconds;
+    }
+  }
+  
+  return null;
 } 
