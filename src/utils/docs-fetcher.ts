@@ -218,184 +218,15 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
   );
   unwantedElements.forEach(el => el.remove());
   
-  // First, scan ALL video-related buttons/elements before removing any
-  console.log('🔍 Scanning for all video elements...');
+  // Consolidated video extraction and removal
+  extractedVideoUrl = extractAndRemoveAllVideos(clonedElement);
   
-  // Scan for youtube-lazyload buttons (highest priority)
-  const lazyloadButtons = clonedElement.querySelectorAll('.youtube-lazyload, .responsive-video');
-  console.log(`Found ${lazyloadButtons.length} youtube-lazyload/responsive-video buttons`);
-  
-  lazyloadButtons.forEach((button, index) => {
-    const videoId = button.getAttribute('data-embed');
-    const dataUrl = button.getAttribute('data-url');
-    const dataTitle = button.getAttribute('data-title');
-    const clickHandler = button.getAttribute('@click');
-    const classes = button.className;
-    
-    console.log(`🎥 Button ${index + 1}:`, {
-      classes,
-      videoId,
-      dataUrl,
-      dataTitle,
-      clickHandler,
-      hasExtractedVideo: !!extractedVideoUrl
-    });
-    
-    if (videoId && !extractedVideoUrl) {
-      let finalVideoUrl = '';
-      
-      if (dataUrl) {
-        console.log(`🎥 Processing data-url: ${dataUrl}`);
-        finalVideoUrl = convertEmbedToWatchUrl(dataUrl);
-      } else {
-        finalVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      }
-      
-      // Check for timing parameters in other places
-      // 1. Look for timing in surrounding text/attributes
-      const timingFromText = extractTimingFromContext(button);
-      
-      // 2. Look for timing in modal ID or click handler
-      const timingFromModal = extractTimingFromModal(clickHandler);
-      
-      // 3. Check for timing in sibling elements or parent context
-      const timingFromSiblings = extractTimingFromSiblings(button);
-      
-      const timing = timingFromText || timingFromModal || timingFromSiblings;
-      
-      if (timing) {
-        finalVideoUrl += finalVideoUrl.includes('?') ? `&t=${timing}` : `?t=${timing}`;
-        console.log(`⏰ Added timing from context: ${timing}s -> ${finalVideoUrl}`);
-      }
-      
-      extractedVideoUrl = finalVideoUrl;
-      console.log(`🎥 Final video URL: ${extractedVideoUrl}`);
-    }
-  });
-
-  // Extract and remove video containers
-  const videoContainers = clonedElement.querySelectorAll('.docs-video__trigger');
-  videoContainers.forEach(container => {
-    const button = container.querySelector('button[data-embed]');
-    
-    if (button) {
-      const videoId = button.getAttribute('data-embed');
-      const dataUrl = button.getAttribute('data-url'); // Full YouTube URL with parameters
-      
-      if (videoId && !extractedVideoUrl) {
-        // Check if we have a full URL with parameters first
-        if (dataUrl) {
-          console.log(`🎥 Found data-url: ${dataUrl}`);
-          // Convert embed URL to watch URL while preserving timing parameters
-          extractedVideoUrl = convertEmbedToWatchUrl(dataUrl);
-          console.log(`🎥 Converted to watch URL: ${extractedVideoUrl}`);
-        } else {
-          // Fallback to basic video ID
-          extractedVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-          console.log(`🎥 Extracted basic video URL: ${extractedVideoUrl}`);
-        }
-      }
-    }
-    
-    // Remove the entire video container from content
-    container.remove();
-  });
-
-  // Now remove all video-related elements
-  const videoButtons = clonedElement.querySelectorAll('button[data-embed], .youtube-lazyload, .responsive-video');
-  console.log(`🗑️ Removing ${videoButtons.length} video buttons`);
-  videoButtons.forEach(button => button.remove());
-  
-  // Extract and remove "Watch video" modal buttons
-  const modalVideoButtons = clonedElement.querySelectorAll(
-    'button.btn--empty, button[class*="btn--empty"], button[class*="text-action-blue"]'
-  );
-  modalVideoButtons.forEach(button => {
-    const buttonText = button.textContent?.toLowerCase() || '';
-    const clickHandler = button.getAttribute('@click') || button.getAttribute('onclick') || '';
-    
-    // Check if this is a video button
-    if (buttonText.includes('watch video') || buttonText.includes('video')) {
-      console.log(`🎥 Found modal video button: "${buttonText}"`);
-      
-      // Try to extract video ID from modal handler like @click="open_modal('journey-modal-_ojYThjkpN0')"
-      const modalMatch = clickHandler.match(/open_modal\(['"]journey-modal-([^'"]+)['"]\)/);
-      if (modalMatch && modalMatch[1] && !extractedVideoUrl) {
-        const potentialVideoId = modalMatch[1];
-        // Check if this looks like a YouTube video ID (typically 11 characters)
-        if (potentialVideoId.length >= 10 && potentialVideoId.match(/^[a-zA-Z0-9_-]+$/)) {
-          extractedVideoUrl = `https://www.youtube.com/watch?v=${potentialVideoId}`;
-          console.log(`🎥 Extracted video URL from modal: ${extractedVideoUrl}`);
-        }
-      }
-      
-      // Remove the button regardless of whether we extracted a video
-      button.remove();
-      console.log(`🗑️ Removed modal video button`);
-    }
-  });
-  
-  // Also remove any remaining buttons containing "Watch video" text (fallback)
-  const allButtons = clonedElement.querySelectorAll('button');
-  allButtons.forEach(button => {
-    const buttonText = button.textContent?.toLowerCase() || '';
-    if (buttonText.includes('watch video')) {
-      console.log(`🎥 Found additional video button: "${buttonText}"`);
-      button.remove();
-      console.log(`🗑️ Removed additional video button`);
-    }
-  });
-  
-  // Remove any standalone "Watch video" links and extract URLs
-  const links = clonedElement.querySelectorAll('a[href]');
-  links.forEach(link => {
-    const href = link.getAttribute('href');
-    const linkText = link.textContent?.toLowerCase() || '';
-    
-    if (href) {
-      // Check if this is a video link
-      const isVideoLink = linkText.includes('watch video') || 
-                         linkText.includes('video') ||
-                         linkText.includes('watch');
-      
-      if (isVideoLink) {
-        console.log(`🎥 Found video link: "${linkText}" -> ${href}`);
-        
-        // Fix relative video URLs
-        let videoUrl = href;
-        if (href.startsWith('/')) {
-          videoUrl = `https://grafana.com${href}`;
-        } else if (href.startsWith('./')) {
-          videoUrl = `https://grafana.com/docs/${href.substring(2)}`;
-        } else if (href.startsWith('../')) {
-          videoUrl = `https://grafana.com/docs/${href.replace(/^\.\.\//, '')}`;
-        }
-        
-        // Try to extract YouTube ID and convert to clean YouTube URL
-        const youtubeId = extractYouTubeVideoId(videoUrl);
-        if (youtubeId && !extractedVideoUrl) {
-          // Check if the original URL has timing parameters we should preserve
-          if (videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be')) {
-            extractedVideoUrl = preserveYouTubeTimingParams(videoUrl);
-            console.log(`🎥 Extracted YouTube URL with params: ${extractedVideoUrl}`);
-          } else {
-            extractedVideoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
-            console.log(`🎥 Extracted basic YouTube URL: ${extractedVideoUrl}`);
-          }
-        } else if (!extractedVideoUrl) {
-          extractedVideoUrl = videoUrl;
-          console.log(`🎥 Extracted video URL: ${extractedVideoUrl}`);
-        }
-        
-        // Remove the video link from content
-        link.remove();
-      } else {
-        // Regular links - just ensure they open in new tabs
-        link.setAttribute('target', '_blank');
-        link.setAttribute('rel', 'noopener noreferrer');
-        link.setAttribute('data-journey-link', 'true');
-      }
-    }
+  // Process remaining non-video links to ensure they open in new tabs
+  const remainingLinks = clonedElement.querySelectorAll('a[href]');
+  remainingLinks.forEach(link => {
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener noreferrer');
+    link.setAttribute('data-journey-link', 'true');
   });
   
   // For cover pages, add our own "Start Journey" button
@@ -413,79 +244,67 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
     clonedElement.appendChild(startButton);
   }
   
-  // Process images to fix relative URLs
+  // Process images efficiently with cached operations
   const images = clonedElement.querySelectorAll('img');
   images.forEach(img => {
     const src = img.getAttribute('src');
     const dataSrc = img.getAttribute('data-src');
     const originalSrc = dataSrc || src;
+    
+    if (!originalSrc) return;
+    
+    // Fix relative URLs with single logic
+    const newSrc = originalSrc.startsWith('http') || originalSrc.startsWith('data:') 
+      ? originalSrc
+      : originalSrc.startsWith('/') 
+        ? `https://grafana.com${originalSrc}`
+        : originalSrc.startsWith('./') 
+          ? `https://grafana.com/docs/${originalSrc.substring(2)}`
+          : originalSrc.startsWith('../') 
+            ? `https://grafana.com/docs/${originalSrc.replace(/^\.\.\//, '')}`
+            : `https://grafana.com/docs/${originalSrc}`;
+    
+    // Set attributes once
+    img.setAttribute('src', newSrc);
+    img.removeAttribute('data-src');
+    img.classList.remove('lazyload', 'lazyloaded', 'ls-is-cached');
+    img.classList.add('journey-image');
+    img.setAttribute('loading', 'lazy');
+    
+    // Cached string operations
+    const srcLower = newSrc.toLowerCase();
     const alt = img.getAttribute('alt') || '';
+    const altLower = alt.toLowerCase();
+    
+    // Efficient classification using single conditional chain
+    if (srcLower.includes('screenshot') || srcLower.includes('dashboard') || 
+        srcLower.includes('interface') || altLower.includes('screenshot') ||
+        altLower.includes('dashboard') || altLower.includes('interface')) {
+      img.classList.add('journey-screenshot');
+    } else if (srcLower.includes('icon') || srcLower.includes('logo') || 
+               srcLower.includes('badge') || altLower.includes('icon') ||
+               altLower.includes('logo') || altLower.includes('badge')) {
+      img.classList.add('journey-icon');
+    } else if (srcLower.includes('diagram') || srcLower.includes('chart') || 
+               srcLower.includes('graph') || altLower.includes('diagram') ||
+               altLower.includes('chart') || altLower.includes('graph')) {
+      img.classList.add('journey-diagram');
+    }
+    
+    // Size-based classes (simplified)
     const width = img.getAttribute('width');
     const height = img.getAttribute('height');
-    
-    if (originalSrc) {
-      let newSrc = originalSrc;
+    if (width && height) {
+      const w = parseInt(width);
+      const h = parseInt(height);
       
-      if (originalSrc.startsWith('/')) {
-        newSrc = `https://grafana.com${originalSrc}`;
-      } else if (originalSrc.startsWith('./')) {
-        newSrc = `https://grafana.com/docs/${originalSrc.substring(2)}`;
-      } else if (originalSrc.startsWith('../')) {
-        newSrc = `https://grafana.com/docs/${originalSrc.replace(/^\.\.\//, '')}`;
-      } else if (!originalSrc.startsWith('http') && !originalSrc.startsWith('data:')) {
-        newSrc = `https://grafana.com/docs/${originalSrc}`;
-      }
-      
-      img.setAttribute('src', newSrc);
-      img.removeAttribute('data-src');
-      img.classList.remove('lazyload', 'lazyloaded', 'ls-is-cached');
-      
-      // Add responsive image classes based on content and size
-      img.classList.add('journey-image');
-      
-      // Classify images based on their characteristics
-      const srcLower = newSrc.toLowerCase();
-      const altLower = alt.toLowerCase();
-      
-      if (srcLower.includes('screenshot') || srcLower.includes('dashboard') || 
-          srcLower.includes('interface') || altLower.includes('screenshot') ||
-          altLower.includes('dashboard') || altLower.includes('interface')) {
-        img.classList.add('journey-screenshot');
-      } else if (srcLower.includes('icon') || srcLower.includes('logo') || 
-                 srcLower.includes('badge') || altLower.includes('icon') ||
-                 altLower.includes('logo') || altLower.includes('badge')) {
-        img.classList.add('journey-icon');
-      } else if (srcLower.includes('diagram') || srcLower.includes('chart') || 
-                 srcLower.includes('graph') || altLower.includes('diagram') ||
-                 altLower.includes('chart') || altLower.includes('graph')) {
-        img.classList.add('journey-diagram');
-      }
-      
-      // Add size-based classes
-      if (width && height) {
-        const w = parseInt(width);
-        const h = parseInt(height);
-        
-        if (w > 800 || h > 600) {
-          img.classList.add('journey-large');
-        } else if (w < 200 && h < 200) {
-          img.classList.add('journey-small');
-        }
-        
-        // For very wide images (like banners or headers)
-        if (w > h * 2) {
-          img.classList.add('journey-wide');
-        }
-      }
-      
-      // Add loading optimization
-      img.setAttribute('loading', 'lazy');
-      
-      // Add alt text if missing
-      if (!alt) {
-        img.setAttribute('alt', 'Learning journey image');
-      }
+      if (w > 800 || h > 600) img.classList.add('journey-large');
+      else if (w < 200 && h < 200) img.classList.add('journey-small');
+      if (w > h * 2) img.classList.add('journey-wide');
     }
+    
+    // Add alt text if missing
+    if (!alt) img.setAttribute('alt', 'Learning journey image');
   });
   
   return {
@@ -564,10 +383,181 @@ function preserveYouTubeTimingParams(url: string): string {
 }
 
 /**
- * Convert YouTube embed URL to watch URL while preserving timing parameters
+ * Extract timing parameters from button context, attributes, or surrounding text
  */
-function convertEmbedToWatchUrl(embedUrl: string): string {
-  return preserveYouTubeTimingParams(embedUrl);
+function extractTimingFromContext(button: Element): string | null {
+  // Check various attributes that might contain timing info
+  const attributes = [
+    'data-time', 'data-start', 'data-timestamp', 'data-seconds', 
+    'data-timing', 'data-position', 'data-offset'
+  ];
+  
+  for (const attr of attributes) {
+    const value = button.getAttribute(attr);
+    if (value && /^\d+$/.test(value)) {
+      console.log(`⏰ Found timing in ${attr}: ${value}s`);
+      return value;
+    }
+  }
+  
+  // Check if timing is in the button text or title
+  const text = button.textContent || '';
+  const title = button.getAttribute('title') || '';
+  const combined = `${text} ${title}`;
+  
+  const timeMatch = combined.match(/(?:start|at|@)\s*(\d+)(?:s|sec|seconds?)?/i);
+  if (timeMatch) {
+    console.log(`⏰ Found timing in text: ${timeMatch[1]}s`);
+    return timeMatch[1];
+  }
+  
+  return null;
+}
+
+/**
+ * Extract timing parameters from modal click handlers
+ */
+function extractTimingFromModal(clickHandler: string | null): string | null {
+  if (!clickHandler) return null;
+  
+  // Look for timing patterns in modal ID like: journey-modal-_ojYThjkpN0-45s
+  const timingInModal = clickHandler.match(/journey-modal-[^'"-]*[-_](\d+)(?:s|sec)?['"]/i);
+  if (timingInModal) {
+    console.log(`⏰ Found timing in modal ID: ${timingInModal[1]}s`);
+    return timingInModal[1];
+  }
+  
+  // Look for timing parameters in the modal call itself
+  const modalParams = clickHandler.match(/open_modal\([^)]*[,\s]+(\d+)/);
+  if (modalParams) {
+    console.log(`⏰ Found timing in modal params: ${modalParams[1]}s`);
+    return modalParams[1];
+  }
+  
+  return null;
+}
+
+/**
+ * Extract timing parameters from sibling elements or parent context
+ */
+function extractTimingFromSiblings(button: Element): string | null {
+  // Check parent element for timing attributes
+  const parent = button.parentElement;
+  if (parent) {
+    const parentTiming = extractTimingFromContext(parent);
+    if (parentTiming) {
+      console.log(`⏰ Found timing in parent: ${parentTiming}s`);
+      return parentTiming;
+    }
+  }
+  
+  // Check preceding/following text nodes for timing info
+  const container = button.closest('div, section, article') || button.parentElement;
+  if (container) {
+    const containerText = container.textContent || '';
+    const timeMatch = containerText.match(/(?:video\s+at|starts?\s+at|jump\s+to)\s*(\d+)(?::\d+)?\s*(?:s|sec|seconds?|minutes?)?/i);
+    if (timeMatch) {
+      let seconds = timeMatch[1];
+      // Convert mm:ss format to seconds if needed
+      if (timeMatch[0].includes(':')) {
+        const [minutes, secs] = timeMatch[1].split(':').map(Number);
+        seconds = String(minutes * 60 + (secs || 0));
+      }
+      console.log(`⏰ Found timing in container text: ${seconds}s`);
+      return seconds;
+    }
+  }
+  
+  return null;
+}
+
+// Consolidated video extraction and removal
+function extractAndRemoveAllVideos(element: Element): string | undefined {
+  let extractedVideoUrl: string | undefined;
+  
+  // Single pass: scan ALL video-related elements
+  const allVideoElements = element.querySelectorAll(
+    '.youtube-lazyload, .responsive-video, .docs-video__trigger, button[data-embed], button.btn--empty, button[class*="btn--empty"], button[class*="text-action-blue"]'
+  );
+  
+  console.log(`🔍 Found ${allVideoElements.length} potential video elements`);
+  
+  // Process each element once
+  allVideoElements.forEach((videoElement, index) => {
+    const videoId = videoElement.getAttribute('data-embed');
+    const dataUrl = videoElement.getAttribute('data-url');
+    const clickHandler = videoElement.getAttribute('@click') || videoElement.getAttribute('onclick') || '';
+    const buttonText = videoElement.textContent?.toLowerCase() || '';
+    
+    // Extract video URL if we haven't found one yet
+    if (!extractedVideoUrl) {
+      if (videoId) {
+        // Direct video ID extraction
+        if (dataUrl) {
+          extractedVideoUrl = preserveYouTubeTimingParams(dataUrl);
+          console.log(`🎥 Extracted from data-url: ${extractedVideoUrl}`);
+        } else {
+          extractedVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          console.log(`🎥 Extracted from video ID: ${extractedVideoUrl}`);
+        }
+        
+        // Check for additional timing parameters
+        const timing = extractTimingFromContext(videoElement) || 
+                      extractTimingFromModal(clickHandler) || 
+                      extractTimingFromSiblings(videoElement);
+        
+        if (timing) {
+          extractedVideoUrl += extractedVideoUrl.includes('?') ? `&t=${timing}` : `?t=${timing}`;
+          console.log(`⏰ Added timing: ${timing}s`);
+        }
+      } else if (buttonText.includes('watch video') || buttonText.includes('video')) {
+        // Modal button extraction
+        const modalMatch = clickHandler.match(/open_modal\(['"]journey-modal-([^'"]+)['"]\)/);
+        if (modalMatch && modalMatch[1]) {
+          const potentialVideoId = modalMatch[1];
+          if (potentialVideoId.length >= 10 && potentialVideoId.match(/^[a-zA-Z0-9_-]+$/)) {
+            extractedVideoUrl = `https://www.youtube.com/watch?v=${potentialVideoId}`;
+            console.log(`🎥 Extracted from modal: ${extractedVideoUrl}`);
+          }
+        }
+      }
+    }
+  });
+  
+  // Remove all video elements in one pass
+  allVideoElements.forEach(element => element.remove());
+  
+  // Handle video links separately (they need href processing)
+  const videoLinks = element.querySelectorAll('a[href]');
+  videoLinks.forEach(link => {
+    const href = link.getAttribute('href');
+    const linkText = link.textContent?.toLowerCase() || '';
+    
+    if (href && (linkText.includes('watch video') || linkText.includes('video'))) {
+      if (!extractedVideoUrl) {
+        let videoUrl = href.startsWith('/') ? `https://grafana.com${href}` : href;
+        if (href.startsWith('./')) videoUrl = `https://grafana.com/docs/${href.substring(2)}`;
+        if (href.startsWith('../')) videoUrl = `https://grafana.com/docs/${href.replace(/^\.\.\//, '')}`;
+        
+        const youtubeId = extractYouTubeVideoId(videoUrl);
+        if (youtubeId) {
+          extractedVideoUrl = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be') 
+            ? preserveYouTubeTimingParams(videoUrl)
+            : `https://www.youtube.com/watch?v=${youtubeId}`;
+          console.log(`🎥 Extracted from link: ${extractedVideoUrl}`);
+        }
+      }
+      link.remove();
+    } else if (href) {
+      // Regular links - ensure they open in new tabs
+      link.setAttribute('target', '_blank');
+      link.setAttribute('rel', 'noopener noreferrer');
+      link.setAttribute('data-journey-link', 'true');
+    }
+  });
+  
+  console.log(`🗑️ Video extraction complete, removed ${allVideoElements.length} elements`);
+  return extractedVideoUrl;
 }
 
 /**
@@ -867,93 +857,4 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
   
   console.log(`❌ No milestone match found, defaulting to milestone 1`);
   return 1;
-}
-
-/**
- * Extract timing parameters from button context, attributes, or surrounding text
- */
-function extractTimingFromContext(button: Element): string | null {
-  // Check various attributes that might contain timing info
-  const attributes = [
-    'data-time', 'data-start', 'data-timestamp', 'data-seconds', 
-    'data-timing', 'data-position', 'data-offset'
-  ];
-  
-  for (const attr of attributes) {
-    const value = button.getAttribute(attr);
-    if (value && /^\d+$/.test(value)) {
-      console.log(`⏰ Found timing in ${attr}: ${value}s`);
-      return value;
-    }
-  }
-  
-  // Check if timing is in the button text or title
-  const text = button.textContent || '';
-  const title = button.getAttribute('title') || '';
-  const combined = `${text} ${title}`;
-  
-  const timeMatch = combined.match(/(?:start|at|@)\s*(\d+)(?:s|sec|seconds?)?/i);
-  if (timeMatch) {
-    console.log(`⏰ Found timing in text: ${timeMatch[1]}s`);
-    return timeMatch[1];
-  }
-  
-  return null;
-}
-
-/**
- * Extract timing parameters from modal click handlers
- */
-function extractTimingFromModal(clickHandler: string | null): string | null {
-  if (!clickHandler) return null;
-  
-  // Look for timing patterns in modal ID like: journey-modal-_ojYThjkpN0-45s
-  const timingInModal = clickHandler.match(/journey-modal-[^'"-]*[-_](\d+)(?:s|sec)?['"]/i);
-  if (timingInModal) {
-    console.log(`⏰ Found timing in modal ID: ${timingInModal[1]}s`);
-    return timingInModal[1];
-  }
-  
-  // Look for timing parameters in the modal call itself
-  const modalParams = clickHandler.match(/open_modal\([^)]*[,\s]+(\d+)/);
-  if (modalParams) {
-    console.log(`⏰ Found timing in modal params: ${modalParams[1]}s`);
-    return modalParams[1];
-  }
-  
-  return null;
-}
-
-/**
- * Extract timing parameters from sibling elements or parent context
- */
-function extractTimingFromSiblings(button: Element): string | null {
-  // Check parent element for timing attributes
-  const parent = button.parentElement;
-  if (parent) {
-    const parentTiming = extractTimingFromContext(parent);
-    if (parentTiming) {
-      console.log(`⏰ Found timing in parent: ${parentTiming}s`);
-      return parentTiming;
-    }
-  }
-  
-  // Check preceding/following text nodes for timing info
-  const container = button.closest('div, section, article') || button.parentElement;
-  if (container) {
-    const containerText = container.textContent || '';
-    const timeMatch = containerText.match(/(?:video\s+at|starts?\s+at|jump\s+to)\s*(\d+)(?::\d+)?\s*(?:s|sec|seconds?|minutes?)?/i);
-    if (timeMatch) {
-      let seconds = timeMatch[1];
-      // Convert mm:ss format to seconds if needed
-      if (timeMatch[0].includes(':')) {
-        const [minutes, secs] = timeMatch[1].split(':').map(Number);
-        seconds = String(minutes * 60 + (secs || 0));
-      }
-      console.log(`⏰ Found timing in container text: ${seconds}s`);
-      return seconds;
-    }
-  }
-  
-  return null;
 } 
