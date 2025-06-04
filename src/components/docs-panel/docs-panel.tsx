@@ -306,20 +306,15 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           {!isRecommendationsTab && activeTab && (
             <>
               <IconButton
-                name="arrow-left"
-                aria-label="Previous milestone"
-                onClick={() => model.navigateToPreviousMilestone()}
-                tooltip="Previous milestone (Alt + ←)"
+                name="external-link-alt"
+                aria-label="Open original documentation"
+                onClick={() => {
+                  if (activeTab.content?.url) {
+                    window.open(activeTab.content.url, '_blank', 'noopener,noreferrer');
+                  }
+                }}
+                tooltip="Open original documentation in new tab"
                 tooltipPlacement="left"
-                disabled={!model.canNavigatePrevious() || activeTab.isLoading}
-              />
-              <IconButton
-                name="arrow-right"
-                aria-label="Next milestone"
-                onClick={() => model.navigateToNextMilestone()}
-                tooltip="Next milestone (Alt + →)"
-                tooltipPlacement="left"
-                disabled={!model.canNavigateNext() || activeTab.isLoading}
               />
             </>
           )}
@@ -395,7 +390,29 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
             {activeTab.content.currentMilestone > 0 && activeTab.content.milestones.length > 0 && (
               <div className={styles.milestoneProgress}>
                 <div className={styles.progressInfo}>
-                  <span>Milestone {activeTab.content.currentMilestone} of {activeTab.content.totalMilestones}</span>
+                  <div className={styles.progressHeader}>
+                    <span>Milestone {activeTab.content.currentMilestone} of {activeTab.content.totalMilestones}</span>
+                    <div className={styles.milestoneNavigation}>
+                      <IconButton
+                        name="arrow-left"
+                        size="sm"
+                        aria-label="Previous milestone"
+                        onClick={() => model.navigateToPreviousMilestone()}
+                        tooltip="Previous milestone (Alt + ←)"
+                        tooltipPlacement="top"
+                        disabled={!model.canNavigatePrevious() || activeTab.isLoading}
+                      />
+                      <IconButton
+                        name="arrow-right"
+                        size="sm"
+                        aria-label="Next milestone"
+                        onClick={() => model.navigateToNextMilestone()}
+                        tooltip="Next milestone (Alt + →)"
+                        tooltipPlacement="top"
+                        disabled={!model.canNavigateNext() || activeTab.isLoading}
+                      />
+                    </div>
+                  </div>
                   <div className={styles.progressBar}>
                     <div 
                       className={styles.progressFill}
@@ -578,13 +595,205 @@ const getStyles = (theme: GrafanaTheme2) => ({
       },
     },
     
+    // Enhanced responsive image styling
+    '& img': {
+      maxWidth: '100%',
+      height: 'auto',
+      borderRadius: theme.shape.radius.default,
+      border: `1px solid ${theme.colors.border.weak}`,
+      margin: `${theme.spacing(2)} auto`,
+      display: 'block',
+      boxShadow: theme.shadows.z1,
+      transition: 'all 0.2s ease',
+      
+      // Hover effect for better interactivity
+      '&:hover': {
+        boxShadow: theme.shadows.z2,
+        transform: 'scale(1.02)',
+        cursor: 'pointer',
+      },
+      
+      // Handle different image sizes appropriately
+      '&[src*="screenshot"], &[src*="dashboard"], &[src*="interface"]': {
+        // Screenshots and interface images - keep them large but responsive
+        maxWidth: '100%',
+        minWidth: '300px',
+        width: 'auto',
+        margin: `${theme.spacing(3)} auto`,
+        border: `2px solid ${theme.colors.border.medium}`,
+        borderRadius: `${theme.shape.radius.default}px`,
+      },
+      
+      '&[src*="icon"], &[src*="logo"], &[src*="badge"]': {
+        // Icons and logos - keep them smaller and inline when appropriate
+        maxWidth: '200px',
+        maxHeight: '100px',
+        margin: `${theme.spacing(1)} auto`,
+        display: 'inline-block',
+        verticalAlign: 'middle',
+      },
+      
+      '&[src*="diagram"], &[src*="chart"], &[src*="graph"]': {
+        // Diagrams and charts - ensure they're readable
+        maxWidth: '100%',
+        minWidth: '400px',
+        margin: `${theme.spacing(3)} auto`,
+        backgroundColor: theme.colors.background.primary,
+        padding: theme.spacing(1),
+      },
+    },
+    
+    // Image containers and figures
+    '& figure': {
+      margin: `${theme.spacing(3)} 0`,
+      textAlign: 'center',
+      
+      '& img': {
+        margin: '0 auto',
+      },
+      
+      '& figcaption': {
+        marginTop: theme.spacing(1),
+        fontSize: theme.typography.bodySmall.fontSize,
+        color: theme.colors.text.secondary,
+        fontStyle: 'italic',
+        textAlign: 'center',
+      },
+    },
+    
+    // Image galleries or multiple images in a row
+    '& .image-gallery, & .images-row': {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: theme.spacing(2),
+      margin: `${theme.spacing(3)} 0`,
+      justifyContent: 'center',
+      
+      '& img': {
+        flex: '1 1 300px',
+        maxWidth: '400px',
+        margin: 0,
+      },
+    },
+    
+    // Legacy class support
     '& .journey-image': {
       maxWidth: '100%',
       height: 'auto',
       borderRadius: theme.shape.radius.default,
       border: `1px solid ${theme.colors.border.weak}`,
-      margin: `${theme.spacing(2)} 0`,
+      margin: `${theme.spacing(2)} auto`,
       display: 'block',
+      boxShadow: theme.shadows.z1,
+    },
+    
+    // Specific image type styling
+    '& .journey-screenshot': {
+      maxWidth: '100%',
+      minWidth: '300px',
+      margin: `${theme.spacing(3)} auto`,
+      border: `2px solid ${theme.colors.border.medium}`,
+      borderRadius: `${theme.shape.radius.default}px`,
+      boxShadow: theme.shadows.z2,
+    },
+    
+    '& .journey-icon': {
+      maxWidth: '150px',
+      maxHeight: '80px',
+      margin: `${theme.spacing(1)} ${theme.spacing(2)}`,
+      display: 'inline-block',
+      verticalAlign: 'middle',
+      border: 'none',
+      boxShadow: 'none',
+    },
+    
+    '& .journey-diagram': {
+      maxWidth: '100%',
+      minWidth: '350px',
+      margin: `${theme.spacing(3)} auto`,
+      backgroundColor: theme.colors.background.primary,
+      padding: theme.spacing(2),
+      borderRadius: `${theme.shape.radius.default}px`,
+    },
+    
+    '& .journey-large': {
+      maxWidth: '100%',
+      margin: `${theme.spacing(4)} auto`,
+      border: `2px solid ${theme.colors.border.medium}`,
+    },
+    
+    '& .journey-small': {
+      maxWidth: '150px',
+      margin: `${theme.spacing(1)} auto`,
+    },
+    
+    '& .journey-wide': {
+      width: '100%',
+      maxWidth: '100%',
+      margin: `${theme.spacing(3)} 0`,
+    },
+    
+    // Responsive adjustments for classified images
+    '@media (max-width: 768px)': {
+      '& img': {
+        '&[src*="screenshot"], &[src*="dashboard"], &[src*="interface"]': {
+          minWidth: '250px',
+          margin: `${theme.spacing(2)} auto`,
+        },
+        
+        '&[src*="diagram"], &[src*="chart"], &[src*="graph"]': {
+          minWidth: '280px',
+        },
+      },
+      
+      '& .journey-screenshot': {
+        minWidth: '250px',
+        margin: `${theme.spacing(2)} auto`,
+      },
+      
+      '& .journey-diagram': {
+        minWidth: '280px',
+        padding: theme.spacing(1),
+      },
+      
+      '& .image-gallery, & .images-row': {
+        flexDirection: 'column',
+        
+        '& img': {
+          flex: 'none',
+          maxWidth: '100%',
+        },
+      },
+    },
+    
+    '@media (max-width: 480px)': {
+      '& img': {
+        '&[src*="screenshot"], &[src*="dashboard"], &[src*="interface"]': {
+          minWidth: '200px',
+          border: `1px solid ${theme.colors.border.weak}`,
+          borderRadius: theme.shape.radius.default,
+        },
+        
+        '&[src*="diagram"], &[src*="chart"], &[src*="graph"]': {
+          minWidth: '200px',
+          padding: theme.spacing(0.5),
+        },
+      },
+      
+      '& .journey-screenshot': {
+        minWidth: '200px',
+        border: `1px solid ${theme.colors.border.weak}`,
+        margin: `${theme.spacing(1)} auto`,
+      },
+      
+      '& .journey-diagram': {
+        minWidth: '200px',
+        padding: theme.spacing(0.5),
+      },
+      
+      '& .journey-large': {
+        margin: `${theme.spacing(2)} auto`,
+      },
     },
     
     '& .journey-code': {
@@ -746,6 +955,65 @@ const getStyles = (theme: GrafanaTheme2) => ({
     flexShrink: 0,
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  progressHeader: css({
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing(1),
+    
+    // Ensure text doesn't wrap awkwardly
+    '& > span': {
+      whiteSpace: 'nowrap',
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
+    },
+    
+    // Responsive adjustments
+    '@media (max-width: 480px)': {
+      gap: theme.spacing(0.5),
+      
+      '& > span': {
+        fontSize: '12px',
+      },
+    },
+  }),
+  milestoneNavigation: css({
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    
+    // Add some visual styling for the navigation buttons
+    '& button': {
+      backgroundColor: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      transition: 'all 0.2s ease',
+      
+      '&:hover:not(:disabled)': {
+        backgroundColor: theme.colors.action.hover,
+        borderColor: theme.colors.border.medium,
+        transform: 'translateY(-1px)',
+      },
+      
+      '&:disabled': {
+        opacity: 0.5,
+        cursor: 'not-allowed',
+      },
+    },
+    
+    // Responsive adjustments
+    '@media (max-width: 480px)': {
+      gap: theme.spacing(0.5),
+      
+      '& button': {
+        minWidth: '32px',
+        height: '32px',
+      },
     },
   }),
 });

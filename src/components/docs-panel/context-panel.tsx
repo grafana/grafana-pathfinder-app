@@ -3,9 +3,10 @@ import React, { useEffect, useState } from 'react';
 
 import { GrafanaTheme2 } from '@grafana/data';
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, IconButton, useStyles2, Card } from '@grafana/ui';
+import { Icon, IconButton, useStyles2, Card, Spinner } from '@grafana/ui';
 import { getBackendSrv, locationService } from '@grafana/runtime';
 import { RECOMMENDER_SERVICE_URL } from '../../constants';
+import { fetchLearningJourneyContent, Milestone } from '../../utils/docs-fetcher';
 
 interface DataSource {
   id: number;
@@ -28,6 +29,10 @@ interface DashboardInfo {
 interface Recommendation {
   title: string;
   url: string;
+  milestones?: Milestone[];
+  totalSteps?: number;
+  isLoadingSteps?: boolean;
+  stepsExpanded?: boolean;
   [key: string]: any; // Allow for additional attributes from the server
 }
 
@@ -197,13 +202,49 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
       }
 
       const data: RecommenderResponse = await response.json();
+      const recommendations = data.recommendations || [];
+      
+      // Immediately fetch step counts for all recommendations
+      console.log('Fetching step counts for recommendations...');
+      const recommendationsWithSteps = await Promise.allSettled(
+        recommendations.map(async (recommendation) => {
+          try {
+            const journeyContent = await fetchLearningJourneyContent(recommendation.url);
+            return {
+              ...recommendation,
+              totalSteps: journeyContent?.milestones?.length || 0,
+              milestones: journeyContent?.milestones || [],
+            };
+          } catch (error) {
+            console.warn(`Failed to fetch steps for ${recommendation.title}:`, error);
+            return {
+              ...recommendation,
+              totalSteps: 0,
+            };
+          }
+        })
+      );
+
+      // Extract successful results
+      const processedRecommendations = recommendationsWithSteps.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        } else {
+          console.warn(`Failed to process recommendation ${index}:`, result.reason);
+          return {
+            ...recommendations[index],
+            totalSteps: 0,
+          };
+        }
+      });
+
       this.setState({ 
-        recommendations: data.recommendations || [],
+        recommendations: processedRecommendations,
         isLoadingRecommendations: false,
         recommendationsError: null,
       });
 
-      console.log('Received recommendations:', data.recommendations);
+      console.log('Loaded recommendations with step counts:', processedRecommendations);
     } catch (error) {
       console.warn('Failed to fetch recommendations:', error);
       this.setState({ 
@@ -228,6 +269,19 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     }
   }
 
+  public async toggleStepsExpansion(index: number) {
+    const recommendations = [...this.state.recommendations];
+    const recommendation = recommendations[index];
+    
+    // Simply toggle expansion state since milestones are already loaded
+    recommendations[index] = {
+      ...recommendation,
+      stepsExpanded: !recommendation.stepsExpanded,
+    };
+    
+    this.setState({ recommendations });
+  }
+
   public navigateToPath(path: string) {
     locationService.push(path);
   }
@@ -245,28 +299,6 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
 
   return (
     <div className={styles.container}>
-      <div className={styles.topBar}>
-        <div className={styles.title}>
-          <div className={styles.titleContent}>
-            <div className={styles.appIcon}>
-              <Icon name="info-circle" size="lg" />
-            </div>
-            <div className={styles.titleText}>
-              Learning Journeys
-            </div>
-          </div>
-        </div>
-        <div className={styles.actions}>
-          <IconButton
-            name="sync"
-            aria-label="Refresh learning journeys"
-            onClick={() => model.refreshRecommendations()}
-            tooltip="Refresh learning journeys"
-            tooltipPlacement="left"
-          />
-        </div>
-      </div>
-
       <div className={styles.content}>
         {isLoading && (
           <div className={styles.loadingContainer}>
@@ -277,6 +309,14 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
 
         {!isLoading && (
           <div className={styles.contextSections}>
+            <div className={styles.sectionHeader}>
+              <Icon name="question-circle" size="lg" className={styles.headerIcon} />
+              <h2 className={styles.sectionTitle}>Stuck on what to do next?</h2>
+              <p className={styles.sectionSubtitle}>
+                Here are some learning journeys that might help based on your current context
+              </p>
+            </div>
+
             {isLoadingRecommendations && (
               <div className={styles.loadingContainer}>
                 <Icon name="sync" />
@@ -294,27 +334,82 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             {!isLoadingRecommendations && !recommendationsError && recommendations.length === 0 && (
               <div className={styles.emptyContainer}>
                 <Icon name="info-circle" />
-                <span>No learning journeys available</span>
+                <span>No learning journeys available for your current context</span>
               </div>
             )}
             
             {!isLoadingRecommendations && recommendations.length > 0 && (
-              <>
+              <div className={styles.recommendationsGrid}>
                 {recommendations.map((recommendation, index) => (
                   <Card key={index} className={styles.recommendationCard}>
                     <div className={styles.recommendationCardContent}>
-                      <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
-                      <button 
-                        onClick={() => model.openLearningJourney(recommendation.url, recommendation.title)}
-                        className={styles.recommendationCardButton}
-                      >
-                        <Icon name="book" size="sm" />
-                        Start Learning Journey
-                      </button>
+                      <div className={styles.cardHeader}>
+                        <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
+                        <div className={styles.cardActions}>
+                          <button 
+                            onClick={() => model.openLearningJourney(recommendation.url, recommendation.title)}
+                            className={styles.startButton}
+                          >
+                            <Icon name="play" size="sm" />
+                            Start Journey
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className={styles.cardMetadata}>
+                        <div className={styles.stepsInfo}>
+                          {(recommendation.totalSteps ?? 0) > 0 ? (
+                            <span className={styles.stepsCount}>
+                              <Icon name="list-ul" size="xs" />
+                              {recommendation.totalSteps} step{recommendation.totalSteps !== 1 ? 's' : ''}
+                            </span>
+                          ) : (
+                            <span className={styles.stepsCount}>
+                              <Icon name="list-ul" size="xs" />
+                              Multiple steps
+                            </span>
+                          )}
+                          
+                          {(recommendation.totalSteps ?? 0) > 0 && (
+                            <button
+                              onClick={() => model.toggleStepsExpansion(index)}
+                              className={styles.viewStepsButton}
+                            >
+                              {recommendation.stepsExpanded ? (
+                                <>
+                                  <Icon name="angle-up" size="sm" />
+                                  Hide steps
+                                </>
+                              ) : (
+                                <>
+                                  <Icon name="angle-down" size="sm" />
+                                  View steps
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {recommendation.stepsExpanded && recommendation.milestones && (
+                        <div className={styles.stepsExpansion}>
+                          <div className={styles.stepsList}>
+                            {recommendation.milestones.map((milestone, stepIndex) => (
+                              <div key={stepIndex} className={styles.stepItem}>
+                                <div className={styles.stepNumber}>{milestone.number}</div>
+                                <div className={styles.stepContent}>
+                                  <div className={styles.stepTitle}>{milestone.title}</div>
+                                  <div className={styles.stepDuration}>{milestone.duration}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </Card>
                 ))}
-              </>
+              </div>
             )}
           </div>
         )}
@@ -337,57 +432,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     margin: theme.spacing(-1),
     height: `calc(100% + ${theme.spacing(2)})`,
     width: `calc(100% + ${theme.spacing(2)})`,
-  }),
-  topBar: css({
-    label: 'context-top-bar',
-    display: 'flex',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1),
-    backgroundColor: theme.colors.background.canvas,
-  }),
-  title: css({
-    label: 'context-title',
-    flex: 1,
-    textOverflow: 'ellipsis',
-    overflow: 'hidden',
-    whiteSpace: 'nowrap',
-    fontWeight: theme.typography.fontWeightBold,
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(2),
-  }),
-  appIcon: css({
-    label: 'context-icon',
-    fontSize: '7px',
-    color: theme.colors.text.primary,
-    letterSpacing: '0.1em',
-    opacity: 0.75,
-    width: '24px',
-    height: '24px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  }),
-  titleContent: css({
-    label: 'context-title-content',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-  }),
-  titleText: css({
-    fontSize: theme.typography.h5.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-  }),
-  actions: css({
-    label: 'context-actions',
-    display: 'flex',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: theme.spacing(1),
   }),
   content: css({
     label: 'context-content',
@@ -444,20 +488,182 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.h5.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.primary,
+    lineHeight: 1.3,
+    wordBreak: 'break-word',
+    flex: 1,
+    minWidth: 0,
   }),
-  recommendationCardButton: css({
+  startButton: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    color: theme.colors.text.link,
-    backgroundColor: 'transparent',
+    padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
     border: 'none',
-    padding: 0,
+    borderRadius: theme.shape.radius.default,
     cursor: 'pointer',
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
+    transition: 'all 0.2s ease',
     '&:hover': {
-      textDecoration: 'underline',
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
     },
+  }),
+  cardHeader: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1.5),
+    marginBottom: theme.spacing(2),
+    
+    // For larger screens, use row layout
+    '@media (min-width: 600px)': {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: theme.spacing(2),
+    },
+  }),
+  cardActions: css({
+    display: 'flex',
+    gap: theme.spacing(1),
+    justifyContent: 'flex-start',
+    flexShrink: 0,
+    
+    // For larger screens, align to the right
+    '@media (min-width: 600px)': {
+      justifyContent: 'flex-end',
+    },
+  }),
+  cardMetadata: css({
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: theme.spacing(1),
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+  }),
+  stepsInfo: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(2),
+    width: '100%',
+  }),
+  stepsCount: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightBold,
+    color: theme.colors.text.primary,
+    backgroundColor: theme.colors.background.secondary,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  }),
+  viewStepsButton: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    backgroundColor: 'transparent',
+    border: 'none',
+    padding: theme.spacing(0.25),
+    cursor: 'pointer',
+    color: theme.colors.text.link,
+    fontSize: theme.typography.bodySmall.fontSize,
+    borderRadius: theme.shape.radius.default,
+    transition: 'all 0.2s ease',
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.action.hover,
+      textDecoration: 'none',
+    },
+    '&:disabled': {
+      opacity: 0.6,
+      cursor: 'not-allowed',
+    },
+  }),
+  stepsExpansion: css({
+    marginTop: theme.spacing(1.5),
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  }),
+  stepsList: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.75),
+  }),
+  stepItem: css({
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.5),
+    borderRadius: theme.shape.radius.default,
+    transition: 'background-color 0.2s ease',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  stepNumber: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '20px',
+    height: '20px',
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    borderRadius: '50%',
+    fontSize: '11px',
+    fontWeight: theme.typography.fontWeightBold,
+    flexShrink: 0,
+  }),
+  stepContent: css({
+    flex: 1,
+    minWidth: 0,
+  }),
+  stepTitle: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing(0.25),
+    lineHeight: 1.3,
+  }),
+  stepDuration: css({
+    fontSize: '11px',
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
+  }),
+  sectionHeader: css({
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(3, 2),
+    textAlign: 'center',
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    marginBottom: theme.spacing(2),
+  }),
+  headerIcon: css({
+    color: theme.colors.primary.main,
+    marginBottom: theme.spacing(1),
+  }),
+  sectionTitle: css({
+    margin: 0,
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.fontWeightBold,
+    color: theme.colors.text.primary,
+  }),
+  sectionSubtitle: css({
+    margin: 0,
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.text.secondary,
+    maxWidth: '400px',
+  }),
+  recommendationsGrid: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(2),
   }),
 }); 

@@ -25,14 +25,6 @@ export interface LearningJourneyTab {
   error: string | null;
 }
 
-/**
- * Multiple CORS proxy services to try
- */
-const CORS_PROXIES = [
-  'https://api.allorigins.win/get?url=',
-  'https://corsproxy.io/?',
-];
-
 // Simple in-memory cache for content
 const contentCache = new Map<string, { content: LearningJourneyContent; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -226,6 +218,9 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
     const src = img.getAttribute('src');
     const dataSrc = img.getAttribute('data-src');
     const originalSrc = dataSrc || src;
+    const alt = img.getAttribute('alt') || '';
+    const width = img.getAttribute('width');
+    const height = img.getAttribute('height');
     
     if (originalSrc) {
       let newSrc = originalSrc;
@@ -243,6 +238,52 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
       img.setAttribute('src', newSrc);
       img.removeAttribute('data-src');
       img.classList.remove('lazyload', 'lazyloaded', 'ls-is-cached');
+      
+      // Add responsive image classes based on content and size
+      img.classList.add('journey-image');
+      
+      // Classify images based on their characteristics
+      const srcLower = newSrc.toLowerCase();
+      const altLower = alt.toLowerCase();
+      
+      if (srcLower.includes('screenshot') || srcLower.includes('dashboard') || 
+          srcLower.includes('interface') || altLower.includes('screenshot') ||
+          altLower.includes('dashboard') || altLower.includes('interface')) {
+        img.classList.add('journey-screenshot');
+      } else if (srcLower.includes('icon') || srcLower.includes('logo') || 
+                 srcLower.includes('badge') || altLower.includes('icon') ||
+                 altLower.includes('logo') || altLower.includes('badge')) {
+        img.classList.add('journey-icon');
+      } else if (srcLower.includes('diagram') || srcLower.includes('chart') || 
+                 srcLower.includes('graph') || altLower.includes('diagram') ||
+                 altLower.includes('chart') || altLower.includes('graph')) {
+        img.classList.add('journey-diagram');
+      }
+      
+      // Add size-based classes
+      if (width && height) {
+        const w = parseInt(width);
+        const h = parseInt(height);
+        
+        if (w > 800 || h > 600) {
+          img.classList.add('journey-large');
+        } else if (w < 200 && h < 200) {
+          img.classList.add('journey-small');
+        }
+        
+        // For very wide images (like banners or headers)
+        if (w > h * 2) {
+          img.classList.add('journey-wide');
+        }
+      }
+      
+      // Add loading optimization
+      img.setAttribute('loading', 'lazy');
+      
+      // Add alt text if missing
+      if (!alt) {
+        img.setAttribute('alt', 'Learning journey image');
+      }
     }
   });
   
@@ -278,30 +319,34 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
   const isCoverPageUrl = url.endsWith('/') && !url.includes('/business-value') && !url.includes('/when-to') && !url.includes('/verify');
   console.log(`URL appears to be cover page: ${isCoverPageUrl}`);
   
-  // Try multiple fetching strategies with faster timeouts
+  // Try strategies in order of reliability - direct fetch first, then working proxies
   const strategies = [
-    () => fetchWithProxyFast(url),
-    () => fetchDirectFast(url),
+    { name: 'direct', fn: () => fetchDirectFast(url) },
+    { name: 'corsproxy', fn: () => fetchWithCorsproxy(url) },
+    // Removed allorigins.win as it's failing with QUIC errors
   ];
   
   // For milestone pages, also try adding trailing slash if missing
   if (!isCoverPageUrl && !url.endsWith('/')) {
     const urlWithSlash = url + '/';
     console.log(`Also trying milestone URL with trailing slash: ${urlWithSlash}`);
-    strategies.unshift(() => fetchWithProxyFast(urlWithSlash));
-    strategies.unshift(() => fetchDirectFast(urlWithSlash));
+    strategies.unshift(
+      { name: 'direct-slash', fn: () => fetchDirectFast(urlWithSlash) },
+      { name: 'corsproxy-slash', fn: () => fetchWithCorsproxy(urlWithSlash) }
+    );
   }
   
   for (let i = 0; i < strategies.length; i++) {
     const strategy = strategies[i];
-    const strategyName = i < 2 ? (i === 0 ? 'proxy' : 'direct') : (i < 4 ? 'proxy-slash' : 'direct-slash');
     
     try {
-      console.log(`Trying strategy ${i + 1}/${strategies.length}: ${strategyName}`);
-      const htmlContent = await strategy();
+      console.log(`Trying strategy ${i + 1}/${strategies.length}: ${strategy.name}`);
+      const startTime = Date.now();
+      const htmlContent = await strategy.fn();
+      const duration = Date.now() - startTime;
       
       if (htmlContent && htmlContent.trim().length > 0) {
-        console.log(`Strategy ${strategyName} succeeded, content length: ${htmlContent.length}`);
+        console.log(`✅ Strategy ${strategy.name} succeeded in ${duration}ms, content length: ${htmlContent.length}`);
         const content = extractLearningJourneyContent(htmlContent, url);
         console.log(`Extracted content: ${content.title}, milestones: ${content.milestones.length}`);
         
@@ -310,10 +355,10 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
         
         return content;
       } else {
-        console.warn(`Strategy ${strategyName} returned empty content`);
+        console.warn(`❌ Strategy ${strategy.name} returned empty content after ${duration}ms`);
       }
     } catch (error) {
-      console.warn(`Strategy ${strategyName} failed:`, error);
+      console.warn(`❌ Strategy ${strategy.name} failed:`, error);
       continue;
     }
   }
@@ -323,67 +368,31 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
 }
 
 /**
- * Fetch with CORS proxy (faster version)
+ * Fetch with corsproxy.io (the working proxy service)
  */
-async function fetchWithProxyFast(url: string): Promise<string | null> {
-  // Try all proxies in parallel with faster timeout
-  const proxyPromises = CORS_PROXIES.map(async (proxy) => {
-    try {
-      console.log(`Trying proxy: ${proxy}`);
-      let proxyUrl: string;
-      let response: Response;
-      
-      if (proxy.includes('allorigins.win')) {
-        proxyUrl = `${proxy}${encodeURIComponent(url)}`;
-        response = await fetch(proxyUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-          },
-          signal: AbortSignal.timeout(8000), // 8 second timeout
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        if (data.contents) {
-          console.log(`Successfully fetched via ${proxy}`);
-          return data.contents;
-        } else {
-          throw new Error('No contents in response');
-        }
-      } else {
-        proxyUrl = `${proxy}${url}`;
-        response = await fetch(proxyUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'User-Agent': 'Mozilla/5.0 (compatible; GrafanaLearningJourney/1.0)',
-          },
-          signal: AbortSignal.timeout(8000), // 8 second timeout
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const content = await response.text();
-        console.log(`Successfully fetched via ${proxy}`);
-        return content;
-      }
-    } catch (error) {
-      console.warn(`Proxy ${proxy} failed:`, error);
-      throw error;
-    }
-  });
-  
-  // Return the first successful result
+async function fetchWithCorsproxy(url: string): Promise<string | null> {
   try {
-    return await Promise.any(proxyPromises);
+    const proxyUrl = `https://corsproxy.io/?${url}`;
+    console.log(`Trying corsproxy.io: ${proxyUrl}`);
+    
+    const response = await fetch(proxyUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (compatible; GrafanaLearningJourney/1.0)',
+      },
+      signal: AbortSignal.timeout(8000), // 8 second timeout
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const content = await response.text();
+    console.log('Successfully fetched via corsproxy.io');
+    return content;
   } catch (error) {
-    console.warn('All proxies failed');
+    console.warn('Corsproxy.io failed:', error);
     return null;
   }
 }
