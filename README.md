@@ -3,13 +3,13 @@
 ![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?logo=grafana&query=$.version&url=https://grafana.com/api/plugins/grafana-grafanadocsplugin-app&label=Marketplace&prefix=v&color=F47A20)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A sophisticated documentation plugin that provides contextual learning journeys and intelligent help recommendations directly within the Grafana interface, designed with a decoupled architecture for easy customization and extension.
+A documentation plugin that provides contextual learning journeys directly within the Grafana interface.
 
 ## Overview
 
 The Grafana Learning Journeys Plugin transforms how users interact with documentation by providing:
 
-- **🎯 Context-Aware Recommendations** - AI-powered suggestions based on current Grafana context (page, data sources, dashboard state)
+- **🎯 Context-Aware Recommendations** - suggestions based on current Grafana context (page, data sources, dashboard state)
 - **📚 Interactive Learning Journeys** - Step-by-step guided experiences with progress tracking and milestone navigation
 - **🗂️ Tabbed Interface** - Browser-like multi-tab experience for simultaneous documentation access
 - **🔌 Extensible Architecture** - Decoupled design allowing easy integration with different content sources
