@@ -5,91 +5,71 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, IconButton, useStyles2, Spinner, Alert } from '@grafana/ui';
 import { locationService } from '@grafana/runtime';
-import { getDocsForRoute, DocsContent, clearDocsCache } from '../../utils/docs-fetcher';
+import { 
+  fetchLearningJourneyContent, 
+  LearningJourneyContent,
+  getNextMilestoneUrl,
+  getPreviousMilestoneUrl,
+  clearLearningJourneyCache,
+  clearSpecificJourneyCache
+} from '../../utils/docs-fetcher';
+import { ContextPanel } from './context-panel';
 
-interface DocsTab {
+interface LearningJourneyTab {
   id: string;
   title: string;
-  url: string;
-  content: DocsContent | null;
+  baseUrl: string;
+  content: LearningJourneyContent | null;
   isLoading: boolean;
   error: string | null;
 }
 
-interface DocsPanelState extends SceneObjectState {
-  currentPath: string;
-  currentUrl: string;
-  pluginPath: string;
-  pathSegments: string[];
-  timestamp: string;
-  tabs: DocsTab[];
+interface CombinedPanelState extends SceneObjectState {
+  tabs: LearningJourneyTab[];
   activeTabId: string;
+  contextPanel: ContextPanel;
 }
 
-export class DocsPanel extends SceneObjectBase<DocsPanelState> {
-  public static Component = DocsPanelRenderer;
+class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
+  public static Component = CombinedPanelRenderer;
 
   public get renderBeforeActivation(): boolean {
     return true;
   }
 
   public constructor() {
+    const contextPanel = new ContextPanel((url: string, title: string) => {
+      this.openLearningJourney(url, title);
+    });
+
     super({
-      currentPath: '',
-      currentUrl: '',
-      pluginPath: '',
-      pathSegments: [],
-      timestamp: '',
-      tabs: [],
-      activeTabId: '',
-    });
-
-    this.updatePageContext();
-  }
-
-  private async updatePageContext() {
-    const currentPath = window.location.pathname;
-    const currentUrl = window.location.href;
-    const pathSegments = currentPath.split('/').filter(Boolean);
-    const timestamp = new Date().toISOString();
-
-    this.setState({
-      currentPath,
-      currentUrl,
-      pathSegments,
-      timestamp,
-    });
-
-    // Create initial tab if none exist
-    if (this.state.tabs.length === 0) {
-      await this.createNewTab(currentPath, 'Context Documentation', true);
-    }
-  }
-
-  public refreshContext() {
-    this.updatePageContext();
-  }
-
-  public clearCache() {
-    clearDocsCache();
-    // Refresh all tabs
-    this.state.tabs.forEach(tab => {
-      this.loadTabContent(tab.id, tab.url);
+      tabs: [
+        {
+          id: 'recommendations',
+          title: 'Recommendations',
+          baseUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+        }
+      ],
+      activeTabId: 'recommendations',
+      contextPanel,
     });
   }
 
   private generateTabId(): string {
-    return `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `journey-tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  public async createNewTab(routePath: string, title?: string, makeActive: boolean = true): Promise<string> {
+  public async openLearningJourney(url: string, title?: string): Promise<string> {
     const tabId = this.generateTabId();
-    const newTab: DocsTab = {
+    const newTab: LearningJourneyTab = {
       id: tabId,
       title: title || 'Loading...',
-      url: routePath,
+      baseUrl: url,
       content: null,
-      isLoading: true,
+      isLoading: false, // Start as not loading - we'll load on demand
       error: null,
     };
 
@@ -97,16 +77,16 @@ export class DocsPanel extends SceneObjectBase<DocsPanelState> {
     
     this.setState({
       tabs: updatedTabs,
-      activeTabId: makeActive ? tabId : this.state.activeTabId,
+      activeTabId: tabId,
     });
 
-    // Load content for the new tab
-    await this.loadTabContent(tabId, routePath);
+    // Load content immediately when tab is created and activated
+    await this.loadTabContent(tabId, url);
     
     return tabId;
   }
 
-  public async loadTabContent(tabId: string, routePath: string) {
+  public async loadTabContent(tabId: string, url: string) {
     const tabIndex = this.state.tabs.findIndex(tab => tab.id === tabId);
     if (tabIndex === -1) return;
 
@@ -120,7 +100,8 @@ export class DocsPanel extends SceneObjectBase<DocsPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      const docsContent = await getDocsForRoute(routePath);
+      console.log('Loading learning journey content for:', url);
+      const journeyContent = await fetchLearningJourneyContent(url);
       
       const finalTabs = [...this.state.tabs];
       const finalTabIndex = finalTabs.findIndex(tab => tab.id === tabId);
@@ -128,14 +109,16 @@ export class DocsPanel extends SceneObjectBase<DocsPanelState> {
       if (finalTabIndex !== -1) {
         finalTabs[finalTabIndex] = {
           ...finalTabs[finalTabIndex],
-          content: docsContent,
-          title: docsContent?.title || finalTabs[finalTabIndex].title,
+          content: journeyContent,
+          title: journeyContent?.title || finalTabs[finalTabIndex].title,
           isLoading: false,
-          error: docsContent ? null : 'Failed to load documentation',
+          error: journeyContent ? null : 'Failed to load learning journey',
         };
         this.setState({ tabs: finalTabs });
+        console.log('Successfully loaded learning journey:', journeyContent?.title);
       }
     } catch (error) {
+      console.error('Failed to load learning journey:', error);
       const errorTabs = [...this.state.tabs];
       const errorTabIndex = errorTabs.findIndex(tab => tab.id === tabId);
       
@@ -144,7 +127,7 @@ export class DocsPanel extends SceneObjectBase<DocsPanelState> {
           ...errorTabs[errorTabIndex],
           content: null,
           isLoading: false,
-          error: error instanceof Error ? error.message : 'Failed to load documentation',
+          error: error instanceof Error ? error.message : 'Failed to load learning journey',
         };
         this.setState({ tabs: errorTabs });
       }
@@ -152,228 +135,125 @@ export class DocsPanel extends SceneObjectBase<DocsPanelState> {
   }
 
   public closeTab(tabId: string) {
+    // Don't allow closing the recommendations tab
+    if (tabId === 'recommendations') return;
+
+    // Get the tab before removing it so we can clear its cache
+    const tabToClose = this.state.tabs.find(tab => tab.id === tabId);
+
     const updatedTabs = this.state.tabs.filter(tab => tab.id !== tabId);
     
-    // If we're closing the active tab, switch to another tab
+    // If we're closing the active tab, switch to recommendations or another tab
     let newActiveTabId = this.state.activeTabId;
     if (this.state.activeTabId === tabId) {
-      if (updatedTabs.length > 0) {
-        // Find the tab that was to the right of the closed tab, or the last tab
-        const closedTabIndex = this.state.tabs.findIndex(tab => tab.id === tabId);
-        if (closedTabIndex < updatedTabs.length) {
-          newActiveTabId = updatedTabs[closedTabIndex].id;
-        } else {
-          newActiveTabId = updatedTabs[updatedTabs.length - 1].id;
-        }
-      } else {
-        newActiveTabId = '';
-      }
+      newActiveTabId = 'recommendations'; // Always fall back to recommendations
     }
 
     this.setState({
       tabs: updatedTabs,
       activeTabId: newActiveTabId,
     });
+
+    // Clear cache for the specific learning journey so it starts fresh next time
+    if (tabToClose && tabToClose.baseUrl) {
+      console.log(`Clearing cache for closed journey: ${tabToClose.baseUrl}`);
+      clearSpecificJourneyCache(tabToClose.baseUrl);
+    }
   }
 
   public setActiveTab(tabId: string) {
     this.setState({ activeTabId: tabId });
-  }
-
-  public async openInternalLink(url: string) {
-    // Create a new tab for the internal link
-    const tabId = await this.createNewTab(url, 'Loading...', true);
     
-    // If the content fails to load after a reasonable time, fall back to opening in browser
-    setTimeout(async () => {
-      const tab = this.state.tabs.find(t => t.id === tabId);
-      if (tab && tab.error && !tab.content) {
-        console.log('Content failed to load, opening in browser instead');
-        window.open(url, '_blank', 'noopener,noreferrer');
-        // Close the failed tab
-        this.closeTab(tabId);
-      }
-    }, 5000); // Wait 5 seconds for content to load
-  }
-
-  public openSourceInBrowser() {
-    const activeTab = this.getActiveTab();
-    if (activeTab?.content?.url) {
-      window.open(activeTab.content.url, '_blank', 'noopener,noreferrer');
+    // If switching to a learning journey tab that hasn't loaded content yet, load it
+    const tab = this.state.tabs.find(t => t.id === tabId);
+    if (tab && tabId !== 'recommendations' && !tab.content && !tab.isLoading && !tab.error) {
+      this.loadTabContent(tabId, tab.baseUrl);
     }
   }
 
-  public getActiveTab(): DocsTab | null {
+  public async navigateToNextMilestone() {
+    const activeTab = this.getActiveTab();
+    if (!activeTab?.content || activeTab.id === 'recommendations') return;
+
+    const nextUrl = getNextMilestoneUrl(activeTab.content);
+    if (nextUrl) {
+      await this.loadTabContent(activeTab.id, nextUrl);
+    }
+  }
+
+  public async navigateToPreviousMilestone() {
+    const activeTab = this.getActiveTab();
+    if (!activeTab?.content || activeTab.id === 'recommendations') return;
+
+    const prevUrl = getPreviousMilestoneUrl(activeTab.content);
+    if (prevUrl) {
+      await this.loadTabContent(activeTab.id, prevUrl);
+    }
+  }
+
+  public clearCache() {
+    clearLearningJourneyCache();
+    // Refresh all learning journey tabs (not recommendations)
+    this.state.tabs.forEach(tab => {
+      if (tab.id !== 'recommendations' && tab.baseUrl) {
+        this.loadTabContent(tab.id, tab.baseUrl);
+      }
+    });
+  }
+
+  public getActiveTab(): LearningJourneyTab | null {
     return this.state.tabs.find(tab => tab.id === this.state.activeTabId) || null;
+  }
+
+  public canNavigateNext(): boolean {
+    const activeTab = this.getActiveTab();
+    return activeTab?.content && activeTab.id !== 'recommendations' ? getNextMilestoneUrl(activeTab.content) !== null : false;
+  }
+
+  public canNavigatePrevious(): boolean {
+    const activeTab = this.getActiveTab();
+    return activeTab?.content && activeTab.id !== 'recommendations' ? getPreviousMilestoneUrl(activeTab.content) !== null : false;
   }
 }
 
-function DocsPanelRenderer({ model }: SceneComponentProps<DocsPanel>) {
-  const { tabs, activeTabId } = model.useState();
-  const styles = useStyles2(getStyles, false);
+function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
+  const { tabs, activeTabId, contextPanel } = model.useState();
+  const styles = useStyles2(getStyles);
   const contentRef = useRef<HTMLDivElement>(null);
   const activeTab = model.getActiveTab();
+  const isRecommendationsTab = activeTabId === 'recommendations';
 
-  // Handle link clicks for internal navigation
+  // Handle link clicks for "Start Learning Journey" button
   useEffect(() => {
     const handleLinkClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      const link = target.closest('a[href]') as HTMLAnchorElement;
       
-      if (link) {
-        const href = link.getAttribute('href');
-        
-        if (href) {
-          console.log(`Link clicked: ${href}, has data-docs-link: ${link.hasAttribute('data-docs-link')}`);
-          
-          // Handle anchor links (same page navigation)
-          if (href.startsWith('#')) {
-            console.log('Anchor link, allowing default behavior');
-            return;
-          }
-          
-          // Be more aggressive - intercept ANY link that could be docs-related
-          const shouldIntercept = 
-            link.hasAttribute('data-docs-link') ||           // Explicitly marked
-            href.includes('grafana.com/docs') ||             // Absolute docs links
-            href.startsWith('/docs') ||                      // Root-relative docs
-            href.startsWith('./') ||                         // Same-directory relative
-            href.startsWith('../') ||                        // Parent-directory relative
-            href.startsWith('/') ||                          // Any root-relative
-            (!href.startsWith('http') &&                     // Any relative link
-             !href.startsWith('mailto:') && 
-             !href.startsWith('tel:') && 
-             !href.startsWith('javascript:') &&
-             !href.startsWith('ftp:'));
-          
-          if (shouldIntercept) {
-            console.log('Intercepting docs link');
-            event.preventDefault();
-            event.stopPropagation();
-            
-            // Resolve the URL using URL constructor (this doesn't navigate)
-            let resolvedUrl: string;
-            
-            if (activeTab?.content?.url) {
-              try {
-                console.log(`Resolving ${href} relative to ${activeTab.content.url}`);
-                // The URL constructor resolves relative URLs without navigation
-                const resolvedUrlObj = new URL(href, activeTab.content.url);
-                resolvedUrl = resolvedUrlObj.href;
-                console.log(`Resolved to: ${resolvedUrl}`);
-              } catch (error) {
-                // Fallback if URL parsing fails
-                console.warn('URL resolution failed, using fallback:', error);
-                if (href.startsWith('http')) {
-                  resolvedUrl = href;
-                } else if (href.startsWith('/')) {
-                  resolvedUrl = `https://grafana.com${href}`;
-                } else {
-                  // Manual resolution as fallback
-                  const baseUrl = activeTab.content.url.endsWith('/') ? activeTab.content.url : activeTab.content.url + '/';
-                  resolvedUrl = baseUrl + href;
-                }
-              }
-            } else {
-              // No current URL context, make best guess
-              if (href.startsWith('http')) {
-                resolvedUrl = href;
-              } else if (href.startsWith('/')) {
-                resolvedUrl = `https://grafana.com${href}`;
-              } else {
-                resolvedUrl = `https://grafana.com/docs/${href}`;
-              }
-            }
-            
-            console.log(`Opening in new tab: ${resolvedUrl}`);
-            
-            // Try to open in plugin first, with fallback to browser
-            try {
-              model.openInternalLink(resolvedUrl);
-            } catch (error) {
-              console.warn('Failed to open in plugin, opening in browser:', error);
-              window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
-            }
-            return; // Ensure we don't continue processing
-          }
-          
-          // For external links, ensure they open in new tab
-          if (href.startsWith('http') && !href.includes('grafana.com')) {
-            console.log('External link, ensuring new tab');
-            if (!link.hasAttribute('target')) {
-              link.setAttribute('target', '_blank');
-              link.setAttribute('rel', 'noopener noreferrer');
-            }
-            return; // Let the default behavior handle it
-          }
-          
-          console.log('Link not intercepted, allowing default behavior');
-        }
-      }
-    };
-
-    const handleImageClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      const img = target.closest('img') as HTMLImageElement;
+      // Handle both button and anchor elements with data-journey-start
+      const startElement = target.closest('[data-journey-start="true"]') as HTMLElement;
       
-      if (img && img.src && !img.closest('a')) {
-        // Only handle images that aren't already inside links
+      if (startElement) {
         event.preventDefault();
         event.stopPropagation();
         
-        // Create a modal-like overlay to show the full-size image
-        const overlay = document.createElement('div');
-        overlay.style.cssText = `
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.8);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 10000;
-          cursor: pointer;
-        `;
-        
-        const fullImg = document.createElement('img');
-        fullImg.src = img.src;
-        fullImg.alt = img.alt;
-        fullImg.style.cssText = `
-          max-width: 90%;
-          max-height: 90%;
-          object-fit: contain;
-          border-radius: 8px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-        `;
-        
-        overlay.appendChild(fullImg);
-        document.body.appendChild(overlay);
-        
-        // Close on click
-        overlay.addEventListener('click', () => {
-          document.body.removeChild(overlay);
-        });
-        
-        // Close on escape key
-        const handleEscape = (e: KeyboardEvent) => {
-          if (e.key === 'Escape') {
-            document.body.removeChild(overlay);
-            document.removeEventListener('keydown', handleEscape);
+        // Navigate to the first milestone
+        const activeTab = model.getActiveTab();
+        if (activeTab?.content?.milestones && activeTab.content.milestones.length > 0) {
+          const firstMilestone = activeTab.content.milestones[0];
+          if (firstMilestone.url) {
+            console.log('Starting learning journey, navigating to first milestone:', firstMilestone.url);
+            model.loadTabContent(activeTab.id, firstMilestone.url);
           }
-        };
-        document.addEventListener('keydown', handleEscape);
+        } else {
+          console.warn('No milestones found to navigate to');
+        }
       }
     };
 
     const contentElement = contentRef.current;
     if (contentElement) {
       contentElement.addEventListener('click', handleLinkClick);
-      contentElement.addEventListener('click', handleImageClick);
       return () => {
         contentElement.removeEventListener('click', handleLinkClick);
-        contentElement.removeEventListener('click', handleImageClick);
       };
     }
   }, [model, activeTab?.content]);
@@ -381,18 +261,12 @@ function DocsPanelRenderer({ model }: SceneComponentProps<DocsPanel>) {
   // Handle keyboard shortcuts for tab navigation
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Ctrl/Cmd + W to close current tab
+      // Ctrl/Cmd + W to close current tab (except recommendations)
       if ((event.ctrlKey || event.metaKey) && event.key === 'w') {
         event.preventDefault();
-        if (activeTab && tabs.length > 1) {
+        if (activeTab && activeTab.id !== 'recommendations') {
           model.closeTab(activeTab.id);
         }
-      }
-      
-      // Ctrl/Cmd + T to open new tab
-      if ((event.ctrlKey || event.metaKey) && event.key === 't') {
-        event.preventDefault();
-        model.createNewTab(window.location.pathname, 'New Tab', true);
       }
       
       // Ctrl/Cmd + Tab to switch between tabs
@@ -404,13 +278,26 @@ function DocsPanelRenderer({ model }: SceneComponentProps<DocsPanel>) {
           : (currentIndex + 1) % tabs.length;
         model.setActiveTab(tabs[nextIndex].id);
       }
+
+      // Arrow keys for milestone navigation (only for learning journey tabs)
+      if (!isRecommendationsTab) {
+        if (event.altKey && event.key === 'ArrowRight') {
+          event.preventDefault();
+          model.navigateToNextMilestone();
+        }
+        
+        if (event.altKey && event.key === 'ArrowLeft') {
+          event.preventDefault();
+          model.navigateToPreviousMilestone();
+        }
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [model, tabs, activeTabId, activeTab]);
+  }, [model, tabs, activeTabId, activeTab, isRecommendationsTab]);
 
   return (
     <div className={styles.container}>
@@ -418,131 +305,161 @@ function DocsPanelRenderer({ model }: SceneComponentProps<DocsPanel>) {
         <div className={styles.title}>
           <div className={styles.titleContent}>
             <div className={styles.appIcon}>
-              <Icon name="question-circle" size="lg" />
+              <Icon name="book" size="lg" />
             </div>
             <div className={styles.titleText}>
-              Documentation
+              Learning Journeys
             </div>
           </div>
         </div>
         <div className={styles.actions}>
-          <IconButton
-            name="plus"
-            aria-label="New tab"
-            onClick={() => model.createNewTab(window.location.pathname, 'New Tab', true)}
-            tooltip="Open new tab"
-            tooltipPlacement="left"
-          />
-          <IconButton
-            name="external-link-alt"
-            aria-label="Open source"
-            onClick={() => model.openSourceInBrowser()}
-            tooltip="Open source page in browser"
-            tooltipPlacement="left"
-            disabled={!activeTab?.content?.url}
-          />
+          {!isRecommendationsTab && activeTab && (
+            <>
+              {activeTab.content?.videoUrl && (
+                <IconButton
+                  name="play"
+                  aria-label="Watch video"
+                  onClick={() => {
+                    if (activeTab.content?.videoUrl) {
+                      window.open(activeTab.content.videoUrl, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                  tooltip="Watch video for this page"
+                  tooltipPlacement="left"
+                  className={styles.videoButton}
+                />
+              )}
+              <IconButton
+                name="external-link-alt"
+                aria-label="Open original documentation"
+                onClick={() => {
+                  if (activeTab.content?.url) {
+                    window.open(activeTab.content.url, '_blank', 'noopener,noreferrer');
+                  }
+                }}
+                tooltip="Open original documentation in new tab"
+                tooltipPlacement="left"
+              />
+            </>
+          )}
           <IconButton
             name="trash-alt"
             aria-label="Clear cache"
             onClick={() => model.clearCache()}
-            tooltip="Clear documentation cache"
-            tooltipPlacement="left"
-          />
-          <IconButton
-            name="sync"
-            aria-label="Refresh context"
-            onClick={() => model.refreshContext()}
-            tooltip="Refresh page context"
+            tooltip="Clear learning journey cache"
             tooltipPlacement="left"
           />
         </div>
       </div>
 
       {/* Tab Bar */}
-      {tabs.length > 0 && (
-        <div className={styles.tabBar}>
-          <div className={styles.tabList}>
-            {tabs.map((tab) => (
-              <div
-                key={tab.id}
-                className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
-                onClick={() => model.setActiveTab(tab.id)}
-              >
-                <div className={styles.tabContent}>
-                  <span className={styles.tabTitle} title={tab.title}>
-                    {tab.isLoading ? (
-                      <>
-                        <Icon name="sync" size="xs" />
-                        <span style={{ marginLeft: '4px' }}>Loading...</span>
-                      </>
-                    ) : (
-                      tab.title
-                    )}
-                  </span>
-                  {tabs.length > 1 && (
-                    <IconButton
-                      name="times"
-                      size="sm"
-                      aria-label="Close tab"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        model.closeTab(tab.id);
-                      }}
-                      className={styles.closeButton}
-                    />
+      <div className={styles.tabBar}>
+        <div className={styles.tabList}>
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
+              onClick={() => model.setActiveTab(tab.id)}
+            >
+              <div className={styles.tabContent}>
+                <span className={styles.tabTitle} title={tab.title}>
+                  {tab.isLoading ? (
+                    <>
+                      <Icon name="sync" size="xs" />
+                      <span style={{ marginLeft: '4px' }}>Loading...</span>
+                    </>
+                  ) : (
+                    tab.title
                   )}
-                </div>
+                </span>
+                {tab.id !== 'recommendations' && (
+                  <IconButton
+                    name="times"
+                    size="sm"
+                    aria-label="Close tab"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      model.closeTab(tab.id);
+                    }}
+                    className={styles.closeButton}
+                  />
+                )}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
-      )}
+      </div>
 
       <div className={styles.content}>
-        {activeTab?.isLoading && (
+        {isRecommendationsTab && (
+          <contextPanel.Component model={contextPanel} />
+        )}
+
+        {!isRecommendationsTab && activeTab?.isLoading && (
           <div className={styles.loadingContainer}>
             <Spinner size="lg" />
-            <span>Loading documentation...</span>
+            <span>Loading learning journey...</span>
           </div>
         )}
         
-        {activeTab?.error && !activeTab.isLoading && (
-          <Alert severity="info" title="Documentation">
+        {!isRecommendationsTab && activeTab?.error && !activeTab.isLoading && (
+          <Alert severity="error" title="Learning Journey">
             {activeTab.error}
           </Alert>
         )}
         
-        {activeTab?.content && !activeTab.isLoading && (
-          <div className={styles.dynamicDocContent}>
-            <div className={styles.docMeta}>
+        {!isRecommendationsTab && activeTab?.content && !activeTab.isLoading && (
+          <div className={styles.journeyContent}>
+            {/* Milestone Progress - only show for milestone pages (currentMilestone > 0) */}
+            {activeTab.content.currentMilestone > 0 && activeTab.content.milestones.length > 0 && (
+              <div className={styles.milestoneProgress}>
+                <div className={styles.progressInfo}>
+                  <div className={styles.progressHeader}>
+                    <span>Milestone {activeTab.content.currentMilestone} of {activeTab.content.totalMilestones}</span>
+                    <div className={styles.milestoneNavigation}>
+                      <IconButton
+                        name="arrow-left"
+                        size="sm"
+                        aria-label="Previous milestone"
+                        onClick={() => model.navigateToPreviousMilestone()}
+                        tooltip="Previous milestone (Alt + ←)"
+                        tooltipPlacement="top"
+                        disabled={!model.canNavigatePrevious() || activeTab.isLoading}
+                      />
+                      <IconButton
+                        name="arrow-right"
+                        size="sm"
+                        aria-label="Next milestone"
+                        onClick={() => model.navigateToNextMilestone()}
+                        tooltip="Next milestone (Alt + →)"
+                        tooltipPlacement="top"
+                        disabled={!model.canNavigateNext() || activeTab.isLoading}
+                      />
+                    </div>
+                  </div>
+                  <div className={styles.progressBar}>
+                    <div 
+                      className={styles.progressFill}
+                      style={{ 
+                        width: `${(activeTab.content.currentMilestone / activeTab.content.totalMilestones) * 100}%` 
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className={styles.contentMeta}>
               <small>
                 Last updated: {new Date(activeTab.content.lastFetched).toLocaleString()}
               </small>
             </div>
+            
             <div 
               ref={contentRef}
-              className={styles.docContentHtml}
+              className={styles.journeyContentHtml}
               dangerouslySetInnerHTML={{ __html: activeTab.content.content }}
             />
-            {/* Debug info for images */}
-            {process.env.NODE_ENV === 'development' && (
-              <div style={{ 
-                padding: '8px', 
-                backgroundColor: '#f0f0f0', 
-                fontSize: '12px', 
-                borderTop: '1px solid #ccc',
-                color: '#666'
-              }}>
-                <strong>Debug:</strong> Content contains {(activeTab.content.content.match(/<img[^>]*>/g) || []).length} img tags
-              </div>
-            )}
-          </div>
-        )}
-        
-        {tabs.length === 0 && (
-          <div className={styles.fallbackContent}>
-            <p>No documentation tabs open.</p>
-            <p>Click the + button to create a new tab or navigate to a supported Grafana page.</p>
           </div>
         )}
       </div>
@@ -550,9 +467,9 @@ function DocsPanelRenderer({ model }: SceneComponentProps<DocsPanel>) {
   );
 }
 
-const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
+const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
-    label: 'docs-container',
+    label: 'combined-journey-container',
     backgroundColor: theme.colors.background.primary,
     borderRadius: '0',
     display: 'flex',
@@ -561,13 +478,12 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     border: `1px solid ${theme.colors.border.weak}`,
     borderTop: 'none',
     borderBottom: 'none',
-    // hacky way of getting around the 8px padding
     margin: theme.spacing(-1),
     height: `calc(100% + ${theme.spacing(2)})`,
     width: `calc(100% + ${theme.spacing(2)})`,
   }),
   topBar: css({
-    label: 'docs-top-bar',
+    label: 'combined-journey-top-bar',
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
@@ -577,7 +493,7 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     backgroundColor: theme.colors.background.canvas,
   }),
   title: css({
-    label: 'docs-title',
+    label: 'combined-journey-title',
     flex: 1,
     textOverflow: 'ellipsis',
     overflow: 'hidden',
@@ -588,7 +504,7 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     gap: theme.spacing(2),
   }),
   appIcon: css({
-    label: 'docs-icon',
+    label: 'combined-journey-icon',
     fontSize: '7px',
     color: theme.colors.text.primary,
     letterSpacing: '0.1em',
@@ -600,7 +516,7 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     justifyContent: 'center',
   }),
   titleContent: css({
-    label: 'docs-title-content',
+    label: 'combined-journey-title-content',
     display: 'inline-flex',
     alignItems: 'center',
     gap: theme.spacing(1),
@@ -610,7 +526,7 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     fontWeight: theme.typography.fontWeightMedium,
   }),
   actions: css({
-    label: 'docs-actions',
+    label: 'combined-journey-actions',
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
@@ -618,7 +534,7 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     gap: theme.spacing(1),
   }),
   content: css({
-    label: 'docs-content',
+    label: 'combined-journey-content',
     flex: 1,
     overflow: 'auto',
     display: 'flex',
@@ -635,7 +551,7 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     border: `1px solid ${theme.colors.border.weak}`,
     margin: theme.spacing(2),
   }),
-  dynamicDocContent: css({
+  journeyContent: css({
     backgroundColor: theme.colors.background.secondary,
     border: `1px solid ${theme.colors.border.weak}`,
     overflow: 'hidden',
@@ -643,440 +559,470 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     display: 'flex',
     flexDirection: 'column',
   }),
-  docMeta: css({
+  milestoneProgress: css({
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.canvas,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    flexShrink: 0,
+  }),
+  progressInfo: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+  }),
+  progressBar: css({
+    width: '100%',
+    height: '4px',
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: '2px',
+    overflow: 'hidden',
+  }),
+  progressFill: css({
+    height: '100%',
+    backgroundColor: theme.colors.success.main,
+    transition: 'width 0.3s ease',
+  }),
+  contentMeta: css({
     padding: theme.spacing(1, 2),
     backgroundColor: theme.colors.background.canvas,
     borderBottom: `1px solid ${theme.colors.border.weak}`,
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
     flexShrink: 0,
-    '& a': {
-      color: theme.colors.primary.main,
-      textDecoration: 'none',
-      '&:hover': {
-        textDecoration: 'underline',
-      },
-    },
   }),
-  docContentHtml: css({
+  journeyContentHtml: css({
     padding: theme.spacing(3),
     overflow: 'auto',
     flex: 1,
     lineHeight: 1.6,
     fontSize: theme.typography.body.fontSize,
     
-    // Reset and normalize all text sizes
-    '& *': {
-      fontSize: 'inherit !important',
-      lineHeight: 'inherit !important',
-    },
-    
-    // Base typography with controlled sizes
-    '& .docs-heading, & h1, & h2, & h3, & h4, & h5, & h6': {
+    // Journey-specific styling
+    '& .journey-heading': {
       color: theme.colors.text.primary,
       fontWeight: theme.typography.fontWeightMedium,
-      lineHeight: '1.3 !important',
       marginBottom: theme.spacing(2),
-      '&:first-child': {
-        marginTop: 0,
+      '&.journey-heading-h1': {
+        fontSize: theme.typography.h2.fontSize,
+        borderBottom: `2px solid ${theme.colors.border.medium}`,
+        paddingBottom: theme.spacing(1),
       },
-      '&:not(:first-child)': {
-        marginTop: theme.spacing(4),
+      '&.journey-heading-h2': {
+        fontSize: theme.typography.h3.fontSize,
+        marginTop: theme.spacing(3),
       },
-    },
-    
-    '& .docs-heading-h1, & h1': {
-      fontSize: `${theme.typography.h2.fontSize} !important`,
-      fontWeight: theme.typography.fontWeightBold,
-      borderBottom: `2px solid ${theme.colors.border.medium}`,
-      paddingBottom: theme.spacing(1),
-      marginBottom: theme.spacing(3),
-    },
-    
-    '& .docs-heading-h2, & h2': {
-      fontSize: `${theme.typography.h3.fontSize} !important`,
-      fontWeight: theme.typography.fontWeightMedium,
-      marginTop: theme.spacing(4),
-      marginBottom: theme.spacing(2),
-    },
-    
-    '& .docs-heading-h3, & h3': {
-      fontSize: `${theme.typography.h4.fontSize} !important`,
-      marginTop: theme.spacing(3),
-      marginBottom: theme.spacing(1.5),
-    },
-    
-    '& .docs-heading-h4, & h4': {
-      fontSize: `${theme.typography.h5.fontSize} !important`,
-      marginTop: theme.spacing(2),
-      marginBottom: theme.spacing(1),
-    },
-    
-    '& .docs-heading-h5, & h5': {
-      fontSize: `${theme.typography.body.fontSize} !important`,
-      fontWeight: theme.typography.fontWeightMedium,
-      marginTop: theme.spacing(2),
-      marginBottom: theme.spacing(1),
-    },
-    
-    '& .docs-heading-h6, & h6': {
-      fontSize: `${theme.typography.bodySmall.fontSize} !important`,
-      fontWeight: theme.typography.fontWeightMedium,
-      marginTop: theme.spacing(1),
-      marginBottom: theme.spacing(0.5),
-    },
-    
-    // Paragraphs with controlled size
-    '& .docs-paragraph, & p': {
-      margin: `0 0 ${theme.spacing(2)} 0`,
-      lineHeight: '1.7 !important',
-      fontSize: `${theme.typography.body.fontSize} !important`,
-      color: theme.colors.text.primary,
-      '&:last-child': {
-        marginBottom: 0,
+      '&.journey-heading-h3': {
+        fontSize: theme.typography.h4.fontSize,
+        marginTop: theme.spacing(2),
       },
     },
     
-    // Lists
-    '& .docs-list, & ul, & ol': {
-      margin: `${theme.spacing(2)} 0`,
-      paddingLeft: theme.spacing(3),
-      fontSize: `${theme.typography.body.fontSize} !important`,
-      '& .docs-list, & ul, & ol': {
-        marginTop: theme.spacing(1),
-        marginBottom: theme.spacing(1),
-      },
-    },
-    
-    '& .docs-list-item, & li': {
-      marginBottom: theme.spacing(1),
-      lineHeight: '1.6 !important',
-      fontSize: `${theme.typography.body.fontSize} !important`,
-      '&:last-child': {
-        marginBottom: 0,
-      },
-    },
-    
-    // Code styling
-    '& .docs-inline-code, & code': {
-      backgroundColor: theme.colors.background.canvas,
-      color: theme.colors.text.primary,
-      padding: theme.spacing(0.25, 0.75),
-      borderRadius: theme.shape.radius.default,
-      fontFamily: theme.typography.fontFamilyMonospace,
-      fontSize: `${theme.typography.bodySmall.fontSize} !important`,
-      border: `1px solid ${theme.colors.border.weak}`,
-      fontWeight: theme.typography.fontWeightMedium,
-    },
-    
-    '& .docs-code-block, & pre': {
-      backgroundColor: theme.colors.background.canvas,
-      padding: theme.spacing(2),
-      borderRadius: theme.shape.radius.default,
-      border: `1px solid ${theme.colors.border.weak}`,
-      overflow: 'auto',
-      margin: `${theme.spacing(2)} 0`,
-      fontFamily: theme.typography.fontFamilyMonospace,
-      fontSize: `${theme.typography.bodySmall.fontSize} !important`,
-      lineHeight: '1.5 !important',
-      '& code': {
-        backgroundColor: 'transparent',
-        padding: 0,
-        border: 'none',
-        fontSize: 'inherit !important',
-      },
-    },
-    
-    // Links
-    '& a': {
-      color: theme.colors.primary.main,
-      textDecoration: 'none',
-      fontWeight: theme.typography.fontWeightMedium,
-      fontSize: 'inherit !important',
-      '&:hover': {
-        textDecoration: 'underline',
-        color: theme.colors.primary.shade,
-      },
-      '&[data-internal-link="true"]': {
-        cursor: 'pointer',
-        borderBottom: `1px dotted ${theme.colors.primary.main}`,
-        '&:hover': {
-          backgroundColor: theme.colors.action.hover,
-          borderBottom: `1px solid ${theme.colors.primary.main}`,
-        },
-      },
-    },
-    
-    // Blockquotes
-    '& .docs-blockquote, & blockquote': {
-      borderLeft: `4px solid ${theme.colors.primary.main}`,
-      paddingLeft: theme.spacing(2),
-      margin: `${theme.spacing(2)} 0`,
-      fontStyle: 'italic',
-      fontSize: `${theme.typography.body.fontSize} !important`,
-      color: theme.colors.text.secondary,
-      backgroundColor: theme.colors.background.canvas,
-      padding: theme.spacing(2),
-      borderRadius: `0 ${theme.shape.radius.default}px ${theme.shape.radius.default}px 0`,
-    },
-    
-    // Images
-    '& .docs-image-wrapper': {
-      margin: `${theme.spacing(3)} 0`,
-      textAlign: 'center',
-      position: 'relative',
-      overflow: 'hidden',
-      borderRadius: theme.shape.radius.default,
-      '&:empty': {
-        display: 'none',
-      },
-    },
-    
-    '& .docs-image, & img': {
+    // Enhanced responsive image styling
+    '& img': {
       maxWidth: '100%',
-      width: 'auto',
       height: 'auto',
       borderRadius: theme.shape.radius.default,
       border: `1px solid ${theme.colors.border.weak}`,
-      boxShadow: theme.shadows.z1,
-      backgroundColor: theme.colors.background.secondary,
-      cursor: 'pointer',
-      transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+      margin: `${theme.spacing(2)} auto`,
       display: 'block',
-      margin: '0 auto',
-      // Better size constraints for sidebar
-      maxHeight: '250px',
-      objectFit: 'contain',
-      // Add debugging styles
-      minHeight: '20px',
-      minWidth: '20px',
+      boxShadow: theme.shadows.z1,
+      transition: 'all 0.2s ease',
+      
+      // Hover effect for better interactivity
       '&:hover': {
-        transform: 'scale(1.02)',
         boxShadow: theme.shadows.z2,
+        transform: 'scale(1.02)',
+        cursor: 'pointer',
       },
-      '&[src=""], &:not([src])': {
-        display: 'none',
+      
+      // Handle different image sizes appropriately
+      '&[src*="screenshot"], &[src*="dashboard"], &[src*="interface"]': {
+        // Screenshots and interface images - keep them large but responsive
+        maxWidth: '100%',
+        minWidth: '300px',
+        width: 'auto',
+        margin: `${theme.spacing(3)} auto`,
+        border: `2px solid ${theme.colors.border.medium}`,
+        borderRadius: `${theme.shape.radius.default}px`,
       },
-      // Show loading state
-      '&[data-load-failed="true"]': {
-        display: 'none !important',
+      
+      '&[src*="icon"], &[src*="logo"], &[src*="badge"]': {
+        // Icons and logos - keep them smaller and inline when appropriate
+        maxWidth: '200px',
+        maxHeight: '100px',
+        margin: `${theme.spacing(1)} auto`,
+        display: 'inline-block',
+        verticalAlign: 'middle',
       },
-      '&[data-load-success="true"]': {
-        border: `2px solid ${theme.colors.success.main}`,
-      },
-      // Handle broken images gracefully
-      '&[alt]:after': {
-        content: 'attr(alt)',
-        display: 'block',
+      
+      '&[src*="diagram"], &[src*="chart"], &[src*="graph"]': {
+        // Diagrams and charts - ensure they're readable
+        maxWidth: '100%',
+        minWidth: '400px',
+        margin: `${theme.spacing(3)} auto`,
+        backgroundColor: theme.colors.background.primary,
         padding: theme.spacing(1),
+      },
+    },
+    
+    // Image containers and figures
+    '& figure': {
+      margin: `${theme.spacing(3)} 0`,
+      textAlign: 'center',
+      
+      '& img': {
+        margin: '0 auto',
+      },
+      
+      '& figcaption': {
+        marginTop: theme.spacing(1),
         fontSize: theme.typography.bodySmall.fontSize,
         color: theme.colors.text.secondary,
         fontStyle: 'italic',
-        backgroundColor: theme.colors.background.canvas,
-        border: `1px solid ${theme.colors.border.weak}`,
-        borderRadius: theme.shape.radius.default,
-      },
-      // Handle loading state
-      '&[loading]': {
-        backgroundColor: theme.colors.background.canvas,
-        minHeight: '100px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        '&:before': {
-          content: '"Loading image..."',
-          color: theme.colors.text.secondary,
-          fontSize: theme.typography.bodySmall.fontSize,
-        },
+        textAlign: 'center',
       },
     },
     
-    // Large images that might need special handling
-    '& .docs-image-large, & img[width], & img[height]': {
-      maxWidth: '100% !important',
-      width: 'auto !important',
-      height: 'auto !important',
-      maxHeight: '200px !important',
+    // Image galleries or multiple images in a row
+    '& .image-gallery, & .images-row': {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: theme.spacing(2),
+      margin: `${theme.spacing(3)} 0`,
+      justifyContent: 'center',
+      
+      '& img': {
+        flex: '1 1 300px',
+        maxWidth: '400px',
+        margin: 0,
+      },
     },
     
-    // Very wide images (like screenshots) get more restrictive sizing
-    '& img[width="794"], & img[width="800"], & img[width="1000"], & img[width="1200"]': {
-      maxHeight: '180px !important',
-      width: 'auto !important',
-      height: 'auto !important',
+    // Legacy class support
+    '& .journey-image': {
+      maxWidth: '100%',
+      height: 'auto',
+      borderRadius: theme.shape.radius.default,
+      border: `1px solid ${theme.colors.border.weak}`,
+      margin: `${theme.spacing(2)} auto`,
+      display: 'block',
+      boxShadow: theme.shadows.z1,
     },
     
-    // Small icons and inline images
-    '& .docs-image-inline, & img[width="16"], & img[width="24"], & img[width="32"]': {
+    // Specific image type styling
+    '& .journey-screenshot': {
+      maxWidth: '100%',
+      minWidth: '300px',
+      margin: `${theme.spacing(3)} auto`,
+      border: `2px solid ${theme.colors.border.medium}`,
+      borderRadius: `${theme.shape.radius.default}px`,
+      boxShadow: theme.shadows.z2,
+    },
+    
+    '& .journey-icon': {
+      maxWidth: '150px',
+      maxHeight: '80px',
+      margin: `${theme.spacing(1)} ${theme.spacing(2)}`,
       display: 'inline-block',
       verticalAlign: 'middle',
-      margin: '0 4px',
-      maxHeight: '24px',
-      width: 'auto',
       border: 'none',
       boxShadow: 'none',
-      cursor: 'default',
-      '&:hover': {
-        transform: 'none',
-      },
     },
     
-    // Tables
-    '& .docs-table-wrapper': {
-      margin: `${theme.spacing(2)} 0`,
-      overflow: 'auto',
-      border: `1px solid ${theme.colors.border.weak}`,
-      borderRadius: theme.shape.radius.default,
+    '& .journey-diagram': {
+      maxWidth: '100%',
+      minWidth: '350px',
+      margin: `${theme.spacing(3)} auto`,
+      backgroundColor: theme.colors.background.primary,
+      padding: theme.spacing(2),
+      borderRadius: `${theme.shape.radius.default}px`,
     },
     
-    '& .docs-table, & table': {
+    '& .journey-large': {
+      maxWidth: '100%',
+      margin: `${theme.spacing(4)} auto`,
+      border: `2px solid ${theme.colors.border.medium}`,
+    },
+    
+    '& .journey-small': {
+      maxWidth: '150px',
+      margin: `${theme.spacing(1)} auto`,
+    },
+    
+    '& .journey-wide': {
       width: '100%',
-      borderCollapse: 'collapse',
-      fontSize: `${theme.typography.bodySmall.fontSize} !important`,
-      '& th, & td': {
-        padding: theme.spacing(1.5),
-        textAlign: 'left',
-        borderBottom: `1px solid ${theme.colors.border.weak}`,
-        fontSize: `${theme.typography.bodySmall.fontSize} !important`,
-      },
-      '& th': {
-        backgroundColor: theme.colors.background.canvas,
-        fontWeight: theme.typography.fontWeightMedium,
-        color: theme.colors.text.primary,
-        borderBottom: `2px solid ${theme.colors.border.medium}`,
-      },
-      '& tr:hover': {
-        backgroundColor: theme.colors.action.hover,
-      },
-    },
-    
-    // Special styling for documentation content
-    '& .docs-section': {
+      maxWidth: '100%',
       margin: `${theme.spacing(3)} 0`,
-      padding: theme.spacing(2),
-      backgroundColor: theme.colors.background.canvas,
-      border: `1px solid ${theme.colors.border.weak}`,
-      borderRadius: theme.shape.radius.default,
     },
     
-    // Code examples and snippets
-    '& .docs-example': {
-      margin: `${theme.spacing(2)} 0`,
-      padding: theme.spacing(2),
-      backgroundColor: theme.colors.background.canvas,
-      border: `1px solid ${theme.colors.border.weak}`,
-      borderLeft: `4px solid ${theme.colors.info.main}`,
-      borderRadius: theme.shape.radius.default,
-    },
-    
-    // Warning and info boxes
-    '& .docs-warning, & .admonition': {
-      margin: `${theme.spacing(2)} 0`,
-      padding: theme.spacing(2),
-      backgroundColor: theme.colors.background.canvas,
-      border: `1px solid ${theme.colors.warning.border}`,
-      borderLeft: `4px solid ${theme.colors.warning.main}`,
-      borderRadius: theme.shape.radius.default,
-    },
-    
-    '& .docs-info': {
-      margin: `${theme.spacing(2)} 0`,
-      padding: theme.spacing(2),
-      backgroundColor: theme.colors.background.canvas,
-      border: `1px solid ${theme.colors.info.border}`,
-      borderLeft: `4px solid ${theme.colors.info.main}`,
-      borderRadius: theme.shape.radius.default,
-    },
-    
-    // Breadcrumbs
-    '& nav, & .breadcrumb': {
-      margin: `0 0 ${theme.spacing(2)} 0`,
-      fontSize: `${theme.typography.bodySmall.fontSize} !important`,
-      color: theme.colors.text.secondary,
-      '& a': {
-        color: theme.colors.primary.main,
-        '&:hover': {
-          textDecoration: 'underline',
+    // Responsive adjustments for classified images
+    '@media (max-width: 768px)': {
+      '& img': {
+        '&[src*="screenshot"], &[src*="dashboard"], &[src*="interface"]': {
+          minWidth: '250px',
+          margin: `${theme.spacing(2)} auto`,
+        },
+        
+        '&[src*="diagram"], &[src*="chart"], &[src*="graph"]': {
+          minWidth: '280px',
+        },
+      },
+      
+      '& .journey-screenshot': {
+        minWidth: '250px',
+        margin: `${theme.spacing(2)} auto`,
+      },
+      
+      '& .journey-diagram': {
+        minWidth: '280px',
+        padding: theme.spacing(1),
+      },
+      
+      '& .image-gallery, & .images-row': {
+        flexDirection: 'column',
+        
+        '& img': {
+          flex: 'none',
+          maxWidth: '100%',
         },
       },
     },
     
-    // Page navigation (Page 1 of 9)
-    '& .docs-page-navigation': {
-      textAlign: 'center',
-      margin: `${theme.spacing(2)} 0`,
-      padding: theme.spacing(1),
-      backgroundColor: theme.colors.background.canvas,
-      border: `1px solid ${theme.colors.border.weak}`,
-      borderRadius: theme.shape.radius.default,
-      fontSize: `${theme.typography.bodySmall.fontSize} !important`,
-      fontWeight: theme.typography.fontWeightMedium,
-      color: theme.colors.text.secondary,
-    },
-    
-    // Learning journey overview/summary
-    '& .docs-journey-overview': {
-      margin: `${theme.spacing(3)} 0`,
-      padding: theme.spacing(2),
-      backgroundColor: theme.colors.background.canvas,
-      border: `1px solid ${theme.colors.primary.border}`,
-      borderLeft: `4px solid ${theme.colors.primary.main}`,
-      borderRadius: theme.shape.radius.default,
-    },
-    
-    // Milestone progress bar
-    '& .docs-progress-bar': {
-      width: '100%',
-      height: '4px',
-      backgroundColor: theme.colors.background.secondary,
-      borderRadius: '2px',
-      margin: `${theme.spacing(1)} 0`,
-      overflow: 'hidden',
-      '& .progress-fill': {
-        height: '100%',
-        backgroundColor: theme.colors.success.main,
-        transition: 'width 0.3s ease',
+    '@media (max-width: 480px)': {
+      '& img': {
+        '&[src*="screenshot"], &[src*="dashboard"], &[src*="interface"]': {
+          minWidth: '200px',
+          border: `1px solid ${theme.colors.border.weak}`,
+          borderRadius: theme.shape.radius.default,
+        },
+        
+        '&[src*="diagram"], &[src*="chart"], &[src*="graph"]': {
+          minWidth: '200px',
+          padding: theme.spacing(0.5),
+        },
+      },
+      
+      '& .journey-screenshot': {
+        minWidth: '200px',
+        border: `1px solid ${theme.colors.border.weak}`,
+        margin: `${theme.spacing(1)} auto`,
+      },
+      
+      '& .journey-diagram': {
+        minWidth: '200px',
+        padding: theme.spacing(0.5),
+      },
+      
+      '& .journey-large': {
+        margin: `${theme.spacing(2)} auto`,
       },
     },
     
-    // Time estimates
-    '& .time-estimate': {
+    '& .journey-code': {
+      backgroundColor: theme.colors.background.canvas,
+      padding: theme.spacing(1),
+      borderRadius: theme.shape.radius.default,
+      fontFamily: theme.typography.fontFamilyMonospace,
+      fontSize: theme.typography.bodySmall.fontSize,
+      border: `1px solid ${theme.colors.border.weak}`,
+    },
+    
+    '& a[data-journey-link="true"]': {
+      color: theme.colors.primary.main,
+      textDecoration: 'none',
+      '&:hover': {
+        textDecoration: 'underline',
+      },
+    },
+    
+    '& .journey-start-button': {
+      display: 'inline-block',
+      padding: `${theme.spacing(1.5)} ${theme.spacing(3)}`,
+      backgroundColor: theme.colors.primary.main,
+      color: theme.colors.primary.contrastText,
+      borderRadius: theme.shape.radius.default,
+      fontWeight: theme.typography.fontWeightMedium,
+      textDecoration: 'none',
+      margin: `${theme.spacing(2)} 0`,
+      transition: 'all 0.2s ease',
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: theme.typography.body.fontSize,
+      '&:hover': {
+        backgroundColor: theme.colors.primary.shade,
+        textDecoration: 'none',
+        transform: 'translateY(-1px)',
+        boxShadow: theme.shadows.z2,
+      },
+    },
+    
+    '& .journey-start-section': {
+      margin: `${theme.spacing(4)} 0`,
+      padding: theme.spacing(3),
+      backgroundColor: theme.colors.background.canvas,
+      borderRadius: theme.shape.radius.default,
+      border: `1px solid ${theme.colors.border.weak}`,
+      textAlign: 'center',
+    },
+    
+    '& .journey-start-container h3': {
+      margin: `0 0 ${theme.spacing(2)} 0`,
+      color: theme.colors.text.primary,
+      fontSize: theme.typography.h4.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+    },
+    
+    '& p': {
+      marginBottom: theme.spacing(2),
+      lineHeight: 1.7,
+    },
+    
+    '& ul, & ol': {
+      marginBottom: theme.spacing(2),
+      paddingLeft: theme.spacing(3),
+    },
+    
+    '& li': {
+      marginBottom: theme.spacing(1),
+    },
+    
+    // Video link styling
+    '& a[data-video-link="true"], & .journey-video-link': {
       display: 'inline-flex',
       alignItems: 'center',
       gap: theme.spacing(0.5),
-      fontSize: `${theme.typography.bodySmall.fontSize} !important`,
-      color: theme.colors.text.secondary,
-      '&:before': {
-        content: '"⏱"',
-        fontSize: '0.8em',
+      color: theme.colors.primary.main,
+      textDecoration: 'none',
+      fontWeight: theme.typography.fontWeightMedium,
+      fontSize: theme.typography.body.fontSize,
+      padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+      borderRadius: theme.shape.radius.default,
+      border: `1px solid ${theme.colors.border.weak}`,
+      backgroundColor: 'transparent',
+      transition: 'all 0.2s ease',
+      margin: `${theme.spacing(1)} 0`,
+      
+      '&:hover': {
+        backgroundColor: theme.colors.action.hover,
+        borderColor: theme.colors.primary.main,
+        textDecoration: 'none',
+        transform: 'translateY(-1px)',
+      },
+      
+      '& .journey-video-icon': {
+        fontSize: '14px',
+        lineHeight: 1,
       },
     },
     
-    // Responsive adjustments
-    '@media (max-width: 768px)': {
-      padding: theme.spacing(2),
-      fontSize: `${theme.typography.bodySmall.fontSize} !important`,
+    // YouTube thumbnail styling
+    '& .journey-video-thumbnail': {
+      display: 'block',
+      margin: `${theme.spacing(3)} 0`,
+      cursor: 'pointer',
+      borderRadius: theme.shape.radius.default,
+      overflow: 'hidden',
+      boxShadow: theme.shadows.z1,
+      transition: 'all 0.3s ease',
+      backgroundColor: theme.colors.background.secondary,
+      maxWidth: '560px',
       
-      '& .docs-heading-h1, & h1': {
-        fontSize: `${theme.typography.h3.fontSize} !important`,
+      '&:hover': {
+        boxShadow: theme.shadows.z3,
+        transform: 'translateY(-2px)',
       },
+    },
+    
+    '& .video-thumbnail-wrapper': {
+      position: 'relative',
+      paddingBottom: '56.25%', // 16:9 aspect ratio
+      height: 0,
+      overflow: 'hidden',
+    },
+    
+    '& .video-thumbnail-image': {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover',
+      transition: 'transform 0.3s ease',
+    },
+    
+    '& .video-play-overlay': {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'rgba(0, 0, 0, 0.3)',
+      transition: 'background 0.3s ease',
+    },
+    
+    '& .video-play-button': {
+      width: '68px',
+      height: '48px',
+      backgroundColor: '#ff0000',
+      borderRadius: '6px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: 'white',
+      transition: 'all 0.3s ease',
       
-      '& .docs-heading-h2, & h2': {
-        fontSize: `${theme.typography.h4.fontSize} !important`,
+      '& svg': {
+        marginLeft: '2px', // Slight offset to center the play triangle
       },
+    },
+    
+    '& .video-thumbnail-title': {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.8))',
+      color: 'white',
+      padding: `${theme.spacing(2)} ${theme.spacing(1.5)}`,
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
+    },
+    
+    '& .journey-video-thumbnail:hover .video-thumbnail-image': {
+      transform: 'scale(1.05)',
+    },
+    
+    '& .journey-video-thumbnail:hover .video-play-overlay': {
+      background: 'rgba(0, 0, 0, 0.2)',
+    },
+    
+    '& .journey-video-thumbnail:hover .video-play-button': {
+      backgroundColor: '#cc0000',
+      transform: 'scale(1.1)',
+    },
+    
+    // Clean text links for non-YouTube videos
+    '& .journey-video-text-link': {
+      display: 'inline-flex',
+      alignItems: 'center',
+      color: theme.colors.primary.main,
+      textDecoration: 'none',
+      fontWeight: theme.typography.fontWeightMedium,
+      padding: `${theme.spacing(0.5)} 0`,
       
-      '& .docs-table-wrapper': {
-        fontSize: `${theme.typography.bodySmall.fontSize} !important`,
+      '&:hover': {
+        textDecoration: 'underline',
       },
     },
   }),
-  fallbackContent: css({
-    padding: theme.spacing(2),
-    textAlign: 'center',
-    color: theme.colors.text.secondary,
-  }),
   tabBar: css({
-    label: 'docs-tab-bar',
+    label: 'combined-journey-tab-bar',
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
@@ -1086,7 +1032,7 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     overflow: 'hidden',
   }),
   tabList: css({
-    label: 'docs-tab-list',
+    label: 'combined-journey-tab-list',
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
@@ -1105,7 +1051,7 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     },
   }),
   tab: css({
-    label: 'docs-tab',
+    label: 'combined-journey-tab',
     display: 'flex',
     alignItems: 'center',
     padding: theme.spacing(0.75, 1.5),
@@ -1127,7 +1073,7 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     },
   }),
   activeTab: css({
-    label: 'docs-active-tab',
+    label: 'combined-journey-active-tab',
     backgroundColor: theme.colors.background.primary,
     borderColor: theme.colors.border.medium,
     borderBottomColor: theme.colors.background.primary,
@@ -1137,26 +1083,98 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     },
   }),
   tabContent: css({
-    label: 'docs-tab-content',
+    label: 'combined-journey-tab-content',
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing(1),
     width: '100%',
-    minWidth: 0, // Allow shrinking
+    minWidth: 0,
   }),
   tabTitle: css({
-    label: 'docs-tab-title',
+    label: 'combined-journey-tab-title',
     textOverflow: 'ellipsis',
     overflow: 'hidden',
     whiteSpace: 'nowrap',
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     flex: 1,
-    minWidth: 0, // Allow shrinking
+    minWidth: 0,
   }),
   closeButton: css({
-    label: 'docs-close-button',
+    label: 'combined-journey-close-button',
+    padding: theme.spacing(0.25),
+    margin: 0,
+    minWidth: 'auto',
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    flexShrink: 0,
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  progressHeader: css({
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing(1),
+    
+    // Ensure text doesn't wrap awkwardly
+    '& > span': {
+      whiteSpace: 'nowrap',
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
+    },
+    
+    // Responsive adjustments
+    '@media (max-width: 480px)': {
+      gap: theme.spacing(0.5),
+      
+      '& > span': {
+        fontSize: '12px',
+      },
+    },
+  }),
+  milestoneNavigation: css({
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    
+    // Add some visual styling for the navigation buttons
+    '& button': {
+      backgroundColor: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      transition: 'all 0.2s ease',
+      
+      '&:hover:not(:disabled)': {
+        backgroundColor: theme.colors.action.hover,
+        borderColor: theme.colors.border.medium,
+        transform: 'translateY(-1px)',
+      },
+      
+      '&:disabled': {
+        opacity: 0.5,
+        cursor: 'not-allowed',
+      },
+    },
+    
+    // Responsive adjustments
+    '@media (max-width: 480px)': {
+      gap: theme.spacing(0.5),
+      
+      '& button': {
+        minWidth: '32px',
+        height: '32px',
+      },
+    },
+  }),
+  videoButton: css({
+    label: 'combined-journey-video-button',
     padding: theme.spacing(0.25),
     margin: 0,
     minWidth: 'auto',
@@ -1169,3 +1187,8 @@ const getStyles = (theme: GrafanaTheme2, withVersions: boolean) => ({
     },
   }),
 });
+
+// Export the main component and keep backward compatibility
+export { CombinedLearningJourneyPanel };
+export class LearningJourneyPanel extends CombinedLearningJourneyPanel {}
+export class DocsPanel extends CombinedLearningJourneyPanel {}

@@ -1,215 +1,525 @@
-export interface DocsContent {
+export interface LearningJourneyContent {
   title: string;
   content: string;
   url: string;
+  currentMilestone: number;
+  totalMilestones: number;
+  milestones: Milestone[];
   lastFetched: string;
+  videoUrl?: string; // YouTube video URL for this page
 }
 
-export interface DocsRoute {
-  path: string;
-  docsUrl: string;
+export interface Milestone {
+  number: number;
   title: string;
-  patterns: string[];
+  duration: string;
+  url: string;
+  isActive: boolean;
 }
 
-// Map Grafana routes to their corresponding documentation URLs
-export const DOCS_ROUTES: DocsRoute[] = [
-  {
-    path: 'dashboards',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/dashboards/',
-    title: 'Dashboards',
-    patterns: ['/dashboards', '/dashboard']
-  },
-  {
-    path: 'dashboard-build',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/',
-    title: 'Build Dashboards',
-    patterns: ['/dashboard/new', '/dashboard/edit', '/dashboard/create']
-  },
-  {
-    path: 'explore',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/explore/',
-    title: 'Explore',
-    patterns: ['/explore']
-  },
-  {
-    path: 'alerting',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/alerting/',
-    title: 'Alerting',
-    patterns: ['/alerting']
-  },
-  {
-    path: 'alert-rules',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/alerting/alerting-rules/',
-    title: 'Alert Rules',
-    patterns: ['/alerting/new', '/alerting/edit', '/alerting/rules']
-  },
-  {
-    path: 'datasources',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/datasources/',
-    title: 'Data Sources',
-    patterns: ['/connections', '/datasources']
-  },
-  {
-    path: 'datasource-config',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/datasources/add-a-data-source/',
-    title: 'Add Data Source',
-    patterns: ['/connections/add-new-connection', '/datasources/new']
-  },
-  {
-    path: 'panels',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/panels-visualizations/',
-    title: 'Panels & Visualizations',
-    patterns: ['/panels', '/panel']
-  },
-  {
-    path: 'users',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/administration/user-management/',
-    title: 'User Management',
-    patterns: ['/admin/users', '/org/users']
-  },
-  {
-    path: 'admin',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/administration/',
-    title: 'Administration',
-    patterns: ['/admin']
-  },
-  {
-    path: 'plugins',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/administration/plugin-management/',
-    title: 'Plugin Management',
-    patterns: ['/plugins']
-  },
-  {
-    path: 'home',
-    docsUrl: 'https://grafana.com/docs/grafana/latest/',
-    title: 'Grafana Documentation',
-    patterns: ['/', '/home']
-  }
-];
+export interface LearningJourneyTab {
+  id: string;
+  title: string;
+  baseUrl: string;
+  content: LearningJourneyContent | null;
+  isLoading: boolean;
+  error: string | null;
+}
+
+// Simple in-memory cache for content
+const contentCache = new Map<string, { content: LearningJourneyContent; timestamp: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// Cache for storing milestone information from cover pages
+const milestoneCache = new Map<string, Milestone[]>();
 
 /**
- * Smart context detection based on current URL
+ * Get the base URL for a learning journey
  */
-export function detectDocsContext(currentPath: string, searchParams?: URLSearchParams): DocsRoute | null {
-  // Clean the path
-  const cleanPath = currentPath.toLowerCase().replace(/\/$/, '');
-  
-  // Check for specific patterns first (more specific matches)
-  for (const route of DOCS_ROUTES) {
-    for (const pattern of route.patterns) {
-      if (cleanPath.includes(pattern.toLowerCase())) {
-        // Additional context checks for more specific routing
-        if (pattern === '/dashboard/new' || pattern === '/dashboard/edit' || pattern === '/dashboard/create') {
-          return route; // Build dashboards docs
-        }
-        if (pattern === '/alerting/new' || pattern === '/alerting/edit' || pattern === '/alerting/rules') {
-          return route; // Alert rules docs
-        }
-        if (pattern === '/connections/add-new-connection' || pattern === '/datasources/new') {
-          return route; // Add data source docs
-        }
-        if (cleanPath.startsWith(pattern.toLowerCase())) {
-          return route;
-        }
-      }
-    }
-  }
-  
-  // Fallback to home documentation
-  return DOCS_ROUTES.find(r => r.path === 'home') || null;
+function getLearningJourneyBaseUrl(url: string): string {
+  // Extract the base learning journey URL
+  const match = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-journeys\/[^\/]+\/)/);
+  return match ? match[1] : url;
 }
 
 /**
- * Multiple CORS proxy services to try
+ * Cache milestone information for a learning journey
  */
-const CORS_PROXIES = [
-  'https://api.allorigins.win/get?url=',
-  'https://corsproxy.io/?',
-  'https://cors-anywhere.herokuapp.com/',
-  'https://thingproxy.freeboard.io/fetch/',
-];
+function cacheMilestones(baseUrl: string, milestones: Milestone[]): void {
+  milestoneCache.set(baseUrl, milestones);
+}
 
 /**
- * Strategy 1: Use multiple CORS proxy services with fallback
+ * Get cached milestone information for a learning journey
  */
-export async function fetchDocsWithProxy(url: string): Promise<DocsContent | null> {
-  for (const proxy of CORS_PROXIES) {
-    try {
-      console.log(`Trying proxy: ${proxy}`);
+function getCachedMilestones(baseUrl: string): Milestone[] | null {
+  return milestoneCache.get(baseUrl) || null;
+}
+
+/**
+ * Extract learning journey content from HTML
+ */
+function extractLearningJourneyContent(html: string, url: string): LearningJourneyContent {
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Extract title
+    const titleElement = doc.querySelector('h1') || doc.querySelector('title');
+    const title = titleElement?.textContent?.trim() || 'Learning Journey';
+    
+    // Get the base URL for this learning journey
+    const baseUrl = getLearningJourneyBaseUrl(url);
+    
+    // Check if we have cached milestones (meaning this is navigation within a journey)
+    const cachedMilestones = getCachedMilestones(baseUrl);
+    const isNavigatingWithinJourney = cachedMilestones && cachedMilestones.length > 0;
+    
+    console.log(`Processing URL: ${url}, baseUrl: ${baseUrl}, hasCache: ${!!cachedMilestones}`);
+    
+    // Extract milestones from the page structure
+    const milestones: Milestone[] = [];
+    let currentMilestone = 0;
+    let totalMilestones = 1;
+    
+    if (!isNavigatingWithinJourney) {
+      // This is a fresh journey start - extract milestones from the page
+      console.log('Fresh journey start - extracting milestones from page');
       
-      let proxyUrl: string;
-      let response: Response;
+      // Look for the journey-steps section which contains all milestone information
+      const journeyStepsSection = doc.querySelector('.journey-steps');
       
-      if (proxy.includes('allorigins.win')) {
-        proxyUrl = `${proxy}${encodeURIComponent(url)}`;
-        response = await fetch(proxyUrl);
+      if (journeyStepsSection) {
+        console.log('Found journey-steps section');
         
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        // Extract milestone links from the journey-steps section
+        const milestoneLinks = journeyStepsSection.querySelectorAll('a.journey-milestone__link');
+        
+        console.log(`Found ${milestoneLinks.length} milestone links`);
+        
+        milestoneLinks.forEach((link, index) => {
+          const href = link.getAttribute('href');
+          const titleElement = link.querySelector('.journey-milestone__link-title');
+          const durationElement = link.querySelector('.text-black.f-12.fw-500');
+          
+          if (href && titleElement) {
+            const title = titleElement.textContent?.trim() || `Milestone ${index + 1}`;
+            const duration = durationElement?.textContent?.trim() || '1 min';
+            const fullUrl = href.startsWith('http') ? href : new URL(href, url).href;
+            
+            milestones.push({
+              number: index + 1,
+              title: title,
+              duration: duration,
+              url: fullUrl,
+              isActive: false
+            });
+          }
+        });
+        
+        // Cache the milestones for this learning journey
+        if (milestones.length > 0) {
+          cacheMilestones(baseUrl, milestones);
+          console.log(`Cached ${milestones.length} milestones for journey`);
         }
         
-        const data = await response.json();
-        const htmlContent = data.contents;
-        
-        return {
-          title: extractTitle(htmlContent),
-          content: extractMainContent(htmlContent),
-          url,
-          lastFetched: new Date().toISOString()
-        };
+        totalMilestones = milestones.length;
+        currentMilestone = 0; // Cover page
       } else {
-        proxyUrl = `${proxy}${url}`;
-        response = await fetch(proxyUrl);
+        console.error('No journey-steps section found in the page. This may not be a valid learning journey page.');
+        throw new Error('Invalid learning journey page: missing journey-steps section');
+      }
+    } else {
+      // Use cached milestone information
+      console.log('Using cached milestone information');
+      milestones.push(...cachedMilestones);
+      totalMilestones = cachedMilestones.length;
+      
+      // Determine current milestone from URL
+      currentMilestone = findCurrentMilestoneFromUrl(url, cachedMilestones);
+      
+      // Reset all milestone active states first, then set the current one
+      milestones.forEach(milestone => {
+        milestone.isActive = false;
+      });
+      
+      // Set the current milestone as active
+      if (currentMilestone > 0 && currentMilestone <= milestones.length) {
+        const activeMilestone = milestones.find(m => m.number === currentMilestone);
+        if (activeMilestone) {
+          activeMilestone.isActive = true;
+          console.log(`✅ Set milestone ${currentMilestone} as active: ${activeMilestone.title}`);
+        } else {
+          console.warn(`⚠️ Could not find milestone ${currentMilestone} to set as active`);
+        }
+      } else {
+        console.log(`📍 Current milestone ${currentMilestone} is cover page or out of range`);
+      }
+      
+      console.log(`🧭 Navigation state: Current=${currentMilestone}, Total=${totalMilestones}, URL=${url}`);
+      console.log(`📋 Milestones summary:`, milestones.map(m => `${m.number}: ${m.isActive ? '✅' : '⭕'} ${m.title}`));
+    }
+    
+    // Extract main content
+    const mainContentResult = extractMainContent(doc, currentMilestone === 0);
+    
+    return {
+      title,
+      content: mainContentResult.content,
+      url,
+      currentMilestone,
+      totalMilestones,
+      milestones,
+      lastFetched: new Date().toISOString(),
+      videoUrl: mainContentResult.videoUrl
+    };
+  } catch (error) {
+    console.warn('Failed to parse learning journey content:', error);
+    return {
+      title: 'Learning Journey',
+      content: html,
+      url,
+      currentMilestone: 1,
+      totalMilestones: 1,
+      milestones: [],
+      lastFetched: new Date().toISOString()
+    };
+  }
+}
+
+/**
+ * Extract main content from learning journey HTML
+ */
+function extractMainContent(doc: Document, isCoverPage: boolean): { content: string; videoUrl?: string } {
+  // Find the main content section
+  const contentElement = doc.querySelector('.journey-grid__content');
+  
+  if (!contentElement) {
+    return {
+      content: 'Content not available - journey-grid__content section not found'
+    };
+  }
+  
+  // Process the content
+  const processedContent = processLearningJourneyContent(contentElement, isCoverPage);
+  return processedContent;
+}
+
+/**
+ * Process learning journey content for better display
+ */
+function processLearningJourneyContent(element: Element, isCoverPage: boolean): { content: string; videoUrl?: string } {
+  const clonedElement = element.cloneNode(true) as Element;
+  let extractedVideoUrl: string | undefined;
+  
+  // Remove unwanted navigation elements
+  const unwantedElements = clonedElement.querySelectorAll(
+    '.journey-pagination__grid, .milestone-bottom'
+  );
+  unwantedElements.forEach(el => el.remove());
+  
+  // Extract and remove video containers
+  const videoContainers = clonedElement.querySelectorAll('.docs-video__trigger');
+  videoContainers.forEach(container => {
+    const button = container.querySelector('button[data-embed]');
+    
+    if (button) {
+      const videoId = button.getAttribute('data-embed');
+      
+      if (videoId && !extractedVideoUrl) {
+        // Take the first video we find for this page
+        extractedVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        console.log(`🎥 Extracted video URL: ${extractedVideoUrl}`);
+      }
+    }
+    
+    // Remove the entire video container from content
+    container.remove();
+  });
+  
+  // Also remove any remaining video-related elements
+  const videoButtons = clonedElement.querySelectorAll('button[data-embed], .youtube-lazyload, .responsive-video');
+  videoButtons.forEach(button => button.remove());
+  
+  // Remove any standalone "Watch video" links and extract URLs
+  const links = clonedElement.querySelectorAll('a[href]');
+  links.forEach(link => {
+    const href = link.getAttribute('href');
+    const linkText = link.textContent?.toLowerCase() || '';
+    
+    if (href) {
+      // Check if this is a video link
+      const isVideoLink = linkText.includes('watch video') || 
+                         linkText.includes('video') ||
+                         linkText.includes('watch');
+      
+      if (isVideoLink) {
+        console.log(`🎥 Found video link: "${linkText}" -> ${href}`);
         
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        // Fix relative video URLs
+        let videoUrl = href;
+        if (href.startsWith('/')) {
+          videoUrl = `https://grafana.com${href}`;
+        } else if (href.startsWith('./')) {
+          videoUrl = `https://grafana.com/docs/${href.substring(2)}`;
+        } else if (href.startsWith('../')) {
+          videoUrl = `https://grafana.com/docs/${href.replace(/^\.\.\//, '')}`;
         }
         
-        const htmlContent = await response.text();
+        // Try to extract YouTube ID and convert to clean YouTube URL
+        const youtubeId = extractYouTubeVideoId(videoUrl);
+        if (youtubeId && !extractedVideoUrl) {
+          extractedVideoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+          console.log(`🎥 Extracted YouTube URL: ${extractedVideoUrl}`);
+        } else if (!extractedVideoUrl) {
+          extractedVideoUrl = videoUrl;
+          console.log(`🎥 Extracted video URL: ${extractedVideoUrl}`);
+        }
         
-        return {
-          title: extractTitle(htmlContent),
-          content: extractMainContent(htmlContent),
-          url,
-          lastFetched: new Date().toISOString()
-        };
+        // Remove the video link from content
+        link.remove();
+      } else {
+        // Regular links - just ensure they open in new tabs
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener noreferrer');
+        link.setAttribute('data-journey-link', 'true');
       }
-    } catch (error) {
-      console.warn(`Proxy ${proxy} failed:`, error);
-      continue; // Try next proxy
+    }
+  });
+  
+  // For cover pages, add our own "Start Journey" button
+  if (isCoverPage) {
+    const startButton = document.createElement('div');
+    startButton.className = 'journey-start-section';
+    startButton.innerHTML = `
+      <div class="journey-start-container">
+        <h3>Ready to begin?</h3>
+        <button class="journey-start-button" data-journey-start="true">
+          Start Learning Journey
+        </button>
+      </div>
+    `;
+    clonedElement.appendChild(startButton);
+  }
+  
+  // Process images to fix relative URLs
+  const images = clonedElement.querySelectorAll('img');
+  images.forEach(img => {
+    const src = img.getAttribute('src');
+    const dataSrc = img.getAttribute('data-src');
+    const originalSrc = dataSrc || src;
+    const alt = img.getAttribute('alt') || '';
+    const width = img.getAttribute('width');
+    const height = img.getAttribute('height');
+    
+    if (originalSrc) {
+      let newSrc = originalSrc;
+      
+      if (originalSrc.startsWith('/')) {
+        newSrc = `https://grafana.com${originalSrc}`;
+      } else if (originalSrc.startsWith('./')) {
+        newSrc = `https://grafana.com/docs/${originalSrc.substring(2)}`;
+      } else if (originalSrc.startsWith('../')) {
+        newSrc = `https://grafana.com/docs/${originalSrc.replace(/^\.\.\//, '')}`;
+      } else if (!originalSrc.startsWith('http') && !originalSrc.startsWith('data:')) {
+        newSrc = `https://grafana.com/docs/${originalSrc}`;
+      }
+      
+      img.setAttribute('src', newSrc);
+      img.removeAttribute('data-src');
+      img.classList.remove('lazyload', 'lazyloaded', 'ls-is-cached');
+      
+      // Add responsive image classes based on content and size
+      img.classList.add('journey-image');
+      
+      // Classify images based on their characteristics
+      const srcLower = newSrc.toLowerCase();
+      const altLower = alt.toLowerCase();
+      
+      if (srcLower.includes('screenshot') || srcLower.includes('dashboard') || 
+          srcLower.includes('interface') || altLower.includes('screenshot') ||
+          altLower.includes('dashboard') || altLower.includes('interface')) {
+        img.classList.add('journey-screenshot');
+      } else if (srcLower.includes('icon') || srcLower.includes('logo') || 
+                 srcLower.includes('badge') || altLower.includes('icon') ||
+                 altLower.includes('logo') || altLower.includes('badge')) {
+        img.classList.add('journey-icon');
+      } else if (srcLower.includes('diagram') || srcLower.includes('chart') || 
+                 srcLower.includes('graph') || altLower.includes('diagram') ||
+                 altLower.includes('chart') || altLower.includes('graph')) {
+        img.classList.add('journey-diagram');
+      }
+      
+      // Add size-based classes
+      if (width && height) {
+        const w = parseInt(width);
+        const h = parseInt(height);
+        
+        if (w > 800 || h > 600) {
+          img.classList.add('journey-large');
+        } else if (w < 200 && h < 200) {
+          img.classList.add('journey-small');
+        }
+        
+        // For very wide images (like banners or headers)
+        if (w > h * 2) {
+          img.classList.add('journey-wide');
+        }
+      }
+      
+      // Add loading optimization
+      img.setAttribute('loading', 'lazy');
+      
+      // Add alt text if missing
+      if (!alt) {
+        img.setAttribute('alt', 'Learning journey image');
+      }
+    }
+  });
+  
+  return {
+    content: clonedElement.innerHTML,
+    videoUrl: extractedVideoUrl
+  };
+}
+
+/**
+ * Extract YouTube video ID from various YouTube URL formats
+ */
+function extractYouTubeVideoId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([^&\n?#]+)/,
+    /youtube\.com\/watch\?.*v=([^&\n?#]+)/,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) {
+      return match[1];
     }
   }
   
-  console.error('All CORS proxies failed');
   return null;
 }
 
 /**
- * Strategy 2: Try direct fetch (might work in some environments)
+ * Fetch learning journey content with multiple strategies
  */
-export async function fetchDocsDirect(url: string): Promise<DocsContent | null> {
+export async function fetchLearningJourneyContent(url: string): Promise<LearningJourneyContent | null> {
+  console.log(`Fetching learning journey content from: ${url}`);
+  
+  // Check cache first
+  const cached = contentCache.get(url);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    console.log('Returning cached content for:', url);
+    return cached.content;
+  }
+  
+  // Check if this looks like a cover page vs milestone page
+  const isCoverPageUrl = url.endsWith('/') && !url.includes('/business-value') && !url.includes('/when-to') && !url.includes('/verify');
+  console.log(`URL appears to be cover page: ${isCoverPageUrl}`);
+  
+  // Try strategies in order of reliability - direct fetch first, then working proxies
+  const strategies = [
+    { name: 'direct', fn: () => fetchDirectFast(url) },
+    { name: 'corsproxy', fn: () => fetchWithCorsproxy(url) },
+    // Removed allorigins.win as it's failing with QUIC errors
+  ];
+  
+  // For milestone pages, also try adding trailing slash if missing
+  if (!isCoverPageUrl && !url.endsWith('/')) {
+    const urlWithSlash = url + '/';
+    console.log(`Also trying milestone URL with trailing slash: ${urlWithSlash}`);
+    strategies.unshift(
+      { name: 'direct-slash', fn: () => fetchDirectFast(urlWithSlash) },
+      { name: 'corsproxy-slash', fn: () => fetchWithCorsproxy(urlWithSlash) }
+    );
+  }
+  
+  for (let i = 0; i < strategies.length; i++) {
+    const strategy = strategies[i];
+    
+    try {
+      console.log(`Trying strategy ${i + 1}/${strategies.length}: ${strategy.name}`);
+      const startTime = Date.now();
+      const htmlContent = await strategy.fn();
+      const duration = Date.now() - startTime;
+      
+      if (htmlContent && htmlContent.trim().length > 0) {
+        console.log(`✅ Strategy ${strategy.name} succeeded in ${duration}ms, content length: ${htmlContent.length}`);
+        const content = extractLearningJourneyContent(htmlContent, url);
+        console.log(`Extracted content: ${content.title}, milestones: ${content.milestones.length}`);
+        
+        // Cache the result
+        contentCache.set(url, { content, timestamp: Date.now() });
+        
+        return content;
+      } else {
+        console.warn(`❌ Strategy ${strategy.name} returned empty content after ${duration}ms`);
+      }
+    } catch (error) {
+      console.warn(`❌ Strategy ${strategy.name} failed:`, error);
+      continue;
+    }
+  }
+  
+  console.error('All strategies failed for URL:', url);
+  return null;
+}
+
+/**
+ * Fetch with corsproxy.io (the working proxy service)
+ */
+async function fetchWithCorsproxy(url: string): Promise<string | null> {
   try {
-    const response = await fetch(url, {
-      mode: 'cors',
+    const proxyUrl = `https://corsproxy.io/?${url}`;
+    console.log(`Trying corsproxy.io: ${proxyUrl}`);
+    
+    const response = await fetch(proxyUrl, {
+      method: 'GET',
       headers: {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'User-Agent': 'Mozilla/5.0 (compatible; GrafanaDocsPlugin/1.0)',
+        'User-Agent': 'Mozilla/5.0 (compatible; GrafanaLearningJourney/1.0)',
       },
+      signal: AbortSignal.timeout(8000), // 8 second timeout
     });
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    const htmlContent = await response.text();
+    const content = await response.text();
+    console.log('Successfully fetched via corsproxy.io');
+    return content;
+  } catch (error) {
+    console.warn('Corsproxy.io failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Try direct fetch (faster version)
+ */
+async function fetchDirectFast(url: string): Promise<string | null> {
+  try {
+    console.log('Trying direct fetch...');
+    const response = await fetch(url, {
+      mode: 'cors',
+      method: 'GET',
+      headers: {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (compatible; GrafanaLearningJourney/1.0)',
+      },
+      signal: AbortSignal.timeout(5000), // 5 second timeout
+    });
     
-    return {
-      title: extractTitle(htmlContent),
-      content: extractMainContent(htmlContent),
-      url,
-      lastFetched: new Date().toISOString()
-    };
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const content = await response.text();
+    console.log('Successfully fetched via direct fetch');
+    return content;
   } catch (error) {
     console.warn('Direct fetch failed:', error);
     return null;
@@ -217,514 +527,65 @@ export async function fetchDocsDirect(url: string): Promise<DocsContent | null> 
 }
 
 /**
- * Strategy 3: Use a simple web scraping API
+ * Get next milestone URL
  */
-export async function fetchDocsWithScraper(url: string): Promise<DocsContent | null> {
-  try {
-    // Using a simple scraping service
-    const scraperUrl = `https://api.scraperapi.com/?api_key=demo&url=${encodeURIComponent(url)}`;
-    const response = await fetch(scraperUrl);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const htmlContent = await response.text();
-    
-    return {
-      title: extractTitle(htmlContent),
-      content: extractMainContent(htmlContent),
-      url,
-      lastFetched: new Date().toISOString()
-    };
-  } catch (error) {
-    console.warn('Scraper API failed:', error);
-    return null;
+export function getNextMilestoneUrl(content: LearningJourneyContent): string | null {
+  console.log(`🔄 Getting next milestone from current: ${content.currentMilestone} of ${content.totalMilestones}`);
+  
+  // If we're on the cover page (milestone 0), go to milestone 1
+  if (content.currentMilestone === 0 && content.milestones.length > 0) {
+    console.log(`📍 From cover page -> milestone 1: ${content.milestones[0].url}`);
+    return content.milestones[0].url;
   }
-}
-
-/**
- * Strategy 4: Pre-cached content with localStorage
- */
-export function getCachedDocs(path: string): DocsContent | null {
-  try {
-    const cachedContent = localStorage.getItem(`docs-cache-${path}`);
-    if (cachedContent) {
-      return JSON.parse(cachedContent);
+  
+  // If we're on a milestone, go to the next one
+  if (content.currentMilestone > 0 && content.currentMilestone < content.totalMilestones) {
+    const nextMilestone = content.milestones.find(m => m.number === content.currentMilestone + 1);
+    if (nextMilestone) {
+      console.log(`📍 From milestone ${content.currentMilestone} -> milestone ${nextMilestone.number}: ${nextMilestone.url}`);
+      return nextMilestone.url;
     }
-  } catch (error) {
-    console.warn('Failed to get cached docs:', error);
   }
+  
+  console.log(`❌ No next milestone available from current: ${content.currentMilestone}`);
   return null;
 }
 
 /**
- * Extract the main title from HTML content
+ * Get previous milestone URL
  */
-function extractTitle(html: string): string {
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  if (titleMatch) {
-    return titleMatch[1].replace(/\s*\|\s*Grafana.*$/, '').trim();
-  }
+export function getPreviousMilestoneUrl(content: LearningJourneyContent): string | null {
+  console.log(`🔄 Getting previous milestone from current: ${content.currentMilestone} of ${content.totalMilestones}`);
   
-  // Fallback to h1 tag
-  const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-  if (h1Match) {
-    return h1Match[1].replace(/<[^>]*>/g, '').trim();
-  }
-  
-  return 'Documentation';
-}
-
-/**
- * Extract main content from Grafana docs HTML
- */
-function extractMainContent(html: string): string {
-  try {
-    // Create a temporary DOM element to parse HTML
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    
-    // Remove unwanted elements first (before looking for content)
-    const unwantedSelectors = [
-      'nav', 'header', 'footer', 'aside',
-      '.navbar', '.nav', '.navigation', '.nav-bar',
-      '.sidebar', '.menu', '.breadcrumb', '.breadcrumbs',
-      '.cookie', '.banner', '.alert', '.notification',
-      'script', 'style', 'noscript',
-      '.search', '.filter', '.pagination',
-      '.social', '.share', '.feedback',
-      '.toc', '.table-of-contents',
-      '[role="navigation"]', '[aria-label*="navigation"]',
-      '[aria-label*="breadcrumb"]', '[class*="breadcrumb"]',
-      '.docs-sidebar', '.sidebar-nav',
-      '.page-nav', '.site-nav',
-      // Grafana specific navigation elements
-      '.theme-doc-sidebar-container',
-      '.navbar__inner', '.navbar__items',
-      '.breadcrumbs__item', '.breadcrumbs__link',
-      '.pagination-nav'
-    ];
-    
-    unwantedSelectors.forEach(selector => {
-      const elements = doc.querySelectorAll(selector);
-      elements.forEach(el => el.remove());
-    });
-    
-    // Try to find the main content area (Grafana docs specific selectors)
-    const selectors = [
-      'main[role="main"]',
-      '.docs-content',
-      'article',
-      '.markdown-body',
-      '[data-testid="docs-content"]',
-      '.content',
-      '.page-content',
-      '#content',
-      '.main-content',
-      // More specific selectors for Grafana docs
-      '.docusaurus-content',
-      '.theme-doc-markdown',
-      '.markdown',
-      '.theme-doc-markdown.markdown',
-      '.container .row .col'
-    ];
-    
-    let contentElement = null;
-    
-    for (const selector of selectors) {
-      const element = doc.querySelector(selector);
-      if (element) {
-        contentElement = element;
-        break;
-      }
-    }
-    
-    // If no main content found, try to extract from body but be more selective
-    if (!contentElement) {
-      const bodyContent = doc.body;
-      if (bodyContent) {
-        contentElement = bodyContent;
-      }
-    }
-    
-    if (!contentElement) {
-      return html; // Return raw HTML as fallback
-    }
-    
-    // Remove any remaining navigation elements from the content
-    const additionalUnwanted = contentElement.querySelectorAll(
-      'nav, .breadcrumb, .breadcrumbs, [aria-label*="breadcrumb"], .nav-links, .pagination'
-    );
-    additionalUnwanted.forEach(el => el.remove());
-    
-    // Process the content to improve structure
-    const processedContent = processContentStructure(contentElement);
-    
-    return cleanupContent(processedContent);
-  } catch (error) {
-    console.warn('Failed to parse HTML:', error);
-    return html; // Return raw HTML as fallback
-  }
-}
-
-/**
- * Process content structure to improve rendering
- */
-function processContentStructure(element: Element): string {
-  // Clone the element to avoid modifying the original
-  const clonedElement = element.cloneNode(true) as Element;
-  
-  // Remove any remaining breadcrumbs or navigation
-  const navElements = clonedElement.querySelectorAll(
-    'nav, .breadcrumb, .breadcrumbs, [aria-label*="breadcrumb"], .nav-links, .pagination'
-  );
-  navElements.forEach(el => el.remove());
-  
-  // Improve heading structure
-  const headings = clonedElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
-  headings.forEach(heading => {
-    // Add proper spacing and styling classes
-    heading.setAttribute('class', `docs-heading docs-heading-${heading.tagName.toLowerCase()}`);
-  });
-  
-  // Process links for internal navigation - SIMPLIFIED APPROACH
-  const links = clonedElement.querySelectorAll('a[href]');
-  links.forEach(link => {
-    const href = link.getAttribute('href');
-    if (href) {
-      // Handle anchor links (same page navigation)
-      if (href.startsWith('#')) {
-        link.setAttribute('data-anchor-link', 'true');
-      }
-      // Mark ALL links that could potentially be docs links for interception
-      // This includes: absolute docs links, relative links, and any non-external links
-      else if (
-        href.includes('grafana.com/docs') ||           // Absolute docs links
-        href.startsWith('/docs') ||                    // Root-relative docs links
-        href.startsWith('./') ||                       // Same-directory relative
-        href.startsWith('../') ||                      // Parent-directory relative
-        href.startsWith('/') ||                        // Any root-relative link
-        (!href.startsWith('http') &&                   // Any relative link that's not external
-         !href.startsWith('mailto:') && 
-         !href.startsWith('tel:') && 
-         !href.startsWith('javascript:') &&
-         !href.startsWith('ftp:'))
-      ) {
-        link.setAttribute('data-docs-link', 'true');
-        console.log(`Marked as docs link: ${href}`);
-      }
-      // External links open in new tab
-      else if (href.startsWith('http') && !href.includes('grafana.com')) {
-        link.setAttribute('target', '_blank');
-        link.setAttribute('rel', 'noopener noreferrer');
-        console.log(`Marked as external link: ${href}`);
-      }
-    }
-  });
-  
-  // Improve list structure
-  const lists = clonedElement.querySelectorAll('ul, ol');
-  lists.forEach(list => {
-    list.setAttribute('class', 'docs-list');
-    const items = list.querySelectorAll('li');
-    items.forEach(item => {
-      item.setAttribute('class', 'docs-list-item');
-    });
-  });
-  
-  // Improve paragraph structure
-  const paragraphs = clonedElement.querySelectorAll('p');
-  paragraphs.forEach(p => {
-    p.setAttribute('class', 'docs-paragraph');
-  });
-  
-  // Improve code blocks
-  const codeBlocks = clonedElement.querySelectorAll('pre');
-  codeBlocks.forEach(pre => {
-    pre.setAttribute('class', 'docs-code-block');
-  });
-  
-  // Improve inline code
-  const inlineCodes = clonedElement.querySelectorAll('code');
-  inlineCodes.forEach(code => {
-    if (!code.closest('pre')) {
-      code.setAttribute('class', 'docs-inline-code');
-    }
-  });
-  
-  // Improve blockquotes
-  const blockquotes = clonedElement.querySelectorAll('blockquote');
-  blockquotes.forEach(quote => {
-    quote.setAttribute('class', 'docs-blockquote');
-  });
-  
-  // Improve tables
-  const tables = clonedElement.querySelectorAll('table');
-  tables.forEach(table => {
-    table.setAttribute('class', 'docs-table');
-    // Wrap table in a container for better responsive behavior
-    const wrapper = document.createElement('div');
-    wrapper.setAttribute('class', 'docs-table-wrapper');
-    table.parentNode?.insertBefore(wrapper, table);
-    wrapper.appendChild(table);
-  });
-  
-  // Improve images
-  const images = clonedElement.querySelectorAll('img');
-  console.log(`Found ${images.length} images to process`);
-  
-  images.forEach((img, index) => {
-    img.setAttribute('class', 'docs-image');
-    
-    // Handle both src and data-src attributes (for lazy loading)
-    const src = img.getAttribute('src');
-    const dataSrc = img.getAttribute('data-src');
-    const originalSrc = dataSrc || src; // Prefer data-src if available
-    
-    console.log(`Processing image ${index + 1}: src="${src}", data-src="${dataSrc}", using="${originalSrc}"`);
-    
-    if (originalSrc) {
-      let newSrc = originalSrc;
-      
-      // Handle different URL patterns
-      if (originalSrc.startsWith('/media/')) {
-        // Grafana media URLs like /media/docs/grafana/panels-visualizations/screenshot-panel-overview-ann-v11.0.png
-        newSrc = `https://grafana.com${originalSrc}`;
-      } else if (originalSrc.startsWith('/static/')) {
-        // Static assets
-        newSrc = `https://grafana.com${originalSrc}`;
-      } else if (originalSrc.startsWith('/img/')) {
-        // Image assets
-        newSrc = `https://grafana.com${originalSrc}`;
-      } else if (originalSrc.startsWith('/') && !originalSrc.startsWith('//')) {
-        // Other root-relative URLs
-        newSrc = `https://grafana.com${originalSrc}`;
-      } else if (originalSrc.startsWith('./')) {
-        // Same-directory relative URLs
-        newSrc = `https://grafana.com/docs/${originalSrc.substring(2)}`;
-      } else if (originalSrc.startsWith('../')) {
-        // Parent-directory relative URLs
-        newSrc = `https://grafana.com/docs/${originalSrc.replace(/^\.\.\//, '')}`;
-      } else if (!originalSrc.startsWith('http') && !originalSrc.startsWith('//') && !originalSrc.startsWith('data:')) {
-        // Other relative URLs (but not data URLs)
-        newSrc = `https://grafana.com/docs/${originalSrc}`;
-      }
-      
-      if (newSrc !== originalSrc) {
-        console.log(`Updated image src from "${originalSrc}" to "${newSrc}"`);
-        // Set both src and remove data-src to disable lazy loading
-        img.setAttribute('src', newSrc);
-        img.removeAttribute('data-src');
-        // Remove lazy loading classes
-        img.classList.remove('lazyload', 'lazyloaded', 'ls-is-cached');
-      } else if (dataSrc && !src) {
-        // If we have data-src but no src, copy data-src to src
-        img.setAttribute('src', dataSrc);
-        img.removeAttribute('data-src');
-        img.classList.remove('lazyload', 'lazyloaded', 'ls-is-cached');
-      }
-    }
-    
-    // Handle srcset for responsive images
-    const srcset = img.getAttribute('srcset');
-    const dataSrcset = img.getAttribute('data-srcset');
-    const originalSrcset = dataSrcset || srcset;
-    
-    if (originalSrcset) {
-      console.log(`Processing srcset: ${originalSrcset}`);
-      // Handle srcset which can contain multiple URLs
-      const fixedSrcset = originalSrcset.replace(/([^,\s]+)/g, (url) => {
-        if (url.startsWith('/media/') || url.startsWith('/static/') || url.startsWith('/img/')) {
-          return `https://grafana.com${url}`;
-        } else if (url.startsWith('/') && !url.startsWith('//')) {
-          return `https://grafana.com${url}`;
-        }
-        return url;
-      });
-      img.setAttribute('srcset', fixedSrcset);
-      img.removeAttribute('data-srcset');
-      console.log(`Updated srcset to: ${fixedSrcset}`);
-    }
-    
-    // Add error handling for broken images with debugging
-    img.setAttribute('onerror', `
-      console.warn('Failed to load image:', this.src);
-      this.style.display='none';
-      this.setAttribute('data-load-failed', 'true');
-    `);
-    
-    // Add load success handler for debugging
-    img.setAttribute('onload', `
-      console.log('Successfully loaded image:', this.src);
-      this.setAttribute('data-load-success', 'true');
-    `);
-    
-    // Remove lazy loading attribute since we're loading immediately
-    img.removeAttribute('loading');
-    
-    // Add alt text if missing
-    if (!img.getAttribute('alt')) {
-      img.setAttribute('alt', 'Documentation image');
-    }
-    
-    // Wrap images in a container
-    const wrapper = document.createElement('div');
-    wrapper.setAttribute('class', 'docs-image-wrapper');
-    img.parentNode?.insertBefore(wrapper, img);
-    wrapper.appendChild(img);
-  });
-  
-  return clonedElement.innerHTML;
-}
-
-/**
- * Clean up extracted content for better display
- */
-function cleanupContent(content: string): string {
-  return content
-    // Remove script tags
-    .replace(/<script[^>]*>.*?<\/script>/gis, '')
-    // Remove style tags
-    .replace(/<style[^>]*>.*?<\/style>/gis, '')
-    // Remove comments
-    .replace(/<!--.*?-->/gis, '')
-    // Remove empty elements
-    .replace(/<(\w+)[^>]*>\s*<\/\1>/g, '')
-    // Fix image URLs - handle various patterns
-    .replace(/src="\/([^"]*)/g, 'src="https://grafana.com/$1')
-    .replace(/src="\.\.\/([^"]*)/g, 'src="https://grafana.com/$1')
-    .replace(/src="\.\/([^"]*)/g, 'src="https://grafana.com/$1')
-    // Fix srcset attributes for responsive images
-    .replace(/srcset="\/([^"]*)/g, 'srcset="https://grafana.com/$1')
-    .replace(/srcset="\.\.\/([^"]*)/g, 'srcset="https://grafana.com/$1')
-    .replace(/srcset="\.\/([^"]*)/g, 'srcset="https://grafana.com/$1')
-    // Only fix absolute links that start with /docs/ - leave relative links alone
-    .replace(/href="\/docs\/([^"]*)/g, 'href="https://grafana.com/docs/$1')
-    // Remove empty paragraphs
-    .replace(/<p[^>]*>\s*<\/p>/g, '')
-    // Clean up excessive whitespace
-    .replace(/\s+/g, ' ')
-    // Remove common unwanted elements
-    .replace(/<button[^>]*>.*?<\/button>/gis, '')
-    .replace(/class="[^"]*cookie[^"]*"/gi, '')
-    .replace(/class="[^"]*banner[^"]*"/gi, '')
-    .replace(/class="[^"]*advertisement[^"]*"/gi, '')
-    // Remove data attributes that might cause issues
-    .replace(/data-[^=]*="[^"]*"/g, '')
-    .trim();
-}
-
-/**
- * Get documentation for a specific route with multiple fallback strategies
- */
-export async function getDocsForRoute(routePath: string): Promise<DocsContent | null> {
-  let route: DocsRoute | null = null;
-  let cacheKey: string;
-  
-  // Check if this is a direct documentation URL
-  if (routePath.includes('grafana.com/docs')) {
-    // Extract the path from the URL for caching
-    const urlMatch = routePath.match(/grafana\.com\/docs\/(.+)/);
-    const docPath = urlMatch ? urlMatch[1] : routePath;
-    cacheKey = `direct-${docPath}`;
-    
-    // Create a temporary route object for direct URLs
-    route = {
-      path: docPath,
-      docsUrl: routePath,
-      title: 'Documentation',
-      patterns: []
-    };
-    
-    console.log(`Direct documentation URL: ${routePath}`);
-  } else {
-    // Use smart context detection for Grafana UI paths
-    route = detectDocsContext(routePath);
-    if (!route) {
-      return null;
-    }
-    cacheKey = route.path;
-    console.log(`Detected context: ${route.title} for path: ${routePath}`);
-  }
-  
-  // Try cached content first (if fresh)
-  const cached = getCachedDocs(cacheKey);
-  if (cached && isContentFresh(cached.lastFetched)) {
-    console.log('Using fresh cached content');
-    return cached;
-  }
-  
-  // Try multiple fetching strategies
-  const strategies = [
-    () => fetchDocsDirect(route.docsUrl),
-    () => fetchDocsWithProxy(route.docsUrl),
-    () => fetchDocsWithScraper(route.docsUrl),
-  ];
-  
-  for (const strategy of strategies) {
-    try {
-      const content = await strategy();
-      if (content) {
-        // Cache the successful content
-        try {
-          localStorage.setItem(`docs-cache-${cacheKey}`, JSON.stringify(content));
-        } catch (error) {
-          console.warn('Failed to cache content:', error);
-        }
-        return content;
-      }
-    } catch (error) {
-      console.warn('Strategy failed:', error);
-      continue;
-    }
-  }
-  
-  // If all strategies fail, return stale cache or fallback content
-  if (cached) {
-    console.log('Using stale cached content');
-    return cached;
-  }
-  
-  // For direct URLs, don't use fallback content since we don't have a proper route
-  if (routePath.includes('grafana.com/docs')) {
-    console.log('No content available for direct URL');
+  // If we're on milestone 1, can't go back (cover page isn't navigable via previous)
+  if (content.currentMilestone <= 1) {
+    console.log(`❌ Cannot go back from milestone ${content.currentMilestone}`);
     return null;
   }
   
-  console.log('No content available, all strategies failed');
+  // If we're on a milestone > 1, go to the previous one
+  if (content.currentMilestone > 1 && content.currentMilestone <= content.totalMilestones) {
+    const prevMilestone = content.milestones.find(m => m.number === content.currentMilestone - 1);
+    if (prevMilestone) {
+      console.log(`📍 From milestone ${content.currentMilestone} -> milestone ${prevMilestone.number}: ${prevMilestone.url}`);
+      return prevMilestone.url;
+    }
+  }
+  
+  console.log(`❌ No previous milestone available from current: ${content.currentMilestone}`);
   return null;
 }
 
 /**
- * Check if cached content is still fresh (less than 1 hour old)
+ * Clear learning journey cache
  */
-function isContentFresh(lastFetched: string): boolean {
-  const oneHour = 60 * 60 * 1000;
-  const fetchTime = new Date(lastFetched).getTime();
-  const now = new Date().getTime();
-  return (now - fetchTime) < oneHour;
-}
-
-/**
- * Clear all cached documentation
- */
-export function clearDocsCache(): void {
-  // Clear predefined route caches
-  DOCS_ROUTES.forEach(route => {
-    try {
-      localStorage.removeItem(`docs-cache-${route.path}`);
-    } catch (error) {
-      console.warn('Failed to clear cache for', route.path, error);
-    }
-  });
-  
-  // Clear direct URL caches (they start with 'direct-')
+export function clearLearningJourneyCache(): void {
   try {
+    // Clear localStorage cache
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.startsWith('docs-cache-direct-')) {
+      if (key && key.startsWith('journey-cache-')) {
         keysToRemove.push(key);
       }
     }
@@ -733,8 +594,109 @@ export function clearDocsCache(): void {
       localStorage.removeItem(key);
     });
     
-    console.log(`Cleared ${keysToRemove.length} direct URL caches`);
+    // Clear milestone cache
+    milestoneCache.clear();
+    
+    // Clear content cache
+    contentCache.clear();
+    
+    console.log(`Cleared ${keysToRemove.length} learning journey caches, milestone cache, and content cache`);
   } catch (error) {
-    console.warn('Failed to clear direct URL caches:', error);
+    console.warn('Failed to clear learning journey cache:', error);
   }
 }
+
+/**
+ * Clear cache for a specific learning journey
+ */
+export function clearSpecificJourneyCache(baseUrl: string): void {
+  try {
+    const journeyBaseUrl = getLearningJourneyBaseUrl(baseUrl);
+    
+    // Clear content cache for all URLs related to this journey
+    const urlsToRemove: string[] = [];
+    contentCache.forEach((_, url) => {
+      if (url.startsWith(journeyBaseUrl)) {
+        urlsToRemove.push(url);
+      }
+    });
+    
+    urlsToRemove.forEach(url => {
+      contentCache.delete(url);
+    });
+    
+    // Clear milestone cache for this journey
+    milestoneCache.delete(journeyBaseUrl);
+    
+    // Clear localStorage cache for this journey
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('journey-cache-') && key.includes(encodeURIComponent(journeyBaseUrl))) {
+        keysToRemove.push(key);
+      }
+    }
+    
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key);
+    });
+    
+    console.log(`Cleared cache for journey: ${journeyBaseUrl} (${urlsToRemove.length} content entries, ${keysToRemove.length} localStorage entries)`);
+  } catch (error) {
+    console.warn('Failed to clear specific journey cache:', error);
+  }
+}
+
+/**
+ * Find current milestone number from URL
+ */
+function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
+  console.log(`Finding milestone for URL: ${url}`);
+  console.log(`Available milestones:`, milestones.map(m => ({ number: m.number, url: m.url })));
+  
+  // First try exact URL match
+  for (const milestone of milestones) {
+    if (milestone.url === url) {
+      console.log(`✅ Exact URL match found: milestone ${milestone.number}`);
+      return milestone.number;
+    }
+  }
+  
+  // Then try exact match with trailing slash variations
+  const urlWithSlash = url.endsWith('/') ? url : url + '/';
+  const urlWithoutSlash = url.endsWith('/') ? url.slice(0, -1) : url;
+  
+  for (const milestone of milestones) {
+    if (milestone.url === urlWithSlash || milestone.url === urlWithoutSlash) {
+      console.log(`✅ URL match with slash variation found: milestone ${milestone.number}`);
+      return milestone.number;
+    }
+  }
+  
+  // Then try partial URL match by comparing path segments
+  const urlParts = url.replace(/\/$/, '').split('/');
+  const currentUrlSegment = urlParts[urlParts.length - 1];
+  
+  for (const milestone of milestones) {
+    const milestoneUrlParts = milestone.url.replace(/\/$/, '').split('/');
+    const milestoneUrlSegment = milestoneUrlParts[milestoneUrlParts.length - 1];
+    
+    if (currentUrlSegment && milestoneUrlSegment && currentUrlSegment === milestoneUrlSegment) {
+      console.log(`✅ Path segment match found: milestone ${milestone.number} (${currentUrlSegment})`);
+      return milestone.number;
+    }
+  }
+  
+  // Last resort: try to extract number from URL
+  const milestoneMatch = url.match(/milestone[-_]?(\d+)|step[-_]?(\d+)|(\d+)(?:[-_]|$)/i);
+  if (milestoneMatch) {
+    const milestoneNum = parseInt(milestoneMatch[1] || milestoneMatch[2] || milestoneMatch[3]);
+    if (milestoneNum > 0 && milestoneNum <= milestones.length) {
+      console.log(`📍 Number extraction match: milestone ${milestoneNum}`);
+      return milestoneNum;
+    }
+  }
+  
+  console.log(`❌ No milestone match found, defaulting to milestone 1`);
+  return 1;
+} 
