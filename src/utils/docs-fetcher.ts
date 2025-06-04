@@ -31,8 +31,11 @@ export interface LearningJourneyTab {
 const CORS_PROXIES = [
   'https://api.allorigins.win/get?url=',
   'https://corsproxy.io/?',
-  // Remove problematic proxies that are causing issues
 ];
+
+// Simple in-memory cache for content
+const contentCache = new Map<string, { content: LearningJourneyContent; timestamp: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // Cache for storing milestone information from cover pages
 const milestoneCache = new Map<string, Milestone[]>();
@@ -196,6 +199,12 @@ function extractMainContent(doc: Document, isCoverPage: boolean): string {
 function processLearningJourneyContent(element: Element, isCoverPage: boolean): string {
   const clonedElement = element.cloneNode(true) as Element;
   
+  // Remove unwanted navigation elements
+  const unwantedElements = clonedElement.querySelectorAll(
+    '.journey-pagination__grid, .milestone-bottom'
+  );
+  unwantedElements.forEach(el => el.remove());
+  
   // For cover pages, add our own "Start Journey" button
   if (isCoverPage) {
     const startButton = document.createElement('div');
@@ -258,22 +267,29 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
 export async function fetchLearningJourneyContent(url: string): Promise<LearningJourneyContent | null> {
   console.log(`Fetching learning journey content from: ${url}`);
   
+  // Check cache first
+  const cached = contentCache.get(url);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    console.log('Returning cached content for:', url);
+    return cached.content;
+  }
+  
   // Check if this looks like a cover page vs milestone page
   const isCoverPageUrl = url.endsWith('/') && !url.includes('/business-value') && !url.includes('/when-to') && !url.includes('/verify');
   console.log(`URL appears to be cover page: ${isCoverPageUrl}`);
   
-  // Try multiple fetching strategies
+  // Try multiple fetching strategies with faster timeouts
   const strategies = [
-    () => fetchWithProxy(url),
-    () => fetchDirect(url),
+    () => fetchWithProxyFast(url),
+    () => fetchDirectFast(url),
   ];
   
   // For milestone pages, also try adding trailing slash if missing
   if (!isCoverPageUrl && !url.endsWith('/')) {
     const urlWithSlash = url + '/';
     console.log(`Also trying milestone URL with trailing slash: ${urlWithSlash}`);
-    strategies.unshift(() => fetchWithProxy(urlWithSlash));
-    strategies.unshift(() => fetchDirect(urlWithSlash));
+    strategies.unshift(() => fetchWithProxyFast(urlWithSlash));
+    strategies.unshift(() => fetchDirectFast(urlWithSlash));
   }
   
   for (let i = 0; i < strategies.length; i++) {
@@ -288,6 +304,10 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
         console.log(`Strategy ${strategyName} succeeded, content length: ${htmlContent.length}`);
         const content = extractLearningJourneyContent(htmlContent, url);
         console.log(`Extracted content: ${content.title}, milestones: ${content.milestones.length}`);
+        
+        // Cache the result
+        contentCache.set(url, { content, timestamp: Date.now() });
+        
         return content;
       } else {
         console.warn(`Strategy ${strategyName} returned empty content`);
@@ -303,10 +323,11 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
 }
 
 /**
- * Fetch with CORS proxy
+ * Fetch with CORS proxy (faster version)
  */
-async function fetchWithProxy(url: string): Promise<string | null> {
-  for (const proxy of CORS_PROXIES) {
+async function fetchWithProxyFast(url: string): Promise<string | null> {
+  // Try all proxies in parallel with faster timeout
+  const proxyPromises = CORS_PROXIES.map(async (proxy) => {
     try {
       console.log(`Trying proxy: ${proxy}`);
       let proxyUrl: string;
@@ -319,6 +340,7 @@ async function fetchWithProxy(url: string): Promise<string | null> {
           headers: {
             'Accept': 'application/json',
           },
+          signal: AbortSignal.timeout(8000), // 8 second timeout
         });
         
         if (!response.ok) {
@@ -340,6 +362,7 @@ async function fetchWithProxy(url: string): Promise<string | null> {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'User-Agent': 'Mozilla/5.0 (compatible; GrafanaLearningJourney/1.0)',
           },
+          signal: AbortSignal.timeout(8000), // 8 second timeout
         });
         
         if (!response.ok) {
@@ -352,17 +375,23 @@ async function fetchWithProxy(url: string): Promise<string | null> {
       }
     } catch (error) {
       console.warn(`Proxy ${proxy} failed:`, error);
-      continue;
+      throw error;
     }
-  }
+  });
   
-  return null;
+  // Return the first successful result
+  try {
+    return await Promise.any(proxyPromises);
+  } catch (error) {
+    console.warn('All proxies failed');
+    return null;
+  }
 }
 
 /**
- * Try direct fetch
+ * Try direct fetch (faster version)
  */
-async function fetchDirect(url: string): Promise<string | null> {
+async function fetchDirectFast(url: string): Promise<string | null> {
   try {
     console.log('Trying direct fetch...');
     const response = await fetch(url, {
@@ -372,6 +401,7 @@ async function fetchDirect(url: string): Promise<string | null> {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'User-Agent': 'Mozilla/5.0 (compatible; GrafanaLearningJourney/1.0)',
       },
+      signal: AbortSignal.timeout(5000), // 5 second timeout
     });
     
     if (!response.ok) {
@@ -430,7 +460,10 @@ export function clearLearningJourneyCache(): void {
     // Clear milestone cache
     milestoneCache.clear();
     
-    console.log(`Cleared ${keysToRemove.length} learning journey caches and milestone cache`);
+    // Clear content cache
+    contentCache.clear();
+    
+    console.log(`Cleared ${keysToRemove.length} learning journey caches, milestone cache, and content cache`);
   } catch (error) {
     console.warn('Failed to clear learning journey cache:', error);
   }
