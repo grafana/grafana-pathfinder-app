@@ -687,33 +687,6 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
     }
   }
   
-  // Fallback to URL pattern matching for known patterns
-  console.log(`⚠️ No direct match found, trying pattern matching...`);
-  const urlLower = url.toLowerCase();
-  
-  if (urlLower.includes('business-value') || urlLower.includes('why-')) {
-    console.log(`📍 Pattern match: business-value/why -> milestone 1`);
-    return 1;
-  } else if (urlLower.includes('when-to') || urlLower.includes('install') || urlLower.includes('connect')) {
-    console.log(`📍 Pattern match: when-to/install/connect -> milestone 2`);
-    return 2;
-  } else if (urlLower.includes('verify') || urlLower.includes('configure') || urlLower.includes('test')) {
-    console.log(`📍 Pattern match: verify/configure/test -> milestone 3`);
-    return 3;
-  } else if (urlLower.includes('explore') || urlLower.includes('discover')) {
-    console.log(`📍 Pattern match: explore/discover -> milestone 4`);
-    return 4;
-  } else if (urlLower.includes('create') || urlLower.includes('build')) {
-    console.log(`📍 Pattern match: create/build -> milestone 5`);
-    return 5;
-  } else if (urlLower.includes('import') || urlLower.includes('upload')) {
-    console.log(`📍 Pattern match: import/upload -> milestone 6`);
-    return 6;
-  } else if (urlLower.includes('query') || urlLower.includes('search')) {
-    console.log(`📍 Pattern match: query/search -> milestone 7`);
-    return 7;
-  }
-  
   // Last resort: try to extract number from URL
   const milestoneMatch = url.match(/milestone[-_]?(\d+)|step[-_]?(\d+)|(\d+)(?:[-_]|$)/i);
   if (milestoneMatch) {
