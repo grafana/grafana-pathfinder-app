@@ -315,6 +315,20 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         <div className={styles.actions}>
           {!isRecommendationsTab && activeTab && (
             <>
+              {activeTab.content?.videoUrl && (
+                <IconButton
+                  name="play"
+                  aria-label="Watch video"
+                  onClick={() => {
+                    if (activeTab.content?.videoUrl) {
+                      window.open(activeTab.content.videoUrl, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                  tooltip="Watch video for this page"
+                  tooltipPlacement="left"
+                  className={styles.videoButton}
+                />
+              )}
               <IconButton
                 name="external-link-alt"
                 aria-label="Open original documentation"
@@ -873,6 +887,139 @@ const getStyles = (theme: GrafanaTheme2) => ({
     '& li': {
       marginBottom: theme.spacing(1),
     },
+    
+    // Video link styling
+    '& a[data-video-link="true"], & .journey-video-link': {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      color: theme.colors.primary.main,
+      textDecoration: 'none',
+      fontWeight: theme.typography.fontWeightMedium,
+      fontSize: theme.typography.body.fontSize,
+      padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+      borderRadius: theme.shape.radius.default,
+      border: `1px solid ${theme.colors.border.weak}`,
+      backgroundColor: 'transparent',
+      transition: 'all 0.2s ease',
+      margin: `${theme.spacing(1)} 0`,
+      
+      '&:hover': {
+        backgroundColor: theme.colors.action.hover,
+        borderColor: theme.colors.primary.main,
+        textDecoration: 'none',
+        transform: 'translateY(-1px)',
+      },
+      
+      '& .journey-video-icon': {
+        fontSize: '14px',
+        lineHeight: 1,
+      },
+    },
+    
+    // YouTube thumbnail styling
+    '& .journey-video-thumbnail': {
+      display: 'block',
+      margin: `${theme.spacing(3)} 0`,
+      cursor: 'pointer',
+      borderRadius: theme.shape.radius.default,
+      overflow: 'hidden',
+      boxShadow: theme.shadows.z1,
+      transition: 'all 0.3s ease',
+      backgroundColor: theme.colors.background.secondary,
+      maxWidth: '560px',
+      
+      '&:hover': {
+        boxShadow: theme.shadows.z3,
+        transform: 'translateY(-2px)',
+      },
+    },
+    
+    '& .video-thumbnail-wrapper': {
+      position: 'relative',
+      paddingBottom: '56.25%', // 16:9 aspect ratio
+      height: 0,
+      overflow: 'hidden',
+    },
+    
+    '& .video-thumbnail-image': {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover',
+      transition: 'transform 0.3s ease',
+    },
+    
+    '& .video-play-overlay': {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'rgba(0, 0, 0, 0.3)',
+      transition: 'background 0.3s ease',
+    },
+    
+    '& .video-play-button': {
+      width: '68px',
+      height: '48px',
+      backgroundColor: '#ff0000',
+      borderRadius: '6px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: 'white',
+      transition: 'all 0.3s ease',
+      
+      '& svg': {
+        marginLeft: '2px', // Slight offset to center the play triangle
+      },
+    },
+    
+    '& .video-thumbnail-title': {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.8))',
+      color: 'white',
+      padding: `${theme.spacing(2)} ${theme.spacing(1.5)}`,
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
+    },
+    
+    '& .journey-video-thumbnail:hover .video-thumbnail-image': {
+      transform: 'scale(1.05)',
+    },
+    
+    '& .journey-video-thumbnail:hover .video-play-overlay': {
+      background: 'rgba(0, 0, 0, 0.2)',
+    },
+    
+    '& .journey-video-thumbnail:hover .video-play-button': {
+      backgroundColor: '#cc0000',
+      transform: 'scale(1.1)',
+    },
+    
+    // Clean text links for non-YouTube videos
+    '& .journey-video-text-link': {
+      display: 'inline-flex',
+      alignItems: 'center',
+      color: theme.colors.primary.main,
+      textDecoration: 'none',
+      fontWeight: theme.typography.fontWeightMedium,
+      padding: `${theme.spacing(0.5)} 0`,
+      
+      '&:hover': {
+        textDecoration: 'underline',
+      },
+    },
   }),
   tabBar: css({
     label: 'combined-journey-tab-bar',
@@ -1024,6 +1171,19 @@ const getStyles = (theme: GrafanaTheme2) => ({
         minWidth: '32px',
         height: '32px',
       },
+    },
+  }),
+  videoButton: css({
+    label: 'combined-journey-video-button',
+    padding: theme.spacing(0.25),
+    margin: 0,
+    minWidth: 'auto',
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    flexShrink: 0,
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
     },
   }),
 });

@@ -6,6 +6,7 @@ export interface LearningJourneyContent {
   totalMilestones: number;
   milestones: Milestone[];
   lastFetched: string;
+  videoUrl?: string; // YouTube video URL for this page
 }
 
 export interface Milestone {
@@ -160,16 +161,17 @@ function extractLearningJourneyContent(html: string, url: string): LearningJourn
     }
     
     // Extract main content
-    const content = extractMainContent(doc, currentMilestone === 0);
+    const mainContentResult = extractMainContent(doc, currentMilestone === 0);
     
     return {
       title,
-      content,
+      content: mainContentResult.content,
       url,
       currentMilestone,
       totalMilestones,
       milestones,
-      lastFetched: new Date().toISOString()
+      lastFetched: new Date().toISOString(),
+      videoUrl: mainContentResult.videoUrl
     };
   } catch (error) {
     console.warn('Failed to parse learning journey content:', error);
@@ -188,12 +190,14 @@ function extractLearningJourneyContent(html: string, url: string): LearningJourn
 /**
  * Extract main content from learning journey HTML
  */
-function extractMainContent(doc: Document, isCoverPage: boolean): string {
+function extractMainContent(doc: Document, isCoverPage: boolean): { content: string; videoUrl?: string } {
   // Find the main content section
   const contentElement = doc.querySelector('.journey-grid__content');
   
   if (!contentElement) {
-    return 'Content not available - journey-grid__content section not found';
+    return {
+      content: 'Content not available - journey-grid__content section not found'
+    };
   }
   
   // Process the content
@@ -204,14 +208,84 @@ function extractMainContent(doc: Document, isCoverPage: boolean): string {
 /**
  * Process learning journey content for better display
  */
-function processLearningJourneyContent(element: Element, isCoverPage: boolean): string {
+function processLearningJourneyContent(element: Element, isCoverPage: boolean): { content: string; videoUrl?: string } {
   const clonedElement = element.cloneNode(true) as Element;
+  let extractedVideoUrl: string | undefined;
   
   // Remove unwanted navigation elements
   const unwantedElements = clonedElement.querySelectorAll(
     '.journey-pagination__grid, .milestone-bottom'
   );
   unwantedElements.forEach(el => el.remove());
+  
+  // Extract and remove video containers
+  const videoContainers = clonedElement.querySelectorAll('.docs-video__trigger');
+  videoContainers.forEach(container => {
+    const button = container.querySelector('button[data-embed]');
+    
+    if (button) {
+      const videoId = button.getAttribute('data-embed');
+      
+      if (videoId && !extractedVideoUrl) {
+        // Take the first video we find for this page
+        extractedVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        console.log(`🎥 Extracted video URL: ${extractedVideoUrl}`);
+      }
+    }
+    
+    // Remove the entire video container from content
+    container.remove();
+  });
+  
+  // Also remove any remaining video-related elements
+  const videoButtons = clonedElement.querySelectorAll('button[data-embed], .youtube-lazyload, .responsive-video');
+  videoButtons.forEach(button => button.remove());
+  
+  // Remove any standalone "Watch video" links and extract URLs
+  const links = clonedElement.querySelectorAll('a[href]');
+  links.forEach(link => {
+    const href = link.getAttribute('href');
+    const linkText = link.textContent?.toLowerCase() || '';
+    
+    if (href) {
+      // Check if this is a video link
+      const isVideoLink = linkText.includes('watch video') || 
+                         linkText.includes('video') ||
+                         linkText.includes('watch');
+      
+      if (isVideoLink) {
+        console.log(`🎥 Found video link: "${linkText}" -> ${href}`);
+        
+        // Fix relative video URLs
+        let videoUrl = href;
+        if (href.startsWith('/')) {
+          videoUrl = `https://grafana.com${href}`;
+        } else if (href.startsWith('./')) {
+          videoUrl = `https://grafana.com/docs/${href.substring(2)}`;
+        } else if (href.startsWith('../')) {
+          videoUrl = `https://grafana.com/docs/${href.replace(/^\.\.\//, '')}`;
+        }
+        
+        // Try to extract YouTube ID and convert to clean YouTube URL
+        const youtubeId = extractYouTubeVideoId(videoUrl);
+        if (youtubeId && !extractedVideoUrl) {
+          extractedVideoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+          console.log(`🎥 Extracted YouTube URL: ${extractedVideoUrl}`);
+        } else if (!extractedVideoUrl) {
+          extractedVideoUrl = videoUrl;
+          console.log(`🎥 Extracted video URL: ${extractedVideoUrl}`);
+        }
+        
+        // Remove the video link from content
+        link.remove();
+      } else {
+        // Regular links - just ensure they open in new tabs
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener noreferrer');
+        link.setAttribute('data-journey-link', 'true');
+      }
+    }
+  });
   
   // For cover pages, add our own "Start Journey" button
   if (isCoverPage) {
@@ -303,19 +377,29 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
     }
   });
   
-  // Process links to open in new tabs
-  const links = clonedElement.querySelectorAll('a[href]');
-  links.forEach(link => {
-    const href = link.getAttribute('href');
-    if (href) {
-      // Mark all links as external to open in new tabs
-      link.setAttribute('target', '_blank');
-      link.setAttribute('rel', 'noopener noreferrer');
-      link.setAttribute('data-journey-link', 'true');
-    }
-  });
+  return {
+    content: clonedElement.innerHTML,
+    videoUrl: extractedVideoUrl
+  };
+}
+
+/**
+ * Extract YouTube video ID from various YouTube URL formats
+ */
+function extractYouTubeVideoId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([^&\n?#]+)/,
+    /youtube\.com\/watch\?.*v=([^&\n?#]+)/,
+  ];
   
-  return clonedElement.innerHTML;
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return null;
 }
 
 /**
