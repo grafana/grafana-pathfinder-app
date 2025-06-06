@@ -258,6 +258,54 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     }
   }, [model, activeTab?.content]);
 
+  // Process tables and add expand/collapse functionality
+  useEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement) return;
+
+    // Handle table expand/collapse functionality
+    const expandTableButtons = contentElement.querySelectorAll('.expand-table-btn');
+    
+    expandTableButtons.forEach((button) => {
+      // Skip if button already has event listener
+      if (button.hasAttribute('data-table-listener')) return;
+      
+      const expandWrapper = button.closest('.expand-table-wrapper');
+      const tableWrapper = expandWrapper?.querySelector('.responsive-table-wrapper');
+      
+      if (tableWrapper) {
+        // Initially show the table (expanded by default)
+        tableWrapper.classList.remove('collapsed');
+        button.classList.add('expanded');
+        
+        const handleClick = (e: Event) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          const isExpanded = !tableWrapper.classList.contains('collapsed');
+          
+          if (isExpanded) {
+            // Collapse the table
+            tableWrapper.classList.add('collapsed');
+            button.classList.remove('expanded');
+            button.textContent = 'Expand table';
+          } else {
+            // Expand the table
+            tableWrapper.classList.remove('collapsed');
+            button.classList.add('expanded');
+            button.textContent = 'Collapse table';
+          }
+        };
+        
+        button.addEventListener('click', handleClick);
+        button.setAttribute('data-table-listener', 'true');
+        
+        // Set initial button text
+        button.textContent = 'Collapse table';
+      }
+    });
+  }, [activeTab?.content]);
+
   // Process code snippets and add copy buttons
   useEffect(() => {
     const contentElement = contentRef.current;
@@ -920,6 +968,24 @@ const getStyles = (theme: GrafanaTheme2) => ({
         },
       },
       
+      // Table responsive adjustments
+      '& .responsive-table-wrapper': {
+        fontSize: theme.typography.bodySmall.fontSize,
+        
+        '& table': {
+          minWidth: '500px', // Ensure table doesn't get too cramped
+        },
+        
+        '& th, & td': {
+          padding: theme.spacing(1),
+        },
+      },
+      
+      '& .expand-table-btn': {
+        fontSize: '12px',
+        padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+      },
+      
       // Code snippet responsive adjustments  
       '& .code-copy-button': {
         padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
@@ -966,6 +1032,19 @@ const getStyles = (theme: GrafanaTheme2) => ({
       
       '& .journey-large': {
         margin: `${theme.spacing(2)} auto`,
+      },
+      
+      // Table responsive adjustments for very small screens
+      '& .responsive-table-wrapper': {
+        '& table': {
+          minWidth: '400px',
+          fontSize: '12px',
+        },
+        
+        '& th, & td': {
+          padding: `${theme.spacing(0.75)} ${theme.spacing(0.5)}`,
+          fontSize: '12px',
+        },
       },
       
       // Code snippet responsive adjustments
@@ -1346,6 +1425,196 @@ const getStyles = (theme: GrafanaTheme2) => ({
       },
     },
     
+    // Table styling for learning journey content
+    '& .expand-table-wrapper': {
+      margin: `${theme.spacing(3)} 0`,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      overflow: 'hidden',
+      backgroundColor: theme.colors.background.secondary,
+    },
+    
+    '& .button-div': {
+      padding: theme.spacing(1),
+      backgroundColor: theme.colors.background.canvas,
+      borderBottom: `1px solid ${theme.colors.border.weak}`,
+    },
+    
+    '& .expand-table-btn': {
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
+      backgroundColor: 'transparent',
+      border: `1px solid ${theme.colors.border.medium}`,
+      borderRadius: theme.shape.radius.default,
+      color: theme.colors.text.primary,
+      cursor: 'pointer',
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      transition: 'all 0.2s ease',
+      
+      '&:hover': {
+        backgroundColor: theme.colors.action.hover,
+        borderColor: theme.colors.border.strong,
+      },
+      
+      '&:after': {
+        content: '"↓"',
+        fontSize: '12px',
+        marginLeft: theme.spacing(0.5),
+        transition: 'transform 0.2s ease',
+      },
+      
+      '&.expanded:after': {
+        transform: 'rotate(180deg)',
+      },
+    },
+    
+    '& .responsive-table-wrapper': {
+      overflow: 'auto',
+      maxHeight: '300px',
+      transition: 'max-height 0.3s ease',
+      
+      '&.collapsed': {
+        maxHeight: '0',
+        overflow: 'hidden',
+      },
+      
+      // Custom scrollbar for table
+      '&::-webkit-scrollbar': {
+        width: '8px',
+        height: '8px',
+      },
+      
+      '&::-webkit-scrollbar-track': {
+        backgroundColor: theme.colors.background.secondary,
+      },
+      
+      '&::-webkit-scrollbar-thumb': {
+        backgroundColor: theme.colors.border.medium,
+        borderRadius: '4px',
+        
+        '&:hover': {
+          backgroundColor: theme.colors.border.strong,
+        },
+      },
+    },
+    
+    '& table': {
+      width: '100%',
+      borderCollapse: 'collapse',
+      fontSize: theme.typography.body.fontSize,
+      lineHeight: 1.5,
+      
+      '& thead': {
+        backgroundColor: theme.colors.background.canvas,
+        borderBottom: `2px solid ${theme.colors.border.medium}`,
+        
+        '& th': {
+          padding: theme.spacing(1.5),
+          textAlign: 'left',
+          fontWeight: theme.typography.fontWeightBold,
+          color: theme.colors.text.primary,
+          fontSize: theme.typography.body.fontSize,
+          borderRight: `1px solid ${theme.colors.border.weak}`,
+          
+          '&:last-child': {
+            borderRight: 'none',
+          },
+        },
+      },
+      
+      '& tbody': {
+        '& tr': {
+          borderBottom: `1px solid ${theme.colors.border.weak}`,
+          transition: 'background-color 0.2s ease',
+          
+          '&:hover': {
+            backgroundColor: theme.colors.action.hover,
+          },
+          
+          '&:last-child': {
+            borderBottom: 'none',
+          },
+        },
+        
+        '& td': {
+          padding: theme.spacing(1.5),
+          verticalAlign: 'top',
+          borderRight: `1px solid ${theme.colors.border.weak}`,
+          color: theme.colors.text.primary,
+          
+          '&:last-child': {
+            borderRight: 'none',
+          },
+          
+          // Support for nested content in table cells
+          '& p': {
+            margin: `${theme.spacing(0.5)} 0`,
+            
+            '&:first-child': {
+              marginTop: 0,
+            },
+            
+            '&:last-child': {
+              marginBottom: 0,
+            },
+          },
+          
+          '& ol, & ul': {
+            margin: `${theme.spacing(0.5)} 0`,
+            paddingLeft: theme.spacing(2.5),
+            
+            '& li': {
+              margin: `${theme.spacing(0.5)} 0`,
+              lineHeight: 1.4,
+              
+              '& p': {
+                margin: `${theme.spacing(0.25)} 0`,
+              },
+            },
+          },
+          
+          '& code': {
+            backgroundColor: theme.colors.background.canvas,
+            border: `1px solid ${theme.colors.border.weak}`,
+            borderRadius: '2px',
+            padding: '2px 4px',
+            fontSize: '0.9em',
+            fontFamily: theme.typography.fontFamilyMonospace,
+          },
+          
+          '& b, & strong': {
+            fontWeight: theme.typography.fontWeightBold,
+            color: theme.colors.text.primary,
+          },
+          
+          '& em, & i': {
+            fontStyle: 'italic',
+          },
+          
+          // Handle buttons and interactive elements in table cells
+          '& button': {
+            backgroundColor: theme.colors.primary.main,
+            color: theme.colors.primary.contrastText,
+            border: 'none',
+            borderRadius: theme.shape.radius.default,
+            padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+            fontSize: theme.typography.bodySmall.fontSize,
+            fontWeight: theme.typography.fontWeightMedium,
+            cursor: 'pointer',
+            
+            '&:hover': {
+              backgroundColor: theme.colors.primary.shade,
+            },
+          },
+        },
+      },
+    },
+    
+
+
     // Handle various code snippet structures from Grafana docs
     '& .code-snippet__border': {
       border: `1px solid ${theme.colors.border.weak}`,
