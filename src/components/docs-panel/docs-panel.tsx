@@ -4,7 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, IconButton, useStyles2, Spinner, Alert } from '@grafana/ui';
-import { locationService } from '@grafana/runtime';
+
 import { 
   fetchLearningJourneyContent, 
   LearningJourneyContent,
@@ -13,7 +13,12 @@ import {
   clearLearningJourneyCache,
   clearSpecificJourneyCache
 } from '../../utils/docs-fetcher';
+import { 
+  fetchSingleDocsContent, 
+  SingleDocsContent 
+} from '../../utils/single-docs-fetcher';
 import { ContextPanel } from './context-panel';
+import { SingleDocsPanel } from './single-docs-panel';
 
 interface LearningJourneyTab {
   id: string;
@@ -22,12 +27,15 @@ interface LearningJourneyTab {
   content: LearningJourneyContent | null;
   isLoading: boolean;
   error: string | null;
+  type?: 'learning-journey' | 'docs';
+  docsContent?: SingleDocsContent | null;
 }
 
 interface CombinedPanelState extends SceneObjectState {
   tabs: LearningJourneyTab[];
   activeTabId: string;
   contextPanel: ContextPanel;
+  singleDocsPanel: SingleDocsPanel;
 }
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
@@ -38,8 +46,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public constructor() {
+    const singleDocsPanel = new SingleDocsPanel();
     const contextPanel = new ContextPanel((url: string, title: string) => {
       this.openLearningJourney(url, title);
+    }, (url: string, title: string) => {
+      this.openDocsPage(url, title);
     });
 
     super({
@@ -55,6 +66,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       ],
       activeTabId: 'recommendations',
       contextPanel,
+      singleDocsPanel,
     });
   }
 
@@ -164,10 +176,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public setActiveTab(tabId: string) {
     this.setState({ activeTabId: tabId });
     
-    // If switching to a learning journey tab that hasn't loaded content yet, load it
+    // If switching to a tab that hasn't loaded content yet, load it
     const tab = this.state.tabs.find(t => t.id === tabId);
-    if (tab && tabId !== 'recommendations' && !tab.content && !tab.isLoading && !tab.error) {
-      this.loadTabContent(tabId, tab.baseUrl);
+    if (tab && tabId !== 'recommendations' && !tab.isLoading && !tab.error) {
+      if (tab.type === 'docs' && !tab.docsContent) {
+        this.loadDocsTabContent(tabId, tab.baseUrl);
+      } else if (tab.type !== 'docs' && !tab.content) {
+        this.loadTabContent(tabId, tab.baseUrl);
+      }
     }
   }
 
@@ -214,10 +230,86 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     const activeTab = this.getActiveTab();
     return activeTab?.content && activeTab.id !== 'recommendations' ? getPreviousMilestoneUrl(activeTab.content) !== null : false;
   }
+
+  public async openDocsPage(url: string, title?: string): Promise<string> {
+    console.log('CombinedLearningJourneyPanel.openDocsPage called with:', { url, title });
+    
+    const tabId = this.generateTabId();
+    const newTab: LearningJourneyTab = {
+      id: tabId,
+      title: title || 'Loading...',
+      baseUrl: url,
+      content: null,
+      isLoading: false,
+      error: null,
+      type: 'docs',
+      docsContent: null,
+    };
+
+    const updatedTabs = [...this.state.tabs, newTab];
+    
+    this.setState({
+      tabs: updatedTabs,
+      activeTabId: tabId,
+    });
+
+    // Load docs content immediately when tab is created and activated
+    await this.loadDocsTabContent(tabId, url);
+    
+    return tabId;
+  }
+
+  public async loadDocsTabContent(tabId: string, url: string) {
+    const tabIndex = this.state.tabs.findIndex(tab => tab.id === tabId);
+    if (tabIndex === -1) return;
+
+    // Update tab to loading state
+    const updatedTabs = [...this.state.tabs];
+    updatedTabs[tabIndex] = {
+      ...updatedTabs[tabIndex],
+      isLoading: true,
+      error: null,
+    };
+    this.setState({ tabs: updatedTabs });
+
+    try {
+      console.log('Loading docs content for:', url);
+      const docsContent = await fetchSingleDocsContent(url);
+      
+      const finalTabs = [...this.state.tabs];
+      const finalTabIndex = finalTabs.findIndex(tab => tab.id === tabId);
+      
+      if (finalTabIndex !== -1) {
+        finalTabs[finalTabIndex] = {
+          ...finalTabs[finalTabIndex],
+          docsContent: docsContent,
+          title: docsContent?.title || finalTabs[finalTabIndex].title,
+          isLoading: false,
+          error: docsContent ? null : 'Failed to load documentation',
+        };
+        this.setState({ tabs: finalTabs });
+        console.log('Successfully loaded docs:', docsContent?.title);
+      }
+    } catch (error) {
+      console.error('Failed to load docs:', error);
+      const errorTabs = [...this.state.tabs];
+      const errorTabIndex = errorTabs.findIndex(tab => tab.id === tabId);
+      
+      if (errorTabIndex !== -1) {
+        errorTabs[errorTabIndex] = {
+          ...errorTabs[errorTabIndex],
+          docsContent: null,
+          isLoading: false,
+          error: error instanceof Error ? error.message : 'Failed to load documentation',
+        };
+        this.setState({ tabs: errorTabs });
+      }
+    }
+  }
 }
 
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
-  const { tabs, activeTabId, contextPanel } = model.useState();
+  const { tabs, activeTabId, contextPanel, singleDocsPanel } = model.useState();
   const styles = useStyles2(getStyles);
   const contentRef = useRef<HTMLDivElement>(null);
   const activeTab = model.getActiveTab();
@@ -499,8 +591,14 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                 name="external-link-alt"
                 aria-label="Open original documentation"
                 onClick={() => {
-                  if (activeTab.content?.url) {
-                    window.open(activeTab.content.url, '_blank', 'noopener,noreferrer');
+                  // For docs tabs, use baseUrl or docsContent.url
+                  // For learning journey tabs, use content.url
+                  const url = activeTab.type === 'docs' 
+                    ? (activeTab.docsContent?.url || activeTab.baseUrl)
+                    : activeTab.content?.url;
+                  
+                  if (url) {
+                    window.open(url, '_blank', 'noopener,noreferrer');
                   }
                 }}
                 tooltip="Open original documentation in new tab"
@@ -528,6 +626,13 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
               onClick={() => model.setActiveTab(tab.id)}
             >
               <div className={styles.tabContent}>
+                {tab.id !== 'recommendations' && (
+                  <Icon 
+                    name={tab.type === 'docs' ? 'file-alt' : 'book'} 
+                    size="xs" 
+                    className={styles.tabIcon} 
+                  />
+                )}
                 <span className={styles.tabTitle} title={tab.title}>
                   {tab.isLoading ? (
                     <>
@@ -557,77 +662,128 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       </div>
 
       <div className={styles.content}>
-        {isRecommendationsTab && (
-          <contextPanel.Component model={contextPanel} />
-        )}
-
-        {!isRecommendationsTab && activeTab?.isLoading && (
-          <div className={styles.loadingContainer}>
-            <Spinner size="lg" />
-            <span>Loading learning journey...</span>
-          </div>
-        )}
-        
-        {!isRecommendationsTab && activeTab?.error && !activeTab.isLoading && (
-          <Alert severity="error" title="Learning Journey">
-            {activeTab.error}
-          </Alert>
-        )}
-        
-        {!isRecommendationsTab && activeTab?.content && !activeTab.isLoading && (
-          <div className={styles.journeyContent}>
-            {/* Milestone Progress - only show for milestone pages (currentMilestone > 0) */}
-            {activeTab.content.currentMilestone > 0 && activeTab.content.milestones.length > 0 && (
-              <div className={styles.milestoneProgress}>
-                <div className={styles.progressInfo}>
-                  <div className={styles.progressHeader}>
-                    <span>Milestone {activeTab.content.currentMilestone} of {activeTab.content.totalMilestones}</span>
-                    <div className={styles.milestoneNavigation}>
-                      <IconButton
-                        name="arrow-left"
-                        size="sm"
-                        aria-label="Previous milestone"
-                        onClick={() => model.navigateToPreviousMilestone()}
-                        tooltip="Previous milestone (Alt + ←)"
-                        tooltipPlacement="top"
-                        disabled={!model.canNavigatePrevious() || activeTab.isLoading}
-                      />
-                      <IconButton
-                        name="arrow-right"
-                        size="sm"
-                        aria-label="Next milestone"
-                        onClick={() => model.navigateToNextMilestone()}
-                        tooltip="Next milestone (Alt + →)"
-                        tooltipPlacement="top"
-                        disabled={!model.canNavigateNext() || activeTab.isLoading}
-                      />
+        {(() => {
+          // Show recommendations tab
+          if (isRecommendationsTab) {
+            return <contextPanel.Component model={contextPanel} />;
+          }
+          
+          // Show loading state
+          if (!isRecommendationsTab && activeTab?.isLoading) {
+            return (
+              <div className={styles.loadingContainer}>
+                <Spinner size="lg" />
+                <span>Loading {activeTab.type === 'docs' ? 'documentation' : 'learning journey'}...</span>
+              </div>
+            );
+          }
+          
+          // Show error state
+          if (!isRecommendationsTab && activeTab?.error && !activeTab.isLoading) {
+            return (
+              <Alert severity="error" title={activeTab.type === 'docs' ? 'Documentation' : 'Learning Journey'}>
+                {activeTab.error}
+              </Alert>
+            );
+          }
+          
+          // Show docs content
+          if (!isRecommendationsTab && activeTab?.type === 'docs' && activeTab?.docsContent && !activeTab.isLoading) {
+            return (
+              <div className={styles.docsContent}>
+                <div className={styles.contentMeta}>
+                  <div className={styles.metaInfo}>
+                    <span>Documentation</span>
+                    {activeTab.docsContent.breadcrumbs && activeTab.docsContent.breadcrumbs.length > 0 && (
+                      <span className={styles.breadcrumbs}>
+                        {activeTab.docsContent.breadcrumbs.join(' > ')}
+                      </span>
+                    )}
+                  </div>
+                  <small>
+                    Last updated: {new Date(activeTab.docsContent.lastFetched).toLocaleString()}
+                  </small>
+                </div>
+                
+                {activeTab.docsContent.labels && activeTab.docsContent.labels.length > 0 && (
+                  <div className={styles.labelsContainer}>
+                    {activeTab.docsContent.labels.map((label, index) => (
+                      <span key={index} className={styles.label}>
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
+                <div 
+                  ref={contentRef}
+                  className={styles.docsContentHtml}
+                  dangerouslySetInnerHTML={{ __html: activeTab.docsContent.content }}
+                />
+              </div>
+            );
+          }
+          
+          // Show learning journey content
+          if (!isRecommendationsTab && activeTab?.type !== 'docs' && activeTab?.content && !activeTab.isLoading) {
+            return (
+              <div className={styles.journeyContent}>
+                {/* Milestone Progress - only show for milestone pages (currentMilestone > 0) */}
+                {activeTab.content.currentMilestone > 0 && activeTab.content.milestones.length > 0 && (
+                  <div className={styles.milestoneProgress}>
+                    <div className={styles.progressInfo}>
+                      <div className={styles.progressHeader}>
+                        <span>Milestone {activeTab.content.currentMilestone} of {activeTab.content.totalMilestones}</span>
+                        <div className={styles.milestoneNavigation}>
+                          <IconButton
+                            name="arrow-left"
+                            size="sm"
+                            aria-label="Previous milestone"
+                            onClick={() => model.navigateToPreviousMilestone()}
+                            tooltip="Previous milestone (Alt + ←)"
+                            tooltipPlacement="top"
+                            disabled={!model.canNavigatePrevious() || activeTab.isLoading}
+                          />
+                          <IconButton
+                            name="arrow-right"
+                            size="sm"
+                            aria-label="Next milestone"
+                            onClick={() => model.navigateToNextMilestone()}
+                            tooltip="Next milestone (Alt + →)"
+                            tooltipPlacement="top"
+                            disabled={!model.canNavigateNext() || activeTab.isLoading}
+                          />
+                        </div>
+                      </div>
+                      <div className={styles.progressBar}>
+                        <div 
+                          className={styles.progressFill}
+                          style={{ 
+                            width: `${(activeTab.content.currentMilestone / activeTab.content.totalMilestones) * 100}%` 
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div className={styles.progressBar}>
-                    <div 
-                      className={styles.progressFill}
-                      style={{ 
-                        width: `${(activeTab.content.currentMilestone / activeTab.content.totalMilestones) * 100}%` 
-                      }}
-                    />
-                  </div>
+                )}
+                
+                <div className={styles.contentMeta}>
+                  <small>
+                    Last updated: {new Date(activeTab.content.lastFetched).toLocaleString()}
+                  </small>
                 </div>
+                
+                <div 
+                  ref={contentRef}
+                  className={styles.journeyContentHtml}
+                  dangerouslySetInnerHTML={{ __html: activeTab.content.content }}
+                />
               </div>
-            )}
-            
-            <div className={styles.contentMeta}>
-              <small>
-                Last updated: {new Date(activeTab.content.lastFetched).toLocaleString()}
-              </small>
-            </div>
-            
-            <div 
-              ref={contentRef}
-              className={styles.journeyContentHtml}
-              dangerouslySetInnerHTML={{ __html: activeTab.content.content }}
-            />
-          </div>
-        )}
+            );
+          }
+          
+          return null;
+        })()}
       </div>
     </div>
   );
@@ -933,6 +1089,90 @@ const getStyles = (theme: GrafanaTheme2) => ({
       fontSize: '0.9em',
       color: theme.colors.text.primary,
       fontWeight: theme.typography.fontWeightMedium,
+    },
+    
+    // Blockquotes and admonitions for learning journeys
+    '& blockquote, & .admonition': {
+      margin: `${theme.spacing(2)} 0`,
+      padding: theme.spacing(2),
+      borderLeft: `4px solid ${theme.colors.primary.main}`,
+      backgroundColor: theme.colors.background.canvas,
+      borderRadius: `0 ${theme.shape.radius.default}px ${theme.shape.radius.default}px 0`,
+      fontSize: theme.typography.bodySmall.fontSize, // Smaller font size
+      
+      '& blockquote': {
+        margin: 0,
+        padding: 0,
+        border: 'none',
+        borderRadius: 0,
+        backgroundColor: 'transparent',
+      },
+      
+      // Style the title (Note, Warning, etc.)
+      '& .title': {
+        fontSize: '11px',
+        fontWeight: theme.typography.fontWeightBold,
+        color: theme.colors.primary.main,
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        marginBottom: theme.spacing(1),
+        
+        '&:before': {
+          content: '"ℹ️ "', // Add an icon before the title
+          marginRight: theme.spacing(0.5),
+        },
+      },
+      
+      // Style the content paragraphs
+      '& p:not(.title)': {
+        margin: `${theme.spacing(0.5)} 0`,
+        fontSize: theme.typography.bodySmall.fontSize,
+        lineHeight: 1.4,
+        
+        '&:last-child': {
+          marginBottom: 0,
+        },
+      },
+    },
+    
+    // Specific styling for different admonition types in learning journeys
+    '& .admonition-note': {
+      borderLeftColor: theme.colors.info.main,
+      backgroundColor: theme.colors.info.transparent,
+      
+      '& .title': {
+        color: theme.colors.info.main,
+        
+        '&:before': {
+          content: '"ℹ️ "',
+        },
+      },
+    },
+    
+    '& .admonition-warning': {
+      borderLeftColor: theme.colors.warning.main,
+      backgroundColor: theme.colors.warning.transparent,
+      
+      '& .title': {
+        color: theme.colors.warning.main,
+        
+        '&:before': {
+          content: '"⚠️ "',
+        },
+      },
+    },
+    
+    '& .admonition-caution': {
+      borderLeftColor: theme.colors.error.main,
+      backgroundColor: theme.colors.error.transparent,
+      
+      '& .title': {
+        color: theme.colors.error.main,
+        
+        '&:before': {
+          content: '"⚠️ "',
+        },
+      },
     },
     
     // Consolidated responsive styles for mobile devices
@@ -1724,6 +1964,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
     width: '100%',
     minWidth: 0,
   }),
+  tabIcon: css({
+    label: 'combined-journey-tab-icon',
+    color: theme.colors.text.secondary,
+    flexShrink: 0,
+  }),
   tabTitle: css({
     label: 'combined-journey-tab-title',
     textOverflow: 'ellipsis',
@@ -1798,6 +2043,247 @@ const getStyles = (theme: GrafanaTheme2) => ({
     flexShrink: 0,
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  docsPanel: css({
+    label: 'single-docs-panel-wrapper',
+    flex: 1,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  }),
+  docsContent: css({
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    overflow: 'hidden',
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+  }),
+  metaInfo: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+  }),
+  breadcrumbs: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
+  }),
+  labelsContainer: css({
+    padding: theme.spacing(1, 2),
+    backgroundColor: theme.colors.background.canvas,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing(0.5),
+    flexShrink: 0,
+  }),
+  label: css({
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
+    backgroundColor: theme.colors.secondary.main,
+    color: theme.colors.secondary.contrastText,
+    borderRadius: theme.shape.radius.default,
+    fontSize: '11px',
+    fontWeight: theme.typography.fontWeightMedium,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  }),
+  docsContentHtml: css({
+    padding: theme.spacing(3),
+    overflow: 'auto',
+    flex: 1,
+    lineHeight: 1.6,
+    fontSize: theme.typography.body.fontSize,
+    
+    // Docs-specific styling - similar to journey content but optimized for docs
+    '& h1, & h2, & h3, & h4, & h5, & h6': {
+      color: theme.colors.text.primary,
+      fontWeight: theme.typography.fontWeightMedium,
+      marginBottom: theme.spacing(1.5),
+      marginTop: theme.spacing(2.5),
+      lineHeight: 1.3,
+      
+      '&:first-child': {
+        marginTop: 0,
+      },
+    },
+    
+    '& h1': {
+      fontSize: theme.typography.h2.fontSize,
+      borderBottom: `2px solid ${theme.colors.border.medium}`,
+      paddingBottom: theme.spacing(1),
+      marginBottom: theme.spacing(3),
+    },
+    
+    '& h2': {
+      fontSize: theme.typography.h3.fontSize,
+    },
+    
+    '& h3': {
+      fontSize: theme.typography.h4.fontSize,
+    },
+    
+    '& p': {
+      marginBottom: theme.spacing(2),
+      lineHeight: 1.7,
+    },
+    
+    '& ul, & ol': {
+      marginBottom: theme.spacing(2),
+      paddingLeft: theme.spacing(3),
+    },
+    
+    '& li': {
+      marginBottom: theme.spacing(1),
+    },
+    
+    // Enhanced image styling for docs
+    '& img': {
+      maxWidth: '100%',
+      height: 'auto',
+      borderRadius: theme.shape.radius.default,
+      border: `1px solid ${theme.colors.border.weak}`,
+      margin: `${theme.spacing(2)} auto`,
+      display: 'block',
+      boxShadow: theme.shadows.z1,
+    },
+    
+    // Code styling for docs
+    '& code:not(pre code)': {
+      backgroundColor: theme.colors.background.canvas,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: '3px',
+      padding: `2px 4px`,
+      fontFamily: theme.typography.fontFamilyMonospace,
+      fontSize: '0.9em',
+      color: theme.colors.text.primary,
+      fontWeight: theme.typography.fontWeightMedium,
+    },
+    
+    // Pre/code blocks
+    '& pre': {
+      backgroundColor: theme.colors.background.canvas,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      padding: theme.spacing(2),
+      margin: `${theme.spacing(2)} 0`,
+      overflow: 'auto',
+      fontSize: theme.typography.bodySmall.fontSize,
+      lineHeight: 1.5,
+    },
+    
+    // Links
+    '& a': {
+      color: theme.colors.primary.main,
+      textDecoration: 'none',
+      '&:hover': {
+        textDecoration: 'underline',
+      },
+    },
+    
+    // Tables
+    '& table': {
+      width: '100%',
+      borderCollapse: 'collapse',
+      margin: `${theme.spacing(2)} 0`,
+      
+      '& th, & td': {
+        padding: theme.spacing(1),
+        border: `1px solid ${theme.colors.border.weak}`,
+        textAlign: 'left',
+      },
+      
+      '& th': {
+        backgroundColor: theme.colors.background.canvas,
+        fontWeight: theme.typography.fontWeightBold,
+      },
+    },
+    
+    // Blockquotes and admonitions
+    '& blockquote, & .admonition': {
+      margin: `${theme.spacing(2)} 0`,
+      padding: theme.spacing(2),
+      borderLeft: `4px solid ${theme.colors.primary.main}`,
+      backgroundColor: theme.colors.background.canvas,
+      borderRadius: `0 ${theme.shape.radius.default}px ${theme.shape.radius.default}px 0`,
+      fontSize: theme.typography.bodySmall.fontSize, // Smaller font size
+      
+      '& blockquote': {
+        margin: 0,
+        padding: 0,
+        border: 'none',
+        borderRadius: 0,
+        backgroundColor: 'transparent',
+      },
+      
+      // Style the title (Note, Warning, etc.)
+      '& .title': {
+        fontSize: '11px',
+        fontWeight: theme.typography.fontWeightBold,
+        color: theme.colors.primary.main,
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        marginBottom: theme.spacing(1),
+        
+        '&:before': {
+          content: '"ℹ️ "', // Add an icon before the title
+          marginRight: theme.spacing(0.5),
+        },
+      },
+      
+      // Style the content paragraphs
+      '& p:not(.title)': {
+        margin: `${theme.spacing(0.5)} 0`,
+        fontSize: theme.typography.bodySmall.fontSize,
+        lineHeight: 1.4,
+        
+        '&:last-child': {
+          marginBottom: 0,
+        },
+      },
+    },
+    
+    // Specific styling for different admonition types
+    '& .admonition-note': {
+      borderLeftColor: theme.colors.info.main,
+      backgroundColor: theme.colors.info.transparent,
+      
+      '& .title': {
+        color: theme.colors.info.main,
+        
+        '&:before': {
+          content: '"ℹ️ "',
+        },
+      },
+    },
+    
+    '& .admonition-warning': {
+      borderLeftColor: theme.colors.warning.main,
+      backgroundColor: theme.colors.warning.transparent,
+      
+      '& .title': {
+        color: theme.colors.warning.main,
+        
+        '&:before': {
+          content: '"⚠️ "',
+        },
+      },
+    },
+    
+    '& .admonition-caution': {
+      borderLeftColor: theme.colors.error.main,
+      backgroundColor: theme.colors.error.transparent,
+      
+      '& .title': {
+        color: theme.colors.error.main,
+        
+        '&:before': {
+          content: '"⚠️ "',
+        },
+      },
     },
   }),
 });

@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 
 import { GrafanaTheme2 } from '@grafana/data';
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, IconButton, useStyles2, Card, Spinner } from '@grafana/ui';
+import { Icon, useStyles2, Card } from '@grafana/ui';
 import { getBackendSrv, locationService } from '@grafana/runtime';
 import { RECOMMENDER_SERVICE_URL } from '../../constants';
 import { fetchLearningJourneyContent, Milestone } from '../../utils/docs-fetcher';
@@ -29,6 +29,7 @@ interface DashboardInfo {
 interface Recommendation {
   title: string;
   url: string;
+  type?: string; // 'learning-journeys' or 'docs-page'
   milestones?: Milestone[];
   totalSteps?: number;
   isLoadingSteps?: boolean;
@@ -59,7 +60,9 @@ interface ContextPanelState extends SceneObjectState {
   recommendations: Recommendation[];
   isLoadingRecommendations: boolean;
   recommendationsError: string | null;
+  otherDocsExpanded: boolean;
   onOpenLearningJourney?: (url: string, title: string) => void;
+  onOpenDocsPage?: (url: string, title: string) => void;
 }
 
 export class ContextPanel extends SceneObjectBase<ContextPanelState> {
@@ -69,7 +72,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     return true;
   }
 
-  public constructor(onOpenLearningJourney?: (url: string, title: string) => void) {
+  public constructor(onOpenLearningJourney?: (url: string, title: string) => void, onOpenDocsPage?: (url: string, title: string) => void) {
     super({
       currentPath: '',
       currentUrl: '',
@@ -84,7 +87,9 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
       recommendations: [],
       isLoadingRecommendations: false,
       recommendationsError: null,
+      otherDocsExpanded: false,
       onOpenLearningJourney,
+      onOpenDocsPage,
     });
 
     this.updateContext();
@@ -204,39 +209,39 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
       const data: RecommenderResponse = await response.json();
       const recommendations = data.recommendations || [];
       
-      // Immediately fetch step counts for all recommendations
-      console.log('Fetching step counts for recommendations...');
-      const recommendationsWithSteps = await Promise.allSettled(
+      // Only fetch step counts for learning journey recommendations
+      console.log('Processing recommendations by type...');
+      const processedRecommendations = await Promise.all(
         recommendations.map(async (recommendation) => {
-          try {
-            const journeyContent = await fetchLearningJourneyContent(recommendation.url);
+          // Only fetch milestone data for learning journeys
+          if (recommendation.type === 'learning-journeys' || !recommendation.type) {
+            try {
+              console.log(`Fetching step counts for learning journey: ${recommendation.title}`);
+              const journeyContent = await fetchLearningJourneyContent(recommendation.url);
+              return {
+                ...recommendation,
+                totalSteps: journeyContent?.milestones?.length || 0,
+                milestones: journeyContent?.milestones || [],
+              };
+            } catch (error) {
+              console.warn(`Failed to fetch steps for learning journey ${recommendation.title}:`, error);
+              return {
+                ...recommendation,
+                totalSteps: 0,
+                milestones: [],
+              };
+            }
+          } else {
+            // For docs pages, don't fetch milestone data
+            console.log(`Skipping milestone fetch for docs page: ${recommendation.title}`);
             return {
               ...recommendation,
-              totalSteps: journeyContent?.milestones?.length || 0,
-              milestones: journeyContent?.milestones || [],
-            };
-          } catch (error) {
-            console.warn(`Failed to fetch steps for ${recommendation.title}:`, error);
-            return {
-              ...recommendation,
-              totalSteps: 0,
+              totalSteps: 0, // Docs pages don't have steps
+              milestones: [],
             };
           }
         })
       );
-
-      // Extract successful results
-      const processedRecommendations = recommendationsWithSteps.map((result, index) => {
-        if (result.status === 'fulfilled') {
-          return result.value;
-        } else {
-          console.warn(`Failed to process recommendation ${index}:`, result.reason);
-          return {
-            ...recommendations[index],
-            totalSteps: 0,
-          };
-        }
-      });
 
       this.setState({ 
         recommendations: processedRecommendations,
@@ -269,6 +274,15 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     }
   }
 
+  public openDocsPage(url: string, title: string) {
+    console.log('ContextPanel.openDocsPage called with:', { url, title, hasCallback: !!this.state.onOpenDocsPage });
+    if (this.state.onOpenDocsPage) {
+      this.state.onOpenDocsPage(url, title);
+    } else {
+      console.warn('No onOpenDocsPage callback available');
+    }
+  }
+
   public async toggleStepsExpansion(index: number) {
     const recommendations = [...this.state.recommendations];
     const recommendation = recommendations[index];
@@ -285,6 +299,10 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   public navigateToPath(path: string) {
     locationService.push(path);
   }
+
+  public toggleOtherDocsExpansion() {
+    this.setState({ otherDocsExpanded: !this.state.otherDocsExpanded });
+  }
 }
 
 function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
@@ -293,9 +311,14 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     isLoadingRecommendations,
     recommendationsError,
     isLoading,
+    otherDocsExpanded,
   } = model.useState();
   
   const styles = useStyles2(getStyles);
+
+  // Group recommendations by type
+  const learningJourneys = recommendations.filter(rec => rec.type === 'learning-journeys' || !rec.type);
+  const otherDocs = recommendations.filter(rec => rec.type === 'docs-page');
 
   return (
     <div className={styles.container}>
@@ -320,95 +343,148 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             {isLoadingRecommendations && (
               <div className={styles.loadingContainer}>
                 <Icon name="sync" />
-                <span>Loading learning journeys...</span>
+                <span>Loading recommendations...</span>
               </div>
             )}
             
             {recommendationsError && !isLoadingRecommendations && (
               <div className={styles.errorContainer}>
                 <Icon name="exclamation-triangle" />
-                <span>Failed to load learning journeys: {recommendationsError}</span>
+                <span>Failed to load recommendations: {recommendationsError}</span>
               </div>
             )}
             
             {!isLoadingRecommendations && !recommendationsError && recommendations.length === 0 && (
               <div className={styles.emptyContainer}>
                 <Icon name="info-circle" />
-                <span>No learning journeys available for your current context</span>
+                <span>No recommendations available for your current context</span>
               </div>
             )}
             
             {!isLoadingRecommendations && recommendations.length > 0 && (
-              <div className={styles.recommendationsGrid}>
-                {recommendations.map((recommendation, index) => (
-                  <Card key={index} className={styles.recommendationCard}>
-                    <div className={styles.recommendationCardContent}>
-                      <div className={styles.cardHeader}>
-                        <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
-                        <div className={styles.cardActions}>
-                          <button 
-                            onClick={() => model.openLearningJourney(recommendation.url, recommendation.title)}
-                            className={styles.startButton}
-                          >
-                            <Icon name="play" size="sm" />
-                            Start Journey
-                          </button>
-                        </div>
-                      </div>
-                      
-                      <div className={styles.cardMetadata}>
-                        <div className={styles.stepsInfo}>
-                          {(recommendation.totalSteps ?? 0) > 0 ? (
-                            <span className={styles.stepsCount}>
-                              <Icon name="list-ul" size="xs" />
-                              {recommendation.totalSteps} step{recommendation.totalSteps !== 1 ? 's' : ''}
-                            </span>
-                          ) : (
-                            <span className={styles.stepsCount}>
-                              <Icon name="list-ul" size="xs" />
-                              Multiple steps
-                            </span>
-                          )}
-                          
-                          {(recommendation.totalSteps ?? 0) > 0 && (
-                            <button
-                              onClick={() => model.toggleStepsExpansion(index)}
-                              className={styles.viewStepsButton}
-                            >
-                              {recommendation.stepsExpanded ? (
-                                <>
-                                  <Icon name="angle-up" size="sm" />
-                                  Hide steps
-                                </>
-                              ) : (
-                                <>
-                                  <Icon name="angle-down" size="sm" />
-                                  View steps
-                                </>
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {recommendation.stepsExpanded && recommendation.milestones && (
-                        <div className={styles.stepsExpansion}>
-                          <div className={styles.stepsList}>
-                            {recommendation.milestones.map((milestone, stepIndex) => (
-                              <div key={stepIndex} className={styles.stepItem}>
-                                <div className={styles.stepNumber}>{milestone.number}</div>
-                                <div className={styles.stepContent}>
-                                  <div className={styles.stepTitle}>{milestone.title}</div>
-                                  <div className={styles.stepDuration}>{milestone.duration}</div>
-                                </div>
-                              </div>
-                            ))}
+              <div className={styles.recommendationsContainer}>
+                {/* Learning Journeys Section */}
+                {learningJourneys.length > 0 && (
+                  <div className={styles.recommendationsGrid}>
+                    {learningJourneys.map((recommendation, index) => (
+                      <Card key={index} className={styles.recommendationCard}>
+                        <div className={styles.recommendationCardContent}>
+                          <div className={styles.cardHeader}>
+                            <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
+                            <div className={styles.cardActions}>
+                              <button 
+                                onClick={() => model.openLearningJourney(recommendation.url, recommendation.title)}
+                                className={styles.startButton}
+                              >
+                                <Icon name="play" size="sm" />
+                                Start Journey
+                              </button>
+                            </div>
                           </div>
+                          
+                          <div className={styles.cardMetadata}>
+                            <div className={styles.stepsInfo}>
+                              {(recommendation.totalSteps ?? 0) > 0 ? (
+                                <span className={styles.stepsCount}>
+                                  <Icon name="list-ul" size="xs" />
+                                  {recommendation.totalSteps} step{recommendation.totalSteps !== 1 ? 's' : ''}
+                                </span>
+                              ) : (
+                                <span className={styles.stepsCount}>
+                                  <Icon name="list-ul" size="xs" />
+                                  Multiple steps
+                                </span>
+                              )}
+                              
+                              {(recommendation.totalSteps ?? 0) > 0 && (
+                                <button
+                                  onClick={() => model.toggleStepsExpansion(index)}
+                                  className={styles.viewStepsButton}
+                                >
+                                  {recommendation.stepsExpanded ? (
+                                    <>
+                                      <Icon name="angle-up" size="sm" />
+                                      Hide steps
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Icon name="angle-down" size="sm" />
+                                      View steps
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {recommendation.stepsExpanded && recommendation.milestones && (
+                            <div className={styles.stepsExpansion}>
+                              <div className={styles.stepsList}>
+                                {recommendation.milestones.map((milestone, stepIndex) => (
+                                  <div key={stepIndex} className={styles.stepItem}>
+                                    <div className={styles.stepNumber}>{milestone.number}</div>
+                                    <div className={styles.stepContent}>
+                                      <div className={styles.stepTitle}>{milestone.title}</div>
+                                      <div className={styles.stepDuration}>{milestone.duration}</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </Card>
+                    ))}
+                  </div>
+                )}
+
+                {/* Other Relevant Docs Section */}
+                {otherDocs.length > 0 && (
+                  <div className={styles.otherDocsSection}>
+                    <div className={styles.otherDocsHeader}>
+                      <button
+                        onClick={() => model.toggleOtherDocsExpansion()}
+                        className={styles.otherDocsToggle}
+                      >
+                        <Icon name="file-alt" size="sm" />
+                        <span>Other Relevant Docs</span>
+                        <span className={styles.otherDocsCount}>
+                          <Icon name="list-ul" size="xs" />
+                          {otherDocs.length} doc{otherDocs.length !== 1 ? 's' : ''}
+                        </span>
+                        <Icon name={otherDocsExpanded ? "angle-up" : "angle-down"} size="sm" />
+                      </button>
                     </div>
-                  </Card>
-                ))}
+                    
+                    {otherDocsExpanded && (
+                      <div className={styles.otherDocsExpansion}>
+                        <div className={styles.otherDocsList}>
+                          {otherDocs.map((doc, index) => (
+                            <div key={index} className={styles.otherDocItem}>
+                              <div className={styles.docIcon}>
+                                <Icon name="file-alt" size="sm" />
+                              </div>
+                              <div className={styles.docContent}>
+                                <button
+                                  onClick={() => {
+                                    console.log('Docs button clicked!', doc.title, doc.url);
+                                    model.openDocsPage(doc.url, doc.title);
+                                  }}
+                                  className={styles.docLink}
+                                >
+                                  {doc.title}
+                                </button>
+                              </div>
+                              <div className={styles.docActions}>
+                                <Icon name="external-link-alt" size="xs" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -665,5 +741,109 @@ const getStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(2),
+  }),
+  recommendationsContainer: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(3),
+  }),
+  otherDocsSection: css({
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    overflow: 'hidden',
+  }),
+  otherDocsHeader: css({
+    backgroundColor: theme.colors.background.canvas,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    padding: theme.spacing(1),
+  }),
+  otherDocsToggle: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    width: '100%',
+    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    color: theme.colors.text.primary,
+    cursor: 'pointer',
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  otherDocsCount: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    marginLeft: 'auto',
+    marginRight: theme.spacing(1),
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightBold,
+    color: theme.colors.text.secondary,
+    backgroundColor: theme.colors.background.primary,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  }),
+  otherDocsExpansion: css({
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.background.secondary,
+  }),
+  otherDocsList: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.75),
+  }),
+  otherDocItem: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1),
+    borderRadius: theme.shape.radius.default,
+    transition: 'background-color 0.2s ease',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  docIcon: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '20px',
+    height: '20px',
+    color: theme.colors.text.secondary,
+    flexShrink: 0,
+  }),
+  docContent: css({
+    flex: 1,
+    minWidth: 0,
+  }),
+  docLink: css({
+    color: theme.colors.primary.main,
+    textDecoration: 'none',
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    lineHeight: 1.3,
+    backgroundColor: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    padding: 0,
+    textAlign: 'left',
+    width: '100%',
+    '&:hover': {
+      textDecoration: 'underline',
+      color: theme.colors.primary.shade,
+    },
+  }),
+  docActions: css({
+    display: 'flex',
+    alignItems: 'center',
+    color: theme.colors.text.secondary,
+    flexShrink: 0,
   }),
 }); 
