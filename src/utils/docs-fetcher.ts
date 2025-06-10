@@ -57,9 +57,95 @@ function getCachedMilestones(baseUrl: string): Milestone[] | null {
 }
 
 /**
+ * Fetch milestones from JSON endpoint
+ */
+async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
+  try {
+    // Construct JSON endpoint URL
+    const jsonUrl = `${baseUrl}index.json`;
+    console.log(`Fetching milestones from JSON: ${jsonUrl}`);
+    
+    // Try the same strategies as we use for HTML content
+    const strategies = [
+      { name: 'direct', fn: () => fetchDirectFast(jsonUrl) },
+      { name: 'corsproxy', fn: () => fetchWithCorsproxy(jsonUrl) },
+    ];
+    
+    let jsonContent = null;
+    
+    for (const strategy of strategies) {
+      try {
+        console.log(`Trying JSON fetch strategy: ${strategy.name}`);
+        const content = await strategy.fn();
+        if (content && content.trim().length > 0) {
+          jsonContent = content;
+          console.log(`✅ JSON fetch strategy ${strategy.name} succeeded`);
+          break;
+        }
+      } catch (error) {
+        console.warn(`❌ JSON fetch strategy ${strategy.name} failed:`, error);
+        continue;
+      }
+    }
+    
+    if (!jsonContent) {
+      throw new Error('Failed to fetch JSON from all strategies');
+    }
+    
+    // Parse JSON
+    const jsonData = JSON.parse(jsonContent);
+    
+    if (!Array.isArray(jsonData)) {
+      throw new Error('JSON data is not an array');
+    }
+    
+    console.log(`📋 Found ${jsonData.length} items in JSON`);
+    
+    // Convert JSON items to milestones
+    const milestones: Milestone[] = [];
+    
+    // Filter and sort items that have step numbers
+    const stepItems = jsonData
+      .filter(item => item.params && typeof item.params.step === 'number')
+      .sort((a, b) => a.params.step - b.params.step);
+    
+    console.log(`📋 Found ${stepItems.length} step items after filtering`);
+    
+    stepItems.forEach((item, index) => {
+      if (item.permalink && item.params) {
+        const title = item.params.title || item.params.menutitle || `Step ${item.params.step}`;
+        const duration = '2-3 min'; // Default duration since JSON doesn't include this
+        const fullUrl = `https://grafana.com${item.permalink}`;
+        
+        milestones.push({
+          number: item.params.step,
+          title: title,
+          duration: duration,
+          url: fullUrl,
+          isActive: false
+        });
+        
+        console.log(`📍 Added milestone ${item.params.step}: ${title} (${fullUrl})`);
+      }
+    });
+    
+    if (milestones.length === 0) {
+      throw new Error('No valid milestones found in JSON data');
+    }
+    
+    console.log(`✅ Successfully extracted ${milestones.length} milestones from JSON`);
+    return milestones;
+    
+  } catch (error) {
+    console.error('Failed to fetch milestones from JSON:', error);
+    throw error;
+  }
+}
+
+/**
  * Extract learning journey content from HTML
  */
-function extractLearningJourneyContent(html: string, url: string): LearningJourneyContent {
+async function extractLearningJourneyContent(html: string, url: string): Promise<LearningJourneyContent> {
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
@@ -77,45 +163,18 @@ function extractLearningJourneyContent(html: string, url: string): LearningJourn
     
     console.log(`Processing URL: ${url}, baseUrl: ${baseUrl}, hasCache: ${!!cachedMilestones}`);
     
-    // Extract milestones from the page structure
+    // Extract milestones from JSON or use cached ones
     const milestones: Milestone[] = [];
     let currentMilestone = 0;
     let totalMilestones = 1;
     
     if (!isNavigatingWithinJourney) {
-      // This is a fresh journey start - extract milestones from the page
-      console.log('Fresh journey start - extracting milestones from page');
+      // This is a fresh journey start - fetch milestones from JSON
+      console.log('Fresh journey start - fetching milestones from JSON');
       
-      // Look for the journey-steps section which contains all milestone information
-      const journeyStepsSection = doc.querySelector('.journey-steps');
-      
-      if (journeyStepsSection) {
-        console.log('Found journey-steps section');
-        
-        // Extract milestone links from the journey-steps section
-        const milestoneLinks = journeyStepsSection.querySelectorAll('a.journey-milestone__link');
-        
-        console.log(`Found ${milestoneLinks.length} milestone links`);
-        
-        milestoneLinks.forEach((link, index) => {
-          const href = link.getAttribute('href');
-          const titleElement = link.querySelector('.journey-milestone__link-title');
-          const durationElement = link.querySelector('.text-black.f-12.fw-500');
-          
-          if (href && titleElement) {
-            const title = titleElement.textContent?.trim() || `Milestone ${index + 1}`;
-            const duration = durationElement?.textContent?.trim() || '1 min';
-            const fullUrl = href.startsWith('http') ? href : new URL(href, url).href;
-            
-            milestones.push({
-              number: index + 1,
-              title: title,
-              duration: duration,
-              url: fullUrl,
-              isActive: false
-            });
-          }
-        });
+      try {
+        const fetchedMilestones = await fetchMilestonesFromJson(baseUrl);
+        milestones.push(...fetchedMilestones);
         
         // Cache the milestones for this learning journey
         if (milestones.length > 0) {
@@ -125,9 +184,10 @@ function extractLearningJourneyContent(html: string, url: string): LearningJourn
         
         totalMilestones = milestones.length;
         currentMilestone = 0; // Cover page
-      } else {
-        console.error('No journey-steps section found in the page. This may not be a valid learning journey page.');
-        throw new Error('Invalid learning journey page: missing journey-steps section');
+        
+      } catch (error) {
+        console.error('Failed to fetch milestones from JSON, falling back to error state');
+        throw new Error(`Failed to load learning journey milestones: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     } else {
       // Use cached milestone information
@@ -667,7 +727,7 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
       
       if (htmlContent && htmlContent.trim().length > 0) {
         console.log(`✅ Strategy ${strategy.name} succeeded in ${duration}ms, content length: ${htmlContent.length}`);
-        const content = extractLearningJourneyContent(htmlContent, url);
+        const content = await extractLearningJourneyContent(htmlContent, url);
         console.log(`Extracted content: ${content.title}, milestones: ${content.milestones.length}`);
         
         // Cache the result
