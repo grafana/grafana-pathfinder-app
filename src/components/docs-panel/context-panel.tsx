@@ -29,7 +29,7 @@ interface DashboardInfo {
 interface Recommendation {
   title: string;
   url: string;
-  type?: string; // 'learning-journeys' or 'docs-page'
+  type?: string; // 'learning-journey' or 'docs-page'
   milestones?: Milestone[];
   totalSteps?: number;
   isLoadingSteps?: boolean;
@@ -214,7 +214,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
       const processedRecommendations = await Promise.all(
         recommendations.map(async (recommendation) => {
           // Only fetch milestone data for learning journeys
-          if (recommendation.type === 'learning-journeys' || !recommendation.type) {
+          if (recommendation.type === 'learning-journey' || !recommendation.type) {
             try {
               console.log(`Fetching step counts for learning journey: ${recommendation.title}`);
               const journeyContent = await fetchLearningJourneyContent(recommendation.url);
@@ -317,7 +317,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const styles = useStyles2(getStyles);
 
   // Group recommendations by type
-  const learningJourneys = recommendations.filter(rec => rec.type === 'learning-journeys' || !rec.type);
+  const learningJourneys = recommendations.filter(rec => rec.type === 'learning-journey' || !rec.type);
   const otherDocs = recommendations.filter(rec => rec.type === 'docs-page');
 
   return (
