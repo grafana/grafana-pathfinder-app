@@ -1,3 +1,5 @@
+import { DOCS_BASE_URL, DOCS_USERNAME, DOCS_PASSWORD } from '../constants';
+
 export interface LearningJourneyContent {
   title: string;
   content: string;
@@ -57,11 +59,45 @@ function getCachedMilestones(baseUrl: string): Milestone[] | null {
 }
 
 /**
+ * Get authentication headers if credentials are provided
+ */
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'User-Agent': 'Mozilla/5.0 (compatible; GrafanaLearningJourney/1.0)',
+  };
+  
+  if (DOCS_USERNAME && DOCS_PASSWORD) {
+    const credentials = btoa(`${DOCS_USERNAME}:${DOCS_PASSWORD}`);
+    headers['Authorization'] = `Basic ${credentials}`;
+  }
+  
+  return headers;
+}
+
+/**
+ * Convert a regular docs URL to unstyled.html version for content fetching
+ */
+function getUnstyledContentUrl(url: string): string {
+  // Don't modify index.json URLs
+  if (url.endsWith('index.json')) {
+    return url;
+  }
+  
+  // For learning journey and docs pages, append unstyled.html
+  if (url.endsWith('/')) {
+    return `${url}unstyled.html`;
+  } else {
+    return `${url}/unstyled.html`;
+  }
+}
+
+/**
  * Fetch milestones from JSON endpoint
  */
 async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
   try {
-    // Construct JSON endpoint URL
+    // Construct JSON endpoint URL (keep original format for metadata)
     const jsonUrl = `${baseUrl}index.json`;
     console.log(`Fetching milestones from JSON: ${jsonUrl}`);
     
@@ -115,7 +151,7 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
       if (item.permalink && item.params) {
         const title = item.params.title || item.params.menutitle || `Step ${item.params.step}`;
         const duration = '2-3 min'; // Default duration since JSON doesn't include this
-        const fullUrl = `https://grafana.com${item.permalink}`;
+        const fullUrl = `${DOCS_BASE_URL}${item.permalink}`;
         
         milestones.push({
           number: item.params.step,
@@ -375,16 +411,16 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
     
     if (!originalSrc) return;
     
-    // Fix relative URLs with single logic
+    // Fix relative URLs with configurable base URL
     const newSrc = originalSrc.startsWith('http') || originalSrc.startsWith('data:') 
       ? originalSrc
       : originalSrc.startsWith('/') 
-        ? `https://grafana.com${originalSrc}`
+        ? `${DOCS_BASE_URL}${originalSrc}`
         : originalSrc.startsWith('./') 
-          ? `https://grafana.com/docs/${originalSrc.substring(2)}`
+          ? `${DOCS_BASE_URL}/docs/${originalSrc.substring(2)}`
           : originalSrc.startsWith('../') 
-            ? `https://grafana.com/docs/${originalSrc.replace(/^\.\.\//, '')}`
-            : `https://grafana.com/docs/${originalSrc}`;
+            ? `${DOCS_BASE_URL}/docs/${originalSrc.replace(/^\.\.\//, '')}`
+            : `${DOCS_BASE_URL}/docs/${originalSrc}`;
     
     // Set attributes once
     img.setAttribute('src', newSrc);
@@ -688,7 +724,11 @@ function extractAndRemoveAllVideos(element: Element): string | undefined {
 export async function fetchLearningJourneyContent(url: string): Promise<LearningJourneyContent | null> {
   console.log(`Fetching learning journey content from: ${url}`);
   
-  // Check cache first
+  // Use unstyled.html version for content fetching
+  const unstyledUrl = getUnstyledContentUrl(url);
+  console.log(`Using unstyled URL: ${unstyledUrl}`);
+  
+  // Check cache first (use original URL as cache key)
   const cached = contentCache.get(url);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
     console.log('Returning cached content for:', url);
@@ -701,18 +741,18 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
   
   // Try strategies in order of reliability - direct fetch first, then working proxies
   const strategies = [
-    { name: 'direct', fn: () => fetchDirectFast(url) },
-    { name: 'corsproxy', fn: () => fetchWithCorsproxy(url) },
-    // Removed allorigins.win as it's failing with QUIC errors
+    { name: 'direct', fn: () => fetchDirectFast(unstyledUrl) },
+    { name: 'corsproxy', fn: () => fetchWithCorsproxy(unstyledUrl) },
   ];
   
   // For milestone pages, also try adding trailing slash if missing
   if (!isCoverPageUrl && !url.endsWith('/')) {
     const urlWithSlash = url + '/';
-    console.log(`Also trying milestone URL with trailing slash: ${urlWithSlash}`);
+    const unstyledUrlWithSlash = getUnstyledContentUrl(urlWithSlash);
+    console.log(`Also trying milestone URL with trailing slash: ${unstyledUrlWithSlash}`);
     strategies.unshift(
-      { name: 'direct-slash', fn: () => fetchDirectFast(urlWithSlash) },
-      { name: 'corsproxy-slash', fn: () => fetchWithCorsproxy(urlWithSlash) }
+      { name: 'direct-slash', fn: () => fetchDirectFast(unstyledUrlWithSlash) },
+      { name: 'corsproxy-slash', fn: () => fetchWithCorsproxy(unstyledUrlWithSlash) }
     );
   }
   
@@ -727,10 +767,10 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
       
       if (htmlContent && htmlContent.trim().length > 0) {
         console.log(`✅ Strategy ${strategy.name} succeeded in ${duration}ms, content length: ${htmlContent.length}`);
-        const content = await extractLearningJourneyContent(htmlContent, url);
+        const content = await extractLearningJourneyContent(htmlContent, url); // Use original URL for content
         console.log(`Extracted content: ${content.title}, milestones: ${content.milestones.length}`);
         
-        // Cache the result
+        // Cache the result (use original URL as cache key)
         contentCache.set(url, { content, timestamp: Date.now() });
         
         return content;
@@ -757,10 +797,7 @@ async function fetchWithCorsproxy(url: string): Promise<string | null> {
     
     const response = await fetch(proxyUrl, {
       method: 'GET',
-      headers: {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'User-Agent': 'Mozilla/5.0 (compatible; GrafanaLearningJourney/1.0)',
-      },
+      headers: getAuthHeaders(),
       signal: AbortSignal.timeout(8000), // 8 second timeout
     });
     
@@ -786,10 +823,7 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     const response = await fetch(url, {
       mode: 'cors',
       method: 'GET',
-      headers: {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'User-Agent': 'Mozilla/5.0 (compatible; GrafanaLearningJourney/1.0)',
-      },
+      headers: getAuthHeaders(),
       signal: AbortSignal.timeout(5000), // 5 second timeout
     });
     
