@@ -67,9 +67,11 @@ function getAuthHeaders(): Record<string, string> {
     'User-Agent': 'Mozilla/5.0 (compatible; GrafanaLearningJourney/1.0)',
   };
   
-  if (DOCS_USERNAME && DOCS_PASSWORD) {
-    const credentials = btoa(`${DOCS_USERNAME}:${DOCS_PASSWORD}`);
+  // Authenticate if username is provided (password can be empty)
+  if (DOCS_USERNAME) {
+    const credentials = btoa(`${DOCS_USERNAME}:${DOCS_PASSWORD || ''}`);
     headers['Authorization'] = `Basic ${credentials}`;
+    console.log(`🔐 Adding Basic Auth for user: ${DOCS_USERNAME}`);
   }
   
   return headers;
@@ -101,31 +103,10 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     const jsonUrl = `${baseUrl}index.json`;
     console.log(`Fetching milestones from JSON: ${jsonUrl}`);
     
-    // Try the same strategies as we use for HTML content
-    const strategies = [
-      { name: 'direct', fn: () => fetchDirectFast(jsonUrl) },
-      { name: 'corsproxy', fn: () => fetchWithCorsproxy(jsonUrl) },
-    ];
+    const jsonContent = await fetchDirectFast(jsonUrl);
     
-    let jsonContent = null;
-    
-    for (const strategy of strategies) {
-      try {
-        console.log(`Trying JSON fetch strategy: ${strategy.name}`);
-        const content = await strategy.fn();
-        if (content && content.trim().length > 0) {
-          jsonContent = content;
-          console.log(`✅ JSON fetch strategy ${strategy.name} succeeded`);
-          break;
-        }
-      } catch (error) {
-        console.warn(`❌ JSON fetch strategy ${strategy.name} failed:`, error);
-        continue;
-      }
-    }
-    
-    if (!jsonContent) {
-      throw new Error('Failed to fetch JSON from all strategies');
+    if (!jsonContent || jsonContent.trim().length === 0) {
+      throw new Error('Failed to fetch JSON content');
     }
     
     // Parse JSON
@@ -137,32 +118,41 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     
     console.log(`📋 Found ${jsonData.length} items in JSON`);
     
-    // Convert JSON items to milestones
+    // Convert JSON items to milestones using array order as source of truth
     const milestones: Milestone[] = [];
     
-    // Filter and sort items that have step numbers
-    const stepItems = jsonData
-      .filter(item => item.params && typeof item.params.step === 'number')
-      .sort((a, b) => a.params.step - b.params.step);
+    // Filter items that should be milestones (have step numbers OR are conclusion pages)
+    const milestoneItems = jsonData.filter(item => 
+      item.params && item.permalink && (
+        typeof item.params.step === 'number' || 
+        (item.params.cta && item.params.cta.type === 'conclusion')
+      )
+    );
     
-    console.log(`📋 Found ${stepItems.length} step items after filtering`);
+    // Sort by step number if available, otherwise conclusion pages go last
+    milestoneItems.sort((a, b) => {
+      const stepA = a.params.step || 999; // Conclusion pages get high number
+      const stepB = b.params.step || 999;
+      return stepA - stepB;
+    });
     
-    stepItems.forEach((item, index) => {
-      if (item.permalink && item.params) {
-        const title = item.params.title || item.params.menutitle || `Step ${item.params.step}`;
-        const duration = '2-3 min'; // Default duration since JSON doesn't include this
-        const fullUrl = `${DOCS_BASE_URL}${item.permalink}`;
-        
-        milestones.push({
-          number: item.params.step,
-          title: title,
-          duration: duration,
-          url: fullUrl,
-          isActive: false
-        });
-        
-        console.log(`📍 Added milestone ${item.params.step}: ${title} (${fullUrl})`);
-      }
+    console.log(`📋 Found ${milestoneItems.length} milestone items in JSON`);
+    
+    // Create milestones using array index + 1 for consistent numbering
+    milestoneItems.forEach((item, index) => {
+      const title = item.params.title || item.params.menutitle || `Step ${index + 1}`;
+      const duration = '2-3 min'; // Default duration since JSON doesn't include this
+      const milestoneNumber = index + 1; // Simple 1-based indexing
+      
+      milestones.push({
+        number: milestoneNumber,
+        title: title,
+        duration: duration,
+        url: item.permalink, // Use permalink directly since it's already a full URL
+        isActive: false
+      });
+      
+      console.log(`📍 Added milestone ${milestoneNumber}: ${title} (${item.permalink})`);
     });
     
     if (milestones.length === 0) {
@@ -186,8 +176,8 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
-    // Extract title
-    const titleElement = doc.querySelector('h1') || doc.querySelector('title');
+    // Extract title - look for h1 in the body since there's no wrapper
+    const titleElement = doc.querySelector('h1');
     const title = titleElement?.textContent?.trim() || 'Learning Journey';
     
     // Get the base URL for this learning journey
@@ -256,7 +246,7 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
       console.log(`📋 Milestones summary:`, milestones.map(m => `${m.number}: ${m.isActive ? '✅' : '⭕'} ${m.title}`));
     }
     
-    // Extract main content
+    // Extract main content - work with the entire body since there's no wrapper
     const mainContentResult = extractMainContent(doc, currentMilestone === 0);
     
     return {
@@ -284,107 +274,184 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
 }
 
 /**
- * Extract main content from learning journey HTML
+ * Extract main content from learning journey HTML - work with entire body
  */
 function extractMainContent(doc: Document, isCoverPage: boolean): { content: string; videoUrl?: string } {
-  // Find the main content section
-  const contentElement = doc.querySelector('.journey-grid__content');
+  // Work with the entire body since there's no wrapper container
+  const bodyElement = doc.body;
   
-  if (!contentElement) {
+  if (!bodyElement) {
     return {
-      content: 'Content not available - journey-grid__content section not found'
+      content: 'Content not available - document body not found'
     };
   }
   
-  // Process the content
-  const processedContent = processLearningJourneyContent(contentElement, isCoverPage);
+  // Process the content directly from body
+  const processedContent = processLearningJourneyContent(bodyElement, isCoverPage);
   return processedContent;
 }
 
 /**
- * Process learning journey content for better display
+ * Process learning journey content for better display - updated for new structure
  */
 function processLearningJourneyContent(element: Element, isCoverPage: boolean): { content: string; videoUrl?: string } {
   const clonedElement = element.cloneNode(true) as Element;
   let extractedVideoUrl: string | undefined;
   
-  // Remove unwanted navigation elements
-  const unwantedElements = clonedElement.querySelectorAll(
-    '.journey-pagination__grid, .milestone-bottom'
-  );
-  unwantedElements.forEach(el => el.remove());
+  // Extract and remove all videos first
+  extractedVideoUrl = extractAndRemoveAllVideos(clonedElement);
   
-  // Preserve code snippets by adding consistent classes
-  const codeSnippets = clonedElement.querySelectorAll('.code-snippet, .code-snippet__border, pre[class*="language-"], pre:has(code)');
-  codeSnippets.forEach(snippet => {
-    // Remove any existing copy buttons from the original content
-    const existingCopyButtons = snippet.querySelectorAll(
-      'button[title*="copy" i], button[aria-label*="copy" i], .copy-button, .copy-btn, .btn-copy, [class*="copy"], button[onclick*="copy" i], button[data-copy], .code-copy-button, button[x-data*="code_snippet"], .lang-toolbar, .lang-toolbar__mini, .code-clipboard'
-    );
-    existingCopyButtons.forEach(btn => {
-      console.log('Removing existing copy button:', btn.className, btn.textContent);
-      btn.remove();
-    });
+  // Process images - handle data-src attributes from new structure
+  const images = clonedElement.querySelectorAll('img');
+  images.forEach(img => {
+    const src = img.getAttribute('src');
+    const dataSrc = img.getAttribute('data-src');
+    const originalSrc = dataSrc || src;
     
-    // Also remove Alpine.js copy buttons and toolbars specifically
-    const alpineButtons = snippet.querySelectorAll('button[x-data], .lang-toolbar, .lang-toolbar__mini, .code-clipboard, span.code-clipboard');
-    alpineButtons.forEach(element => {
-      console.log('Removing Alpine.js element:', element.className, element.tagName);
-      element.remove();
-    });
+    if (!originalSrc) return;
     
-    // Simplify nested code snippet structure - find the actual pre element
-    const preElement = snippet.querySelector('pre') || (snippet.tagName === 'PRE' ? snippet : null);
-    if (preElement) {
-      // More aggressive wrapper removal - unwrap multiple levels if needed
-      let currentElement = snippet;
-      while (currentElement.tagName === 'DIV' && currentElement !== preElement) {
-        const parent = currentElement.parentElement;
-        if (!parent) break;
-        
-        // If this div only contains the pre element (possibly nested), unwrap it
-        if (currentElement.querySelectorAll('pre').length === 1 && 
-            currentElement.querySelector('pre') === preElement) {
-          console.log('Unwrapping div:', currentElement.className);
-          parent.insertBefore(preElement, currentElement);
-          currentElement.remove();
-          break;
-        } else {
-          // Move to the next level if there are multiple children
-          const nextElement: Element | null = currentElement.querySelector(':scope > div, :scope > pre');
-          if (nextElement && nextElement !== preElement) {
-            currentElement = nextElement;
-          } else {
-            break;
-          }
-        }
-      }
-      
-      // Ensure the pre element has the right class for our processing
-      preElement.classList.add('code-snippet');
-      // Remove extra classes to keep it clean
-      preElement.classList.remove('code-snippet__border', 'code-snippet__mini', 'code-snippet-container');
-      (preElement as HTMLElement).style.position = 'relative'; // Needed for copy button positioning
-      
-      // Ensure there's a code element inside pre
-      if (!preElement.querySelector('code')) {
-        const codeElement = document.createElement('code');
-        codeElement.innerHTML = preElement.innerHTML;
-        preElement.innerHTML = '';
-        preElement.appendChild(codeElement);
-      }
+    // Fix relative URLs - be careful not to double up base URLs
+    let newSrc: string;
+    if (originalSrc.startsWith('http') || originalSrc.startsWith('data:')) {
+      // Already a complete URL
+      newSrc = originalSrc;
+    } else if (originalSrc.startsWith('/')) {
+      // Absolute path - add base URL
+      newSrc = `${DOCS_BASE_URL}${originalSrc}`;
+    } else {
+      // Relative path - add base URL with slash
+      newSrc = `${DOCS_BASE_URL}/${originalSrc}`;
+    }
+    
+    // Set the correct src and remove data-src
+    img.setAttribute('src', newSrc);
+    img.removeAttribute('data-src');
+    
+    // Remove lazy loading classes that won't work in our context
+    img.classList.remove('lazyload', 'lazyloaded', 'ls-is-cached');
+    img.classList.add('journey-image');
+    img.setAttribute('loading', 'lazy');
+    
+    // Add alt text if missing
+    if (!img.getAttribute('alt')) {
+      img.setAttribute('alt', 'Learning journey image');
     }
   });
   
-  // Consolidated video extraction and removal
-  extractedVideoUrl = extractAndRemoveAllVideos(clonedElement);
-  
-  // Process remaining non-video links to ensure they open in new tabs
-  const remainingLinks = clonedElement.querySelectorAll('a[href]');
-  remainingLinks.forEach(link => {
+  // Process links to ensure they open in new tabs
+  const links = clonedElement.querySelectorAll('a[href]');
+  links.forEach(link => {
     link.setAttribute('target', '_blank');
     link.setAttribute('rel', 'noopener noreferrer');
     link.setAttribute('data-journey-link', 'true');
+  });
+  
+  // Process admonitions (notes, warnings, etc.) from new structure
+  const admonitions = clonedElement.querySelectorAll('.admonition');
+  admonitions.forEach(admonition => {
+    // Add consistent classes for styling
+    admonition.classList.add('journey-admonition');
+    
+    // Find and style the title
+    const title = admonition.querySelector('.title, p.title');
+    if (title) {
+      title.classList.add('admonition-title');
+    }
+  });
+  
+  // Handle code blocks and inline code
+  const codeElements = clonedElement.querySelectorAll('code');
+  codeElements.forEach(code => {
+    // If it's not inside a pre element, it's inline code
+    if (!code.closest('pre')) {
+      code.classList.add('journey-inline-code');
+    }
+  });
+  
+  // Handle pre/code blocks - add classes for styling and copy functionality
+  const preElements = clonedElement.querySelectorAll('pre');
+  preElements.forEach(pre => {
+    pre.classList.add('journey-code-block');
+    // Ensure relative positioning for copy button
+    (pre as HTMLElement).style.position = 'relative';
+  });
+  
+  // Handle tables - add responsive wrapper if not already present
+  const tables = clonedElement.querySelectorAll('table');
+  tables.forEach(table => {
+    // Don't wrap if already in a responsive wrapper
+    if (!table.closest('.responsive-table-wrapper')) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'responsive-table-wrapper';
+      table.parentNode?.insertBefore(wrapper, table);
+      wrapper.appendChild(table);
+    }
+    
+    table.classList.add('journey-table');
+  });
+  
+  // Process headings to add consistent classes
+  const headings = clonedElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  headings.forEach(heading => {
+    heading.classList.add('journey-heading');
+    heading.classList.add(`journey-heading-${heading.tagName.toLowerCase()}`);
+  });
+  
+  // Process lists
+  const lists = clonedElement.querySelectorAll('ul, ol');
+  lists.forEach(list => {
+    list.classList.add('journey-list');
+  });
+  
+  // Process paragraphs
+  const paragraphs = clonedElement.querySelectorAll('p');
+  paragraphs.forEach(p => {
+    p.classList.add('journey-paragraph');
+  });
+  
+  // Process collapsible sections - replace Alpine.js functionality
+  const collapsibleSections = clonedElement.querySelectorAll('.collapse[x-data]');
+  collapsibleSections.forEach((section, index) => {
+    // Remove Alpine.js attributes
+    section.removeAttribute('x-data');
+    section.classList.add('journey-collapse');
+    section.setAttribute('data-collapse-id', `collapse-${index}`);
+    
+    // Process the trigger button
+    const trigger = section.querySelector('.collapse-trigger');
+    if (trigger) {
+      trigger.removeAttribute('@click');
+      trigger.classList.add('journey-collapse-trigger');
+      trigger.setAttribute('data-collapse-target', `collapse-${index}`);
+      
+      // Process the icon if it exists
+      const icon = trigger.querySelector('.collapse-trigger__icon');
+      if (icon) {
+        icon.removeAttribute(':class');
+        icon.classList.add('journey-collapse-icon');
+      }
+    }
+    
+    // Process the content area
+    const content = section.querySelector('.collapse-content');
+    if (content) {
+      content.removeAttribute('x-ref');
+      content.removeAttribute('hidden');
+      content.classList.add('journey-collapse-content');
+      content.setAttribute('data-collapse-id', `collapse-${index}`);
+      
+      // Process the inner content
+      const contentInner = content.querySelector('.collapse-content__inner');
+      if (contentInner) {
+        contentInner.removeAttribute('x-ref');
+        contentInner.classList.add('journey-collapse-content-inner');
+      }
+      
+      // Initially hide the content (collapsed by default)
+      (content as HTMLElement).style.display = 'none';
+    }
+    
+    console.log(`📁 Processed collapsible section ${index + 1}`);
   });
   
   // For cover pages, add our own "Start Journey" button
@@ -401,69 +468,6 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
     `;
     clonedElement.appendChild(startButton);
   }
-  
-  // Process images efficiently with cached operations
-  const images = clonedElement.querySelectorAll('img');
-  images.forEach(img => {
-    const src = img.getAttribute('src');
-    const dataSrc = img.getAttribute('data-src');
-    const originalSrc = dataSrc || src;
-    
-    if (!originalSrc) return;
-    
-    // Fix relative URLs with configurable base URL
-    const newSrc = originalSrc.startsWith('http') || originalSrc.startsWith('data:') 
-      ? originalSrc
-      : originalSrc.startsWith('/') 
-        ? `${DOCS_BASE_URL}${originalSrc}`
-        : originalSrc.startsWith('./') 
-          ? `${DOCS_BASE_URL}/docs/${originalSrc.substring(2)}`
-          : originalSrc.startsWith('../') 
-            ? `${DOCS_BASE_URL}/docs/${originalSrc.replace(/^\.\.\//, '')}`
-            : `${DOCS_BASE_URL}/docs/${originalSrc}`;
-    
-    // Set attributes once
-    img.setAttribute('src', newSrc);
-    img.removeAttribute('data-src');
-    img.classList.remove('lazyload', 'lazyloaded', 'ls-is-cached');
-    img.classList.add('journey-image');
-    img.setAttribute('loading', 'lazy');
-    
-    // Cached string operations
-    const srcLower = newSrc.toLowerCase();
-    const alt = img.getAttribute('alt') || '';
-    const altLower = alt.toLowerCase();
-    
-    // Efficient classification using single conditional chain
-    if (srcLower.includes('screenshot') || srcLower.includes('dashboard') || 
-        srcLower.includes('interface') || altLower.includes('screenshot') ||
-        altLower.includes('dashboard') || altLower.includes('interface')) {
-      img.classList.add('journey-screenshot');
-    } else if (srcLower.includes('icon') || srcLower.includes('logo') || 
-               srcLower.includes('badge') || altLower.includes('icon') ||
-               altLower.includes('logo') || altLower.includes('badge')) {
-      img.classList.add('journey-icon');
-    } else if (srcLower.includes('diagram') || srcLower.includes('chart') || 
-               srcLower.includes('graph') || altLower.includes('diagram') ||
-               altLower.includes('chart') || altLower.includes('graph')) {
-      img.classList.add('journey-diagram');
-    }
-    
-    // Size-based classes (simplified)
-    const width = img.getAttribute('width');
-    const height = img.getAttribute('height');
-    if (width && height) {
-      const w = parseInt(width);
-      const h = parseInt(height);
-      
-      if (w > 800 || h > 600) img.classList.add('journey-large');
-      else if (w < 200 && h < 200) img.classList.add('journey-small');
-      if (w > h * 2) img.classList.add('journey-wide');
-    }
-    
-    // Add alt text if missing
-    if (!alt) img.setAttribute('alt', 'Learning journey image');
-  });
   
   return {
     content: clonedElement.innerHTML,
@@ -540,181 +544,104 @@ function preserveYouTubeTimingParams(url: string): string {
   }
 }
 
-/**
- * Extract timing parameters from button context, attributes, or surrounding text
- */
-function extractTimingFromContext(button: Element): string | null {
-  // Check various attributes that might contain timing info
-  const attributes = [
-    'data-time', 'data-start', 'data-timestamp', 'data-seconds', 
-    'data-timing', 'data-position', 'data-offset'
-  ];
-  
-  for (const attr of attributes) {
-    const value = button.getAttribute(attr);
-    if (value && /^\d+$/.test(value)) {
-      console.log(`⏰ Found timing in ${attr}: ${value}s`);
-      return value;
-    }
-  }
-  
-  // Check if timing is in the button text or title
-  const text = button.textContent || '';
-  const title = button.getAttribute('title') || '';
-  const combined = `${text} ${title}`;
-  
-  const timeMatch = combined.match(/(?:start|at|@)\s*(\d+)(?:s|sec|seconds?)?/i);
-  if (timeMatch) {
-    console.log(`⏰ Found timing in text: ${timeMatch[1]}s`);
-    return timeMatch[1];
-  }
-  
-  return null;
-}
+// Note: Old timing extraction functions removed - now handled directly in video extraction
 
-/**
- * Extract timing parameters from modal click handlers
- */
-function extractTimingFromModal(clickHandler: string | null): string | null {
-  if (!clickHandler) return null;
-  
-  // Look for timing patterns in modal ID like: journey-modal-_ojYThjkpN0-45s
-  const timingInModal = clickHandler.match(/journey-modal-[^'"-]*[-_](\d+)(?:s|sec)?['"]/i);
-  if (timingInModal) {
-    console.log(`⏰ Found timing in modal ID: ${timingInModal[1]}s`);
-    return timingInModal[1];
-  }
-  
-  // Look for timing parameters in the modal call itself
-  const modalParams = clickHandler.match(/open_modal\([^)]*[,\s]+(\d+)/);
-  if (modalParams) {
-    console.log(`⏰ Found timing in modal params: ${modalParams[1]}s`);
-    return modalParams[1];
-  }
-  
-  return null;
-}
-
-/**
- * Extract timing parameters from sibling elements or parent context
- */
-function extractTimingFromSiblings(button: Element): string | null {
-  // Check parent element for timing attributes
-  const parent = button.parentElement;
-  if (parent) {
-    const parentTiming = extractTimingFromContext(parent);
-    if (parentTiming) {
-      console.log(`⏰ Found timing in parent: ${parentTiming}s`);
-      return parentTiming;
-    }
-  }
-  
-  // Check preceding/following text nodes for timing info
-  const container = button.closest('div, section, article') || button.parentElement;
-  if (container) {
-    const containerText = container.textContent || '';
-    const timeMatch = containerText.match(/(?:video\s+at|starts?\s+at|jump\s+to)\s*(\d+)(?::\d+)?\s*(?:s|sec|seconds?|minutes?)?/i);
-    if (timeMatch) {
-      let seconds = timeMatch[1];
-      // Convert mm:ss format to seconds if needed
-      if (timeMatch[0].includes(':')) {
-        const [minutes, secs] = timeMatch[1].split(':').map(Number);
-        seconds = String(minutes * 60 + (secs || 0));
-      }
-      console.log(`⏰ Found timing in container text: ${seconds}s`);
-      return seconds;
-    }
-  }
-  
-  return null;
-}
-
-// Consolidated video extraction and removal
+// Updated video extraction for new modal structure
 function extractAndRemoveAllVideos(element: Element): string | undefined {
   let extractedVideoUrl: string | undefined;
   
-  // Single pass: scan ALL video-related elements
-  const allVideoElements = element.querySelectorAll(
-    '.youtube-lazyload, .responsive-video, .docs-video__trigger, button[data-embed], button.btn--empty, button[class*="btn--empty"], button[class*="text-action-blue"]'
-  );
+  // Look for the new video modal structure from the HTML
+  const videoContainers = element.querySelectorAll('.docs-video, [x-data*="modal"]');
   
-  console.log(`🔍 Found ${allVideoElements.length} potential video elements`);
+  console.log(`🔍 Found ${videoContainers.length} video modal containers`);
   
-  // Process each element once
-  allVideoElements.forEach((videoElement, index) => {
-    const videoId = videoElement.getAttribute('data-embed');
-    const dataUrl = videoElement.getAttribute('data-url');
-    const clickHandler = videoElement.getAttribute('@click') || videoElement.getAttribute('onclick') || '';
-    const buttonText = videoElement.textContent?.toLowerCase() || '';
+  videoContainers.forEach((container, index) => {
+    console.log(`Processing video container ${index + 1}`);
     
-    // Extract video URL if we haven't found one yet
     if (!extractedVideoUrl) {
-      if (videoId) {
-        // Direct video ID extraction
-        if (dataUrl) {
-          extractedVideoUrl = preserveYouTubeTimingParams(dataUrl);
-          console.log(`🎥 Extracted from data-url: ${extractedVideoUrl}`);
-        } else {
-          extractedVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-          console.log(`🎥 Extracted from video ID: ${extractedVideoUrl}`);
-        }
+      // Look for data-embed attribute on buttons inside the container
+      const embedButton = container.querySelector('button[data-embed]');
+      if (embedButton) {
+        const videoId = embedButton.getAttribute('data-embed');
+        const dataUrl = embedButton.getAttribute('data-url');
         
-        // Check for additional timing parameters
-        const timing = extractTimingFromContext(videoElement) || 
-                      extractTimingFromModal(clickHandler) || 
-                      extractTimingFromSiblings(videoElement);
-        
-        if (timing) {
-          extractedVideoUrl += extractedVideoUrl.includes('?') ? `&t=${timing}` : `?t=${timing}`;
-          console.log(`⏰ Added timing: ${timing}s`);
-        }
-      } else if (buttonText.includes('watch video') || buttonText.includes('video')) {
-        // Modal button extraction
-        const modalMatch = clickHandler.match(/open_modal\(['"]journey-modal-([^'"]+)['"]\)/);
-        if (modalMatch && modalMatch[1]) {
-          const potentialVideoId = modalMatch[1];
-          if (potentialVideoId.length >= 10 && potentialVideoId.match(/^[a-zA-Z0-9_-]+$/)) {
-            extractedVideoUrl = `https://www.youtube.com/watch?v=${potentialVideoId}`;
-            console.log(`🎥 Extracted from modal: ${extractedVideoUrl}`);
+        if (videoId) {
+          if (dataUrl) {
+            // Use the full data-url if available (includes timing)
+            extractedVideoUrl = preserveYouTubeTimingParams(dataUrl);
+            console.log(`🎥 Extracted from data-url: ${extractedVideoUrl}`);
+          } else {
+            extractedVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+            console.log(`🎥 Extracted from video ID: ${extractedVideoUrl}`);
           }
         }
       }
-    }
-  });
-  
-  // Remove all video elements in one pass
-  allVideoElements.forEach(element => element.remove());
-  
-  // Handle video links separately (they need href processing)
-  const videoLinks = element.querySelectorAll('a[href]');
-  videoLinks.forEach(link => {
-    const href = link.getAttribute('href');
-    const linkText = link.textContent?.toLowerCase() || '';
-    
-    if (href && (linkText.includes('watch video') || linkText.includes('video'))) {
-      if (!extractedVideoUrl) {
-        let videoUrl = href.startsWith('/') ? `https://grafana.com${href}` : href;
-        if (href.startsWith('./')) videoUrl = `https://grafana.com/docs/${href.substring(2)}`;
-        if (href.startsWith('../')) videoUrl = `https://grafana.com/docs/${href.replace(/^\.\.\//, '')}`;
-        
-        const youtubeId = extractYouTubeVideoId(videoUrl);
-        if (youtubeId) {
-          extractedVideoUrl = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be') 
-            ? preserveYouTubeTimingParams(videoUrl)
-            : `https://www.youtube.com/watch?v=${youtubeId}`;
-          console.log(`🎥 Extracted from link: ${extractedVideoUrl}`);
+      
+      // Also check for x-data modal attributes
+      const xDataAttr = container.getAttribute('x-data');
+      if (xDataAttr && xDataAttr.includes('modal')) {
+        const modalMatch = xDataAttr.match(/modal\(['"]journey-modal-([^'"]+)['"]/);
+        if (modalMatch && modalMatch[1]) {
+          const modalId = modalMatch[1];
+          // Extract video ID from modal ID (it might contain timing info)
+          const videoIdMatch = modalId.match(/^([a-zA-Z0-9_-]{10,})/);
+          if (videoIdMatch) {
+            const baseVideoId = videoIdMatch[1];
+            let videoUrl = `https://www.youtube.com/watch?v=${baseVideoId}`;
+            
+            // Check if there's timing info in the modal ID
+            const timingMatch = modalId.match(/-(\d+)s?$/);
+            if (timingMatch) {
+              videoUrl += `&t=${timingMatch[1]}`;
+              console.log(`⏰ Found timing in modal ID: ${timingMatch[1]}s`);
+            }
+            
+            extractedVideoUrl = videoUrl;
+            console.log(`🎥 Extracted from x-data modal: ${extractedVideoUrl}`);
+          }
         }
       }
-      link.remove();
-    } else if (href) {
-      // Regular links - ensure they open in new tabs
-      link.setAttribute('target', '_blank');
-      link.setAttribute('rel', 'noopener noreferrer');
-      link.setAttribute('data-journey-link', 'true');
+      
+      // Look for iframe with YouTube embed for timing info
+      const iframe = container.querySelector('iframe[src*="youtube.com/embed"]');
+      if (iframe && !extractedVideoUrl) {
+        const iframeSrc = iframe.getAttribute('src');
+        if (iframeSrc) {
+          extractedVideoUrl = preserveYouTubeTimingParams(iframeSrc);
+          console.log(`🎥 Extracted from iframe: ${extractedVideoUrl}`);
+        }
+      }
+    }
+    
+    // Remove the entire video container
+    container.remove();
+  });
+  
+  // Also look for standalone video buttons that might not be in containers
+  const videoButtons = element.querySelectorAll('button[data-embed], button[class*="text-action-blue"]');
+  videoButtons.forEach(button => {
+    const buttonText = button.textContent?.toLowerCase() || '';
+    
+    if (buttonText.includes('watch video') || buttonText.includes('video')) {
+      if (!extractedVideoUrl) {
+        const videoId = button.getAttribute('data-embed');
+        const dataUrl = button.getAttribute('data-url');
+        
+        if (videoId) {
+          if (dataUrl) {
+            extractedVideoUrl = preserveYouTubeTimingParams(dataUrl);
+            console.log(`🎥 Extracted from standalone button data-url: ${extractedVideoUrl}`);
+          } else {
+            extractedVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+            console.log(`🎥 Extracted from standalone button video ID: ${extractedVideoUrl}`);
+          }
+        }
+      }
+      button.remove();
     }
   });
   
-  console.log(`🗑️ Video extraction complete, removed ${allVideoElements.length} elements`);
+  console.log(`🗑️ Video extraction complete, found: ${extractedVideoUrl || 'none'}`);
   return extractedVideoUrl;
 }
 
@@ -739,79 +666,62 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
   const isCoverPageUrl = url.endsWith('/') && !url.includes('/business-value') && !url.includes('/when-to') && !url.includes('/verify');
   console.log(`URL appears to be cover page: ${isCoverPageUrl}`);
   
-  // Try strategies in order of reliability - direct fetch first, then working proxies
-  const strategies = [
-    { name: 'direct', fn: () => fetchDirectFast(unstyledUrl) },
-    { name: 'corsproxy', fn: () => fetchWithCorsproxy(unstyledUrl) },
-  ];
+  // Try direct fetch - first try the unstyled URL, then with trailing slash if needed
+  let htmlContent: string | null = null;
   
-  // For milestone pages, also try adding trailing slash if missing
-  if (!isCoverPageUrl && !url.endsWith('/')) {
-    const urlWithSlash = url + '/';
-    const unstyledUrlWithSlash = getUnstyledContentUrl(urlWithSlash);
-    console.log(`Also trying milestone URL with trailing slash: ${unstyledUrlWithSlash}`);
-    strategies.unshift(
-      { name: 'direct-slash', fn: () => fetchDirectFast(unstyledUrlWithSlash) },
-      { name: 'corsproxy-slash', fn: () => fetchWithCorsproxy(unstyledUrlWithSlash) }
-    );
+  try {
+    console.log('Trying direct fetch...');
+    const startTime = Date.now();
+    htmlContent = await fetchDirectFast(unstyledUrl);
+    const duration = Date.now() - startTime;
+    
+    if (htmlContent && htmlContent.trim().length > 0) {
+      console.log(`✅ Direct fetch succeeded in ${duration}ms, content length: ${htmlContent.length}`);
+    } else {
+      console.warn(`❌ Direct fetch returned empty content after ${duration}ms`);
+      htmlContent = null;
+    }
+  } catch (error) {
+    console.warn(`❌ Direct fetch failed:`, error);
+    htmlContent = null;
   }
   
-  for (let i = 0; i < strategies.length; i++) {
-    const strategy = strategies[i];
+  // For milestone pages, also try adding trailing slash if missing and first attempt failed
+  if (!htmlContent && !isCoverPageUrl && !url.endsWith('/')) {
+    const urlWithSlash = url + '/';
+    const unstyledUrlWithSlash = getUnstyledContentUrl(urlWithSlash);
+    console.log(`Trying milestone URL with trailing slash: ${unstyledUrlWithSlash}`);
     
     try {
-      console.log(`Trying strategy ${i + 1}/${strategies.length}: ${strategy.name}`);
       const startTime = Date.now();
-      const htmlContent = await strategy.fn();
+      htmlContent = await fetchDirectFast(unstyledUrlWithSlash);
       const duration = Date.now() - startTime;
       
       if (htmlContent && htmlContent.trim().length > 0) {
-        console.log(`✅ Strategy ${strategy.name} succeeded in ${duration}ms, content length: ${htmlContent.length}`);
-        const content = await extractLearningJourneyContent(htmlContent, url); // Use original URL for content
-        console.log(`Extracted content: ${content.title}, milestones: ${content.milestones.length}`);
-        
-        // Cache the result (use original URL as cache key)
-        contentCache.set(url, { content, timestamp: Date.now() });
-        
-        return content;
+        console.log(`✅ Direct fetch with slash succeeded in ${duration}ms, content length: ${htmlContent.length}`);
       } else {
-        console.warn(`❌ Strategy ${strategy.name} returned empty content after ${duration}ms`);
+        console.warn(`❌ Direct fetch with slash returned empty content after ${duration}ms`);
+        htmlContent = null;
       }
     } catch (error) {
-      console.warn(`❌ Strategy ${strategy.name} failed:`, error);
-      continue;
+      console.warn(`❌ Direct fetch with slash failed:`, error);
+      htmlContent = null;
     }
   }
   
-  console.error('All strategies failed for URL:', url);
-  return null;
-}
-
-/**
- * Fetch with corsproxy.io (the working proxy service)
- */
-async function fetchWithCorsproxy(url: string): Promise<string | null> {
-  try {
-    const proxyUrl = `https://corsproxy.io/?${url}`;
-    console.log(`Trying corsproxy.io: ${proxyUrl}`);
-    
-    const response = await fetch(proxyUrl, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-      signal: AbortSignal.timeout(8000), // 8 second timeout
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const content = await response.text();
-    console.log('Successfully fetched via corsproxy.io');
-    return content;
-  } catch (error) {
-    console.warn('Corsproxy.io failed:', error);
+  if (!htmlContent) {
+    console.error('Direct fetch failed for URL:', url);
     return null;
   }
+  
+  // Extract content
+  const content = await extractLearningJourneyContent(htmlContent, url); // Use original URL for content
+  console.log(`Extracted content: ${content.title}, milestones: ${content.milestones.length}`);
+  
+  // Cache the result (use original URL as cache key)
+  contentCache.set(url, { content, timestamp: Date.now() });
+  
+  return content;
 }
 
 /**
@@ -820,12 +730,27 @@ async function fetchWithCorsproxy(url: string): Promise<string | null> {
 async function fetchDirectFast(url: string): Promise<string | null> {
   try {
     console.log('Trying direct fetch...');
-    const response = await fetch(url, {
-      mode: 'cors',
+    
+    const headers = getAuthHeaders();
+    
+    // For authenticated requests, we might need additional CORS handling
+    const fetchOptions: RequestInit = {
       method: 'GET',
-      headers: getAuthHeaders(),
+      headers: headers,
       signal: AbortSignal.timeout(5000), // 5 second timeout
-    });
+    };
+    
+    // If we have authentication, try with credentials and explicit CORS mode
+    if (DOCS_USERNAME) {
+      fetchOptions.mode = 'cors';
+      fetchOptions.credentials = 'omit'; // Don't send cookies, use explicit auth headers
+      console.log('🔐 Using authenticated direct fetch');
+    } else {
+      fetchOptions.mode = 'cors';
+      console.log('📂 Using non-authenticated direct fetch');
+    }
+    
+    const response = await fetch(url, fetchOptions);
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
