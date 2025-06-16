@@ -8,6 +8,7 @@ import { Icon, IconButton, useStyles2, Spinner, Alert } from '@grafana/ui';
 import { 
   fetchLearningJourneyContent, 
   LearningJourneyContent,
+  VideoInfo,
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
   clearLearningJourneyCache,
@@ -1021,19 +1022,52 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         <div className={styles.actions}>
           {!isRecommendationsTab && activeTab && (
             <>
-              {activeTab.content?.videoUrl && (
-                <IconButton
-                  name="play"
-                  aria-label="Watch video"
-                  onClick={() => {
-                    if (activeTab.content?.videoUrl) {
-                      window.open(activeTab.content.videoUrl, '_blank', 'noopener,noreferrer');
-                    }
-                  }}
-                  tooltip="Watch video for this page"
-                  tooltipPlacement="left"
-                  className={styles.videoButton}
-                />
+              {(activeTab.content?.videoUrl || (activeTab.content?.videos && activeTab.content.videos.length > 0)) && (
+                <div className={styles.videoButtonContainer}>
+                  {activeTab.content?.videos && activeTab.content.videos.length > 1 ? (
+                    // Multiple videos - show dropdown
+                    <div className={styles.videoDropdown}>
+                      <IconButton
+                        name="angle-down"
+                        aria-label="Watch videos"
+                        tooltip="Choose video to watch"
+                        tooltipPlacement="left"
+                        className={styles.videoDropdownButton}
+                      />
+                      <div className={styles.videoDropdownMenu}>
+                        {activeTab.content.videos.map((video, index) => (
+                          <button
+                            key={video.id}
+                            className={styles.videoDropdownItem}
+                            onClick={() => {
+                              window.open(video.url, '_blank', 'noopener,noreferrer');
+                            }}
+                          >
+                            <Icon name="play" size="sm" className={styles.videoDropdownIcon} />
+                            <span className={styles.videoDropdownTitle}>
+                              {video.title || `Video ${index + 1}`}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    // Single video - direct play
+                    <IconButton
+                      name="play"
+                      aria-label="Watch video"
+                      onClick={() => {
+                        const videoUrl = activeTab.content?.videos?.[0]?.url || activeTab.content?.videoUrl;
+                        if (videoUrl) {
+                          window.open(videoUrl, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                      tooltip="Watch video for this page"
+                      tooltipPlacement="left"
+                      className={styles.videoButton}
+                    />
+                  )}
+                </div>
               )}
               <IconButton
                 name="external-link-alt"
@@ -2747,6 +2781,92 @@ const getStyles = (theme: GrafanaTheme2) => ({
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
     },
+  }),
+  videoButtonContainer: css({
+    label: 'combined-journey-video-button-container',
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+  }),
+  videoDropdown: css({
+    label: 'combined-journey-video-dropdown',
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    
+    '&:hover div[class*="video-dropdown-menu"]': {
+      display: 'block !important',
+    },
+  }),
+  videoDropdownButton: css({
+    label: 'combined-journey-video-dropdown-button',
+    padding: theme.spacing(0.25),
+    margin: 0,
+    minWidth: 'auto',
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    flexShrink: 0,
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  videoDropdownMenu: css({
+    label: 'combined-journey-video-dropdown-menu',
+    position: 'absolute',
+    top: '100%',
+    right: 0,
+    marginTop: theme.spacing(0.5),
+    backgroundColor: theme.colors.background.primary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    boxShadow: theme.shadows.z3,
+    minWidth: '200px',
+    zIndex: 1000,
+    display: 'none',
+    maxHeight: '300px',
+    overflowY: 'auto',
+  }),
+  videoDropdownItem: css({
+    label: 'combined-journey-video-dropdown-item',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1, 1.5),
+    width: '100%',
+    border: 'none',
+    backgroundColor: 'transparent',
+    cursor: 'pointer',
+    fontSize: theme.typography.bodySmall.fontSize,
+    textAlign: 'left',
+    transition: 'background-color 0.2s ease',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+    
+    '&:first-child': {
+      borderTopLeftRadius: theme.shape.radius.default,
+      borderTopRightRadius: theme.shape.radius.default,
+    },
+    
+    '&:last-child': {
+      borderBottomLeftRadius: theme.shape.radius.default,
+      borderBottomRightRadius: theme.shape.radius.default,
+    },
+  }),
+  videoDropdownIcon: css({
+    label: 'combined-journey-video-dropdown-icon',
+    color: theme.colors.primary.main,
+    flexShrink: 0,
+  }),
+  videoDropdownTitle: css({
+    label: 'combined-journey-video-dropdown-title',
+    color: theme.colors.text.primary,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    flex: 1,
   }),
   docsPanel: css({
     label: 'single-docs-panel-wrapper',

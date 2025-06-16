@@ -1,5 +1,11 @@
 import { DOCS_BASE_URL, DOCS_USERNAME, DOCS_PASSWORD } from '../constants';
 
+export interface VideoInfo {
+  url: string;
+  title: string;
+  id: string;
+}
+
 export interface LearningJourneyContent {
   title: string;
   content: string;
@@ -8,7 +14,8 @@ export interface LearningJourneyContent {
   totalMilestones: number;
   milestones: Milestone[];
   lastFetched: string;
-  videoUrl?: string; // YouTube video URL for this page
+  videoUrl?: string; // Legacy - YouTube video URL for this page (first video)
+  videos?: VideoInfo[]; // All videos found in this page
   summary?: string; // Summary extracted from first 3 paragraphs
 }
 
@@ -394,6 +401,7 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
       milestones,
       lastFetched: new Date().toISOString(),
       videoUrl: mainContentResult.videoUrl,
+      videos: mainContentResult.videos,
       summary
     };
   } catch (error) {
@@ -405,7 +413,8 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
       currentMilestone: 1,
       totalMilestones: 1,
       milestones: [],
-      lastFetched: new Date().toISOString()
+      lastFetched: new Date().toISOString(),
+      videos: []
     };
   }
 }
@@ -413,13 +422,14 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
 /**
  * Extract main content from learning journey HTML - work with entire body
  */
-function extractMainContent(doc: Document, isCoverPage: boolean): { content: string; videoUrl?: string } {
+function extractMainContent(doc: Document, isCoverPage: boolean): { content: string; videoUrl?: string; videos: VideoInfo[] } {
   // Work with the entire body since there's no wrapper container
   const bodyElement = doc.body;
   
   if (!bodyElement) {
     return {
-      content: 'Content not available - document body not found'
+      content: 'Content not available - document body not found',
+      videos: []
     };
   }
   
@@ -431,12 +441,15 @@ function extractMainContent(doc: Document, isCoverPage: boolean): { content: str
 /**
  * Process learning journey content for better display - updated for new structure
  */
-function processLearningJourneyContent(element: Element, isCoverPage: boolean): { content: string; videoUrl?: string } {
+function processLearningJourneyContent(element: Element, isCoverPage: boolean): { content: string; videoUrl?: string; videos: VideoInfo[] } {
   const clonedElement = element.cloneNode(true) as Element;
   let extractedVideoUrl: string | undefined;
+  let allVideos: VideoInfo[] = [];
   
   // Extract and replace videos with thumbnails
-  extractedVideoUrl = extractAndReplaceVideosWithThumbnails(clonedElement);
+  const videoResult = extractAndReplaceVideosWithThumbnails(clonedElement);
+  extractedVideoUrl = videoResult.firstVideoUrl;
+  allVideos = videoResult.allVideos;
   
   // Process images - handle data-src attributes from new structure
   const images = clonedElement.querySelectorAll('img');
@@ -608,7 +621,8 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
   
   return {
     content: clonedElement.innerHTML,
-    videoUrl: extractedVideoUrl
+    videoUrl: extractedVideoUrl,
+    videos: allVideos
   };
 }
 
@@ -665,8 +679,9 @@ function preserveYouTubeTimingParams(url: string): string {
 // Note: Old timing extraction functions removed - now handled directly in video extraction
 
 // Updated video extraction to create inline thumbnails instead of removing videos
-function extractAndReplaceVideosWithThumbnails(element: Element): string | undefined {
+function extractAndReplaceVideosWithThumbnails(element: Element): { firstVideoUrl?: string; allVideos: VideoInfo[] } {
   let extractedVideoUrl: string | undefined;
+  const allVideos: VideoInfo[] = [];
   
   // Look for the new video modal structure from the HTML
   const videoContainers = element.querySelectorAll('.docs-video, [x-data*="modal"]');
@@ -768,6 +783,13 @@ function extractAndReplaceVideosWithThumbnails(element: Element): string | undef
     
     // Create inline video thumbnail if we found a video
     if (videoId && videoUrl) {
+      // Add to allVideos array
+      allVideos.push({
+        url: videoUrl,
+        title: videoTitle,
+        id: videoId
+      });
+      
       const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
       
       // Detect if we're in an environment where YouTube embeds won't work
@@ -847,6 +869,13 @@ function extractAndReplaceVideosWithThumbnails(element: Element): string | undef
           extractedVideoUrl = videoUrl;
         }
         
+        // Add to allVideos array
+        allVideos.push({
+          url: videoUrl,
+          title: dataTitle,
+          id: videoId
+        });
+        
         // Create inline thumbnail for standalone button
         const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
         
@@ -902,8 +931,8 @@ function extractAndReplaceVideosWithThumbnails(element: Element): string | undef
     }
   });
   
-  console.log(`🎬 Video processing complete, found: ${extractedVideoUrl || 'none'}`);
-  return extractedVideoUrl;
+  console.log(`🎬 Video processing complete, found: ${extractedVideoUrl || 'none'}, total videos: ${allVideos.length}`);
+  return { firstVideoUrl: extractedVideoUrl, allVideos };
 }
 
 /**
