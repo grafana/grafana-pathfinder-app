@@ -34,6 +34,8 @@ interface Recommendation {
   totalSteps?: number;
   isLoadingSteps?: boolean;
   stepsExpanded?: boolean;
+  summary?: string; // Journey summary from first 3 paragraphs
+  summaryExpanded?: boolean; // Track summary expansion state
   [key: string]: any; // Allow for additional attributes from the server
 }
 
@@ -216,12 +218,13 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
           // Only fetch milestone data for learning journeys
           if (recommendation.type === 'learning-journey' || !recommendation.type) {
             try {
-              console.log(`Fetching step counts for learning journey: ${recommendation.title}`);
+              console.log(`Fetching step counts and summary for learning journey: ${recommendation.title}`);
               const journeyContent = await fetchLearningJourneyContent(recommendation.url);
               return {
                 ...recommendation,
                 totalSteps: journeyContent?.milestones?.length || 0,
                 milestones: journeyContent?.milestones || [],
+                summary: journeyContent?.summary || '',
               };
             } catch (error) {
               console.warn(`Failed to fetch steps for learning journey ${recommendation.title}:`, error);
@@ -229,6 +232,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
                 ...recommendation,
                 totalSteps: 0,
                 milestones: [],
+                summary: '',
               };
             }
           } else {
@@ -238,6 +242,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
               ...recommendation,
               totalSteps: 0, // Docs pages don't have steps
               milestones: [],
+              summary: '',
             };
           }
         })
@@ -291,6 +296,21 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     recommendations[index] = {
       ...recommendation,
       stepsExpanded: !recommendation.stepsExpanded,
+    };
+    
+    this.setState({ recommendations });
+  }
+
+  public async toggleSummaryExpansion(index: number) {
+    const recommendations = [...this.state.recommendations];
+    const recommendation = recommendations[index];
+    
+    // Toggle summary expansion state
+    recommendations[index] = {
+      ...recommendation,
+      summaryExpanded: !recommendation.summaryExpanded,
+      // Collapse steps when closing summary
+      stepsExpanded: recommendation.summaryExpanded ? false : recommendation.stepsExpanded,
     };
     
     this.setState({ recommendations });
@@ -377,59 +397,60 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                 className={styles.startButton}
                               >
                                 <Icon name="play" size="sm" />
-                                Start Journey
+                                Start
                               </button>
                             </div>
                           </div>
                           
                           <div className={styles.cardMetadata}>
-                            <div className={styles.stepsInfo}>
-                              {(recommendation.totalSteps ?? 0) > 0 ? (
-                                <span className={styles.stepsCount}>
-                                  <Icon name="list-ul" size="xs" />
-                                  {recommendation.totalSteps} step{recommendation.totalSteps !== 1 ? 's' : ''}
-                                </span>
-                              ) : (
-                                <span className={styles.stepsCount}>
-                                  <Icon name="list-ul" size="xs" />
-                                  Multiple steps
-                                </span>
-                              )}
-                              
-                              {(recommendation.totalSteps ?? 0) > 0 && (
-                                <button
-                                  onClick={() => model.toggleStepsExpansion(index)}
-                                  className={styles.viewStepsButton}
-                                >
-                                  {recommendation.stepsExpanded ? (
-                                    <>
-                                      <Icon name="angle-up" size="sm" />
-                                      Hide steps
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Icon name="angle-down" size="sm" />
-                                      View steps
-                                    </>
-                                  )}
-                                </button>
-                              )}
+                            <div className={styles.summaryInfo}>
+                              <button
+                                onClick={() => model.toggleSummaryExpansion(index)}
+                                className={styles.summaryButton}
+                              >
+                                <Icon name="info-circle" size="sm" />
+                                <span>Summary</span>
+                                <Icon name={recommendation.summaryExpanded ? "angle-up" : "angle-down"} size="sm" />
+                              </button>
                             </div>
                           </div>
                           
-                          {recommendation.stepsExpanded && recommendation.milestones && (
-                            <div className={styles.stepsExpansion}>
-                              <div className={styles.stepsList}>
-                                {recommendation.milestones.map((milestone, stepIndex) => (
-                                  <div key={stepIndex} className={styles.stepItem}>
-                                    <div className={styles.stepNumber}>{milestone.number}</div>
-                                    <div className={styles.stepContent}>
-                                      <div className={styles.stepTitle}>{milestone.title}</div>
-                                      <div className={styles.stepDuration}>{milestone.duration}</div>
+                          {recommendation.summaryExpanded && (
+                            <div className={styles.summaryExpansion}>
+                              {recommendation.summary && (
+                                <div className={styles.summaryContent}>
+                                  <p className={styles.summaryText}>{recommendation.summary}</p>
+                                </div>
+                              )}
+                              
+                              {(recommendation.totalSteps ?? 0) > 0 && (
+                                <div className={styles.stepsSection}>
+                                  <button
+                                    onClick={() => model.toggleStepsExpansion(index)}
+                                    className={styles.viewStepsButton}
+                                  >
+                                    <Icon name="list-ul" size="sm" />
+                                    <span>View {recommendation.totalSteps} milestone{recommendation.totalSteps !== 1 ? 's' : ''}</span>
+                                    <Icon name={recommendation.stepsExpanded ? "angle-up" : "angle-down"} size="sm" />
+                                  </button>
+                                  
+                                  {recommendation.stepsExpanded && recommendation.milestones && (
+                                    <div className={styles.stepsExpansion}>
+                                      <div className={styles.stepsList}>
+                                        {recommendation.milestones.map((milestone, stepIndex) => (
+                                          <div key={stepIndex} className={styles.stepItem}>
+                                            <div className={styles.stepNumber}>{milestone.number}</div>
+                                            <div className={styles.stepContent}>
+                                              <div className={styles.stepTitle}>{milestone.title}</div>
+                                              <div className={styles.stepDuration}>{milestone.duration}</div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -626,6 +647,34 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(2),
     width: '100%',
   }),
+  summaryInfo: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(2),
+    width: '100%',
+  }),
+  summaryButton: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.75),
+    backgroundColor: 'transparent',
+    border: `1px solid ${theme.colors.border.weak}`,
+    padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
+    borderRadius: theme.shape.radius.default,
+    cursor: 'pointer',
+    color: theme.colors.text.primary,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    transition: 'all 0.2s ease',
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.medium,
+    },
+    '&:disabled': {
+      opacity: 0.6,
+      cursor: 'not-allowed',
+    },
+  }),
   stepsCount: css({
     display: 'flex',
     alignItems: 'center',
@@ -659,10 +708,30 @@ const getStyles = (theme: GrafanaTheme2) => ({
       cursor: 'not-allowed',
     },
   }),
-  stepsExpansion: css({
+  summaryExpansion: css({
     marginTop: theme.spacing(1.5),
     padding: theme.spacing(1.5),
     backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  }),
+  summaryContent: css({
+    marginBottom: theme.spacing(2),
+  }),
+  summaryText: css({
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.text.primary,
+    lineHeight: 1.5,
+    margin: 0,
+  }),
+  stepsSection: css({
+    paddingTop: theme.spacing(1.5),
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+  }),
+  stepsExpansion: css({
+    marginTop: theme.spacing(1.5),
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.background.canvas,
     borderRadius: theme.shape.radius.default,
     border: `1px solid ${theme.colors.border.weak}`,
   }),
