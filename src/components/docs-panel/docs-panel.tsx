@@ -316,7 +316,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   const activeTab = model.getActiveTab();
   const isRecommendationsTab = activeTabId === 'recommendations';
 
-  // Handle link clicks for "Start Learning Journey" button
+  // Add global modal styles on component mount
+  useEffect(() => {
+    addGlobalModalStyles();
+  }, []);
+
+  // Handle link clicks for "Start Learning Journey" button, video thumbnails, and image lightbox
   useEffect(() => {
     const handleLinkClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -341,6 +346,189 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         } else {
           console.warn('No milestones found to navigate to');
         }
+      }
+
+      // Handle video thumbnail clicks
+      const videoThumbnail = target.closest('.journey-video-thumbnail') as HTMLElement;
+      
+      if (videoThumbnail) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const videoUrl = videoThumbnail.getAttribute('data-video-url');
+        const videoTitle = videoThumbnail.getAttribute('data-video-title') || 'Video';
+        const videoId = videoThumbnail.getAttribute('data-video-id');
+        
+        if (videoUrl && videoId) {
+          console.log('🎬 Video thumbnail clicked:', { videoTitle, videoUrl, videoId });
+          
+          // Check if we should skip embed due to YouTube restrictions
+          const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          const isHttp = window.location.protocol === 'http:';
+          const shouldSkipEmbed = isLocalhost || isHttp;
+          
+          if (shouldSkipEmbed) {
+            console.log('🎬 Skipping embed due to localhost/http restrictions, opening YouTube directly');
+            window.open(videoUrl, '_blank', 'noopener,noreferrer');
+            return;
+          }
+          
+          // Create video modal/iframe overlay
+          const videoModal = document.createElement('div');
+          videoModal.className = 'journey-video-modal';
+          videoModal.innerHTML = `
+            <div class="journey-video-modal-backdrop">
+              <div class="journey-video-modal-container">
+                <div class="journey-video-modal-header">
+                  <h3 class="journey-video-modal-title">${videoTitle}</h3>
+                  <button class="journey-video-modal-close" aria-label="Close video">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+                <div class="journey-video-modal-content">
+                  <div class="journey-video-modal-iframe-container">
+                    <div class="journey-video-modal-loading">
+                      <div class="journey-video-loading-spinner"></div>
+                      <p>Loading video...</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+          
+          // Add to body
+          document.body.appendChild(videoModal);
+          
+          // Lazy load the iframe after modal is shown to avoid YouTube warnings until needed
+          const iframeContainer = videoModal.querySelector('.journey-video-modal-iframe-container');
+          const loadingDiv = videoModal.querySelector('.journey-video-modal-loading');
+          
+          setTimeout(() => {
+            if (iframeContainer && loadingDiv) {
+              const iframe = document.createElement('iframe');
+              // Remove origin parameter for localhost to avoid blocking issues
+              const cleanVideoUrl = videoUrl.replace('watch?v=', 'embed/').replace('&t=', '?start=');
+              const embedUrl = `${cleanVideoUrl}&autoplay=1&rel=0&modestbranding=1`;
+              iframe.src = embedUrl;
+              iframe.title = videoTitle;
+              iframe.setAttribute('frameborder', '0');
+              iframe.setAttribute('loading', 'eager'); // Load immediately since user clicked
+              // Relaxed sandbox for better compatibility
+              iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups allow-forms');
+              iframe.setAttribute('allowfullscreen', 'true');
+              iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+              iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+              iframe.className = 'journey-video-modal-iframe';
+              
+              // Simple error handling - since we bypass embeds on localhost, this is just a safety net
+              iframe.onerror = () => {
+                console.warn('🎬 Video embed failed, opening YouTube directly');
+                window.open(videoUrl, '_blank', 'noopener,noreferrer');
+                closeModal();
+              };
+              
+              // Replace loading with iframe
+              loadingDiv.remove();
+              iframeContainer.appendChild(iframe);
+            }
+          }, 100); // Small delay to ensure modal is visible
+          
+          // Add close functionality
+          const closeModal = () => {
+            document.body.removeChild(videoModal);
+            document.body.style.overflow = '';
+          };
+          
+          // Close on backdrop click
+          videoModal.querySelector('.journey-video-modal-backdrop')?.addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+              closeModal();
+            }
+          });
+          
+          // Close on close button click
+          videoModal.querySelector('.journey-video-modal-close')?.addEventListener('click', closeModal);
+          
+          // Close on escape key
+          const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+              closeModal();
+              document.removeEventListener('keydown', handleEscape);
+            }
+          };
+          document.addEventListener('keydown', handleEscape);
+          
+          // Prevent body scroll
+          document.body.style.overflow = 'hidden';
+        }
+      }
+
+      // Handle image lightbox clicks
+      const image = target.closest('img') as HTMLImageElement;
+      
+      if (image && !image.closest('.journey-video-thumbnail') && !image.classList.contains('journey-conclusion-header')) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const imageSrc = image.src;
+        const imageAlt = image.alt || 'Image';
+        
+        // Create image lightbox modal
+        const imageModal = document.createElement('div');
+        imageModal.className = 'journey-image-modal';
+        imageModal.innerHTML = `
+          <div class="journey-image-modal-backdrop">
+            <div class="journey-image-modal-container">
+              <div class="journey-image-modal-header">
+                <h3 class="journey-image-modal-title">${imageAlt}</h3>
+                <button class="journey-image-modal-close" aria-label="Close image">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+              <div class="journey-image-modal-content">
+                <img src="${imageSrc}" alt="${imageAlt}" class="journey-image-modal-image" />
+              </div>
+            </div>
+          </div>
+        `;
+        
+        // Add to body
+        document.body.appendChild(imageModal);
+        
+        // Add close functionality
+        const closeModal = () => {
+          document.body.removeChild(imageModal);
+          document.body.style.overflow = '';
+        };
+        
+        // Close on backdrop click
+        imageModal.querySelector('.journey-image-modal-backdrop')?.addEventListener('click', (e) => {
+          if (e.target === e.currentTarget) {
+            closeModal();
+          }
+        });
+        
+        // Close on close button click
+        imageModal.querySelector('.journey-image-modal-close')?.addEventListener('click', closeModal);
+        
+        // Close on escape key
+        const handleEscape = (e: KeyboardEvent) => {
+          if (e.key === 'Escape') {
+            closeModal();
+            document.removeEventListener('keydown', handleEscape);
+          }
+        };
+        document.addEventListener('keydown', handleEscape);
+        
+        // Prevent body scroll
+        document.body.style.overflow = 'hidden';
       }
 
       // Handle side journey links
@@ -1234,7 +1422,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
       },
     },
     
-    // Images - responsive and well-styled
+    // Images - responsive and well-styled with lightbox cursor
     '& img': {
       maxWidth: '100%',
       height: 'auto',
@@ -1244,11 +1432,22 @@ const getStyles = (theme: GrafanaTheme2) => ({
       display: 'block',
       boxShadow: theme.shadows.z1,
       transition: 'all 0.2s ease',
+      cursor: 'pointer',
       
       '&:hover': {
         boxShadow: theme.shadows.z2,
         transform: 'scale(1.02)',
-        cursor: 'pointer',
+        borderColor: theme.colors.primary.main,
+      },
+      
+      // Don't apply hover effects to video thumbnails or conclusion headers
+      '&.journey-video-thumbnail-image, &.journey-conclusion-header': {
+        cursor: 'default',
+        
+        '&:hover': {
+          transform: 'none',
+          borderColor: theme.colors.border.weak,
+        },
       },
     },
     
@@ -2112,6 +2311,129 @@ const getStyles = (theme: GrafanaTheme2) => ({
       justifyContent: 'center',
     },
     
+    // Video thumbnail sections
+    '& .journey-video-section': {
+      margin: `${theme.spacing(3)} 0`,
+      borderRadius: theme.shape.radius.default,
+      overflow: 'hidden',
+    },
+    
+    '& .journey-video-thumbnail-container': {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(1.5),
+    },
+    
+    '& .journey-video-thumbnail': {
+      position: 'relative',
+      borderRadius: theme.shape.radius.default,
+      overflow: 'hidden',
+      cursor: 'pointer',
+      transition: 'all 0.3s ease',
+      border: `2px solid ${theme.colors.border.weak}`,
+      
+      '&:hover': {
+        transform: 'scale(1.02)',
+        boxShadow: theme.shadows.z2,
+        borderColor: theme.colors.primary.main,
+        
+        '& .journey-video-play-overlay': {
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        },
+        
+        '& .journey-video-play-button': {
+          transform: 'scale(1.1)',
+          backgroundColor: theme.colors.primary.main,
+        },
+      },
+    },
+    
+    '& .journey-video-thumbnail-image': {
+      width: '100%',
+      height: 'auto',
+      maxHeight: '280px',
+      objectFit: 'cover',
+      display: 'block',
+    },
+    
+    '& .journey-video-play-overlay': {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      transition: 'all 0.3s ease',
+    },
+    
+    '& .journey-video-play-button': {
+      width: '60px',
+      height: '60px',
+      borderRadius: '50%',
+      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+      color: theme.colors.text.primary,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      transition: 'all 0.3s ease',
+      boxShadow: theme.shadows.z2,
+      
+      '& svg': {
+        marginLeft: '3px', // Slight offset to center play icon visually
+      },
+    },
+    
+    '& .journey-video-duration-badge': {
+      position: 'absolute',
+      bottom: theme.spacing(1),
+      right: theme.spacing(1),
+      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      color: 'white',
+      padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+      borderRadius: theme.shape.radius.default,
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+    },
+    
+    '& .journey-video-description': {
+      padding: theme.spacing(1.5),
+      backgroundColor: theme.colors.background.secondary,
+      borderRadius: theme.shape.radius.default,
+      border: `1px solid ${theme.colors.border.weak}`,
+      fontSize: theme.typography.body.fontSize,
+      lineHeight: 1.5,
+      color: theme.colors.text.primary,
+    },
+    
+    // External link indicator for videos that will open in YouTube
+    '& .journey-video-external-indicator': {
+      position: 'absolute',
+      top: '8px',
+      right: '8px',
+      width: '16px',
+      height: '16px',
+      backgroundColor: 'rgba(255, 87, 34, 0.9)',
+      borderRadius: '50%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: 'white',
+      zIndex: 2,
+      border: `1px solid white`,
+    },
+    
+    // Simplified styling for videos that will open externally
+    '& .journey-video-thumbnail.will-open-externally': {
+      '& .journey-video-duration-badge': {
+        backgroundColor: 'rgba(255, 87, 34, 0.9)', // Orange to indicate external
+        fontSize: '11px',
+        fontWeight: theme.typography.fontWeightBold,
+      },
+    },
+    
     // Mobile responsive adjustments
     '@media (max-width: 768px)': {
       '& img': {
@@ -2127,6 +2449,20 @@ const getStyles = (theme: GrafanaTheme2) => ({
       '& pre': {
         paddingRight: theme.spacing(8),
         fontSize: '13px',
+      },
+      
+      // Video thumbnails tablet adjustments
+      '& .journey-video-section': {
+        margin: `${theme.spacing(2)} 0`,
+      },
+      
+      '& .journey-video-thumbnail-image': {
+        maxHeight: '200px',
+      },
+      
+      '& .journey-video-play-button': {
+        width: '50px',
+        height: '50px',
       },
       
       // Side journeys tablet adjustments
@@ -2776,7 +3112,261 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
+// Add global styles for video and image modals when component mounts
+const addGlobalModalStyles = () => {
+  const modalStyleId = 'journey-modal-styles';
+  
+  // Check if styles already exist
+  if (document.getElementById(modalStyleId)) {
+    return;
+  }
+  
+  const style = document.createElement('style');
+  style.id = modalStyleId;
+  style.textContent = `
+    /* Video Modal Styles */
+    .journey-video-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .journey-video-modal-backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .journey-video-modal-container {
+      background: #1a1a1a;
+      border-radius: 8px;
+      overflow: hidden;
+      max-width: 90vw;
+      max-height: 90vh;
+      width: 100%;
+      max-width: 1200px;
+      position: relative;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    
+    .journey-video-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      background: #2a2a2a;
+      border-bottom: 1px solid #3a3a3a;
+    }
+    
+    .journey-video-modal-title {
+      color: white;
+      margin: 0;
+      font-size: 16px;
+      font-weight: 500;
+    }
+    
+    .journey-video-modal-close {
+      background: none;
+      border: none;
+      color: #ccc;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    }
+    
+    .journey-video-modal-close:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+    
+    .journey-video-modal-content {
+      position: relative;
+      background: black;
+    }
+    
+    .journey-video-modal-iframe-container {
+      position: relative;
+      width: 100%;
+      height: 0;
+      padding-bottom: 56.25%; /* 16:9 aspect ratio */
+    }
+    
+    .journey-video-modal-iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    
+    .journey-video-modal-loading {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: black;
+      color: #ccc;
+      font-size: 14px;
+    }
+    
+    .journey-video-loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #333;
+      border-top: 3px solid #ff6b6b;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+
+    
+    /* Image Modal Styles */
+    .journey-image-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .journey-image-modal-backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .journey-image-modal-container {
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      max-width: 95vw;
+      max-height: 95vh;
+      position: relative;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .journey-image-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e9ecef;
+      flex-shrink: 0;
+    }
+    
+    .journey-image-modal-title {
+      color: #212529;
+      margin: 0;
+      font-size: 16px;
+      font-weight: 500;
+    }
+    
+    .journey-image-modal-close {
+      background: none;
+      border: none;
+      color: #6c757d;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    }
+    
+    .journey-image-modal-close:hover {
+      background: rgba(0, 0, 0, 0.1);
+      color: #212529;
+    }
+    
+    .journey-image-modal-content {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow: hidden;
+    }
+    
+    .journey-image-modal-image {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+    
+    /* Mobile responsive adjustments */
+    @media (max-width: 768px) {
+      .journey-video-modal-container {
+        max-width: 95vw;
+        margin: 10px;
+      }
+      
+      .journey-video-modal-header {
+        padding: 12px 16px;
+      }
+      
+      .journey-video-modal-title {
+        font-size: 14px;
+      }
+      
+      .journey-image-modal-container {
+        max-width: 95vw;
+        max-height: 95vh;
+        margin: 10px;
+      }
+      
+      .journey-image-modal-header {
+        padding: 12px 16px;
+      }
+      
+      .journey-image-modal-content {
+        padding: 15px;
+      }
+    }
+  `;
+  
+  document.head.appendChild(style);
+};
+
 // Export the main component and keep backward compatibility
-export { CombinedLearningJourneyPanel };
+export { CombinedLearningJourneyPanel, addGlobalModalStyles };
 export class LearningJourneyPanel extends CombinedLearningJourneyPanel {}
 export class DocsPanel extends CombinedLearningJourneyPanel {}
