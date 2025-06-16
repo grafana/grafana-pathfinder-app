@@ -99,6 +99,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async loadTabContent(tabId: string, url: string) {
+    
     const tabIndex = this.state.tabs.findIndex(tab => tab.id === tabId);
     if (tabIndex === -1) return;
 
@@ -112,7 +113,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      console.log('Loading learning journey content for:', url);
+      console.log('🔧 About to call fetchLearningJourneyContent with URL:', url);
       const journeyContent = await fetchLearningJourneyContent(url);
       
       const finalTabs = [...this.state.tabs];
@@ -332,7 +333,9 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         if (activeTab?.content?.milestones && activeTab.content.milestones.length > 0) {
           const firstMilestone = activeTab.content.milestones[0];
           if (firstMilestone.url) {
-            console.log('Starting learning journey, navigating to first milestone:', firstMilestone.url);
+            console.log('🚀 Starting learning journey, navigating to first milestone:');
+            console.log('🚀 First milestone URL:', firstMilestone.url);
+            console.log('🚀 First milestone object:', firstMilestone);
             model.loadTabContent(activeTab.id, firstMilestone.url);
           }
         } else {
@@ -398,33 +401,76 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     });
   }, [activeTab?.content]);
 
-  // Process code snippets and add copy buttons
+  // Process code snippets and add copy buttons for both journey and docs content
   useEffect(() => {
     const contentElement = contentRef.current;
     if (!contentElement) return;
 
-    // More precise targeting: find actual <pre> elements with code, not nested containers
-    const preElements = contentElement.querySelectorAll('pre');
+    // Target both code blocks (pre) and inline code elements
+    const codeBlockSelectors = [
+      'pre.journey-code-block',      // Learning journey code blocks
+      'pre.docs-code-snippet',       // Single docs code blocks  
+      'pre[class*="language-"]',      // Language-specific blocks
+      'pre:has(code)',                // Any pre with code inside
+      'pre'                           // Fallback to any pre element
+    ];
     
-    preElements.forEach((preElement, index) => {
+    const allPreElements = new Set<HTMLPreElement>();
+    const allInlineCodeElements = new Set<HTMLElement>();
+    
+    // Collect all unique pre elements using different selectors
+    codeBlockSelectors.forEach(selector => {
+      try {
+        const elements = contentElement.querySelectorAll(selector) as NodeListOf<HTMLPreElement>;
+        elements.forEach(el => allPreElements.add(el));
+      } catch (e) {
+        // Skip selectors that don't work (like :has() in older browsers)
+        console.debug(`Selector "${selector}" not supported, skipping`);
+      }
+    });
+    
+    // Collect inline code elements that aren't inside pre blocks
+    const inlineCodeElements = contentElement.querySelectorAll('code') as NodeListOf<HTMLElement>;
+    inlineCodeElements.forEach(codeEl => {
+      // Only add if it's not inside a pre element and has meaningful content
+      if (!codeEl.closest('pre') && codeEl.textContent && codeEl.textContent.trim().length > 0) {
+        allInlineCodeElements.add(codeEl);
+      }
+    });
+    
+    console.log(`📝 Found ${allPreElements.size} code blocks and ${allInlineCodeElements.size} inline code elements to process`);
+    
+    // Process pre elements (code blocks)
+    Array.from(allPreElements).forEach((preElement, index) => {
       // Skip if this pre element already has our copy button
-      if (preElement.parentElement?.querySelector('.code-copy-button')) return;
+      if (preElement.querySelector('.code-copy-button')) {
+        console.log(`📝 Pre element ${index + 1} already has copy button, skipping`);
+        return;
+      }
       
       // Must contain code to be processed
       const codeElement = preElement.querySelector('code') || preElement;
       const codeText = codeElement.textContent || '';
-      if (!codeText.trim()) return;
+      if (!codeText.trim()) {
+        console.log(`📝 Pre element ${index + 1} has no code text, skipping`);
+        return;
+      }
       
-      console.log(`Processing pre element ${index + 1}:`, {
+      console.log(`📝 Processing pre element ${index + 1}:`, {
+        classes: preElement.className,
         hasCode: !!preElement.querySelector('code'),
         codeLength: codeText.length,
-        parentClasses: preElement.parentElement?.className || 'none'
+        selector: Array.from(preElement.classList).find(c => 
+          c.includes('journey-code-block') || 
+          c.includes('docs-code-snippet') || 
+          c.includes('language-')
+        ) || 'generic'
       });
       
-      // Remove any remaining copy buttons from the immediate area
-      const nearbyButtons = preElement.parentElement?.querySelectorAll('button[title*="copy" i], button[aria-label*="copy" i], .copy-button, .copy-btn, .btn-copy, button[onclick*="copy" i], button[data-copy], button[x-data]') || [];
-      nearbyButtons.forEach(btn => {
-        console.log('Removing nearby button:', btn.className, btn.textContent?.substring(0, 20));
+      // Remove any existing copy buttons from this element
+      const existingButtons = preElement.querySelectorAll('.code-copy-button, button[title*="copy" i], button[aria-label*="copy" i], .copy-button, .copy-btn, .btn-copy');
+      existingButtons.forEach(btn => {
+        console.log('📝 Removing existing copy button:', btn.className);
         btn.remove();
       });
       
@@ -439,6 +485,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         <span class="copy-text">Copy</span>
       `;
       copyButton.title = 'Copy code to clipboard';
+      copyButton.setAttribute('aria-label', 'Copy code to clipboard');
       
       // Add click handler for copy functionality
       copyButton.addEventListener('click', async (e) => {
@@ -470,51 +517,226 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           }, 2000);
           
         } catch (err) {
-          console.warn('Failed to copy code:', err);
+          console.warn('📝 Failed to copy code:', err);
           
           // Fallback for browsers that don't support clipboard API
           const textArea = document.createElement('textarea');
           textArea.value = codeText;
+          textArea.style.position = 'fixed';
+          textArea.style.left = '-999999px';
+          textArea.style.top = '-999999px';
           document.body.appendChild(textArea);
+          textArea.focus();
           textArea.select();
+          
           try {
-            document.execCommand('copy');
-            copyButton.innerHTML = `
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20,6 9,17 4,12"></polyline>
-              </svg>
-              <span class="copy-text">Copied!</span>
-            `;
-            copyButton.classList.add('copied');
-            
-            setTimeout(() => {
+            const success = document.execCommand('copy');
+            if (success) {
               copyButton.innerHTML = `
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  <polyline points="20,6 9,17 4,12"></polyline>
                 </svg>
-                <span class="copy-text">Copy</span>
+                <span class="copy-text">Copied!</span>
               `;
-              copyButton.classList.remove('copied');
-            }, 2000);
+              copyButton.classList.add('copied');
+              
+              setTimeout(() => {
+                copyButton.innerHTML = `
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  <span class="copy-text">Copy</span>
+                `;
+                copyButton.classList.remove('copied');
+              }, 2000);
+            } else {
+              console.error('📝 Fallback copy command failed');
+            }
           } catch (fallbackErr) {
-            console.error('Fallback copy also failed:', fallbackErr);
+            console.error('📝 Fallback copy also failed:', fallbackErr);
           } finally {
             document.body.removeChild(textArea);
           }
         }
       });
       
-      // Find the best container to add the button to
-      let targetContainer = preElement.parentElement;
-      
-      // Add button directly to the pre element instead of creating wrappers
       // Ensure the pre element is positioned relatively for button positioning  
-      (preElement as HTMLElement).style.position = 'relative';
+      const computedStyle = window.getComputedStyle(preElement);
+      if (computedStyle.position === 'static') {
+        (preElement as HTMLElement).style.position = 'relative';
+      }
+      
+      // Add button directly to the pre element
       preElement.appendChild(copyButton);
-      console.log(`Added copy button directly to pre element`);
+      console.log(`📝 Added copy button to pre element ${index + 1} (${preElement.className || 'no classes'})`);
     });
-  }, [activeTab?.content]);
+    
+    // Process inline code elements
+    Array.from(allInlineCodeElements).forEach((codeElement, index) => {
+      // Skip if this code element already has our copy button
+      if (codeElement.querySelector('.inline-code-copy-button')) {
+        console.log(`📝 Inline code element ${index + 1} already has copy button, skipping`);
+        return;
+      }
+      
+      const codeText = codeElement.textContent || '';
+      if (!codeText.trim()) {
+        console.log(`📝 Inline code element ${index + 1} has no text, skipping`);
+        return;
+      }
+      
+      console.log(`📝 Processing inline code element ${index + 1}:`, {
+        text: codeText.substring(0, 50) + (codeText.length > 50 ? '...' : ''),
+        length: codeText.length
+      });
+      
+      // Create copy button for inline code
+      const copyButton = document.createElement('button');
+      copyButton.className = 'inline-code-copy-button';
+      copyButton.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+      `;
+      copyButton.title = 'Copy code to clipboard';
+      copyButton.setAttribute('aria-label', 'Copy code to clipboard');
+      
+      // Add click handler for copy functionality
+      copyButton.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        try {
+          await navigator.clipboard.writeText(codeText);
+          
+          // Update button to show success
+          copyButton.innerHTML = `
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20,6 9,17 4,12"></polyline>
+            </svg>
+          `;
+          copyButton.classList.add('copied');
+          
+          // Reset after 1.5 seconds (shorter for inline)
+          setTimeout(() => {
+            copyButton.innerHTML = `
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            `;
+            copyButton.classList.remove('copied');
+          }, 1500);
+          
+        } catch (err) {
+          console.warn('📝 Failed to copy inline code:', err);
+          
+          // Fallback for browsers that don't support clipboard API
+          const textArea = document.createElement('textarea');
+          textArea.value = codeText;
+          textArea.style.position = 'fixed';
+          textArea.style.left = '-999999px';
+          textArea.style.top = '-999999px';
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          
+          try {
+            const success = document.execCommand('copy');
+            if (success) {
+              copyButton.innerHTML = `
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20,6 9,17 4,12"></polyline>
+                </svg>
+              `;
+              copyButton.classList.add('copied');
+              
+              setTimeout(() => {
+                copyButton.innerHTML = `
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                `;
+                copyButton.classList.remove('copied');
+              }, 1500);
+            }
+          } catch (fallbackErr) {
+            console.error('📝 Fallback copy also failed:', fallbackErr);
+          } finally {
+            document.body.removeChild(textArea);
+          }
+        }
+      });
+      
+      // Wrap the code element in a relative container if needed
+      const computedStyle = window.getComputedStyle(codeElement);
+      if (computedStyle.position === 'static') {
+        codeElement.style.position = 'relative';
+      }
+      
+      // Ensure there's space for the button
+      const currentPadding = computedStyle.paddingRight;
+      const paddingValue = parseInt(currentPadding) || 4;
+      if (paddingValue < 24) { // Need at least 24px for the button
+        codeElement.style.paddingRight = '24px';
+      }
+      
+      // Add button to the code element
+      codeElement.appendChild(copyButton);
+      console.log(`📝 Added copy button to inline code element ${index + 1}`);
+    });
+  }, [activeTab?.content, activeTab?.docsContent]);
+
+  // Process collapsible sections and add toggle functionality
+  useEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement) return;
+
+    // Find all collapsible sections
+    const collapsibleSections = contentElement.querySelectorAll('.journey-collapse');
+    console.log(`📁 Found ${collapsibleSections.length} collapsible sections`);
+    
+    collapsibleSections.forEach((section) => {
+      const trigger = section.querySelector('.journey-collapse-trigger') as HTMLElement;
+      const content = section.querySelector('.journey-collapse-content') as HTMLElement;
+      const icon = section.querySelector('.journey-collapse-icon') as HTMLElement;
+      
+      if (trigger && content) {
+        // Remove any existing event listeners
+        const newTrigger = trigger.cloneNode(true) as HTMLElement;
+        trigger.parentNode?.replaceChild(newTrigger, trigger);
+        
+        // Add click handler
+        newTrigger.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          const isExpanded = content.style.display !== 'none';
+          
+          if (isExpanded) {
+            // Collapse
+            content.style.display = 'none';
+            if (icon) {
+              icon.classList.remove('journey-collapse-icon-open');
+            }
+            console.log('📁 Collapsed section');
+          } else {
+            // Expand
+            content.style.display = 'block';
+            if (icon) {
+              icon.classList.add('journey-collapse-icon-open');
+            }
+            console.log('📁 Expanded section');
+          }
+        });
+        
+        console.log('📁 Added collapse/expand functionality to section');
+      }
+    });
+  }, [activeTab?.content, activeTab?.docsContent]);
 
   // Handle keyboard shortcuts for tab navigation
   useEffect(() => {
@@ -875,7 +1097,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   journeyContent: css({
     backgroundColor: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.weak}`,
+    border: 'none', // Remove the outer border
     overflow: 'hidden',
     flex: 1,
     display: 'flex',
@@ -921,27 +1143,60 @@ const getStyles = (theme: GrafanaTheme2) => ({
     lineHeight: 1.6,
     fontSize: theme.typography.body.fontSize,
     
-    // Journey-specific styling
-    '& .journey-heading': {
+    // Basic HTML elements styling
+    '& h1, & h2, & h3, & h4, & h5, & h6': {
       color: theme.colors.text.primary,
       fontWeight: theme.typography.fontWeightMedium,
       marginBottom: theme.spacing(2),
-      '&.journey-heading-h1': {
-        fontSize: theme.typography.h2.fontSize,
-        borderBottom: `2px solid ${theme.colors.border.medium}`,
-        paddingBottom: theme.spacing(1),
-      },
-      '&.journey-heading-h2': {
-        fontSize: theme.typography.h3.fontSize,
-        marginTop: theme.spacing(3),
-      },
-      '&.journey-heading-h3': {
-        fontSize: theme.typography.h4.fontSize,
-        marginTop: theme.spacing(2),
+      marginTop: theme.spacing(3),
+      lineHeight: 1.3,
+      
+      '&:first-child': {
+        marginTop: 0,
       },
     },
     
-    // Enhanced responsive image styling
+    '& h1': {
+      fontSize: theme.typography.h2.fontSize,
+      borderBottom: `2px solid ${theme.colors.border.medium}`,
+      paddingBottom: theme.spacing(1),
+      marginBottom: theme.spacing(3),
+    },
+    
+    '& h2': {
+      fontSize: theme.typography.h3.fontSize,
+      marginTop: theme.spacing(4),
+    },
+    
+    '& h3': {
+      fontSize: theme.typography.h4.fontSize,
+      marginTop: theme.spacing(3),
+    },
+    
+    '& h4': {
+      fontSize: theme.typography.h5.fontSize,
+      marginTop: theme.spacing(2),
+    },
+    
+    '& p': {
+      marginBottom: theme.spacing(2),
+      lineHeight: 1.7,
+      color: theme.colors.text.primary,
+      wordWrap: 'break-word', // Better handling of long words in paragraphs
+      overflowWrap: 'break-word', // Ensure content doesn't overflow
+    },
+    
+    '& ul, & ol': {
+      marginBottom: theme.spacing(2),
+      paddingLeft: theme.spacing(3),
+      
+      '& li': {
+        marginBottom: theme.spacing(1),
+        lineHeight: 1.6,
+      },
+    },
+    
+    // Images - responsive and well-styled
     '& img': {
       maxWidth: '100%',
       height: 'auto',
@@ -952,627 +1207,78 @@ const getStyles = (theme: GrafanaTheme2) => ({
       boxShadow: theme.shadows.z1,
       transition: 'all 0.2s ease',
       
-      // Hover effect for better interactivity
       '&:hover': {
         boxShadow: theme.shadows.z2,
         transform: 'scale(1.02)',
         cursor: 'pointer',
       },
-      
-      // Handle different image sizes appropriately
-      '&[src*="screenshot"], &[src*="dashboard"], &[src*="interface"]': {
-        // Screenshots and interface images - keep them large but responsive
-        maxWidth: '100%',
-        minWidth: '300px',
-        width: 'auto',
-        margin: `${theme.spacing(3)} auto`,
-        border: `2px solid ${theme.colors.border.medium}`,
-        borderRadius: `${theme.shape.radius.default}px`,
-      },
-      
-      '&[src*="icon"], &[src*="logo"], &[src*="badge"]': {
-        // Icons and logos - keep them smaller and inline when appropriate
-        maxWidth: '200px',
-        maxHeight: '100px',
-        margin: `${theme.spacing(1)} auto`,
-        display: 'inline-block',
-        verticalAlign: 'middle',
-      },
-      
-      '&[src*="diagram"], &[src*="chart"], &[src*="graph"]': {
-        // Diagrams and charts - ensure they're readable
-        maxWidth: '100%',
-        minWidth: '400px',
-        margin: `${theme.spacing(3)} auto`,
-        backgroundColor: theme.colors.background.primary,
-        padding: theme.spacing(1),
-      },
     },
     
-    // Image containers and figures
-    '& figure': {
-      margin: `${theme.spacing(3)} 0`,
-      textAlign: 'center',
-      
-      '& img': {
-        margin: '0 auto',
-      },
-      
-      '& figcaption': {
-        marginTop: theme.spacing(1),
-        fontSize: theme.typography.bodySmall.fontSize,
-        color: theme.colors.text.secondary,
-        fontStyle: 'italic',
-        textAlign: 'center',
-      },
-    },
-    
-    // Image galleries or multiple images in a row
-    '& .image-gallery, & .images-row': {
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: theme.spacing(2),
-      margin: `${theme.spacing(3)} 0`,
-      justifyContent: 'center',
-      
-      '& img': {
-        flex: '1 1 300px',
-        maxWidth: '400px',
-        margin: 0,
-      },
-    },
-    
-    // Legacy class support
-    '& .journey-image': {
-      maxWidth: '100%',
-      height: 'auto',
-      borderRadius: theme.shape.radius.default,
-      border: `1px solid ${theme.colors.border.weak}`,
-      margin: `${theme.spacing(2)} auto`,
-      display: 'block',
-      boxShadow: theme.shadows.z1,
-    },
-    
-    // Specific image type styling
-    '& .journey-screenshot': {
-      maxWidth: '100%',
-      minWidth: '300px',
-      margin: `${theme.spacing(3)} auto`,
-      border: `2px solid ${theme.colors.border.medium}`,
-      borderRadius: `${theme.shape.radius.default}px`,
-      boxShadow: theme.shadows.z2,
-    },
-    
-    '& .journey-icon': {
-      maxWidth: '150px',
-      maxHeight: '80px',
-      margin: `${theme.spacing(1)} ${theme.spacing(2)}`,
-      display: 'inline-block',
-      verticalAlign: 'middle',
-      border: 'none',
-      boxShadow: 'none',
-    },
-    
-    '& .journey-diagram': {
-      maxWidth: '100%',
-      minWidth: '350px',
-      margin: `${theme.spacing(3)} auto`,
-      backgroundColor: theme.colors.background.primary,
-      padding: theme.spacing(2),
-      borderRadius: `${theme.shape.radius.default}px`,
-    },
-    
-    '& .journey-large': {
-      maxWidth: '100%',
-      margin: `${theme.spacing(4)} auto`,
-      border: `2px solid ${theme.colors.border.medium}`,
-    },
-    
-    '& .journey-small': {
-      maxWidth: '150px',
-      margin: `${theme.spacing(1)} auto`,
-    },
-    
-    '& .journey-wide': {
-      width: '100%',
-      maxWidth: '100%',
-      margin: `${theme.spacing(3)} 0`,
-    },
-    
-    // Special handling for inline code
+    // Inline code styling
     '& code:not(pre code)': {
+      position: 'relative',
       backgroundColor: theme.colors.background.canvas,
       border: `1px solid ${theme.colors.border.weak}`,
       borderRadius: '3px',
       padding: `2px 4px`,
+      paddingRight: '24px', // Space for copy button
       fontFamily: theme.typography.fontFamilyMonospace,
       fontSize: '0.9em',
       color: theme.colors.text.primary,
       fontWeight: theme.typography.fontWeightMedium,
     },
     
-    // Blockquotes and admonitions for learning journeys
-    '& blockquote, & .admonition': {
-      margin: `${theme.spacing(2)} 0`,
-      padding: theme.spacing(2),
-      borderLeft: `4px solid ${theme.colors.primary.main}`,
+    // Code blocks with copy button support
+    '& pre': {
+      position: 'relative',
       backgroundColor: theme.colors.background.canvas,
-      borderRadius: `0 ${theme.shape.radius.default}px ${theme.shape.radius.default}px 0`,
-      fontSize: theme.typography.bodySmall.fontSize, // Smaller font size
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      margin: `${theme.spacing(2)} 0`,
+      padding: `${theme.spacing(2)} ${theme.spacing(10)} ${theme.spacing(2)} ${theme.spacing(2)}`, // Extra right padding for copy button
+      overflow: 'auto',
+      fontFamily: theme.typography.fontFamilyMonospace,
+      fontSize: theme.typography.bodySmall.fontSize,
+      lineHeight: 1.5,
+      color: theme.colors.text.primary,
+      wordBreak: 'break-all', // Allow breaking long lines
+      whiteSpace: 'pre-wrap', // Preserve formatting but allow wrapping
+      overflowWrap: 'break-word', // Better handling of long words
       
-      '& blockquote': {
-        margin: 0,
+      '& code': {
+        backgroundColor: 'transparent',
         padding: 0,
         border: 'none',
         borderRadius: 0,
-        backgroundColor: 'transparent',
+        fontFamily: 'inherit',
+        fontSize: 'inherit',
+        color: 'inherit',
+        fontWeight: 'inherit',
       },
       
-      // Style the title (Note, Warning, etc.)
-      '& .title': {
-        fontSize: '11px',
-        fontWeight: theme.typography.fontWeightBold,
-        color: theme.colors.primary.main,
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
-        marginBottom: theme.spacing(1),
-        
-        '&:before': {
-          content: '"ℹ️ "', // Add an icon before the title
-          marginRight: theme.spacing(0.5),
-        },
+      // Custom scrollbar
+      '&::-webkit-scrollbar': {
+        height: '8px',
+        width: '8px',
       },
       
-      // Style the content paragraphs
-      '& p:not(.title)': {
-        margin: `${theme.spacing(0.5)} 0`,
-        fontSize: theme.typography.bodySmall.fontSize,
-        lineHeight: 1.4,
-        
-        '&:last-child': {
-          marginBottom: 0,
-        },
-      },
-    },
-    
-    // Specific styling for different admonition types in learning journeys
-    '& .admonition-note': {
-      borderLeftColor: theme.colors.info.main,
-      backgroundColor: theme.colors.info.transparent,
-      
-      '& .title': {
-        color: theme.colors.info.main,
-        
-        '&:before': {
-          content: '"ℹ️ "',
-        },
-      },
-    },
-    
-    '& .admonition-warning': {
-      borderLeftColor: theme.colors.warning.main,
-      backgroundColor: theme.colors.warning.transparent,
-      
-      '& .title': {
-        color: theme.colors.warning.main,
-        
-        '&:before': {
-          content: '"⚠️ "',
-        },
-      },
-    },
-    
-    '& .admonition-caution': {
-      borderLeftColor: theme.colors.error.main,
-      backgroundColor: theme.colors.error.transparent,
-      
-      '& .title': {
-        color: theme.colors.error.main,
-        
-        '&:before': {
-          content: '"⚠️ "',
-        },
-      },
-    },
-    
-    // Consolidated responsive styles for mobile devices
-    '@media (max-width: 768px)': {
-      // Image responsive adjustments
-      '& img': {
-        '&[src*="screenshot"], &[src*="dashboard"], &[src*="interface"]': {
-          minWidth: '250px',
-          margin: `${theme.spacing(2)} auto`,
-        },
-        
-        '&[src*="diagram"], &[src*="chart"], &[src*="graph"]': {
-          minWidth: '280px',
-        },
-      },
-      
-      '& .journey-screenshot': {
-        minWidth: '250px',
-        margin: `${theme.spacing(2)} auto`,
-      },
-      
-      '& .journey-diagram': {
-        minWidth: '280px',
-        padding: theme.spacing(1),
-      },
-      
-      '& .image-gallery, & .images-row': {
-        flexDirection: 'column',
-        
-        '& img': {
-          flex: 'none',
-          maxWidth: '100%',
-        },
-      },
-      
-      // Table responsive adjustments
-      '& .responsive-table-wrapper': {
-        fontSize: theme.typography.bodySmall.fontSize,
-        
-        '& table': {
-          minWidth: '500px', // Ensure table doesn't get too cramped
-        },
-        
-        '& th, & td': {
-          padding: theme.spacing(1),
-        },
-      },
-      
-      '& .expand-table-btn': {
-        fontSize: '12px',
-        padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-      },
-      
-      // Code snippet responsive adjustments  
-      '& .code-copy-button': {
-        padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
-        minWidth: '60px',
-        fontSize: '11px',
-      },
-      
-      '& .code-snippet pre, & .code-snippet-container pre, & .code-snippet-wrapper pre': {
-        paddingRight: theme.spacing(8),
-        fontSize: '13px',
-      },
-      
-      '& pre[class*="language-"]': {
-        padding: `${theme.spacing(2)} ${theme.spacing(8)} ${theme.spacing(2)} ${theme.spacing(2)}`,
-        fontSize: '13px',
-      },
-    },
-    
-    '@media (max-width: 480px)': {
-      // Image responsive adjustments
-      '& img': {
-        '&[src*="screenshot"], &[src*="dashboard"], &[src*="interface"]': {
-          minWidth: '200px',
-          border: `1px solid ${theme.colors.border.weak}`,
-          borderRadius: theme.shape.radius.default,
-        },
-        
-        '&[src*="diagram"], &[src*="chart"], &[src*="graph"]': {
-          minWidth: '200px',
-          padding: theme.spacing(0.5),
-        },
-      },
-      
-      '& .journey-screenshot': {
-        minWidth: '200px',
-        border: `1px solid ${theme.colors.border.weak}`,
-        margin: `${theme.spacing(1)} auto`,
-      },
-      
-      '& .journey-diagram': {
-        minWidth: '200px',
-        padding: theme.spacing(0.5),
-      },
-      
-      '& .journey-large': {
-        margin: `${theme.spacing(2)} auto`,
-      },
-      
-      // Table responsive adjustments for very small screens
-      '& .responsive-table-wrapper': {
-        '& table': {
-          minWidth: '400px',
-          fontSize: '12px',
-        },
-        
-        '& th, & td': {
-          padding: `${theme.spacing(0.75)} ${theme.spacing(0.5)}`,
-          fontSize: '12px',
-        },
-      },
-      
-      // Code snippet responsive adjustments
-      '& .code-copy-button': {
-        padding: theme.spacing(0.5),
-        minWidth: '32px',
-        top: theme.spacing(0.5),
-        right: theme.spacing(0.5),
-        
-        '& .copy-text': {
-          display: 'none', // Hide text, show only icon
-        },
-      },
-      
-      '& .code-snippet pre, & .code-snippet-container pre, & .code-snippet-wrapper pre': {
-        paddingRight: theme.spacing(6),
-        fontSize: '12px',
-        padding: `${theme.spacing(1.5)} ${theme.spacing(6)} ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
-      },
-      
-      '& pre[class*="language-"]': {
-        padding: `${theme.spacing(1.5)} ${theme.spacing(6)} ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
-        fontSize: '12px',
-      },
-      
-      // Progress header adjustments
-      '& .progress-header': {
-        gap: theme.spacing(0.5),
-        
-        '& > span': {
-          fontSize: '12px',
-        },
-      },
-      
-      // Milestone navigation adjustments
-      '& .milestone-navigation button': {
-        minWidth: '32px',
-        height: '32px',
-      },
-    },
-    
-    '& .journey-code': {
-      backgroundColor: theme.colors.background.canvas,
-      padding: theme.spacing(1),
-      borderRadius: theme.shape.radius.default,
-      fontFamily: theme.typography.fontFamilyMonospace,
-      fontSize: theme.typography.bodySmall.fontSize,
-      border: `1px solid ${theme.colors.border.weak}`,
-    },
-    
-    '& a[data-journey-link="true"]': {
-      color: theme.colors.primary.main,
-      textDecoration: 'none',
-      '&:hover': {
-        textDecoration: 'underline',
-      },
-    },
-    
-    '& .journey-start-button': {
-      display: 'inline-block',
-      padding: `${theme.spacing(1.5)} ${theme.spacing(3)}`,
-      backgroundColor: theme.colors.primary.main,
-      color: theme.colors.primary.contrastText,
-      borderRadius: theme.shape.radius.default,
-      fontWeight: theme.typography.fontWeightMedium,
-      textDecoration: 'none',
-      margin: `${theme.spacing(2)} 0`,
-      transition: 'all 0.2s ease',
-      border: 'none',
-      cursor: 'pointer',
-      fontSize: theme.typography.body.fontSize,
-      '&:hover': {
-        backgroundColor: theme.colors.primary.shade,
-        textDecoration: 'none',
-        transform: 'translateY(-1px)',
-        boxShadow: theme.shadows.z2,
-      },
-    },
-    
-    '& .journey-start-section': {
-      margin: `${theme.spacing(4)} 0`,
-      padding: theme.spacing(3),
-      backgroundColor: theme.colors.background.canvas,
-      borderRadius: theme.shape.radius.default,
-      border: `1px solid ${theme.colors.border.weak}`,
-      textAlign: 'center',
-    },
-    
-    '& .journey-start-container h3': {
-      margin: `0 0 ${theme.spacing(2)} 0`,
-      color: theme.colors.text.primary,
-      fontSize: theme.typography.h4.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-    },
-    
-    '& p': {
-      marginBottom: theme.spacing(2),
-      lineHeight: 1.7,
-    },
-    
-    '& ul, & ol': {
-      marginBottom: theme.spacing(2),
-      paddingLeft: theme.spacing(3),
-    },
-    
-    '& li': {
-      marginBottom: theme.spacing(1),
-    },
-    
-    // Video link styling
-    '& a[data-video-link="true"], & .journey-video-link': {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: theme.spacing(0.5),
-      color: theme.colors.primary.main,
-      textDecoration: 'none',
-      fontWeight: theme.typography.fontWeightMedium,
-      fontSize: theme.typography.body.fontSize,
-      padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-      borderRadius: theme.shape.radius.default,
-      border: `1px solid ${theme.colors.border.weak}`,
-      backgroundColor: 'transparent',
-      transition: 'all 0.2s ease',
-      margin: `${theme.spacing(1)} 0`,
-      
-      '&:hover': {
-        backgroundColor: theme.colors.action.hover,
-        borderColor: theme.colors.primary.main,
-        textDecoration: 'none',
-        transform: 'translateY(-1px)',
-      },
-      
-      '& .journey-video-icon': {
-        fontSize: '14px',
-        lineHeight: 1,
-      },
-    },
-    
-    // YouTube thumbnail styling
-    '& .journey-video-thumbnail': {
-      display: 'block',
-      margin: `${theme.spacing(3)} 0`,
-      cursor: 'pointer',
-      borderRadius: theme.shape.radius.default,
-      overflow: 'hidden',
-      boxShadow: theme.shadows.z1,
-      transition: 'all 0.3s ease',
-      backgroundColor: theme.colors.background.secondary,
-      maxWidth: '560px',
-      
-      '&:hover': {
-        boxShadow: theme.shadows.z3,
-        transform: 'translateY(-2px)',
-      },
-    },
-    
-    '& .video-thumbnail-wrapper': {
-      position: 'relative',
-      paddingBottom: '56.25%', // 16:9 aspect ratio
-      height: 0,
-      overflow: 'hidden',
-    },
-    
-    '& .video-thumbnail-image': {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover',
-      transition: 'transform 0.3s ease',
-    },
-    
-    '& .video-play-overlay': {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'rgba(0, 0, 0, 0.3)',
-      transition: 'background 0.3s ease',
-    },
-    
-    '& .video-play-button': {
-      width: '68px',
-      height: '48px',
-      backgroundColor: '#ff0000',
-      borderRadius: '6px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: 'white',
-      transition: 'all 0.3s ease',
-      
-      '& svg': {
-        marginLeft: '2px', // Slight offset to center the play triangle
-      },
-    },
-    
-    '& .video-thumbnail-title': {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.8))',
-      color: 'white',
-      padding: `${theme.spacing(2)} ${theme.spacing(1.5)}`,
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
-    },
-    
-    '& .journey-video-thumbnail:hover .video-thumbnail-image': {
-      transform: 'scale(1.05)',
-    },
-    
-    '& .journey-video-thumbnail:hover .video-play-overlay': {
-      background: 'rgba(0, 0, 0, 0.2)',
-    },
-    
-    '& .journey-video-thumbnail:hover .video-play-button': {
-      backgroundColor: '#cc0000',
-      transform: 'scale(1.1)',
-    },
-    
-    // Clean text links for non-YouTube videos
-    '& .journey-video-text-link': {
-      display: 'inline-flex',
-      alignItems: 'center',
-      color: theme.colors.primary.main,
-      textDecoration: 'none',
-      fontWeight: theme.typography.fontWeightMedium,
-      padding: `${theme.spacing(0.5)} 0`,
-      
-      '&:hover': {
-        textDecoration: 'underline',
-      },
-    },
-    
-    // Code snippet styling with copy button support
-    '& .code-snippet, & .code-snippet-container, & .code-snippet-wrapper': {
-      position: 'relative',
-      margin: `${theme.spacing(3)} 0`,
-      backgroundColor: theme.colors.background.canvas,
-      borderRadius: theme.shape.radius.default,
-      border: `1px solid ${theme.colors.border.weak}`,
-      overflow: 'hidden',
-      boxShadow: theme.shadows.z1,
-      
-      '& pre': {
-        margin: 0,
-        padding: theme.spacing(2),
-        backgroundColor: 'transparent',
-        border: 'none',
-        borderRadius: 0,
-        overflow: 'auto',
-        fontFamily: theme.typography.fontFamilyMonospace,
-        fontSize: theme.typography.bodySmall.fontSize,
-        lineHeight: 1.5,
-        color: theme.colors.text.primary,
-        whiteSpace: 'pre',
-        wordWrap: 'normal',
-        
-        '& code': {
-          backgroundColor: 'transparent',
-          padding: 0,
-          border: 'none',
-          borderRadius: 0,
-          fontFamily: 'inherit',
-          fontSize: 'inherit',
-          color: 'inherit',
-          whiteSpace: 'inherit',
-          wordWrap: 'inherit',
-        },
-      },
-      
-      // Handle cases where pre is the direct element
-      '&.code-snippet-wrapper pre, &.code-snippet pre': {
-        backgroundColor: theme.colors.background.canvas,
-        border: `1px solid ${theme.colors.border.weak}`,
+      '&::-webkit-scrollbar-track': {
+        backgroundColor: theme.colors.background.secondary,
         borderRadius: theme.shape.radius.default,
       },
+      
+      '&::-webkit-scrollbar-thumb': {
+        backgroundColor: theme.colors.border.medium,
+        borderRadius: theme.shape.radius.default,
+        border: `2px solid ${theme.colors.background.secondary}`,
+        
+        '&:hover': {
+          backgroundColor: theme.colors.border.strong,
+        },
+      },
     },
     
-    // Copy button styling
+    // Code block copy button
     '& .code-copy-button': {
       position: 'absolute',
       top: theme.spacing(1),
@@ -1630,122 +1336,180 @@ const getStyles = (theme: GrafanaTheme2) => ({
       },
     },
     
-    // Code block enhancements for readability
-    '& .code-snippet pre, & .code-snippet-container pre, & .code-snippet-wrapper pre': {
-      // Add some visual enhancements
-      position: 'relative',
-      
-      // Add subtle background pattern for code
-      backgroundImage: `linear-gradient(90deg, transparent 79px, ${theme.colors.border.weak} 81px)`,
-      backgroundSize: '81px 1.2em',
-      backgroundAttachment: 'local',
-      
-      // Ensure proper spacing for copy button
-      paddingRight: theme.spacing(10), // Make room for copy button
-      
-      // Custom scrollbar
-      '&::-webkit-scrollbar': {
-        height: '8px',
-        width: '8px',
-      },
-      
-      '&::-webkit-scrollbar-track': {
-        backgroundColor: theme.colors.background.secondary,
-        borderRadius: theme.shape.radius.default,
-      },
-      
-      '&::-webkit-scrollbar-thumb': {
-        backgroundColor: theme.colors.border.medium,
-        borderRadius: theme.shape.radius.default,
-        border: `2px solid ${theme.colors.background.secondary}`,
-        
-        '&:hover': {
-          backgroundColor: theme.colors.border.strong,
-        },
-      },
-    },
-    
-    // Table styling for learning journey content
-    '& .expand-table-wrapper': {
-      margin: `${theme.spacing(3)} 0`,
-      border: `1px solid ${theme.colors.border.weak}`,
-      borderRadius: theme.shape.radius.default,
-      overflow: 'hidden',
-      backgroundColor: theme.colors.background.secondary,
-    },
-    
-    '& .button-div': {
-      padding: theme.spacing(1),
-      backgroundColor: theme.colors.background.canvas,
-      borderBottom: `1px solid ${theme.colors.border.weak}`,
-    },
-    
-    '& .expand-table-btn': {
+    // Inline code copy button
+    '& .inline-code-copy-button': {
+      position: 'absolute',
+      top: '50%',
+      right: '2px',
+      transform: 'translateY(-50%)',
       display: 'flex',
       alignItems: 'center',
-      gap: theme.spacing(0.5),
-      padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
-      backgroundColor: 'transparent',
-      border: `1px solid ${theme.colors.border.medium}`,
-      borderRadius: theme.shape.radius.default,
-      color: theme.colors.text.primary,
+      justifyContent: 'center',
+      width: '16px',
+      height: '16px',
+      padding: '2px',
+      backgroundColor: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: '2px',
+      color: theme.colors.text.secondary,
+      fontSize: '10px',
       cursor: 'pointer',
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
       transition: 'all 0.2s ease',
+      zIndex: 2,
+      opacity: 0.7,
       
       '&:hover': {
         backgroundColor: theme.colors.action.hover,
-        borderColor: theme.colors.border.strong,
+        borderColor: theme.colors.border.medium,
+        color: theme.colors.text.primary,
+        opacity: 1,
+        transform: 'translateY(-50%) scale(1.1)',
       },
       
-      '&:after': {
-        content: '"↓"',
-        fontSize: '12px',
-        marginLeft: theme.spacing(0.5),
-        transition: 'transform 0.2s ease',
+      '&:active': {
+        transform: 'translateY(-50%) scale(1)',
       },
       
-      '&.expanded:after': {
-        transform: 'rotate(180deg)',
+      '&.copied': {
+        backgroundColor: theme.colors.success.main,
+        borderColor: theme.colors.success.border,
+        color: theme.colors.success.contrastText,
+        opacity: 1,
+        
+        '&:hover': {
+          backgroundColor: theme.colors.success.main,
+          borderColor: theme.colors.success.border,
+          color: theme.colors.success.contrastText,
+        },
+      },
+      
+      '& svg': {
+        flexShrink: 0,
+        width: '12px',
+        height: '12px',
       },
     },
     
-    '& .responsive-table-wrapper': {
-      overflow: 'auto',
-      maxHeight: '300px',
-      transition: 'max-height 0.3s ease',
+    // Admonitions
+    '& .admonition': {
+      margin: `${theme.spacing(2)} 0`,
+      padding: theme.spacing(2),
+      borderLeft: `4px solid ${theme.colors.primary.main}`,
+      backgroundColor: theme.colors.background.canvas,
+      borderRadius: theme.shape.radius.default,
+      border: `2px solid ${theme.colors.primary.main}`, // Blue border around the entire box
+      fontSize: theme.typography.bodySmall.fontSize,
       
-      '&.collapsed': {
-        maxHeight: '0',
-        overflow: 'hidden',
+      '& .title': {
+        fontSize: '11px',
+        fontWeight: theme.typography.fontWeightBold,
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        marginBottom: theme.spacing(1),
+        marginTop: 0,
       },
       
-      // Custom scrollbar for table
-      '&::-webkit-scrollbar': {
-        width: '8px',
-        height: '8px',
-      },
-      
-      '&::-webkit-scrollbar-track': {
-        backgroundColor: theme.colors.background.secondary,
-      },
-      
-      '&::-webkit-scrollbar-thumb': {
-        backgroundColor: theme.colors.border.medium,
-        borderRadius: '4px',
+      '& p:not(.title)': {
+        margin: `${theme.spacing(0.5)} 0`,
+        fontSize: theme.typography.bodySmall.fontSize,
+        lineHeight: 1.4,
         
-        '&:hover': {
-          backgroundColor: theme.colors.border.strong,
+        '&:last-child': {
+          marginBottom: 0,
+        },
+      },
+      
+      // Remove default styling from blockquotes inside admonitions
+      '& blockquote': {
+        margin: 0,
+        padding: 0,
+        border: 'none',
+        borderLeft: 'none',
+        backgroundColor: 'transparent',
+        borderRadius: 0,
+        fontSize: 'inherit',
+      },
+    },
+    
+    // Standalone blockquotes (not inside admonitions)
+    '& blockquote:not(.admonition blockquote)': {
+      margin: `${theme.spacing(2)} 0`,
+      padding: theme.spacing(2),
+      borderLeft: `4px solid ${theme.colors.border.medium}`,
+      backgroundColor: theme.colors.background.secondary,
+      borderRadius: theme.shape.radius.default,
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontStyle: 'italic',
+      color: theme.colors.text.secondary,
+    },
+    
+    // Specific admonition types
+    '& .admonition-note': {
+      borderLeftColor: theme.colors.info.main,
+      borderColor: theme.colors.info.main, // Override main border color
+      backgroundColor: theme.colors.info.transparent,
+      
+      '& .title': {
+        color: theme.colors.info.main,
+        
+        '&:before': {
+          content: '"ℹ️ "',
         },
       },
     },
     
+    '& .admonition-warning, & .admonition-caution': {
+      borderLeftColor: theme.colors.warning.main,
+      borderColor: theme.colors.warning.main, // Override main border color
+      backgroundColor: theme.colors.warning.transparent,
+      
+      '& .title': {
+        color: theme.colors.warning.main,
+        
+        '&:before': {
+          content: '"⚠️ "',
+        },
+      },
+    },
+    
+    '& .admonition-tip': {
+      borderLeftColor: theme.colors.success.main,
+      borderColor: theme.colors.success.main, // Override main border color
+      backgroundColor: theme.colors.success.transparent,
+      
+      '& .title': {
+        color: theme.colors.success.main,
+        
+        '&:before': {
+          content: '"💡 "',
+        },
+      },
+    },
+    
+    '& .admonition-did-you-know': {
+      borderLeftColor: theme.colors.primary.main,
+      borderColor: theme.colors.primary.main, // Keep blue for did-you-know
+      backgroundColor: theme.colors.primary.transparent,
+      
+      '& .title': {
+        color: theme.colors.primary.main,
+        
+        '&:before': {
+          content: '"🤔 "',
+        },
+      },
+    },
+    
+    // Tables
     '& table': {
       width: '100%',
       borderCollapse: 'collapse',
       fontSize: theme.typography.body.fontSize,
       lineHeight: 1.5,
+      margin: `${theme.spacing(2)} 0`,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      overflow: 'hidden',
       
       '& thead': {
         backgroundColor: theme.colors.background.canvas,
@@ -1789,7 +1553,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
             borderRight: 'none',
           },
           
-          // Support for nested content in table cells
           '& p': {
             margin: `${theme.spacing(0.5)} 0`,
             
@@ -1802,18 +1565,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
             },
           },
           
-          '& ol, & ul': {
+          '& ul, & ol': {
             margin: `${theme.spacing(0.5)} 0`,
             paddingLeft: theme.spacing(2.5),
-            
-            '& li': {
-              margin: `${theme.spacing(0.5)} 0`,
-              lineHeight: 1.4,
-              
-              '& p': {
-                margin: `${theme.spacing(0.25)} 0`,
-              },
-            },
           },
           
           '& code': {
@@ -1824,73 +1578,196 @@ const getStyles = (theme: GrafanaTheme2) => ({
             fontSize: '0.9em',
             fontFamily: theme.typography.fontFamilyMonospace,
           },
-          
-          '& b, & strong': {
-            fontWeight: theme.typography.fontWeightBold,
-            color: theme.colors.text.primary,
-          },
-          
-          '& em, & i': {
-            fontStyle: 'italic',
-          },
-          
-          // Handle buttons and interactive elements in table cells
-          '& button': {
-            backgroundColor: theme.colors.primary.main,
-            color: theme.colors.primary.contrastText,
-            border: 'none',
-            borderRadius: theme.shape.radius.default,
-            padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-            fontSize: theme.typography.bodySmall.fontSize,
-            fontWeight: theme.typography.fontWeightMedium,
-            cursor: 'pointer',
-            
-            '&:hover': {
-              backgroundColor: theme.colors.primary.shade,
-            },
-          },
         },
       },
     },
     
-
-
-    // Handle various code snippet structures from Grafana docs
-    '& .code-snippet__border': {
+    // Collapsible sections
+    '& .journey-collapse': {
+      margin: `${theme.spacing(2)} 0`,
       border: `1px solid ${theme.colors.border.weak}`,
       borderRadius: theme.shape.radius.default,
+      backgroundColor: theme.colors.background.secondary,
       overflow: 'hidden',
-      position: 'relative',
-      margin: `${theme.spacing(2)} 0`,
+    },
+    
+    '& .journey-collapse-trigger': {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      width: '100%',
+      padding: theme.spacing(2),
+      backgroundColor: 'transparent',
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: theme.typography.body.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
+      textAlign: 'left',
+      transition: 'background-color 0.2s ease',
       
-      '& pre': {
-        margin: 0,
-        border: 'none',
-        borderRadius: 0,
+      '&:hover': {
+        backgroundColor: theme.colors.action.hover,
+      },
+      
+      '&:focus': {
+        outline: `2px solid ${theme.colors.primary.main}`,
+        outlineOffset: '-2px',
       },
     },
     
-    // Ensure proper styling for language-specific code blocks
-    '& pre[class*="language-"]': {
-      position: 'relative',
-      backgroundColor: theme.colors.background.canvas,
-      border: `1px solid ${theme.colors.border.weak}`,
-      borderRadius: theme.shape.radius.default,
-      margin: `${theme.spacing(2)} 0`,
-      padding: `${theme.spacing(2)} ${theme.spacing(10)} ${theme.spacing(2)} ${theme.spacing(2)}`,
+    '& .journey-collapse-icon': {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      transition: 'transform 0.3s ease',
       
-      '&:before': {
-        content: 'attr(class)',
-        position: 'absolute',
-        top: theme.spacing(0.5),
-        left: theme.spacing(1),
-        fontSize: '10px',
-        color: theme.colors.text.secondary,
-        opacity: 0.7,
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
+      '& svg': {
+        width: '20px',
+        height: '20px',
+        transform: 'rotate(0deg)',
+        transition: 'transform 0.3s ease',
+      },
+      
+      '&.journey-collapse-icon-open svg': {
+        transform: 'rotate(45deg)',
+      },
+    },
+    
+    '& .journey-collapse-content': {
+      borderTop: `1px solid ${theme.colors.border.weak}`,
+      backgroundColor: theme.colors.background.primary,
+      
+      '&[style*="display: none"]': {
+        display: 'none !important',
+      },
+      
+      '&[style*="display: block"]': {
+        display: 'block !important',
+      },
+    },
+    
+    '& .journey-collapse-content-inner': {
+      padding: theme.spacing(2),
+      
+      '& p': {
+        margin: `${theme.spacing(1)} 0`,
+        
+        '&:first-child': {
+          marginTop: 0,
+        },
+        
+        '&:last-child': {
+          marginBottom: 0,
+        },
+      },
+      
+      '& ul, & ol': {
+        margin: `${theme.spacing(1)} 0`,
+        paddingLeft: theme.spacing(3),
+        
+        '& li': {
+          margin: `${theme.spacing(0.5)} 0`,
+        },
+      },
+      
+      '& img': {
+        maxWidth: '100%',
+        height: 'auto',
+        margin: `${theme.spacing(2)} 0`,
+        borderRadius: theme.shape.radius.default,
+        border: `1px solid ${theme.colors.border.weak}`,
+      },
+    },
+    
+    // Links
+    '& a': {
+      color: theme.colors.primary.main,
+      textDecoration: 'none',
+      '&:hover': {
+        textDecoration: 'underline',
+      },
+    },
+    
+    // Start journey section styling
+    '& .journey-start-section': {
+      textAlign: 'center',
+      margin: `${theme.spacing(4)} 0`,
+      padding: `${theme.spacing(3)} ${theme.spacing(2)}`,
+      borderTop: `1px solid ${theme.colors.border.weak}`,
+      
+      '& h3': {
+        margin: `0 0 ${theme.spacing(2)} 0`,
+        fontSize: theme.typography.h4.fontSize,
         fontWeight: theme.typography.fontWeightMedium,
-        pointerEvents: 'none',
+        color: theme.colors.text.primary,
+      },
+    },
+    
+    '& .journey-start-container': {
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: theme.spacing(2),
+    },
+    
+    // Start journey button styling
+    '& .journey-start-button, & [data-journey-start="true"]': {
+      display: 'inline-block',
+      padding: `${theme.spacing(1.5)} ${theme.spacing(3)}`,
+      backgroundColor: theme.colors.primary.main,
+      color: theme.colors.primary.contrastText,
+      borderRadius: theme.shape.radius.default,
+      fontWeight: theme.typography.fontWeightMedium,
+      textDecoration: 'none',
+      margin: 0, // Remove default margin since we're using flexbox gap
+      transition: 'all 0.2s ease',
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: theme.typography.body.fontSize,
+      
+      '&:hover': {
+        backgroundColor: theme.colors.primary.shade,
+        textDecoration: 'none',
+        transform: 'translateY(-1px)',
+        boxShadow: theme.shadows.z2,
+      },
+    },
+    
+    // Mobile responsive adjustments
+    '@media (max-width: 768px)': {
+      '& img': {
+        margin: `${theme.spacing(1)} auto`,
+      },
+      
+      '& .code-copy-button': {
+        padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
+        minWidth: '60px',
+        fontSize: '11px',
+      },
+      
+      '& pre': {
+        paddingRight: theme.spacing(8),
+        fontSize: '13px',
+      },
+    },
+    
+    '@media (max-width: 480px)': {
+      '& .code-copy-button': {
+        padding: theme.spacing(0.5),
+        minWidth: '32px',
+        top: theme.spacing(0.5),
+        right: theme.spacing(0.5),
+        
+        '& .copy-text': {
+          display: 'none', // Hide text, show only icon
+        },
+      },
+      
+      '& pre': {
+        paddingRight: theme.spacing(6),
+        fontSize: '12px',
+        padding: `${theme.spacing(1.5)} ${theme.spacing(6)} ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
       },
     },
   }),
@@ -1999,7 +1876,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     justifyContent: 'space-between',
     gap: theme.spacing(1),
     
-    // Ensure text doesn't wrap awkwardly
     '& > span': {
       whiteSpace: 'nowrap',
       fontSize: theme.typography.bodySmall.fontSize,
@@ -2013,7 +1889,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(1),
     
-    // Add some visual styling for the navigation buttons
     '& button': {
       backgroundColor: theme.colors.background.secondary,
       border: `1px solid ${theme.colors.border.weak}`,
@@ -2054,7 +1929,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   docsContent: css({
     backgroundColor: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.weak}`,
+    border: 'none', // Remove the outer border
     overflow: 'hidden',
     flex: 1,
     display: 'flex',
@@ -2098,12 +1973,13 @@ const getStyles = (theme: GrafanaTheme2) => ({
     lineHeight: 1.6,
     fontSize: theme.typography.body.fontSize,
     
-    // Docs-specific styling - similar to journey content but optimized for docs
+    // Reuse the same styles as journeyContentHtml since we're dealing with the same raw HTML structure
+    // Basic HTML elements styling
     '& h1, & h2, & h3, & h4, & h5, & h6': {
       color: theme.colors.text.primary,
       fontWeight: theme.typography.fontWeightMedium,
-      marginBottom: theme.spacing(1.5),
-      marginTop: theme.spacing(2.5),
+      marginBottom: theme.spacing(2),
+      marginTop: theme.spacing(3),
       lineHeight: 1.3,
       
       '&:first-child': {
@@ -2129,6 +2005,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
     '& p': {
       marginBottom: theme.spacing(2),
       lineHeight: 1.7,
+      wordWrap: 'break-word', // Better handling of long words in paragraphs
+      overflowWrap: 'break-word', // Ensure content doesn't overflow
     },
     
     '& ul, & ol': {
@@ -2140,7 +2018,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
       marginBottom: theme.spacing(1),
     },
     
-    // Enhanced image styling for docs
     '& img': {
       maxWidth: '100%',
       height: 'auto',
@@ -2151,31 +2028,162 @@ const getStyles = (theme: GrafanaTheme2) => ({
       boxShadow: theme.shadows.z1,
     },
     
-    // Code styling for docs
     '& code:not(pre code)': {
+      position: 'relative',
       backgroundColor: theme.colors.background.canvas,
       border: `1px solid ${theme.colors.border.weak}`,
       borderRadius: '3px',
       padding: `2px 4px`,
+      paddingRight: '24px',
       fontFamily: theme.typography.fontFamilyMonospace,
       fontSize: '0.9em',
       color: theme.colors.text.primary,
       fontWeight: theme.typography.fontWeightMedium,
+      wordBreak: 'break-word', // Allow breaking but prefer word boundaries
+      overflowWrap: 'break-word', // Better wrapping for long lines
+      whiteSpace: 'nowrap', // Keep inline code on one line when possible
+      display: 'inline-block', // Better control over line breaks
+      maxWidth: '100%', // Prevent overflow
+      verticalAlign: 'baseline', // Align properly with surrounding text
     },
     
-    // Pre/code blocks
     '& pre': {
+      position: 'relative',
       backgroundColor: theme.colors.background.canvas,
       border: `1px solid ${theme.colors.border.weak}`,
       borderRadius: theme.shape.radius.default,
-      padding: theme.spacing(2),
+      padding: `${theme.spacing(2)} ${theme.spacing(10)} ${theme.spacing(2)} ${theme.spacing(2)}`,
       margin: `${theme.spacing(2)} 0`,
       overflow: 'auto',
       fontSize: theme.typography.bodySmall.fontSize,
       lineHeight: 1.5,
+      wordBreak: 'break-all', // Allow breaking long lines
+      whiteSpace: 'pre-wrap', // Preserve formatting but allow wrapping
+      overflowWrap: 'break-word', // Better handling of long words
+      
+      '& code': {
+        backgroundColor: 'transparent',
+        padding: 0,
+        border: 'none',
+        borderRadius: 0,
+        fontFamily: 'inherit',
+        fontSize: 'inherit',
+        color: 'inherit',
+        fontWeight: 'inherit',
+      },
     },
     
-    // Links
+    // Copy button styles (reused from journeyContentHtml)
+    '& .code-copy-button': {
+      position: 'absolute',
+      top: theme.spacing(1),
+      right: theme.spacing(1),
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+      backgroundColor: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      color: theme.colors.text.secondary,
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      zIndex: 2,
+      minWidth: '70px',
+      justifyContent: 'center',
+      
+      '&:hover': {
+        backgroundColor: theme.colors.action.hover,
+        borderColor: theme.colors.border.medium,
+        color: theme.colors.text.primary,
+        transform: 'translateY(-1px)',
+        boxShadow: theme.shadows.z1,
+      },
+      
+      '&:active': {
+        transform: 'translateY(0)',
+        boxShadow: 'none',
+      },
+      
+      '&.copied': {
+        backgroundColor: theme.colors.success.main,
+        borderColor: theme.colors.success.border,
+        color: theme.colors.success.contrastText,
+        
+        '&:hover': {
+          backgroundColor: theme.colors.success.main,
+          borderColor: theme.colors.success.border,
+          color: theme.colors.success.contrastText,
+        },
+      },
+      
+      '& svg': {
+        flexShrink: 0,
+        width: '16px',
+        height: '16px',
+      },
+      
+      '& .copy-text': {
+        whiteSpace: 'nowrap',
+        fontSize: '12px',
+      },
+    },
+    
+    '& .inline-code-copy-button': {
+      position: 'absolute',
+      top: '50%',
+      right: '2px',
+      transform: 'translateY(-50%)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '16px',
+      height: '16px',
+      padding: '2px',
+      backgroundColor: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: '2px',
+      color: theme.colors.text.secondary,
+      fontSize: '10px',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      zIndex: 2,
+      opacity: 0.7,
+      
+      '&:hover': {
+        backgroundColor: theme.colors.action.hover,
+        borderColor: theme.colors.border.medium,
+        color: theme.colors.text.primary,
+        opacity: 1,
+        transform: 'translateY(-50%) scale(1.1)',
+      },
+      
+      '&:active': {
+        transform: 'translateY(-50%) scale(1)',
+      },
+      
+      '&.copied': {
+        backgroundColor: theme.colors.success.main,
+        borderColor: theme.colors.success.border,
+        color: theme.colors.success.contrastText,
+        opacity: 1,
+        
+        '&:hover': {
+          backgroundColor: theme.colors.success.main,
+          borderColor: theme.colors.success.border,
+          color: theme.colors.success.contrastText,
+        },
+      },
+      
+      '& svg': {
+        flexShrink: 0,
+        width: '12px',
+        height: '12px',
+      },
+    },
+    
     '& a': {
       color: theme.colors.primary.main,
       textDecoration: 'none',
@@ -2184,7 +2192,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
       },
     },
     
-    // Tables
     '& table': {
       width: '100%',
       borderCollapse: 'collapse',
@@ -2202,24 +2209,15 @@ const getStyles = (theme: GrafanaTheme2) => ({
       },
     },
     
-    // Blockquotes and admonitions
-    '& blockquote, & .admonition': {
+    '& .admonition, & blockquote': {
       margin: `${theme.spacing(2)} 0`,
       padding: theme.spacing(2),
       borderLeft: `4px solid ${theme.colors.primary.main}`,
       backgroundColor: theme.colors.background.canvas,
-      borderRadius: `0 ${theme.shape.radius.default}px ${theme.shape.radius.default}px 0`,
-      fontSize: theme.typography.bodySmall.fontSize, // Smaller font size
+      borderRadius: theme.shape.radius.default,
+      border: `2px solid ${theme.colors.primary.main}`, // Blue border around the entire box
+      fontSize: theme.typography.bodySmall.fontSize,
       
-      '& blockquote': {
-        margin: 0,
-        padding: 0,
-        border: 'none',
-        borderRadius: 0,
-        backgroundColor: 'transparent',
-      },
-      
-      // Style the title (Note, Warning, etc.)
       '& .title': {
         fontSize: '11px',
         fontWeight: theme.typography.fontWeightBold,
@@ -2229,12 +2227,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
         marginBottom: theme.spacing(1),
         
         '&:before': {
-          content: '"ℹ️ "', // Add an icon before the title
+          content: '"ℹ️ "',
           marginRight: theme.spacing(0.5),
         },
       },
       
-      // Style the content paragraphs
       '& p:not(.title)': {
         margin: `${theme.spacing(0.5)} 0`,
         fontSize: theme.typography.bodySmall.fontSize,
@@ -2246,7 +2243,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
       },
     },
     
-    // Specific styling for different admonition types
     '& .admonition-note': {
       borderLeftColor: theme.colors.info.main,
       backgroundColor: theme.colors.info.transparent,

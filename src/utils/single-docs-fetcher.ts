@@ -1,3 +1,5 @@
+import { DOCS_BASE_URL, DOCS_USERNAME, DOCS_PASSWORD } from '../constants';
+
 export interface SingleDocsContent {
   title: string;
   content: string;
@@ -10,6 +12,37 @@ export interface SingleDocsContent {
 // Simple in-memory cache for docs content
 const docsContentCache = new Map<string, { content: SingleDocsContent; timestamp: number }>();
 const DOCS_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Get authentication headers if credentials are provided
+ */
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'User-Agent': 'Mozilla/5.0 (compatible; GrafanaDocsReader/1.0)',
+  };
+  
+  // Authenticate if username is provided (password can be empty)
+  if (DOCS_USERNAME) {
+    const credentials = btoa(`${DOCS_USERNAME}:${DOCS_PASSWORD || ''}`);
+    headers['Authorization'] = `Basic ${credentials}`;
+    console.log(`🔐 Adding Basic Auth for user: ${DOCS_USERNAME}`);
+  }
+  
+  return headers;
+}
+
+/**
+ * Convert a regular docs URL to unstyled.html version for content fetching
+ */
+function getUnstyledContentUrl(url: string): string {
+  // For docs pages, append unstyled.html
+  if (url.endsWith('/')) {
+    return `${url}unstyled.html`;
+  } else {
+    return `${url}/unstyled.html`;
+  }
+}
 
 /**
  * Extract single docs content from HTML
@@ -149,7 +182,7 @@ function processSingleDocsContent(mainElement: Element): {
   
   console.log('Content length after removing unwanted elements:', clonedElement.innerHTML.length);
   
-  // Process images - fix relative URLs
+  // Process images - fix relative URLs with configurable base URL
   const images = clonedElement.querySelectorAll('img');
   images.forEach(img => {
     const src = img.getAttribute('src');
@@ -158,16 +191,16 @@ function processSingleDocsContent(mainElement: Element): {
     
     if (!originalSrc) return;
     
-    // Fix relative URLs
+    // Fix relative URLs with configurable base URL
     const newSrc = originalSrc.startsWith('http') || originalSrc.startsWith('data:') 
       ? originalSrc
       : originalSrc.startsWith('/') 
-        ? `https://grafana.com${originalSrc}`
+        ? `${DOCS_BASE_URL}${originalSrc}`
         : originalSrc.startsWith('./') 
-          ? `https://grafana.com/docs/${originalSrc.substring(2)}`
+          ? `${DOCS_BASE_URL}/docs/${originalSrc.substring(2)}`
           : originalSrc.startsWith('../') 
-            ? `https://grafana.com/docs/${originalSrc.replace(/^\.\.\//, '')}`
-            : `https://grafana.com/docs/${originalSrc}`;
+            ? `${DOCS_BASE_URL}/docs/${originalSrc.replace(/^\.\.\//, '')}`
+            : `${DOCS_BASE_URL}/docs/${originalSrc}`;
     
     img.setAttribute('src', newSrc);
     img.removeAttribute('data-src');
@@ -207,14 +240,14 @@ function processSingleDocsContent(mainElement: Element): {
     }
   });
   
-  // Process links to ensure they open in new tabs
+  // Process links to ensure they open in new tabs and fix relative URLs
   const links = clonedElement.querySelectorAll('a[href]');
   links.forEach(link => {
     const href = link.getAttribute('href');
     if (href) {
-      // Fix relative URLs
+      // Fix relative URLs with configurable base URL
       if (href.startsWith('/')) {
-        link.setAttribute('href', `https://grafana.com${href}`);
+        link.setAttribute('href', `${DOCS_BASE_URL}${href}`);
       }
       
       link.setAttribute('target', '_blank');
@@ -249,47 +282,41 @@ function processSingleDocsContent(mainElement: Element): {
 export async function fetchSingleDocsContent(url: string): Promise<SingleDocsContent | null> {
   console.log(`Fetching single docs content from: ${url}`);
   
-  // Check cache first
+  // Use unstyled.html version for content fetching
+  const unstyledUrl = getUnstyledContentUrl(url);
+  console.log(`Using unstyled URL: ${unstyledUrl}`);
+  
+  // Check cache first (use original URL as cache key)
   const cached = docsContentCache.get(url);
   if (cached && Date.now() - cached.timestamp < DOCS_CACHE_DURATION) {
     console.log('Returning cached docs content for:', url);
     return cached.content;
   }
   
-  // Try strategies in order of reliability
-  const strategies = [
-    { name: 'direct', fn: () => fetchDirectFast(url) },
-    { name: 'corsproxy', fn: () => fetchWithCorsproxy(url) },
-  ];
-  
-  for (let i = 0; i < strategies.length; i++) {
-    const strategy = strategies[i];
+  // Try direct fetch
+  try {
+    console.log('Trying direct docs fetch...');
+    const startTime = Date.now();
+    const htmlContent = await fetchDirectFast(unstyledUrl);
+    const duration = Date.now() - startTime;
     
-    try {
-      console.log(`Trying docs strategy ${i + 1}/${strategies.length}: ${strategy.name}`);
-      const startTime = Date.now();
-      const htmlContent = await strategy.fn();
-      const duration = Date.now() - startTime;
+    if (htmlContent && htmlContent.trim().length > 0) {
+      console.log(`✅ Direct docs fetch succeeded in ${duration}ms, content length: ${htmlContent.length}`);
+      const content = extractSingleDocsContent(htmlContent, url); // Use original URL for content
+      console.log(`Extracted docs content: ${content.title}`);
       
-      if (htmlContent && htmlContent.trim().length > 0) {
-        console.log(`✅ Docs strategy ${strategy.name} succeeded in ${duration}ms, content length: ${htmlContent.length}`);
-        const content = extractSingleDocsContent(htmlContent, url);
-        console.log(`Extracted docs content: ${content.title}`);
-        
-        // Cache the result
-        docsContentCache.set(url, { content, timestamp: Date.now() });
-        
-        return content;
-      } else {
-        console.warn(`❌ Docs strategy ${strategy.name} returned empty content after ${duration}ms`);
-      }
-    } catch (error) {
-      console.warn(`❌ Docs strategy ${strategy.name} failed:`, error);
-      continue;
+      // Cache the result (use original URL as cache key)
+      docsContentCache.set(url, { content, timestamp: Date.now() });
+      
+      return content;
+    } else {
+      console.warn(`❌ Direct docs fetch returned empty content after ${duration}ms`);
     }
+  } catch (error) {
+    console.warn(`❌ Direct docs fetch failed:`, error);
   }
   
-  console.error('All docs strategies failed for URL:', url);
+  console.error('Direct docs fetch failed for URL:', url);
   return null;
 }
 
@@ -299,15 +326,27 @@ export async function fetchSingleDocsContent(url: string): Promise<SingleDocsCon
 async function fetchDirectFast(url: string): Promise<string | null> {
   try {
     console.log('Trying direct docs fetch...');
-    const response = await fetch(url, {
-      mode: 'cors',
+    
+    const headers = getAuthHeaders();
+    
+    // For authenticated requests, we might need additional CORS handling
+    const fetchOptions: RequestInit = {
       method: 'GET',
-      headers: {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'User-Agent': 'Mozilla/5.0 (compatible; GrafanaDocsReader/1.0)',
-      },
+      headers: headers,
       signal: AbortSignal.timeout(5000), // 5 second timeout
-    });
+    };
+    
+    // If we have authentication, try with credentials and explicit CORS mode
+    if (DOCS_USERNAME) {
+      fetchOptions.mode = 'cors';
+      fetchOptions.credentials = 'omit'; // Don't send cookies, use explicit auth headers
+      console.log('🔐 Using authenticated direct docs fetch');
+    } else {
+      fetchOptions.mode = 'cors';
+      console.log('📂 Using non-authenticated direct docs fetch');
+    }
+    
+    const response = await fetch(url, fetchOptions);
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -322,35 +361,7 @@ async function fetchDirectFast(url: string): Promise<string | null> {
   }
 }
 
-/**
- * Fetch with corsproxy.io
- */
-async function fetchWithCorsproxy(url: string): Promise<string | null> {
-  try {
-    const proxyUrl = `https://corsproxy.io/?${url}`;
-    console.log(`Trying docs corsproxy.io: ${proxyUrl}`);
-    
-    const response = await fetch(proxyUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'User-Agent': 'Mozilla/5.0 (compatible; GrafanaDocsReader/1.0)',
-      },
-      signal: AbortSignal.timeout(8000), // 8 second timeout
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const content = await response.text();
-    console.log('Successfully fetched docs via corsproxy.io');
-    return content;
-  } catch (error) {
-    console.warn('Docs corsproxy.io failed:', error);
-    return null;
-  }
-}
+
 
 /**
  * Clear single docs cache
