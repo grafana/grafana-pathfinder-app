@@ -1756,10 +1756,10 @@ const getStyles = (theme: GrafanaTheme2) => ({
       fontSize: theme.typography.bodySmall.fontSize,
       
       '& .title': {
-        fontSize: '11px',
+        fontSize: theme.typography.bodySmall.fontSize,
         fontWeight: theme.typography.fontWeightBold,
         textTransform: 'uppercase',
-        letterSpacing: '0.5px',
+        letterSpacing: '0.05em',
         marginBottom: theme.spacing(1),
         marginTop: 0,
       },
@@ -2508,12 +2508,14 @@ const getStyles = (theme: GrafanaTheme2) => ({
       position: 'absolute',
       bottom: theme.spacing(1),
       right: theme.spacing(1),
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      color: 'white',
+      backgroundColor: theme.colors.background.canvas,
+      color: theme.colors.text.primary,
       padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
       borderRadius: theme.shape.radius.default,
       fontSize: theme.typography.bodySmall.fontSize,
       fontWeight: theme.typography.fontWeightMedium,
+      border: `1px solid ${theme.colors.border.medium}`,
+      boxShadow: theme.shadows.z1,
     },
     
     '& .journey-video-description': {
@@ -2529,25 +2531,28 @@ const getStyles = (theme: GrafanaTheme2) => ({
     // External link indicator for videos that will open in YouTube
     '& .journey-video-external-indicator': {
       position: 'absolute',
-      top: '8px',
-      right: '8px',
+      top: theme.spacing(1),
+      right: theme.spacing(1),
       width: '16px',
       height: '16px',
-      backgroundColor: 'rgba(255, 87, 34, 0.9)',
+      backgroundColor: theme.colors.warning.main,
       borderRadius: '50%',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      color: 'white',
+      color: theme.colors.warning.contrastText,
       zIndex: 2,
-      border: `1px solid white`,
+      border: `1px solid ${theme.colors.warning.border}`,
+      boxShadow: theme.shadows.z1,
     },
     
     // Simplified styling for videos that will open externally
     '& .journey-video-thumbnail.will-open-externally': {
       '& .journey-video-duration-badge': {
-        backgroundColor: 'rgba(255, 87, 34, 0.9)', // Orange to indicate external
-        fontSize: '11px',
+        backgroundColor: theme.colors.warning.main,
+        color: theme.colors.warning.contrastText,
+        borderColor: theme.colors.warning.border,
+        fontSize: theme.typography.bodySmall.fontSize,
         fontWeight: theme.typography.fontWeightBold,
       },
     },

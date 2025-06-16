@@ -695,7 +695,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
   content: css({
     label: 'context-content',
     flex: 1,
-    overflow: 'auto',
+    overflowY: 'auto',
+    overflowX: 'hidden',
     display: 'flex',
     flexDirection: 'column',
   }),
@@ -715,6 +716,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'column',
     gap: theme.spacing(2),
     padding: theme.spacing(2),
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
   }),
   errorContainer: css({
     display: 'flex',
@@ -736,11 +740,16 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   recommendationCard: css({
     padding: theme.spacing(2),
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
   }),
   recommendationCardContent: css({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
+    width: '100%',
+    maxWidth: '100%',
   }),
   recommendationCardTitle: css({
     margin: 0,
@@ -764,10 +773,10 @@ const getStyles = (theme: GrafanaTheme2) => ({
     cursor: 'pointer',
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
-    transition: 'all 0.2s ease',
+    transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
+    whiteSpace: 'nowrap',
     '&:hover': {
       backgroundColor: theme.colors.primary.shade,
-      transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z1,
     },
   }),
@@ -776,6 +785,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'column',
     gap: theme.spacing(1.5),
     marginBottom: theme.spacing(2),
+    width: '100%',
+    maxWidth: '100%',
     
     // For larger screens, use row layout
     '@media (min-width: 600px)': {
@@ -972,6 +983,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(2),
+    width: '100%',
+    maxWidth: '100%',
   }),
   recommendationsContainer: css({
     display: 'flex',
