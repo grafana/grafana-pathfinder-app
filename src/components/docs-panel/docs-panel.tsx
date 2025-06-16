@@ -361,6 +361,25 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           window.open(fullUrl, '_blank', 'noopener,noreferrer');
         }
       }
+
+      // Handle related journey links (open in new app tabs)
+      const relatedJourneyLink = target.closest('[data-related-journey-link]') as HTMLElement;
+      
+      if (relatedJourneyLink) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const linkUrl = relatedJourneyLink.getAttribute('data-related-journey-url');
+        const linkTitle = relatedJourneyLink.getAttribute('data-related-journey-title');
+        
+        if (linkUrl) {
+          console.log('🔗 Related journey link clicked:', { url: linkUrl, title: linkTitle });
+          
+          // Related journey links open in new app tabs (learning journeys)
+          const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
+          model.openLearningJourney(fullUrl, linkTitle || 'Related Journey');
+        }
+      }
     };
 
     const contentElement = contentRef.current;
@@ -714,7 +733,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     const contentElement = contentRef.current;
     if (!contentElement) return;
 
-    // Find all collapsible sections
+    // Find all collapsible sections (including side journeys and related journeys)
     const collapsibleSections = contentElement.querySelectorAll('.journey-collapse');
     console.log(`📁 Found ${collapsibleSections.length} collapsible sections`);
     
@@ -1753,6 +1772,22 @@ const getStyles = (theme: GrafanaTheme2) => ({
       },
     },
     
+    // Journey conclusion image styling
+    '& .journey-conclusion-image': {
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      margin: `0 0 ${theme.spacing(3)} 0`,
+    },
+    
+    '& .journey-conclusion-header': {
+      maxWidth: '100%',
+      height: 'auto',
+      maxHeight: '120px', // Limit height for sidebar
+      width: 'auto',
+      display: 'block',
+    },
+    
     // Side journeys section styling - collapsible milestone-style design
     '& .journey-side-journeys-section': {
       marginTop: theme.spacing(4),
@@ -1915,6 +1950,168 @@ const getStyles = (theme: GrafanaTheme2) => ({
       justifyContent: 'center',
     },
     
+    // Related journeys section styling - for destination-reached milestone
+    '& .journey-related-journeys-section': {
+      marginTop: theme.spacing(3),
+      marginBottom: theme.spacing(2),
+    },
+    
+    '& .journey-related-journeys-collapse': {
+      backgroundColor: theme.colors.background.canvas,
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      overflow: 'hidden',
+      
+      // Use chevron (down arrow) for related journeys
+      '& .journey-collapse-icon': {
+        color: theme.colors.text.secondary,
+        transition: 'transform 0.3s ease',
+        flexShrink: 0,
+        
+        '& svg': {
+          width: '16px',
+          height: '16px',
+          transform: 'rotate(0deg)',
+          transition: 'transform 0.3s ease',
+        },
+      },
+      
+      // When expanded, rotate the chevron
+      '&:has(.journey-related-journeys-content[style*="display: block"]) .journey-collapse-icon svg': {
+        transform: 'rotate(180deg)',
+      },
+    },
+    
+    '& .journey-related-journeys-trigger': {
+      width: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: theme.spacing(2),
+      backgroundColor: 'transparent',
+      border: 'none',
+      cursor: 'pointer',
+      transition: 'background-color 0.2s ease',
+      
+      '&:hover': {
+        backgroundColor: theme.colors.action.hover,
+      },
+      
+      '&:focus': {
+        outline: `2px solid ${theme.colors.primary.main}`,
+        outlineOffset: '-2px',
+      },
+    },
+    
+    '& .journey-related-journeys-title': {
+      fontSize: theme.typography.h6.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
+      textAlign: 'left',
+      flex: 1,
+      minWidth: 0,
+    },
+    
+    '& .journey-related-journeys-content': {
+      backgroundColor: theme.colors.background.primary,
+      borderTop: `1px solid ${theme.colors.border.weak}`,
+      
+      '&[style*="display: none"]': {
+        display: 'none !important',
+      },
+      
+      '&[style*="display: block"]': {
+        display: 'block !important',
+      },
+    },
+    
+    '& .journey-related-journeys-list': {
+      padding: theme.spacing(1, 0),
+      display: 'flex',
+      flexDirection: 'column',
+    },
+    
+    '& .journey-related-journey-item': {
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(2),
+      padding: theme.spacing(1.5, 2),
+      textDecoration: 'none',
+      color: theme.colors.text.primary,
+      transition: 'all 0.2s ease',
+      borderBottom: `1px solid ${theme.colors.border.weak}`,
+      
+      '&:last-child': {
+        borderBottom: 'none',
+      },
+      
+      '&:hover': {
+        backgroundColor: theme.colors.action.hover,
+        textDecoration: 'none',
+        
+        '& .journey-related-journey-external-icon': {
+          opacity: 1,
+          transform: 'translate(2px, -2px)',
+        },
+      },
+      
+      '&:focus': {
+        outline: `2px solid ${theme.colors.primary.main}`,
+        outlineOffset: '-2px',
+        backgroundColor: theme.colors.action.focus,
+      },
+    },
+    
+    '& .journey-related-journey-icon-circle': {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '32px',
+      height: '32px',
+      borderRadius: '50%',
+      backgroundColor: theme.colors.secondary.main, // Different color to distinguish from side journeys
+      color: theme.colors.secondary.contrastText,
+      flexShrink: 0,
+      
+      '& svg': {
+        width: '16px',
+        height: '16px',
+      },
+    },
+    
+    '& .journey-related-journey-content': {
+      flex: 1,
+      minWidth: 0,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(0.25),
+    },
+    
+    '& .journey-related-journey-title': {
+      fontSize: theme.typography.body.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
+      lineHeight: 1.3,
+      margin: 0,
+    },
+    
+    '& .journey-related-journey-type': {
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.secondary,
+      fontWeight: theme.typography.fontWeightRegular,
+      margin: 0,
+    },
+    
+    '& .journey-related-journey-external-icon': {
+      color: theme.colors.text.disabled,
+      opacity: 0.6,
+      flexShrink: 0,
+      transition: 'all 0.2s ease',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    
     // Mobile responsive adjustments
     '@media (max-width: 768px)': {
       '& img': {
@@ -1947,6 +2144,39 @@ const getStyles = (theme: GrafanaTheme2) => ({
       },
       
       '& .journey-side-journey-icon-circle': {
+        width: '28px',
+        height: '28px',
+        
+        '& svg': {
+          width: '14px',
+          height: '14px',
+        },
+      },
+      
+      // Conclusion image tablet adjustments
+      '& .journey-conclusion-image': {
+        margin: `0 0 ${theme.spacing(2)} 0`,
+      },
+      
+      '& .journey-conclusion-header': {
+        maxHeight: '100px',
+      },
+      
+      // Related journeys tablet adjustments
+      '& .journey-related-journeys-section': {
+        marginTop: theme.spacing(2),
+      },
+      
+      '& .journey-related-journeys-title': {
+        fontSize: theme.typography.h5.fontSize,
+      },
+      
+      '& .journey-related-journey-item': {
+        padding: theme.spacing(1.25, 1.5),
+        gap: theme.spacing(1.5),
+      },
+      
+      '& .journey-related-journey-icon-circle': {
         width: '28px',
         height: '28px',
         
@@ -1997,6 +2227,39 @@ const getStyles = (theme: GrafanaTheme2) => ({
           width: '12px',
           height: '12px',
         },
+      },
+      
+      // Related journeys mobile adjustments
+      '& .journey-related-journeys-section': {
+        marginTop: theme.spacing(1.5),
+      },
+      
+      '& .journey-related-journeys-title': {
+        fontSize: theme.typography.bodySmall.fontSize,
+      },
+      
+      '& .journey-related-journey-item': {
+        padding: theme.spacing(1, 1.5),
+        gap: theme.spacing(1),
+      },
+      
+      '& .journey-related-journey-icon-circle': {
+        width: '24px',
+        height: '24px',
+        
+        '& svg': {
+          width: '12px',
+          height: '12px',
+        },
+      },
+      
+      // Conclusion image mobile adjustments
+      '& .journey-conclusion-image': {
+        margin: `0 0 ${theme.spacing(1.5)} 0`,
+      },
+      
+      '& .journey-conclusion-header': {
+        maxHeight: '80px',
       },
     },
   }),
