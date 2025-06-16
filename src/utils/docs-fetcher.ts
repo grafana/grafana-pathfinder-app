@@ -390,6 +390,10 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
         console.log(`🔗 Adding related journeys section for milestone ${currentMilestone}`);
         finalContent = appendRelatedJourneysToContent(finalContent, currentMilestoneData.relatedJourneys);
       }
+      
+      // Add bottom navigation for milestone pages
+      console.log(`🧭 Adding bottom navigation for milestone ${currentMilestone}`);
+      finalContent = appendBottomNavigationToContent(finalContent, currentMilestone, totalMilestones);
     }
     
     return {
@@ -1345,3 +1349,45 @@ function addConclusionImageToContent(content: string, conclusionImage: Conclusio
   
   return conclusionImageHtml + content;
 } 
+
+/**
+ * Add bottom navigation to content
+ */
+function appendBottomNavigationToContent(content: string, currentMilestone: number, totalMilestones: number): string {
+  const hasPrevious = currentMilestone > 1;
+  const hasNext = currentMilestone < totalMilestones;
+  
+  const bottomNavigationHtml = `
+    <div class="journey-bottom-navigation">
+      <div class="journey-bottom-navigation-content">
+        <button class="journey-bottom-nav-button" 
+                data-bottom-nav="previous"
+                style="opacity: ${hasPrevious ? '1' : '0.5'}; visibility: ${hasPrevious ? 'visible' : 'hidden'};"
+                ${!hasPrevious ? 'disabled' : ''}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15,18 9,12 15,6"></polyline>
+          </svg>
+          <span>Previous</span>
+        </button>
+        
+        <div class="journey-bottom-nav-info">
+          <span class="journey-bottom-nav-milestone">
+            Milestone ${currentMilestone} of ${totalMilestones}
+          </span>
+        </div>
+        
+        <button class="journey-bottom-nav-button" 
+                data-bottom-nav="next"
+                style="opacity: ${hasNext ? '1' : '0.5'}; visibility: ${hasNext ? 'visible' : 'hidden'};"
+                ${!hasNext ? 'disabled' : ''}>
+          <span>Next</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9,18 15,12 9,6"></polyline>
+          </svg>
+        </button>
+      </div>
+    </div>
+  `;
+  
+  return content + bottomNavigationHtml;
+}

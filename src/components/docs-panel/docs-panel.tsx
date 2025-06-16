@@ -3,7 +3,7 @@ import React, { useEffect, useRef } from 'react';
 
 import { GrafanaTheme2 } from '@grafana/data';
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, IconButton, useStyles2, Spinner, Alert } from '@grafana/ui';
+import { Icon, IconButton, useStyles2, Spinner, Alert, useTheme2 } from '@grafana/ui';
 
 import { 
   fetchLearningJourneyContent, 
@@ -313,6 +313,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
   const { tabs, activeTabId, contextPanel, singleDocsPanel } = model.useState();
   const styles = useStyles2(getStyles);
+  const theme = useTheme2();
   const contentRef = useRef<HTMLDivElement>(null);
   const activeTab = model.getActiveTab();
   const isRecommendationsTab = activeTabId === 'recommendations';
@@ -478,58 +479,123 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         const imageSrc = image.src;
         const imageAlt = image.alt || 'Image';
         
-        // Create image lightbox modal
+        // Use Grafana's theme detection
+        const isDarkMode = theme.isDark;
+        
+        // Create image lightbox modal with theme awareness
         const imageModal = document.createElement('div');
         imageModal.className = 'journey-image-modal';
-        imageModal.innerHTML = `
-          <div class="journey-image-modal-backdrop">
-            <div class="journey-image-modal-container">
-              <div class="journey-image-modal-header">
-                <h3 class="journey-image-modal-title">${imageAlt}</h3>
-                <button class="journey-image-modal-close" aria-label="Close image">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-              </div>
-              <div class="journey-image-modal-content">
-                <img src="${imageSrc}" alt="${imageAlt}" class="journey-image-modal-image" />
+        
+        // Create a temporary image to get natural dimensions
+        const tempImg = new Image();
+        tempImg.onload = () => {
+          const naturalWidth = tempImg.naturalWidth;
+          const naturalHeight = tempImg.naturalHeight;
+          
+          // Calculate responsive sizing
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          
+          // Account for modal padding and header (roughly 120px total)
+          const availableWidth = Math.min(viewportWidth * 0.9, viewportWidth - 40);
+          const availableHeight = Math.min(viewportHeight * 0.8, viewportHeight - 120);
+          
+          // Don't upscale small images beyond their natural size
+          const maxWidth = Math.min(availableWidth, naturalWidth);
+          const maxHeight = Math.min(availableHeight, naturalHeight);
+          
+          // Maintain aspect ratio
+          const aspectRatio = naturalWidth / naturalHeight;
+          let displayWidth = maxWidth;
+          let displayHeight = displayWidth / aspectRatio;
+          
+          if (displayHeight > maxHeight) {
+            displayHeight = maxHeight;
+            displayWidth = displayHeight * aspectRatio;
+          }
+          
+          // Ensure minimum sizes for very small images
+          const minDisplaySize = 200;
+          if (displayWidth < minDisplaySize && displayHeight < minDisplaySize) {
+            if (aspectRatio >= 1) {
+              displayWidth = Math.min(minDisplaySize, naturalWidth);
+              displayHeight = displayWidth / aspectRatio;
+            } else {
+              displayHeight = Math.min(minDisplaySize, naturalHeight);
+              displayWidth = displayHeight * aspectRatio;
+            }
+          }
+          
+          const containerWidth = Math.min(displayWidth + 40, viewportWidth - 20);
+          
+          // Use theme colors directly
+          const backgroundColor = theme.colors.background.primary;
+          const headerBackgroundColor = theme.colors.background.canvas;
+          const borderColor = theme.colors.border.weak;
+          const textColor = theme.colors.text.primary;
+          const textSecondaryColor = theme.colors.text.secondary;
+          
+          imageModal.innerHTML = `
+            <div class="journey-image-modal-backdrop">
+              <div class="journey-image-modal-container" style="
+                width: ${containerWidth}px;
+                background: ${backgroundColor};
+                border: 1px solid ${borderColor};
+              ">
+                <div class="journey-image-modal-header" style="
+                  background: ${headerBackgroundColor};
+                  border-bottom: 1px solid ${borderColor};
+                ">
+                  <h3 class="journey-image-modal-title" style="color: ${textColor};">${imageAlt}</h3>
+                  <button class="journey-image-modal-close" aria-label="Close image" style="color: ${textSecondaryColor};">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+                <div class="journey-image-modal-content" style="background: ${backgroundColor};">
+                  <img src="${imageSrc}" alt="${imageAlt}" class="journey-image-modal-image" 
+                       style="max-width: ${displayWidth}px; max-height: ${displayHeight}px;" />
+                </div>
               </div>
             </div>
-          </div>
-        `;
-        
-        // Add to body
-        document.body.appendChild(imageModal);
-        
-        // Add close functionality
-        const closeModal = () => {
-          document.body.removeChild(imageModal);
-          document.body.style.overflow = '';
+          `;
+          
+          // Add to body
+          document.body.appendChild(imageModal);
+          
+          // Add close functionality
+          const closeModal = () => {
+            document.body.removeChild(imageModal);
+            document.body.style.overflow = '';
+          };
+          
+          // Close on backdrop click
+          imageModal.querySelector('.journey-image-modal-backdrop')?.addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+              closeModal();
+            }
+          });
+          
+          // Close on close button click
+          imageModal.querySelector('.journey-image-modal-close')?.addEventListener('click', closeModal);
+          
+          // Close on escape key
+          const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+              closeModal();
+              document.removeEventListener('keydown', handleEscape);
+            }
+          };
+          document.addEventListener('keydown', handleEscape);
+          
+          // Prevent body scroll
+          document.body.style.overflow = 'hidden';
         };
         
-        // Close on backdrop click
-        imageModal.querySelector('.journey-image-modal-backdrop')?.addEventListener('click', (e) => {
-          if (e.target === e.currentTarget) {
-            closeModal();
-          }
-        });
-        
-        // Close on close button click
-        imageModal.querySelector('.journey-image-modal-close')?.addEventListener('click', closeModal);
-        
-        // Close on escape key
-        const handleEscape = (e: KeyboardEvent) => {
-          if (e.key === 'Escape') {
-            closeModal();
-            document.removeEventListener('keydown', handleEscape);
-          }
-        };
-        document.addEventListener('keydown', handleEscape);
-        
-        // Prevent body scroll
-        document.body.style.overflow = 'hidden';
+        // Load the image to get dimensions
+        tempImg.src = imageSrc;
       }
 
       // Handle side journey links
@@ -567,6 +633,24 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           // Related journey links open in new app tabs (learning journeys)
           const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
           model.openLearningJourney(fullUrl, linkTitle || 'Related Journey');
+        }
+      }
+
+      // Handle bottom navigation buttons
+      const bottomNavButton = target.closest('[data-bottom-nav]') as HTMLElement;
+      
+      if (bottomNavButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const navDirection = bottomNavButton.getAttribute('data-bottom-nav');
+        
+        if (navDirection === 'previous') {
+          console.log('🔗 Bottom nav: Previous milestone clicked');
+          model.navigateToPreviousMilestone();
+        } else if (navDirection === 'next') {
+          console.log('🔗 Bottom nav: Next milestone clicked');
+          model.navigateToNextMilestone();
         }
       }
     };
@@ -1466,7 +1550,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
       display: 'block',
       boxShadow: theme.shadows.z1,
       transition: 'all 0.2s ease',
-      cursor: 'pointer',
+      cursor: 'zoom-in',
       
       '&:hover': {
         boxShadow: theme.shadows.z2,
@@ -2468,6 +2552,72 @@ const getStyles = (theme: GrafanaTheme2) => ({
       },
     },
     
+    // Bottom navigation styling
+    '& .journey-bottom-navigation': {
+      padding: theme.spacing(3, 3, 2, 3),
+      backgroundColor: theme.colors.background.canvas,
+      borderTop: `1px solid ${theme.colors.border.weak}`,
+      marginTop: theme.spacing(2),
+    },
+    
+    '& .journey-bottom-navigation-content': {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      maxWidth: '600px',
+      margin: '0 auto',
+    },
+    
+    '& .journey-bottom-nav-button': {
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      padding: theme.spacing(1.5, 2),
+      backgroundColor: theme.colors.primary.main,
+      color: theme.colors.primary.contrastText,
+      border: 'none',
+      borderRadius: theme.shape.radius.default,
+      cursor: 'pointer',
+      fontSize: theme.typography.body.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      transition: 'all 0.2s ease',
+      minWidth: '100px',
+      
+      '&:hover:not(:disabled)': {
+        backgroundColor: theme.colors.primary.shade,
+        transform: 'translateY(-1px)',
+        boxShadow: theme.shadows.z2,
+      },
+      
+      '&:active:not(:disabled)': {
+        transform: 'translateY(0)',
+        boxShadow: theme.shadows.z1,
+      },
+      
+      '&:disabled': {
+        cursor: 'not-allowed',
+        backgroundColor: theme.colors.action.disabledBackground,
+        color: theme.colors.action.disabledText,
+        
+        '&:hover': {
+          transform: 'none',
+          boxShadow: 'none',
+        },
+      },
+    },
+    
+    '& .journey-bottom-nav-info': {
+      textAlign: 'center',
+      flex: 1,
+      margin: `0 ${theme.spacing(2)}`,
+    },
+    
+    '& .journey-bottom-nav-milestone': {
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.secondary,
+      fontWeight: theme.typography.fontWeightMedium,
+    },
+    
     // Mobile responsive adjustments
     '@media (max-width: 768px)': {
       '& img': {
@@ -2554,6 +2704,21 @@ const getStyles = (theme: GrafanaTheme2) => ({
           width: '14px',
           height: '14px',
         },
+      },
+      
+      // Bottom navigation mobile adjustments
+      '& .journey-bottom-navigation': {
+        padding: theme.spacing(2, 2, 1.5, 2),
+      },
+      
+      '& .journey-bottom-nav-button': {
+        padding: theme.spacing(1, 1.5),
+        fontSize: theme.typography.bodySmall.fontSize,
+        minWidth: '80px',
+      },
+      
+      '& .journey-bottom-nav-info': {
+        margin: `0 ${theme.spacing(1)}`,
       },
     },
     
@@ -2756,6 +2921,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
       border: `1px solid ${theme.colors.border.weak}`,
       borderRadius: theme.shape.radius.default,
       transition: 'all 0.2s ease',
+      padding: theme.spacing(1),
+      minWidth: '36px',
+      height: '36px',
       
       '&:hover:not(:disabled)': {
         backgroundColor: theme.colors.action.hover,
@@ -2867,6 +3035,71 @@ const getStyles = (theme: GrafanaTheme2) => ({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     flex: 1,
+  }),
+  bottomNavigation: css({
+    label: 'combined-journey-bottom-navigation',
+    padding: theme.spacing(3, 3, 2, 3),
+    backgroundColor: theme.colors.background.canvas,
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+    marginTop: theme.spacing(2),
+  }),
+  bottomNavigationContent: css({
+    label: 'combined-journey-bottom-navigation-content',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    maxWidth: '600px',
+    margin: '0 auto',
+  }),
+  bottomNavButton: css({
+    label: 'combined-journey-bottom-nav-button',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1.5, 2),
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    cursor: 'pointer',
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    transition: 'all 0.2s ease',
+    minWidth: '100px',
+    
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z2,
+    },
+    
+    '&:active:not(:disabled)': {
+      transform: 'translateY(0)',
+      boxShadow: theme.shadows.z1,
+    },
+    
+    '&:disabled': {
+      cursor: 'not-allowed',
+      backgroundColor: theme.colors.action.disabledBackground,
+      color: theme.colors.action.disabledText,
+      
+      '&:hover': {
+        transform: 'none',
+        boxShadow: 'none',
+      },
+    },
+  }),
+  bottomNavInfo: css({
+    label: 'combined-journey-bottom-nav-info',
+    textAlign: 'center',
+    flex: 1,
+    margin: `0 ${theme.spacing(2)}`,
+  }),
+  bottomNavMilestone: css({
+    label: 'combined-journey-bottom-nav-milestone',
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    fontWeight: theme.typography.fontWeightMedium,
   }),
   docsPanel: css({
     label: 'single-docs-panel-wrapper',
@@ -3366,7 +3599,7 @@ const addGlobalModalStyles = () => {
     
 
     
-    /* Image Modal Styles */
+    /* Image Modal Styles - Simplified with theme integration */
     .journey-image-modal {
       position: fixed;
       top: 0;
@@ -3385,7 +3618,7 @@ const addGlobalModalStyles = () => {
       left: 0;
       right: 0;
       bottom: 0;
-      background-color: rgba(0, 0, 0, 0.9);
+      background-color: rgba(0, 0, 0, 0.85);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -3393,7 +3626,6 @@ const addGlobalModalStyles = () => {
     }
     
     .journey-image-modal-container {
-      background: white;
       border-radius: 8px;
       overflow: hidden;
       max-width: 95vw;
@@ -3409,31 +3641,36 @@ const addGlobalModalStyles = () => {
       align-items: center;
       justify-content: space-between;
       padding: 16px 20px;
-      background: #f8f9fa;
-      border-bottom: 1px solid #e9ecef;
       flex-shrink: 0;
     }
     
     .journey-image-modal-title {
-      color: #212529;
       margin: 0;
       font-size: 16px;
       font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: calc(100% - 40px);
     }
     
     .journey-image-modal-close {
       background: none;
       border: none;
-      color: #6c757d;
       cursor: pointer;
       padding: 4px;
       border-radius: 4px;
       transition: all 0.2s ease;
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     
     .journey-image-modal-close:hover {
-      background: rgba(0, 0, 0, 0.1);
-      color: #212529;
+      opacity: 0.7;
     }
     
     .journey-image-modal-content {
@@ -3443,13 +3680,16 @@ const addGlobalModalStyles = () => {
       justify-content: center;
       padding: 20px;
       overflow: hidden;
+      min-height: 0;
     }
     
     .journey-image-modal-image {
-      max-width: 100%;
-      max-height: 100%;
+      width: auto;
+      height: auto;
       object-fit: contain;
       border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      transition: all 0.3s ease;
     }
     
     /* Mobile responsive adjustments */
@@ -3468,7 +3708,7 @@ const addGlobalModalStyles = () => {
       }
       
       .journey-image-modal-container {
-        max-width: 95vw;
+        max-width: 95vw !important;
         max-height: 95vh;
         margin: 10px;
       }
@@ -3477,8 +3717,61 @@ const addGlobalModalStyles = () => {
         padding: 12px 16px;
       }
       
+      .journey-image-modal-title {
+        font-size: 14px;
+        max-width: calc(100% - 32px);
+      }
+      
       .journey-image-modal-content {
         padding: 15px;
+      }
+      
+      .journey-image-modal-close {
+        width: 28px;
+        height: 28px;
+        padding: 2px;
+      }
+      
+      .journey-image-modal-close svg {
+        width: 18px;
+        height: 18px;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .journey-image-modal-backdrop {
+        padding: 10px;
+      }
+      
+      .journey-image-modal-container {
+        max-width: 100vw !important;
+        max-height: 100vh;
+        margin: 0;
+        border-radius: 0;
+      }
+      
+      .journey-image-modal-header {
+        padding: 10px 12px;
+      }
+      
+      .journey-image-modal-title {
+        font-size: 14px;
+        max-width: calc(100% - 28px);
+      }
+      
+      .journey-image-modal-content {
+        padding: 10px;
+      }
+      
+      .journey-image-modal-close {
+        width: 24px;
+        height: 24px;
+        padding: 2px;
+      }
+      
+      .journey-image-modal-close svg {
+        width: 16px;
+        height: 16px;
       }
     }
   `;
