@@ -12,12 +12,23 @@ export interface LearningJourneyContent {
   summary?: string; // Summary extracted from first 3 paragraphs
 }
 
+export interface SideJourneyItem {
+  link: string;
+  title: string;
+}
+
+export interface SideJourneys {
+  heading: string;
+  items: SideJourneyItem[];
+}
+
 export interface Milestone {
   number: number;
   title: string;
   duration: string;
   url: string;
   isActive: boolean;
+  sideJourneys?: SideJourneys;
 }
 
 export interface LearningJourneyTab {
@@ -162,6 +173,19 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
         ? `${DOCS_BASE_URL}${item.permalink}` 
         : item.permalink;
       
+      // Extract side_journeys if present
+      let sideJourneys: SideJourneys | undefined;
+      if (item.params.side_journeys && item.params.side_journeys.items && item.params.side_journeys.items.length > 0) {
+        sideJourneys = {
+          heading: item.params.side_journeys.heading || 'More to explore (optional)',
+          items: item.params.side_journeys.items.map((sideItem: any) => ({
+            link: sideItem.link,
+            title: sideItem.title
+          }))
+        };
+        console.log(`📍 Added ${sideJourneys.items.length} side journey items for milestone ${milestoneNumber}`);
+      }
+      
       console.log(`📍 Added milestone ${milestoneNumber}: ${title} (${absoluteUrl})`);
       
       return {
@@ -169,7 +193,8 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
         title: title,
         duration: duration,
         url: absoluteUrl, // Convert relative permalink to absolute URL
-        isActive: false
+        isActive: false,
+        sideJourneys: sideJourneys
       };
     });
     
@@ -288,9 +313,19 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
     // Extract main content - work with the entire body since there's no wrapper
     const mainContentResult = extractMainContent(doc, currentMilestone === 0);
     
+    // Add side journeys section for milestone pages (not cover pages)
+    let finalContent = mainContentResult.content;
+    if (currentMilestone > 0 && milestones && milestones.length > 0) {
+      const currentMilestoneData = milestones.find(m => m.number === currentMilestone);
+      if (currentMilestoneData?.sideJourneys && currentMilestoneData.sideJourneys.items.length > 0) {
+        console.log(`📚 Adding side journeys section for milestone ${currentMilestone}`);
+        finalContent = appendSideJourneysToContent(finalContent, currentMilestoneData.sideJourneys);
+      }
+    }
+    
     return {
       title,
-      content: mainContentResult.content,
+      content: finalContent,
       url,
       currentMilestone,
       totalMilestones,
@@ -926,4 +961,71 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
   
   console.log(`❌ No milestone match found, defaulting to milestone 1`);
   return 1;
+}
+
+function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys): string {
+  // Create a collapsible milestone-style side journeys section
+  const sideJourneysHtml = `
+    <div class="journey-side-journeys-section">
+      <div class="journey-collapse journey-side-journeys-collapse" data-collapse-id="side-journeys">
+        <button class="journey-collapse-trigger journey-side-journeys-trigger" data-collapse-target="side-journeys">
+          <span class="journey-side-journeys-title">${sideJourneys.heading}</span>
+          <div class="collapse-trigger__icon journey-collapse-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6,9 12,15 18,9"></polyline>
+            </svg>
+          </div>
+        </button>
+        <div class="journey-collapse-content journey-side-journeys-content" data-collapse-id="side-journeys" style="display: none;">
+          <div class="journey-side-journeys-list">
+            ${sideJourneys.items.map((item, index) => {
+              // Determine icon based on URL type
+              let iconSvg = '';
+              let typeLabel = 'External';
+              
+              if (item.link.includes('youtube.com') || item.link.includes('youtu.be')) {
+                // Video icon
+                iconSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="5,3 19,12 5,21"></polygon>
+                </svg>`;
+                typeLabel = 'Video';
+              } else {
+                // Document icon
+                iconSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14,2 14,8 20,8"></polyline>
+                </svg>`;
+                typeLabel = 'External';
+              }
+              
+              return `
+                <a href="#" 
+                   class="journey-side-journey-item"
+                   data-side-journey-link="true"
+                   data-side-journey-url="${item.link}"
+                   data-side-journey-title="${item.title}">
+                  <div class="journey-side-journey-icon-circle">
+                    ${iconSvg}
+                  </div>
+                  <div class="journey-side-journey-content">
+                    <div class="journey-side-journey-title">${item.title}</div>
+                    <div class="journey-side-journey-type">${typeLabel}</div>
+                  </div>
+                  <div class="journey-side-journey-external-icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                      <polyline points="15,3 21,3 21,9"></polyline>
+                      <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
+                  </div>
+                </a>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  return content + sideJourneysHtml;
 } 
