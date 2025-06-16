@@ -86,21 +86,36 @@ function getUnstyledContentUrl(url: string): string {
     return url;
   }
   
-  // For learning journey and docs pages, append unstyled.html
-  if (url.endsWith('/')) {
-    return `${url}unstyled.html`;
+  // Convert relative URLs to absolute URLs first
+  let absoluteUrl: string;
+  if (url.startsWith('/')) {
+    // Relative URL starting with / - prepend base URL
+    absoluteUrl = `${DOCS_BASE_URL}${url}`;
+  } else if (url.startsWith('http')) {
+    // Already absolute URL
+    absoluteUrl = url;
   } else {
-    return `${url}/unstyled.html`;
+    // Relative URL without leading slash - prepend base URL with slash
+    absoluteUrl = `${DOCS_BASE_URL}/${url}`;
+  }
+  
+  // For learning journey and docs pages, append unstyled.html
+  if (absoluteUrl.endsWith('/')) {
+    return `${absoluteUrl}unstyled.html`;
+  } else {
+    return `${absoluteUrl}/unstyled.html`;
   }
 }
 
 /**
- * Fetch milestones from JSON endpoint
+ * Fetch milestones from JSON endpoint - simplified to only use index.json
  */
 async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
   try {
-    // Construct JSON endpoint URL (keep original format for metadata)
-    const jsonUrl = `${baseUrl}index.json`;
+    // Ensure baseUrl is absolute
+    const absoluteBaseUrl = baseUrl.startsWith('/') ? `${DOCS_BASE_URL}${baseUrl}` : baseUrl;
+    const jsonUrl = `${absoluteBaseUrl}index.json`;
+    
     console.log(`Fetching milestones from JSON: ${jsonUrl}`);
     
     const jsonContent = await fetchDirectFast(jsonUrl);
@@ -118,9 +133,6 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     
     console.log(`📋 Found ${jsonData.length} items in JSON`);
     
-    // Convert JSON items to milestones using array order as source of truth
-    const milestones: Milestone[] = [];
-    
     // Filter items that should be milestones (have step numbers OR are conclusion pages)
     const milestoneItems = jsonData.filter(item => 
       item.params && item.permalink && (
@@ -131,7 +143,7 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     
     // Sort by step number if available, otherwise conclusion pages go last
     milestoneItems.sort((a, b) => {
-      const stepA = a.params.step || 999; // Conclusion pages get high number
+      const stepA = a.params.step || 999;
       const stepB = b.params.step || 999;
       return stepA - stepB;
     });
@@ -139,20 +151,25 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     console.log(`📋 Found ${milestoneItems.length} milestone items in JSON`);
     
     // Create milestones using array index + 1 for consistent numbering
-    milestoneItems.forEach((item, index) => {
+    const milestones: Milestone[] = milestoneItems.map((item, index) => {
       const title = item.params.title || item.params.menutitle || `Step ${index + 1}`;
       const duration = '2-3 min'; // Default duration since JSON doesn't include this
-      const milestoneNumber = index + 1; // Simple 1-based indexing
+      const milestoneNumber = index + 1;
       
-      milestones.push({
+      // Convert relative permalink to absolute URL
+      const absoluteUrl = item.permalink.startsWith('/') 
+        ? `${DOCS_BASE_URL}${item.permalink}` 
+        : item.permalink;
+      
+      console.log(`📍 Added milestone ${milestoneNumber}: ${title} (${absoluteUrl})`);
+      
+      return {
         number: milestoneNumber,
         title: title,
         duration: duration,
-        url: item.permalink, // Use permalink directly since it's already a full URL
+        url: absoluteUrl, // Convert relative permalink to absolute URL
         isActive: false
-      });
-      
-      console.log(`📍 Added milestone ${milestoneNumber}: ${title} (${item.permalink})`);
+      };
     });
     
     if (milestones.length === 0) {
@@ -169,7 +186,7 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
 }
 
 /**
- * Extract learning journey content from HTML
+ * Extract learning journey content from HTML - simplified milestone logic
  */
 async function extractLearningJourneyContent(html: string, url: string): Promise<LearningJourneyContent> {
   try {
@@ -183,24 +200,17 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
     // Get the base URL for this learning journey
     const baseUrl = getLearningJourneyBaseUrl(url);
     
-    // Check if we have cached milestones (meaning this is navigation within a journey)
-    const cachedMilestones = getCachedMilestones(baseUrl);
-    const isNavigatingWithinJourney = cachedMilestones && cachedMilestones.length > 0;
-    
-    console.log(`Processing URL: ${url}, baseUrl: ${baseUrl}, hasCache: ${!!cachedMilestones}`);
-    
-    // Extract milestones from JSON or use cached ones
-    const milestones: Milestone[] = [];
+    // Check if we have cached milestones
+    let milestones = getCachedMilestones(baseUrl);
     let currentMilestone = 0;
     let totalMilestones = 1;
     
-    if (!isNavigatingWithinJourney) {
-      // This is a fresh journey start - fetch milestones from JSON
+    if (!milestones) {
+      // Fresh journey start - fetch milestones from JSON
       console.log('Fresh journey start - fetching milestones from JSON');
       
       try {
-        const fetchedMilestones = await fetchMilestonesFromJson(baseUrl);
-        milestones.push(...fetchedMilestones);
+        milestones = await fetchMilestonesFromJson(baseUrl);
         
         // Cache the milestones for this learning journey
         if (milestones.length > 0) {
@@ -212,17 +222,16 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
         currentMilestone = 0; // Cover page
         
       } catch (error) {
-        console.error('Failed to fetch milestones from JSON, falling back to error state');
+        console.error('Failed to fetch milestones from JSON:', error);
         throw new Error(`Failed to load learning journey milestones: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     } else {
       // Use cached milestone information
       console.log('Using cached milestone information');
-      milestones.push(...cachedMilestones);
-      totalMilestones = cachedMilestones.length;
+      totalMilestones = milestones.length;
       
       // Determine current milestone from URL
-      currentMilestone = findCurrentMilestoneFromUrl(url, cachedMilestones);
+      currentMilestone = findCurrentMilestoneFromUrl(url, milestones);
       
       // Reset all milestone active states first, then set the current one
       milestones.forEach(milestone => {
@@ -235,15 +244,12 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
         if (activeMilestone) {
           activeMilestone.isActive = true;
           console.log(`✅ Set milestone ${currentMilestone} as active: ${activeMilestone.title}`);
-        } else {
-          console.warn(`⚠️ Could not find milestone ${currentMilestone} to set as active`);
         }
       } else {
-        console.log(`📍 Current milestone ${currentMilestone} is cover page or out of range`);
+        console.log(`📍 Current milestone ${currentMilestone} is cover page`);
       }
       
-      console.log(`🧭 Navigation state: Current=${currentMilestone}, Total=${totalMilestones}, URL=${url}`);
-      console.log(`📋 Milestones summary:`, milestones.map(m => `${m.number}: ${m.isActive ? '✅' : '⭕'} ${m.title}`));
+      console.log(`🧭 Navigation state: Current=${currentMilestone}, Total=${totalMilestones}`);
     }
     
     // Extract main content - work with the entire body since there's no wrapper
@@ -473,25 +479,6 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
     content: clonedElement.innerHTML,
     videoUrl: extractedVideoUrl
   };
-}
-
-/**
- * Extract YouTube video ID from various YouTube URL formats
- */
-function extractYouTubeVideoId(url: string): string | null {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([^&\n?#]+)/,
-    /youtube\.com\/watch\?.*v=([^&\n?#]+)/,
-  ];
-  
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match && match[1]) {
-      return match[1];
-    }
-  }
-  
-  return null;
 }
 
 /**
@@ -887,52 +874,19 @@ export function clearSpecificJourneyCache(baseUrl: string): void {
 }
 
 /**
- * Find current milestone number from URL
+ * Find current milestone number from URL - simplified approach
  */
 function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
   console.log(`Finding milestone for URL: ${url}`);
-  console.log(`Available milestones:`, milestones.map(m => ({ number: m.number, url: m.url })));
   
-  // First try exact URL match
-  for (const milestone of milestones) {
-    if (milestone.url === url) {
-      console.log(`✅ Exact URL match found: milestone ${milestone.number}`);
-      return milestone.number;
-    }
-  }
-  
-  // Then try exact match with trailing slash variations
+  // Try exact URL match (with and without trailing slash)
   const urlWithSlash = url.endsWith('/') ? url : url + '/';
   const urlWithoutSlash = url.endsWith('/') ? url.slice(0, -1) : url;
   
   for (const milestone of milestones) {
-    if (milestone.url === urlWithSlash || milestone.url === urlWithoutSlash) {
-      console.log(`✅ URL match with slash variation found: milestone ${milestone.number}`);
+    if (milestone.url === url || milestone.url === urlWithSlash || milestone.url === urlWithoutSlash) {
+      console.log(`✅ URL match found: milestone ${milestone.number}`);
       return milestone.number;
-    }
-  }
-  
-  // Then try partial URL match by comparing path segments
-  const urlParts = url.replace(/\/$/, '').split('/');
-  const currentUrlSegment = urlParts[urlParts.length - 1];
-  
-  for (const milestone of milestones) {
-    const milestoneUrlParts = milestone.url.replace(/\/$/, '').split('/');
-    const milestoneUrlSegment = milestoneUrlParts[milestoneUrlParts.length - 1];
-    
-    if (currentUrlSegment && milestoneUrlSegment && currentUrlSegment === milestoneUrlSegment) {
-      console.log(`✅ Path segment match found: milestone ${milestone.number} (${currentUrlSegment})`);
-      return milestone.number;
-    }
-  }
-  
-  // Last resort: try to extract number from URL
-  const milestoneMatch = url.match(/milestone[-_]?(\d+)|step[-_]?(\d+)|(\d+)(?:[-_]|$)/i);
-  if (milestoneMatch) {
-    const milestoneNum = parseInt(milestoneMatch[1] || milestoneMatch[2] || milestoneMatch[3]);
-    if (milestoneNum > 0 && milestoneNum <= milestones.length) {
-      console.log(`📍 Number extraction match: milestone ${milestoneNum}`);
-      return milestoneNum;
     }
   }
   
