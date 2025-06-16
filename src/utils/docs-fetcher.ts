@@ -9,6 +9,7 @@ export interface LearningJourneyContent {
   milestones: Milestone[];
   lastFetched: string;
   videoUrl?: string; // YouTube video URL for this page
+  summary?: string; // Summary extracted from first 3 paragraphs
 }
 
 export interface Milestone {
@@ -186,6 +187,34 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
 }
 
 /**
+ * Extract summary from the first 3 paragraphs of the learning journey
+ */
+function extractJourneySummary(doc: Document): string {
+  try {
+    // Find the first 3 paragraphs in the document
+    const paragraphs = doc.querySelectorAll('p');
+    let summaryParts: string[] = [];
+    let count = 0;
+    
+    for (const p of paragraphs) {
+      const text = p.textContent?.trim();
+      if (text && text.length > 20) { // Skip very short paragraphs
+        summaryParts.push(text);
+        count++;
+        if (count >= 3) break;
+      }
+    }
+    
+    const summary = summaryParts.join(' ');
+    console.log(`📝 Extracted summary (${summary.length} chars): ${summary.substring(0, 100)}...`);
+    return summary;
+  } catch (error) {
+    console.warn('Failed to extract journey summary:', error);
+    return '';
+  }
+}
+
+/**
  * Extract learning journey content from HTML - simplified milestone logic
  */
 async function extractLearningJourneyContent(html: string, url: string): Promise<LearningJourneyContent> {
@@ -196,6 +225,10 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
     // Extract title - look for h1 in the body since there's no wrapper
     const titleElement = doc.querySelector('h1');
     const title = titleElement?.textContent?.trim() || 'Learning Journey';
+    
+    // Extract summary from first 3 paragraphs (only for cover pages)
+    const isCoverPage = url.endsWith('/') && !url.includes('/business-value') && !url.includes('/when-to') && !url.includes('/verify');
+    const summary = isCoverPage ? extractJourneySummary(doc) : '';
     
     // Get the base URL for this learning journey
     const baseUrl = getLearningJourneyBaseUrl(url);
@@ -263,7 +296,8 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
       totalMilestones,
       milestones,
       lastFetched: new Date().toISOString(),
-      videoUrl: mainContentResult.videoUrl
+      videoUrl: mainContentResult.videoUrl,
+      summary
     };
   } catch (error) {
     console.warn('Failed to parse learning journey content:', error);
