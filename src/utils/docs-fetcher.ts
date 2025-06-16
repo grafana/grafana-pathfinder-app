@@ -22,6 +22,22 @@ export interface SideJourneys {
   items: SideJourneyItem[];
 }
 
+export interface RelatedJourneyItem {
+  link: string;
+  title: string;
+}
+
+export interface RelatedJourneys {
+  heading: string;
+  items: RelatedJourneyItem[];
+}
+
+export interface ConclusionImage {
+  src: string;
+  width: number;
+  height: number;
+}
+
 export interface Milestone {
   number: number;
   title: string;
@@ -29,6 +45,8 @@ export interface Milestone {
   url: string;
   isActive: boolean;
   sideJourneys?: SideJourneys;
+  relatedJourneys?: RelatedJourneys;
+  conclusionImage?: ConclusionImage;
 }
 
 export interface LearningJourneyTab {
@@ -186,6 +204,34 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
         console.log(`📍 Added ${sideJourneys.items.length} side journey items for milestone ${milestoneNumber}`);
       }
       
+      // Extract related_journeys if present (typically in destination-reached milestone)
+      let relatedJourneys: RelatedJourneys | undefined;
+      if (item.params.related_journeys && item.params.related_journeys.items && item.params.related_journeys.items.length > 0) {
+        relatedJourneys = {
+          heading: item.params.related_journeys.heading || 'Related journeys',
+          items: item.params.related_journeys.items.map((relatedItem: any) => ({
+            link: relatedItem.link,
+            title: relatedItem.title
+          }))
+        };
+        console.log(`🔗 Added ${relatedJourneys.items.length} related journey items for milestone ${milestoneNumber}`);
+      }
+      
+      // Extract conclusion image if present (typically in destination-reached milestone)
+      let conclusionImage: ConclusionImage | undefined;
+      if (item.params.cta && item.params.cta.image && item.params.cta.image.src) {
+        const imageSrc = item.params.cta.image.src.startsWith('/') 
+          ? `${DOCS_BASE_URL}${item.params.cta.image.src}`
+          : item.params.cta.image.src;
+          
+        conclusionImage = {
+          src: imageSrc,
+          width: item.params.cta.image.width || 735,
+          height: item.params.cta.image.height || 175
+        };
+        console.log(`🎉 Added conclusion image for milestone ${milestoneNumber}: ${imageSrc}`);
+      }
+      
       console.log(`📍 Added milestone ${milestoneNumber}: ${title} (${absoluteUrl})`);
       
       return {
@@ -194,7 +240,9 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
         duration: duration,
         url: absoluteUrl, // Convert relative permalink to absolute URL
         isActive: false,
-        sideJourneys: sideJourneys
+        sideJourneys: sideJourneys,
+        relatedJourneys: relatedJourneys,
+        conclusionImage: conclusionImage
       };
     });
     
@@ -313,13 +361,27 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
     // Extract main content - work with the entire body since there's no wrapper
     const mainContentResult = extractMainContent(doc, currentMilestone === 0);
     
-    // Add side journeys section for milestone pages (not cover pages)
+    // Add conclusion image at the top for destination-reached milestone
     let finalContent = mainContentResult.content;
     if (currentMilestone > 0 && milestones && milestones.length > 0) {
       const currentMilestoneData = milestones.find(m => m.number === currentMilestone);
+      
+      // Add conclusion image at the top if present
+      if (currentMilestoneData?.conclusionImage) {
+        console.log(`🎉 Adding conclusion image for milestone ${currentMilestone}`);
+        finalContent = addConclusionImageToContent(finalContent, currentMilestoneData.conclusionImage);
+      }
+      
+      // Add side journeys section for milestone pages (not cover pages)
       if (currentMilestoneData?.sideJourneys && currentMilestoneData.sideJourneys.items.length > 0) {
         console.log(`📚 Adding side journeys section for milestone ${currentMilestone}`);
         finalContent = appendSideJourneysToContent(finalContent, currentMilestoneData.sideJourneys);
+      }
+      
+      // Add related journeys section (typically for destination-reached milestone)
+      if (currentMilestoneData?.relatedJourneys && currentMilestoneData.relatedJourneys.items.length > 0) {
+        console.log(`🔗 Adding related journeys section for milestone ${currentMilestone}`);
+        finalContent = appendRelatedJourneysToContent(finalContent, currentMilestoneData.relatedJourneys);
       }
     }
     
@@ -1028,4 +1090,86 @@ function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys
   `;
   
   return content + sideJourneysHtml;
+}
+
+function appendRelatedJourneysToContent(content: string, relatedJourneys: RelatedJourneys): string {
+  // Create a collapsible related journeys section
+  const relatedJourneysHtml = `
+    <div class="journey-related-journeys-section">
+      <div class="journey-collapse journey-related-journeys-collapse" data-collapse-id="related-journeys">
+        <button class="journey-collapse-trigger journey-related-journeys-trigger" data-collapse-target="related-journeys">
+          <span class="journey-related-journeys-title">${relatedJourneys.heading}</span>
+          <div class="collapse-trigger__icon journey-collapse-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6,9 12,15 18,9"></polyline>
+            </svg>
+          </div>
+        </button>
+        <div class="journey-collapse-content journey-related-journeys-content" data-collapse-id="related-journeys" style="display: none;">
+          <div class="journey-related-journeys-list">
+            ${relatedJourneys.items.map((item, index) => {
+              // Determine icon based on URL type
+              let iconSvg = '';
+              let typeLabel = 'External';
+              
+              if (item.link.includes('youtube.com') || item.link.includes('youtu.be')) {
+                // Video icon
+                iconSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="5,3 19,12 5,21"></polygon>
+                </svg>`;
+                typeLabel = 'Video';
+              } else {
+                // Document icon
+                iconSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14,2 14,8 20,8"></polyline>
+                </svg>`;
+                typeLabel = 'External';
+              }
+              
+              return `
+                <a href="#" 
+                   class="journey-related-journey-item"
+                   data-related-journey-link="true"
+                   data-related-journey-url="${item.link}"
+                   data-related-journey-title="${item.title}">
+                  <div class="journey-related-journey-icon-circle">
+                    ${iconSvg}
+                  </div>
+                  <div class="journey-related-journey-content">
+                    <div class="journey-related-journey-title">${item.title}</div>
+                    <div class="journey-related-journey-type">${typeLabel}</div>
+                  </div>
+                  <div class="journey-related-journey-external-icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                      <polyline points="15,3 21,3 21,9"></polyline>
+                      <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
+                  </div>
+                </a>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  return content + relatedJourneysHtml;
+}
+
+function addConclusionImageToContent(content: string, conclusionImage: ConclusionImage): string {
+  // Create conclusion image HTML to prepend at the top
+  const conclusionImageHtml = `
+    <div class="journey-conclusion-image">
+      <img src="${conclusionImage.src}" 
+           alt="Journey Complete" 
+           width="${conclusionImage.width}" 
+           height="${conclusionImage.height}"
+           class="journey-conclusion-header" />
+    </div>
+  `;
+  
+  return conclusionImageHtml + content;
 } 

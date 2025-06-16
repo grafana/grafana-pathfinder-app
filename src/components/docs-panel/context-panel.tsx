@@ -354,9 +354,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
           <div className={styles.contextSections}>
             <div className={styles.sectionHeader}>
               <Icon name="question-circle" size="lg" className={styles.headerIcon} />
-              <h2 className={styles.sectionTitle}>Stuck on what to do next?</h2>
+              <h2 className={styles.sectionTitle}>Recommended Learning Journeys</h2>
               <p className={styles.sectionSubtitle}>
-                Here are some learning journeys that might help based on your current context
+                Based on your current context, here are some learning journeys that may be beneficial.
               </p>
             </div>
 
