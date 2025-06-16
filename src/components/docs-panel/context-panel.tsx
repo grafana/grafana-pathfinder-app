@@ -743,6 +743,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
     width: '100%',
     maxWidth: '100%',
     boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: '120px',
   }),
   recommendationCardContent: css({
     display: 'flex',
@@ -750,6 +753,17 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1),
     width: '100%',
     maxWidth: '100%',
+    height: '100%',
+  }),
+  cardHeader: css({
+    display: 'flex',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: theme.spacing(2),
+    width: '100%',
+    maxWidth: '100%',
+    marginBottom: theme.spacing(2),
   }),
   recommendationCardTitle: css({
     margin: 0,
@@ -760,10 +774,23 @@ const getStyles = (theme: GrafanaTheme2) => ({
     wordBreak: 'break-word',
     flex: 1,
     minWidth: 0,
+    maxWidth: 'calc(100% - 100px)',
+    display: '-webkit-box',
+    '-webkit-line-clamp': '2',
+    '-webkit-box-orient': 'vertical',
+    overflow: 'hidden',
+  }),
+  cardActions: css({
+    display: 'flex',
+    gap: theme.spacing(1),
+    justifyContent: 'flex-end',
+    flexShrink: 0,
+    width: '80px',
   }),
   startButton: css({
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: theme.spacing(0.5),
     padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
     backgroundColor: theme.colors.primary.main,
@@ -775,36 +802,10 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
     transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
     whiteSpace: 'nowrap',
+    minWidth: '80px',
     '&:hover': {
       backgroundColor: theme.colors.primary.shade,
       boxShadow: theme.shadows.z1,
-    },
-  }),
-  cardHeader: css({
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1.5),
-    marginBottom: theme.spacing(2),
-    width: '100%',
-    maxWidth: '100%',
-    
-    // For larger screens, use row layout
-    '@media (min-width: 600px)': {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      gap: theme.spacing(2),
-    },
-  }),
-  cardActions: css({
-    display: 'flex',
-    gap: theme.spacing(1),
-    justifyContent: 'flex-start',
-    flexShrink: 0,
-    
-    // For larger screens, align to the right
-    '@media (min-width: 600px)': {
-      justifyContent: 'flex-end',
     },
   }),
   cardMetadata: css({
