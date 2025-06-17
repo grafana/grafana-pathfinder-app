@@ -8,7 +8,6 @@ import { Icon, IconButton, useStyles2, Spinner, Alert, useTheme2 } from '@grafan
 import { 
   fetchLearningJourneyContent, 
   LearningJourneyContent,
-  VideoInfo,
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
   clearLearningJourneyCache,
@@ -311,7 +310,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 }
 
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
-  const { tabs, activeTabId, contextPanel, singleDocsPanel } = model.useState();
+  const { tabs, activeTabId, contextPanel } = model.useState();
   const styles = useStyles2(getStyles);
   const theme = useTheme2();
   const contentRef = useRef<HTMLDivElement>(null);
@@ -350,125 +349,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         }
       }
 
-      // Handle video thumbnail clicks
-      const videoThumbnail = target.closest('.journey-video-thumbnail') as HTMLElement;
-      
-      if (videoThumbnail) {
-        event.preventDefault();
-        event.stopPropagation();
-        
-        const videoUrl = videoThumbnail.getAttribute('data-video-url');
-        const videoTitle = videoThumbnail.getAttribute('data-video-title') || 'Video';
-        const videoId = videoThumbnail.getAttribute('data-video-id');
-        
-        if (videoUrl && videoId) {
-          console.log('🎬 Video thumbnail clicked:', { videoTitle, videoUrl, videoId });
-          
-          // Check if we should skip embed due to YouTube restrictions
-          const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const isHttp = window.location.protocol === 'http:';
-          const shouldSkipEmbed = isLocalhost || isHttp;
-          
-          if (shouldSkipEmbed) {
-            console.log('🎬 Skipping embed due to localhost/http restrictions, opening YouTube directly');
-            window.open(videoUrl, '_blank', 'noopener,noreferrer');
-            return;
-          }
-          
-          // Create video modal/iframe overlay
-          const videoModal = document.createElement('div');
-          videoModal.className = 'journey-video-modal';
-          videoModal.innerHTML = `
-            <div class="journey-video-modal-backdrop">
-              <div class="journey-video-modal-container">
-                <div class="journey-video-modal-header">
-                  <h3 class="journey-video-modal-title">${videoTitle}</h3>
-                  <button class="journey-video-modal-close" aria-label="Close video">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                  </button>
-                </div>
-                <div class="journey-video-modal-content">
-                  <div class="journey-video-modal-iframe-container">
-                    <div class="journey-video-modal-loading">
-                      <div class="journey-video-loading-spinner"></div>
-                      <p>Loading video...</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          `;
-          
-          // Add to body
-          document.body.appendChild(videoModal);
-          
-          // Lazy load the iframe after modal is shown to avoid YouTube warnings until needed
-          const iframeContainer = videoModal.querySelector('.journey-video-modal-iframe-container');
-          const loadingDiv = videoModal.querySelector('.journey-video-modal-loading');
-          
-          setTimeout(() => {
-            if (iframeContainer && loadingDiv) {
-              const iframe = document.createElement('iframe');
-              // Remove origin parameter for localhost to avoid blocking issues
-              const cleanVideoUrl = videoUrl.replace('watch?v=', 'embed/').replace('&t=', '?start=');
-              const embedUrl = `${cleanVideoUrl}&autoplay=1&rel=0&modestbranding=1`;
-              iframe.src = embedUrl;
-              iframe.title = videoTitle;
-              iframe.setAttribute('frameborder', '0');
-              iframe.setAttribute('loading', 'eager'); // Load immediately since user clicked
-              // Relaxed sandbox for better compatibility
-              iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups allow-forms');
-              iframe.setAttribute('allowfullscreen', 'true');
-              iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
-              iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
-              iframe.className = 'journey-video-modal-iframe';
-              
-              // Simple error handling - since we bypass embeds on localhost, this is just a safety net
-              iframe.onerror = () => {
-                console.warn('🎬 Video embed failed, opening YouTube directly');
-                window.open(videoUrl, '_blank', 'noopener,noreferrer');
-                closeModal();
-              };
-              
-              // Replace loading with iframe
-              loadingDiv.remove();
-              iframeContainer.appendChild(iframe);
-            }
-          }, 100); // Small delay to ensure modal is visible
-          
-          // Add close functionality
-          const closeModal = () => {
-            document.body.removeChild(videoModal);
-            document.body.style.overflow = '';
-          };
-          
-          // Close on backdrop click
-          videoModal.querySelector('.journey-video-modal-backdrop')?.addEventListener('click', (e) => {
-            if (e.target === e.currentTarget) {
-              closeModal();
-            }
-          });
-          
-          // Close on close button click
-          videoModal.querySelector('.journey-video-modal-close')?.addEventListener('click', closeModal);
-          
-          // Close on escape key
-          const handleEscape = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-              closeModal();
-              document.removeEventListener('keydown', handleEscape);
-            }
-          };
-          document.addEventListener('keydown', handleEscape);
-          
-          // Prevent body scroll
-          document.body.style.overflow = 'hidden';
-        }
-      }
-
       // Handle image lightbox clicks
       const image = target.closest('img') as HTMLImageElement;
       
@@ -478,9 +358,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         
         const imageSrc = image.src;
         const imageAlt = image.alt || 'Image';
-        
-        // Use Grafana's theme detection
-        const isDarkMode = theme.isDark;
+    
         
         // Create image lightbox modal with theme awareness
         const imageModal = document.createElement('div');
@@ -1106,53 +984,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         <div className={styles.actions}>
           {!isRecommendationsTab && activeTab && (
             <>
-              {(activeTab.content?.videoUrl || (activeTab.content?.videos && activeTab.content.videos.length > 0)) && (
-                <div className={styles.videoButtonContainer}>
-                  {activeTab.content?.videos && activeTab.content.videos.length > 1 ? (
-                    // Multiple videos - show dropdown
-                    <div className={styles.videoDropdown}>
-                      <IconButton
-                        name="angle-down"
-                        aria-label="Watch videos"
-                        tooltip="Choose video to watch"
-                        tooltipPlacement="left"
-                        className={styles.videoDropdownButton}
-                      />
-                      <div className={styles.videoDropdownMenu}>
-                        {activeTab.content.videos.map((video, index) => (
-                          <button
-                            key={video.id}
-                            className={styles.videoDropdownItem}
-                            onClick={() => {
-                              window.open(video.url, '_blank', 'noopener,noreferrer');
-                            }}
-                          >
-                            <Icon name="play" size="sm" className={styles.videoDropdownIcon} />
-                            <span className={styles.videoDropdownTitle}>
-                              {video.title || `Video ${index + 1}`}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    // Single video - direct play
-                    <IconButton
-                      name="play"
-                      aria-label="Watch video"
-                      onClick={() => {
-                        const videoUrl = activeTab.content?.videos?.[0]?.url || activeTab.content?.videoUrl;
-                        if (videoUrl) {
-                          window.open(videoUrl, '_blank', 'noopener,noreferrer');
-                        }
-                      }}
-                      tooltip="Watch video for this page"
-                      tooltipPlacement="left"
-                      className={styles.videoButton}
-                    />
-                  )}
-                </div>
-              )}
               <IconButton
                 name="external-link-alt"
                 aria-label="Open original documentation"
@@ -2528,23 +2359,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
       color: theme.colors.text.primary,
     },
     
-    // External link indicator for videos that will open in YouTube
-    '& .journey-video-external-indicator': {
-      position: 'absolute',
-      top: theme.spacing(1),
-      right: theme.spacing(1),
-      width: '16px',
-      height: '16px',
-      backgroundColor: theme.colors.warning.main,
-      borderRadius: '50%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: theme.colors.warning.contrastText,
-      zIndex: 2,
-      border: `1px solid ${theme.colors.warning.border}`,
-      boxShadow: theme.shadows.z1,
-    },
     
     // Simplified styling for videos that will open externally
     '& .journey-video-thumbnail.will-open-externally': {

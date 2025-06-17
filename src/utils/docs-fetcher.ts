@@ -1,10 +1,5 @@
 import { DOCS_BASE_URL, DOCS_USERNAME, DOCS_PASSWORD } from '../constants';
 
-export interface VideoInfo {
-  url: string;
-  title: string;
-  id: string;
-}
 
 export interface LearningJourneyContent {
   title: string;
@@ -14,8 +9,6 @@ export interface LearningJourneyContent {
   totalMilestones: number;
   milestones: Milestone[];
   lastFetched: string;
-  videoUrl?: string; // Legacy - YouTube video URL for this page (first video)
-  videos?: VideoInfo[]; // All videos found in this page
   summary?: string; // Summary extracted from first 3 paragraphs
 }
 
@@ -404,8 +397,6 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
       totalMilestones,
       milestones,
       lastFetched: new Date().toISOString(),
-      videoUrl: mainContentResult.videoUrl,
-      videos: mainContentResult.videos,
       summary
     };
   } catch (error) {
@@ -418,7 +409,6 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
       totalMilestones: 1,
       milestones: [],
       lastFetched: new Date().toISOString(),
-      videos: []
     };
   }
 }
@@ -426,14 +416,13 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
 /**
  * Extract main content from learning journey HTML - work with entire body
  */
-function extractMainContent(doc: Document, isCoverPage: boolean): { content: string; videoUrl?: string; videos: VideoInfo[] } {
+function extractMainContent(doc: Document, isCoverPage: boolean): { content: string; } {
   // Work with the entire body since there's no wrapper container
   const bodyElement = doc.body;
   
   if (!bodyElement) {
     return {
       content: 'Content not available - document body not found',
-      videos: []
     };
   }
   
@@ -445,15 +434,9 @@ function extractMainContent(doc: Document, isCoverPage: boolean): { content: str
 /**
  * Process learning journey content for better display - updated for new structure
  */
-function processLearningJourneyContent(element: Element, isCoverPage: boolean): { content: string; videoUrl?: string; videos: VideoInfo[] } {
+function processLearningJourneyContent(element: Element, isCoverPage: boolean): { content: string; } {
   const clonedElement = element.cloneNode(true) as Element;
-  let extractedVideoUrl: string | undefined;
-  let allVideos: VideoInfo[] = [];
   
-  // Extract and replace videos with thumbnails
-  const videoResult = extractAndReplaceVideosWithThumbnails(clonedElement);
-  extractedVideoUrl = videoResult.firstVideoUrl;
-  allVideos = videoResult.allVideos;
   
   // Process images - handle data-src attributes from new structure
   const images = clonedElement.querySelectorAll('img');
@@ -624,320 +607,10 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
   }
   
   return {
-    content: clonedElement.innerHTML,
-    videoUrl: extractedVideoUrl,
-    videos: allVideos
+    content: clonedElement.innerHTML
   };
 }
 
-/**
- * Preserve YouTube timing parameters when extracting YouTube URLs from links
- */
-function preserveYouTubeTimingParams(url: string): string {
-  try {
-    const urlObj = new URL(url);
-    let videoId: string | null = null;
-    let startTime: string | null = null;
-    
-    // Handle different YouTube URL formats
-    if (urlObj.hostname.includes('youtube.com')) {
-      if (urlObj.pathname.startsWith('/embed/')) {
-        // Embed URL: https://www.youtube.com/embed/VIDEO_ID?start=123
-        const pathMatch = urlObj.pathname.match(/\/embed\/([a-zA-Z0-9_-]+)/);
-        videoId = pathMatch?.[1] || null;
-        startTime = urlObj.searchParams.get('start');
-      } else if (urlObj.pathname === '/watch') {
-        // Watch URL: https://www.youtube.com/watch?v=VIDEO_ID&t=123
-        videoId = urlObj.searchParams.get('v');
-        startTime = urlObj.searchParams.get('t');
-      }
-    } else if (urlObj.hostname.includes('youtu.be')) {
-      // Short URL: https://youtu.be/VIDEO_ID?t=123
-      const pathMatch = urlObj.pathname.match(/\/([a-zA-Z0-9_-]+)/);
-      videoId = pathMatch?.[1] || null;
-      startTime = urlObj.searchParams.get('t');
-    }
-    
-    if (!videoId) {
-      console.warn('Could not extract video ID from URL:', url);
-      return url;
-    }
-    
-    // Construct clean watch URL
-    let watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    
-    if (startTime) {
-      // Convert start time from seconds to t parameter format if needed
-      const timeParam = startTime.match(/^\d+$/) ? startTime : startTime;
-      watchUrl += `&t=${timeParam}`;
-      console.log(`⏰ Preserving start time: ${timeParam}s`);
-    }
-    
-    return watchUrl;
-  } catch (error) {
-    console.warn('Failed to preserve YouTube timing parameters:', error);
-    return url;
-  }
-}
-
-// Note: Old timing extraction functions removed - now handled directly in video extraction
-
-// Updated video extraction to create inline thumbnails instead of removing videos
-function extractAndReplaceVideosWithThumbnails(element: Element): { firstVideoUrl?: string; allVideos: VideoInfo[] } {
-  let extractedVideoUrl: string | undefined;
-  const allVideos: VideoInfo[] = [];
-  
-  // Look for the new video modal structure from the HTML
-  const videoContainers = element.querySelectorAll('.docs-video, [x-data*="modal"]');
-  
-  console.log(`🔍 Found ${videoContainers.length} video modal containers`);
-  
-  videoContainers.forEach((container, index) => {
-    console.log(`Processing video container ${index + 1}`);
-    
-    let videoId: string | null = null;
-    let videoUrl: string | null = null;
-    let videoTitle: string = 'Video';
-    
-    // Look for data-embed attribute on buttons inside the container
-    const embedButton = container.querySelector('button[data-embed]');
-    if (embedButton) {
-      videoId = embedButton.getAttribute('data-embed');
-      const dataUrl = embedButton.getAttribute('data-url');
-      const dataTitle = embedButton.getAttribute('data-title');
-      
-      if (dataTitle) {
-        videoTitle = dataTitle;
-      }
-      
-      if (videoId) {
-        if (dataUrl) {
-          // Use the full data-url if available (includes timing)
-          videoUrl = preserveYouTubeTimingParams(dataUrl);
-          console.log(`🎥 Extracted from data-url: ${videoUrl}`);
-        } else {
-          videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-          console.log(`🎥 Extracted from video ID: ${videoUrl}`);
-        }
-        
-        if (!extractedVideoUrl) {
-          extractedVideoUrl = videoUrl;
-        }
-      }
-    }
-    
-    // Also check for x-data modal attributes if we didn't find embed button
-    if (!videoId) {
-      const xDataAttr = container.getAttribute('x-data');
-      if (xDataAttr && xDataAttr.includes('modal')) {
-        const modalMatch = xDataAttr.match(/modal\(['"]journey-modal-([^'"]+)['"]/);
-        if (modalMatch && modalMatch[1]) {
-          const modalId = modalMatch[1];
-          // Extract video ID from modal ID (it might contain timing info)
-          const videoIdMatch = modalId.match(/^([a-zA-Z0-9_-]{10,})/);
-          if (videoIdMatch) {
-            videoId = videoIdMatch[1];
-            videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-            
-            // Check if there's timing info in the modal ID
-            const timingMatch = modalId.match(/-(\d+)s?$/);
-            if (timingMatch) {
-              videoUrl += `&t=${timingMatch[1]}`;
-              console.log(`⏰ Found timing in modal ID: ${timingMatch[1]}s`);
-            }
-            
-            console.log(`🎥 Extracted from x-data modal: ${videoUrl}`);
-            
-            if (!extractedVideoUrl) {
-              extractedVideoUrl = videoUrl;
-            }
-          }
-        }
-      }
-    }
-    
-    // Look for iframe with YouTube embed for timing info if still no video found
-    if (!videoId) {
-      const iframe = container.querySelector('iframe[src*="youtube.com/embed"]');
-      if (iframe) {
-        const iframeSrc = iframe.getAttribute('src');
-        if (iframeSrc) {
-          videoUrl = preserveYouTubeTimingParams(iframeSrc);
-          const videoIdMatch = iframeSrc.match(/embed\/([a-zA-Z0-9_-]+)/);
-          if (videoIdMatch) {
-            videoId = videoIdMatch[1];
-          }
-          console.log(`🎥 Extracted from iframe: ${videoUrl}`);
-          
-          if (!extractedVideoUrl) {
-            extractedVideoUrl = videoUrl;
-          }
-        }
-      }
-    }
-    
-    // Extract any accompanying text content
-    let descriptionText = '';
-    const bodyText = container.querySelector('.body-default');
-    if (bodyText) {
-      // Get text content but remove the "Watch video ->" button text
-      const textContent = bodyText.textContent || '';
-      descriptionText = textContent.replace(/Watch video\s*-?>?\s*$/i, '').trim();
-    }
-    
-    // Create inline video thumbnail if we found a video
-    if (videoId && videoUrl) {
-      // Add to allVideos array
-      allVideos.push({
-        url: videoUrl,
-        title: videoTitle,
-        id: videoId
-      });
-      
-      const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-      
-      // Detect if we're in an environment where YouTube embeds won't work
-      const isLocalhost = typeof window !== 'undefined' && 
-        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      const isHttp = typeof window !== 'undefined' && window.location.protocol === 'http:';
-      const willOpenDirectly = isLocalhost || isHttp;
-      
-      const badgeText = willOpenDirectly ? 'Video (opens in YouTube)' : 'Video';
-      const clickHint = willOpenDirectly ? 'title="Click to open in YouTube"' : 'title="Click to watch video"';
-      
-      const videoThumbnailHtml = `
-        <div class="journey-video-section" data-video-id="${videoId}">
-          <div class="journey-video-thumbnail-container">
-            <div class="journey-video-thumbnail ${willOpenDirectly ? 'will-open-externally' : ''}" 
-                 data-video-url="${videoUrl}" 
-                 data-video-title="${videoTitle}"
-                 data-video-id="${videoId}"
-                 ${clickHint}>
-              <img src="${thumbnailUrl}" 
-                   alt="${videoTitle}" 
-                   class="journey-video-thumbnail-image" />
-              <div class="journey-video-play-overlay">
-                <div class="journey-video-play-button">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <polygon points="5,3 19,12 5,21" fill="currentColor"></polygon>
-                  </svg>
-                  ${willOpenDirectly ? `
-                    <div class="journey-video-external-indicator">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                        <polyline points="15,3 21,3 21,9"></polyline>
-                        <line x1="10" y1="14" x2="21" y2="3"></line>
-                      </svg>
-                    </div>
-                  ` : ''}
-                </div>
-              </div>
-              <div class="journey-video-duration-badge">${badgeText}</div>
-            </div>
-            ${descriptionText ? `<div class="journey-video-description">${descriptionText}</div>` : ''}
-          </div>
-        </div>
-      `;
-      
-      // Replace the video container with our thumbnail
-      container.outerHTML = videoThumbnailHtml;
-      console.log(`🎬 Created inline video thumbnail for: ${videoTitle}`);
-    } else {
-      // If no video found, remove the container
-      container.remove();
-      console.log(`❌ No video found in container ${index + 1}, removing`);
-    }
-  });
-  
-  // Also look for standalone video buttons that might not be in containers
-  const videoButtons = element.querySelectorAll('button[data-embed], button[class*="text-action-blue"]');
-  videoButtons.forEach(button => {
-    const buttonText = button.textContent?.toLowerCase() || '';
-    
-    if (buttonText.includes('watch video') || buttonText.includes('video')) {
-      const videoId = button.getAttribute('data-embed');
-      const dataUrl = button.getAttribute('data-url');
-      const dataTitle = button.getAttribute('data-title') || 'Video';
-      
-      if (videoId) {
-        let videoUrl: string;
-        if (dataUrl) {
-          videoUrl = preserveYouTubeTimingParams(dataUrl);
-          console.log(`🎥 Extracted from standalone button data-url: ${videoUrl}`);
-        } else {
-          videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-          console.log(`🎥 Extracted from standalone button video ID: ${videoUrl}`);
-        }
-        
-        if (!extractedVideoUrl) {
-          extractedVideoUrl = videoUrl;
-        }
-        
-        // Add to allVideos array
-        allVideos.push({
-          url: videoUrl,
-          title: dataTitle,
-          id: videoId
-        });
-        
-        // Create inline thumbnail for standalone button
-        const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-        
-        // Detect environment for standalone buttons too
-        const isLocalhostStandalone = typeof window !== 'undefined' && 
-          (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-        const isHttpStandalone = typeof window !== 'undefined' && window.location.protocol === 'http:';
-        const willOpenDirectlyStandalone = isLocalhostStandalone || isHttpStandalone;
-        
-        const badgeText = willOpenDirectlyStandalone ? 'Video (opens in YouTube)' : 'Video';
-        const clickHint = willOpenDirectlyStandalone ? 'title="Click to open in YouTube"' : 'title="Click to watch video"';
-        
-        const videoThumbnailHtml = `
-          <div class="journey-video-section" data-video-id="${videoId}">
-            <div class="journey-video-thumbnail-container">
-              <div class="journey-video-thumbnail ${willOpenDirectlyStandalone ? 'will-open-externally' : ''}" 
-                   data-video-url="${videoUrl}" 
-                   data-video-title="${dataTitle}"
-                   data-video-id="${videoId}"
-                   ${clickHint}>
-                <img src="${thumbnailUrl}" 
-                     alt="${dataTitle}" 
-                     class="journey-video-thumbnail-image" />
-                <div class="journey-video-play-overlay">
-                  <div class="journey-video-play-button">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                      <polygon points="5,3 19,12 5,21" fill="currentColor"></polygon>
-                    </svg>
-                    ${willOpenDirectlyStandalone ? `
-                      <div class="journey-video-external-indicator">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                          <polyline points="15,3 21,3 21,9"></polyline>
-                          <line x1="10" y1="14" x2="21" y2="3"></line>
-                        </svg>
-                      </div>
-                    ` : ''}
-                  </div>
-                </div>
-                <div class="journey-video-duration-badge">${badgeText}</div>
-              </div>
-            </div>
-          </div>
-        `;
-        
-        // Replace the button with our thumbnail
-        button.outerHTML = videoThumbnailHtml;
-        console.log(`🎬 Created inline video thumbnail for standalone button: ${dataTitle}`);
-      } else {
-        // Remove button if no video ID found
-        button.remove();
-      }
-    }
-  });
-  
-  console.log(`🎬 Video processing complete, found: ${extractedVideoUrl || 'none'}, total videos: ${allVideos.length}`);
-  return { firstVideoUrl: extractedVideoUrl, allVideos };
-}
 
 /**
  * Fetch learning journey content with multiple strategies
