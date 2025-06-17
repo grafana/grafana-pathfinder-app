@@ -10,15 +10,14 @@ on:
       - master
       - main
 
-permissions:
-  contents: write
-  id-token: write
-  pull-requests: write
+# Permissions are granted per job to follow principle of least privilege
 
 jobs:
   build:
     name: Build, lint and unit tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read  # Read repository contents
     outputs:
       plugin-id: ${{ steps.metadata.outputs.plugin-id }}
       plugin-version: ${{ steps.metadata.outputs.plugin-version }}
@@ -28,9 +27,12 @@ jobs:
       GRAFANA_ACCESS_POLICY_TOKEN: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
         with:
+          persist-credentials: false
           node-version: '22'
           cache: 'npm'
 
@@ -62,14 +64,16 @@ jobs:
 
       - name: Test backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: magefile/mage-action@v3
+        # Pinned to mage 3.1.0
+        uses: magefile/mage-action@6f50bbb8ea47d56e62dee92392788acbc8192d0b
         with:
           version: latest
           args: coverage
 
       - name: Build backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: magefile/mage-action@v3
+        # Pinned to mage 3.1.0
+        uses: magefile/mage-action@6f50bbb8ea47d56e62dee92392788acbc8192d0b
         with:
           version: latest
           args: buildAll
@@ -124,14 +128,18 @@ jobs:
     timeout-minutes: 3
     needs: build
     if: ${{ needs.build.outputs.has-e2e == 'true' }}
+    permissions:
+      contents: read  # Read repository contents
     outputs:
       matrix: ${{ steps.resolve-versions.outputs.matrix }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Resolve Grafana E2E versions
         id: resolve-versions
-        uses: grafana/plugin-actions/e2e-version@main
+        uses: grafana/plugin-actions/e2e-version@ff169fa386880e34ca85a49414e5a0ff84c3f7ad
 
   playwright-tests:
     needs: [resolve-versions, build]
@@ -142,9 +150,13 @@ jobs:
         GRAFANA_IMAGE: ${{fromJson(needs.resolve-versions.outputs.matrix)}}
     name: e2e test ${{ matrix.GRAFANA_IMAGE.name }}@${{ matrix.GRAFANA_IMAGE.VERSION }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read        # Read repository contents
+      pull-requests: write  # Upload test report artifacts to PRs
     steps:
       - uses: actions/checkout@v4
-
+        with:
+          persist-credentials: false
       - name: Download plugin
         uses: actions/download-artifact@v4
         with:
@@ -171,7 +183,7 @@ jobs:
           ANONYMOUS_AUTH_ENABLED=false DEVELOPMENT=false GRAFANA_VERSION=${{ matrix.GRAFANA_IMAGE.VERSION }} GRAFANA_IMAGE=${{ matrix.GRAFANA_IMAGE.NAME }} docker compose up -d
 
       - name: Wait for grafana server
-        uses: grafana/plugin-actions/wait-for-grafana@main
+        uses: grafana/plugin-actions/wait-for-grafana@ff169fa386880e34ca85a49414e5a0ff84c3f7ad
         with:
           url: http://localhost:3000/login
 
@@ -183,7 +195,7 @@ jobs:
         run: npm run e2e
 
       - name: Upload e2e test summary
-        uses: grafana/plugin-actions/playwright-gh-pages/upload-report-artifacts@main
+        uses: grafana/plugin-actions/playwright-gh-pages/upload-report-artifacts@ff169fa386880e34ca85a49414e5a0ff84c3f7ad
         if: ${{ always() && !cancelled() }}
         with:
           upload-report: false
@@ -211,9 +223,14 @@ jobs:
     if: ${{ always() && !cancelled() }}
     needs: [playwright-tests]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write       # Deploy to GitHub Pages
+      pull-requests: write  # Comment on PRs with report links
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Publish report
-        uses: grafana/plugin-actions/playwright-gh-pages/deploy-report-pages@main
+        uses: grafana/plugin-actions/playwright-gh-pages/deploy-report-pages@ff169fa386880e34ca85a49414e5a0ff84c3f7ad
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
