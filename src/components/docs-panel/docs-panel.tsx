@@ -1120,27 +1120,29 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                   <div className={styles.milestoneProgress}>
                     <div className={styles.progressInfo}>
                       <div className={styles.progressHeader}>
-                        <span>Milestone {activeTab.content.currentMilestone} of {activeTab.content.totalMilestones}</span>
-                        <div className={styles.milestoneNavigation}>
-                          <IconButton
-                            name="arrow-left"
-                            size="sm"
-                            aria-label="Previous milestone"
-                            onClick={() => model.navigateToPreviousMilestone()}
-                            tooltip="Previous milestone (Alt + ←)"
-                            tooltipPlacement="top"
-                            disabled={!model.canNavigatePrevious() || activeTab.isLoading}
-                          />
-                          <IconButton
-                            name="arrow-right"
-                            size="sm"
-                            aria-label="Next milestone"
-                            onClick={() => model.navigateToNextMilestone()}
-                            tooltip="Next milestone (Alt + →)"
-                            tooltipPlacement="top"
-                            disabled={!model.canNavigateNext() || activeTab.isLoading}
-                          />
-                        </div>
+                        <IconButton
+                          name="arrow-left"
+                          size="sm"
+                          aria-label="Previous milestone"
+                          onClick={() => model.navigateToPreviousMilestone()}
+                          tooltip="Previous milestone (Alt + ←)"
+                          tooltipPlacement="top"
+                          disabled={!model.canNavigatePrevious() || activeTab.isLoading}
+                          className={styles.navButton}
+                        />
+                        <span className={styles.milestoneText}>
+                          Milestone {activeTab.content.currentMilestone} of {activeTab.content.totalMilestones}
+                        </span>
+                        <IconButton
+                          name="arrow-right"
+                          size="sm"
+                          aria-label="Next milestone"
+                          onClick={() => model.navigateToNextMilestone()}
+                          tooltip="Next milestone (Alt + →)"
+                          tooltipPlacement="top"
+                          disabled={!model.canNavigateNext() || activeTab.isLoading}
+                          className={styles.navButton}
+                        />
                       </div>
                       <div className={styles.progressBar}>
                         <div 
@@ -1262,7 +1264,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'column',
   }),
   milestoneProgress: css({
-    padding: theme.spacing(2),
+    padding: theme.spacing(1),
     backgroundColor: theme.colors.background.canvas,
     borderBottom: `1px solid ${theme.colors.border.weak}`,
     flexShrink: 0,
@@ -1270,13 +1272,13 @@ const getStyles = (theme: GrafanaTheme2) => ({
   progressInfo: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(1),
+    gap: theme.spacing(0.5),
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
   }),
   progressBar: css({
     width: '100%',
-    height: '4px',
+    height: '3px',
     backgroundColor: theme.colors.background.secondary,
     borderRadius: '2px',
     overflow: 'hidden',
@@ -2644,13 +2646,39 @@ const getStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: theme.spacing(1),
+    gap: theme.spacing(0.5),
+  }),
+  milestoneText: css({
+    whiteSpace: 'nowrap',
+    fontSize: '12px',
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    textAlign: 'center',
+    flex: 1,
+  }),
+  navButton: css({
+    backgroundColor: theme.colors.primary.main,
+    border: `1px solid ${theme.colors.primary.main}`,
+    borderRadius: '4px',
+    transition: 'all 0.2s ease',
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    minWidth: '60px',
+    height: '28px',
+    color: theme.colors.primary.contrastText,
+    fontSize: '12px',
     
-    '& > span': {
-      whiteSpace: 'nowrap',
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      color: theme.colors.text.primary,
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.primary.shade,
+      borderColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+    },
+    
+    '&:disabled': {
+      opacity: 0.5,
+      cursor: 'not-allowed',
+      backgroundColor: theme.colors.action.disabledBackground,
+      borderColor: theme.colors.action.disabledBackground,
+      color: theme.colors.action.disabledText,
     },
   }),
   milestoneNavigation: css({
