@@ -474,6 +474,59 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
       img.setAttribute('alt', 'Learning journey image');
     }
   });
+
+  // Process iframes - make them responsive like images
+  const iframes = clonedElement.querySelectorAll('iframe');
+  iframes.forEach(iframe => {
+    iframe.classList.add('journey-iframe');
+    
+    // For YouTube and other video embeds, maintain aspect ratio and make responsive
+    const src = iframe.getAttribute('src');
+    const isYouTube = src && (src.includes('youtube.com') || src.includes('youtu.be'));
+    const isVideo = isYouTube || (src && src.includes('vimeo.com'));
+    
+    if (isVideo) {
+      iframe.classList.add('journey-video-iframe');
+      
+      // Create a responsive wrapper for video iframes
+      const wrapper = document.createElement('div');
+      wrapper.className = 'journey-iframe-wrapper journey-video-wrapper';
+      
+      // Insert wrapper before iframe and move iframe into wrapper
+      iframe.parentNode?.insertBefore(wrapper, iframe);
+      wrapper.appendChild(iframe);
+      
+      // Remove fixed width/height attributes to make it responsive
+      iframe.removeAttribute('width');
+      iframe.removeAttribute('height');
+      
+      console.log(`📺 Made ${isYouTube ? 'YouTube' : 'video'} iframe responsive`);
+    } else {
+      // For non-video iframes, just make them responsive
+      iframe.classList.add('journey-general-iframe');
+      
+      // Remove fixed width if it exists and let CSS handle responsiveness
+      const width = iframe.getAttribute('width');
+      if (width) {
+        iframe.removeAttribute('width');
+        iframe.style.width = '100%';
+        iframe.style.maxWidth = '100%';
+      }
+      
+      console.log('📄 Made general iframe responsive');
+    }
+    
+    // Ensure iframe has a title for accessibility
+    if (!iframe.getAttribute('title')) {
+      if (isYouTube) {
+        iframe.setAttribute('title', 'YouTube video player');
+      } else if (src && src.includes('vimeo.com')) {
+        iframe.setAttribute('title', 'Vimeo video player');
+      } else {
+        iframe.setAttribute('title', 'Embedded content');
+      }
+    }
+  });
   
   // Process links to ensure they open in new tabs
   const links = clonedElement.querySelectorAll('a[href]');
@@ -957,24 +1010,12 @@ function appendRelatedJourneysToContent(content: string, relatedJourneys: Relate
         <div class="journey-collapse-content journey-related-journeys-content" data-collapse-id="related-journeys" style="display: none;">
           <div class="journey-related-journeys-list">
             ${relatedJourneys.items.map((item, index) => {
-              // Determine icon based on URL type
-              let iconSvg = '';
-              let typeLabel = 'External';
-              
-              if (item.link.includes('youtube.com') || item.link.includes('youtu.be')) {
-                // Video icon
-                iconSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polygon points="5,3 19,12 5,21"></polygon>
-                </svg>`;
-                typeLabel = 'Video';
-              } else {
-                // Document icon
-                iconSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14,2 14,8 20,8"></polyline>
-                </svg>`;
-                typeLabel = 'External';
-              }
+              // Use document icon for all external links
+              const iconSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14,2 14,8 20,8"></polyline>
+              </svg>`;
+              const typeLabel = 'External';
               
               return `
                 <a href="#" 
