@@ -1097,9 +1097,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                       </span>
                     )}
                   </div>
-                  <small>
-                    Last updated: {new Date(activeTab.docsContent.lastFetched).toLocaleString()}
-                  </small>
                 </div>
                 
                 {activeTab.docsContent.labels && activeTab.docsContent.labels.length > 0 && (
@@ -1163,13 +1160,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                     </div>
                   </div>
                 )}
-                
-                <div className={styles.contentMeta}>
-                  <small>
-                    Last updated: {new Date(activeTab.content.lastFetched).toLocaleString()}
-                  </small>
-                </div>
-                
                 <div 
                   ref={contentRef}
                   className={styles.journeyContentHtml}
