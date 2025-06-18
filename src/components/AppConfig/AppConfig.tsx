@@ -3,7 +3,6 @@ import { Button, Field, Input, useStyles2, FieldSet, SecretInput } from '@grafan
 import { PluginConfigPageProps, AppPluginMeta, PluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { getBackendSrv, locationService } from '@grafana/runtime';
 import { css } from '@emotion/css';
-import { testIds } from '../testIds';
 import { lastValueFrom } from 'rxjs';
 
 type JsonData = {

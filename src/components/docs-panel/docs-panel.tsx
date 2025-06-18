@@ -540,6 +540,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         contentElement.removeEventListener('click', handleLinkClick);
       };
     }
+    // Return undefined explicitly when no cleanup is needed
+    return undefined;
   }, [model, activeTab?.content]);
 
   // Process tables and add expand/collapse functionality
