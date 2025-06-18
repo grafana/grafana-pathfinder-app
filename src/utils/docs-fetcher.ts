@@ -299,9 +299,9 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
     const titleElement = doc.querySelector('h1');
     const title = titleElement?.textContent?.trim() || 'Learning Journey';
     
-    // Extract summary from first 3 paragraphs (only for cover pages)
-    const isCoverPage = url.endsWith('/') && !url.includes('/business-value') && !url.includes('/when-to') && !url.includes('/verify');
-    const summary = isCoverPage ? extractJourneySummary(doc) : '';
+    // Extract summary from first 3 paragraphs (only for cover pages - we'll determine this after milestone detection)
+    let isCoverPage = false;
+    let summary = '';
     
     // Get the base URL for this learning journey
     const baseUrl = getLearningJourneyBaseUrl(url);
@@ -358,8 +358,12 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
       console.log(`🧭 Navigation state: Current=${currentMilestone}, Total=${totalMilestones}`);
     }
     
+    // Now determine if this is a cover page based on milestone detection
+    isCoverPage = currentMilestone === 0;
+    summary = isCoverPage ? extractJourneySummary(doc) : '';
+    
     // Extract main content - work with the entire body since there's no wrapper
-    const mainContentResult = extractMainContent(doc, currentMilestone === 0);
+    const mainContentResult = extractMainContent(doc, isCoverPage);
     
     // Add conclusion image at the top for destination-reached milestone
     let finalContent = mainContentResult.content;
@@ -907,24 +911,85 @@ export function clearSpecificJourneyCache(baseUrl: string): void {
 }
 
 /**
- * Find current milestone number from URL - simplified approach
+ * Clear content cache for a specific learning journey but preserve milestone cache
+ * This is used when closing tabs to avoid breaking URL-to-milestone matching
+ */
+export function clearSpecificJourneyContentCache(baseUrl: string): void {
+  try {
+    const journeyBaseUrl = getLearningJourneyBaseUrl(baseUrl);
+    
+    // Clear content cache for all URLs related to this journey
+    const urlsToRemove: string[] = [];
+    contentCache.forEach((_, url) => {
+      if (url.startsWith(journeyBaseUrl)) {
+        urlsToRemove.push(url);
+      }
+    });
+    
+    urlsToRemove.forEach(url => {
+      contentCache.delete(url);
+    });
+    
+    // DON'T clear milestone cache - preserve it for URL-to-milestone matching
+    // milestoneCache.delete(journeyBaseUrl); // REMOVED
+    
+    // Clear localStorage cache for this journey
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('journey-cache-') && key.includes(encodeURIComponent(journeyBaseUrl))) {
+        keysToRemove.push(key);
+      }
+    }
+    
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key);
+    });
+    
+    console.log(`Cleared content cache for journey (preserving milestones): ${journeyBaseUrl} (${urlsToRemove.length} content entries, ${keysToRemove.length} localStorage entries)`);
+  } catch (error) {
+    console.warn('Failed to clear specific journey content cache:', error);
+  }
+}
+
+/**
+ * Find current milestone number from URL - improved matching
  */
 function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
   console.log(`Finding milestone for URL: ${url}`);
+  console.log(`Available milestones:`, milestones.map(m => ({ number: m.number, url: m.url })));
   
   // Try exact URL match (with and without trailing slash)
   const urlWithSlash = url.endsWith('/') ? url : url + '/';
   const urlWithoutSlash = url.endsWith('/') ? url.slice(0, -1) : url;
   
   for (const milestone of milestones) {
-    if (milestone.url === url || milestone.url === urlWithSlash || milestone.url === urlWithoutSlash) {
-      console.log(`✅ URL match found: milestone ${milestone.number}`);
+    const milestoneWithSlash = milestone.url.endsWith('/') ? milestone.url : milestone.url + '/';
+    const milestoneWithoutSlash = milestone.url.endsWith('/') ? milestone.url.slice(0, -1) : milestone.url;
+    
+    if (url === milestone.url || 
+        url === milestoneWithSlash || 
+        url === milestoneWithoutSlash ||
+        urlWithSlash === milestone.url ||
+        urlWithSlash === milestoneWithSlash ||
+        urlWithoutSlash === milestone.url ||
+        urlWithoutSlash === milestoneWithoutSlash) {
+      console.log(`✅ URL match found: milestone ${milestone.number} (${milestone.url})`);
       return milestone.number;
     }
   }
   
-  console.log(`❌ No milestone match found, defaulting to milestone 1`);
-  return 1;
+  // Check if this URL looks like a journey base URL (cover page)
+  const baseUrl = getLearningJourneyBaseUrl(url);
+  if (url === baseUrl || url + '/' === baseUrl || url === baseUrl + '/') {
+    console.log(`✅ Cover page detected for base URL: ${baseUrl}`);
+    return 0;
+  }
+  
+  console.log(`❌ No milestone match found for URL: ${url}`);
+  console.log(`❌ Base URL: ${baseUrl}`);
+  console.log(`❌ Defaulting to cover page (milestone 0)`);
+  return 0; // Default to cover page instead of milestone 1
 }
 
 function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys): string {
@@ -1015,7 +1080,6 @@ function appendRelatedJourneysToContent(content: string, relatedJourneys: Relate
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14,2 14,8 20,8"></polyline>
               </svg>`;
-              const typeLabel = 'External';
               
               return `
                 <a href="#" 
@@ -1028,14 +1092,6 @@ function appendRelatedJourneysToContent(content: string, relatedJourneys: Relate
                   </div>
                   <div class="journey-related-journey-content">
                     <div class="journey-related-journey-title">${item.title}</div>
-                    <div class="journey-related-journey-type">${typeLabel}</div>
-                  </div>
-                  <div class="journey-related-journey-external-icon">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                      <polyline points="15,3 21,3 21,9"></polyline>
-                      <line x1="10" y1="14" x2="21" y2="3"></line>
-                    </svg>
                   </div>
                 </a>
               `;
