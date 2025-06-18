@@ -5,8 +5,6 @@ export interface SingleDocsContent {
   content: string;
   url: string;
   lastFetched: string;
-  breadcrumbs?: string[];
-  labels?: string[];
 }
 
 // Simple in-memory cache for docs content
@@ -55,60 +53,36 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
     console.log('Extracting docs content for:', url);
     console.log('HTML length:', html.length);
     
-    // Extract title from h1 or title tag
-    const titleElement = doc.querySelector('main#main h1') || doc.querySelector('h1') || doc.querySelector('title');
+    // Extract title from h1 (unstyled.html always has content directly in body)
+    const titleElement = doc.querySelector('h1');
     const title = titleElement?.textContent?.trim() || 'Documentation';
     console.log('Extracted title:', title);
     
-    // Find the main content section - try the actual Grafana docs selectors first
-    const contentSelectors = [
-      '#doc-article-text',           // Primary Grafana docs content
-      '.docs-content',               // Alternative Grafana docs content  
-      'main#main',                   // Fallback to original
-      'main',                        // Generic main
-      '.main', 
-      '#main', 
-      '.content'
-    ];
-    
-    let mainElement: Element | null = null;
-    let usedSelector = '';
-    
-    for (const selector of contentSelectors) {
-      mainElement = doc.querySelector(selector);
-      if (mainElement) {
-        usedSelector = selector;
-        console.log(`Found content with selector: ${selector}`);
-        break;
-      }
-    }
+    // For unstyled.html, content is always in body
+    const mainElement = doc.querySelector('body');
     
     if (!mainElement) {
-      console.warn('No content element found with any selector');
+      console.warn('No body element found');
       return {
         title,
-        content: 'Content not available - no content section found',
+        content: 'Content not available - no body element found',
         url,
         lastFetched: new Date().toISOString()
       };
     }
     
-    console.log(`Content element (${usedSelector}) innerHTML length before processing:`, mainElement.innerHTML.length);
+    console.log('Body element innerHTML length before processing:', mainElement.innerHTML.length);
     
     // Process the content
     const processedContent = processSingleDocsContent(mainElement);
     
-    console.log('Processed content length:', processedContent.content.length);
-    console.log('Breadcrumbs found:', processedContent.breadcrumbs?.length || 0);
-    console.log('Labels found:', processedContent.labels?.length || 0);
+    console.log('Processed content length:', processedContent.length);
     
     return {
       title,
-      content: processedContent.content,
+      content: processedContent,
       url,
-      lastFetched: new Date().toISOString(),
-      breadcrumbs: processedContent.breadcrumbs,
-      labels: processedContent.labels
+      lastFetched: new Date().toISOString()
     };
   } catch (error) {
     console.warn('Failed to parse single docs content:', error);
@@ -122,54 +96,14 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
 }
 
 /**
- * Process single docs content for better display
+ * Process single docs content for better display (simplified for unstyled.html)
  */
-function processSingleDocsContent(mainElement: Element): { 
-  content: string; 
-  breadcrumbs?: string[]; 
-  labels?: string[];
-} {
+function processSingleDocsContent(mainElement: Element): string {
   const clonedElement = mainElement.cloneNode(true) as Element;
   
-  // Extract breadcrumbs before removing them
-  const breadcrumbs: string[] = [];
-  const breadcrumbElement = clonedElement.querySelector('.docs__breadcrumb');
-  if (breadcrumbElement) {
-    const breadcrumbLinks = breadcrumbElement.querySelectorAll('.docs__breadcrumb--link');
-    breadcrumbLinks.forEach(link => {
-      const text = link.textContent?.trim();
-      if (text) {
-        breadcrumbs.push(text);
-      }
-    });
-    
-    // Add the final breadcrumb (current page)
-    const finalBreadcrumb = breadcrumbElement.querySelector('span[data-counter]:last-child');
-    if (finalBreadcrumb) {
-      const text = finalBreadcrumb.textContent?.trim();
-      if (text && !text.includes('breadcrumb arrow')) {
-        breadcrumbs.push(text);
-      }
-    }
-  }
-  
-  // Extract labels before processing
-  const labels: string[] = [];
-  const labelsSection = clonedElement.querySelector('.docs-labels');
-  if (labelsSection) {
-    const labelBadges = labelsSection.querySelectorAll('.docs-labels__item span');
-    labelBadges.forEach(badge => {
-      const text = badge.textContent?.trim();
-      if (text && !text.includes('This page has content')) {
-        labels.push(text);
-      }
-    });
-  }
-  
-  // Remove unwanted elements
+  // Remove unwanted elements (simplified for unstyled.html)
   const unwantedSelectors = [
-    '.docs__breadcrumb', '.docs-labels', '.docs__feedback', '.docs__related', 
-    '#docs-related-wrapper', '#ZN_1Nxe1cRmwG0iGqO', '.scrollspy-init'
+    'head', 'script', 'style', 'noscript', 'grammarly-desktop-integration'
   ];
   
   console.log('Content length before removing unwanted elements:', clonedElement.innerHTML.length);
@@ -182,7 +116,7 @@ function processSingleDocsContent(mainElement: Element): {
   
   console.log('Content length after removing unwanted elements:', clonedElement.innerHTML.length);
   
-  // Process images - fix relative URLs with configurable base URL
+  // Process images - fix relative URLs and add lightbox functionality
   const images = clonedElement.querySelectorAll('img');
   images.forEach(img => {
     const src = img.getAttribute('src');
@@ -205,7 +139,7 @@ function processSingleDocsContent(mainElement: Element): {
     img.setAttribute('src', newSrc);
     img.removeAttribute('data-src');
     img.removeAttribute('data-srcset');
-    img.classList.remove('lazyload', 'lazyloaded', 'ls-is-cached');
+    img.classList.remove('lazyload', 'lazyloaded', 'ls-is-cached', 'd-inline-block');
     img.classList.add('docs-image');
     img.setAttribute('loading', 'lazy');
     
@@ -215,8 +149,33 @@ function processSingleDocsContent(mainElement: Element): {
     }
   });
   
+  // Process iframes (like YouTube videos) with responsive wrappers
+  const iframes = clonedElement.querySelectorAll('iframe');
+  iframes.forEach(iframe => {
+    const src = iframe.getAttribute('src');
+    
+    // Determine iframe type and apply appropriate classes
+    if (src?.includes('youtube.com') || src?.includes('youtu.be')) {
+      // Create video wrapper for responsive design
+      const wrapper = clonedElement.ownerDocument.createElement('div');
+      wrapper.className = 'journey-iframe-wrapper journey-video-wrapper';
+      
+      iframe.classList.add('journey-video-iframe');
+      iframe.parentNode?.insertBefore(wrapper, iframe);
+      wrapper.appendChild(iframe);
+    } else {
+      // General iframe handling
+      iframe.classList.add('journey-general-iframe');
+    }
+    
+    // Add title if missing
+    if (!iframe.getAttribute('title')) {
+      iframe.setAttribute('title', 'Embedded content');
+    }
+  });
+  
   // Process code snippets and remove existing copy buttons
-  const codeSnippets = clonedElement.querySelectorAll('.code-snippet, pre[class*="language-"], pre:has(code)');
+  const codeSnippets = clonedElement.querySelectorAll('.code-snippet, pre[class*="language-"], pre:has(code), pre');
   codeSnippets.forEach(snippet => {
     // Remove any existing copy buttons
     const existingCopyButtons = snippet.querySelectorAll(
@@ -232,12 +191,19 @@ function processSingleDocsContent(mainElement: Element): {
       
       // Ensure there's a code element inside pre
       if (!preElement.querySelector('code')) {
-        const codeElement = document.createElement('code');
+        const codeElement = clonedElement.ownerDocument.createElement('code');
         codeElement.innerHTML = preElement.innerHTML;
         preElement.innerHTML = '';
         preElement.appendChild(codeElement);
       }
     }
+  });
+  
+  // Process inline code elements
+  const inlineCodes = clonedElement.querySelectorAll('code:not(pre code)');
+  inlineCodes.forEach(code => {
+    // Add class for styling
+    code.classList.add('docs-inline-code');
   });
   
   // Process links to ensure they open in new tabs and fix relative URLs
@@ -260,20 +226,47 @@ function processSingleDocsContent(mainElement: Element): {
   const anchorLinks = clonedElement.querySelectorAll('.docs-anchor-link');
   anchorLinks.forEach(anchor => anchor.remove());
   
-  // Process admonitions (notes, warnings, etc.)
+  // Process admonitions (notes, warnings, etc.) - unwrap outer div and keep blockquote
   const admonitions = clonedElement.querySelectorAll('.admonition');
   admonitions.forEach(admonition => {
-    admonition.classList.add('docs-admonition');
+    const blockquote = admonition.querySelector('blockquote');
+    
+    if (blockquote) {
+      // Transfer admonition classes to the blockquote
+      blockquote.classList.add('admonition');
+      
+      // Check for specific admonition types and add appropriate classes to blockquote
+      if (admonition.classList.contains('admonition-note')) {
+        blockquote.classList.add('admonition-note');
+      } else if (admonition.classList.contains('admonition-warning')) {
+        blockquote.classList.add('admonition-warning');
+      } else if (admonition.classList.contains('admonition-caution')) {
+        blockquote.classList.add('admonition-caution');
+      } else if (admonition.classList.contains('admonition-tip')) {
+        blockquote.classList.add('admonition-tip');
+      }
+      
+      // Process title elements within blockquote
+      const titleElement = blockquote.querySelector('.title');
+      if (titleElement) {
+        titleElement.classList.add('title');
+      }
+      
+      // Replace the outer div with just the blockquote
+      admonition.parentNode?.replaceChild(blockquote, admonition);
+    }
+  });
+  
+  // Process tables for better responsiveness
+  const tables = clonedElement.querySelectorAll('table');
+  tables.forEach(table => {
+    table.classList.add('docs-table');
   });
   
   console.log('Final processed content length:', clonedElement.innerHTML.length);
   console.log('Final content preview (first 500 chars):', clonedElement.innerHTML.substring(0, 500));
   
-  return {
-    content: clonedElement.innerHTML,
-    breadcrumbs,
-    labels
-  };
+  return clonedElement.innerHTML;
 }
 
 /**

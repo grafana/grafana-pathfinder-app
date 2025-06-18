@@ -212,15 +212,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     }
   }
 
-  public clearCache() {
-    clearLearningJourneyCache();
-    // Refresh all learning journey tabs (not recommendations)
-    this.state.tabs.forEach(tab => {
-      if (tab.id !== 'recommendations' && tab.baseUrl) {
-        this.loadTabContent(tab.id, tab.baseUrl);
-      }
-    });
-  }
+
 
   public getActiveTab(): LearningJourneyTab | null {
     return this.state.tabs.find(tab => tab.id === this.state.activeTabId) || null;
@@ -1003,13 +995,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
               />
             </>
           )}
-          <IconButton
-            name="trash-alt"
-            aria-label="Clear cache"
-            onClick={() => model.clearCache()}
-            tooltip="Clear learning journey cache"
-            tooltipPlacement="left"
-          />
         </div>
       </div>
 
@@ -1091,23 +1076,11 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                 <div className={styles.contentMeta}>
                   <div className={styles.metaInfo}>
                     <span>Documentation</span>
-                    {activeTab.docsContent.breadcrumbs && activeTab.docsContent.breadcrumbs.length > 0 && (
-                      <span className={styles.breadcrumbs}>
-                        {activeTab.docsContent.breadcrumbs.join(' > ')}
-                      </span>
-                    )}
                   </div>
+                  <small>
+                    Last updated: {new Date(activeTab.docsContent.lastFetched).toLocaleString()}
+                  </small>
                 </div>
-                
-                {activeTab.docsContent.labels && activeTab.docsContent.labels.length > 0 && (
-                  <div className={styles.labelsContainer}>
-                    {activeTab.docsContent.labels.map((label, index) => (
-                      <span key={index} className={styles.label}>
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                )}
                 
                 <div 
                   ref={contentRef}
