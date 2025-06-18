@@ -39,7 +39,7 @@ export class SingleDocsPanel extends SceneObjectBase<SingleDocsPanelState> {
   }
 
   private generateTabId(): string {
-    return `docs-tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `docs-tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
 
   public async openDocsPage(url: string, title?: string): Promise<string> {
@@ -72,7 +72,7 @@ export class SingleDocsPanel extends SceneObjectBase<SingleDocsPanelState> {
 
   public async loadTabContent(tabId: string, url: string) {
     const tabIndex = this.state.tabs.findIndex(tab => tab.id === tabId);
-    if (tabIndex === -1) return;
+    if (tabIndex === -1) {return;}
 
     // Update tab to loading state
     const updatedTabs = [...this.state.tabs];
@@ -170,18 +170,18 @@ function SingleDocsPanelRenderer({ model }: SceneComponentProps<SingleDocsPanel>
   // Process code snippets and add copy buttons
   useEffect(() => {
     const contentElement = contentRef.current;
-    if (!contentElement) return;
+    if (!contentElement) {return;}
 
     // Find all <pre> elements with code for copy functionality
     const preElements = contentElement.querySelectorAll('pre.docs-code-snippet');
     
     preElements.forEach((preElement, index) => {
       // Skip if this pre element already has our copy button
-      if (preElement.parentElement?.querySelector('.docs-copy-button')) return;
+      if (preElement.parentElement?.querySelector('.docs-copy-button')) {return;}
       
       const codeElement = preElement.querySelector('code') || preElement;
       const codeText = codeElement.textContent || '';
-      if (!codeText.trim()) return;
+      if (!codeText.trim()) {return;}
       
       console.log(`Processing docs pre element ${index + 1}:`, {
         hasCode: !!preElement.querySelector('code'),
@@ -244,7 +244,7 @@ function SingleDocsPanelRenderer({ model }: SceneComponentProps<SingleDocsPanel>
   // Handle keyboard shortcuts for tab navigation
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (tabs.length === 0) return;
+      if (tabs.length === 0) {return;}
 
       // Ctrl/Cmd + W to close current tab
       if ((event.ctrlKey || event.metaKey) && event.key === 'w') {

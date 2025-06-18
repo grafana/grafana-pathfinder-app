@@ -274,7 +274,7 @@ function extractJourneySummary(doc: Document): string {
       if (text && text.length > 20) { // Skip very short paragraphs
         summaryParts.push(text);
         count++;
-        if (count >= 3) break;
+        if (count >= 3) {break;}
       }
     }
     
@@ -445,7 +445,7 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
     const dataSrc = img.getAttribute('data-src');
     const originalSrc = dataSrc || src;
     
-    if (!originalSrc) return;
+    if (!originalSrc) {return;}
     
     // Fix relative URLs - be careful not to double up base URLs
     let newSrc: string;

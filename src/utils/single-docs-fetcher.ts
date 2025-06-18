@@ -189,7 +189,7 @@ function processSingleDocsContent(mainElement: Element): {
     const dataSrc = img.getAttribute('data-src');
     const originalSrc = dataSrc || src;
     
-    if (!originalSrc) return;
+    if (!originalSrc) {return;}
     
     // Fix relative URLs with configurable base URL
     const newSrc = originalSrc.startsWith('http') || originalSrc.startsWith('data:') 
