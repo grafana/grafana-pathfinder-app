@@ -11,7 +11,7 @@ import {
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
   clearLearningJourneyCache,
-  clearSpecificJourneyCache
+  clearSpecificJourneyContentCache
 } from '../../utils/docs-fetcher';
 import { 
   fetchSingleDocsContent, 
@@ -120,10 +120,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       const finalTabIndex = finalTabs.findIndex(tab => tab.id === tabId);
       
       if (finalTabIndex !== -1) {
+        // Only update title if it's still "Loading..." (preserve original journey title)
+        const shouldUpdateTitle = finalTabs[finalTabIndex].title === 'Loading...';
+        
         finalTabs[finalTabIndex] = {
           ...finalTabs[finalTabIndex],
           content: journeyContent,
-          title: journeyContent?.title || finalTabs[finalTabIndex].title,
+          title: shouldUpdateTitle ? (journeyContent?.title || finalTabs[finalTabIndex].title) : finalTabs[finalTabIndex].title,
           isLoading: false,
           error: journeyContent ? null : 'Failed to load learning journey',
         };
@@ -167,10 +170,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       activeTabId: newActiveTabId,
     });
 
-    // Clear cache for the specific learning journey so it starts fresh next time
+    // Clear content cache for the specific journey but preserve milestone cache
+    // Milestone cache is needed for URL-to-milestone matching when reopening tabs
     if (tabToClose && tabToClose.baseUrl) {
-      console.log(`Clearing cache for closed journey: ${tabToClose.baseUrl}`);
-      clearSpecificJourneyCache(tabToClose.baseUrl);
+      console.log(`Clearing content cache for closed journey: ${tabToClose.baseUrl}`);
+      clearSpecificJourneyContentCache(tabToClose.baseUrl);
     }
   }
 
@@ -281,10 +285,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       const finalTabIndex = finalTabs.findIndex(tab => tab.id === tabId);
       
       if (finalTabIndex !== -1) {
+        // Only update title if it's still "Loading..." (preserve original title)
+        const shouldUpdateTitle = finalTabs[finalTabIndex].title === 'Loading...';
+        
         finalTabs[finalTabIndex] = {
           ...finalTabs[finalTabIndex],
           docsContent: docsContent,
-          title: docsContent?.title || finalTabs[finalTabIndex].title,
+          title: shouldUpdateTitle ? (docsContent?.title || finalTabs[finalTabIndex].title) : finalTabs[finalTabIndex].title,
           isLoading: false,
           error: docsContent ? null : 'Failed to load documentation',
         };

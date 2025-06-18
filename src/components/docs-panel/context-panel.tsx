@@ -294,19 +294,6 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     }
   }
 
-  public async toggleStepsExpansion(index: number) {
-    const recommendations = [...this.state.recommendations];
-    const recommendation = recommendations[index];
-    
-    // Simply toggle expansion state since milestones are already loaded
-    recommendations[index] = {
-      ...recommendation,
-      stepsExpanded: !recommendation.stepsExpanded,
-    };
-    
-    this.setState({ recommendations });
-  }
-
   public async toggleSummaryExpansion(index: number) {
     const recommendations = [...this.state.recommendations];
     const recommendation = recommendations[index];
@@ -315,8 +302,6 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     recommendations[index] = {
       ...recommendation,
       summaryExpanded: !recommendation.summaryExpanded,
-      // Collapse steps when closing summary
-      stepsExpanded: recommendation.summaryExpanded ? false : recommendation.stepsExpanded,
     };
     
     this.setState({ recommendations });
@@ -585,32 +570,28 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                 </div>
                               )}
                               
-                              {(recommendation.totalSteps ?? 0) > 0 && (
-                                <div className={styles.stepsSection}>
-                                  <button
-                                    onClick={() => model.toggleStepsExpansion(index)}
-                                    className={styles.viewStepsButton}
-                                  >
-                                    <Icon name="list-ul" size="sm" />
-                                    <span>View {recommendation.totalSteps} milestone{recommendation.totalSteps !== 1 ? 's' : ''}</span>
-                                    <Icon name={recommendation.stepsExpanded ? "angle-up" : "angle-down"} size="sm" />
-                                  </button>
-                                  
-                                  {recommendation.stepsExpanded && recommendation.milestones && (
-                                    <div className={styles.stepsExpansion}>
-                                      <div className={styles.stepsList}>
-                                        {recommendation.milestones.map((milestone, stepIndex) => (
-                                          <div key={stepIndex} className={styles.stepItem}>
-                                            <div className={styles.stepNumber}>{milestone.number}</div>
-                                            <div className={styles.stepContent}>
-                                              <div className={styles.stepTitle}>{milestone.title}</div>
-                                              <div className={styles.stepDuration}>{milestone.duration}</div>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
+                              {(recommendation.totalSteps ?? 0) > 0 && recommendation.milestones && (
+                                <div className={styles.milestonesSection}>
+                                  <div className={styles.milestonesHeader}>
+                                    <h4 className={styles.milestonesTitle}>Milestones:</h4>
+                                  </div>
+                                  <div className={styles.milestonesList}>
+                                    {recommendation.milestones.map((milestone, stepIndex) => (
+                                      <button
+                                        key={stepIndex}
+                                        onClick={() => model.openLearningJourney(milestone.url, `${recommendation.title} - ${milestone.title}`)}
+                                        className={styles.milestoneItem}
+                                      >
+                                        <div className={styles.milestoneNumber}>{milestone.number}</div>
+                                                                                 <div className={styles.milestoneContent}>
+                                           <div className={styles.milestoneTitle}>
+                                             {milestone.title}
+                                             <span className={styles.milestoneDuration}>({milestone.duration})</span>
+                                           </div>
+                                         </div>
+                                      </button>
+                                    ))}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -893,10 +874,74 @@ const getStyles = (theme: GrafanaTheme2) => ({
     marginBottom: theme.spacing(2),
   }),
   summaryText: css({
-    fontSize: theme.typography.body.fontSize,
+    fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.primary,
-    lineHeight: 1.5,
+    lineHeight: 1.4,
     margin: 0,
+  }),
+  milestonesSection: css({
+    paddingTop: theme.spacing(1.5),
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+  }),
+  milestonesHeader: css({
+    marginBottom: theme.spacing(1),
+  }),
+  milestonesTitle: css({
+    margin: 0,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+  }),
+  milestonesList: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+  }),
+  milestoneItem: css({
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.75),
+    borderRadius: theme.shape.radius.default,
+    border: 'none',
+    backgroundColor: 'transparent',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s ease',
+    width: '100%',
+    textAlign: 'left',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  milestoneNumber: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '20px',
+    height: '20px',
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    borderRadius: '50%',
+    fontSize: '11px',
+    fontWeight: theme.typography.fontWeightBold,
+    flexShrink: 0,
+  }),
+  milestoneContent: css({
+    flex: 1,
+    minWidth: 0,
+  }),
+  milestoneTitle: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    lineHeight: 1.3,
+  }),
+  milestoneDuration: css({
+    fontSize: '10px',
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
+    fontWeight: theme.typography.fontWeightRegular,
+    marginLeft: theme.spacing(0.5),
   }),
   stepsSection: css({
     paddingTop: theme.spacing(1.5),
