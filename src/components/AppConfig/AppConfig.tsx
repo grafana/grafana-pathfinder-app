@@ -1,24 +1,33 @@
-import React, { useState, ChangeEvent } from 'react';
+import React, { useState, ChangeEvent, useEffect } from 'react';
 import { Button, Field, Input, useStyles2, FieldSet, SecretInput } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, PluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { getBackendSrv, locationService } from '@grafana/runtime';
 import { css } from '@emotion/css';
+import { testIds } from '../testIds';
 import { lastValueFrom } from 'rxjs';
+import { 
+  DocsPluginConfig, 
+  DEFAULT_RECOMMENDER_SERVICE_URL, 
+  DEFAULT_DOCS_BASE_URL, 
+  DEFAULT_DOCS_USERNAME,
+  ConfigService 
+} from '../../constants';
 
-type JsonData = {
-  apiUrl?: string;
-  isApiKeySet?: boolean;
+type JsonData = DocsPluginConfig & {
+  isDocsPasswordSet?: boolean;
 };
 
 type State = {
-  // The URL to reach our custom API.
-  apiUrl: string;
-  // Tells us if the API key secret is set.
-  // Set to `true` ONLY if it has already been set and haven't been changed.
-  // (We unfortunately need an auxiliray variable for this, as `secureJsonData` is never exposed to the browser after it is set)
-  isApiKeySet: boolean;
-  // An secret key for our custom API.
-  apiKey: string;
+  // The URL to reach the recommender service
+  recommenderServiceUrl: string;
+  // The base URL for the docs service
+  docsBaseUrl: string;
+  // Username for docs authentication
+  docsUsername: string;
+  // Password for docs authentication
+  docsPassword: string;
+  // Tells us if the docs password secret is set
+  isDocsPasswordSet: boolean;
 };
 
 export interface AppConfigProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -27,85 +36,165 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
   const s = useStyles2(getStyles);
   const { enabled, pinned, jsonData } = plugin.meta;
   const [state, setState] = useState<State>({
-    apiUrl: jsonData?.apiUrl || '',
-    apiKey: '',
-    isApiKeySet: Boolean(jsonData?.isApiKeySet),
+    recommenderServiceUrl: jsonData?.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
+    docsBaseUrl: jsonData?.docsBaseUrl || DEFAULT_DOCS_BASE_URL,
+    docsUsername: jsonData?.docsUsername || DEFAULT_DOCS_USERNAME,
+    docsPassword: '',
+    isDocsPasswordSet: Boolean(jsonData?.isDocsPasswordSet),
   });
 
-  const isSubmitDisabled = Boolean(!state.apiUrl || (!state.isApiKeySet && !state.apiKey));
+  // Update the configuration service when the config changes
+  useEffect(() => {
+    if (jsonData) {
+      ConfigService.setConfig({
+        recommenderServiceUrl: jsonData.recommenderServiceUrl,
+        docsBaseUrl: jsonData.docsBaseUrl,
+        docsUsername: jsonData.docsUsername,
+        docsPassword: jsonData.docsPassword,
+      });
+    }
+  }, [jsonData]);
 
-  const onResetApiKey = () =>
+  const isSubmitDisabled = Boolean(
+    !state.recommenderServiceUrl || 
+    !state.docsBaseUrl || 
+    (!state.isDocsPasswordSet && !state.docsPassword)
+  );
+
+  const onResetDocsPassword = () =>
     setState({
       ...state,
-      apiKey: '',
-      isApiKeySet: false,
+      docsPassword: '',
+      isDocsPasswordSet: false,
     });
 
-  const onChangeApiKey = (event: ChangeEvent<HTMLInputElement>) => {
+  const onChangeDocsPassword = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
       ...state,
-      apiKey: event.target.value.trim(),
+      docsPassword: event.target.value.trim(),
     });
   };
 
-  const onChangeApiUrl = (event: ChangeEvent<HTMLInputElement>) => {
+  const onChangeRecommenderServiceUrl = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
       ...state,
-      apiUrl: event.target.value.trim(),
+      recommenderServiceUrl: event.target.value.trim(),
+    });
+  };
+
+  const onChangeDocsBaseUrl = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      docsBaseUrl: event.target.value.trim(),
+    });
+  };
+
+  const onChangeDocsUsername = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      docsUsername: event.target.value.trim(),
     });
   };
 
   const onSubmit = () => {
+    const newConfig: DocsPluginConfig = {
+      recommenderServiceUrl: state.recommenderServiceUrl,
+      docsBaseUrl: state.docsBaseUrl,
+      docsUsername: state.docsUsername,
+      docsPassword: state.docsPassword,
+    };
+
+    // Update the configuration service
+    ConfigService.setConfig(newConfig);
+
     updatePluginAndReload(plugin.meta.id, {
       enabled,
       pinned,
       jsonData: {
-        apiUrl: state.apiUrl,
-        isApiKeySet: true,
+        ...newConfig,
+        isDocsPasswordSet: true,
       },
       // This cannot be queried later by the frontend.
       // We don't want to override it in case it was set previously and left untouched now.
-      secureJsonData: state.isApiKeySet
+      secureJsonData: state.isDocsPasswordSet
         ? undefined
         : {
-            apiKey: state.apiKey,
+            docsPassword: state.docsPassword,
           },
     });
   };
 
   return (
     <form onSubmit={onSubmit}>
-      <FieldSet label="API Settings" className={s.marginTopXl}>
-        {/* API Key */}
-        <Field label="API Key" description="A secret key for authenticating to our custom API">
-          <SecretInput
+      <FieldSet label="Docs Plugin Configuration" className={s.marginTopXl}>
+        {/* Recommender Service URL */}
+        <Field 
+          label="Recommender Service URL" 
+          description="The URL of the service that provides documentation recommendations"
+        >
+          <Input
             width={60}
-            data-testid={testIds.appConfig.apiKey}
-            id="api-key"
-            value={state?.apiKey}
-            isConfigured={state.isApiKeySet}
-            placeholder={'Your secret API key'}
-            onChange={onChangeApiKey}
-            onReset={onResetApiKey}
+            id="recommender-service-url"
+            data-testid={testIds.appConfig.recommenderServiceUrl}
+            value={state.recommenderServiceUrl}
+            placeholder={DEFAULT_RECOMMENDER_SERVICE_URL}
+            onChange={onChangeRecommenderServiceUrl}
           />
         </Field>
 
-        {/* API Url */}
-        <Field label="API Url" description="" className={s.marginTop}>
+        {/* Docs Base URL */}
+        <Field 
+          label="Docs Base URL" 
+          description="The base URL for the documentation service"
+          className={s.marginTop}
+        >
           <Input
             width={60}
-            id="api-url"
-            data-testid={testIds.appConfig.apiUrl}
-            label={`API Url`}
-            value={state?.apiUrl}
-            placeholder={`E.g.: http://mywebsite.com/api/v1`}
-            onChange={onChangeApiUrl}
+            id="docs-base-url"
+            data-testid={testIds.appConfig.docsBaseUrl}
+            value={state.docsBaseUrl}
+            placeholder={DEFAULT_DOCS_BASE_URL}
+            onChange={onChangeDocsBaseUrl}
+          />
+        </Field>
+
+        {/* Docs Username */}
+        <Field 
+          label="Docs Username" 
+          description="Username for accessing the documentation service (if authentication is required)"
+          className={s.marginTop}
+        >
+          <Input
+            width={60}
+            id="docs-username"
+            data-testid={testIds.appConfig.docsUsername}
+            value={state.docsUsername}
+            placeholder="Enter username (optional)"
+            onChange={onChangeDocsUsername}
+          />
+        </Field>
+
+        {/* Docs Password */}
+        <Field 
+          label="Docs Password" 
+          description="Password for accessing the documentation service (if authentication is required)"
+          className={s.marginTop}
+        >
+          <SecretInput
+            width={60}
+            data-testid={testIds.appConfig.docsPassword}
+            id="docs-password"
+            value={state.docsPassword}
+            isConfigured={state.isDocsPasswordSet}
+            placeholder="Enter password (optional)"
+            onChange={onChangeDocsPassword}
+            onReset={onResetDocsPassword}
           />
         </Field>
 
         <div className={s.marginTop}>
           <Button type="submit" data-testid={testIds.appConfig.submit} disabled={isSubmitDisabled}>
-            Save API settings
+            Save Configuration
           </Button>
         </div>
       </FieldSet>

@@ -5,7 +5,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, useStyles2, Card } from '@grafana/ui';
 import { getBackendSrv, locationService, config } from '@grafana/runtime';
-import { RECOMMENDER_SERVICE_URL } from '../../constants';
+import { getRecommenderServiceUrl } from '../../constants';
 import { fetchLearningJourneyContent, Milestone } from '../../utils/docs-fetcher';
 
 interface DataSource {
@@ -202,7 +202,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
       console.log('Generated context tags:', contextTags);
 
       // Send request to your recommender service
-      const response = await fetch(`${RECOMMENDER_SERVICE_URL}/recommend`, {
+      const response = await fetch(`${getRecommenderServiceUrl()}/recommend`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
