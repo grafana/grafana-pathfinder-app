@@ -1,4 +1,4 @@
-import { DOCS_BASE_URL, DOCS_USERNAME, DOCS_PASSWORD } from '../constants';
+import { getDocsBaseUrl, getDocsUsername, getDocsPassword } from '../constants';
 
 export interface SingleDocsContent {
   title: string;
@@ -23,10 +23,10 @@ function getAuthHeaders(): Record<string, string> {
   };
   
   // Authenticate if username is provided (password can be empty)
-  if (DOCS_USERNAME) {
-    const credentials = btoa(`${DOCS_USERNAME}:${DOCS_PASSWORD || ''}`);
+  if (getDocsUsername()) {
+    const credentials = btoa(`${getDocsUsername()}:${getDocsPassword() || ''}`);
     headers['Authorization'] = `Basic ${credentials}`;
-    console.log(`🔐 Adding Basic Auth for user: ${DOCS_USERNAME}`);
+    console.log(`🔐 Adding Basic Auth for user: ${getDocsUsername()}`);
   }
   
   return headers;
@@ -189,18 +189,18 @@ function processSingleDocsContent(mainElement: Element): {
     const dataSrc = img.getAttribute('data-src');
     const originalSrc = dataSrc || src;
     
-    if (!originalSrc) return;
+    if (!originalSrc) {return;}
     
     // Fix relative URLs with configurable base URL
     const newSrc = originalSrc.startsWith('http') || originalSrc.startsWith('data:') 
       ? originalSrc
       : originalSrc.startsWith('/') 
-        ? `${DOCS_BASE_URL}${originalSrc}`
+        ? `${getDocsBaseUrl()}${originalSrc}`
         : originalSrc.startsWith('./') 
-          ? `${DOCS_BASE_URL}/docs/${originalSrc.substring(2)}`
+          ? `${getDocsBaseUrl()}/docs/${originalSrc.substring(2)}`
           : originalSrc.startsWith('../') 
-            ? `${DOCS_BASE_URL}/docs/${originalSrc.replace(/^\.\.\//, '')}`
-            : `${DOCS_BASE_URL}/docs/${originalSrc}`;
+            ? `${getDocsBaseUrl()}/docs/${originalSrc.replace(/^\.\.\//, '')}`
+            : `${getDocsBaseUrl()}/docs/${originalSrc}`;
     
     img.setAttribute('src', newSrc);
     img.removeAttribute('data-src');
@@ -247,7 +247,7 @@ function processSingleDocsContent(mainElement: Element): {
     if (href) {
       // Fix relative URLs with configurable base URL
       if (href.startsWith('/')) {
-        link.setAttribute('href', `${DOCS_BASE_URL}${href}`);
+        link.setAttribute('href', `${getDocsBaseUrl()}${href}`);
       }
       
       link.setAttribute('target', '_blank');
@@ -337,7 +337,7 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     };
     
     // If we have authentication, try with credentials and explicit CORS mode
-    if (DOCS_USERNAME) {
+    if (getDocsUsername()) {
       fetchOptions.mode = 'cors';
       fetchOptions.credentials = 'omit'; // Don't send cookies, use explicit auth headers
       console.log('🔐 Using authenticated direct docs fetch');

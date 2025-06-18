@@ -71,7 +71,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   private generateTabId(): string {
-    return `journey-tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `journey-tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
 
   public async openLearningJourney(url: string, title?: string): Promise<string> {
@@ -101,7 +101,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public async loadTabContent(tabId: string, url: string) {
     
     const tabIndex = this.state.tabs.findIndex(tab => tab.id === tabId);
-    if (tabIndex === -1) return;
+    if (tabIndex === -1) {return;}
 
     // Update tab to loading state
     const updatedTabs = [...this.state.tabs];
@@ -149,7 +149,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
   public closeTab(tabId: string) {
     // Don't allow closing the recommendations tab
-    if (tabId === 'recommendations') return;
+    if (tabId === 'recommendations') {return;}
 
     // Get the tab before removing it so we can clear its cache
     const tabToClose = this.state.tabs.find(tab => tab.id === tabId);
@@ -190,7 +190,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
   public async navigateToNextMilestone() {
     const activeTab = this.getActiveTab();
-    if (!activeTab?.content || activeTab.id === 'recommendations') return;
+    if (!activeTab?.content || activeTab.id === 'recommendations') {return;}
 
     const nextUrl = getNextMilestoneUrl(activeTab.content);
     if (nextUrl) {
@@ -200,7 +200,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
   public async navigateToPreviousMilestone() {
     const activeTab = this.getActiveTab();
-    if (!activeTab?.content || activeTab.id === 'recommendations') return;
+    if (!activeTab?.content || activeTab.id === 'recommendations') {return;}
 
     const prevUrl = getPreviousMilestoneUrl(activeTab.content);
     if (prevUrl) {
@@ -262,7 +262,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
   public async loadDocsTabContent(tabId: string, url: string) {
     const tabIndex = this.state.tabs.findIndex(tab => tab.id === tabId);
-    if (tabIndex === -1) return;
+    if (tabIndex === -1) {return;}
 
     // Update tab to loading state
     const updatedTabs = [...this.state.tabs];
@@ -540,19 +540,21 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         contentElement.removeEventListener('click', handleLinkClick);
       };
     }
-  }, [model, activeTab?.content]);
+    // Return undefined explicitly when no cleanup is needed
+    return undefined;
+  }, [model, activeTab?.content, theme.colors.background.primary, theme.colors.background.canvas, theme.colors.border.weak, theme.colors.text.primary, theme.colors.text.secondary]);
 
   // Process tables and add expand/collapse functionality
   useEffect(() => {
     const contentElement = contentRef.current;
-    if (!contentElement) return;
+    if (!contentElement) {return;}
 
     // Handle table expand/collapse functionality
     const expandTableButtons = contentElement.querySelectorAll('.expand-table-btn');
     
     expandTableButtons.forEach((button) => {
       // Skip if button already has event listener
-      if (button.hasAttribute('data-table-listener')) return;
+      if (button.hasAttribute('data-table-listener')) {return;}
       
       const expandWrapper = button.closest('.expand-table-wrapper');
       const tableWrapper = expandWrapper?.querySelector('.responsive-table-wrapper');
@@ -593,7 +595,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   // Process code snippets and add copy buttons for both journey and docs content
   useEffect(() => {
     const contentElement = contentRef.current;
-    if (!contentElement) return;
+    if (!contentElement) {return;}
 
     // Target both code blocks (pre) and inline code elements
     const codeBlockSelectors = [
@@ -614,7 +616,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         elements.forEach(el => allPreElements.add(el));
       } catch (e) {
         // Skip selectors that don't work (like :has() in older browsers)
-        console.debug(`Selector "${selector}" not supported, skipping`);
+        // Selector not supported, skipping
       }
     });
     
@@ -627,7 +629,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       }
     });
     
-    console.log(`📝 Found ${allPreElements.size} code blocks and ${allInlineCodeElements.size} inline code elements to process`);
+    // Debug info: Found ${allPreElements.size} code blocks and ${allInlineCodeElements.size} inline code elements to process
     
     // Process pre elements (code blocks)
     Array.from(allPreElements).forEach((preElement, index) => {
@@ -645,16 +647,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         return;
       }
       
-      console.log(`📝 Processing pre element ${index + 1}:`, {
-        classes: preElement.className,
-        hasCode: !!preElement.querySelector('code'),
-        codeLength: codeText.length,
-        selector: Array.from(preElement.classList).find(c => 
-          c.includes('journey-code-block') || 
-          c.includes('docs-code-snippet') || 
-          c.includes('language-')
-        ) || 'generic'
-      });
+      // Processing pre element ${index + 1} with ${codeText.length} characters of code
       
       // Remove any existing copy buttons from this element
       const existingButtons = preElement.querySelectorAll('.code-copy-button, button[title*="copy" i], button[aria-label*="copy" i], .copy-button, .copy-btn, .btn-copy');
@@ -868,7 +861,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       
       // Ensure there's space for the button
       const currentPadding = computedStyle.paddingRight;
-      const paddingValue = parseInt(currentPadding) || 4;
+      const paddingValue = parseInt(currentPadding, 10) || 4;
       if (paddingValue < 24) { // Need at least 24px for the button
         codeElement.style.paddingRight = '24px';
       }
@@ -882,7 +875,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   // Process collapsible sections and add toggle functionality
   useEffect(() => {
     const contentElement = contentRef.current;
-    if (!contentElement) return;
+    if (!contentElement) {return;}
 
     // Find all collapsible sections (including side journeys and related journeys)
     const collapsibleSections = contentElement.querySelectorAll('.journey-collapse');
@@ -1097,9 +1090,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                       </span>
                     )}
                   </div>
-                  <small>
-                    Last updated: {new Date(activeTab.docsContent.lastFetched).toLocaleString()}
-                  </small>
                 </div>
                 
                 {activeTab.docsContent.labels && activeTab.docsContent.labels.length > 0 && (
@@ -1163,13 +1153,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                     </div>
                   </div>
                 )}
-                
-                <div className={styles.contentMeta}>
-                  <small>
-                    Last updated: {new Date(activeTab.content.lastFetched).toLocaleString()}
-                  </small>
-                </div>
-                
                 <div 
                   ref={contentRef}
                   className={styles.journeyContentHtml}

@@ -1,4 +1,4 @@
-import { DOCS_BASE_URL, DOCS_USERNAME, DOCS_PASSWORD } from '../constants';
+import { getDocsBaseUrl, getDocsUsername, getDocsPassword } from '../constants';
 
 
 export interface LearningJourneyContent {
@@ -98,10 +98,10 @@ function getAuthHeaders(): Record<string, string> {
   };
   
   // Authenticate if username is provided (password can be empty)
-  if (DOCS_USERNAME) {
-    const credentials = btoa(`${DOCS_USERNAME}:${DOCS_PASSWORD || ''}`);
+  if (getDocsUsername()) {
+    const credentials = btoa(`${getDocsUsername()}:${getDocsPassword() || ''}`);
     headers['Authorization'] = `Basic ${credentials}`;
-    console.log(`🔐 Adding Basic Auth for user: ${DOCS_USERNAME}`);
+    console.log(`🔐 Adding Basic Auth for user: ${getDocsUsername()}`);
   }
   
   return headers;
@@ -120,13 +120,13 @@ function getUnstyledContentUrl(url: string): string {
   let absoluteUrl: string;
   if (url.startsWith('/')) {
     // Relative URL starting with / - prepend base URL
-    absoluteUrl = `${DOCS_BASE_URL}${url}`;
+    absoluteUrl = `${getDocsBaseUrl()}${url}`;
   } else if (url.startsWith('http')) {
     // Already absolute URL
     absoluteUrl = url;
   } else {
     // Relative URL without leading slash - prepend base URL with slash
-    absoluteUrl = `${DOCS_BASE_URL}/${url}`;
+    absoluteUrl = `${getDocsBaseUrl()}/${url}`;
   }
   
   // For learning journey and docs pages, append unstyled.html
@@ -143,7 +143,7 @@ function getUnstyledContentUrl(url: string): string {
 async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
   try {
     // Ensure baseUrl is absolute
-    const absoluteBaseUrl = baseUrl.startsWith('/') ? `${DOCS_BASE_URL}${baseUrl}` : baseUrl;
+    const absoluteBaseUrl = baseUrl.startsWith('/') ? `${getDocsBaseUrl()}${baseUrl}` : baseUrl;
     const jsonUrl = `${absoluteBaseUrl}index.json`;
     
     console.log(`Fetching milestones from JSON: ${jsonUrl}`);
@@ -188,7 +188,7 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
       
       // Convert relative permalink to absolute URL
       const absoluteUrl = item.permalink.startsWith('/') 
-        ? `${DOCS_BASE_URL}${item.permalink}` 
+        ? `${getDocsBaseUrl()}${item.permalink}` 
         : item.permalink;
       
       // Extract side_journeys if present
@@ -221,7 +221,7 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
       let conclusionImage: ConclusionImage | undefined;
       if (item.params.cta && item.params.cta.image && item.params.cta.image.src) {
         const imageSrc = item.params.cta.image.src.startsWith('/') 
-          ? `${DOCS_BASE_URL}${item.params.cta.image.src}`
+          ? `${getDocsBaseUrl()}${item.params.cta.image.src}`
           : item.params.cta.image.src;
           
         conclusionImage = {
@@ -274,7 +274,7 @@ function extractJourneySummary(doc: Document): string {
       if (text && text.length > 20) { // Skip very short paragraphs
         summaryParts.push(text);
         count++;
-        if (count >= 3) break;
+        if (count >= 3) {break;}
       }
     }
     
@@ -445,7 +445,7 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
     const dataSrc = img.getAttribute('data-src');
     const originalSrc = dataSrc || src;
     
-    if (!originalSrc) return;
+    if (!originalSrc) {return;}
     
     // Fix relative URLs - be careful not to double up base URLs
     let newSrc: string;
@@ -454,10 +454,10 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
       newSrc = originalSrc;
     } else if (originalSrc.startsWith('/')) {
       // Absolute path - add base URL
-      newSrc = `${DOCS_BASE_URL}${originalSrc}`;
+      newSrc = `${getDocsBaseUrl()}${originalSrc}`;
     } else {
       // Relative path - add base URL with slash
-      newSrc = `${DOCS_BASE_URL}/${originalSrc}`;
+      newSrc = `${getDocsBaseUrl()}/${originalSrc}`;
     }
     
     // Set the correct src and remove data-src
@@ -761,7 +761,7 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     };
     
     // If we have authentication, try with credentials and explicit CORS mode
-    if (DOCS_USERNAME) {
+    if (getDocsUsername()) {
       fetchOptions.mode = 'cors';
       fetchOptions.credentials = 'omit'; // Don't send cookies, use explicit auth headers
       console.log('🔐 Using authenticated direct fetch');
