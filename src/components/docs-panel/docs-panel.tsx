@@ -8,7 +8,6 @@ import { Icon, IconButton, useStyles2, Spinner, Alert, useTheme2 } from '@grafan
 import { 
   fetchLearningJourneyContent, 
   LearningJourneyContent,
-  VideoInfo,
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
   clearLearningJourneyCache,
@@ -311,7 +310,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 }
 
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
-  const { tabs, activeTabId, contextPanel, singleDocsPanel } = model.useState();
+  const { tabs, activeTabId, contextPanel } = model.useState();
   const styles = useStyles2(getStyles);
   const theme = useTheme2();
   const contentRef = useRef<HTMLDivElement>(null);
@@ -323,7 +322,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     addGlobalModalStyles();
   }, []);
 
-  // Handle link clicks for "Start Learning Journey" button, video thumbnails, and image lightbox
+  // Handle link clicks for "Start Learning Journey" button and image lightbox
   useEffect(() => {
     const handleLinkClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -350,137 +349,16 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         }
       }
 
-      // Handle video thumbnail clicks
-      const videoThumbnail = target.closest('.journey-video-thumbnail') as HTMLElement;
-      
-      if (videoThumbnail) {
-        event.preventDefault();
-        event.stopPropagation();
-        
-        const videoUrl = videoThumbnail.getAttribute('data-video-url');
-        const videoTitle = videoThumbnail.getAttribute('data-video-title') || 'Video';
-        const videoId = videoThumbnail.getAttribute('data-video-id');
-        
-        if (videoUrl && videoId) {
-          console.log('🎬 Video thumbnail clicked:', { videoTitle, videoUrl, videoId });
-          
-          // Check if we should skip embed due to YouTube restrictions
-          const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const isHttp = window.location.protocol === 'http:';
-          const shouldSkipEmbed = isLocalhost || isHttp;
-          
-          if (shouldSkipEmbed) {
-            console.log('🎬 Skipping embed due to localhost/http restrictions, opening YouTube directly');
-            window.open(videoUrl, '_blank', 'noopener,noreferrer');
-            return;
-          }
-          
-          // Create video modal/iframe overlay
-          const videoModal = document.createElement('div');
-          videoModal.className = 'journey-video-modal';
-          videoModal.innerHTML = `
-            <div class="journey-video-modal-backdrop">
-              <div class="journey-video-modal-container">
-                <div class="journey-video-modal-header">
-                  <h3 class="journey-video-modal-title">${videoTitle}</h3>
-                  <button class="journey-video-modal-close" aria-label="Close video">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                  </button>
-                </div>
-                <div class="journey-video-modal-content">
-                  <div class="journey-video-modal-iframe-container">
-                    <div class="journey-video-modal-loading">
-                      <div class="journey-video-loading-spinner"></div>
-                      <p>Loading video...</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          `;
-          
-          // Add to body
-          document.body.appendChild(videoModal);
-          
-          // Lazy load the iframe after modal is shown to avoid YouTube warnings until needed
-          const iframeContainer = videoModal.querySelector('.journey-video-modal-iframe-container');
-          const loadingDiv = videoModal.querySelector('.journey-video-modal-loading');
-          
-          setTimeout(() => {
-            if (iframeContainer && loadingDiv) {
-              const iframe = document.createElement('iframe');
-              // Remove origin parameter for localhost to avoid blocking issues
-              const cleanVideoUrl = videoUrl.replace('watch?v=', 'embed/').replace('&t=', '?start=');
-              const embedUrl = `${cleanVideoUrl}&autoplay=1&rel=0&modestbranding=1`;
-              iframe.src = embedUrl;
-              iframe.title = videoTitle;
-              iframe.setAttribute('frameborder', '0');
-              iframe.setAttribute('loading', 'eager'); // Load immediately since user clicked
-              // Relaxed sandbox for better compatibility
-              iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups allow-forms');
-              iframe.setAttribute('allowfullscreen', 'true');
-              iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
-              iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
-              iframe.className = 'journey-video-modal-iframe';
-              
-              // Simple error handling - since we bypass embeds on localhost, this is just a safety net
-              iframe.onerror = () => {
-                console.warn('🎬 Video embed failed, opening YouTube directly');
-                window.open(videoUrl, '_blank', 'noopener,noreferrer');
-                closeModal();
-              };
-              
-              // Replace loading with iframe
-              loadingDiv.remove();
-              iframeContainer.appendChild(iframe);
-            }
-          }, 100); // Small delay to ensure modal is visible
-          
-          // Add close functionality
-          const closeModal = () => {
-            document.body.removeChild(videoModal);
-            document.body.style.overflow = '';
-          };
-          
-          // Close on backdrop click
-          videoModal.querySelector('.journey-video-modal-backdrop')?.addEventListener('click', (e) => {
-            if (e.target === e.currentTarget) {
-              closeModal();
-            }
-          });
-          
-          // Close on close button click
-          videoModal.querySelector('.journey-video-modal-close')?.addEventListener('click', closeModal);
-          
-          // Close on escape key
-          const handleEscape = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-              closeModal();
-              document.removeEventListener('keydown', handleEscape);
-            }
-          };
-          document.addEventListener('keydown', handleEscape);
-          
-          // Prevent body scroll
-          document.body.style.overflow = 'hidden';
-        }
-      }
-
       // Handle image lightbox clicks
       const image = target.closest('img') as HTMLImageElement;
       
-      if (image && !image.closest('.journey-video-thumbnail') && !image.classList.contains('journey-conclusion-header')) {
+      if (image && !image.classList.contains('journey-conclusion-header')) {
         event.preventDefault();
         event.stopPropagation();
         
         const imageSrc = image.src;
         const imageAlt = image.alt || 'Image';
-        
-        // Use Grafana's theme detection
-        const isDarkMode = theme.isDark;
+    
         
         // Create image lightbox modal with theme awareness
         const imageModal = document.createElement('div');
@@ -1106,53 +984,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         <div className={styles.actions}>
           {!isRecommendationsTab && activeTab && (
             <>
-              {(activeTab.content?.videoUrl || (activeTab.content?.videos && activeTab.content.videos.length > 0)) && (
-                <div className={styles.videoButtonContainer}>
-                  {activeTab.content?.videos && activeTab.content.videos.length > 1 ? (
-                    // Multiple videos - show dropdown
-                    <div className={styles.videoDropdown}>
-                      <IconButton
-                        name="angle-down"
-                        aria-label="Watch videos"
-                        tooltip="Choose video to watch"
-                        tooltipPlacement="left"
-                        className={styles.videoDropdownButton}
-                      />
-                      <div className={styles.videoDropdownMenu}>
-                        {activeTab.content.videos.map((video, index) => (
-                          <button
-                            key={video.id}
-                            className={styles.videoDropdownItem}
-                            onClick={() => {
-                              window.open(video.url, '_blank', 'noopener,noreferrer');
-                            }}
-                          >
-                            <Icon name="play" size="sm" className={styles.videoDropdownIcon} />
-                            <span className={styles.videoDropdownTitle}>
-                              {video.title || `Video ${index + 1}`}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    // Single video - direct play
-                    <IconButton
-                      name="play"
-                      aria-label="Watch video"
-                      onClick={() => {
-                        const videoUrl = activeTab.content?.videos?.[0]?.url || activeTab.content?.videoUrl;
-                        if (videoUrl) {
-                          window.open(videoUrl, '_blank', 'noopener,noreferrer');
-                        }
-                      }}
-                      tooltip="Watch video for this page"
-                      tooltipPlacement="left"
-                      className={styles.videoButton}
-                    />
-                  )}
-                </div>
-              )}
               <IconButton
                 name="external-link-alt"
                 aria-label="Open original documentation"
@@ -1558,8 +1389,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
         borderColor: theme.colors.primary.main,
       },
       
-      // Don't apply hover effects to video thumbnails or conclusion headers
-      '&.journey-video-thumbnail-image, &.journey-conclusion-header': {
+      // Don't apply hover effects to conclusion headers
+      '&.journey-conclusion-header': {
         cursor: 'default',
         
         '&:hover': {
@@ -1567,6 +1398,46 @@ const getStyles = (theme: GrafanaTheme2) => ({
           borderColor: theme.colors.border.weak,
         },
       },
+    },
+
+    // Responsive iframe styling
+    '& iframe.journey-iframe': {
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      boxShadow: theme.shadows.z1,
+    },
+
+    // General iframe responsiveness
+    '& iframe.journey-general-iframe': {
+      maxWidth: '100%',
+      height: 'auto',
+      minHeight: '200px',
+      margin: `${theme.spacing(2)} auto`,
+      display: 'block',
+    },
+
+    // Video iframe wrapper for maintaining aspect ratio
+    '& .journey-iframe-wrapper.journey-video-wrapper': {
+      position: 'relative',
+      width: '100%',
+      maxWidth: '100%',
+      margin: `${theme.spacing(2)} auto`,
+      paddingBottom: '56.25%', // 16:9 aspect ratio (9/16 * 100%)
+      height: 0,
+      overflow: 'hidden',
+      borderRadius: theme.shape.radius.default,
+      boxShadow: theme.shadows.z1,
+    },
+
+    // Video iframe positioned absolutely within wrapper
+    '& .journey-video-wrapper iframe.journey-video-iframe': {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      border: 'none',
+      borderRadius: theme.shape.radius.default,
     },
     
     // Inline code styling
@@ -2429,133 +2300,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
       justifyContent: 'center',
     },
     
-    // Video thumbnail sections
-    '& .journey-video-section': {
-      margin: `${theme.spacing(3)} 0`,
-      borderRadius: theme.shape.radius.default,
-      overflow: 'hidden',
-    },
-    
-    '& .journey-video-thumbnail-container': {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: theme.spacing(1.5),
-    },
-    
-    '& .journey-video-thumbnail': {
-      position: 'relative',
-      borderRadius: theme.shape.radius.default,
-      overflow: 'hidden',
-      cursor: 'pointer',
-      transition: 'all 0.3s ease',
-      border: `2px solid ${theme.colors.border.weak}`,
-      
-      '&:hover': {
-        transform: 'scale(1.02)',
-        boxShadow: theme.shadows.z2,
-        borderColor: theme.colors.primary.main,
-        
-        '& .journey-video-play-overlay': {
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        },
-        
-        '& .journey-video-play-button': {
-          transform: 'scale(1.1)',
-          backgroundColor: theme.colors.primary.main,
-        },
-      },
-    },
-    
-    '& .journey-video-thumbnail-image': {
-      width: '100%',
-      height: 'auto',
-      maxHeight: '280px',
-      objectFit: 'cover',
-      display: 'block',
-    },
-    
-    '& .journey-video-play-overlay': {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      transition: 'all 0.3s ease',
-    },
-    
-    '& .journey-video-play-button': {
-      width: '60px',
-      height: '60px',
-      borderRadius: '50%',
-      backgroundColor: 'rgba(255, 255, 255, 0.9)',
-      color: theme.colors.text.primary,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      transition: 'all 0.3s ease',
-      boxShadow: theme.shadows.z2,
-      
-      '& svg': {
-        marginLeft: '3px', // Slight offset to center play icon visually
-      },
-    },
-    
-    '& .journey-video-duration-badge': {
-      position: 'absolute',
-      bottom: theme.spacing(1),
-      right: theme.spacing(1),
-      backgroundColor: theme.colors.background.canvas,
-      color: theme.colors.text.primary,
-      padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-      borderRadius: theme.shape.radius.default,
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      border: `1px solid ${theme.colors.border.medium}`,
-      boxShadow: theme.shadows.z1,
-    },
-    
-    '& .journey-video-description': {
-      padding: theme.spacing(1.5),
-      backgroundColor: theme.colors.background.secondary,
-      borderRadius: theme.shape.radius.default,
-      border: `1px solid ${theme.colors.border.weak}`,
-      fontSize: theme.typography.body.fontSize,
-      lineHeight: 1.5,
-      color: theme.colors.text.primary,
-    },
-    
-    // External link indicator for videos that will open in YouTube
-    '& .journey-video-external-indicator': {
-      position: 'absolute',
-      top: theme.spacing(1),
-      right: theme.spacing(1),
-      width: '16px',
-      height: '16px',
-      backgroundColor: theme.colors.warning.main,
-      borderRadius: '50%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: theme.colors.warning.contrastText,
-      zIndex: 2,
-      border: `1px solid ${theme.colors.warning.border}`,
-      boxShadow: theme.shadows.z1,
-    },
-    
-    // Simplified styling for videos that will open externally
-    '& .journey-video-thumbnail.will-open-externally': {
-      '& .journey-video-duration-badge': {
-        backgroundColor: theme.colors.warning.main,
-        color: theme.colors.warning.contrastText,
-        borderColor: theme.colors.warning.border,
-        fontSize: theme.typography.bodySmall.fontSize,
-        fontWeight: theme.typography.fontWeightBold,
-      },
-    },
+
     
     // Bottom navigation styling
     '& .journey-bottom-navigation': {
@@ -2628,6 +2373,17 @@ const getStyles = (theme: GrafanaTheme2) => ({
       '& img': {
         margin: `${theme.spacing(1)} auto`,
       },
+
+      // Mobile iframe adjustments
+      '& .journey-iframe-wrapper.journey-video-wrapper': {
+        margin: `${theme.spacing(1.5)} auto`,
+        paddingBottom: '56.25%', // Maintain 16:9 aspect ratio on mobile
+      },
+
+      '& iframe.journey-general-iframe': {
+        margin: `${theme.spacing(1.5)} auto`,
+        minHeight: '180px', // Slightly smaller on mobile
+      },
       
       '& .code-copy-button': {
         padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
@@ -2640,19 +2396,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
         fontSize: '13px',
       },
       
-      // Video thumbnails tablet adjustments
-      '& .journey-video-section': {
-        margin: `${theme.spacing(2)} 0`,
-      },
-      
-      '& .journey-video-thumbnail-image': {
-        maxHeight: '200px',
-      },
-      
-      '& .journey-video-play-button': {
-        width: '50px',
-        height: '50px',
-      },
+
       
       // Side journeys tablet adjustments
       '& .journey-side-journeys-section': {
@@ -2728,6 +2472,17 @@ const getStyles = (theme: GrafanaTheme2) => ({
     },
     
     '@media (max-width: 480px)': {
+      // Very small mobile iframe adjustments
+      '& .journey-iframe-wrapper.journey-video-wrapper': {
+        margin: `${theme.spacing(1)} auto`,
+        paddingBottom: '62.5%', // Slightly taller ratio for very small screens
+      },
+
+      '& iframe.journey-general-iframe': {
+        margin: `${theme.spacing(1)} auto`,
+        minHeight: '150px', // Smaller on very small screens
+      },
+
       '& .code-copy-button': {
         padding: theme.spacing(0.5),
         minWidth: '32px',
@@ -2942,105 +2697,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
       },
     },
   }),
-  videoButton: css({
-    label: 'combined-journey-video-button',
-    padding: theme.spacing(0.25),
-    margin: 0,
-    minWidth: 'auto',
-    width: '16px',
-    height: '16px',
-    borderRadius: '50%',
-    flexShrink: 0,
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-    },
-  }),
-  videoButtonContainer: css({
-    label: 'combined-journey-video-button-container',
-    position: 'relative',
-    display: 'flex',
-    alignItems: 'center',
-  }),
-  videoDropdown: css({
-    label: 'combined-journey-video-dropdown',
-    position: 'relative',
-    display: 'flex',
-    alignItems: 'center',
-    
-    '&:hover div[class*="video-dropdown-menu"]': {
-      display: 'block !important',
-    },
-  }),
-  videoDropdownButton: css({
-    label: 'combined-journey-video-dropdown-button',
-    padding: theme.spacing(0.25),
-    margin: 0,
-    minWidth: 'auto',
-    width: '16px',
-    height: '16px',
-    borderRadius: '50%',
-    flexShrink: 0,
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-    },
-  }),
-  videoDropdownMenu: css({
-    label: 'combined-journey-video-dropdown-menu',
-    position: 'absolute',
-    top: '100%',
-    right: 0,
-    marginTop: theme.spacing(0.5),
-    backgroundColor: theme.colors.background.primary,
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
-    boxShadow: theme.shadows.z3,
-    minWidth: '200px',
-    zIndex: 1000,
-    display: 'none',
-    maxHeight: '300px',
-    overflowY: 'auto',
-  }),
-  videoDropdownItem: css({
-    label: 'combined-journey-video-dropdown-item',
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1, 1.5),
-    width: '100%',
-    border: 'none',
-    backgroundColor: 'transparent',
-    cursor: 'pointer',
-    fontSize: theme.typography.bodySmall.fontSize,
-    textAlign: 'left',
-    transition: 'background-color 0.2s ease',
-    
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-    },
-    
-    '&:first-child': {
-      borderTopLeftRadius: theme.shape.radius.default,
-      borderTopRightRadius: theme.shape.radius.default,
-    },
-    
-    '&:last-child': {
-      borderBottomLeftRadius: theme.shape.radius.default,
-      borderBottomRightRadius: theme.shape.radius.default,
-    },
-  }),
-  videoDropdownIcon: css({
-    label: 'combined-journey-video-dropdown-icon',
-    color: theme.colors.primary.main,
-    flexShrink: 0,
-  }),
-  videoDropdownTitle: css({
-    label: 'combined-journey-video-dropdown-title',
-    color: theme.colors.text.primary,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    flex: 1,
-  }),
+
   bottomNavigation: css({
     label: 'combined-journey-bottom-navigation',
     padding: theme.spacing(3, 3, 2, 3),
@@ -3212,6 +2869,46 @@ const getStyles = (theme: GrafanaTheme2) => ({
       margin: `${theme.spacing(2)} auto`,
       display: 'block',
       boxShadow: theme.shadows.z1,
+    },
+
+    // Responsive iframe styling (same as journey content)
+    '& iframe.journey-iframe': {
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      boxShadow: theme.shadows.z1,
+    },
+
+    // General iframe responsiveness
+    '& iframe.journey-general-iframe': {
+      maxWidth: '100%',
+      height: 'auto',
+      minHeight: '200px',
+      margin: `${theme.spacing(2)} auto`,
+      display: 'block',
+    },
+
+    // Video iframe wrapper for maintaining aspect ratio
+    '& .journey-iframe-wrapper.journey-video-wrapper': {
+      position: 'relative',
+      width: '100%',
+      maxWidth: '100%',
+      margin: `${theme.spacing(2)} auto`,
+      paddingBottom: '56.25%', // 16:9 aspect ratio (9/16 * 100%)
+      height: 0,
+      overflow: 'hidden',
+      borderRadius: theme.shape.radius.default,
+      boxShadow: theme.shadows.z1,
+    },
+
+    // Video iframe positioned absolutely within wrapper
+    '& .journey-video-wrapper iframe.journey-video-iframe': {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      border: 'none',
+      borderRadius: theme.shape.radius.default,
     },
     
     '& code:not(pre code)': {
@@ -3405,9 +3102,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
       fontSize: theme.typography.bodySmall.fontSize,
       
       '& .title': {
-        fontSize: '11px',
+        fontSize: theme.typography.bodySmall.fontSize,
         fontWeight: theme.typography.fontWeightBold,
-        color: theme.colors.primary.main,
         textTransform: 'uppercase',
         letterSpacing: '0.5px',
         marginBottom: theme.spacing(1),
@@ -3470,7 +3166,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-// Add global styles for video and image modals when component mounts
+// Add global styles for image modals when component mounts
 const addGlobalModalStyles = () => {
   const modalStyleId = 'journey-modal-styles';
   
@@ -3482,128 +3178,6 @@ const addGlobalModalStyles = () => {
   const style = document.createElement('style');
   style.id = modalStyleId;
   style.textContent = `
-    /* Video Modal Styles */
-    .journey-video-modal {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 10000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    
-    .journey-video-modal-backdrop {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: rgba(0, 0, 0, 0.8);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    
-    .journey-video-modal-container {
-      background: #1a1a1a;
-      border-radius: 8px;
-      overflow: hidden;
-      max-width: 90vw;
-      max-height: 90vh;
-      width: 100%;
-      max-width: 1200px;
-      position: relative;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    }
-    
-    .journey-video-modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 20px;
-      background: #2a2a2a;
-      border-bottom: 1px solid #3a3a3a;
-    }
-    
-    .journey-video-modal-title {
-      color: white;
-      margin: 0;
-      font-size: 16px;
-      font-weight: 500;
-    }
-    
-    .journey-video-modal-close {
-      background: none;
-      border: none;
-      color: #ccc;
-      cursor: pointer;
-      padding: 4px;
-      border-radius: 4px;
-      transition: all 0.2s ease;
-    }
-    
-    .journey-video-modal-close:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: white;
-    }
-    
-    .journey-video-modal-content {
-      position: relative;
-      background: black;
-    }
-    
-    .journey-video-modal-iframe-container {
-      position: relative;
-      width: 100%;
-      height: 0;
-      padding-bottom: 56.25%; /* 16:9 aspect ratio */
-    }
-    
-    .journey-video-modal-iframe {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-    
-    .journey-video-modal-loading {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: black;
-      color: #ccc;
-      font-size: 14px;
-    }
-    
-    .journey-video-loading-spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid #333;
-      border-top: 3px solid #ff6b6b;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-bottom: 16px;
-    }
-    
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    
-
-    
     /* Image Modal Styles - Simplified with theme integration */
     .journey-image-modal {
       position: fixed;
@@ -3699,19 +3273,6 @@ const addGlobalModalStyles = () => {
     
     /* Mobile responsive adjustments */
     @media (max-width: 768px) {
-      .journey-video-modal-container {
-        max-width: 95vw;
-        margin: 10px;
-      }
-      
-      .journey-video-modal-header {
-        padding: 12px 16px;
-      }
-      
-      .journey-video-modal-title {
-        font-size: 14px;
-      }
-      
       .journey-image-modal-container {
         max-width: 95vw !important;
         max-height: 95vh;
