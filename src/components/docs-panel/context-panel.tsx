@@ -48,6 +48,7 @@ interface ContextPayload {
   datasources: string[];
   context_tags: string[];
   user_id: number;
+  user_role: string;
 }
 
 interface ContextPanelState extends SceneObjectState {
@@ -196,6 +197,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
         datasources: this.state.dataSources.map(ds => ds.name),
         context_tags: contextTags,
         user_id: config.bootData.user.id,
+        user_role: config.bootData.user.orgRole || 'Viewer',
       };
 
       console.log('Sending context to recommender service:', payload);
