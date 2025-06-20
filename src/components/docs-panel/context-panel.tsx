@@ -47,7 +47,7 @@ interface ContextPayload {
   path: string;
   datasources: string[];
   context_tags: string[];
-  user_id: number;
+  user_id: string;
   user_role: string;
 }
 
@@ -196,7 +196,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
         path: this.state.currentPath,
         datasources: this.state.dataSources.map(ds => ds.name),
         context_tags: contextTags,
-        user_id: config.bootData.user.id,
+        user_id: config.bootData.user.uid,
         user_role: config.bootData.user.orgRole || 'Viewer',
       };
 
