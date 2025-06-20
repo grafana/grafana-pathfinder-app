@@ -3,7 +3,7 @@ import pluginJson from './plugin.json';
 export const PLUGIN_BASE_URL = `/a/${pluginJson.id}`;
 
 // Default configuration values
-export const DEFAULT_RECOMMENDER_SERVICE_URL = 'http://localhost:8080';
+export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://grafana-recommender-93209135917.us-central1.run.app';
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
 export const DEFAULT_DOCS_USERNAME = '';
 export const DEFAULT_DOCS_PASSWORD = '';
