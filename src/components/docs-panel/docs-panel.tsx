@@ -10,7 +10,7 @@ import {
   LearningJourneyContent,
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
-  clearLearningJourneyCache,
+  // clearLearningJourneyCache,
   clearSpecificJourneyContentCache
 } from '../../utils/docs-fetcher';
 import { 
