@@ -217,7 +217,15 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
       }
 
       const data: RecommenderResponse = await response.json();
+      const defaultR : Recommendation = {
+        title: 'Product Interactive Tutorial Demo',
+        // This will have /unstyled.html added to it.
+        url: 'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/test1',
+        type: 'docs-page',
+        summary: 'A test of interactive elements.',
+      }
       const recommendations = data.recommendations || [];
+      recommendations.push(defaultR);
       
       // Only fetch step counts for learning journey recommendations
       console.log('Processing recommendations by type...');
