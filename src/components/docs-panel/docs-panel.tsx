@@ -338,6 +338,23 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     });
   }
 
+  function interactiveButton(reftarget: string, click: boolean = true) {
+    function findButtonByText(targetText: string) {
+      const buttons = document.querySelectorAll('button');
+    
+      return Array.from(buttons).filter((button) => {
+        const text = (button.textContent || '').trim().toLowerCase();
+        return text.toLowerCase() === targetText.toLowerCase();
+      });
+    }
+
+    const buttons = findButtonByText(reftarget);
+    buttons.forEach(button => {
+      highlight(button);
+      button.click();
+    });
+  }
+
   function interactiveFormFill(reftarget: string, value: string) {
     console.log(`Interactive link clicked, targeting: ${reftarget} with ${value}`);
     
@@ -442,6 +459,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
       if (event.type === "interactive-highlight") {
         interactiveFocus(event.detail.reftarget);
+      } else if (event.type === "interactive-button") {
+        interactiveButton(event.detail.reftarget);
       } else if (event.type === "interactive-formfill") {
         interactiveFormFill(event.detail.reftarget, event.detail.value);
       } else {
@@ -449,12 +468,16 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       }
     };
 
-    document.addEventListener("interactive-highlight", handleCustomEvent as EventListener);
-    document.addEventListener("interactive-formfill", handleCustomEvent as EventListener);
+    const events = [
+      'interactive-highlight',
+      'interactive-formfill',
+      'interactive-button',
+    ];
+
+    events.forEach(e => document.addEventListener(e, handleCustomEvent as EventListener));
 
     return () => {
-      document.removeEventListener("interactive-highlight", handleCustomEvent as EventListener);
-      document.removeEventListener("interactive-formfill", handleCustomEvent as EventListener);
+      events.forEach(e => document.removeEventListener(e, handleCustomEvent as EventListener));
     };
   }, []);
 

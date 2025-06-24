@@ -96,10 +96,11 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
 }
 
 function processInteractiveElements(element: Element) {
-  const interactiveLinks = element.querySelectorAll('a[class="interactive"]');
+  const interactiveLinks = element.querySelectorAll('a.interactive, li.interactive');
   interactiveLinks.forEach(block => {
     console.log("Interactive link found:", block.textContent);
-
+    
+    const tagName = block.tagName.toLowerCase();
     const targetAction = block.getAttribute('data-targetaction');
     const reftarget = block.getAttribute('data-reftarget');
     const value = block.getAttribute('data-targetvalue') || '';
@@ -111,22 +112,34 @@ function processInteractiveElements(element: Element) {
 
     console.log("Adding onclick attribute to target " + reftarget + " with " + targetAction);
     
+    const doItForMe = () => {
+      const button = document.createElement('button');
+      button.textContent = 'Do it';
+      return button;
+    };
+
     // Set the onclick attribute with the JavaScript code
-    if(targetAction === "highlight") {
+    if(targetAction === "highlight" || targetAction === "button") {
       console.log("Adding highlight for selector " + reftarget);
-      block.setAttribute('onclick', 
-        `document.dispatchEvent(
-          new CustomEvent('interactive-highlight', 
+      const eventAction = `document.dispatchEvent(
+          new CustomEvent("interactive-${targetAction}", 
             { 
               detail: {
                 reftarget: '${reftarget.replace(/'/g, "\\'")}' 
               }
             }
-          ))`);
+          ))`;
+
+      if (tagName == 'a') {
+        block.setAttribute('onclick', eventAction);
+      } else {
+        const button = doItForMe();
+        button.setAttribute('onclick', eventAction);
+        block.appendChild(button);
+      }
     } else if(targetAction === "formfill") { 
       console.log("Adding form fill for selector " + reftarget + " with value " + value);
-      block.setAttribute('onclick', 
-        `document.dispatchEvent(
+      const eventAction = `document.dispatchEvent(
           new CustomEvent('interactive-formfill', 
             { 
               detail: { 
@@ -135,7 +148,15 @@ function processInteractiveElements(element: Element) {
               }
             }
           )
-        )`);
+        )`;  
+
+      if (tagName == 'a') {
+        block.setAttribute('onclick', eventAction);
+      } else {
+        const button = doItForMe();
+        button.setAttribute('onclick', eventAction);
+        block.appendChild(button);
+      }
     } else {
       console.warn("Unknown target action:", targetAction);
     }

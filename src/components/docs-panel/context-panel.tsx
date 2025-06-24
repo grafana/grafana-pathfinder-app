@@ -220,7 +220,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
       const defaultR : Recommendation = {
         title: 'Product Interactive Tutorial Demo',
         // This will have /unstyled.html added to it.
-        url: 'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/test1',
+        url: 'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/prometheus-datasource',
         type: 'docs-page',
         summary: 'A test of interactive elements.',
       }
