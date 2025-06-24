@@ -355,6 +355,24 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     });
   }
 
+  function interactiveSequence(reftarget: string) {
+    console.log("Interactive sequence called for:", reftarget);
+    const targetElements = document.querySelectorAll(reftarget);
+
+    targetElements.forEach(element => {
+      // Find all button elements with onClick attributes, no matter how deeply nested
+      const buttonsWithOnClick = Array.from(element.querySelectorAll('button[onclick]')) as HTMLButtonElement[];
+      
+      console.log(`Found ${buttonsWithOnClick.length} buttons with onClick in element:`, element);
+      console.log("Buttons in sequence:", buttonsWithOnClick);      
+      // The buttons are already in strict document order due to querySelectorAll behavior
+      // You can now work with the buttonsWithOnClick array
+
+      // TODO: write promise dispatcher that clicks each button and waits for update
+      // before next.
+    });
+  } 
+
   function interactiveFormFill(reftarget: string, value: string) {
     console.log(`Interactive link clicked, targeting: ${reftarget} with ${value}`);
     
@@ -463,6 +481,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         interactiveButton(event.detail.reftarget);
       } else if (event.type === "interactive-formfill") {
         interactiveFormFill(event.detail.reftarget, event.detail.value);
+      } else if(event.type === 'interactive-sequence') {
+        interactiveSequence(event.detail.reftarget);
       } else {
         console.warn("Unknown event type:", event.type);
       }
@@ -472,6 +492,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       'interactive-highlight',
       'interactive-formfill',
       'interactive-button',
+      'interactive-sequence',
     ];
 
     events.forEach(e => document.addEventListener(e, handleCustomEvent as EventListener));

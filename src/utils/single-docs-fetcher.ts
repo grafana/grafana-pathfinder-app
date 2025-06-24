@@ -96,7 +96,7 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
 }
 
 function processInteractiveElements(element: Element) {
-  const interactiveLinks = element.querySelectorAll('a.interactive, li.interactive');
+  const interactiveLinks = element.querySelectorAll('a.interactive, span.interactive, li.interactive');
   interactiveLinks.forEach(block => {
     console.log("Interactive link found:", block.textContent);
     
@@ -110,18 +110,18 @@ function processInteractiveElements(element: Element) {
       return;
     }
 
-    console.log("Adding onclick attribute to target " + reftarget + " with " + targetAction);
+    console.log("Adding onclick attribute to " + tagName + " target " + reftarget + " with " + targetAction);
     
-    const doItForMe = () => {
+    const doItForMe = (text : string = "Do it") => {
       const button = document.createElement('button');
-      button.textContent = 'Do it';
+      button.textContent = text;
       return button;
     };
 
-    // Set the onclick attribute with the JavaScript code
+    let eventAction = "";
     if(targetAction === "highlight" || targetAction === "button") {
       console.log("Adding highlight for selector " + reftarget);
-      const eventAction = `document.dispatchEvent(
+      eventAction = `document.dispatchEvent(
           new CustomEvent("interactive-${targetAction}", 
             { 
               detail: {
@@ -129,17 +129,8 @@ function processInteractiveElements(element: Element) {
               }
             }
           ))`;
-
-      if (tagName == 'a') {
-        block.setAttribute('onclick', eventAction);
-      } else {
-        const button = doItForMe();
-        button.setAttribute('onclick', eventAction);
-        block.appendChild(button);
-      }
     } else if(targetAction === "formfill") { 
-      console.log("Adding form fill for selector " + reftarget + " with value " + value);
-      const eventAction = `document.dispatchEvent(
+      eventAction = `document.dispatchEvent(
           new CustomEvent('interactive-formfill', 
             { 
               detail: { 
@@ -149,16 +140,27 @@ function processInteractiveElements(element: Element) {
             }
           )
         )`;  
-
-      if (tagName == 'a') {
-        block.setAttribute('onclick', eventAction);
-      } else {
-        const button = doItForMe();
-        button.setAttribute('onclick', eventAction);
-        block.appendChild(button);
-      }
+    } else if(targetAction === "sequence") {
+      eventAction = `document.dispatchEvent(
+        new CustomEvent('interactive-sequence', 
+          { 
+            detail: { 
+              reftarget: '${reftarget.replace(/'/g, "\\'")}', 
+              value: '${value.replace(/'/g, "\\'") || ''}'
+            }
+          }
+        )
+      )`;  
     } else {
-      console.warn("Unknown target action:", targetAction);
+      eventAction = `document.alert("Unknown target action: ${targetAction}")`;
+    }
+
+    if (tagName == 'a') {
+      block.setAttribute('onclick', eventAction);
+    } else {
+      const button = doItForMe(tagName === 'span' ? 'Do SECTION' : 'Do It');
+      button.setAttribute('onclick', eventAction);
+      block.appendChild(button);
     }
   })
 }
