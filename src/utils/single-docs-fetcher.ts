@@ -102,7 +102,7 @@ function processInteractiveElements(element: Element) {
 
     const targetAction = block.getAttribute('data-targetaction');
     const reftarget = block.getAttribute('data-reftarget');
-    const value = block.getAttribute('data-targetvalue');
+    const value = block.getAttribute('data-targetvalue') || '';
 
     if (!targetAction || !reftarget) {
       console.warn("Interactive link missing target action or ref target:", block.textContent);
@@ -111,149 +111,31 @@ function processInteractiveElements(element: Element) {
 
     console.log("Adding onclick attribute to target " + reftarget + " with " + targetAction);
     
-    // Create JavaScript code as a string that will be set as onclick attribute
-    const javascriptHighlight = `
-      (function(event) {
-        event.preventDefault();
-        event.stopPropagation();
-        
-        console.log('Interactive link clicked, targeting: ${reftarget.replace(/'/g, "\\'")}');
-        
-        try {
-          // Find all elements in the window that match the reftarget selector
-          const targetElements = document.querySelectorAll('${reftarget.replace(/'/g, "\\'")}');
-          
-          if (targetElements.length === 0) {
-            console.warn('No elements found matching selector: ${reftarget.replace(/'/g, "\\'")}');
-            return;
-          }
-          
-          console.log('Found ' + targetElements.length + ' elements matching selector: ${reftarget.replace(/'/g, "\\'")}');
-          
-          // Apply red border to all matching elements
-          targetElements.forEach(function(targetElement, index) {
-            targetElement.style.border = '1px solid red';
-            console.log('Applied red border to element ' + (index + 1) + ':', targetElement);
-            targetElement.click();
-          });
-          
-        } catch (error) {
-          console.error('Error applying interactive action for selector "${reftarget.replace(/'/g, "\\'")}":', error);
-        }
-      })(event);
-    `;
-    
-    const javascriptFormFill = `
-      (function(event) {
-        event.preventDefault();
-        event.stopPropagation();
-        
-        console.log('Interactive form fill clicked, targeting: ${reftarget.replace(/'/g, "\\'")}');
-        
-        try {
-          // Find all elements in the window that match the reftarget selector
-          const targetElements = document.querySelectorAll('${reftarget.replace(/'/g, "\\'")}');
-          
-          if (targetElements.length === 0) {
-            console.warn('No elements found matching selector: ${reftarget.replace(/'/g, "\\'")}');
-            return;
-          }
-          
-          console.log('Found ' + targetElements.length + ' elements matching selector: ${reftarget.replace(/'/g, "\\'")}');
-          
-          const fillValue = '${(value || '').replace(/'/g, "\\'")}';
-          
-          // Fill form elements with the specified value
-          targetElements.forEach(function(targetElement, index) {
-            const tagName = targetElement.tagName.toLowerCase();
-            const inputType = targetElement.type ? targetElement.type.toLowerCase() : '';
-            
-            console.log('Processing element ' + (index + 1) + ' - Tag: ' + tagName + ', Type: ' + inputType);
-            
-            if (tagName === 'input') {
-              if (inputType === 'checkbox' || inputType === 'radio') {
-                // For checkboxes and radio buttons, check them if value is truthy
-                targetElement.checked = fillValue && fillValue !== 'false' && fillValue !== '0';
-                console.log('Set checked state to: ' + targetElement.checked);
-              } else {
-                // For text inputs, email, password, etc.
-                targetElement.value = fillValue;
-                console.log('Set input value to: ' + fillValue);
-              }
-            } else if (tagName === 'textarea') {
-              // For textarea elements
-              targetElement.value = fillValue;
-              console.log('Set textarea value to: ' + fillValue);
-            } else if (tagName === 'select') {
-              // For select dropdowns
-              targetElement.value = fillValue;
-              console.log('Set select value to: ' + fillValue);
-            } else {
-              // For other elements, set text content
-              targetElement.textContent = fillValue;
-              console.log('Set text content to: ' + fillValue);
-            }
-            
-            // Trigger multiple events to notify all possible listeners (frameworks, validation, etc.)
-            
-            // 1. Focus the element first (simulates user clicking into field)
-            targetElement.focus();
-            const focusEvent = new Event('focus', { bubbles: true });
-            targetElement.dispatchEvent(focusEvent);
-            
-            // 2. For React and other frameworks, we need to trigger input events
-            const inputEvent = new Event('input', { bubbles: true });
-            targetElement.dispatchEvent(inputEvent);
-            
-            // 3. Simulate key events that some libraries listen for
-            const keyDownEvent = new KeyboardEvent('keydown', { bubbles: true, key: 'Tab' });
-            targetElement.dispatchEvent(keyDownEvent);
-            
-            const keyUpEvent = new KeyboardEvent('keyup', { bubbles: true, key: 'Tab' });
-            targetElement.dispatchEvent(keyUpEvent);
-            
-            // 4. Trigger change event (traditional form handling)
-            const changeEvent = new Event('change', { bubbles: true });
-            targetElement.dispatchEvent(changeEvent);
-            
-            // 5. Blur the element (simulates user leaving the field)
-            const blurEvent = new Event('blur', { bubbles: true });
-            targetElement.dispatchEvent(blurEvent);
-            targetElement.blur();
-            
-            // 6. For React specifically, manually trigger React's internal events
-            // React sometimes overrides the value setter, so we force it
-            if (targetElement._valueTracker) {
-              targetElement._valueTracker.setValue('');
-            }
-            
-            // 7. Custom property descriptor approach for React/Vue compatibility
-            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-            if (nativeInputValueSetter && (tagName === 'input' || tagName === 'textarea')) {
-              nativeInputValueSetter.call(targetElement, fillValue);
-              
-              // Trigger React's synthetic event
-              const syntheticEvent = new Event('input', { bubbles: true });
-              syntheticEvent.simulated = true;
-              targetElement.dispatchEvent(syntheticEvent);
-            }
-            
-            console.log('Triggered comprehensive event sequence for form element');            
-          });
-          
-        } catch (error) {
-          console.error('Error applying form fill for selector "${reftarget.replace(/'/g, "\\'")}":', error);
-        }
-      })(event);
-    `;
-    
     // Set the onclick attribute with the JavaScript code
     if(targetAction === "highlight") {
       console.log("Adding highlight for selector " + reftarget);
-      block.setAttribute('onclick', javascriptHighlight);
+      block.setAttribute('onclick', 
+        `document.dispatchEvent(
+          new CustomEvent('interactive-highlight', 
+            { 
+              detail: {
+                reftarget: '${reftarget.replace(/'/g, "\\'")}' 
+              }
+            }
+          ))`);
     } else if(targetAction === "formfill") { 
       console.log("Adding form fill for selector " + reftarget + " with value " + value);
-      block.setAttribute('onclick', javascriptFormFill);
+      block.setAttribute('onclick', 
+        `document.dispatchEvent(
+          new CustomEvent('interactive-formfill', 
+            { 
+              detail: { 
+                reftarget: '${reftarget.replace(/'/g, "\\'")}', 
+                value: '${value.replace(/'/g, "\\'") || ''}' 
+              }
+            }
+          )
+        )`);
     } else {
       console.warn("Unknown target action:", targetAction);
     }

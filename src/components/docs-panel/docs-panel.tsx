@@ -321,6 +321,143 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     addGlobalModalStyles();
   }, []);
 
+  function highlight(element : HTMLElement) {
+    element.style.border = '1px solid red';
+    return element;
+  }
+  
+  function interactiveFocus(reftarget: string, click: boolean = true) {
+    console.log("Interactive focus called for:", reftarget);
+    const targetElements = document.querySelectorAll(reftarget);
+    
+    targetElements.forEach(element => {
+      highlight((element as HTMLElement));
+      if (click) {
+        (element as HTMLElement).click();
+      }
+    });
+  }
+
+  function interactiveFormFill(reftarget: string, value: string) {
+    console.log(`Interactive link clicked, targeting: ${reftarget} with ${value}`);
+    
+    try {
+      // Find all elements in the window that match the reftarget selector
+      const targetElements = document.querySelectorAll(reftarget);
+      
+      if (targetElements.length === 0) {
+        console.warn(`No elements found matching selector: ${reftarget}`);
+        return;
+      }
+      
+      console.log('Found ' + targetElements.length + ' elements matching selector' + reftarget);
+      
+      targetElements.forEach(function(te, index) {
+         const targetElement = te as HTMLElement;
+
+         const tagName = targetElement.tagName.toLowerCase();
+         const inputType = (targetElement as HTMLInputElement).type ? (targetElement as HTMLInputElement).type.toLowerCase() : '';
+         
+         console.log('Processing element ' + (index + 1) + ' - Tag: ' + tagName + ', Type: ' + inputType);
+         
+         if (tagName === 'input') {
+           if (inputType === 'checkbox' || inputType === 'radio') {
+             // For checkboxes and radio buttons, check them if value is truthy
+             (targetElement as HTMLInputElement).checked = value !== 'false' && value !== '0' && value !== '';
+             console.log('Set checked state to: ' + (targetElement as HTMLInputElement).checked);
+           } else {
+             // For text inputs, email, password, etc.
+             (targetElement as HTMLInputElement).value = value;
+             console.log('Set input value to: ' + value);
+           }
+         } else if (tagName === 'textarea') {
+           // For textarea elements
+           (targetElement as HTMLTextAreaElement).value = value;
+           console.log('Set textarea value to: ' + value);
+         } else if (tagName === 'select') {
+           // For select dropdowns
+           (targetElement as HTMLSelectElement).value = value;
+           console.log('Set select value to: ' + value);
+         } else {
+           // For other elements, set text content
+           targetElement.textContent = value;
+           console.log('Set text content to: ' + value);
+         }
+        
+        // Trigger multiple events to notify all possible listeners (frameworks, validation, etc.)
+        
+        // 1. Focus the element first (simulates user clicking into field)
+        targetElement.focus();
+        const focusEvent = new Event('focus', { bubbles: true });
+        targetElement.dispatchEvent(focusEvent);
+        
+        // 2. For React and other frameworks, we need to trigger input events
+        const inputEvent = new Event('input', { bubbles: true });
+        targetElement.dispatchEvent(inputEvent);
+        
+        // 3. Simulate key events that some libraries listen for
+        const keyDownEvent = new KeyboardEvent('keydown', { bubbles: true, key: 'Tab' });
+        targetElement.dispatchEvent(keyDownEvent);
+        
+        const keyUpEvent = new KeyboardEvent('keyup', { bubbles: true, key: 'Tab' });
+        targetElement.dispatchEvent(keyUpEvent);
+        
+        // 4. Trigger change event (traditional form handling)
+        const changeEvent = new Event('change', { bubbles: true });
+        targetElement.dispatchEvent(changeEvent);
+        
+        // 5. Blur the element (simulates user leaving the field)
+        const blurEvent = new Event('blur', { bubbles: true });
+        targetElement.dispatchEvent(blurEvent);
+        targetElement.blur();
+        
+                 // 6. For React specifically, manually trigger React's internal events
+         // React sometimes overrides the value setter, so we force it
+         if ((targetElement as any)._valueTracker) {
+           (targetElement as any)._valueTracker.setValue('');
+         }
+         
+         // 7. Custom property descriptor approach for React/Vue compatibility
+         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+         if (nativeInputValueSetter && (tagName === 'input' || tagName === 'textarea')) {
+           nativeInputValueSetter.call(targetElement, value);
+           
+           // Trigger React's synthetic event
+           const syntheticEvent = new Event('input', { bubbles: true }) as any;
+           syntheticEvent.simulated = true;
+           targetElement.dispatchEvent(syntheticEvent);
+         }
+        
+        console.log('Triggered comprehensive event sequence for form element');            
+      });
+      
+    } catch (error) {
+      console.error('Error applying interactive action for selector '+ reftarget);
+        }
+  }
+
+  useEffect(() => {
+    const handleCustomEvent = (event: CustomEvent) => {
+      console.log("React got the event!", event);
+
+      if (event.type === "interactive-highlight") {
+        interactiveFocus(event.detail.reftarget);
+      } else if (event.type === "interactive-formfill") {
+        interactiveFormFill(event.detail.reftarget, event.detail.value);
+      } else {
+        console.warn("Unknown event type:", event.type);
+      }
+    };
+
+    document.addEventListener("interactive-highlight", handleCustomEvent as EventListener);
+    document.addEventListener("interactive-formfill", handleCustomEvent as EventListener);
+
+    return () => {
+      document.removeEventListener("interactive-highlight", handleCustomEvent as EventListener);
+      document.removeEventListener("interactive-formfill", handleCustomEvent as EventListener);
+    };
+  }, []);
+
   // Handle link clicks for "Start Learning Journey" button and image lightbox
   useEffect(() => {
     const handleLinkClick = (event: MouseEvent) => {
