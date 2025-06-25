@@ -355,22 +355,56 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     });
   }
 
-  function interactiveSequence(reftarget: string) {
+  async function runSequence(sequence: HTMLButtonElement[]) : Promise<HTMLButtonElement[]> {
+
+    for(const button of sequence) {
+      console.log("Clicking button: ")
+      console.log(button)
+      button.click();
+
+      // This is not the right way to do this but will have to wait for now.
+      console.log("Sleep")
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log("requestAnimationFrame")
+      await new Promise(requestAnimationFrame);
+    }
+
+    return sequence;
+  }
+
+  const activeRefs = new Set<string>();
+
+  async function interactiveSequence(reftarget: string) : Promise<string> {
+    // This is here so recursion cannot happen
+    if(activeRefs.has(reftarget)) {
+      console.log("Interactive sequence already active for:", reftarget);
+      return reftarget;
+    }
+
     console.log("Interactive sequence called for:", reftarget);
     const targetElements = document.querySelectorAll(reftarget);
 
-    targetElements.forEach(element => {
-      // Find all button elements with onClick attributes, no matter how deeply nested
-      const buttonsWithOnClick = Array.from(element.querySelectorAll('button[onclick]')) as HTMLButtonElement[];
-      
-      console.log(`Found ${buttonsWithOnClick.length} buttons with onClick in element:`, element);
-      console.log("Buttons in sequence:", buttonsWithOnClick);      
-      // The buttons are already in strict document order due to querySelectorAll behavior
-      // You can now work with the buttonsWithOnClick array
+    if(targetElements.length === 0 || targetElements.length > 1) {
+      const msg = (targetElements.length + 
+        " interactive seqeuence elements found matching selector: ", reftarget + 
+        " - this is not supported");
+      throw new Error(msg);
+    } 
 
-      // TODO: write promise dispatcher that clicks each button and waits for update
-      // before next.
-    });
+    activeRefs.add(reftarget);
+
+    // Find all button elements with onClick attributes, no matter how deeply nested
+    // NOTE!  This may catch the button inside of the section that is the target of the sequence!
+    // So we need to avoid recursion.
+    const buttonsWithOnClick = Array.from(targetElements[0].querySelectorAll('button[onclick]')) as HTMLButtonElement[];
+    
+    console.log(`Found ${buttonsWithOnClick.length} buttons with onClick in element:`, targetElements[0]);
+    console.log("Buttons in sequence:", buttonsWithOnClick);      
+    // The buttons are already in strict document order due to querySelectorAll behavior
+    // You can now work with the buttonsWithOnClick array
+    await runSequence(buttonsWithOnClick);
+    activeRefs.delete(reftarget);
+    return reftarget;
   } 
 
   function interactiveFormFill(reftarget: string, value: string) {
