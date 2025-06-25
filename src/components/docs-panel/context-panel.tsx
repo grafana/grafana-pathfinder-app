@@ -72,6 +72,7 @@ interface ContextPanelState extends SceneObjectState {
 
 export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   public static Component = ContextPanelRenderer;
+  private locationUnsubscribe?: () => void;
 
   public get renderBeforeActivation(): boolean {
     return true;
@@ -98,6 +99,41 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     });
 
     this.updateContext();
+    this.setupLocationListener();
+  }
+
+  public activate() {
+    const result = super.activate();
+    // Ensure listener is set up when component becomes active
+    if (!this.locationUnsubscribe) {
+      this.setupLocationListener();
+    }
+    return result;
+  }
+
+  public onDeactivate() {
+    // Clean up the location listener when component is deactivated
+    if (this.locationUnsubscribe) {
+      this.locationUnsubscribe();
+      this.locationUnsubscribe = undefined;
+    }
+  }
+
+  private setupLocationListener() {
+    // Set up listener for location changes
+    const history = locationService.getHistory();
+    if (history) {
+      this.locationUnsubscribe = history.listen((location: any) => {
+        const newPath = location.pathname;
+        const newUrl = `${location.pathname}${location.search}${location.hash}`;
+        
+        // Only update if the path or search params have actually changed
+        if (newPath !== this.state.currentPath || newUrl !== this.state.currentUrl) {
+          console.log('Location changed, refreshing context:', { from: this.state.currentPath, to: newPath });
+          this.updateContext();
+        }
+      });
+    }
   }
 
   private async updateContext() {
