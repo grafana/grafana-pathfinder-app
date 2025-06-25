@@ -9,7 +9,7 @@ export interface SingleDocsContent {
 
 // Simple in-memory cache for docs content
 const docsContentCache = new Map<string, { content: SingleDocsContent; timestamp: number }>();
-const DOCS_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const DOCS_CACHE_DURATION = 1; // 5 * 60 * 1000; // 5 minutes
 
 /**
  * Get authentication headers if credentials are provided
@@ -93,6 +93,76 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
       lastFetched: new Date().toISOString()
     };
   }
+}
+
+function processInteractiveElements(element: Element) {
+  const interactiveLinks = element.querySelectorAll('a.interactive, span.interactive, li.interactive');
+  interactiveLinks.forEach(block => {
+    console.log("Interactive link found:", block.textContent);
+    
+    const tagName = block.tagName.toLowerCase();
+    const targetAction = block.getAttribute('data-targetaction');
+    const reftarget = block.getAttribute('data-reftarget');
+    const value = block.getAttribute('data-targetvalue') || '';
+
+    if (!targetAction || !reftarget) {
+      console.warn("Interactive link missing target action or ref target:", block.textContent);
+      return;
+    }
+
+    console.log("Adding onclick attribute to " + tagName + " target " + reftarget + " with " + targetAction);
+    
+    const doItForMe = (text : string = "Do it") => {
+      const button = document.createElement('button');
+      button.textContent = text;
+      return button;
+    };
+
+    let eventAction = "";
+    if(targetAction === "highlight" || targetAction === "button") {
+      console.log("Adding highlight for selector " + reftarget);
+      eventAction = `document.dispatchEvent(
+          new CustomEvent("interactive-${targetAction}", 
+            { 
+              detail: {
+                reftarget: '${reftarget.replace(/'/g, "\\'")}' 
+              }
+            }
+          ))`;
+    } else if(targetAction === "formfill") { 
+      eventAction = `document.dispatchEvent(
+          new CustomEvent('interactive-formfill', 
+            { 
+              detail: { 
+                reftarget: '${reftarget.replace(/'/g, "\\'")}', 
+                value: '${value.replace(/'/g, "\\'") || ''}' 
+              }
+            }
+          )
+        )`;  
+    } else if(targetAction === "sequence") {
+      eventAction = `document.dispatchEvent(
+        new CustomEvent('interactive-sequence', 
+          { 
+            detail: { 
+              reftarget: '${reftarget.replace(/'/g, "\\'")}', 
+              value: '${value.replace(/'/g, "\\'") || ''}'
+            }
+          }
+        )
+      )`;  
+    } else {
+      eventAction = `document.alert("Unknown target action: ${targetAction}")`;
+    }
+
+    if (tagName == 'a') {
+      block.setAttribute('onclick', eventAction);
+    } else {
+      const button = doItForMe(tagName === 'span' ? 'Do SECTION' : 'Do It');
+      button.setAttribute('onclick', eventAction);
+      block.appendChild(button);
+    }
+  })
 }
 
 /**
@@ -206,6 +276,8 @@ function processSingleDocsContent(mainElement: Element): string {
     code.classList.add('docs-inline-code');
   });
   
+  processInteractiveElements(clonedElement);
+
   // Process links to ensure they open in new tabs and fix relative URLs
   const links = clonedElement.querySelectorAll('a[href]');
   links.forEach(link => {
