@@ -10,7 +10,6 @@ import {
   LearningJourneyContent,
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
-  // clearLearningJourneyCache,
   clearSpecificJourneyContentCache
 } from '../../utils/docs-fetcher';
 import { 
@@ -18,7 +17,6 @@ import {
   SingleDocsContent 
 } from '../../utils/single-docs-fetcher';
 import { ContextPanel } from './context-panel';
-import { SingleDocsPanel } from './single-docs-panel';
 
 interface LearningJourneyTab {
   id: string;
@@ -35,7 +33,6 @@ interface CombinedPanelState extends SceneObjectState {
   tabs: LearningJourneyTab[];
   activeTabId: string;
   contextPanel: ContextPanel;
-  singleDocsPanel: SingleDocsPanel;
 }
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
@@ -46,7 +43,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public constructor() {
-    const singleDocsPanel = new SingleDocsPanel();
     const contextPanel = new ContextPanel((url: string, title: string) => {
       this.openLearningJourney(url, title);
     }, (url: string, title: string) => {
@@ -66,7 +62,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       ],
       activeTabId: 'recommendations',
       contextPanel,
-      singleDocsPanel,
     });
   }
 
@@ -541,7 +536,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     }
     // Return undefined explicitly when no cleanup is needed
     return undefined;
-  }, [model, activeTab?.content, theme.colors.background.primary, theme.colors.background.canvas, theme.colors.border.weak, theme.colors.text.primary, theme.colors.text.secondary]);
+  }, [model, activeTab?.content, activeTab?.docsContent, theme.colors.background.primary, theme.colors.background.canvas, theme.colors.border.weak, theme.colors.text.primary, theme.colors.text.secondary]);
 
   // Process tables and add expand/collapse functionality
   useEffect(() => {
@@ -2860,6 +2855,14 @@ const getStyles = (theme: GrafanaTheme2) => ({
       margin: `${theme.spacing(2)} auto`,
       display: 'block',
       boxShadow: theme.shadows.z1,
+      transition: 'all 0.2s ease',
+      cursor: 'zoom-in',
+      
+      '&:hover': {
+        boxShadow: theme.shadows.z2,
+        transform: 'scale(1.02)',
+        borderColor: theme.colors.primary.main,
+      },
     },
 
     // Responsive iframe styling (same as journey content)
