@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { css } from '@emotion/css';
 
 import { GrafanaTheme2 } from '@grafana/data';
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
@@ -10,6 +11,7 @@ import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
 import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../styles/docs-panel.styles';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
+import { getInteractiveStyles, addGlobalInteractiveStyles } from '../../styles/interactive.styles';
 import { TAB_CONFIG } from '../../constants/selectors';
 
 import { 
@@ -321,9 +323,20 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   const activeTab = model.getActiveTab();
   const isRecommendationsTab = activeTabId === TAB_CONFIG.RECOMMENDATIONS_ID;
 
-  // Add global modal styles on component mount
+  // Create combined content styles that include interactive styles
+  const journeyContentStyles = css`
+    ${journeyContentHtml(theme)}
+    ${getInteractiveStyles(theme)}
+  `;
+  const docsContentStyles = css`
+    ${docsContentHtml(theme)}
+    ${getInteractiveStyles(theme)}
+  `;
+
+  // Add global modal and interactive styles on component mount
   useEffect(() => {
     addGlobalModalStyles();
+    addGlobalInteractiveStyles();
   }, []);
 
   // Use custom hooks for cleaner organization
@@ -488,7 +501,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                 
                 <div 
                   ref={contentRef}
-                  className={docsContentHtml(theme)}
+                  className={docsContentStyles}
                   dangerouslySetInnerHTML={{ __html: activeTab.docsContent.content }}
                 />
               </div>
@@ -541,7 +554,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                 )}
                 <div 
                   ref={contentRef}
-                  className={journeyContentHtml(theme)}
+                  className={journeyContentStyles}
                   dangerouslySetInnerHTML={{ __html: activeTab.content.content }}
                 />
               </div>

@@ -2,23 +2,107 @@ import { useEffect } from 'react';
 
 export function useInteractiveElements() {
   function highlight(element: HTMLElement) {
-    element.style.border = '1px solid red';
+    // Add highlight class for better styling
+    element.classList.add('interactive-highlighted');
+    
+    // Create a highlight outline element
+    const highlightOutline = document.createElement('div');
+    highlightOutline.className = 'interactive-highlight-outline';
+    
+    // Position the outline around the target element
+    const rect = element.getBoundingClientRect();
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+    
+    highlightOutline.style.position = 'absolute';
+    highlightOutline.style.top = `${rect.top + scrollTop - 4}px`;
+    highlightOutline.style.left = `${rect.left + scrollLeft - 4}px`;
+    highlightOutline.style.width = `${rect.width + 8}px`;
+    highlightOutline.style.height = `${rect.height + 8}px`;
+    highlightOutline.style.border = '2px solid #FF8800'; // Grafana orange
+    highlightOutline.style.borderRadius = '4px';
+    highlightOutline.style.pointerEvents = 'none';
+    highlightOutline.style.zIndex = '9999';
+    highlightOutline.style.backgroundColor = 'rgba(255, 136, 0, 0.1)';
+    highlightOutline.style.boxShadow = '0 0 0 4px rgba(255, 136, 0, 0.2)';
+    highlightOutline.style.animation = 'highlight-pulse 2s ease-in-out';
+    
+    document.body.appendChild(highlightOutline);
+    
+    // Remove highlight after animation completes
+    setTimeout(() => {
+      element.classList.remove('interactive-highlighted');
+      if (highlightOutline.parentNode) {
+        highlightOutline.parentNode.removeChild(highlightOutline);
+      }
+    }, 2000);
+    
     return element;
+  }
+
+  function setInteractiveState(element: HTMLElement, state: 'idle' | 'running' | 'completed' | 'error') {
+    // Remove all state classes
+    element.classList.remove('interactive-running', 'interactive-completed', 'interactive-error');
+    
+    // Add the new state class
+    if (state !== 'idle') {
+      element.classList.add(`interactive-${state}`);
+    }
+  }
+
+  function findInteractiveElement(reftarget: string): HTMLElement | null {
+    // Try to find the interactive element that triggered this action
+    const interactiveElements = document.querySelectorAll('.interactive[data-targetaction]');
+    
+    for (const element of interactiveElements) {
+      const elementReftarget = element.getAttribute('data-reftarget');
+      if (elementReftarget === reftarget) {
+        return element as HTMLElement;
+      }
+    }
+    
+    return null;
   }
   
   function interactiveFocus(reftarget: string, click: boolean = true) {
     console.log("Interactive focus called for:", reftarget);
+    const interactiveElement = findInteractiveElement(reftarget);
+    
+    if (interactiveElement) {
+      setInteractiveState(interactiveElement, 'running');
+    }
+    
     const targetElements = document.querySelectorAll(reftarget);
     
-    targetElements.forEach(element => {
-      highlight((element as HTMLElement));
-      if (click) {
-        (element as HTMLElement).click();
+    try {
+      targetElements.forEach(element => {
+        highlight((element as HTMLElement));
+        if (click) {
+          (element as HTMLElement).click();
+        }
+      });
+      
+      // Mark as completed after successful execution
+      if (interactiveElement) {
+        setTimeout(() => {
+          setInteractiveState(interactiveElement, 'completed');
+        }, 500);
       }
-    });
+    } catch (error) {
+      console.error("Error in interactiveFocus:", error);
+      if (interactiveElement) {
+        setInteractiveState(interactiveElement, 'error');
+      }
+    }
   }
 
   function interactiveButton(reftarget: string, click: boolean = true) {
+    const interactiveElement = findInteractiveElement(reftarget);
+    
+    if (interactiveElement) {
+      setInteractiveState(interactiveElement, 'running');
+    }
+    
     function findButtonByText(targetText: string) {
       const buttons = document.querySelectorAll('button');
     
@@ -28,11 +112,27 @@ export function useInteractiveElements() {
       });
     }
 
-    const buttons = findButtonByText(reftarget);
-    buttons.forEach(button => {
-      highlight(button);
-      button.click();
-    });
+    try {
+      const buttons = findButtonByText(reftarget);
+      buttons.forEach(button => {
+        highlight(button);
+        if (click) {
+          button.click();
+        }
+      });
+      
+      // Mark as completed after successful execution
+      if (interactiveElement) {
+        setTimeout(() => {
+          setInteractiveState(interactiveElement, 'completed');
+        }, 500);
+      }
+    } catch (error) {
+      console.error("Error in interactiveButton:", error);
+      if (interactiveElement) {
+        setInteractiveState(interactiveElement, 'error');
+      }
+    }
   }
 
   async function runSequence(sequence: HTMLButtonElement[]): Promise<HTMLButtonElement[]> {
@@ -60,30 +160,56 @@ export function useInteractiveElements() {
     }
 
     console.log("Interactive sequence called for:", reftarget);
-    const targetElements = document.querySelectorAll(reftarget);
-
-    if(targetElements.length === 0 || targetElements.length > 1) {
-      const msg = (targetElements.length + 
-        " interactive sequence elements found matching selector: " + reftarget + 
-        " - this is not supported");
-      throw new Error(msg);
-    } 
-
-    activeRefs.add(reftarget);
-
-    // Find all button elements with onClick attributes, no matter how deeply nested
-    const buttonsWithOnClick = Array.from(targetElements[0].querySelectorAll('button[onclick]')) as HTMLButtonElement[];
+    const interactiveElement = findInteractiveElement(reftarget);
     
-    console.log(`Found ${buttonsWithOnClick.length} buttons with onClick in element:`, targetElements[0]);
-    console.log("Buttons in sequence:", buttonsWithOnClick);      
+    if (interactiveElement) {
+      setInteractiveState(interactiveElement, 'running');
+    }
     
-    await runSequence(buttonsWithOnClick);
-    activeRefs.delete(reftarget);
-    return reftarget;
+    try {
+      const targetElements = document.querySelectorAll(reftarget);
+
+      if(targetElements.length === 0 || targetElements.length > 1) {
+        const msg = (targetElements.length + 
+          " interactive sequence elements found matching selector: " + reftarget + 
+          " - this is not supported");
+        throw new Error(msg);
+      } 
+
+      activeRefs.add(reftarget);
+
+      // Find all button elements with onClick attributes, no matter how deeply nested
+      const buttonsWithOnClick = Array.from(targetElements[0].querySelectorAll('button[onclick]')) as HTMLButtonElement[];
+      
+      console.log(`Found ${buttonsWithOnClick.length} buttons with onClick in element:`, targetElements[0]);
+      console.log("Buttons in sequence:", buttonsWithOnClick);      
+      
+      await runSequence(buttonsWithOnClick);
+      
+      // Mark as completed after successful execution
+      if (interactiveElement) {
+        setInteractiveState(interactiveElement, 'completed');
+      }
+      
+      activeRefs.delete(reftarget);
+      return reftarget;
+    } catch (error) {
+      console.error("Error in interactiveSequence:", error);
+      if (interactiveElement) {
+        setInteractiveState(interactiveElement, 'error');
+      }
+      activeRefs.delete(reftarget);
+      throw error;
+    }
   } 
 
   function interactiveFormFill(reftarget: string, value: string) {
     console.log(`Interactive link clicked, targeting: ${reftarget} with ${value}`);
+    const interactiveElement = findInteractiveElement(reftarget);
+    
+    if (interactiveElement) {
+      setInteractiveState(interactiveElement, 'running');
+    }
     
     try {
       const targetElements = document.querySelectorAll(reftarget);
@@ -161,8 +287,18 @@ export function useInteractiveElements() {
         console.log('Triggered comprehensive event sequence for form element');            
       });
       
+      // Mark as completed after successful execution
+      if (interactiveElement) {
+        setTimeout(() => {
+          setInteractiveState(interactiveElement, 'completed');
+        }, 500);
+      }
+      
     } catch (error) {
       console.error('Error applying interactive action for selector ' + reftarget);
+      if (interactiveElement) {
+        setInteractiveState(interactiveElement, 'error');
+      }
     }
   }
 

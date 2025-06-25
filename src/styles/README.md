@@ -4,6 +4,59 @@ Organized CSS-in-JS styling with Grafana theme integration, extracted from the m
 
 ## Files Overview
 
+### `interactive.styles.ts` ⭐ **Interactive Elements Styling**
+**Purpose**: Specialized styling for interactive elements within documentation content
+**Role**: 
+- Provides theme-aware styling for interactive buttons and elements
+- Manages visual states (idle, running, completed, error)
+- Integrates with the interactive hook system
+- Offers consistent UI patterns for user actions
+
+**Key Features**:
+
+#### Interactive Element States
+- **Idle State**: Primary-themed buttons with play icons (▶)
+- **Completed State**: Green styling with checkmark (✓) 
+- **Running State**: Warning-themed with spinning icon (⟳)
+- **Error State**: Error-themed with warning icon (⚠)
+
+#### Action Type Indicators
+- **Highlight Actions**: Eye icon (👁) for UI highlighting
+- **Button Actions**: Button icon (🔘) for clicking buttons
+- **Form Fill Actions**: Pencil icon (📝) for form interactions
+- **Sequence Actions**: Special container styling for multi-step processes
+
+#### Visual Design
+- Distinctive left border for clear identification
+- Consistent with Grafana button patterns but visually distinct
+- Hover effects and smooth transitions
+- Responsive design for mobile devices
+- Theme-aware colors that work in light/dark modes
+
+#### Integration Points
+- Works with `src/utils/interactive.hook.ts` for functionality
+- Applied to elements with `class="interactive"` and `data-targetaction` attributes
+- Global styles for highlight animations and element targeting
+
+**Usage**:
+```typescript
+import { getInteractiveStyles, addGlobalInteractiveStyles } from './interactive.styles';
+
+// Add to component styling
+const styles = css`
+  ${getInteractiveStyles(theme)}
+`;
+
+// Initialize global styles
+addGlobalInteractiveStyles();
+```
+
+**Used By**:
+- Content rendered in `src/components/docs-panel/docs-panel.tsx`
+- Interactive elements processed by `src/utils/interactive.hook.ts`
+
+---
+
 ### `docs-panel.styles.ts` ⭐ **Component Styling**
 **Purpose**: Main styling functions for the documentation panel components
 **Role**: 
