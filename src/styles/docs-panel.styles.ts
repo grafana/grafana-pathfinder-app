@@ -121,9 +121,9 @@ export const getContainerStyles = (theme: GrafanaTheme2) => ({
     border: `1px solid ${theme.colors.border.weak}`,
     borderTop: 'none',
     borderBottom: 'none',
-    margin: theme.spacing(-1),
-    height: `calc(100% + ${theme.spacing(2)})`,
-    width: `calc(100% + ${theme.spacing(2)})`,
+    margin: 0,
+    height: '100%',
+    width: '100%',
   }),
   content: css({
     label: 'combined-journey-content',
