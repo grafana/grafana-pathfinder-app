@@ -10,6 +10,7 @@ export interface LearningJourneyContent {
   milestones: Milestone[];
   lastFetched: string;
   summary?: string; // Summary extracted from first 3 paragraphs
+  hashFragment?: string; // For anchor scrolling
 }
 
 export interface SideJourneyItem {
@@ -109,6 +110,7 @@ function getAuthHeaders(): Record<string, string> {
 
 /**
  * Convert a regular docs URL to unstyled.html version for content fetching
+ * Preserves hash fragments for anchor links
  */
 function getUnstyledContentUrl(url: string): string {
   // Don't modify index.json URLs
@@ -116,25 +118,37 @@ function getUnstyledContentUrl(url: string): string {
     return url;
   }
   
+  // Split URL and hash fragment
+  const [baseUrl, hash] = url.split('#');
+  
   // Convert relative URLs to absolute URLs first
   let absoluteUrl: string;
-  if (url.startsWith('/')) {
+  if (baseUrl.startsWith('/')) {
     // Relative URL starting with / - prepend base URL
-    absoluteUrl = `${getDocsBaseUrl()}${url}`;
-  } else if (url.startsWith('http')) {
+    absoluteUrl = `${getDocsBaseUrl()}${baseUrl}`;
+  } else if (baseUrl.startsWith('http')) {
     // Already absolute URL
-    absoluteUrl = url;
+    absoluteUrl = baseUrl;
   } else {
     // Relative URL without leading slash - prepend base URL with slash
-    absoluteUrl = `${getDocsBaseUrl()}/${url}`;
+    absoluteUrl = `${getDocsBaseUrl()}/${baseUrl}`;
   }
   
+  let unstyledUrl: string;
   // For learning journey and docs pages, append unstyled.html
   if (absoluteUrl.endsWith('/')) {
-    return `${absoluteUrl}unstyled.html`;
+    unstyledUrl = `${absoluteUrl}unstyled.html`;
   } else {
-    return `${absoluteUrl}/unstyled.html`;
+    unstyledUrl = `${absoluteUrl}/unstyled.html`;
   }
+  
+  // Re-attach hash fragment if it exists
+  if (hash) {
+    unstyledUrl += `#${hash}`;
+    console.log(`🔗 Preserved hash fragment in learning journey: ${url} -> ${unstyledUrl}`);
+  }
+  
+  return unstyledUrl;
 }
 
 /**
@@ -146,7 +160,7 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     const absoluteBaseUrl = baseUrl.startsWith('/') ? `${getDocsBaseUrl()}${baseUrl}` : baseUrl;
     const jsonUrl = `${absoluteBaseUrl}index.json`;
     
-    console.log(`Fetching milestones from JSON: ${jsonUrl}`);
+    console.log(`📋 Fetching milestones from JSON: ${jsonUrl}`);
     
     const jsonContent = await fetchDirectFast(jsonUrl);
     
@@ -362,11 +376,11 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
     isCoverPage = currentMilestone === 0;
     summary = isCoverPage ? extractJourneySummary(doc) : '';
     
-    // Extract main content - work with the entire body since there's no wrapper
-    const mainContentResult = extractMainContent(doc, isCoverPage);
-    
-    // Add conclusion image at the top for destination-reached milestone
-    let finalContent = mainContentResult.content;
+      // Extract main content - work with the entire body since there's no wrapper
+  const mainContentResult = extractMainContent(doc, isCoverPage, url);
+  
+  // Add conclusion image at the top for destination-reached milestone
+  let finalContent = mainContentResult.content;
     if (currentMilestone > 0 && milestones && milestones.length > 0) {
       const currentMilestoneData = milestones.find(m => m.number === currentMilestone);
       
@@ -420,7 +434,7 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
 /**
  * Extract main content from learning journey HTML - work with entire body
  */
-function extractMainContent(doc: Document, isCoverPage: boolean): { content: string; } {
+function extractMainContent(doc: Document, isCoverPage: boolean, url: string): { content: string; } {
   // Work with the entire body since there's no wrapper container
   const bodyElement = doc.body;
   
@@ -431,14 +445,14 @@ function extractMainContent(doc: Document, isCoverPage: boolean): { content: str
   }
   
   // Process the content directly from body
-  const processedContent = processLearningJourneyContent(bodyElement, isCoverPage);
+  const processedContent = processLearningJourneyContent(bodyElement, isCoverPage, url);
   return processedContent;
 }
 
 /**
  * Process learning journey content for better display - updated for new structure
  */
-function processLearningJourneyContent(element: Element, isCoverPage: boolean): { content: string; } {
+function processLearningJourneyContent(element: Element, isCoverPage: boolean, url: string): { content: string; } {
   const clonedElement = element.cloneNode(true) as Element;
   
   
@@ -532,12 +546,49 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean): 
     }
   });
   
-  // Process links to ensure they open in new tabs
+  // Process links to handle docs links vs external links differently
   const links = clonedElement.querySelectorAll('a[href]');
-  links.forEach(link => {
-    link.setAttribute('target', '_blank');
-    link.setAttribute('rel', 'noopener noreferrer');
-    link.setAttribute('data-journey-link', 'true');
+  links.forEach((link, index) => {
+    let href = link.getAttribute('href');
+    if (href) {
+      const docsBaseUrl = getDocsBaseUrl(); // Should be https://grafana.com
+      let finalHref = href;
+      
+      // Resolve relative URLs to absolute URLs first
+      if (href.startsWith('/')) {
+        // Absolute path from root
+        finalHref = `${docsBaseUrl}${href}`;
+        link.setAttribute('href', finalHref);
+        console.log(`🔗 Link ${index}: Fixed absolute path ${href} -> ${finalHref}`);
+      } else if (href.startsWith('../') || (!href.startsWith('http') && !href.startsWith('mailto:') && !href.startsWith('#'))) {
+        // Relative path (either ../path or simple path like "alertmanager/")
+        const currentUrl = url; // Use the current page URL as context
+        try {
+          const resolvedUrl = new URL(href, currentUrl);
+          finalHref = resolvedUrl.href;
+          link.setAttribute('href', finalHref);
+          console.log(`🔗 Link ${index}: Resolved relative URL ${href} -> ${finalHref} (base: ${currentUrl})`);
+        } catch (error) {
+          console.warn(`🔗 Link ${index}: Failed to resolve relative URL ${href}, leaving as-is`);
+        }
+      }
+      
+      // Now check if the final href is a docs link
+      const isDocsLink = finalHref.startsWith(`${docsBaseUrl}/docs/`) || 
+                        (finalHref.startsWith('/docs/') && !finalHref.startsWith('//'));
+      
+      if (isDocsLink) {
+        // Docs links - will be handled by app tab system
+        link.setAttribute('data-docs-internal-link', 'true');
+        link.setAttribute('data-journey-link', 'true');
+        // Don't set target="_blank" for docs links - they'll be handled by our click handler
+      } else {
+        // External links - open in new browser tab
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener noreferrer');
+        link.setAttribute('data-journey-link', 'true');
+      }
+    }
   });
   
   // Process admonitions (notes, warnings, etc.) from new structure
@@ -679,6 +730,9 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
   const unstyledUrl = getUnstyledContentUrl(url);
   console.log(`Using unstyled URL: ${unstyledUrl}`);
   
+  // Split hash fragment for fetch (server doesn't need it) but preserve for content
+  const [fetchUrl, hashFragment] = unstyledUrl.split('#');
+  
   // Check cache first (use original URL as cache key)
   const cached = contentCache.get(url);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
@@ -694,19 +748,19 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
   let htmlContent: string | null = null;
   
   try {
-    console.log('Trying direct fetch...');
+    console.log('🚀 Starting learning journey fetch with redirect handling...');
     const startTime = Date.now();
-    htmlContent = await fetchDirectFast(unstyledUrl);
+    htmlContent = await fetchJourneyWithRetry(fetchUrl); // Fetch without hash
     const duration = Date.now() - startTime;
     
     if (htmlContent && htmlContent.trim().length > 0) {
-      console.log(`✅ Direct fetch succeeded in ${duration}ms, content length: ${htmlContent.length}`);
+      console.log(`✅ Learning journey fetch with retry succeeded in ${duration}ms, content length: ${htmlContent.length}`);
     } else {
-      console.warn(`❌ Direct fetch returned empty content after ${duration}ms`);
+      console.warn(`❌ Learning journey fetch with retry returned empty content after ${duration}ms`);
       htmlContent = null;
     }
   } catch (error) {
-    console.warn(`❌ Direct fetch failed:`, error);
+    console.warn(`❌ Learning journey fetch with retry failed:`, error);
     htmlContent = null;
   }
   
@@ -714,21 +768,22 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
   if (!htmlContent && !isCoverPageUrl && !url.endsWith('/')) {
     const urlWithSlash = url + '/';
     const unstyledUrlWithSlash = getUnstyledContentUrl(urlWithSlash);
+    const [fetchUrlWithSlash] = unstyledUrlWithSlash.split('#'); // Remove hash for fetch
     console.log(`Trying milestone URL with trailing slash: ${unstyledUrlWithSlash}`);
     
     try {
       const startTime = Date.now();
-      htmlContent = await fetchDirectFast(unstyledUrlWithSlash);
+      htmlContent = await fetchJourneyWithRetry(fetchUrlWithSlash);
       const duration = Date.now() - startTime;
       
       if (htmlContent && htmlContent.trim().length > 0) {
-        console.log(`✅ Direct fetch with slash succeeded in ${duration}ms, content length: ${htmlContent.length}`);
+        console.log(`✅ Learning journey fetch with slash and retry succeeded in ${duration}ms, content length: ${htmlContent.length}`);
       } else {
-        console.warn(`❌ Direct fetch with slash returned empty content after ${duration}ms`);
+        console.warn(`❌ Learning journey fetch with slash and retry returned empty content after ${duration}ms`);
         htmlContent = null;
       }
     } catch (error) {
-      console.warn(`❌ Direct fetch with slash failed:`, error);
+      console.warn(`❌ Learning journey fetch with slash and retry failed:`, error);
       htmlContent = null;
     }
   }
@@ -740,6 +795,13 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
   
   // Extract content
   const content = await extractLearningJourneyContent(htmlContent, url); // Use original URL for content
+  
+  // Add hash fragment to the content for scrolling
+  if (hashFragment) {
+    content.hashFragment = hashFragment;
+    console.log(`🔗 Added hash fragment for learning journey scrolling: #${hashFragment}`);
+  }
+  
   console.log(`Extracted content: ${content.title}, milestones: ${content.milestones.length}`);
   
   // Cache the result (use original URL as cache key)
@@ -749,11 +811,11 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
 }
 
 /**
- * Try direct fetch (faster version)
+ * Try direct fetch with redirect handling (for learning journeys)
  */
 async function fetchDirectFast(url: string): Promise<string | null> {
   try {
-    console.log('Trying direct fetch...');
+    console.log('🌐 Trying direct learning journey fetch for:', url);
     
     const headers = getAuthHeaders();
     
@@ -761,7 +823,8 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     const fetchOptions: RequestInit = {
       method: 'GET',
       headers: headers,
-      signal: AbortSignal.timeout(5000), // 5 second timeout
+      signal: AbortSignal.timeout(10000), // Increased timeout for redirects
+      redirect: 'follow', // Explicitly follow redirects
     };
     
     // If we have authentication, try with credentials and explicit CORS mode
@@ -776,17 +839,97 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     
     const response = await fetch(url, fetchOptions);
     
+    // Log redirect information
+    if (response.url !== url) {
+      console.log(`🔄 Learning journey redirect detected: ${url} -> ${response.url}`);
+    }
+    
     if (!response.ok) {
+      console.warn(`❌ Learning journey fetch failed with status ${response.status} for: ${url}`);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
     const content = await response.text();
-    console.log('Successfully fetched via direct fetch');
+    console.log(`✅ Successfully fetched learning journey (${content.length} chars) from:`, response.url);
     return content;
   } catch (error) {
-    console.warn('Direct fetch failed:', error);
+    console.warn(`❌ Direct learning journey fetch failed for ${url}:`, error);
     return null;
   }
+}
+
+/**
+ * Try multiple URL patterns for learning journeys to handle redirects
+ */
+async function fetchJourneyWithRetry(originalUrl: string): Promise<string | null> {
+  console.log(`🔄 Starting fetchJourneyWithRetry for: ${originalUrl}`);
+  
+  // First try the original URL
+  let content = await fetchDirectFast(originalUrl);
+  if (content && content.trim().length > 0) {
+    return content;
+  }
+  
+  // If the original failed, try common learning journey redirect patterns
+  const urlVariations = generateJourneyUrlVariations(originalUrl);
+  
+  for (let i = 0; i < urlVariations.length; i++) {
+    const variation = urlVariations[i];
+    console.log(`🔄 Journey retry ${i + 1}/${urlVariations.length}: Trying variation: ${variation}`);
+    
+    content = await fetchDirectFast(variation);
+    if (content && content.trim().length > 0) {
+      console.log(`✅ Success with learning journey URL variation: ${variation}`);
+      return content;
+    }
+  }
+  
+  console.warn(`❌ All learning journey retry attempts failed for: ${originalUrl}`);
+  return null;
+}
+
+/**
+ * Generate URL variations for learning journeys to handle common redirect patterns
+ */
+function generateJourneyUrlVariations(url: string): string[] {
+  const variations: string[] = [];
+  
+  // Split hash fragment to preserve it
+  const [baseUrlWithUnstyled, hashFragment] = url.split('#');
+  
+  // Remove /unstyled.html to get base URL
+  const baseUrl = baseUrlWithUnstyled.replace(/\/unstyled\.html$/, '/');
+  
+  // Common patterns for moved learning journey content
+  const patterns = [
+    // Try without trailing slash + unstyled.html
+    baseUrl.replace(/\/$/, '') + '/unstyled.html',
+    
+    // Try adding common learning journey suffixes
+    baseUrl + 'get-started/unstyled.html',
+    baseUrl + 'overview/unstyled.html',
+    baseUrl + 'introduction/unstyled.html',
+    
+    // Try removing milestone-specific paths and going to main journey
+    baseUrl.replace(/\/[^\/]+\/$/, '/unstyled.html'),
+    baseUrl.replace(/\/[^\/]+\/[^\/]+\/$/, '/unstyled.html'),
+    
+    // Try with different milestone patterns
+    baseUrl.replace(/\/([^\/]+)\/$/, '/01-$1/unstyled.html'),
+    baseUrl.replace(/\/([^\/]+)\/$/, '/$1-overview/unstyled.html'),
+  ];
+  
+  // Re-attach hash fragment if it exists and remove duplicates
+  const uniquePatterns = [...new Set(patterns)]
+    .filter(p => p !== baseUrlWithUnstyled && p.includes('/unstyled.html'))
+    .map(p => hashFragment ? `${p}#${hashFragment}` : p);
+  
+  console.log(`🔄 Generated ${uniquePatterns.length} learning journey URL variations for: ${url}`);
+  uniquePatterns.forEach((pattern, index) => {
+    console.log(`  ${index + 1}. ${pattern}`);
+  });
+  
+  return uniquePatterns;
 }
 
 /**
@@ -1028,11 +1171,12 @@ function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys
               }
               
               return `
-                <a href="#" 
+                <a href="${item.link}" 
                    class="journey-side-journey-item"
                    data-side-journey-link="true"
                    data-side-journey-url="${item.link}"
-                   data-side-journey-title="${item.title}">
+                   data-side-journey-title="${item.title}"
+                   ${item.link.startsWith(`${getDocsBaseUrl()}/docs/`) || item.link.startsWith('/docs/') ? 'data-docs-internal-link="true"' : 'target="_blank" rel="noopener noreferrer"'}>
                   <div class="journey-side-journey-icon-circle">
                     ${iconSvg}
                   </div>
@@ -1082,11 +1226,12 @@ function appendRelatedJourneysToContent(content: string, relatedJourneys: Relate
               </svg>`;
               
               return `
-                <a href="#" 
+                <a href="${item.link}" 
                    class="journey-related-journey-item"
                    data-related-journey-link="true"
                    data-related-journey-url="${item.link}"
-                   data-related-journey-title="${item.title}">
+                   data-related-journey-title="${item.title}"
+                   ${item.link.startsWith(`${getDocsBaseUrl()}/docs/`) || item.link.startsWith('/docs/') ? 'data-docs-internal-link="true"' : 'target="_blank" rel="noopener noreferrer"'}>
                   <div class="journey-related-journey-icon-circle">
                     ${iconSvg}
                   </div>

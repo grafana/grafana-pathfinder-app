@@ -236,7 +236,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async openDocsPage(url: string, title?: string): Promise<string> {
-    console.log('CombinedLearningJourneyPanel.openDocsPage called with:', { url, title });
+    console.log('📄 CombinedLearningJourneyPanel.openDocsPage called with:', { url, title });
+    console.log('📄 URL type:', typeof url, 'URL value:', url);
     
     const tabId = this.generateTabId();
     const newTab: LearningJourneyTab = {
@@ -264,6 +265,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async loadDocsTabContent(tabId: string, url: string) {
+    console.log('📄 loadDocsTabContent called with:', { tabId, url });
+    
     const tabIndex = this.state.tabs.findIndex(tab => tab.id === tabId);
     if (tabIndex === -1) {return;}
 
@@ -277,7 +280,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      console.log('Loading docs content for:', url);
+      console.log('📄 About to call fetchSingleDocsContent with URL:', url);
       const docsContent = await fetchSingleDocsContent(url);
       
       const finalTabs = [...this.state.tabs];
@@ -370,6 +373,147 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       canNavigatePrevious: () => model.canNavigatePrevious(),
     },
   });
+
+  // Handle docs internal links to open in new app tabs instead of browser tabs
+  useEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement) return;
+
+    const handleDocsLinkClick = (e: Event) => {
+      console.log('🔗 Click event detected on:', e.target);
+      const target = e.target as HTMLElement;
+      const link = target.closest('a') as HTMLAnchorElement;
+      
+      if (link) {
+        console.log('🔗 Found link element:', link);
+        console.log('🔗 Link href:', link.getAttribute('href'));
+        console.log('🔗 Link attributes:', Array.from(link.attributes).map(a => `${a.name}="${a.value}"`));
+        
+        const hasInternalAttribute = link.hasAttribute('data-docs-internal-link');
+        console.log('🔗 Has data-docs-internal-link attribute:', hasInternalAttribute);
+        
+        if (hasInternalAttribute) {
+          console.log('🔗 Intercepting internal docs link!');
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          
+          const href = link.getAttribute('href');
+          if (href) {
+            console.log('🔗 Intercepted docs link click:', href);
+            
+            // Extract title from link text or use default
+            const title = link.textContent?.trim() || 'Documentation';
+            
+            // Make sure we have a valid docs URL
+            let finalUrl = href;
+            
+            // If it's a relative URL starting with /docs/, make it absolute
+            if (href.startsWith('/docs/')) {
+              finalUrl = `https://grafana.com${href}`;
+              console.log('🔗 Converted relative URL to absolute:', finalUrl);
+            }
+            
+            // Determine if it's a learning journey or regular docs page
+            const isLearningJourney = finalUrl.includes('/learning-journeys/');
+            
+            console.log('🔗 Final URL to open in app tab:', finalUrl);
+            console.log('🔗 Is learning journey:', isLearningJourney);
+            console.log('🔗 Title:', title);
+            
+            if (isLearningJourney) {
+              model.openLearningJourney(finalUrl, title);
+            } else {
+              model.openDocsPage(finalUrl, title);
+            }
+          }
+        } else {
+          console.log('🔗 Link does not have data-docs-internal-link attribute, allowing default behavior');
+        }
+      } else {
+        console.log('🔗 No link element found in click target');
+      }
+    };
+
+    // Add event listener for docs internal links - use capture phase to intercept early
+    contentElement.addEventListener('click', handleDocsLinkClick, true);
+
+    console.log('🔗 Added click listener to content element');
+
+    // Cleanup
+    return () => {
+      contentElement.removeEventListener('click', handleDocsLinkClick, true);
+      console.log('🔗 Removed click listener from content element');
+    };
+  }, [activeTab, model]);
+
+  // Handle anchor scrolling when content with hash fragments loads
+  useEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement || !activeTab) return;
+
+    let hashFragment: string | undefined;
+    
+    // Get hash fragment from either docs content or learning journey content
+    if (activeTab.type === 'docs' && activeTab.docsContent?.hashFragment) {
+      hashFragment = activeTab.docsContent.hashFragment;
+    } else if (activeTab.type !== 'docs' && activeTab.content?.hashFragment) {
+      hashFragment = activeTab.content.hashFragment;
+    }
+
+    if (hashFragment) {
+      console.log(`🎯 Attempting to scroll to anchor: #${hashFragment}`);
+      
+      // Small delay to ensure content is fully rendered
+      setTimeout(() => {
+        // Try multiple element selection strategies
+        const targetElement = 
+          contentElement.querySelector(`#${hashFragment}`) ||
+          contentElement.querySelector(`[id="${hashFragment}"]`) ||
+          contentElement.querySelector(`[name="${hashFragment}"]`) ||
+          contentElement.querySelector(`h1:contains("${hashFragment.replace(/-/g, ' ')}")`) ||
+          contentElement.querySelector(`h2:contains("${hashFragment.replace(/-/g, ' ')}")`) ||
+          contentElement.querySelector(`h3:contains("${hashFragment.replace(/-/g, ' ')}")`) ||
+          contentElement.querySelector(`h4:contains("${hashFragment.replace(/-/g, ' ')}")`) ||
+          contentElement.querySelector(`h5:contains("${hashFragment.replace(/-/g, ' ')}")`) ||
+          contentElement.querySelector(`h6:contains("${hashFragment.replace(/-/g, ' ')}")`);
+
+        if (targetElement) {
+          console.log(`✅ Found anchor element:`, targetElement);
+          targetElement.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start',
+            inline: 'nearest'
+          });
+          
+          // Add a highlight effect to make it obvious
+          const originalBackground = (targetElement as HTMLElement).style.backgroundColor;
+          (targetElement as HTMLElement).style.backgroundColor = theme.colors.warning.main;
+          (targetElement as HTMLElement).style.transition = 'background-color 0.3s ease';
+          
+          setTimeout(() => {
+            (targetElement as HTMLElement).style.backgroundColor = originalBackground;
+            setTimeout(() => {
+              (targetElement as HTMLElement).style.transition = '';
+            }, 300);
+          }, 2000);
+          
+        } else {
+          console.warn(`❌ Could not find anchor element for: #${hashFragment}`);
+          // Fallback: try to find any element with text content matching the hash
+          const allElements = contentElement.querySelectorAll('h1, h2, h3, h4, h5, h6, [id], [name]');
+          for (const element of allElements) {
+            if (element.id.toLowerCase().includes(hashFragment.toLowerCase()) ||
+                element.textContent?.toLowerCase().replace(/\s+/g, '-').includes(hashFragment.toLowerCase())) {
+              console.log(`🔍 Found fallback anchor element:`, element);
+              element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              break;
+            }
+          }
+        }
+      }, 100);
+    }
+  }, [activeTab?.docsContent?.hashFragment, activeTab?.content?.hashFragment, activeTab?.isLoading, contentRef, theme]);
 
   // Link handling is now managed by the useLinkClickHandler hook
 

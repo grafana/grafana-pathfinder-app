@@ -5,6 +5,7 @@ export interface SingleDocsContent {
   content: string;
   url: string;
   lastFetched: string;
+  hashFragment?: string; // For anchor scrolling
 }
 
 // Simple in-memory cache for docs content
@@ -32,14 +33,27 @@ function getAuthHeaders(): Record<string, string> {
 
 /**
  * Convert a regular docs URL to unstyled.html version for content fetching
+ * Preserves hash fragments for anchor links
  */
 function getUnstyledContentUrl(url: string): string {
+  // Split URL and hash fragment
+  const [baseUrl, hash] = url.split('#');
+  
+  let unstyledUrl: string;
   // For docs pages, append unstyled.html
-  if (url.endsWith('/')) {
-    return `${url}unstyled.html`;
+  if (baseUrl.endsWith('/')) {
+    unstyledUrl = `${baseUrl}unstyled.html`;
   } else {
-    return `${url}/unstyled.html`;
+    unstyledUrl = `${baseUrl}/unstyled.html`;
   }
+  
+  // Re-attach hash fragment if it exists
+  if (hash) {
+    unstyledUrl += `#${hash}`;
+    console.log(`🔗 Preserved hash fragment: ${url} -> ${unstyledUrl}`);
+  }
+  
+  return unstyledUrl;
 }
 
 /**
@@ -74,7 +88,7 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
     console.log('Body element innerHTML length before processing:', mainElement.innerHTML.length);
     
     // Process the content
-    const processedContent = processSingleDocsContent(mainElement);
+    const processedContent = processSingleDocsContent(mainElement, url);
     
     console.log('Processed content length:', processedContent.length);
     
@@ -168,7 +182,7 @@ function processInteractiveElements(element: Element) {
 /**
  * Process single docs content for better display (simplified for unstyled.html)
  */
-function processSingleDocsContent(mainElement: Element): string {
+function processSingleDocsContent(mainElement: Element, url: string): string {
   const clonedElement = mainElement.cloneNode(true) as Element;
   
   // Remove unwanted elements (simplified for unstyled.html)
@@ -278,19 +292,67 @@ function processSingleDocsContent(mainElement: Element): string {
   
   processInteractiveElements(clonedElement);
 
-  // Process links to ensure they open in new tabs and fix relative URLs
+  // Process links to handle docs links vs external links differently
   const links = clonedElement.querySelectorAll('a[href]');
-  links.forEach(link => {
+  console.log(`🔗 Processing ${links.length} links in docs content`);
+  
+  links.forEach((link, index) => {
     const href = link.getAttribute('href');
     if (href) {
+      let finalHref = href;
+      
       // Fix relative URLs with configurable base URL
       if (href.startsWith('/')) {
-        link.setAttribute('href', `${getDocsBaseUrl()}${href}`);
+        // Absolute path from root
+        finalHref = `${getDocsBaseUrl()}${href}`;
+        link.setAttribute('href', finalHref);
+        console.log(`🔗 Link ${index}: Fixed absolute path ${href} -> ${finalHref}`);
+      } else if (href.startsWith('../') && !href.startsWith('http')) {
+        // Relative path going up directories - likely a docs link
+        // Convert to absolute URL by resolving relative to current docs context
+        const currentUrl = url; // Use the current page URL as context
+        try {
+          const resolvedUrl = new URL(href, currentUrl);
+          finalHref = resolvedUrl.href;
+          link.setAttribute('href', finalHref);
+          console.log(`🔗 Link ${index}: Resolved relative URL ${href} -> ${finalHref} (base: ${currentUrl})`);
+        } catch (error) {
+          console.warn(`🔗 Link ${index}: Failed to resolve relative URL ${href}, leaving as-is`);
+        }
+      } else if (!href.startsWith('http') && !href.startsWith('mailto:') && !href.startsWith('#')) {
+        // Simple relative path (like "alertmanager/", "aws-cloudwatch/") - resolve against current URL
+        const currentUrl = url; // Use the current page URL as context
+        try {
+          const resolvedUrl = new URL(href, currentUrl);
+          finalHref = resolvedUrl.href;
+          link.setAttribute('href', finalHref);
+          console.log(`🔗 Link ${index}: Resolved simple relative URL ${href} -> ${finalHref} (base: ${currentUrl})`);
+        } catch (error) {
+          console.warn(`🔗 Link ${index}: Failed to resolve simple relative URL ${href}, leaving as-is`);
+        }
       }
       
-      link.setAttribute('target', '_blank');
-      link.setAttribute('rel', 'noopener noreferrer');
-      link.setAttribute('data-docs-link', 'true');
+      const docsBaseUrl = getDocsBaseUrl(); // Should be https://grafana.com
+      const isDocsLink = finalHref.startsWith(`${docsBaseUrl}/docs/`) || 
+                        (href.startsWith('/docs/') && !href.startsWith('//'));
+      
+      console.log(`🔗 Link ${index}: href="${href}", finalHref="${finalHref}", isDocsLink=${isDocsLink}`);
+      
+      if (isDocsLink) {
+        // Docs links - will be handled by app tab system
+        link.setAttribute('data-docs-internal-link', 'true');
+        link.setAttribute('data-docs-link', 'true');
+        console.log(`🔗 Link ${index}: Added data-docs-internal-link="true" to docs link: ${finalHref}`);
+        // Don't set target="_blank" for docs links - they'll be handled by our click handler
+      } else {
+        // External links - open in new browser tab
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener noreferrer');
+        link.setAttribute('data-docs-link', 'true');
+        console.log(`🔗 Link ${index}: Added target="_blank" to external link: ${finalHref}`);
+      }
+    } else {
+      console.log(`🔗 Link ${index}: No href attribute found`);
     }
   });
   
@@ -351,6 +413,9 @@ export async function fetchSingleDocsContent(url: string): Promise<SingleDocsCon
   const unstyledUrl = getUnstyledContentUrl(url);
   console.log(`Using unstyled URL: ${unstyledUrl}`);
   
+  // Split hash fragment for fetch (server doesn't need it) but preserve for content
+  const [fetchUrl, hashFragment] = unstyledUrl.split('#');
+  
   // Check cache first (use original URL as cache key)
   const cached = docsContentCache.get(url);
   if (cached && Date.now() - cached.timestamp < DOCS_CACHE_DURATION) {
@@ -358,27 +423,34 @@ export async function fetchSingleDocsContent(url: string): Promise<SingleDocsCon
     return cached.content;
   }
   
-  // Try direct fetch
+  // Try fetch with retry logic for redirects
   try {
-    console.log('Trying direct docs fetch...');
+    console.log('🚀 Starting docs fetch with redirect handling...');
     const startTime = Date.now();
-    const htmlContent = await fetchDirectFast(unstyledUrl);
+    const htmlContent = await fetchWithRetry(fetchUrl); // Fetch without hash
     const duration = Date.now() - startTime;
     
     if (htmlContent && htmlContent.trim().length > 0) {
-      console.log(`✅ Direct docs fetch succeeded in ${duration}ms, content length: ${htmlContent.length}`);
+      console.log(`✅ Docs fetch with retry succeeded in ${duration}ms, content length: ${htmlContent.length}`);
       const content = extractSingleDocsContent(htmlContent, url); // Use original URL for content
-      console.log(`Extracted docs content: ${content.title}`);
+      
+      // Add hash fragment to the content for scrolling
+      if (hashFragment) {
+        content.hashFragment = hashFragment;
+        console.log(`🔗 Added hash fragment for scrolling: #${hashFragment}`);
+      }
+      
+      console.log(`📄 Extracted docs content: ${content.title}`);
       
       // Cache the result (use original URL as cache key)
       docsContentCache.set(url, { content, timestamp: Date.now() });
       
       return content;
     } else {
-      console.warn(`❌ Direct docs fetch returned empty content after ${duration}ms`);
+      console.warn(`❌ Docs fetch with retry returned empty content after ${duration}ms`);
     }
   } catch (error) {
-    console.warn(`❌ Direct docs fetch failed:`, error);
+    console.warn(`❌ Docs fetch with retry failed:`, error);
   }
   
   console.error('Direct docs fetch failed for URL:', url);
@@ -386,11 +458,11 @@ export async function fetchSingleDocsContent(url: string): Promise<SingleDocsCon
 }
 
 /**
- * Try direct fetch (faster version)
+ * Try direct fetch with redirect handling
  */
 async function fetchDirectFast(url: string): Promise<string | null> {
   try {
-    console.log('Trying direct docs fetch...');
+    console.log('🌐 Trying direct docs fetch for:', url);
     
     const headers = getAuthHeaders();
     
@@ -398,7 +470,8 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     const fetchOptions: RequestInit = {
       method: 'GET',
       headers: headers,
-      signal: AbortSignal.timeout(5000), // 5 second timeout
+      signal: AbortSignal.timeout(10000), // Increased timeout for redirects
+      redirect: 'follow', // Explicitly follow redirects
     };
     
     // If we have authentication, try with credentials and explicit CORS mode
@@ -413,17 +486,99 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     
     const response = await fetch(url, fetchOptions);
     
+    // Log redirect information
+    if (response.url !== url) {
+      console.log(`🔄 Redirect detected: ${url} -> ${response.url}`);
+    }
+    
     if (!response.ok) {
+      console.warn(`❌ Fetch failed with status ${response.status} for: ${url}`);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
     const content = await response.text();
-    console.log('Successfully fetched docs via direct fetch');
+    console.log(`✅ Successfully fetched docs (${content.length} chars) from:`, response.url);
     return content;
   } catch (error) {
-    console.warn('Direct docs fetch failed:', error);
+    console.warn(`❌ Direct docs fetch failed for ${url}:`, error);
     return null;
   }
+}
+
+/**
+ * Try multiple URL patterns to handle redirects and moved pages
+ */
+async function fetchWithRetry(originalUrl: string): Promise<string | null> {
+  console.log(`🔄 Starting fetchWithRetry for: ${originalUrl}`);
+  
+  // First try the original URL
+  let content = await fetchDirectFast(originalUrl);
+  if (content && content.trim().length > 0) {
+    return content;
+  }
+  
+  // If the original failed, try common redirect patterns
+  const urlVariations = generateUrlVariations(originalUrl);
+  
+  for (let i = 0; i < urlVariations.length; i++) {
+    const variation = urlVariations[i];
+    console.log(`🔄 Retry ${i + 1}/${urlVariations.length}: Trying variation: ${variation}`);
+    
+    content = await fetchDirectFast(variation);
+    if (content && content.trim().length > 0) {
+      console.log(`✅ Success with URL variation: ${variation}`);
+      return content;
+    }
+  }
+  
+  console.warn(`❌ All retry attempts failed for: ${originalUrl}`);
+  return null;
+}
+
+/**
+ * Generate URL variations to handle common redirect patterns
+ */
+function generateUrlVariations(url: string): string[] {
+  const variations: string[] = [];
+  
+  // Split hash fragment to preserve it
+  const [baseUrlWithUnstyled, hashFragment] = url.split('#');
+  
+  // Remove /unstyled.html to get base URL
+  const baseUrl = baseUrlWithUnstyled.replace(/\/unstyled\.html$/, '/');
+  
+  // Common patterns for moved documentation
+  const patterns = [
+    // Try without trailing slash + unstyled.html
+    baseUrl.replace(/\/$/, '') + '/unstyled.html',
+    
+    // Try adding common suffixes that indicate moved content
+    baseUrl + 'configuration/unstyled.html',
+    baseUrl + 'setup/unstyled.html',
+    baseUrl + 'get-started/unstyled.html',
+    
+    // Try variations with different directory structures
+    baseUrl.replace(/\/([^\/]+)\/$/, '/$1-config/$1/unstyled.html'),
+    baseUrl.replace(/\/([^\/]+)\/$/, '/$1/$1/unstyled.html'),
+    
+    // Try the parent directory
+    baseUrl.replace(/\/[^\/]+\/$/, '/unstyled.html'),
+    
+    // Try without the last path segment
+    baseUrl.split('/').slice(0, -2).join('/') + '/unstyled.html',
+  ];
+  
+  // Re-attach hash fragment if it exists and remove duplicates
+  const uniquePatterns = [...new Set(patterns)]
+    .filter(p => p !== baseUrlWithUnstyled && p.includes('/unstyled.html'))
+    .map(p => hashFragment ? `${p}#${hashFragment}` : p);
+  
+  console.log(`🔄 Generated ${uniquePatterns.length} URL variations for: ${url}`);
+  uniquePatterns.forEach((pattern, index) => {
+    console.log(`  ${index + 1}. ${pattern}`);
+  });
+  
+  return uniquePatterns;
 }
 
 
