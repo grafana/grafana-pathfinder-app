@@ -152,70 +152,14 @@ function processInteractiveElements(element: Element) {
     
     if(targetAction === "highlight" || targetAction === "button") {
       console.log("Adding show me and do it for selector " + reftarget);
-      showEventAction = `document.dispatchEvent(
-          new CustomEvent("interactive-${targetAction}-show", 
-            { 
-              detail: {
-                reftarget: '${reftarget.replace(/'/g, "\\'")}',
-                requirements: '${requirements}'
-              }
-            }
-          ))`;
-      doEventAction = `document.dispatchEvent(
-          new CustomEvent("interactive-${targetAction}", 
-            { 
-              detail: {
-                reftarget: '${reftarget.replace(/'/g, "\\'")}',
-                requirements: '${requirements}' 
-              }
-            }
-          ))`;
+      showEventAction = `document.dispatchEvent(new CustomEvent("interactive-${targetAction}-show"))`;
+      doEventAction = `document.dispatchEvent(new CustomEvent("interactive-${targetAction}"))`;
     } else if(targetAction === "formfill") { 
-      showEventAction = `document.dispatchEvent(
-          new CustomEvent('interactive-formfill-show', 
-            { 
-              detail: { 
-                reftarget: '${reftarget.replace(/'/g, "\\'")}',
-                requirements: '${requirements}', 
-                value: '${value.replace(/'/g, "\\'") || ''}' 
-              }
-            }
-          )
-        )`;
-      doEventAction = `document.dispatchEvent(
-          new CustomEvent('interactive-formfill', 
-            { 
-              detail: { 
-                reftarget: '${reftarget.replace(/'/g, "\\'")}', 
-                requirements: '${requirements}',
-                value: '${value.replace(/'/g, "\\'") || ''}' 
-              }
-            }
-          )
-        )`;  
+      showEventAction = `document.dispatchEvent(new CustomEvent('interactive-formfill-show'))`;
+      doEventAction = `document.dispatchEvent(new CustomEvent('interactive-formfill'))`;  
     } else if(targetAction === "sequence") {
-      showEventAction = `document.dispatchEvent(
-        new CustomEvent('interactive-sequence-show', 
-          { 
-            detail: { 
-              reftarget: '${reftarget.replace(/'/g, "\\'")}', 
-              requirements: '${requirements}',
-              value: '${value.replace(/'/g, "\\'") || ''}'
-            }
-          }
-        )
-      )`;
-      doEventAction = `document.dispatchEvent(
-        new CustomEvent('interactive-sequence', 
-          { 
-            detail: { 
-              reftarget: '${reftarget.replace(/'/g, "\\'")}',
-              requirements: '${requirements}', 
-              value: '${value.replace(/'/g, "\\'") || ''}'
-            }
-          }
-        )
-      )`;  
+      showEventAction = `document.dispatchEvent(new CustomEvent('interactive-sequence-show'))`;
+      doEventAction = `document.dispatchEvent(new CustomEvent('interactive-sequence'))`;  
     } else {
       showEventAction = `document.alert("Unknown target action: ${targetAction}")`;
       doEventAction = `document.alert("Unknown target action: ${targetAction}")`;
