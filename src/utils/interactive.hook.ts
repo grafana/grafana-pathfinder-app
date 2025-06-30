@@ -38,40 +38,7 @@ export interface InteractiveElementData {
   customData?: Record<string, string>;
 }
 
-/**
- * Generate a unique CSS selector path for an element
- */
-function getElementPath(element: HTMLElement): string {
-  const path: string[] = [];
-  let current: HTMLElement | null = element;
-  
-  while (current && current !== document.body) {
-    let selector = current.tagName.toLowerCase();
-    
-    if (current.id) {
-      selector += `#${current.id}`;
-      path.unshift(selector);
-      break; // ID is unique, stop here
-    }
-    
-    if (current.className) {
-      selector += `.${current.className.split(' ').join('.')}`;
-    }
-    
-    // Add nth-child if needed for uniqueness
-    const siblings = Array.from(current.parentElement?.children || []);
-    const sameTagSiblings = siblings.filter(s => s.tagName === current!.tagName);
-    if (sameTagSiblings.length > 1) {
-      const index = sameTagSiblings.indexOf(current) + 1;
-      selector += `:nth-child(${index})`;
-    }
-    
-    path.unshift(selector);
-    current = current.parentElement;
-  }
-  
-  return path.join(' > ');
-}
+
 
 /**
  * Extract interactive data from a DOM element
@@ -95,31 +62,9 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const requirements = element.getAttribute('data-requirements') || undefined;
   const textContent = element.textContent?.trim() || undefined;
 
-  // Debug log for attribute extraction
-  console.log(`🔍 EXTRACTING from ${element.tagName}:`, {
-    'data-reftarget': reftarget,
-    'data-targetaction': targetaction, 
-    'data-targetvalue': targetvalue,
-    'data-requirements': requirements,
-    'textContent': textContent
-  });
-
-  // Validation: Check if reftarget looks suspicious
-  if (reftarget && textContent && reftarget === textContent) {
-    console.warn(`⚠️ EXTRACTION WARNING: reftarget "${reftarget}" matches element text content - this might be incorrect`);
-    console.warn('Element details:', {
-      tagName: element.tagName,
-      attributes: Array.from(element.attributes).map(attr => `${attr.name}="${attr.value}"`),
-      textContent: textContent
-    });
-  }
-
-  // Additional validation: reftarget should typically be a CSS selector
-  if (reftarget && reftarget.length > 0) {
-    const isLikelySelector = reftarget.includes('[') || reftarget.includes('.') || reftarget.includes('#') || reftarget.includes(' ') || reftarget.includes(':');
-    if (!isLikelySelector && reftarget.length < 50) { // Basic heuristic
-      console.warn(`⚠️ EXTRACTION WARNING: reftarget "${reftarget}" doesn't look like a CSS selector`);
-    }
+  // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
+  if (reftarget && textContent && reftarget === textContent && reftarget.length > 5) {
+    console.warn(`⚠️ reftarget "${reftarget}" matches element text - check data-reftarget attribute`);
   }
 
   return {
@@ -131,7 +76,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     className: element.className || undefined,
     id: element.id || undefined,
     textContent: textContent,
-    elementPath: getElementPath(element),
+
     parentTagName: element.parentElement?.tagName.toLowerCase() || undefined,
     timestamp: Date.now(),
     customData: Object.keys(customData).length > 0 ? customData : undefined,
@@ -140,19 +85,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
 
 
 
-/**
- * Extract interactive data from the event target element
- */
-export function extractInteractiveDataFromEventTarget(event: Event): InteractiveElementData | null {
-  const target = event.target as HTMLElement;
-  const interactiveElement = target.closest('[data-targetaction]') as HTMLElement;
-  
-  if (!interactiveElement) {
-    return null;
-  }
-  
-  return extractInteractiveDataFromElement(interactiveElement);
-}
+
 
 /**
  * Find button elements that contain the specified text (case-insensitive, substring match)
@@ -246,78 +179,53 @@ export function useInteractiveElements() {
     if (state === 'completed') {
       console.log('🎯 Interactive action completed, triggering DIRECT requirement re-check');
       
-      // Direct approach: Find and re-check ALL elements with requirements immediately
-      setTimeout(() => {
-        console.log('🔄 DIRECT: Starting requirement re-check for ALL elements');
-        const allElementsWithRequirements = document.querySelectorAll('[data-requirements]');
-        console.log(`🔄 DIRECT: Found ${allElementsWithRequirements.length} elements with requirements`);
-        
-        if (allElementsWithRequirements.length > 0) {
-          // Import and use the checkElementRequirements function directly
-                     Promise.all(Array.from(allElementsWithRequirements).map(async (element, index) => {
+             // Direct approach: Find and re-check ALL elements with requirements immediately
+       setTimeout(() => {
+         console.log('🔄 Re-checking all interactive elements...');
+         const allElementsWithRequirements = document.querySelectorAll('[data-requirements]');
+         
+         if (allElementsWithRequirements.length > 0) {
+           Promise.all(Array.from(allElementsWithRequirements).map(async (element, index) => {
              const htmlElement = element as HTMLElement;
-             const requirements = htmlElement.getAttribute('data-requirements') || '';
-             const reftarget = htmlElement.getAttribute('data-reftarget') || '';
-             
-             // Validation: Ensure reftarget comes from attribute, not text content
-             const textContent = htmlElement.textContent?.trim() || '';
-             if (reftarget === textContent && reftarget.length > 0) {
-               console.warn(`⚠️ POTENTIAL ISSUE: Element ${index + 1} reftarget "${reftarget}" matches text content - this might be incorrect`);
-               console.warn('Element:', htmlElement);
-               console.warn('All attributes:', Array.from(htmlElement.attributes).map(attr => `${attr.name}="${attr.value}"`));
-             }
-             
-             // Additional validation: reftarget should look like a CSS selector
-             if (reftarget && !reftarget.includes('[') && !reftarget.includes('.') && !reftarget.includes('#') && !reftarget.includes(' ')) {
-               console.warn(`⚠️ SUSPICIOUS REFTARGET: Element ${index + 1} reftarget "${reftarget}" doesn't look like a CSS selector`);
-             }
-             
-             console.log(`🔄 DIRECT checking element ${index + 1}: ${htmlElement.tagName}[data-reftarget="${reftarget}"] text:"${textContent}"`);
              
              try {
-               // Use the existing function from this same hook
                const result = await checkElementRequirements(htmlElement);
-              console.log(`🔄 DIRECT result for element ${index + 1}:`, result);
-              
-              // Update element state directly
-              htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
-              
-              if (result.pass) {
-                htmlElement.classList.add('requirements-satisfied');
-                if (htmlElement.tagName.toLowerCase() === 'button') {
-                  (htmlElement as HTMLButtonElement).disabled = false;
-                  htmlElement.setAttribute('aria-disabled', 'false');
-                  const originalText = htmlElement.getAttribute('data-original-text');
-                  if (originalText) {
-                    htmlElement.textContent = originalText;
-                  }
-                }
-                // console.log(`✅ DIRECT: Enabled element ${index + 1}`);
-              } else {
-                htmlElement.classList.add('requirements-failed');
-                if (htmlElement.tagName.toLowerCase() === 'button') {
-                  (htmlElement as HTMLButtonElement).disabled = true;
-                  htmlElement.setAttribute('aria-disabled', 'true');
-                  const requirements = htmlElement.getAttribute('data-requirements') || '';
-                  htmlElement.title = `Requirements not met: ${requirements}`;
-                }
-                // console.log(`❌ DIRECT: Disabled element ${index + 1}`);
-              }
-            } catch (error) {
-              console.error(`🔄 DIRECT error for element ${index + 1}:`, error);
-              // Set failed state
-              htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
-              htmlElement.classList.add('requirements-failed');
-              if (htmlElement.tagName.toLowerCase() === 'button') {
-                (htmlElement as HTMLButtonElement).disabled = true;
-                htmlElement.setAttribute('aria-disabled', 'true');
-              }
-            }
-          })).then(() => {
-            console.log('🎉 DIRECT: Completed requirement re-check for ALL elements');
-          }).catch(error => {
-            console.error('❌ DIRECT: Error during requirement re-check:', error);
-          });
+                             
+               // Update element state directly
+               htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
+               
+               if (result.pass) {
+                 htmlElement.classList.add('requirements-satisfied');
+                 if (htmlElement.tagName.toLowerCase() === 'button') {
+                   (htmlElement as HTMLButtonElement).disabled = false;
+                   htmlElement.setAttribute('aria-disabled', 'false');
+                   const originalText = htmlElement.getAttribute('data-original-text');
+                   if (originalText) {
+                     htmlElement.textContent = originalText;
+                   }
+                 }
+               } else {
+                 htmlElement.classList.add('requirements-failed');
+                 if (htmlElement.tagName.toLowerCase() === 'button') {
+                   (htmlElement as HTMLButtonElement).disabled = true;
+                   htmlElement.setAttribute('aria-disabled', 'true');
+                   const requirements = htmlElement.getAttribute('data-requirements') || '';
+                   htmlElement.title = `Requirements not met: ${requirements}`;
+                 }
+               }
+             } catch (error) {
+               console.error(`Error checking element ${index + 1}:`, error);
+               // Set failed state
+               htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
+               htmlElement.classList.add('requirements-failed');
+               if (htmlElement.tagName.toLowerCase() === 'button') {
+                 (htmlElement as HTMLButtonElement).disabled = true;
+                 htmlElement.setAttribute('aria-disabled', 'true');
+               }
+             }
+           })).catch(error => {
+             console.error('Error during requirement re-check:', error);
+           });
         }
       }, 150); // Small delay to let DOM settle
     }
@@ -457,15 +365,11 @@ export function useInteractiveElements() {
       // Find all interactive elements within the sequence container
       const interactiveElements = Array.from(targetElements[0].querySelectorAll('.interactive[data-targetaction]:not([data-targetaction="sequence"])'));
       
-      console.log(`Found ${interactiveElements.length} interactive elements in sequence:`, targetElements[0]);
-      
       if (!showOnly) {
         // Full sequence: Show each step, then do each step, one by one
-        console.log("Starting step-by-step sequence...");
         await runStepByStepSequenceRef.current!(interactiveElements);
       } else {
         // Show only mode
-        console.log("Running sequence in SHOW ONLY mode...");
         await runInteractiveSequenceRef.current!(interactiveElements, true);
       }
       
@@ -503,42 +407,31 @@ export function useInteractiveElements() {
         return;
       }
       
-      console.log('Found ' + targetElements.length + ' elements matching selector' + data.reftarget);
-      
       targetElements.forEach(function(te, index) {
          const targetElement = te as HTMLElement;
 
          if (!fillForm) {
            // Show mode: only highlight, don't fill the form
            highlight(targetElement);
-           console.log('Show mode: Only highlighting element ' + (index + 1));
            return;
          }
 
          // Do mode: don't highlight, just fill the form
-
          const tagName = targetElement.tagName.toLowerCase();
          const inputType = (targetElement as HTMLInputElement).type ? (targetElement as HTMLInputElement).type.toLowerCase() : '';
-         
-         console.log('Processing element ' + (index + 1) + ' - Tag: ' + tagName + ', Type: ' + inputType);
          
          if (tagName === 'input') {
            if (inputType === 'checkbox' || inputType === 'radio') {
              (targetElement as HTMLInputElement).checked = value !== 'false' && value !== '0' && value !== '';
-             console.log('Set checked state to: ' + (targetElement as HTMLInputElement).checked);
            } else {
              (targetElement as HTMLInputElement).value = value;
-             console.log('Set input value to: ' + value);
            }
          } else if (tagName === 'textarea') {
            (targetElement as HTMLTextAreaElement).value = value;
-           console.log('Set textarea value to: ' + value);
          } else if (tagName === 'select') {
            (targetElement as HTMLSelectElement).value = value;
-           console.log('Set select value to: ' + value);
          } else {
            targetElement.textContent = value;
-           console.log('Set text content to: ' + value);
          }
         
         // Trigger multiple events to notify all possible listeners
@@ -576,8 +469,6 @@ export function useInteractiveElements() {
           syntheticEvent.simulated = true;
           targetElement.dispatchEvent(syntheticEvent);
         }
-        
-        console.log('Triggered comprehensive event sequence for form element');            
       });
       
       // Mark as completed after successful execution
@@ -604,8 +495,6 @@ export function useInteractiveElements() {
         console.warn("Skipping element with missing targetAction or reftarget:", element);
         continue;
       }
-
-      console.log(`Processing interactive element: ${data.targetaction} ${data.reftarget} (show mode: ${showMode})`);
 
       try {
         if (data.targetaction === 'highlight') {
@@ -634,8 +523,6 @@ export function useInteractiveElements() {
         continue;
       }
 
-      console.log(`Step ${i + 1}: SHOW ${data.targetaction} ${data.reftarget}`);
-
       try {
         // Step 1: Show what we're about to do
         if (data.targetaction === 'highlight') {
@@ -648,8 +535,6 @@ export function useInteractiveElements() {
 
         // Wait for highlight animation to complete before doing the action
         await new Promise(resolve => setTimeout(resolve, 1300));
-
-        console.log(`Step ${i + 1}: DO ${data.targetaction} ${data.reftarget}`);
 
         // Step 2: Actually do the action
         if (data.targetaction === 'highlight') {

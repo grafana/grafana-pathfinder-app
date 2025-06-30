@@ -467,17 +467,11 @@ export function useContentProcessing({
     const elementsWithRequirements = contentElement.querySelectorAll('[data-requirements]');
     
     if (elementsWithRequirements.length === 0) {
-      console.log('No elements with data-requirements found');
       return;
     }
-
-    console.log(`Found ${elementsWithRequirements.length} elements with data-requirements`);
     
     // Function to update element state based on requirement check
     const updateElementState = (element: HTMLElement, satisfied: boolean, isChecking = false) => {
-      const elementInfo = `${element.tagName}[${element.getAttribute('data-reftarget')}] "${element.textContent?.trim()}"`;
-      console.log(`🔧 Updating element state: ${elementInfo} - satisfied: ${satisfied}, checking: ${isChecking}`);
-      
       // Remove all requirement state classes
       element.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
       
@@ -530,15 +524,6 @@ export function useContentProcessing({
 
     // Check requirements for all elements
     const checkAllRequirements = async () => {
-      console.log('🔍 Starting requirement checks for ALL elements...');
-      console.log(`🔍 Found ${elementsWithRequirements.length} elements with requirements to check`);
-      
-      // Log all elements that will be checked
-      Array.from(elementsWithRequirements).forEach((element, index) => {
-        const htmlElement = element as HTMLElement;
-        console.log(`🔍 Element ${index + 1} to check: ${htmlElement.tagName}[${htmlElement.getAttribute('data-reftarget')}] "${htmlElement.textContent?.trim()}"`);
-      });
-      
       // Set all elements to checking state first
       Array.from(elementsWithRequirements).forEach(element => {
         updateElementState(element as HTMLElement, false, true);
@@ -547,47 +532,21 @@ export function useContentProcessing({
       // Check requirements in parallel for better performance
       const checkPromises = Array.from(elementsWithRequirements).map(async (element, index) => {
         const htmlElement = element as HTMLElement;
-        const requirements = htmlElement.getAttribute('data-requirements') || '';
-        const reftarget = htmlElement.getAttribute('data-reftarget') || '';
-        
-        console.log(`Checking requirements for element ${index + 1}:`, {
-          requirements,
-          reftarget,
-          tagName: htmlElement.tagName.toLowerCase(),
-          textContent: htmlElement.textContent?.trim()
-        });
 
         try {
           const result = await checkElementRequirements(htmlElement);
-          console.log(`📋 Element ${index + 1} requirement check result:`, result);
-          console.log(`📋 Element ${index + 1} current state - tag: ${htmlElement.tagName}, disabled: ${(htmlElement as HTMLButtonElement).disabled}, text: "${htmlElement.textContent?.trim()}"`);
-          
-          // Test if the reftarget actually exists right now
-          if (reftarget) {
-            const testElement = document.querySelector(reftarget);
-            console.log(`🔍 Direct test for "${reftarget}": ${testElement ? 'FOUND' : 'NOT FOUND'}`, testElement);
-          }
-          
           updateElementState(htmlElement, result.pass, false);
-          
-          // Log the state after update
-          console.log(`📋 Element ${index + 1} after update - disabled: ${(htmlElement as HTMLButtonElement).disabled}, classes: ${htmlElement.className}`);
-          
           return { element: htmlElement, result, index };
         } catch (error) {
           console.error(`Error checking requirements for element ${index + 1}:`, error);
           updateElementState(htmlElement, false, false);
-          
           return { element: htmlElement, result: null, index, error };
         }
       });
 
       try {
         const results = await Promise.allSettled(checkPromises);
-        const fulfilled = results.filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled');
         const rejected = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-        
-        console.log(`Requirement checks completed: ${fulfilled.length} successful, ${rejected.length} failed`);
         
         if (rejected.length > 0) {
           console.warn('Some requirement checks failed:', rejected.map(r => r.reason));
@@ -632,7 +591,6 @@ export function useContentProcessing({
     recheckRequirementsRef.current = checkAllRequirements;
 
     // Start the requirement checking process
-    console.log("Starting full interactive elements requirements checking exercise");
     checkAllRequirements();
 
   }, [activeTabContent, activeTabDocsContent, contentRef, checkElementRequirements]);
@@ -650,7 +608,6 @@ export function useContentProcessing({
         clearTimeout(recheckTimeout);
       }
       recheckTimeout = setTimeout(() => {
-        console.log('🔄 Re-checking requirements due to DOM changes...');
         if (recheckRequirementsRef.current) {
           recheckRequirementsRef.current();
         }
@@ -661,7 +618,6 @@ export function useContentProcessing({
     const handleInteractiveCompletion = (event: Event) => {
       const target = event.target as HTMLElement;
       if (target && target.classList.contains('interactive-completed')) {
-        console.log('🎯 Interactive action completed, re-checking requirements...');
         debouncedRecheck();
       }
     };
@@ -669,7 +625,6 @@ export function useContentProcessing({
          // Listen for DOM mutations that might affect requirements
      const mutationObserver = new MutationObserver((mutations) => {
        let shouldRecheck = false;
-       const detectedChanges: string[] = [];
 
        mutations.forEach((mutation) => {
          // Check for added/removed nodes that might affect requirements
@@ -684,27 +639,16 @@ export function useContentProcessing({
 
            if (hasElementChanges) {
              shouldRecheck = true;
-             detectedChanges.push(`childList: ${addedNodes.length} added, ${removedNodes.length} removed`);
-             
-             // Log what was added for debugging
-             addedNodes.forEach(node => {
-               if (node.nodeType === Node.ELEMENT_NODE) {
-                 const element = node as Element;
-                 console.log('🆕 Added element:', element.tagName, element.className, element.id);
-               }
-             });
            }
          }
 
          // Check for attribute changes that might affect requirements
          if (mutation.type === 'attributes') {
            shouldRecheck = true;
-           detectedChanges.push(`attribute: ${mutation.attributeName} on ${(mutation.target as Element).tagName}`);
          }
        });
 
        if (shouldRecheck) {
-         console.log('🔍 DOM mutation detected:', detectedChanges.join(', '));
          debouncedRecheck();
        }
      });
@@ -724,7 +668,6 @@ export function useContentProcessing({
     const handleFocusChange = () => {
       // Small delay to allow any state changes to complete
       setTimeout(() => {
-        console.log('🎯 Focus changed, checking if requirements need update...');
         debouncedRecheck();
       }, 100);
     };
@@ -734,39 +677,26 @@ export function useContentProcessing({
 
          // Listen for custom events that indicate state changes
      const handleStateChange = (event: Event) => {
-       console.log('📡 State change event detected:', event.type);
-       
-                // For interactive action completions or backup recheck, re-check immediately instead of debounced
+       // For interactive action completions or backup recheck, re-check immediately instead of debounced
          if (event.type === 'interactive-action-completed' || event.type === 'force-requirements-recheck') {
-           const eventSource = event.type === 'force-requirements-recheck' ? 'BACKUP SYSTEM' : 'PRIMARY SYSTEM';
-           console.log(`⚡ Interactive action completed (${eventSource}) - immediate FULL re-check of ALL elements`);
                     setTimeout(() => {
              if (recheckRequirementsRef.current) {
-               console.log('🔄 Calling full requirements re-check function...');
-               recheckRequirementsRef.current().then(() => {
-                 console.log('✅ Full requirements re-check completed');
-               }).catch(error => {
-                 console.error('❌ Error during requirements re-check:', error);
+               recheckRequirementsRef.current().catch(error => {
+                 console.error('Error during requirements re-check:', error);
                });
              } else {
-               console.warn('⚠️ recheckRequirementsRef.current is not available, doing direct re-check');
+               console.warn('recheckRequirementsRef.current is not available, doing direct re-check');
                
                // Fallback: directly find and check all elements with requirements
                const currentElementsWithRequirements = contentElement.querySelectorAll('[data-requirements]');
-               console.log(`🔄 Direct fallback: Found ${currentElementsWithRequirements.length} elements with requirements`);
                
                if (currentElementsWithRequirements.length > 0) {
                  // Run requirement checks directly
-                 Array.from(currentElementsWithRequirements).forEach(async (element, index) => {
+                 Array.from(currentElementsWithRequirements).forEach(async (element) => {
                    const htmlElement = element as HTMLElement;
-                   const requirements = htmlElement.getAttribute('data-requirements') || '';
-                   const reftarget = htmlElement.getAttribute('data-reftarget') || '';
-                   
-                   console.log(`🔄 Fallback checking element ${index + 1}: ${htmlElement.tagName}[${reftarget}] "${htmlElement.textContent?.trim()}"`);
                    
                    try {
                      const result = await checkElementRequirements(htmlElement);
-                     console.log(`🔄 Fallback result for element ${index + 1}:`, result);
                      
                      // Update the element state (inline version)
                      htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
@@ -784,7 +714,7 @@ export function useContentProcessing({
                        }
                      }
                    } catch (error) {
-                     console.error(`🔄 Fallback error for element ${index + 1}:`, error);
+                     console.error('Fallback error for element:', error);
                      // Set failed state (inline version)
                      htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
                      htmlElement.classList.add('requirements-failed');
@@ -814,15 +744,8 @@ export function useContentProcessing({
      ];
 
          stateChangeEvents.forEach(eventType => {
-       console.log(`📡 Adding listener for event: ${eventType}`);
        document.addEventListener(eventType, handleStateChange);
      });
-     
-     // Also add a direct listener to verify the event is being dispatched
-     const debugListener = (event: Event) => {
-       console.log(`🐛 DEBUG: Received event ${event.type} on document`);
-     };
-     document.addEventListener('interactive-action-completed', debugListener);
 
          return () => {
        // Cleanup
@@ -833,7 +756,6 @@ export function useContentProcessing({
        stateChangeEvents.forEach(eventType => {
          document.removeEventListener(eventType, handleStateChange);
        });
-       document.removeEventListener('interactive-action-completed', debugListener);
        if (recheckTimeout) {
          clearTimeout(recheckTimeout);
        }
@@ -842,7 +764,6 @@ export function useContentProcessing({
 
    // Expose manual re-check function
    const manualRecheck = useCallback(() => {
-     console.log('🔧 Manual requirement re-check triggered');
      if (recheckRequirementsRef.current) {
        recheckRequirementsRef.current();
      }
