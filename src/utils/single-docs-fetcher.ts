@@ -445,6 +445,34 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
   const anchorLinks = clonedElement.querySelectorAll('.docs-anchor-link');
   anchorLinks.forEach(anchor => anchor.remove());
   
+  // Remove interactive guide sections and their preceding headers
+  const guideSections = clonedElement.querySelectorAll('div.guide[x-data]');
+  console.log(`🗑️ Found ${guideSections.length} interactive guide sections to remove`);
+  
+  guideSections.forEach((guideSection, index) => {
+    // Check for immediately preceding header element
+    let previousElement = guideSection.previousElementSibling;
+    
+    // Skip over any whitespace or empty text nodes by checking previous elements
+    while (previousElement && (
+      previousElement.nodeType === Node.TEXT_NODE || 
+      (previousElement.nodeType === Node.ELEMENT_NODE && previousElement.textContent?.trim() === '')
+    )) {
+      previousElement = previousElement.previousElementSibling;
+    }
+    
+    // If the previous element is a header, remove it too
+    if (previousElement && /^H[1-6]$/.test(previousElement.tagName)) {
+      console.log(`🗑️ Guide ${index + 1}: Removing header "${previousElement.textContent?.trim()}" and guide section`);
+      previousElement.remove();
+    } else {
+      console.log(`🗑️ Guide ${index + 1}: Removing guide section (no preceding header found)`);
+    }
+    
+    // Remove the guide section
+    guideSection.remove();
+  });
+
   // Process admonitions (notes, warnings, etc.) - unwrap outer div and keep blockquote
   const admonitions = clonedElement.querySelectorAll('.admonition');
   admonitions.forEach(admonition => {

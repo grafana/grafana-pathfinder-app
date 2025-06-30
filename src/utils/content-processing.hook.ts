@@ -349,4 +349,102 @@ export function useContentProcessing({
       }
     });
   }, [activeTabContent, activeTabDocsContent, contentRef]);
+
+  // Process card grids for better accessibility and interactions
+  useEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement) {return;}
+
+    const cardGrids = contentElement.querySelectorAll('.card-content-grid');
+    
+    cardGrids.forEach((grid) => {
+      // Add accessibility attributes
+      grid.setAttribute('role', 'grid');
+      grid.setAttribute('aria-label', 'Documentation topics');
+      
+      const cards = grid.querySelectorAll('.card');
+      cards.forEach((card, index) => {
+        // Add accessibility attributes to cards
+        card.setAttribute('role', 'gridcell');
+        card.setAttribute('tabindex', '0');
+        
+        const title = card.querySelector('.card-title')?.textContent || `Card ${index + 1}`;
+        const description = card.querySelector('.card-description')?.textContent || '';
+        card.setAttribute('aria-label', `${title}. ${description}`);
+        
+        // Add keyboard navigation
+        if (!card.hasAttribute('data-card-listener')) {
+          const handleKeyDown = (e: Event) => {
+            const keyEvent = e as KeyboardEvent;
+            if (keyEvent.key === 'Enter' || keyEvent.key === ' ') {
+              e.preventDefault();
+              (card as HTMLElement).click();
+            }
+          };
+          
+          card.addEventListener('keydown', handleKeyDown);
+          card.setAttribute('data-card-listener', 'true');
+        }
+      });
+    });
+  }, [activeTabContent, activeTabDocsContent, contentRef]);
+
+  // Process Grafana Play components for enhanced accessibility and lazy loading
+  useEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement) {return;}
+
+    // Handle lazy loading images
+    const lazyImages = contentElement.querySelectorAll('.lazyload[data-src]');
+    lazyImages.forEach((img) => {
+      const imgElement = img as HTMLImageElement;
+      const dataSrc = imgElement.getAttribute('data-src');
+      
+      if (dataSrc && !imgElement.src) {
+        // Create intersection observer for lazy loading
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              const target = entry.target as HTMLImageElement;
+              const src = target.getAttribute('data-src');
+              if (src) {
+                target.src = src;
+                target.removeAttribute('data-src');
+                observer.unobserve(target);
+              }
+            }
+          });
+        }, {
+          rootMargin: '50px',
+          threshold: 0.1,
+        });
+        
+        observer.observe(imgElement);
+      }
+    });
+
+    // Enhance Grafana Play buttons with better interaction feedback
+    const playButtons = contentElement.querySelectorAll('.btn--primary[href*="play.grafana.org"]');
+    playButtons.forEach((button) => {
+      if (!button.hasAttribute('data-play-enhanced')) {
+        button.setAttribute('aria-label', 'Try this feature in Grafana Play (opens in new tab)');
+        button.setAttribute('data-play-enhanced', 'true');
+        
+        // Add click analytics if needed (placeholder for future implementation)
+        button.addEventListener('click', () => {
+          console.log('Grafana Play button clicked:', button.getAttribute('href'));
+        });
+      }
+    });
+
+    // Enhance Grafana Play containers with proper semantic markup
+    const playContainers = contentElement.querySelectorAll('.d-sm-flex.bg-gray-1');
+    playContainers.forEach((container) => {
+      if (!container.hasAttribute('data-play-container')) {
+        container.setAttribute('role', 'region');
+        container.setAttribute('aria-label', 'Try this feature with Grafana Play');
+        container.setAttribute('data-play-container', 'true');
+      }
+    });
+  }, [activeTabContent, activeTabDocsContent, contentRef]);
 } 

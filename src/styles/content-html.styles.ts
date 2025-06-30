@@ -1083,79 +1083,172 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     borderRadius: theme.shape.radius.default,
   },
 
-  // Hide admonition wrapper - style blockquotes directly
+  // Enhanced admonitions - milestone-style card treatment
   '& .admonition': {
-    all: 'unset',
-    display: 'contents',
+    margin: `${theme.spacing(3)} 0`,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    backgroundColor: theme.colors.background.canvas,
+    boxShadow: theme.shadows.z1,
+    overflow: 'hidden',
+    transition: 'all 0.2s ease',
+    
+    '&:hover': {
+      borderColor: theme.colors.border.medium,
+      boxShadow: theme.shadows.z2,
+    },
   },
 
-  // Blockquotes (including admonitions)
-  '& blockquote': {
+  // Admonition blockquotes - enhanced styling
+  '& .admonition blockquote': {
+    margin: 0,
+    padding: 0,
+    border: 'none',
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    fontSize: theme.typography.body.fontSize,
+    fontStyle: 'normal',
+  },
+
+  // Admonition header with icon and title
+  '& .admonition .title, & .admonition .admonition-title': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: `${theme.spacing(1.5)} ${theme.spacing(2)}`,
+    margin: 0,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightBold,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    lineHeight: 1.2,
+    fontStyle: 'normal',
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    
+    '&:before': {
+      fontSize: '16px',
+      marginRight: theme.spacing(0.5),
+      flexShrink: 0,
+    },
+  },
+
+  // Admonition content
+  '& .admonition blockquote p:not(.title):not(.admonition-title)': {
+    margin: 0,
+    padding: theme.spacing(2),
+    fontSize: theme.typography.body.fontSize,
+    lineHeight: 1.6,
+    color: theme.colors.text.primary,
+    fontStyle: 'normal',
+    
+    '&:first-of-type': {
+      paddingTop: theme.spacing(2),
+    },
+    
+    '&:last-child': {
+      paddingBottom: theme.spacing(2),
+    },
+    
+    '& + p': {
+      paddingTop: 0,
+    },
+  },
+
+  // Note admonitions
+  '& .admonition-note': {
+    borderColor: theme.colors.info.border,
+    
+    '& .title, & .admonition-title': {
+      backgroundColor: theme.colors.info.transparent,
+      color: theme.colors.info.main,
+      borderBottomColor: theme.colors.info.border,
+      
+      '&:before': {
+        content: '"ℹ️"',
+      },
+    },
+  },
+
+  // Warning/Caution admonitions
+  '& .admonition-warning, & .admonition-caution': {
+    borderColor: theme.colors.warning.border,
+    
+    '& .title, & .admonition-title': {
+      backgroundColor: theme.colors.warning.transparent,
+      color: theme.colors.warning.main,
+      borderBottomColor: theme.colors.warning.border,
+      
+      '&:before': {
+        content: '"⚠️"',
+      },
+    },
+  },
+
+  // Tip admonitions
+  '& .admonition-tip': {
+    borderColor: theme.colors.success.border,
+    
+    '& .title, & .admonition-title': {
+      backgroundColor: theme.colors.success.transparent,
+      color: theme.colors.success.main,
+      borderBottomColor: theme.colors.success.border,
+      
+      '&:before': {
+        content: '"💡"',
+      },
+    },
+  },
+
+  // Error/Danger admonitions
+  '& .admonition-error, & .admonition-danger': {
+    borderColor: theme.colors.error.border,
+    
+    '& .title, & .admonition-title': {
+      backgroundColor: theme.colors.error.transparent,
+      color: theme.colors.error.main,
+      borderBottomColor: theme.colors.error.border,
+      
+      '&:before': {
+        content: '"🚨"',
+      },
+    },
+  },
+
+  // Important admonitions
+  '& .admonition-important': {
+    borderColor: theme.colors.secondary.border,
+    
+    '& .title, & .admonition-title': {
+      backgroundColor: theme.colors.secondary.transparent,
+      color: theme.colors.secondary.main,
+      borderBottomColor: theme.colors.secondary.border,
+      
+      '&:before': {
+        content: '"❗"',
+      },
+    },
+  },
+
+  // Fallback blockquotes (non-admonition)
+  '& blockquote:not(.admonition blockquote)': {
     margin: `${theme.spacing(2)} 0`,
     padding: theme.spacing(2),
     borderLeft: `4px solid ${theme.colors.border.medium}`,
     backgroundColor: theme.colors.background.secondary,
     borderRadius: theme.shape.radius.default,
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontStyle: 'normal',
-    
-    '& .title, & .admonition-title': {
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      textTransform: 'uppercase',
-      letterSpacing: '0.05em',
-      marginBottom: theme.spacing(1),
-      marginTop: 0,
-      color: theme.colors.text.primary,
-      fontStyle: 'normal',
-    },
+    fontSize: theme.typography.body.fontSize,
+    fontStyle: 'italic',
+    color: theme.colors.text.secondary,
     
     '& p': {
       margin: `${theme.spacing(0.5)} 0`,
-      fontSize: theme.typography.bodySmall.fontSize,
-      lineHeight: 1.4,
-      color: theme.colors.text.primary,
-      fontStyle: 'normal',
+      fontSize: 'inherit',
+      lineHeight: 1.6,
+      color: 'inherit',
+      fontStyle: 'inherit',
       
       '&:last-child': {
         marginBottom: 0,
-      },
-    },
-  },
-
-  // Specific admonition types based on class names
-  '& .admonition-note blockquote': {
-    borderLeftColor: theme.colors.info.main,
-    
-    '& .title, & .admonition-title': {
-      color: theme.colors.info.main,
-      
-      '&:before': {
-        content: '"ℹ️ "',
-      },
-    },
-  },
-
-  '& .admonition-warning blockquote, & .admonition-caution blockquote': {
-    borderLeftColor: theme.colors.warning.main,
-    
-    '& .title, & .admonition-title': {
-      color: theme.colors.warning.main,
-      
-      '&:before': {
-        content: '"⚠️ "',
-      },
-    },
-  },
-
-  '& .admonition-tip blockquote': {
-    borderLeftColor: theme.colors.success.main,
-    
-    '& .title, & .admonition-title': {
-      color: theme.colors.success.main,
-      
-      '&:before': {
-        content: '"💡 "',
       },
     },
   },
@@ -1286,6 +1379,298 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
           borderRight: 'none',
         },
       },
+    },
+  },
+
+  // Card-based content grids
+  '& .card-content-grid': {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: theme.spacing(2),
+    margin: `${theme.spacing(3)} 0`,
+    width: '100%',
+    
+    // Responsive adjustments
+    '@media (max-width: 768px)': {
+      gridTemplateColumns: '1fr',
+      gap: theme.spacing(1.5),
+    },
+  },
+
+  // Individual card styling
+  '& .card': {
+    display: 'block',
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    textDecoration: 'none',
+    color: 'inherit',
+    transition: 'all 0.2s ease',
+    overflow: 'hidden',
+    height: '100%',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.medium,
+      transform: 'translateY(-2px)',
+      boxShadow: theme.shadows.z2,
+      textDecoration: 'none',
+      color: 'inherit',
+    },
+    
+    '&:active': {
+      transform: 'translateY(-1px)',
+    },
+  },
+
+  // Card content container
+  '& .card-content-container': {
+    padding: theme.spacing(2),
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    gap: theme.spacing(1),
+  },
+
+  // Card title
+  '& .card-title': {
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    lineHeight: 1.3,
+    color: theme.colors.text.primary,
+    margin: 0,
+    marginBottom: theme.spacing(0.75),
+    display: '-webkit-box',
+    '-webkit-line-clamp': '2',
+    '-webkit-box-orient': 'vertical',
+    overflow: 'hidden',
+    width: '100%',
+  },
+
+  // Card description
+  '& .card-description': {
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    lineHeight: 1.4,
+    margin: 0,
+    flex: 1,
+    display: '-webkit-box',
+    '-webkit-line-clamp': '3',
+    '-webkit-box-orient': 'vertical',
+    overflow: 'hidden',
+    width: '100%',
+  },
+
+  // Size variants
+  '& .card.sm': {
+    minHeight: '120px',
+  },
+  
+  '& .card.md': {
+    minHeight: '160px',
+  },
+  
+  '& .card.lg': {
+    minHeight: '200px',
+  },
+
+  // Utility classes for the card HTML
+  '& .mt-1': {
+    marginTop: theme.spacing(1),
+  },
+  
+  '& .p-1': {
+    padding: theme.spacing(1),
+  },
+  
+  '& .d-flex': {
+    display: 'flex',
+  },
+  
+  '& .flex-direction-column': {
+    flexDirection: 'column',
+  },
+  
+  '& .align-items-start': {
+    alignItems: 'flex-start',
+  },
+  
+  '& .justify-content-start': {
+    justifyContent: 'flex-start',
+  },
+  
+  '& .fw-500': {
+    fontWeight: 500,
+  },
+  
+  '& .fw-400': {
+    fontWeight: 400,
+  },
+  
+  '& .lh-2': {
+    lineHeight: 1.3,
+  },
+  
+  '& .text-gray-16': {
+    color: theme.colors.text.primary,
+  },
+  
+  '& .text-gray-12': {
+    color: theme.colors.text.secondary,
+  },
+  
+  '& .body-default': {
+    fontSize: theme.typography.body.fontSize,
+  },
+  
+  '& .body-small': {
+    fontSize: theme.typography.bodySmall.fontSize,
+  },
+
+  // Grafana Play promotional component - Compact version
+  '& .bg-gray-1': {
+    backgroundColor: theme.colors.background.secondary,
+  },
+
+  '& .br-12': {
+    borderRadius: '8px', // Reduced from 12px
+  },
+
+  '& .br-8': {
+    borderRadius: '6px', // Reduced from 8px
+  },
+
+  '& .d-sm-flex': {
+    display: 'flex',
+    gap: theme.spacing(1.5), // Reduced from 2
+    alignItems: 'center',
+    
+    '@media (max-width: 768px)': {
+      flexDirection: 'column',
+      textAlign: 'center',
+      gap: theme.spacing(1),
+    },
+  },
+
+  '& .flex-direction-row-reverse': {
+    flexDirection: 'row-reverse',
+    
+    '@media (max-width: 768px)': {
+      flexDirection: 'column',
+    },
+  },
+
+  '& .p-2': {
+    padding: theme.spacing(1.5), // Reduced from 2
+  },
+
+  '& .pt-0': {
+    paddingTop: 0,
+  },
+
+  '& .pb-half': {
+    paddingBottom: theme.spacing(0.25), // Reduced from 0.5
+  },
+
+  '& .pr-1': {
+    paddingRight: theme.spacing(0.75), // Reduced from 1
+  },
+
+  '& .mb-1': {
+    marginBottom: theme.spacing(0.75), // Reduced from 1
+  },
+
+  '& .mx-auto': {
+    marginLeft: 'auto',
+    marginRight: 'auto',
+  },
+
+  '& .h4': {
+    fontSize: theme.typography.h5.fontSize, // Reduced from h4
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    margin: 0,
+    lineHeight: 1.2, // Tighter line height
+  },
+
+  '& .fw-600': {
+    fontWeight: 600,
+  },
+
+  '& .w-175': {
+    minWidth: '140px', // Reduced from 175px
+  },
+
+  // Grafana Play button styling - Compact version
+  '& .btn': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(0.75), // Reduced from 1
+    padding: `${theme.spacing(1)} ${theme.spacing(2)}`, // Reduced from 1.5, 2.5
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    textDecoration: 'none',
+    fontSize: theme.typography.bodySmall.fontSize, // Reduced from body
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    whiteSpace: 'nowrap',
+    
+    '&:hover': {
+      textDecoration: 'none',
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z2,
+    },
+    
+    '&:active': {
+      transform: 'translateY(0)',
+    },
+  },
+
+  '& .btn--primary': {
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    
+    '&:hover': {
+      backgroundColor: theme.colors.primary.shade,
+      color: theme.colors.primary.contrastText,
+    },
+  },
+
+  '& .btn--large': {
+    padding: `${theme.spacing(1.25)} ${theme.spacing(2.5)}`, // Reduced from 2, 3
+    fontSize: theme.typography.body.fontSize, // Reduced from h6
+    minHeight: '36px', // Reduced from 48px
+  },
+
+  // Arrow styling for buttons - Compact version
+  '& .btn.arrow': {
+    position: 'relative',
+    
+    '&:after': {
+      content: '"→"',
+      marginLeft: theme.spacing(0.75), // Reduced from 1
+      fontSize: '1.1em', // Reduced from 1.2em
+      transition: 'transform 0.2s ease',
+    },
+    
+    '&:hover:after': {
+      transform: 'translateX(2px)',
+    },
+  },
+
+  // Grafana Play image styling - Compact version
+  '& .lazyload': {
+    maxWidth: '160px', // Much smaller, was 100%
+    height: 'auto',
+    borderRadius: theme.shape.radius.default,
+    
+    '@media (max-width: 768px)': {
+      maxWidth: '120px', // Reduced from 200px
+      marginBottom: theme.spacing(1), // Reduced from 2
     },
   },
 }); 
