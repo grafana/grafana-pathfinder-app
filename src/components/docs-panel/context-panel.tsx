@@ -46,7 +46,7 @@ interface RecommenderResponse {
 interface ContextPayload {
   path: string;
   datasources: string[];
-  context_tags: string[];
+  tags: string[];
   user_id: string;
   user_role: string;
 }
@@ -231,7 +231,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
       const payload: ContextPayload = {
         path: this.state.currentPath,
         datasources: this.state.dataSources.map(ds => ds.name),
-        context_tags: contextTags,
+        tags: contextTags,
         user_id: config.bootData.user.uid,
         user_role: config.bootData.user.orgRole || 'Viewer',
       };
