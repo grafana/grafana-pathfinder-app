@@ -1,4 +1,18 @@
 import { useEffect, useCallback, useRef } from 'react';
+import { fetchDataSources } from './context-data-fetcher';
+
+export interface InteractiveRequirementsCheck {
+  requirements: string;
+  pass: boolean;
+  error: CheckResult[];
+}
+
+export interface CheckResult {
+  requirement: string;
+  pass: boolean;
+  error?: string;
+  context?: any;
+}
 
 export function useInteractiveElements() {
   function highlight(element: HTMLElement) {
@@ -407,29 +421,122 @@ export function useInteractiveElements() {
     }
   };
 
+  const reftargetExistsCHECK = async (event: CustomEvent, check: string): Promise<CheckResult> => {
+    const targetElement = document.querySelector(event.detail.reftarget);
+    if(targetElement) {
+      return {
+        requirement: check,
+        pass: true,
+        error: "",
+        context: null,
+      }
+    } 
+      
+    return {
+      requirement: check,
+      pass: false,
+      error: "Element not found",
+      context: event.detail.reftarget,
+    }
+  }
+
+  const hasDatasourcesCHECK = async (event: CustomEvent, check: string): Promise<CheckResult> => {
+    const dataSources = await fetchDataSources();
+    if(dataSources.length > 0) {
+      return {
+        requirement: check,
+        pass: true,
+      }
+    }
+
+    return {
+      requirement: check,
+      pass: false,
+      error: "No data sources found",
+      context: dataSources,
+    }
+  }      
+
+  const checkRequirements = async (event: CustomEvent): Promise<InteractiveRequirementsCheck> => {
+    console.log("React got the event!", event);
+
+    const requirements = event.detail.requirements;
+    if (!requirements) {
+      console.warn("No requirements found for interactive element, which should not happen");
+      return {
+        requirements: requirements,
+        pass: true,
+        error: []
+      }
+    }
+
+    const checks: string[] = requirements.split(',');    
+
+    async function performCheck(check: string, event: CustomEvent): Promise<CheckResult> {
+      if(check === 'exists-reftarget') {
+        return reftargetExistsCHECK(event, check);
+      } else if(check === 'has-datasources') {
+        return hasDatasourcesCHECK(event, check);
+      }
+
+      return {
+        requirement: check,
+        pass: false,
+        error: "Unknown requirement",
+        context: null,
+      }
+    }
+
+    const results = await Promise.all(checks.map(check => performCheck(check, event)));
+
+    return {
+      requirements: requirements,
+      pass: results.every(result => result.pass),
+      error: results,  
+    }
+  }
+
   useEffect(() => {
+    // Note, that rather than use await here we're using regular promises, because this is an 
+    // event handler (which doesn't return promises, fire and forget)
     const handleCustomEvent = (event: CustomEvent) => {
       console.log("React got the event!", event);
 
-      if (event.type === "interactive-highlight") {
-        interactiveFocus(event.detail.reftarget, true); // Do mode - click
-      } else if (event.type === "interactive-highlight-show") {
-        interactiveFocus(event.detail.reftarget, false); // Show mode - don't click
-      } else if (event.type === "interactive-button") {
-        interactiveButton(event.detail.reftarget, true); // Do mode - click
-      } else if (event.type === "interactive-button-show") {
-        interactiveButton(event.detail.reftarget, false); // Show mode - don't click
-      } else if (event.type === "interactive-formfill") {
-        interactiveFormFill(event.detail.reftarget, event.detail.value, true); // Do mode - fill form
-      } else if (event.type === "interactive-formfill-show") {
-        interactiveFormFill(event.detail.reftarget, event.detail.value, false); // Show mode - don't fill
-      } else if(event.type === 'interactive-sequence') {
-        interactiveSequence(event.detail.reftarget, false); // Do mode - full sequence
-      } else if(event.type === 'interactive-sequence-show') {
-        interactiveSequence(event.detail.reftarget, true); // Show mode - highlight only
-      } else {
-        console.warn("Unknown event type:", event.type);
-      }
+      // Check requirements is important. You can't click a button if it doesn't exist on the 
+      // screen.  You can't fill a form out that doesn't exist, and so forth.  This gives us the
+      // ability to represent any number of requirements (you must have log data in order to use Explore Logs)
+      // that have to be satisifed before an interactive element will "work".
+      checkRequirements(event).then(requirementsCheck => {
+        if(!requirementsCheck.pass) {
+          console.warn("Requirements not met for interactive element:", event.detail);
+          console.warn("Requirements check results:", requirementsCheck);
+          return;
+        }
+
+        // Dispatch interactive event, depending on its type.
+        if (event.type === "interactive-highlight") {
+          interactiveFocus(event.detail.reftarget, true); // Do mode - click
+        } else if (event.type === "interactive-highlight-show") {
+          interactiveFocus(event.detail.reftarget, false); // Show mode - don't click
+        } else if (event.type === "interactive-button") {
+          interactiveButton(event.detail.reftarget, true); // Do mode - click
+        } else if (event.type === "interactive-button-show") {
+          interactiveButton(event.detail.reftarget, false); // Show mode - don't click
+        } else if (event.type === "interactive-formfill") {
+          interactiveFormFill(event.detail.reftarget, event.detail.value, true); // Do mode - fill form
+        } else if (event.type === "interactive-formfill-show") {
+          interactiveFormFill(event.detail.reftarget, event.detail.value, false); // Show mode - don't fill
+        } else if(event.type === 'interactive-sequence') {
+          interactiveSequence(event.detail.reftarget, false); // Do mode - full sequence
+        } else if(event.type === 'interactive-sequence-show') {
+          interactiveSequence(event.detail.reftarget, true); // Show mode - highlight only
+        } else {
+          console.warn("Unknown event type:", event.type);
+        }
+      })
+      .catch(error => {
+        console.error("Error in handleCustomEvent/checkRequirements:", error);
+      });
     };
 
     const events = [
