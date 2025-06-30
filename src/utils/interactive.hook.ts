@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 
 export function useInteractiveElements() {
   function highlight(element: HTMLElement) {
@@ -11,8 +11,8 @@ export function useInteractiveElements() {
     
     // Position the outline around the target element
     const rect = element.getBoundingClientRect();
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+    const scrollTop = window.scrollY || document.documentElement.scrollTop;
+    const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
     
     highlightOutline.style.position = 'absolute';
     highlightOutline.style.top = `${rect.top + scrollTop - 4}px`;
@@ -64,7 +64,7 @@ export function useInteractiveElements() {
     return null;
   }
   
-  function interactiveFocus(reftarget: string, click: boolean = true) {
+  const interactiveFocus = useCallback((reftarget: string, click = true) => {
     console.log("Interactive focus called for:", reftarget, "click:", click);
     const interactiveElement = findInteractiveElement(reftarget);
     
@@ -97,9 +97,9 @@ export function useInteractiveElements() {
         setInteractiveState(interactiveElement, 'error');
       }
     }
-  }
+  }, []);
 
-  function interactiveButton(reftarget: string, click: boolean = true) {
+  const interactiveButton = useCallback((reftarget: string, click = true) => {
     console.log("Interactive button called for:", reftarget, "click:", click);
     const interactiveElement = findInteractiveElement(reftarget);
     
@@ -140,7 +140,12 @@ export function useInteractiveElements() {
         setInteractiveState(interactiveElement, 'error');
       }
     }
-  }
+  }, []);
+
+  // Create stable refs for helper functions to avoid circular dependencies
+  const activeRefsRef = useRef(new Set<string>());
+  const runInteractiveSequenceRef = useRef<(elements: Element[], showMode: boolean) => Promise<void>>();
+  const runStepByStepSequenceRef = useRef<(elements: Element[]) => Promise<void>>();
 
   async function runSequence(sequence: HTMLButtonElement[]): Promise<HTMLButtonElement[]> {
     for(const button of sequence) {
@@ -157,89 +162,9 @@ export function useInteractiveElements() {
     return sequence;
   }
 
-  async function runInteractiveSequence(elements: Element[], showMode: boolean): Promise<void> {
-    for (const element of elements) {
-      const targetAction = element.getAttribute('data-targetaction');
-      const reftarget = element.getAttribute('data-reftarget');
-      const value = element.getAttribute('data-targetvalue') || '';
-
-      if (!targetAction || !reftarget) {
-        console.warn("Skipping element with missing targetAction or reftarget:", element);
-        continue;
-      }
-
-      console.log(`Processing interactive element: ${targetAction} ${reftarget} (show mode: ${showMode})`);
-
-      try {
-        if (targetAction === 'highlight') {
-          interactiveFocus(reftarget, !showMode); // Show mode = don't click, Do mode = click
-        } else if (targetAction === 'button') {
-          interactiveButton(reftarget, !showMode); // Show mode = don't click, Do mode = click
-        } else if (targetAction === 'formfill') {
-          interactiveFormFill(reftarget, value, !showMode); // Show mode = don't fill, Do mode = fill
-        }
-
-        // Wait for animation to complete between each action
-        await new Promise(resolve => setTimeout(resolve, 1300));
-      } catch (error) {
-        console.error(`Error processing interactive element ${targetAction} ${reftarget}:`, error);
-      }
-    }
-  }
-
-  async function runStepByStepSequence(elements: Element[]): Promise<void> {
-    for (let i = 0; i < elements.length; i++) {
-      const element = elements[i];
-      const targetAction = element.getAttribute('data-targetaction');
-      const reftarget = element.getAttribute('data-reftarget');
-      const value = element.getAttribute('data-targetvalue') || '';
-
-      if (!targetAction || !reftarget) {
-        console.warn("Skipping element with missing targetAction or reftarget:", element);
-        continue;
-      }
-
-      console.log(`Step ${i + 1}: SHOW ${targetAction} ${reftarget}`);
-
-      try {
-        // Step 1: Show what we're about to do
-        if (targetAction === 'highlight') {
-          interactiveFocus(reftarget, false); // Show mode - highlight only
-        } else if (targetAction === 'button') {
-          interactiveButton(reftarget, false); // Show mode - highlight only
-        } else if (targetAction === 'formfill') {
-          interactiveFormFill(reftarget, value, false); // Show mode - highlight only
-        }
-
-        // Wait for highlight animation to complete before doing the action
-        await new Promise(resolve => setTimeout(resolve, 1300));
-
-        console.log(`Step ${i + 1}: DO ${targetAction} ${reftarget}`);
-
-        // Step 2: Actually do the action
-        if (targetAction === 'highlight') {
-          interactiveFocus(reftarget, true); // Do mode - click
-        } else if (targetAction === 'button') {
-          interactiveButton(reftarget, true); // Do mode - click
-        } else if (targetAction === 'formfill') {
-          interactiveFormFill(reftarget, value, true); // Do mode - fill form
-        }
-
-        // Brief pause before next step (if not the last step)
-        if (i < elements.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 800));
-        }
-      } catch (error) {
-        console.error(`Error in step ${i + 1} for ${targetAction} ${reftarget}:`, error);
-      }
-    }
-  }
-
-  const activeRefs = new Set<string>();
-
-  async function interactiveSequence(reftarget: string, showOnly: boolean = false): Promise<string> {
+  const interactiveSequence = useCallback(async (reftarget: string, showOnly = false): Promise<string> => {
     // This is here so recursion cannot happen
-    if(activeRefs.has(reftarget)) {
+    if(activeRefsRef.current.has(reftarget)) {
       console.log("Interactive sequence already active for:", reftarget);
       return reftarget;
     }
@@ -261,7 +186,7 @@ export function useInteractiveElements() {
         throw new Error(msg);
       } 
 
-      activeRefs.add(reftarget);
+      activeRefsRef.current.add(reftarget);
 
       // Find all interactive elements within the sequence container
       const interactiveElements = Array.from(targetElements[0].querySelectorAll('.interactive[data-targetaction]:not([data-targetaction="sequence"])'));
@@ -271,11 +196,11 @@ export function useInteractiveElements() {
       if (!showOnly) {
         // Full sequence: Show each step, then do each step, one by one
         console.log("Starting step-by-step sequence...");
-        await runStepByStepSequence(interactiveElements);
+        await runStepByStepSequenceRef.current!(interactiveElements);
       } else {
         // Show only mode
         console.log("Running sequence in SHOW ONLY mode...");
-        await runInteractiveSequence(interactiveElements, true);
+        await runInteractiveSequenceRef.current!(interactiveElements, true);
       }
       
       // Mark as completed after successful execution
@@ -283,19 +208,19 @@ export function useInteractiveElements() {
         setInteractiveState(interactiveElement, 'completed');
       }
       
-      activeRefs.delete(reftarget);
+      activeRefsRef.current.delete(reftarget);
       return reftarget;
     } catch (error) {
       console.error("Error in interactiveSequence:", error);
       if (interactiveElement) {
         setInteractiveState(interactiveElement, 'error');
       }
-      activeRefs.delete(reftarget);
+      activeRefsRef.current.delete(reftarget);
       throw error;
     }
-  } 
+  }, []);
 
-  function interactiveFormFill(reftarget: string, value: string, fillForm: boolean = true) {
+  const interactiveFormFill = useCallback((reftarget: string, value: string, fillForm = true) => {
     console.log(`Interactive form fill called, targeting: ${reftarget} with ${value}, fillForm: ${fillForm}`);
     const interactiveElement = findInteractiveElement(reftarget);
     
@@ -401,7 +326,86 @@ export function useInteractiveElements() {
         setInteractiveState(interactiveElement, 'error');
       }
     }
-  }
+  }, []);
+
+  // Define helper functions using refs to avoid circular dependencies
+  runInteractiveSequenceRef.current = async (elements: Element[], showMode: boolean): Promise<void> => {
+    for (const element of elements) {
+      const targetAction = element.getAttribute('data-targetaction');
+      const reftarget = element.getAttribute('data-reftarget');
+      const value = element.getAttribute('data-targetvalue') || '';
+
+      if (!targetAction || !reftarget) {
+        console.warn("Skipping element with missing targetAction or reftarget:", element);
+        continue;
+      }
+
+      console.log(`Processing interactive element: ${targetAction} ${reftarget} (show mode: ${showMode})`);
+
+      try {
+        if (targetAction === 'highlight') {
+          interactiveFocus(reftarget, !showMode); // Show mode = don't click, Do mode = click
+        } else if (targetAction === 'button') {
+          interactiveButton(reftarget, !showMode); // Show mode = don't click, Do mode = click
+        } else if (targetAction === 'formfill') {
+          interactiveFormFill(reftarget, value, !showMode); // Show mode = don't fill, Do mode = fill
+        }
+
+        // Wait for animation to complete between each action
+        await new Promise(resolve => setTimeout(resolve, 1300));
+      } catch (error) {
+        console.error(`Error processing interactive element ${targetAction} ${reftarget}:`, error);
+      }
+    }
+  };
+
+  runStepByStepSequenceRef.current = async (elements: Element[]): Promise<void> => {
+    for (let i = 0; i < elements.length; i++) {
+      const element = elements[i];
+      const targetAction = element.getAttribute('data-targetaction');
+      const reftarget = element.getAttribute('data-reftarget');
+      const value = element.getAttribute('data-targetvalue') || '';
+
+      if (!targetAction || !reftarget) {
+        console.warn("Skipping element with missing targetAction or reftarget:", element);
+        continue;
+      }
+
+      console.log(`Step ${i + 1}: SHOW ${targetAction} ${reftarget}`);
+
+      try {
+        // Step 1: Show what we're about to do
+        if (targetAction === 'highlight') {
+          interactiveFocus(reftarget, false); // Show mode - highlight only
+        } else if (targetAction === 'button') {
+          interactiveButton(reftarget, false); // Show mode - highlight only
+        } else if (targetAction === 'formfill') {
+          interactiveFormFill(reftarget, value, false); // Show mode - highlight only
+        }
+
+        // Wait for highlight animation to complete before doing the action
+        await new Promise(resolve => setTimeout(resolve, 1300));
+
+        console.log(`Step ${i + 1}: DO ${targetAction} ${reftarget}`);
+
+        // Step 2: Actually do the action
+        if (targetAction === 'highlight') {
+          interactiveFocus(reftarget, true); // Do mode - click
+        } else if (targetAction === 'button') {
+          interactiveButton(reftarget, true); // Do mode - click
+        } else if (targetAction === 'formfill') {
+          interactiveFormFill(reftarget, value, true); // Do mode - fill form
+        }
+
+        // Brief pause before next step (if not the last step)
+        if (i < elements.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 800));
+        }
+      } catch (error) {
+        console.error(`Error in step ${i + 1} for ${targetAction} ${reftarget}:`, error);
+      }
+    }
+  };
 
   useEffect(() => {
     const handleCustomEvent = (event: CustomEvent) => {
@@ -444,7 +448,7 @@ export function useInteractiveElements() {
     return () => {
       events.forEach(e => document.removeEventListener(e, handleCustomEvent as EventListener));
     };
-  }, []);
+  }, [interactiveButton, interactiveFocus, interactiveFormFill, interactiveSequence]);
 
   return {
     interactiveFocus,

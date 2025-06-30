@@ -65,6 +65,35 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   // Track last processed location to avoid unnecessary updates
   const lastLocationRef = useRef<{ path: string; url: string }>({ path: '', url: '' });
 
+  // Fetch recommendations with context analysis
+  const fetchRecommendationsData = useCallback(async (
+    currentPath: string,
+    dataSources: DataSource[],
+    pathSegments: string[],
+    searchParams: Record<string, string>,
+    dashboardInfo: DashboardInfo | null
+  ) => {
+    setIsLoadingRecommendations(true);
+    setRecommendationsError(null);
+
+    // Generate context tags using the extracted utility
+    const contextState: ContextState = {
+      currentPath,
+      pathSegments,
+      searchParams,
+      dataSources,
+      dashboardInfo,
+    };
+    const contextTags = generateContextTags(contextState);
+
+    // Fetch recommendations
+    const { recommendations, error } = await fetchRecommendations(currentPath, dataSources, contextTags);
+    
+    setRecommendations(recommendations);
+    setRecommendationsError(error);
+    setIsLoadingRecommendations(false);
+  }, []);
+
   // Update context data based on current location
   const updateContext = useCallback(async () => {
     const currentPath = window.location.pathname;
@@ -117,36 +146,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
     // Fetch recommendations after we have the data sources
     await fetchRecommendationsData(currentPath, dataSources, pathSegments, searchParams, dashboardInfo);
-  }, []);
-
-  // Fetch recommendations with context analysis
-  const fetchRecommendationsData = useCallback(async (
-    currentPath: string,
-    dataSources: DataSource[],
-    pathSegments: string[],
-    searchParams: Record<string, string>,
-    dashboardInfo: DashboardInfo | null
-  ) => {
-    setIsLoadingRecommendations(true);
-    setRecommendationsError(null);
-
-    // Generate context tags using the extracted utility
-    const contextState: ContextState = {
-      currentPath,
-      pathSegments,
-      searchParams,
-      dataSources,
-      dashboardInfo,
-    };
-    const contextTags = generateContextTags(contextState);
-
-    // Fetch recommendations
-    const { recommendations, error } = await fetchRecommendations(currentPath, dataSources, contextTags);
-    
-    setRecommendations(recommendations);
-    setRecommendationsError(error);
-    setIsLoadingRecommendations(false);
-  }, []);
+  }, [fetchRecommendationsData]);
 
   // Set up location listener
   useEffect(() => {

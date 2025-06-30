@@ -172,7 +172,7 @@ export function useLinkClickHandler({
       };
     }
     return undefined;
-  }, [model, activeTab?.content, activeTab?.docsContent, theme.colors.background.primary, theme.colors.background.canvas, theme.colors.border.weak, theme.colors.text.primary, theme.colors.text.secondary]);
+  }, [contentRef, theme, model, activeTab?.content, activeTab?.docsContent]);
 }
 
 function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaTheme2) {
