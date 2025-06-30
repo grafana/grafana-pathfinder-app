@@ -377,7 +377,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   // Handle docs internal links to open in new app tabs instead of browser tabs
   useEffect(() => {
     const contentElement = contentRef.current;
-    if (!contentElement) return;
+    if (!contentElement) {return;}
 
     const handleDocsLinkClick = (e: Event) => {
       console.log('🔗 Click event detected on:', e.target);
@@ -450,7 +450,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   // Handle anchor scrolling when content with hash fragments loads
   useEffect(() => {
     const contentElement = contentRef.current;
-    if (!contentElement || !activeTab) return;
+    if (!contentElement || !activeTab) {return;}
 
     let hashFragment: string | undefined;
     
@@ -513,7 +513,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         }
       }, 100);
     }
-  }, [activeTab?.docsContent?.hashFragment, activeTab?.content?.hashFragment, activeTab?.isLoading, contentRef, theme]);
+  }, [activeTab?.docsContent?.hashFragment, activeTab?.content?.hashFragment, activeTab?.isLoading, activeTab, contentRef, theme]);
 
   // Link handling is now managed by the useLinkClickHandler hook
 

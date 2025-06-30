@@ -165,6 +165,8 @@ export function useContentProcessing({
           textArea.select();
           
           try {
+            // Fallback for older browsers - execCommand is deprecated but still needed for compatibility
+            // eslint-disable-next-line deprecation/deprecation
             const success = document.execCommand('copy');
             if (success) {
               copyButton.innerHTML = `
@@ -265,6 +267,8 @@ export function useContentProcessing({
           textArea.select();
           
           try {
+            // Fallback for older browsers - execCommand is deprecated but still needed for compatibility
+            // eslint-disable-next-line deprecation/deprecation
             const success = document.execCommand('copy');
             if (success) {
               copyButton.innerHTML = `

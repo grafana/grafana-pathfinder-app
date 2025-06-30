@@ -126,7 +126,7 @@ function processInteractiveElements(element: Element) {
 
     console.log("Adding show me and do it buttons for " + tagName + " target " + reftarget + " with " + targetAction);
     
-    const createButton = (text: string, className: string = '') => {
+    const createButton = (text: string, className = '') => {
       const button = document.createElement('button');
       button.textContent = text;
       if (className) {
@@ -204,7 +204,7 @@ function processInteractiveElements(element: Element) {
       doEventAction = `document.alert("Unknown target action: ${targetAction}")`;
     }
 
-    if (tagName == 'a') {
+    if (tagName === 'a') {
       // For anchor tags, just add the do action (maintains backward compatibility)
       block.setAttribute('onclick', doEventAction);
     } else {
@@ -708,8 +708,6 @@ function generateUrlVariations(url: string): string[] {
   
   return uniquePatterns;
 }
-
-
 
 /**
  * Clear single docs cache
