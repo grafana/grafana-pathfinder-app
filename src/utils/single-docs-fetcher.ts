@@ -473,34 +473,49 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
     guideSection.remove();
   });
 
-  // Process admonitions (notes, warnings, etc.) - unwrap outer div and keep blockquote
+  // Process admonitions (notes, warnings, etc.) - simplify to match learning journey style
   const admonitions = clonedElement.querySelectorAll('.admonition');
-  admonitions.forEach(admonition => {
+  console.log(`📝 Found ${admonitions.length} admonitions to process`);
+  
+  admonitions.forEach((admonition, index) => {
     const blockquote = admonition.querySelector('blockquote');
     
     if (blockquote) {
-      // Transfer admonition classes to the blockquote
-      blockquote.classList.add('admonition');
+      console.log(`📝 Admonition ${index + 1}: Processing with blockquote structure`);
       
-      // Check for specific admonition types and add appropriate classes to blockquote
+      // Create a simple wrapper div with admonition classes (matching learning journey structure)
+      const wrapper = clonedElement.ownerDocument.createElement('div');
+      
+      // Transfer admonition classes to the wrapper
       if (admonition.classList.contains('admonition-note')) {
-        blockquote.classList.add('admonition-note');
+        wrapper.classList.add('admonition-note');
       } else if (admonition.classList.contains('admonition-warning')) {
-        blockquote.classList.add('admonition-warning');
+        wrapper.classList.add('admonition-warning');
       } else if (admonition.classList.contains('admonition-caution')) {
-        blockquote.classList.add('admonition-caution');
+        wrapper.classList.add('admonition-caution');
       } else if (admonition.classList.contains('admonition-tip')) {
-        blockquote.classList.add('admonition-tip');
+        wrapper.classList.add('admonition-tip');
+      } else {
+        wrapper.classList.add('admonition-note'); // Default to note
       }
       
-      // Process title elements within blockquote
+      // Clean up the blockquote for simple styling
+      blockquote.removeAttribute('class'); // Remove all classes
+      
+      // Process title elements within blockquote to match learning journey format
       const titleElement = blockquote.querySelector('.title');
       if (titleElement) {
         titleElement.classList.add('title');
       }
       
-      // Replace the outer div with just the blockquote
-      admonition.parentNode?.replaceChild(blockquote, admonition);
+      // Wrap the blockquote and replace the original admonition
+      wrapper.appendChild(blockquote);
+      admonition.parentNode?.replaceChild(wrapper, admonition);
+      
+      console.log(`📝 Admonition ${index + 1}: Converted to simple learning journey style`);
+    } else {
+      console.log(`📝 Admonition ${index + 1}: No blockquote found, removing`);
+      admonition.remove();
     }
   });
   

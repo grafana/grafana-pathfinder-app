@@ -1083,148 +1083,79 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     borderRadius: theme.shape.radius.default,
   },
 
-  // Enhanced admonitions - milestone-style card treatment
+  // Simple admonitions - matching learning journey style
   '& .admonition': {
-    margin: `${theme.spacing(3)} 0`,
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
-    backgroundColor: theme.colors.background.canvas,
-    boxShadow: theme.shadows.z1,
-    overflow: 'hidden',
-    transition: 'all 0.2s ease',
-    
-    '&:hover': {
-      borderColor: theme.colors.border.medium,
-      boxShadow: theme.shadows.z2,
-    },
+    all: 'unset',
+    display: 'contents',
   },
 
-  // Admonition blockquotes - enhanced styling
-  '& .admonition blockquote': {
-    margin: 0,
-    padding: 0,
-    border: 'none',
-    backgroundColor: 'transparent',
-    borderRadius: 0,
-    fontSize: theme.typography.body.fontSize,
-    fontStyle: 'normal',
-  },
-
-  // Admonition header with icon and title
-  '& .admonition .title, & .admonition .admonition-title': {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: `${theme.spacing(1.5)} ${theme.spacing(2)}`,
-    margin: 0,
-    fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.fontWeightBold,
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-    lineHeight: 1.2,
-    fontStyle: 'normal',
-    borderBottom: `1px solid ${theme.colors.border.weak}`,
-    
-    '&:before': {
-      fontSize: '16px',
-      marginRight: theme.spacing(0.5),
-      flexShrink: 0,
-    },
-  },
-
-  // Admonition content
-  '& .admonition blockquote p:not(.title):not(.admonition-title)': {
-    margin: 0,
+  // Blockquotes (including admonitions) - simple learning journey style
+  '& blockquote': {
+    margin: `${theme.spacing(2)} 0`,
     padding: theme.spacing(2),
-    fontSize: theme.typography.body.fontSize,
-    lineHeight: 1.6,
-    color: theme.colors.text.primary,
+    borderLeft: `4px solid ${theme.colors.border.medium}`,
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
     fontStyle: 'normal',
     
-    '&:first-of-type': {
-      paddingTop: theme.spacing(2),
+    '& .title, & .admonition-title': {
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightBold,
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em',
+      marginBottom: theme.spacing(1),
+      marginTop: 0,
+      color: theme.colors.text.primary,
+      fontStyle: 'normal',
     },
     
-    '&:last-child': {
-      paddingBottom: theme.spacing(2),
-    },
-    
-    '& + p': {
-      paddingTop: 0,
+    '& p': {
+      margin: `${theme.spacing(0.5)} 0`,
+      fontSize: theme.typography.bodySmall.fontSize,
+      lineHeight: 1.4,
+      color: theme.colors.text.primary,
+      fontStyle: 'normal',
+      
+      '&:last-child': {
+        marginBottom: 0,
+      },
     },
   },
 
-  // Note admonitions
-  '& .admonition-note': {
-    borderColor: theme.colors.info.border,
+  // Specific admonition types - simple learning journey style
+  '& .admonition-note blockquote': {
+    borderLeftColor: theme.colors.info.main,
     
     '& .title, & .admonition-title': {
-      backgroundColor: theme.colors.info.transparent,
       color: theme.colors.info.main,
-      borderBottomColor: theme.colors.info.border,
       
       '&:before': {
-        content: '"ℹ️"',
+        content: '"ℹ️ "',
       },
     },
   },
 
-  // Warning/Caution admonitions
-  '& .admonition-warning, & .admonition-caution': {
-    borderColor: theme.colors.warning.border,
+  '& .admonition-warning blockquote, & .admonition-caution blockquote': {
+    borderLeftColor: theme.colors.warning.main,
     
     '& .title, & .admonition-title': {
-      backgroundColor: theme.colors.warning.transparent,
       color: theme.colors.warning.main,
-      borderBottomColor: theme.colors.warning.border,
       
       '&:before': {
-        content: '"⚠️"',
+        content: '"⚠️ "',
       },
     },
   },
 
-  // Tip admonitions
-  '& .admonition-tip': {
-    borderColor: theme.colors.success.border,
+  '& .admonition-tip blockquote': {
+    borderLeftColor: theme.colors.success.main,
     
     '& .title, & .admonition-title': {
-      backgroundColor: theme.colors.success.transparent,
       color: theme.colors.success.main,
-      borderBottomColor: theme.colors.success.border,
       
       '&:before': {
-        content: '"💡"',
-      },
-    },
-  },
-
-  // Error/Danger admonitions
-  '& .admonition-error, & .admonition-danger': {
-    borderColor: theme.colors.error.border,
-    
-    '& .title, & .admonition-title': {
-      backgroundColor: theme.colors.error.transparent,
-      color: theme.colors.error.main,
-      borderBottomColor: theme.colors.error.border,
-      
-      '&:before': {
-        content: '"🚨"',
-      },
-    },
-  },
-
-  // Important admonitions
-  '& .admonition-important': {
-    borderColor: theme.colors.secondary.border,
-    
-    '& .title, & .admonition-title': {
-      backgroundColor: theme.colors.secondary.transparent,
-      color: theme.colors.secondary.main,
-      borderBottomColor: theme.colors.secondary.border,
-      
-      '&:before': {
-        content: '"❗"',
+        content: '"💡 "',
       },
     },
   },
