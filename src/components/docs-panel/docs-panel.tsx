@@ -530,7 +530,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
               <Icon name="book" size="lg" />
             </div>
             <div className={styles.titleText}>
-              Learning Journeys
+              Documentation
             </div>
           </div>
         </div>

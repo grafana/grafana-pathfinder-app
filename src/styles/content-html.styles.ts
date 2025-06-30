@@ -664,6 +664,56 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     fontSize: theme.typography.body.fontSize,
   },
 
+  // Orange outline list styling (from learning journeys)
+  '& .orange-outline-list': {
+    borderRadius: '12px',
+    border: '2px solid #ff671d',
+    padding: theme.spacing(1.5),
+    paddingBottom: theme.spacing(1),
+    backgroundColor: theme.colors.background.primary,
+    margin: `${theme.spacing(2)} 0`,
+    
+    '& .icon-heading': {
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: theme.spacing(1.5),
+      marginBottom: theme.spacing(1),
+      
+      '& .icon-heading__container': {
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '30px',
+        height: '30px',
+      },
+      
+      '& h2': {
+        margin: 0,
+        fontSize: theme.typography.h4.fontSize,
+        fontWeight: theme.typography.fontWeightMedium,
+        color: theme.colors.text.primary,
+        lineHeight: 1.3,
+      },
+    },
+    
+    '& p': {
+      marginBottom: theme.spacing(1.5),
+    },
+    
+    '& ul': {
+      marginBottom: 0,
+      
+      '& li': {
+        marginBottom: theme.spacing(0.5),
+        
+        '&:last-child': {
+          marginBottom: 0,
+        },
+      },
+    },
+  },
+
   // Bottom navigation
   '& .journey-bottom-navigation': {
     margin: `${theme.spacing(4)} 0 ${theme.spacing(2)} 0`,
@@ -1130,6 +1180,56 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     '&::-webkit-scrollbar-thumb': {
       backgroundColor: theme.colors.border.medium,
       borderRadius: '3px',
+    },
+  },
+
+  // Orange outline list styling (from learning journeys)
+  '& .orange-outline-list': {
+    borderRadius: '12px',
+    border: '2px solid #ff671d',
+    padding: theme.spacing(1.5),
+    paddingBottom: theme.spacing(1),
+    backgroundColor: theme.colors.background.primary,
+    margin: `${theme.spacing(2)} 0`,
+    
+    '& .icon-heading': {
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: theme.spacing(1.5),
+      marginBottom: theme.spacing(1),
+      
+      '& .icon-heading__container': {
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '30px',
+        height: '30px',
+      },
+      
+      '& h2': {
+        margin: 0,
+        fontSize: theme.typography.h4.fontSize,
+        fontWeight: theme.typography.fontWeightMedium,
+        color: theme.colors.text.primary,
+        lineHeight: 1.3,
+      },
+    },
+    
+    '& p': {
+      marginBottom: theme.spacing(1.5),
+    },
+    
+    '& ul': {
+      marginBottom: 0,
+      
+      '& li': {
+        marginBottom: theme.spacing(0.5),
+        
+        '&:last-child': {
+          marginBottom: 0,
+        },
+      },
     },
   },
 

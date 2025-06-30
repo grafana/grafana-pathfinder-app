@@ -1184,6 +1184,7 @@ function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys
               // Determine icon based on URL type
               let iconSvg = '';
               let typeLabel = 'External';
+              let isInternalDocsLink = item.link.startsWith(`${getDocsBaseUrl()}/docs/`) || item.link.startsWith('/docs/');
               
               if (item.link.includes('youtube.com') || item.link.includes('youtu.be')) {
                 // Video icon
@@ -1191,8 +1192,15 @@ function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys
                   <polygon points="5,3 19,12 5,21"></polygon>
                 </svg>`;
                 typeLabel = 'Video';
+              } else if (isInternalDocsLink) {
+                // Document icon for internal docs
+                iconSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14,2 14,8 20,8"></polyline>
+                </svg>`;
+                typeLabel = 'Documentation';
               } else {
-                // Document icon
+                // Document icon for external links
                 iconSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                   <polyline points="14,2 14,8 20,8"></polyline>
@@ -1214,13 +1222,13 @@ function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys
                     <div class="journey-side-journey-title">${item.title}</div>
                     <div class="journey-side-journey-type">${typeLabel}</div>
                   </div>
-                  <div class="journey-side-journey-external-icon">
+                  ${!isInternalDocsLink ? `<div class="journey-side-journey-external-icon">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                       <polyline points="15,3 21,3 21,9"></polyline>
                       <line x1="10" y1="14" x2="21" y2="3"></line>
                     </svg>
-                  </div>
+                  </div>` : ''}
                 </a>
               `;
             }).join('')}

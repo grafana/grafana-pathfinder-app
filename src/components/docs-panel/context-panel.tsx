@@ -532,6 +532,11 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   // Group recommendations by type
   const learningJourneys = recommendations.filter(rec => rec.type === 'learning-journey' || !rec.type);
   const otherDocs = recommendations.filter(rec => rec.type === 'docs-page');
+  
+  // If there are no learning journeys but there are docs, promote docs to primary display
+  const shouldPromoteDocsAsPrimary = learningJourneys.length === 0 && otherDocs.length > 0;
+  const primaryRecommendations = shouldPromoteDocsAsPrimary ? otherDocs : learningJourneys;
+  const secondaryDocs = shouldPromoteDocsAsPrimary ? [] : otherDocs;
 
   return (
     <div className={styles.container}>
@@ -547,9 +552,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
           <div className={styles.contextSections}>
             <div className={styles.sectionHeader}>
               <Icon name="question-circle" size="lg" className={styles.headerIcon} />
-              <h2 className={styles.sectionTitle}>Recommended Learning Journeys</h2>
+              <h2 className={styles.sectionTitle}>Recommended Documentation</h2>
               <p className={styles.sectionSubtitle}>
-                Based on your current context, here are some learning journeys that may be beneficial.
+                Based on your current context, here are some learning journeys and documentation that may be beneficial.
               </p>
             </div>
 
@@ -576,71 +581,83 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             
             {!isLoadingRecommendations && recommendations.length > 0 && (
               <div className={styles.recommendationsContainer}>
-                {/* Learning Journeys Section */}
-                {learningJourneys.length > 0 && (
+                {/* Primary Recommendations Section (Learning Journeys or Docs if no journeys) */}
+                {primaryRecommendations.length > 0 && (
                   <div className={styles.recommendationsGrid}>
-                    {learningJourneys.map((recommendation, index) => (
-                      <Card key={index} className={styles.recommendationCard}>
-                        <div className={styles.recommendationCardContent}>
-                          <div className={styles.cardHeader}>
+                    {primaryRecommendations.map((recommendation, index) => (
+                      <Card key={index} className={`${styles.recommendationCard} ${recommendation.type === 'docs-page' ? styles.compactCard : ''}`}>
+                        <div className={`${styles.recommendationCardContent} ${recommendation.type === 'docs-page' ? styles.compactCardContent : ''}`}>
+                          <div className={`${styles.cardHeader} ${recommendation.type === 'docs-page' ? styles.compactHeader : ''}`}>
                             <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
                             <div className={styles.cardActions}>
                               <button 
-                                onClick={() => model.openLearningJourney(recommendation.url, recommendation.title)}
+                                onClick={() => {
+                                  if (recommendation.type === 'docs-page') {
+                                    model.openDocsPage(recommendation.url, recommendation.title);
+                                  } else {
+                                    model.openLearningJourney(recommendation.url, recommendation.title);
+                                  }
+                                }}
                                 className={styles.startButton}
                               >
-                                <Icon name="play" size="sm" />
-                                Start
+                                <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
+                                {recommendation.type === 'docs-page' ? 'View' : 'Start'}
                               </button>
                             </div>
                           </div>
                           
-                          <div className={styles.cardMetadata}>
-                            <div className={styles.summaryInfo}>
-                              <button
-                                onClick={() => model.toggleSummaryExpansion(index)}
-                                className={styles.summaryButton}
-                              >
-                                <Icon name="info-circle" size="sm" />
-                                <span>Summary</span>
-                                <Icon name={recommendation.summaryExpanded ? "angle-up" : "angle-down"} size="sm" />
-                              </button>
-                            </div>
-                          </div>
-                          
-                          {recommendation.summaryExpanded && (
-                            <div className={styles.summaryExpansion}>
-                              {recommendation.summary && (
-                                <div className={styles.summaryContent}>
-                                  <p className={styles.summaryText}>{recommendation.summary}</p>
+                          {/* Only show summary/milestones for learning journeys or docs with summaries */}
+                          {(recommendation.type !== 'docs-page' || recommendation.summary) && (
+                            <>
+                              <div className={styles.cardMetadata}>
+                                <div className={styles.summaryInfo}>
+                                  <button
+                                    onClick={() => model.toggleSummaryExpansion(index)}
+                                    className={styles.summaryButton}
+                                  >
+                                    <Icon name="info-circle" size="sm" />
+                                    <span>Summary</span>
+                                    <Icon name={recommendation.summaryExpanded ? "angle-up" : "angle-down"} size="sm" />
+                                  </button>
                                 </div>
-                              )}
+                              </div>
                               
-                              {(recommendation.totalSteps ?? 0) > 0 && recommendation.milestones && (
-                                <div className={styles.milestonesSection}>
-                                  <div className={styles.milestonesHeader}>
-                                    <h4 className={styles.milestonesTitle}>Milestones:</h4>
-                                  </div>
-                                  <div className={styles.milestonesList}>
-                                    {recommendation.milestones.map((milestone, stepIndex) => (
-                                      <button
-                                        key={stepIndex}
-                                        onClick={() => model.openLearningJourney(milestone.url, `${recommendation.title} - ${milestone.title}`)}
-                                        className={styles.milestoneItem}
-                                      >
-                                        <div className={styles.milestoneNumber}>{milestone.number}</div>
-                                                                                 <div className={styles.milestoneContent}>
-                                           <div className={styles.milestoneTitle}>
-                                             {milestone.title}
-                                             <span className={styles.milestoneDuration}>({milestone.duration})</span>
-                                           </div>
-                                         </div>
-                                      </button>
-                                    ))}
-                                  </div>
+                              {recommendation.summaryExpanded && (
+                                <div className={styles.summaryExpansion}>
+                                  {recommendation.summary && (
+                                    <div className={styles.summaryContent}>
+                                      <p className={styles.summaryText}>{recommendation.summary}</p>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Only show milestones for learning journeys */}
+                                  {recommendation.type !== 'docs-page' && (recommendation.totalSteps ?? 0) > 0 && recommendation.milestones && (
+                                    <div className={styles.milestonesSection}>
+                                      <div className={styles.milestonesHeader}>
+                                        <h4 className={styles.milestonesTitle}>Milestones:</h4>
+                                      </div>
+                                      <div className={styles.milestonesList}>
+                                        {recommendation.milestones.map((milestone, stepIndex) => (
+                                          <button
+                                            key={stepIndex}
+                                            onClick={() => model.openLearningJourney(milestone.url, `${recommendation.title} - ${milestone.title}`)}
+                                            className={styles.milestoneItem}
+                                          >
+                                            <div className={styles.milestoneNumber}>{milestone.number}</div>
+                                            <div className={styles.milestoneContent}>
+                                               <div className={styles.milestoneTitle}>
+                                                 {milestone.title}
+                                                 <span className={styles.milestoneDuration}>({milestone.duration})</span>
+                                               </div>
+                                             </div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               )}
-                            </div>
+                            </>
                           )}
                         </div>
                       </Card>
@@ -648,8 +665,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                   </div>
                 )}
 
-                {/* Other Relevant Docs Section */}
-                {otherDocs.length > 0 && (
+                {/* Other Relevant Docs Section - only show when there are secondary docs */}
+                {secondaryDocs.length > 0 && (
                   <div className={styles.otherDocsSection}>
                     <div className={styles.otherDocsHeader}>
                       <button
@@ -660,7 +677,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                         <span>Other Relevant Docs</span>
                         <span className={styles.otherDocsCount}>
                           <Icon name="list-ul" size="xs" />
-                          {otherDocs.length} doc{otherDocs.length !== 1 ? 's' : ''}
+                          {secondaryDocs.length} doc{secondaryDocs.length !== 1 ? 's' : ''}
                         </span>
                         <Icon name={otherDocsExpanded ? "angle-up" : "angle-down"} size="sm" />
                       </button>
@@ -669,7 +686,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                     {otherDocsExpanded && (
                       <div className={styles.otherDocsExpansion}>
                         <div className={styles.otherDocsList}>
-                          {otherDocs.map((doc, index) => (
+                          {secondaryDocs.map((doc, index) => (
                             <div key={index} className={styles.otherDocItem}>
                               <div className={styles.docIcon}>
                                 <Icon name="file-alt" size="sm" />
@@ -685,9 +702,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                   {doc.title}
                                 </button>
                               </div>
-                              <div className={styles.docActions}>
-                                <Icon name="external-link-alt" size="xs" />
-                              </div>
+                              {/* No external icon needed - these docs open in app tabs */}
                             </div>
                           ))}
                         </div>
@@ -771,6 +786,10 @@ const getStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'column',
     minHeight: '120px',
   }),
+  compactCard: css({
+    padding: theme.spacing(1.5),
+    minHeight: '80px', // Much smaller for docs pages
+  }),
   recommendationCardContent: css({
     display: 'flex',
     flexDirection: 'column',
@@ -778,6 +797,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
     width: '100%',
     maxWidth: '100%',
     height: '100%',
+  }),
+  compactCardContent: css({
+    gap: theme.spacing(0.75), // Tighter spacing for docs pages
   }),
   cardHeader: css({
     display: 'flex',
@@ -788,6 +810,10 @@ const getStyles = (theme: GrafanaTheme2) => ({
     width: '100%',
     maxWidth: '100%',
     marginBottom: theme.spacing(2),
+  }),
+  compactHeader: css({
+    marginBottom: theme.spacing(1), // Reduced bottom margin for docs pages
+    alignItems: 'center', // Center align for cleaner look
   }),
   recommendationCardTitle: css({
     margin: 0,

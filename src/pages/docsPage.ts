@@ -4,7 +4,7 @@ import { ROUTES } from '../constants';
 import { CombinedLearningJourneyPanel } from '../components/docs-panel/docs-panel';
 
 export const docsPage = new SceneAppPage({
-  title: 'Learning Journeys',
+  title: 'Documentation',
   url: prefixRoute(ROUTES.Context),
   routePath: prefixRoute(ROUTES.Context),
   getScene: contextScene,
