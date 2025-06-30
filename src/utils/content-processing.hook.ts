@@ -62,7 +62,9 @@ export function useContentProcessing({
 
     const codeBlockSelectors = [
       'pre.journey-code-block',
-      'pre.docs-code-snippet',  
+      'pre.docs-code-snippet',
+      'pre.journey-standalone-code',
+      'pre.docs-standalone-code',
       'pre[class*="language-"]',
       'pre:has(code)',
       'pre'
@@ -81,10 +83,14 @@ export function useContentProcessing({
       }
     });
     
-    // Collect inline code elements
+    // Collect inline code elements (excluding those in pre blocks and standalone code blocks)
     const inlineCodeElements = contentElement.querySelectorAll('code') as NodeListOf<HTMLElement>;
     inlineCodeElements.forEach(codeEl => {
-      if (!codeEl.closest('pre') && codeEl.textContent && codeEl.textContent.trim().length > 0) {
+      if (!codeEl.closest('pre') && 
+          !codeEl.classList.contains('docs-block-code') && 
+          !codeEl.classList.contains('journey-block-code') && 
+          codeEl.textContent && 
+          codeEl.textContent.trim().length > 0) {
         allInlineCodeElements.add(codeEl);
       }
     });

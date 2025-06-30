@@ -391,6 +391,29 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     },
   },
 
+  // Standalone code blocks (converted from standalone <code> elements)
+  '& pre.journey-standalone-code': {
+    backgroundColor: theme.colors.background.secondary,
+    borderLeft: `3px solid ${theme.colors.primary.main}`,
+    maxWidth: '100%',
+    overflowX: 'auto',
+    wordBreak: 'break-word',
+    whiteSpace: 'pre-wrap',
+    
+    '&::-webkit-scrollbar': {
+      height: '6px',
+    },
+    
+    '&::-webkit-scrollbar-track': {
+      backgroundColor: theme.colors.background.canvas,
+    },
+    
+    '&::-webkit-scrollbar-thumb': {
+      backgroundColor: theme.colors.border.medium,
+      borderRadius: '3px',
+    },
+  },
+
   // Journey start section
   '& .journey-start-section': {
     margin: `${theme.spacing(4)} 0`,
@@ -1084,6 +1107,29 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
       '&:before': {
         content: '"💡 "',
       },
+    },
+  },
+
+  // Standalone code blocks (converted from standalone <code> elements)
+  '& pre.docs-standalone-code': {
+    backgroundColor: theme.colors.background.secondary,
+    borderLeft: `3px solid ${theme.colors.primary.main}`,
+    maxWidth: '100%',
+    overflowX: 'auto',
+    wordBreak: 'break-word',
+    whiteSpace: 'pre-wrap',
+    
+    '&::-webkit-scrollbar': {
+      height: '6px',
+    },
+    
+    '&::-webkit-scrollbar-track': {
+      backgroundColor: theme.colors.background.canvas,
+    },
+    
+    '&::-webkit-scrollbar-thumb': {
+      backgroundColor: theme.colors.border.medium,
+      borderRadius: '3px',
     },
   },
 

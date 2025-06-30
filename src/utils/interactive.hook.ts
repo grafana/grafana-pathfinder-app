@@ -25,7 +25,7 @@ export function useInteractiveElements() {
     highlightOutline.style.zIndex = '9999';
     highlightOutline.style.backgroundColor = 'rgba(255, 136, 0, 0.1)';
     highlightOutline.style.boxShadow = '0 0 0 4px rgba(255, 136, 0, 0.2)';
-    highlightOutline.style.animation = 'highlight-pulse 2s ease-in-out';
+    highlightOutline.style.animation = 'highlight-pulse 1.2s ease-in-out';
     
     document.body.appendChild(highlightOutline);
     
@@ -35,7 +35,7 @@ export function useInteractiveElements() {
       if (highlightOutline.parentNode) {
         highlightOutline.parentNode.removeChild(highlightOutline);
       }
-    }, 2000);
+    }, 1200);
     
     return element;
   }
@@ -65,7 +65,7 @@ export function useInteractiveElements() {
   }
   
   function interactiveFocus(reftarget: string, click: boolean = true) {
-    console.log("Interactive focus called for:", reftarget);
+    console.log("Interactive focus called for:", reftarget, "click:", click);
     const interactiveElement = findInteractiveElement(reftarget);
     
     if (interactiveElement) {
@@ -76,8 +76,11 @@ export function useInteractiveElements() {
     
     try {
       targetElements.forEach(element => {
-        highlight((element as HTMLElement));
-        if (click) {
+        if (!click) {
+          // Show mode: only highlight, don't click
+          highlight((element as HTMLElement));
+        } else {
+          // Do mode: just click, don't highlight
           (element as HTMLElement).click();
         }
       });
@@ -97,6 +100,7 @@ export function useInteractiveElements() {
   }
 
   function interactiveButton(reftarget: string, click: boolean = true) {
+    console.log("Interactive button called for:", reftarget, "click:", click);
     const interactiveElement = findInteractiveElement(reftarget);
     
     if (interactiveElement) {
@@ -115,8 +119,11 @@ export function useInteractiveElements() {
     try {
       const buttons = findButtonByText(reftarget);
       buttons.forEach(button => {
-        highlight(button);
-        if (click) {
+        if (!click) {
+          // Show mode: only highlight, don't click
+          highlight(button);
+        } else {
+          // Do mode: just click, don't highlight
           button.click();
         }
       });
@@ -150,16 +157,94 @@ export function useInteractiveElements() {
     return sequence;
   }
 
+  async function runInteractiveSequence(elements: Element[], showMode: boolean): Promise<void> {
+    for (const element of elements) {
+      const targetAction = element.getAttribute('data-targetaction');
+      const reftarget = element.getAttribute('data-reftarget');
+      const value = element.getAttribute('data-targetvalue') || '';
+
+      if (!targetAction || !reftarget) {
+        console.warn("Skipping element with missing targetAction or reftarget:", element);
+        continue;
+      }
+
+      console.log(`Processing interactive element: ${targetAction} ${reftarget} (show mode: ${showMode})`);
+
+      try {
+        if (targetAction === 'highlight') {
+          interactiveFocus(reftarget, !showMode); // Show mode = don't click, Do mode = click
+        } else if (targetAction === 'button') {
+          interactiveButton(reftarget, !showMode); // Show mode = don't click, Do mode = click
+        } else if (targetAction === 'formfill') {
+          interactiveFormFill(reftarget, value, !showMode); // Show mode = don't fill, Do mode = fill
+        }
+
+        // Wait for animation to complete between each action
+        await new Promise(resolve => setTimeout(resolve, 1300));
+      } catch (error) {
+        console.error(`Error processing interactive element ${targetAction} ${reftarget}:`, error);
+      }
+    }
+  }
+
+  async function runStepByStepSequence(elements: Element[]): Promise<void> {
+    for (let i = 0; i < elements.length; i++) {
+      const element = elements[i];
+      const targetAction = element.getAttribute('data-targetaction');
+      const reftarget = element.getAttribute('data-reftarget');
+      const value = element.getAttribute('data-targetvalue') || '';
+
+      if (!targetAction || !reftarget) {
+        console.warn("Skipping element with missing targetAction or reftarget:", element);
+        continue;
+      }
+
+      console.log(`Step ${i + 1}: SHOW ${targetAction} ${reftarget}`);
+
+      try {
+        // Step 1: Show what we're about to do
+        if (targetAction === 'highlight') {
+          interactiveFocus(reftarget, false); // Show mode - highlight only
+        } else if (targetAction === 'button') {
+          interactiveButton(reftarget, false); // Show mode - highlight only
+        } else if (targetAction === 'formfill') {
+          interactiveFormFill(reftarget, value, false); // Show mode - highlight only
+        }
+
+        // Wait for highlight animation to complete before doing the action
+        await new Promise(resolve => setTimeout(resolve, 1300));
+
+        console.log(`Step ${i + 1}: DO ${targetAction} ${reftarget}`);
+
+        // Step 2: Actually do the action
+        if (targetAction === 'highlight') {
+          interactiveFocus(reftarget, true); // Do mode - click
+        } else if (targetAction === 'button') {
+          interactiveButton(reftarget, true); // Do mode - click
+        } else if (targetAction === 'formfill') {
+          interactiveFormFill(reftarget, value, true); // Do mode - fill form
+        }
+
+        // Brief pause before next step (if not the last step)
+        if (i < elements.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 800));
+        }
+      } catch (error) {
+        console.error(`Error in step ${i + 1} for ${targetAction} ${reftarget}:`, error);
+      }
+    }
+  }
+
   const activeRefs = new Set<string>();
 
-  async function interactiveSequence(reftarget: string): Promise<string> {
+  async function interactiveSequence(reftarget: string, showOnly: boolean = false): Promise<string> {
     // This is here so recursion cannot happen
     if(activeRefs.has(reftarget)) {
       console.log("Interactive sequence already active for:", reftarget);
       return reftarget;
     }
 
-    console.log("Interactive sequence called for:", reftarget);
+    console.log("Interactive sequence called for:", reftarget, "showOnly:", showOnly);
     const interactiveElement = findInteractiveElement(reftarget);
     
     if (interactiveElement) {
@@ -178,13 +263,20 @@ export function useInteractiveElements() {
 
       activeRefs.add(reftarget);
 
-      // Find all button elements with onClick attributes, no matter how deeply nested
-      const buttonsWithOnClick = Array.from(targetElements[0].querySelectorAll('button[onclick]')) as HTMLButtonElement[];
+      // Find all interactive elements within the sequence container
+      const interactiveElements = Array.from(targetElements[0].querySelectorAll('.interactive[data-targetaction]:not([data-targetaction="sequence"])'));
       
-      console.log(`Found ${buttonsWithOnClick.length} buttons with onClick in element:`, targetElements[0]);
-      console.log("Buttons in sequence:", buttonsWithOnClick);      
+      console.log(`Found ${interactiveElements.length} interactive elements in sequence:`, targetElements[0]);
       
-      await runSequence(buttonsWithOnClick);
+      if (!showOnly) {
+        // Full sequence: Show each step, then do each step, one by one
+        console.log("Starting step-by-step sequence...");
+        await runStepByStepSequence(interactiveElements);
+      } else {
+        // Show only mode
+        console.log("Running sequence in SHOW ONLY mode...");
+        await runInteractiveSequence(interactiveElements, true);
+      }
       
       // Mark as completed after successful execution
       if (interactiveElement) {
@@ -203,8 +295,8 @@ export function useInteractiveElements() {
     }
   } 
 
-  function interactiveFormFill(reftarget: string, value: string) {
-    console.log(`Interactive link clicked, targeting: ${reftarget} with ${value}`);
+  function interactiveFormFill(reftarget: string, value: string, fillForm: boolean = true) {
+    console.log(`Interactive form fill called, targeting: ${reftarget} with ${value}, fillForm: ${fillForm}`);
     const interactiveElement = findInteractiveElement(reftarget);
     
     if (interactiveElement) {
@@ -223,6 +315,15 @@ export function useInteractiveElements() {
       
       targetElements.forEach(function(te, index) {
          const targetElement = te as HTMLElement;
+
+         if (!fillForm) {
+           // Show mode: only highlight, don't fill the form
+           highlight(targetElement);
+           console.log('Show mode: Only highlighting element ' + (index + 1));
+           return;
+         }
+
+         // Do mode: don't highlight, just fill the form
 
          const tagName = targetElement.tagName.toLowerCase();
          const inputType = (targetElement as HTMLInputElement).type ? (targetElement as HTMLInputElement).type.toLowerCase() : '';
@@ -307,13 +408,21 @@ export function useInteractiveElements() {
       console.log("React got the event!", event);
 
       if (event.type === "interactive-highlight") {
-        interactiveFocus(event.detail.reftarget);
+        interactiveFocus(event.detail.reftarget, true); // Do mode - click
+      } else if (event.type === "interactive-highlight-show") {
+        interactiveFocus(event.detail.reftarget, false); // Show mode - don't click
       } else if (event.type === "interactive-button") {
-        interactiveButton(event.detail.reftarget);
+        interactiveButton(event.detail.reftarget, true); // Do mode - click
+      } else if (event.type === "interactive-button-show") {
+        interactiveButton(event.detail.reftarget, false); // Show mode - don't click
       } else if (event.type === "interactive-formfill") {
-        interactiveFormFill(event.detail.reftarget, event.detail.value);
+        interactiveFormFill(event.detail.reftarget, event.detail.value, true); // Do mode - fill form
+      } else if (event.type === "interactive-formfill-show") {
+        interactiveFormFill(event.detail.reftarget, event.detail.value, false); // Show mode - don't fill
       } else if(event.type === 'interactive-sequence') {
-        interactiveSequence(event.detail.reftarget);
+        interactiveSequence(event.detail.reftarget, false); // Do mode - full sequence
+      } else if(event.type === 'interactive-sequence-show') {
+        interactiveSequence(event.detail.reftarget, true); // Show mode - highlight only
       } else {
         console.warn("Unknown event type:", event.type);
       }
@@ -321,9 +430,13 @@ export function useInteractiveElements() {
 
     const events = [
       'interactive-highlight',
+      'interactive-highlight-show',
       'interactive-formfill',
+      'interactive-formfill-show',
       'interactive-button',
+      'interactive-button-show',
       'interactive-sequence',
+      'interactive-sequence-show',
     ];
 
     events.forEach(e => document.addEventListener(e, handleCustomEvent as EventListener));

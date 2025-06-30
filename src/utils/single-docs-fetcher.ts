@@ -124,18 +124,32 @@ function processInteractiveElements(element: Element) {
       return;
     }
 
-    console.log("Adding onclick attribute to " + tagName + " target " + reftarget + " with " + targetAction);
+    console.log("Adding show me and do it buttons for " + tagName + " target " + reftarget + " with " + targetAction);
     
-    const doItForMe = (text : string = "Do it") => {
+    const createButton = (text: string, className: string = '') => {
       const button = document.createElement('button');
       button.textContent = text;
+      if (className) {
+        button.className = className;
+      }
       return button;
     };
 
-    let eventAction = "";
+    // Create event actions for both show and do
+    let showEventAction = "";
+    let doEventAction = "";
+    
     if(targetAction === "highlight" || targetAction === "button") {
-      console.log("Adding highlight for selector " + reftarget);
-      eventAction = `document.dispatchEvent(
+      console.log("Adding show me and do it for selector " + reftarget);
+      showEventAction = `document.dispatchEvent(
+          new CustomEvent("interactive-${targetAction}-show", 
+            { 
+              detail: {
+                reftarget: '${reftarget.replace(/'/g, "\\'")}' 
+              }
+            }
+          ))`;
+      doEventAction = `document.dispatchEvent(
           new CustomEvent("interactive-${targetAction}", 
             { 
               detail: {
@@ -144,7 +158,17 @@ function processInteractiveElements(element: Element) {
             }
           ))`;
     } else if(targetAction === "formfill") { 
-      eventAction = `document.dispatchEvent(
+      showEventAction = `document.dispatchEvent(
+          new CustomEvent('interactive-formfill-show', 
+            { 
+              detail: { 
+                reftarget: '${reftarget.replace(/'/g, "\\'")}', 
+                value: '${value.replace(/'/g, "\\'") || ''}' 
+              }
+            }
+          )
+        )`;
+      doEventAction = `document.dispatchEvent(
           new CustomEvent('interactive-formfill', 
             { 
               detail: { 
@@ -155,7 +179,17 @@ function processInteractiveElements(element: Element) {
           )
         )`;  
     } else if(targetAction === "sequence") {
-      eventAction = `document.dispatchEvent(
+      showEventAction = `document.dispatchEvent(
+        new CustomEvent('interactive-sequence-show', 
+          { 
+            detail: { 
+              reftarget: '${reftarget.replace(/'/g, "\\'")}', 
+              value: '${value.replace(/'/g, "\\'") || ''}'
+            }
+          }
+        )
+      )`;
+      doEventAction = `document.dispatchEvent(
         new CustomEvent('interactive-sequence', 
           { 
             detail: { 
@@ -166,15 +200,36 @@ function processInteractiveElements(element: Element) {
         )
       )`;  
     } else {
-      eventAction = `document.alert("Unknown target action: ${targetAction}")`;
+      showEventAction = `document.alert("Unknown target action: ${targetAction}")`;
+      doEventAction = `document.alert("Unknown target action: ${targetAction}")`;
     }
 
     if (tagName == 'a') {
-      block.setAttribute('onclick', eventAction);
+      // For anchor tags, just add the do action (maintains backward compatibility)
+      block.setAttribute('onclick', doEventAction);
     } else {
-      const button = doItForMe(tagName === 'span' ? 'Do SECTION' : 'Do It');
-      button.setAttribute('onclick', eventAction);
-      block.appendChild(button);
+      // Create button container for better layout
+      const buttonContainer = document.createElement('div');
+      buttonContainer.className = 'interactive-button-container';
+      
+      if (targetAction === "sequence") {
+        // For sequence, create a single button that shows then does
+        const sequenceButton = createButton('Do SECTION', 'interactive-sequence-button');
+        sequenceButton.setAttribute('onclick', doEventAction);
+        buttonContainer.appendChild(sequenceButton);
+      } else {
+        // For individual actions, create both Show me and Do it buttons
+        const showButton = createButton('Show me', 'interactive-show-button');
+        showButton.setAttribute('onclick', showEventAction);
+        
+        const doButton = createButton('Do it', 'interactive-do-button');
+        doButton.setAttribute('onclick', doEventAction);
+        
+        buttonContainer.appendChild(showButton);
+        buttonContainer.appendChild(doButton);
+      }
+      
+      block.appendChild(buttonContainer);
     }
   })
 }
@@ -283,11 +338,41 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
     }
   });
   
-  // Process inline code elements
-  const inlineCodes = clonedElement.querySelectorAll('code:not(pre code)');
-  inlineCodes.forEach(code => {
-    // Add class for styling
-    code.classList.add('docs-inline-code');
+  // Process code elements - differentiate between standalone and inline
+  const allCodeElements = clonedElement.querySelectorAll('code:not(pre code)');
+  allCodeElements.forEach(code => {
+    // Check if this is a standalone code block vs inline code
+    const parent = code.parentElement;
+    const isStandaloneCode = parent && (
+      parent.tagName === 'BODY' || // Direct child of body
+      (parent.tagName !== 'P' && parent.tagName !== 'SPAN' && parent.tagName !== 'A' && parent.tagName !== 'LI' && parent.tagName !== 'TD' && parent.tagName !== 'TH') || // Not within inline/text elements
+      (parent.children.length === 1 && parent.textContent?.trim() === code.textContent?.trim()) // Only child with same content
+    );
+    
+    if (isStandaloneCode && code.textContent && code.textContent.trim().length > 20) { // Threshold for standalone code
+      // Convert standalone code to a proper code block
+      const preWrapper = clonedElement.ownerDocument.createElement('pre');
+      preWrapper.className = 'docs-code-snippet docs-standalone-code';
+      preWrapper.style.position = 'relative';
+      preWrapper.style.whiteSpace = 'pre-wrap'; // Enable wrapping
+      preWrapper.style.wordBreak = 'break-word'; // Break long words
+      preWrapper.style.overflowWrap = 'break-word'; // Handle overflow
+      
+      // Create new code element for the pre
+      const newCodeElement = clonedElement.ownerDocument.createElement('code');
+      newCodeElement.textContent = code.textContent;
+      newCodeElement.className = 'docs-block-code';
+      
+      preWrapper.appendChild(newCodeElement);
+      
+      // Replace the original code element with the pre wrapper
+      code.parentNode?.replaceChild(preWrapper, code);
+      
+      console.log(`🔄 Converted standalone code to code block: ${code.textContent?.substring(0, 50)}...`);
+    } else {
+      // Keep as inline code
+      code.classList.add('docs-inline-code');
+    }
   });
   
   processInteractiveElements(clonedElement);

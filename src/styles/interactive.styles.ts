@@ -19,16 +19,18 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
     
     // Style the list items inside sequences
     '& li.interactive': {
-      paddingLeft: theme.spacing(3),
+      paddingLeft: theme.spacing(4), // More space for better layout
       margin: `${theme.spacing(1)} 0`,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
       
       '&::before': {
-        left: 0,
+        left: 0, // Use full container space
         top: '50%',
         transform: 'translateY(-50%)',
+        width: '20px',
+        height: '20px',
       },
     },
     
@@ -36,18 +38,26 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
     '& li:not(.interactive)': {
       margin: `${theme.spacing(1)} 0`,
       color: theme.colors.text.primary,
-      paddingLeft: theme.spacing(3),
+      paddingLeft: theme.spacing(4), // Match interactive items spacing
       display: 'flex',
       alignItems: 'center',
       minHeight: '24px',
+      position: 'relative', // Needed for absolute positioning
       
       // Add a subtle bullet point for non-interactive items
       '&::before': {
         content: '"•"',
         position: 'absolute',
-        left: theme.spacing(1),
+        left: 0, // Use full container space
+        top: '50%',
+        transform: 'translateY(-50%)',
         color: theme.colors.text.secondary,
-        fontSize: '12px',
+        fontSize: '14px',
+        width: '20px',
+        height: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
       },
     },
     
@@ -66,23 +76,24 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
     // Only add subtle icon indicator, no heavy styling
     '&[data-targetaction]:not([data-targetaction="sequence"])': {
       position: 'relative',
-      paddingLeft: theme.spacing(3), // Space for icon
+      paddingLeft: theme.spacing(4), // More space for better layout
       
-      // Add small subtle icon indicator
+      // Add consistent task icon indicator
       '&::before': {
-        content: '"▶"',
+        content: '"✓"', // Consistent task/check icon
         position: 'absolute',
         left: 0,
-        top: '0.3em',
+        top: '50%',
+        transform: 'translateY(-50%)',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        width: '16px',
-        height: '16px',
+        width: '20px',
+        height: '20px',
         backgroundColor: theme.colors.primary.main,
         color: theme.colors.primary.contrastText,
         borderRadius: '50%',
-        fontSize: '8px',
+        fontSize: '10px',
         fontWeight: 'bold',
         flexShrink: 0,
         transition: 'all 0.2s ease',
@@ -117,21 +128,26 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
     },
   },
 
-  // Style the actual "Do It" buttons that are in the HTML
+  // Button container for show me / do it buttons
+  '& .interactive-button-container': {
+    display: 'flex',
+    gap: theme.spacing(1),
+    alignItems: 'center',
+    marginLeft: theme.spacing(1),
+    flexShrink: 0,
+  },
+
+  // Style the actual "Show me" and "Do It" buttons that are in the HTML
   '& button[onclick*="interactive-"]': {
     padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-    backgroundColor: theme.colors.primary.main,
-    color: theme.colors.primary.contrastText,
     border: 'none',
     borderRadius: theme.shape.radius.default,
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
-    marginLeft: theme.spacing(1),
     
     '&:hover': {
-      backgroundColor: theme.colors.primary.shade,
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z1,
     },
@@ -142,8 +158,28 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
     },
   },
 
+  // Show me button styling
+  '& .interactive-show-button': {
+    backgroundColor: theme.colors.secondary.main,
+    color: theme.colors.secondary.contrastText,
+    
+    '&:hover': {
+      backgroundColor: theme.colors.secondary.shade,
+    },
+  },
+
+  // Do it button styling
+  '& .interactive-do-button': {
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    
+    '&:hover': {
+      backgroundColor: theme.colors.primary.shade,
+    },
+  },
+
   // Special styling for section buttons
-  '& button[onclick*="interactive-sequence"]': {
+  '& .interactive-sequence-button': {
     padding: `${theme.spacing(0.75)} ${theme.spacing(2)}`,
     backgroundColor: theme.colors.action.disabledBackground,
     color: theme.colors.text.primary,
@@ -161,11 +197,10 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
   },
   
   // Override for section buttons inside sequence containers
-  '& .interactive[data-targetaction="sequence"] > button[onclick*="interactive-sequence"]': {
-    alignSelf: 'flex-start',
+  '& .interactive[data-targetaction="sequence"] .interactive-button-container': {
     marginTop: theme.spacing(2),
     marginLeft: 0,
-    display: 'inline-block',
+    justifyContent: 'flex-start',
   },
   
   // Keyframes for animations
@@ -174,27 +209,7 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
     '100%': { transform: 'rotate(360deg)' },
   },
   
-  // Different action type styling - more subtle icons
-  '& .interactive[data-targetaction="highlight"]:not(.interactive-completed):not(.interactive-running):not(.interactive-error)::before': {
-    content: '"👁"',
-    fontSize: '9px',
-  },
-  
-  '& .interactive[data-targetaction="button"]:not(.interactive-completed):not(.interactive-running):not(.interactive-error)::before': {
-    content: '"🔘"',
-    fontSize: '8px',
-  },
-  
-  '& .interactive[data-targetaction="formfill"]:not(.interactive-completed):not(.interactive-running):not(.interactive-error)::before': {
-    content: '"📝"',
-    fontSize: '8px',
-  },
-  
-  '& .interactive[data-targetaction="sequence"]:not(.interactive-completed):not(.interactive-running):not(.interactive-error)::before': {
-    content: '"📋"',
-    fontSize: '8px',
-    display: 'none', // Hidden for sequence containers
-  },
+  // All interactive elements use the same task icon - no action-specific styling needed
 });
 
 // Separate function for adding global interactive styles
@@ -225,7 +240,7 @@ export const addGlobalInteractiveStyles = () => {
         transform: scale(0.95);
         box-shadow: 0 0 0 0 rgba(255, 136, 0, 0.4);
       }
-      20% {
+      25% {
         opacity: 1;
         transform: scale(1);
         box-shadow: 0 0 0 8px rgba(255, 136, 0, 0.3);
@@ -235,14 +250,14 @@ export const addGlobalInteractiveStyles = () => {
         transform: scale(1);
         box-shadow: 0 0 0 12px rgba(255, 136, 0, 0.2);
       }
-      80% {
+      75% {
         opacity: 1;
         transform: scale(1);
         box-shadow: 0 0 0 8px rgba(255, 136, 0, 0.1);
       }
       100% {
         opacity: 0;
-        transform: scale(1.02);
+        transform: scale(0.95);
         box-shadow: 0 0 0 0 rgba(255, 136, 0, 0);
       }
     }
