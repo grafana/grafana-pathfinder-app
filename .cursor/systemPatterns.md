@@ -1,0 +1,118 @@
+# System Patterns
+
+## System Architecture
+
+This is a **Grafana App Plugin** that provides contextual documentation and learning journeys directly within Grafana's UI. Built using **React + TypeScript + Grafana Scenes**, it follows a **modular, scene-based architecture** with these key layers:
+
+- **Extension Layer**: Integrates with Grafana via sidebar components and navigation links
+- **UI Layer**: React components using Grafana UI library and Emotion CSS-in-JS
+- **Business Logic Layer**: Custom hooks and utilities for data processing
+- **Data Layer**: Decoupled content fetchers with multiple fallback strategies
+- **External Layer**: Recommender service, Grafana.com docs, custom content sources
+
+## Key Technical Decisions
+
+- **Grafana Scenes**: Chosen over traditional routing for complex state management and scene-based navigation
+- **Decoupled Content Architecture**: Content fetching separated into pluggable interfaces allowing easy replacement of content sources
+- **Tab-Based Interface**: Browser-like experience with localStorage persistence for multi-document workflows
+- **Context-Aware Recommendations**: Uses external ML service analyzing current Grafana context (page, datasources, dashboard state)
+- **Multi-Strategy Content Fetching**: Resilient approach with fallbacks for different URL patterns and content types
+- **CSS-in-JS with Theming**: Emotion styling system integrated with Grafana's theme system
+
+## Major Architectural Evolution (v1.0.2)
+
+### Completed Refactoring Achievement ✅
+Successfully transformed from monolithic to modular architecture:
+
+**Before Refactoring** (Legacy):
+- Single monolithic component file: ~3,500+ lines
+- Mixed concerns: UI rendering, business logic, styling, event handling all in one place
+- Difficult to maintain, test, and extend
+- Poor code organization and reusability
+
+**After Refactoring** (Current):
+- **Focused Components**: UI components with single responsibilities (~200-500 lines each)
+- **Extracted Business Logic**: React hooks in `/utils/*.hook.ts` files
+- **Organized Styling**: Theme-aware CSS-in-JS functions in `/styles/` directory
+- **Centralized Configuration**: Type-safe constants and selectors in `/constants/`
+- **Clear Separation**: UI, business logic, styling, and configuration cleanly separated
+
+### Refactoring Benefits Realized
+- **Maintainability**: Easy to locate and modify specific functionality
+- **Testability**: Individual functions and hooks can be unit tested in isolation
+- **Reusability**: Hooks and utilities can be shared across components
+- **Performance**: Better tree-shaking and code splitting capabilities
+- **Developer Experience**: Improved IntelliSense, type safety, and debugging
+
+## Design Patterns in Use
+
+- **Observer Pattern**: Interactive elements system with custom events for "show me"/"do it" functionality
+- **Strategy Pattern**: Content fetching with multiple strategies (direct fetch, URL variations, fallback sources)
+- **Factory Pattern**: Tab creation and content instantiation with unique IDs and state management
+- **Hook Pattern**: Business logic extracted into reusable React hooks (useContextPanel, useContentProcessing, etc.)
+- **Cache Pattern**: Multi-level caching (content cache, milestone cache) with TTL and invalidation strategies
+- **Plugin Pattern**: Extensible architecture allowing custom content sources and processing pipelines
+
+## Component Relationships (Post-Refactoring)
+
+```
+App.tsx (Root)
+├── SceneApp with docsPage
+└── PluginPropsContext.Provider
+    └── CombinedLearningJourneyPanel
+        ├── Tab Management (create/close/switch tabs)
+        ├── ContextPanel (recommendations)
+        │   └── useContextPanel hook
+        │       ├── Context analysis & data fetching
+        │       ├── Recommendation processing
+        │       └── User interaction handlers
+        └── Content Rendering
+            ├── LearningJourney content
+            ├── SingleDocs content
+            └── Content Processing Pipeline
+                ├── useContentProcessing hook
+                ├── useInteractiveElements hook
+                ├── useKeyboardShortcuts hook
+                └── useLinkClickHandler hook
+```
+
+**Key Relationships** (Updated):
+- `App.tsx` → Scene setup and auto-launch functionality
+- `CombinedLearningJourneyPanel` → Central orchestrator for tabs and content
+- `ContextPanel` → Provides contextual recommendations using `useContextPanel` hook
+- **Business Logic Hooks** → Focused, reusable logic in `src/utils/*.hook.ts`
+- **Styling System** → Organized theme-aware functions in `src/styles/*.styles.ts`
+- **Configuration** → Centralized constants and selectors in `src/constants/`
+
+## Critical Implementation Paths
+
+**Context Analysis → Recommendations Flow**:
+1. `context-analysis.ts` → Generate context tags from current Grafana state
+2. `context-data-fetcher.ts` → Send context to recommender service
+3. `useContextPanel` hook → Process recommendations and handle user interactions
+4. `ContextPanel` component → Display recommendations with journey/docs classification
+5. User interaction → Tab creation and content loading
+
+**Content Loading Pipeline**:
+1. `docs-fetcher.ts` / `single-docs-fetcher.ts` → Multi-strategy content fetching
+2. HTML parsing and asset URL resolution
+3. `useContentProcessing` hook → Add interactive elements, copy buttons, styling
+4. `useInteractiveElements` hook → Enable "show me"/"do it" functionality
+5. Render in tab with navigation and progress tracking
+
+**Interactive Elements System**:
+1. Scan HTML for `data-targetaction` attributes during content processing
+2. Generate "Show me" and "Do it" buttons via `useContentProcessing`
+3. Custom event dispatch system handled by `useInteractiveElements`
+4. Element highlighting and automation through `useInteractiveElements`
+5. Requirements checking for element availability in Grafana UI
+
+## Architecture Quality Metrics
+
+- **Separation of Concerns**: ✅ Clean boundaries between UI, logic, and styling
+- **Single Responsibility**: ✅ Each module/hook has focused purpose
+- **Reusability**: ✅ Hooks and utilities shared across components
+- **Testability**: ✅ Individual functions can be unit tested
+- **Type Safety**: ✅ Comprehensive TypeScript coverage
+- **Performance**: ✅ Tree-shaking friendly with optimized bundles
+
