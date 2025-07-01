@@ -11,8 +11,7 @@
     "rootDir": "../src",
     "baseUrl": "../src",
     "typeRoots": ["../node_modules/@types"],
-    "resolveJsonModule": true,
-    "noUnusedLocals": false
+    "resolveJsonModule": true
   },
   "ts-node": {
     "compilerOptions": {
