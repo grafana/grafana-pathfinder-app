@@ -25,7 +25,6 @@ import {
   SingleDocsContent 
 } from '../../utils/single-docs-fetcher';
 import { ContextPanel } from './context-panel';
-import { ConfigService } from '../../constants';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
