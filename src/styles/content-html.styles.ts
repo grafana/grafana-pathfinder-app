@@ -314,6 +314,79 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     borderRadius: theme.shape.radius.default,
   },
 
+  // Video element styling for responsive behavior
+  '& video': {
+    width: '100%',
+    height: 'auto',
+    maxWidth: '100%',
+    minWidth: '320px',
+    minHeight: '180px',
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    boxShadow: theme.shadows.z2,
+    margin: `${theme.spacing(2)} 0`,
+    backgroundColor: theme.colors.background.canvas,
+    
+    // Responsive sizing
+    [theme.breakpoints.down('sm')]: {
+      minWidth: '280px',
+      minHeight: '160px',
+    },
+    
+    [theme.breakpoints.up('lg')]: {
+      maxWidth: '800px',
+      margin: `${theme.spacing(3)} auto`,
+      display: 'block',
+    },
+    
+    '&:hover': {
+      boxShadow: theme.shadows.z3,
+      borderColor: theme.colors.border.medium,
+    },
+  },
+
+  // Video container for better organization
+  '& .video-container': {
+    position: 'relative',
+    width: '100%',
+    maxWidth: '100%',
+    margin: `${theme.spacing(2)} 0`,
+    
+    '& video': {
+      margin: 0,
+    },
+  },
+
+  // Docs video specific styling
+  '& video.docs-video': {
+    minWidth: '320px',
+    minHeight: '180px',
+    borderRadius: theme.shape.radius.default,
+    boxShadow: theme.shadows.z2,
+    
+    [theme.breakpoints.down('sm')]: {
+      minWidth: '280px',
+      minHeight: '160px',
+    },
+    
+    [theme.breakpoints.up('lg')]: {
+      maxWidth: '900px',
+      margin: `${theme.spacing(3)} auto`,
+      display: 'block',
+    },
+  },
+
+  // Lazy loading video styling
+  '& video.lazyload': {
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    
+    '&[data-video-enhanced]': {
+      transition: 'opacity 0.3s ease',
+    },
+  },
+
   // Hide admonition wrapper - style blockquotes directly
   '& .admonition': {
     all: 'unset',
@@ -1081,6 +1154,79 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     height: '100%',
     border: 'none',
     borderRadius: theme.shape.radius.default,
+  },
+
+  // Video element styling for responsive behavior
+  '& video': {
+    width: '100%',
+    height: 'auto',
+    maxWidth: '100%',
+    minWidth: '320px',
+    minHeight: '180px',
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    boxShadow: theme.shadows.z2,
+    margin: `${theme.spacing(2)} 0`,
+    backgroundColor: theme.colors.background.canvas,
+    
+    // Responsive sizing
+    [theme.breakpoints.down('sm')]: {
+      minWidth: '280px',
+      minHeight: '160px',
+    },
+    
+    [theme.breakpoints.up('lg')]: {
+      maxWidth: '800px',
+      margin: `${theme.spacing(3)} auto`,
+      display: 'block',
+    },
+    
+    '&:hover': {
+      boxShadow: theme.shadows.z3,
+      borderColor: theme.colors.border.medium,
+    },
+  },
+
+  // Video container for better organization
+  '& .video-container': {
+    position: 'relative',
+    width: '100%',
+    maxWidth: '100%',
+    margin: `${theme.spacing(2)} 0`,
+    
+    '& video': {
+      margin: 0,
+    },
+  },
+
+  // Docs video specific styling
+  '& video.docs-video': {
+    minWidth: '320px',
+    minHeight: '180px',
+    borderRadius: theme.shape.radius.default,
+    boxShadow: theme.shadows.z2,
+    
+    [theme.breakpoints.down('sm')]: {
+      minWidth: '280px',
+      minHeight: '160px',
+    },
+    
+    [theme.breakpoints.up('lg')]: {
+      maxWidth: '900px',
+      margin: `${theme.spacing(3)} auto`,
+      display: 'block',
+    },
+  },
+
+  // Lazy loading video styling
+  '& video.lazyload': {
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    
+    '&[data-video-enhanced]': {
+      transition: 'opacity 0.3s ease',
+    },
   },
 
   // Simple admonitions - matching learning journey style

@@ -248,6 +248,51 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
       img.setAttribute('alt', 'Documentation image');
     }
   });
+
+  // Process videos - fix relative URLs and add proper attributes
+  const videos = clonedElement.querySelectorAll('video');
+  videos.forEach(video => {
+    const src = video.getAttribute('src');
+    const dataSrc = video.getAttribute('data-src');
+    const originalSrc = dataSrc || src;
+    
+    if (!originalSrc) {return;}
+    
+    // Fix relative URLs with configurable base URL (same logic as images)
+    const newSrc = originalSrc.startsWith('http') || originalSrc.startsWith('data:') 
+      ? originalSrc
+      : originalSrc.startsWith('/') 
+        ? `${getDocsBaseUrl()}${originalSrc}`
+        : originalSrc.startsWith('./') 
+          ? `${getDocsBaseUrl()}/docs/${originalSrc.substring(2)}`
+          : originalSrc.startsWith('../') 
+            ? `${getDocsBaseUrl()}/docs/${originalSrc.replace(/^\.\.\//, '')}`
+            : `${getDocsBaseUrl()}/docs/${originalSrc}`;
+    
+    console.log(`🎥 Video URL processing: ${originalSrc} -> ${newSrc}`);
+    
+    // Set the fixed source
+    if (dataSrc) {
+      video.setAttribute('data-src', newSrc);
+      video.removeAttribute('src'); // Keep it as lazy-loaded
+    } else {
+      video.setAttribute('src', newSrc);
+    }
+    
+    // Remove any lazy loading classes that might interfere
+    video.classList.remove('lazyloaded', 'ls-is-cached');
+    video.classList.add('docs-video');
+    
+    // Ensure proper video attributes for documentation context
+    if (!video.getAttribute('controls')) {
+      video.setAttribute('controls', 'true');
+    }
+    
+    // Add accessibility attributes if missing
+    if (!video.getAttribute('aria-label') && !video.getAttribute('title')) {
+      video.setAttribute('aria-label', 'Documentation video');
+    }
+  });
   
   // Process iframes (like YouTube videos) with responsive wrappers
   const iframes = clonedElement.querySelectorAll('iframe');

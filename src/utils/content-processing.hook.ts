@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { LearningJourneyContent } from './docs-fetcher';
 import { SingleDocsContent } from './single-docs-fetcher';
 import { useInteractiveElements } from './interactive.hook';
+import { getDocsBaseUrl } from '../constants';
 
 interface UseContentProcessingProps {
   contentRef: React.RefObject<HTMLDivElement>;
@@ -434,6 +435,149 @@ export function useContentProcessing({
       }
     });
 
+    // Handle lazy loading videos and ensure proper rendering
+    const lazyVideos = contentElement.querySelectorAll('video.lazyload, video[data-src], video[src]');
+    lazyVideos.forEach((video) => {
+      const videoElement = video as HTMLVideoElement;
+      const dataSrc = videoElement.getAttribute('data-src');
+      const currentSrc = videoElement.getAttribute('src');
+      const originalSrc = dataSrc || currentSrc;
+      
+      // Fix video URL to use proper docs base URL (similar to image handling)
+      if (originalSrc) {
+        const fixedSrc = originalSrc.startsWith('http') || originalSrc.startsWith('data:') 
+          ? originalSrc
+          : originalSrc.startsWith('/') 
+            ? `${getDocsBaseUrl()}${originalSrc}`
+            : originalSrc.startsWith('./') 
+              ? `${getDocsBaseUrl()}/docs/${originalSrc.substring(2)}`
+              : originalSrc.startsWith('../') 
+                ? `${getDocsBaseUrl()}/docs/${originalSrc.replace(/^\.\.\//, '')}`
+                : `${getDocsBaseUrl()}/docs/${originalSrc}`;
+        
+        console.log(`🎥 Video URL fix: ${originalSrc} -> ${fixedSrc}`);
+        
+        // If video has data-src, set up lazy loading
+        if (dataSrc && !videoElement.src) {
+          videoElement.setAttribute('data-src', fixedSrc);
+          
+          const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                const target = entry.target as HTMLVideoElement;
+                const src = target.getAttribute('data-src');
+                if (src) {
+                  target.src = src;
+                  target.removeAttribute('data-src');
+                  target.load(); // Reload video with new source
+                  observer.unobserve(target);
+                }
+              }
+            });
+          }, {
+            rootMargin: '100px', // Larger margin for videos to preload
+            threshold: 0.1,
+          });
+          
+          observer.observe(videoElement);
+        } else {
+          // Set the fixed src directly
+          videoElement.src = fixedSrc;
+          videoElement.load();
+        }
+      }
+      
+      // Add accessibility and UX improvements
+      if (!videoElement.hasAttribute('data-video-enhanced')) {
+        // Ensure proper accessibility attributes
+        if (!videoElement.getAttribute('aria-label') && !videoElement.getAttribute('title')) {
+          const videoTitle = videoElement.getAttribute('alt') || 
+                           videoElement.getAttribute('data-title') || 
+                           'Documentation video';
+          videoElement.setAttribute('aria-label', videoTitle);
+        }
+        
+        // Add keyboard navigation support
+        videoElement.setAttribute('tabindex', '0');
+        
+        // Handle video loading errors gracefully
+        const handleVideoError = () => {
+          console.warn('Video failed to load:', videoElement.src || videoElement.getAttribute('data-src'));
+          
+          // Create fallback message
+          const fallback = document.createElement('div');
+          fallback.className = 'video-error-fallback';
+          fallback.style.cssText = `
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 200px;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+          `;
+          fallback.innerHTML = `
+            <div>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                <polygon points="5,3 19,12 5,21 5,3"></polygon>
+              </svg>
+              <p>Video content unavailable</p>
+              <p><small>Please check your connection or try refreshing the page</small></p>
+            </div>
+          `;
+          
+          // Replace video with fallback only if video becomes visible and fails
+          const replaceWithFallback = () => {
+            if (videoElement.offsetParent !== null) {
+              videoElement.parentNode?.replaceChild(fallback, videoElement);
+            }
+          };
+          
+          // Delay replacement to avoid immediate replacement during loading
+          setTimeout(replaceWithFallback, 2000);
+        };
+        
+        videoElement.addEventListener('error', handleVideoError);
+        
+        // Add loading state handling
+        const handleVideoLoad = () => {
+          videoElement.style.opacity = '1';
+        };
+        
+        const handleVideoLoadStart = () => {
+          videoElement.style.opacity = '0.7';
+        };
+        
+        videoElement.addEventListener('loadstart', handleVideoLoadStart);
+        videoElement.addEventListener('canplay', handleVideoLoad);
+        
+        // Mark as enhanced to avoid duplicate processing
+        videoElement.setAttribute('data-video-enhanced', 'true');
+      }
+    });
+
+    // Handle video containers for better styling (using more compatible approach)
+    const allVideos = contentElement.querySelectorAll('video');
+    allVideos.forEach((video) => {
+      const container = video.parentElement;
+      if (container && !container.hasAttribute('data-video-container')) {
+        // Only add container styling to direct parent elements that aren't already styled
+        const tagName = container.tagName.toLowerCase();
+        if (['div', 'p', 'section', 'article'].includes(tagName)) {
+          container.classList.add('video-container');
+          container.setAttribute('data-video-container', 'true');
+          
+          // Ensure responsive video styling
+          if (!container.style.position) {
+            container.style.position = 'relative';
+          }
+        }
+      }
+    });
+
     // Enhance Grafana Play buttons with better interaction feedback
     const playButtons = contentElement.querySelectorAll('.btn--primary[href*="play.grafana.org"]');
     playButtons.forEach((button) => {
@@ -556,7 +700,7 @@ export function useContentProcessing({
       }
     };
 
-    // Add some CSS for the requirement states if not already present
+    // Add some CSS for the requirement states and video styling if not already present
     if (!document.querySelector('#requirement-styles')) {
       const style = document.createElement('style');
       style.id = 'requirement-styles';
@@ -582,6 +726,92 @@ export function useContentProcessing({
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
+        }
+        
+        /* Video styling for better rendering - responsive sizing */
+        .video-container {
+          position: relative;
+          width: 100%;
+          max-width: 100%;
+          margin: 1rem 0;
+        }
+        
+        .video-container video {
+          width: 100%;
+          height: auto;
+          min-width: 320px;
+          min-height: 180px;
+          max-width: 100%;
+          border-radius: 6px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+          margin: 0;
+        }
+        
+        /* Enhanced video sizing for all video elements */
+        video {
+          width: 100%;
+          height: auto;
+          min-width: 320px;
+          min-height: 180px;
+          max-width: 100%;
+          border-radius: 6px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+          margin: 1rem 0;
+          vertical-align: middle;
+        }
+        
+        /* Responsive breakpoints for videos */
+        @media (max-width: 480px) {
+          video, .video-container video {
+            min-width: 280px;
+            min-height: 160px;
+          }
+        }
+        
+        @media (min-width: 1200px) {
+          video, .video-container video {
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+          }
+        }
+        
+        video.lazyload {
+          background: #f5f5f5;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          min-width: 320px;
+          min-height: 180px;
+        }
+        
+        video.docs-video {
+          min-width: 320px;
+          min-height: 180px;
+          border-radius: 6px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .video-error-fallback {
+          margin: 1rem 0;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          min-height: 200px;
+          width: 100%;
+          max-width: 800px;
+        }
+        
+        .video-error-fallback svg {
+          opacity: 0.5;
+          margin-bottom: 8px;
+        }
+        
+        .video-error-fallback p {
+          margin: 4px 0;
+        }
+        
+        /* Loading state for videos */
+        video[data-video-enhanced] {
+          transition: opacity 0.3s ease;
         }
       `;
       document.head.appendChild(style);
