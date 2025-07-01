@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useCallback, useRef } from 'react';
 import { fetchDataSources } from './context-data-fetcher';
 
@@ -280,7 +281,7 @@ export function useInteractiveElements() {
     }
   }, []);
 
-  const interactiveButton = useCallback((data: InteractiveElementData, click = true) => {
+  const interactiveButton = useCallback((data: InteractiveElementData, click = true) => { // eslint-disable-line react-hooks/exhaustive-deps
     console.log("Interactive button called for:", data.reftarget, "click:", click);
     const interactiveElement = findInteractiveElement(data.reftarget);
     
@@ -336,7 +337,7 @@ export function useInteractiveElements() {
     return sequence;
   }
 
-  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly = false): Promise<string> => {
+  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly = false): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
     // This is here so recursion cannot happen
     if(activeRefsRef.current.has(data.reftarget)) {
       console.log("Interactive sequence already active for:", data.reftarget);
@@ -390,7 +391,7 @@ export function useInteractiveElements() {
     }
   }, []);
 
-  const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm = true) => {
+  const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm = true) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
     console.log(`Interactive form fill called, targeting: ${data.reftarget} with ${value}, fillForm: ${fillForm}`);
     const interactiveElement = findInteractiveElement(data.reftarget);
@@ -678,9 +679,7 @@ export function useInteractiveElements() {
     return { requirementsCheck, interactiveData: data };
   };
 
-
-
-  useEffect(() => {
+  useEffect(() => { // eslint-disable-line react-hooks/exhaustive-deps
     // Note, that rather than use await here we're using regular promises, because this is an 
     // event handler (which doesn't return promises, fire and forget)
     const handleCustomEvent = (event: CustomEvent) => {

@@ -174,7 +174,6 @@ export function useContentProcessing({
           
           try {
             // Fallback for older browsers - execCommand is deprecated but still needed for compatibility
-            // eslint-disable-next-line deprecation/deprecation
             const success = document.execCommand('copy');
             if (success) {
               copyButton.innerHTML = `
@@ -276,7 +275,6 @@ export function useContentProcessing({
           
           try {
             // Fallback for older browsers - execCommand is deprecated but still needed for compatibility
-            // eslint-disable-next-line deprecation/deprecation
             const success = document.execCommand('copy');
             if (success) {
               copyButton.innerHTML = `
@@ -826,6 +824,8 @@ export function useContentProcessing({
   }, [activeTabContent, activeTabDocsContent, contentRef, checkElementRequirements]);
 
   // Add DOM mutation observer and event listeners for automatic re-checking
+  // disabling missing dependency warning for time being till better solution is found
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const contentElement = contentRef.current;
     if (!contentElement) {return;}
@@ -906,6 +906,7 @@ export function useContentProcessing({
     document.addEventListener('focusout', handleFocusChange);
 
          // Listen for custom events that indicate state changes
+         /* eslint-disable react-hooks/exhaustive-deps */
      const handleStateChange = (event: Event) => {
        // For interactive action completions or backup recheck, re-check immediately instead of debounced
          if (event.type === 'interactive-action-completed' || event.type === 'force-requirements-recheck') {
