@@ -25,6 +25,7 @@ export interface Recommendation {
   title: string;
   url: string;
   type?: string; // 'learning-journey' or 'docs-page'
+  matchAccuracy?: number; // Scale of 0 to 1, where 1 = 100% accurate match
   milestones?: Milestone[];
   totalSteps?: number;
   isLoadingSteps?: boolean;
@@ -88,6 +89,37 @@ export async function fetchGrafanaVersion(): Promise<string> {
     console.warn('Failed to fetch Grafana version:', error);
     return 'Unknown';
   }
+}
+
+/**
+ * Sort recommendations by type and match accuracy
+ * Learning journeys always come first, then docs pages
+ * Within each type, sort by matchAccuracy (highest first)
+ */
+function sortRecommendationsByAccuracy(recommendations: Recommendation[]): Recommendation[] {
+  // Separate learning journeys from docs pages
+  const learningJourneys = recommendations.filter(rec => 
+    rec.type === 'learning-journey' || !rec.type // Default to learning-journey if no type
+  );
+  const docsPages = recommendations.filter(rec => 
+    rec.type === 'docs-page'
+  );
+  
+  // Sort by matchAccuracy (highest first), treating undefined as 0
+  const sortByAccuracy = (a: Recommendation, b: Recommendation) => {
+    const accuracyA = a.matchAccuracy ?? 0;
+    const accuracyB = b.matchAccuracy ?? 0;
+    return accuracyB - accuracyA; // Descending order (highest first)
+  };
+  
+  // Sort each group by accuracy
+  const sortedLearningJourneys = learningJourneys.sort(sortByAccuracy);
+  const sortedDocsPages = docsPages.sort(sortByAccuracy);
+  
+  console.log(`Sorted ${sortedLearningJourneys.length} learning journeys and ${sortedDocsPages.length} docs pages by match accuracy`);
+  
+  // Return learning journeys first, then docs pages
+  return [...sortedLearningJourneys, ...sortedDocsPages];
 }
 
 export async function fetchRecommendations(
@@ -173,8 +205,15 @@ export async function fetchRecommendations(
     );
 
     console.log('Loaded recommendations with step counts:', processedRecommendations);
+    
+    // Sort recommendations by type and matchAccuracy
+    // Learning journeys always come first, then docs pages
+    // Within each type, sort by matchAccuracy (highest first)
+    const sortedRecommendations = sortRecommendationsByAccuracy(processedRecommendations);
+    
+    console.log('Sorted recommendations by match accuracy:', sortedRecommendations);
     return {
-      recommendations: processedRecommendations,
+      recommendations: sortedRecommendations,
       error: null,
     };
   } catch (error) {
