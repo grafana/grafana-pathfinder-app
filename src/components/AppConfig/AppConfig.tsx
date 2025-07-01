@@ -10,6 +10,7 @@ import {
   DEFAULT_RECOMMENDER_SERVICE_URL, 
   DEFAULT_DOCS_BASE_URL, 
   DEFAULT_DOCS_USERNAME,
+  DEFAULT_TUTORIAL_URL,
   ConfigService 
 } from '../../constants';
 
@@ -28,6 +29,8 @@ type State = {
   docsPassword: string;
   // Tells us if the docs password secret is set
   isDocsPasswordSet: boolean;
+  // Auto-launch tutorial URL (for demo scenarios)
+  tutorialUrl: string;
 };
 
 export interface AppConfigProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -41,6 +44,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
     docsUsername: jsonData?.docsUsername || DEFAULT_DOCS_USERNAME,
     docsPassword: '',
     isDocsPasswordSet: Boolean(jsonData?.isDocsPasswordSet),
+    tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
   });
 
   // Update the configuration service when the config changes
@@ -51,6 +55,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
         docsBaseUrl: jsonData.docsBaseUrl,
         docsUsername: jsonData.docsUsername,
         docsPassword: jsonData.docsPassword,
+        tutorialUrl: jsonData.tutorialUrl,
       });
     }
   }, [jsonData]);
@@ -96,12 +101,20 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
     });
   };
 
+  const onChangeTutorialUrl = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      tutorialUrl: event.target.value.trim(),
+    });
+  };
+
   const onSubmit = () => {
     const newConfig: DocsPluginConfig = {
       recommenderServiceUrl: state.recommenderServiceUrl,
       docsBaseUrl: state.docsBaseUrl,
       docsUsername: state.docsUsername,
       docsPassword: state.docsPassword,
+      tutorialUrl: state.tutorialUrl,
     };
 
     // Update the configuration service
@@ -191,6 +204,24 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
             onReset={onResetDocsPassword}
           />
         </Field>
+
+        {/* Tutorial URL */}
+        <Field 
+          label="Auto-Launch Tutorial URL" 
+          description="Optional: URL of a learning journey or documentation page to automatically open when Grafana starts. Useful for demo scenarios. Can be set via environment variable GF_PLUGINS_GRAFANA_GRAFANADOCSPLUGIN_APP_TUTORIAL_URL"
+          className={s.marginTop}
+        >
+          <Input
+            width={60}
+            id="tutorial-url"
+            data-testid={testIds.appConfig.tutorialUrl}
+            value={state.tutorialUrl}
+            placeholder="https://grafana.com/docs/learning-journeys/..."
+            onChange={onChangeTutorialUrl}
+          />
+        </Field>
+
+
 
         <div className={s.marginTop}>
           <Button type="submit" data-testid={testIds.appConfig.submit} disabled={isSubmitDisabled}>

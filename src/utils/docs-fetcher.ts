@@ -922,8 +922,6 @@ async function fetchJourneyWithRetry(originalUrl: string): Promise<string | null
  * Generate URL variations for learning journeys to handle common redirect patterns
  */
 function generateJourneyUrlVariations(url: string): string[] {
-  const variations: string[] = [];
-  
   // Split hash fragment to preserve it
   const [baseUrlWithUnstyled, hashFragment] = url.split('#');
   

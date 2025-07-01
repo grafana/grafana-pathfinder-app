@@ -322,21 +322,6 @@ export function useInteractiveElements() {
   const runInteractiveSequenceRef = useRef<(elements: Element[], showMode: boolean) => Promise<void>>();
   const runStepByStepSequenceRef = useRef<(elements: Element[]) => Promise<void>>();
 
-  async function runSequence(sequence: HTMLButtonElement[]): Promise<HTMLButtonElement[]> {
-    for(const button of sequence) {
-      console.log("Clicking button: ", button);
-      button.click();
-
-      // This is not the right way to do this but will have to wait for now.
-      console.log("Sleep");
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      console.log("requestAnimationFrame");
-      await new Promise(requestAnimationFrame);
-    }
-
-    return sequence;
-  }
-
   const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly = false): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
     // This is here so recursion cannot happen
     if(activeRefsRef.current.has(data.reftarget)) {

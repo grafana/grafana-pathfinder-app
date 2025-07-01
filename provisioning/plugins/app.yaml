@@ -6,7 +6,7 @@ apps:
     org_name: 'grafanalabs'
     disabled: false
     jsonData:
-      apiUrl: http://default-url.com
-      isApiKeySet: true
-    secureJsonData:
-      apiKey: secret-key
+      # Docs Base URL - can be overridden with environment variable  
+      docsBaseUrl: ${GF_PLUGINS_GRAFANA_GRAFANADOCSPLUGIN_APP_DOCS_URL:https://grafana.com}
+      # Auto-launch tutorial URL (for demo scenarios)
+      tutorialUrl: ${GF_PLUGINS_GRAFANA_GRAFANADOCSPLUGIN_APP_TUTORIAL_URL:https://grafana.com/docs/learning-journeys/linux-server-integration/}

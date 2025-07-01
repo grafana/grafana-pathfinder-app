@@ -673,8 +673,6 @@ async function fetchWithRetry(originalUrl: string): Promise<string | null> {
  * Generate URL variations to handle common redirect patterns
  */
 function generateUrlVariations(url: string): string[] {
-  const variations: string[] = [];
-  
   // Split hash fragment to preserve it
   const [baseUrlWithUnstyled, hashFragment] = url.split('#');
   

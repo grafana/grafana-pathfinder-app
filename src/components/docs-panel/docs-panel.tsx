@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { css } from '@emotion/css';
 
-import { GrafanaTheme2 } from '@grafana/data';
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, IconButton, useStyles2, Spinner, Alert, useTheme2 } from '@grafana/ui';
 
@@ -26,6 +25,7 @@ import {
   SingleDocsContent 
 } from '../../utils/single-docs-fetcher';
 import { ContextPanel } from './context-panel';
+import { ConfigService } from '../../constants';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -34,6 +34,7 @@ interface LearningJourneyTab {
   id: string;
   title: string;
   baseUrl: string;
+  currentUrl: string; // The specific milestone/page URL currently loaded
   content: LearningJourneyContent | null;
   isLoading: boolean;
   error: string | null;
@@ -41,11 +42,23 @@ interface LearningJourneyTab {
   docsContent?: SingleDocsContent | null;
 }
 
+interface PersistedTabData {
+  id: string;
+  title: string;
+  baseUrl: string;
+  currentUrl?: string; // The specific milestone/page URL user was viewing (optional for backward compatibility)
+  type?: 'learning-journey' | 'docs';
+}
+
 interface CombinedPanelState extends SceneObjectState {
   tabs: LearningJourneyTab[];
   activeTabId: string;
   contextPanel: ContextPanel;
 }
+
+// localStorage keys for tab persistence
+const TABS_STORAGE_KEY = 'grafana-docs-plugin-tabs';
+const ACTIVE_TAB_STORAGE_KEY = 'grafana-docs-plugin-active-tab';
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public static Component = CombinedPanelRenderer;
@@ -61,24 +74,156 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       this.openDocsPage(url, title);
     });
 
+    // Restore tabs from localStorage
+    const restoredTabs = CombinedLearningJourneyPanel.restoreTabsFromStorage();
+    const restoredActiveTabId = CombinedLearningJourneyPanel.restoreActiveTabFromStorage(restoredTabs);
+
     super({
-      tabs: [
-        {
-          id: 'recommendations',
-          title: 'Recommendations',
-          baseUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-        }
-      ],
-      activeTabId: 'recommendations',
+      tabs: restoredTabs,
+      activeTabId: restoredActiveTabId,
       contextPanel,
     });
+
+    // Initialize restored active tab content if needed
+    if (restoredActiveTabId !== 'recommendations') {
+      this.initializeRestoredActiveTab();
+    }
   }
+
+
 
   private generateTabId(): string {
     return `journey-tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+  }
+
+  private initializeRestoredActiveTab(): void {
+    // Small delay to ensure the state has been updated
+    setTimeout(() => {
+      const activeTab = this.getActiveTab();
+      if (!activeTab || activeTab.id === 'recommendations') {
+        return;
+      }
+
+      console.log('🔄 Loading content for restored active tab:', activeTab.title);
+      console.log('🔄 Tab details:', { 
+        id: activeTab.id, 
+        baseUrl: activeTab.baseUrl, 
+        currentUrl: activeTab.currentUrl,
+        type: activeTab.type 
+      });
+
+      // Load content based on tab type, using currentUrl to preserve exact position
+      if (activeTab.type === 'docs' && !activeTab.docsContent && !activeTab.isLoading) {
+        console.log('🔄 Loading docs content for restored tab at:', activeTab.currentUrl);
+        this.loadDocsTabContent(activeTab.id, activeTab.currentUrl);
+      } else if (activeTab.type !== 'docs' && !activeTab.content && !activeTab.isLoading) {
+        console.log('🔄 Loading journey content for restored tab at:', activeTab.currentUrl);
+        // Use currentUrl (specific milestone) rather than baseUrl (journey start)
+        this.loadTabContent(activeTab.id, activeTab.currentUrl);
+      } else {
+        console.log('🔄 Active tab already has content or is loading, skipping initialization');
+      }
+    }, 100);
+  }
+
+  // Static methods for tab persistence
+  private static restoreTabsFromStorage(): LearningJourneyTab[] {
+    try {
+      const storedTabs = localStorage.getItem(TABS_STORAGE_KEY);
+      if (storedTabs) {
+        const persistedTabs: PersistedTabData[] = JSON.parse(storedTabs);
+        console.log(`📚 Restoring ${persistedTabs.length} persisted tabs from storage`);
+        
+        // Convert persisted data back to full tab objects
+        const restoredTabs: LearningJourneyTab[] = persistedTabs.map(persistedTab => ({
+          id: persistedTab.id,
+          title: persistedTab.title,
+          baseUrl: persistedTab.baseUrl,
+          currentUrl: persistedTab.currentUrl || persistedTab.baseUrl, // Fallback for old data
+          content: null, // Content will be loaded on demand
+          isLoading: false,
+          error: null,
+          type: persistedTab.type,
+          docsContent: null, // Content will be loaded on demand
+        }));
+        
+        // Always ensure recommendations tab is first
+        const recommendationsTab: LearningJourneyTab = {
+          id: 'recommendations',
+          title: 'Recommendations',
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+        };
+        
+        // Filter out recommendations tab from restored tabs and prepend it
+        const otherTabs = restoredTabs.filter(tab => tab.id !== 'recommendations');
+        return [recommendationsTab, ...otherTabs];
+      }
+    } catch (error) {
+      console.warn('Failed to restore tabs from storage:', error);
+    }
+    
+    // Fallback to default state
+    return [
+      {
+        id: 'recommendations',
+        title: 'Recommendations',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+      }
+    ];
+  }
+
+  private static restoreActiveTabFromStorage(tabs: LearningJourneyTab[]): string {
+    try {
+      const storedActiveTabId = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+      if (storedActiveTabId && tabs.some(tab => tab.id === storedActiveTabId)) {
+        console.log(`📚 Restoring active tab: ${storedActiveTabId}`);
+        return storedActiveTabId;
+      }
+    } catch (error) {
+      console.warn('Failed to restore active tab from storage:', error);
+    }
+    
+    // Fallback to recommendations tab
+    return 'recommendations';
+  }
+
+  private saveTabsToStorage(): void {
+    try {
+      // Only persist non-recommendations tabs with essential data
+      const tabsToSave: PersistedTabData[] = this.state.tabs
+        .filter(tab => tab.id !== 'recommendations')
+        .map(tab => ({
+          id: tab.id,
+          title: tab.title,
+          baseUrl: tab.baseUrl,
+          currentUrl: tab.currentUrl,
+          type: tab.type,
+        }));
+      
+      localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(tabsToSave));
+      localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, this.state.activeTabId);
+      console.log(`💾 Saved ${tabsToSave.length} tabs to storage, active: ${this.state.activeTabId}`);
+    } catch (error) {
+      console.warn('Failed to save tabs to storage:', error);
+    }
+  }
+
+  public static clearPersistedTabs(): void {
+    try {
+      localStorage.removeItem(TABS_STORAGE_KEY);
+      localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
+      console.log('🗑️ Cleared persisted tabs from storage');
+    } catch (error) {
+      console.warn('Failed to clear persisted tabs:', error);
+    }
   }
 
   public async openLearningJourney(url: string, title?: string): Promise<string> {
@@ -87,6 +232,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       id: tabId,
       title: title || 'Loading...',
       baseUrl: url,
+      currentUrl: url, // Store the specific milestone URL
       content: null,
       isLoading: false, // Start as not loading - we'll load on demand
       error: null,
@@ -99,6 +245,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       activeTabId: tabId,
     });
 
+    // Save tabs to storage
+    this.saveTabsToStorage();
+
     // Load content immediately when tab is created and activated
     await this.loadTabContent(tabId, url);
     
@@ -106,54 +255,62 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async loadTabContent(tabId: string, url: string) {
+    console.log(`🔄 Loading content for tab: ${tabId}, URL: ${url}`);
     
-    const tabIndex = this.state.tabs.findIndex(tab => tab.id === tabId);
-    if (tabIndex === -1) {return;}
+    // Find the tab and set loading state
+    const tab = this.state.tabs.find(t => t.id === tabId);
+    if (!tab) {
+      console.error(`Tab ${tabId} not found`);
+      return;
+    }
 
-    // Update tab to loading state
-    const updatedTabs = [...this.state.tabs];
-    updatedTabs[tabIndex] = {
-      ...updatedTabs[tabIndex],
-      isLoading: true,
-      error: null,
-    };
+    // Update tab state to loading and set the currentUrl to the URL being loaded
+    const updatedTabs = this.state.tabs.map(t => 
+      t.id === tabId 
+        ? { 
+            ...t, 
+            isLoading: true, 
+            error: null, 
+            currentUrl: url  // Update currentUrl when loading new content
+          }
+        : t
+    );
     this.setState({ tabs: updatedTabs });
 
     try {
-      console.log('🔧 About to call fetchLearningJourneyContent with URL:', url);
-      const journeyContent = await fetchLearningJourneyContent(url);
+      const content = await fetchLearningJourneyContent(url);
       
-      const finalTabs = [...this.state.tabs];
-      const finalTabIndex = finalTabs.findIndex(tab => tab.id === tabId);
+      const finalUpdatedTabs = this.state.tabs.map(t => 
+        t.id === tabId 
+          ? { 
+              ...t, 
+              content: content, 
+              isLoading: false, 
+              error: null,
+              currentUrl: url  // Ensure currentUrl is set to the actual loaded URL
+            }
+          : t
+      );
+      this.setState({ tabs: finalUpdatedTabs });
       
-      if (finalTabIndex !== -1) {
-        // Only update title if it's still "Loading..." (preserve original journey title)
-        const shouldUpdateTitle = finalTabs[finalTabIndex].title === 'Loading...';
-        
-        finalTabs[finalTabIndex] = {
-          ...finalTabs[finalTabIndex],
-          content: journeyContent,
-          title: shouldUpdateTitle ? (journeyContent?.title || finalTabs[finalTabIndex].title) : finalTabs[finalTabIndex].title,
-          isLoading: false,
-          error: journeyContent ? null : 'Failed to load learning journey',
-        };
-        this.setState({ tabs: finalTabs });
-        console.log('Successfully loaded learning journey:', journeyContent?.title);
-      }
+      // Save tabs to storage after content loading (preserves milestone position)
+      this.saveTabsToStorage();
+      
+      console.log(`✅ Successfully loaded content for tab: ${tabId}${content ? `, milestone: ${content.currentMilestone}/${content.totalMilestones}` : ''}`);
     } catch (error) {
-      console.error('Failed to load learning journey:', error);
-      const errorTabs = [...this.state.tabs];
-      const errorTabIndex = errorTabs.findIndex(tab => tab.id === tabId);
+      console.error(`Failed to load tab content: ${error}`);
       
-      if (errorTabIndex !== -1) {
-        errorTabs[errorTabIndex] = {
-          ...errorTabs[errorTabIndex],
-          content: null,
-          isLoading: false,
-          error: error instanceof Error ? error.message : 'Failed to load learning journey',
-        };
-        this.setState({ tabs: errorTabs });
-      }
+      const errorUpdatedTabs = this.state.tabs.map(t => 
+        t.id === tabId 
+          ? { 
+              ...t, 
+              isLoading: false, 
+              error: `Failed to load content: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              currentUrl: url  // Keep currentUrl even on error for retry purposes
+            }
+          : t
+      );
+      this.setState({ tabs: errorUpdatedTabs });
     }
   }
 
@@ -177,6 +334,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       activeTabId: newActiveTabId,
     });
 
+    // Save tabs to storage after closing
+    this.saveTabsToStorage();
+
     // Clear content cache for the specific journey but preserve milestone cache
     // Milestone cache is needed for URL-to-milestone matching when reopening tabs
     if (tabToClose && tabToClose.baseUrl) {
@@ -188,13 +348,18 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public setActiveTab(tabId: string) {
     this.setState({ activeTabId: tabId });
     
+    // Save active tab to storage
+    this.saveTabsToStorage();
+    
     // If switching to a tab that hasn't loaded content yet, load it
     const tab = this.state.tabs.find(t => t.id === tabId);
     if (tab && tabId !== 'recommendations' && !tab.isLoading && !tab.error) {
       if (tab.type === 'docs' && !tab.docsContent) {
-        this.loadDocsTabContent(tabId, tab.baseUrl);
+        console.log('🔄 Loading docs content for switched tab at:', tab.currentUrl);
+        this.loadDocsTabContent(tabId, tab.currentUrl); // Use currentUrl to restore exact page
       } else if (tab.type !== 'docs' && !tab.content) {
-        this.loadTabContent(tabId, tab.baseUrl);
+        console.log('🔄 Loading journey content for switched tab at:', tab.currentUrl);
+        this.loadTabContent(tabId, tab.currentUrl); // Use currentUrl to restore exact milestone
       }
     }
   }
@@ -219,8 +384,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     }
   }
 
-
-
   public getActiveTab(): LearningJourneyTab | null {
     return this.state.tabs.find(tab => tab.id === this.state.activeTabId) || null;
   }
@@ -244,6 +407,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       id: tabId,
       title: title || 'Loading...',
       baseUrl: url,
+      currentUrl: url, // Store the specific docs page URL
       content: null,
       isLoading: false,
       error: null,
@@ -257,6 +421,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       tabs: updatedTabs,
       activeTabId: tabId,
     });
+
+    // Save tabs to storage
+    this.saveTabsToStorage();
 
     // Load docs content immediately when tab is created and activated
     await this.loadDocsTabContent(tabId, url);
@@ -289,15 +456,23 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       if (finalTabIndex !== -1) {
         // Only update title if it's still "Loading..." (preserve original title)
         const shouldUpdateTitle = finalTabs[finalTabIndex].title === 'Loading...';
+        const urlChanged = finalTabs[finalTabIndex].currentUrl !== url;
         
         finalTabs[finalTabIndex] = {
           ...finalTabs[finalTabIndex],
           docsContent: docsContent,
+          currentUrl: url, // Update currentUrl to track current page
           title: shouldUpdateTitle ? (docsContent?.title || finalTabs[finalTabIndex].title) : finalTabs[finalTabIndex].title,
           isLoading: false,
           error: docsContent ? null : 'Failed to load documentation',
         };
         this.setState({ tabs: finalTabs });
+        
+        // Save tabs to storage if title was updated or URL changed
+        if ((shouldUpdateTitle && docsContent?.title) || urlChanged) {
+          this.saveTabsToStorage();
+        }
+        
         console.log('Successfully loaded docs:', docsContent?.title);
       }
     } catch (error) {
@@ -341,6 +516,43 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     addGlobalModalStyles();
     addGlobalInteractiveStyles();
   }, []);
+
+
+
+  // Listen for auto-launch tutorial events
+  useEffect(() => {
+    console.log('🎓 Setting up auto-launch tutorial event listener');
+    
+    const handleAutoLaunchTutorial = (event: CustomEvent) => {
+      const { url, type, title } = event.detail;
+      console.log('🎓 Received auto-launch tutorial event:', { url, type, title });
+      console.log('🎓 Model available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(model)));
+      
+      try {
+        if (type === 'learning-journey') {
+          // Open as learning journey
+          console.log('🎓 Opening as learning journey...');
+          model.openLearningJourney(url, title);
+        } else {
+          // Open as docs page
+          console.log('🎓 Opening as docs page...');
+          model.openDocsPage(url, title);
+        }
+      } catch (error) {
+        console.error('Failed to handle auto-launch tutorial:', error);
+      }
+    };
+
+    // Listen for the auto-launch tutorial event
+    document.addEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);
+    console.log('🎓 Auto-launch tutorial event listener registered');
+
+    // Cleanup
+    return () => {
+      console.log('🎓 Cleaning up auto-launch tutorial event listener');
+      document.removeEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);
+    };
+  }, [model]);
 
   // Use custom hooks for cleaner organization
   useInteractiveElements();

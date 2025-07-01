@@ -7,6 +7,7 @@ export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://grafana-recommender-9320
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
 export const DEFAULT_DOCS_USERNAME = '';
 export const DEFAULT_DOCS_PASSWORD = '';
+export const DEFAULT_TUTORIAL_URL = '';
 
 // Configuration interface
 export interface DocsPluginConfig {
@@ -14,6 +15,7 @@ export interface DocsPluginConfig {
   docsBaseUrl?: string;
   docsUsername?: string;
   docsPassword?: string;
+  tutorialUrl?: string;
 }
 
 // Global configuration - will be set by the plugin initialization
@@ -23,6 +25,7 @@ let pluginConfig: DocsPluginConfig = {};
 export const ConfigService = {
   setConfig: (config: DocsPluginConfig) => {
     pluginConfig = config;
+    console.log('🔧 ConfigService initialized with config:', config);
   },
   
   getConfig: (): DocsPluginConfig => ({
@@ -30,6 +33,7 @@ export const ConfigService = {
     docsBaseUrl: pluginConfig.docsBaseUrl || DEFAULT_DOCS_BASE_URL,
     docsUsername: pluginConfig.docsUsername || DEFAULT_DOCS_USERNAME,
     docsPassword: pluginConfig.docsPassword || DEFAULT_DOCS_PASSWORD,
+    tutorialUrl: pluginConfig.tutorialUrl || DEFAULT_TUTORIAL_URL,
   }),
 };
 
@@ -38,6 +42,7 @@ export const getRecommenderServiceUrl = () => ConfigService.getConfig().recommen
 export const getDocsBaseUrl = () => ConfigService.getConfig().docsBaseUrl;
 export const getDocsUsername = () => ConfigService.getConfig().docsUsername;
 export const getDocsPassword = () => ConfigService.getConfig().docsPassword;
+export const getTutorialUrl = () => ConfigService.getConfig().tutorialUrl;
 
 // Legacy exports for backward compatibility
 export const RECOMMENDER_SERVICE_URL = DEFAULT_RECOMMENDER_SERVICE_URL;

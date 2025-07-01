@@ -14,6 +14,23 @@ The Grafana Learning Journeys Plugin transforms how users interact with document
 - **🗂️ Tabbed Interface** - Browser-like multi-tab experience for simultaneous documentation access
 - **🔌 Extensible Architecture** - Decoupled design allowing easy integration with different content sources
 - **📱 Responsive Design** - Optimized for sidebar integration with adaptive layouts
+- **🚀 Auto-Launch Tutorials** - Automatically open specific tutorials on Grafana startup for demo scenarios
+
+## Auto-Launch Tutorial Feature
+
+Perfect for demo scenarios! The plugin can automatically open a specific tutorial when Grafana starts by setting an environment variable:
+
+```bash
+# Docker Compose example
+GF_PLUGINS_GRAFANA_GRAFANADOCSPLUGIN_APP_TUTORIAL_URL=https://grafana.com/docs/learning-journeys/linux-server-integration/
+
+# Docker run example  
+docker run -d -p 3000:3000 \
+  -e GF_PLUGINS_GRAFANA_GRAFANADOCSPLUGIN_APP_TUTORIAL_URL=https://grafana.com/docs/learning-journeys/linux-server-integration/ \
+  grafana/grafana:latest
+```
+
+📖 **[Complete Auto-Launch Documentation](./AUTO_LAUNCH_TUTORIAL.md)** - Detailed setup guide with examples for Docker, Kubernetes, and more.
 
 ## Running the plugin locally
 

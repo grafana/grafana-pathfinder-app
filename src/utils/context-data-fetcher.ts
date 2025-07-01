@@ -92,6 +92,31 @@ export async function fetchGrafanaVersion(): Promise<string> {
 }
 
 /**
+ * Filter out unhelpful recommendations that point to generic landing pages
+ */
+function filterUsefulRecommendations(recommendations: Recommendation[]): Recommendation[] {
+  return recommendations.filter(recommendation => {
+    const url = recommendation.url;
+    
+    // Remove generic learning journeys landing page (no specific journey)
+    if (url === 'https://grafana.com/docs/learning-journeys' || 
+        url === 'https://grafana.com/docs/learning-journeys/') {
+      console.log(`🗑️ Filtering out generic landing page: ${url}`);
+      return false;
+    }
+    
+    // Remove URLs that are just the base with query parameters but no journey path
+    if (url.match(/^https:\/\/grafana\.com\/docs\/learning-journeys\/?\?/)) {
+      console.log(`🗑️ Filtering out landing page with query params: ${url}`);
+      return false;
+    }
+    
+    // Keep recommendations that point to specific learning journeys or docs pages
+    return true;
+  });
+}
+
+/**
  * Sort recommendations by type and match accuracy
  * Learning journeys always come first, then docs pages
  * Within each type, sort by matchAccuracy (highest first)
@@ -206,10 +231,13 @@ export async function fetchRecommendations(
 
     console.log('Loaded recommendations with step counts:', processedRecommendations);
     
+    // Filter out unhelpful recommendations
+    const filteredRecommendations = filterUsefulRecommendations(processedRecommendations);
+    
     // Sort recommendations by type and matchAccuracy
     // Learning journeys always come first, then docs pages
     // Within each type, sort by matchAccuracy (highest first)
-    const sortedRecommendations = sortRecommendationsByAccuracy(processedRecommendations);
+    const sortedRecommendations = sortRecommendationsByAccuracy(filteredRecommendations);
     
     console.log('Sorted recommendations by match accuracy:', sortedRecommendations);
     return {
