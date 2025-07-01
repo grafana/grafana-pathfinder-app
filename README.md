@@ -22,19 +22,6 @@ Clone the repository:
 git clone https://github.com/grafana/docs-plugin.git
 ```
 
-Also clone the Grafana recommender service:
-
-```bash
-git clone https://github.com/grafana/grafana-recommender.git
-```
-
-First run the recommender service:
-
-```bash
-cd grafana-recommender
-docker compose up -d
-```
-
 Then build the plugin:
 
 ```bash
@@ -44,12 +31,34 @@ npm run build
 ```
 
 Spin up the development server:
-> Note we currently use a custom image due to the hard coding of the side panel activiation.
+> Note we are currently using main until the next release of Grafana.
 ```bash
-GRAFANA_IMAGE=jayclifford349/grafana-oss GRAFANA_VERSION=docs2 npm run server
+GRAFANA_IMAGE=grafana GRAFANA_VERSION=main npm run server
 ```
 
 Access the plugin in Grafana at [http://localhost:3000](http://localhost:3000)
+
+## Developer Documentation
+
+This plugin follows a modular, well-documented architecture. Each major component has detailed documentation:
+
+### 📁 **Core Architecture**
+- **[Source Overview](src/README.md)** - Complete source code organization and patterns
+- **[Component Architecture](src/components/README.md)** - UI component organization and relationships
+
+### 🧩 **Components**
+- **[App Component](src/components/App/README.md)** - Root application setup and scene integration
+- **[App Configuration](src/components/AppConfig/README.md)** - Admin settings and plugin configuration
+- **[Documentation Panel](src/components/docs-panel/README.md)** - Main docs functionality and tabbed interface
+
+### 🔧 **System Architecture**
+- **[Pages & Routing](src/pages/README.md)** - Scene-based routing and navigation
+- **[Utilities & Hooks](src/utils/README.md)** - Business logic, data fetching, and React hooks
+- **[Styling System](src/styles/README.md)** - CSS-in-JS organization and theming
+- **[Constants & Configuration](src/constants/README.md)** - Centralized configuration and selectors
+
+### 🎨 **Assets**
+- **[Image Assets](src/img/README.md)** - Plugin logos and visual assets
 
 ## Architecture Overview
 
@@ -110,32 +119,19 @@ Access the plugin in Grafana at [http://localhost:3000](http://localhost:3000)
 
 ### Component Architecture
 
-The plugin follows a modular, scene-based architecture using Grafana Scenes:
+The plugin follows a modular, scene-based architecture using Grafana Scenes. See the [Documentation Panel README](src/components/docs-panel/README.md) for detailed component relationships and the [Utilities README](src/utils/README.md) for the refactored business logic organization.
 
-#### Core Components
+#### Refactoring Success Story
 
-1. **App Component** (`src/components/App/App.tsx`)
-   - Entry point and context provider
-   - Initializes the scene-based architecture
-   - Manages global plugin state
+This codebase underwent major refactoring to improve maintainability:
+- **Before**: Single component with ~3,500 lines mixing UI, business logic, and styling
+- **After**: Organized into focused, reusable modules with clear separation of concerns
 
-2. **Combined Learning Journey Panel** (`src/components/docs-panel/docs-panel.tsx`)
-   - Main orchestrator component
-   - Manages tab lifecycle and navigation
-   - Handles content loading and error states
-   - Coordinates between recommendations and journey content
-
-3. **Context Panel** (`src/components/docs-panel/context-panel.tsx`)
-   - Analyzes current Grafana context (page, data sources, dashboard state)
-   - Communicates with recommendation service
-   - Displays contextual learning journey suggestions
-   - Handles user interaction for journey initiation
-
-4. **Docs Fetcher** (`src/utils/docs-fetcher.ts`)
-   - **Decoupled content retrieval system**
-   - Handles multiple fetching strategies (direct, proxy-based)
-   - Parses and transforms HTML content
-   - Manages caching and milestone extraction
+**Key Improvements**:
+- **[Extracted React Hooks](src/utils/README.md)** - Business logic separated into reusable hooks
+- **[Organized Styling](src/styles/README.md)** - Theme-aware CSS-in-JS with logical grouping
+- **[Centralized Constants](src/constants/README.md)** - Type-safe configuration and selectors
+- **[Clean Components](src/components/README.md)** - Focused UI components with single responsibilities
 
 ## How the Plugin Operates
 
@@ -239,6 +235,8 @@ The docs fetcher is intentionally designed as a **decoupled, pluggable system** 
 - **Implement different fetching strategies** (GraphQL, REST APIs, file systems)
 - **Maintain UI functionality** (all existing features continue to work)
 
+For detailed information on the docs fetcher architecture and how to customize it, see the [Utilities Documentation](src/utils/README.md).
+
 ### Interface Contracts
 
 The decoupling is achieved through well-defined TypeScript interfaces that act as contracts:
@@ -267,220 +265,7 @@ export interface Milestone {
 
 ### Current Implementation
 
-#### Multi-Strategy Fetching System
-
-The current fetcher implements a resilient approach with multiple fallback strategies:
-
-```typescript
-export async function fetchLearningJourneyContent(url: string): Promise<LearningJourneyContent | null> {
-  // Strategy 1: Direct fetch (fastest)
-  // Strategy 2: CORS proxy (corsproxy.io)  
-  // Strategy 3: Additional proxies (extensible)
-  
-  const strategies = [
-    { name: 'direct', fn: () => fetchDirectFast(url) },
-    { name: 'corsproxy', fn: () => fetchWithCorsproxy(url) },
-    // Easy to add more strategies here
-  ];
-  
-  // Try each strategy until one succeeds
-  for (const strategy of strategies) {
-    try {
-      const content = await strategy.fn();
-      if (content) {
-        return extractLearningJourneyContent(content, url);
-      }
-    } catch (error) {
-      // Continue to next strategy
-    }
-  }
-  
-  return null;
-}
-```
-
-#### Content Processing Pipeline
-
-```
-Raw HTML Input
-      │
-      ▼
-┌─────────────────┐
-│  DOM Parsing    │ ← DOMParser creates document
-└─────────────────┘
-      │
-      ▼
-┌─────────────────┐
-│ Title Extraction│ ← h1, title elements
-└─────────────────┘
-      │
-      ▼
-┌─────────────────┐
-│Milestone Parsing│ ← .journey-steps navigation
-└─────────────────┘
-      │
-      ▼
-┌─────────────────┐
-│Content Cleaning │ ← Remove navigation, fix assets
-└─────────────────┘
-      │
-      ▼
-┌─────────────────┐
-│ Video Extraction│ ← YouTube embeds, video links
-└─────────────────┘
-      │
-      ▼
-┌─────────────────┐
-│  URL Resolution │ ← Fix relative links/images
-└─────────────────┘
-      │
-      ▼
-LearningJourneyContent Output
-```
-
-### Replacing the Docs Fetcher
-
-To integrate with a different content source, follow these steps:
-
-#### 1. Implement the Same Interface
-
-Create a new fetcher that returns the same data structures:
-
-```typescript
-// Example: Custom API fetcher
-export async function fetchFromCustomAPI(journeyId: string): Promise<LearningJourneyContent | null> {
-  try {
-    const response = await fetch(`/api/v1/learning-journeys/${journeyId}`);
-    const data = await response.json();
-    
-    // Transform your API response to match the interface
-    return {
-      title: data.name,
-      content: data.htmlContent,
-      url: data.canonicalUrl,
-      currentMilestone: data.progress.current,
-      totalMilestones: data.progress.total,
-      milestones: data.steps.map(step => ({
-        number: step.order,
-        title: step.name,
-        duration: step.estimatedDuration,
-        url: step.url,
-        isActive: step.order === data.progress.current
-      })),
-      lastFetched: new Date().toISOString(),
-      videoUrl: data.videoUrl
-    };
-  } catch (error) {
-    console.error('Custom API fetch failed:', error);
-    return null;
-  }
-}
-```
-
-#### 2. Replace Function Calls
-
-Update the import statements in the UI components:
-
-```typescript
-// In docs-panel.tsx and context-panel.tsx
-// Replace:
-import { fetchLearningJourneyContent } from '../../utils/docs-fetcher';
-
-// With:
-import { fetchFromCustomAPI as fetchLearningJourneyContent } from '../../utils/custom-fetcher';
-```
-
-#### 3. Maintain Navigation Helpers
-
-Implement equivalent navigation functions:
-
-```typescript
-export function getNextMilestoneUrl(content: LearningJourneyContent): string | null {
-  // Your custom logic for determining next step
-  const currentIndex = content.milestones.findIndex(m => m.isActive);
-  const nextMilestone = content.milestones[currentIndex + 1];
-  return nextMilestone?.url || null;
-}
-
-export function getPreviousMilestoneUrl(content: LearningJourneyContent): string | null {
-  // Your custom logic for determining previous step
-  const currentIndex = content.milestones.findIndex(m => m.isActive);
-  const prevMilestone = content.milestones[currentIndex - 1];
-  return prevMilestone?.url || null;
-}
-```
-
-#### 4. Custom Caching Strategy (Optional)
-
-Implement caching that suits your data source:
-
-```typescript
-// Example: Local storage with longer TTL for API responses
-const cache = new Map<string, { content: LearningJourneyContent; timestamp: number }>();
-const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes for API responses
-
-export function clearCustomCache(): void {
-  cache.clear();
-  // Clear any additional storage
-}
-```
-
-### Integration Examples
-
-#### Database-Driven Content
-
-```typescript
-export async function fetchFromDatabase(journeySlug: string): Promise<LearningJourneyContent | null> {
-  const journey = await db.learningJourneys.findBySlug(journeySlug);
-  const milestones = await db.milestones.findByJourneyId(journey.id);
-  
-  return {
-    title: journey.title,
-    content: await renderMarkdownToHtml(journey.content),
-    url: `/journeys/${journey.slug}`,
-    currentMilestone: 0,
-    totalMilestones: milestones.length,
-    milestones: milestones.map(m => ({
-      number: m.order,
-      title: m.title,
-      duration: m.duration,
-      url: `/journeys/${journey.slug}/step/${m.order}`,
-      isActive: false
-    })),
-    lastFetched: new Date().toISOString()
-  };
-}
-```
-
-#### File System Content
-
-```typescript
-export async function fetchFromFileSystem(filePath: string): Promise<LearningJourneyContent | null> {
-  const content = await fs.readFile(filePath, 'utf-8');
-  const frontMatter = parseFrontMatter(content);
-  const htmlContent = await markdownToHtml(frontMatter.content);
-  
-  return {
-    title: frontMatter.title,
-    content: htmlContent,
-    url: `file://${filePath}`,
-    currentMilestone: frontMatter.currentStep || 0,
-    totalMilestones: frontMatter.steps?.length || 1,
-    milestones: frontMatter.steps || [],
-    lastFetched: new Date().toISOString()
-  };
-}
-```
-
-### Benefits of This Architecture
-
-1. **🔄 Easy Migration**: Switch content sources without UI changes
-2. **🧪 A/B Testing**: Test different content delivery methods
-3. **🔒 Security**: Implement custom authentication/authorization  
-4. **⚡ Performance**: Optimize for your specific data source
-5. **🎨 Customization**: Add custom content processing logic
-6. **📊 Analytics**: Integrate custom tracking and metrics
-7. **🌐 Localization**: Implement multi-language content delivery
+The current fetcher implements a resilient approach with multiple fallback strategies for content retrieval. See the [Utilities README](src/utils/README.md) for comprehensive details on the data fetching architecture and customization options.
 
 ## Development Setup
 
@@ -531,28 +316,12 @@ npm run build
 
 ### Project Structure Deep Dive
 
-```
-src/
-├── components/
-│   ├── App/
-│   │   └── App.tsx                    # Root component, scene initialization
-│   ├── AppConfig/
-│   │   └── AppConfig.tsx              # Plugin configuration UI
-│   └── docs-panel/
-│       ├── docs-panel.tsx             # Main journey panel with tabs
-│       └── context-panel.tsx          # Recommendations and context analysis
-├── pages/
-│   └── docsPage.ts                    # Scene-based page definition
-├── utils/
-│   ├── docs-fetcher.ts                # 🔌 DECOUPLED: Content fetching system
-│   ├── docs.utils.ts                  # React hooks and utilities
-│   ├── utils.plugin.ts                # Plugin context management
-│   └── utils.routing.ts               # URL and routing helpers
-├── img/                               # Assets and icons
-├── constants.ts                       # Configuration constants
-├── module.tsx                         # Plugin entry point and extensions
-└── plugin.json                       # Plugin metadata and capabilities
-```
+For a comprehensive understanding of the project structure, see:
+
+- **[Source Organization](src/README.md)** - Complete overview of the `/src` directory
+- **[Component Structure](src/components/README.md)** - UI components and their relationships
+- **[Business Logic](src/utils/README.md)** - Hooks, utilities, and data fetching
+- **[Styling System](src/styles/README.md)** - CSS-in-JS organization and theming
 
 ### Key Technologies
 
@@ -578,101 +347,16 @@ const customEndpoints = {
 };
 ```
 
-#### Content Sources
-
-```typescript
-// Supported content source configurations
-const contentSources = {
-  grafanaDocs: 'https://grafana.com/docs/',
-  internalDocs: 'https://internal.company.com/docs/',
-  localDocs: '/opt/docs/',
-  cmsEndpoint: 'https://cms.company.com/api/v1/'
-};
-```
+For detailed configuration options, see the [App Configuration README](src/components/AppConfig/README.md).
 
 ## API Reference
 
 ### Core Classes
 
-#### `CombinedLearningJourneyPanel`
-
-Main orchestrator for the tabbed journey experience:
-
-```typescript
-class CombinedLearningJourneyPanel {
-  // Tab Management
-  openLearningJourney(url: string, title?: string): Promise<string>
-  closeTab(tabId: string): void
-  setActiveTab(tabId: string): void
-  
-  // Content Loading
-  loadTabContent(tabId: string, url: string): Promise<void>
-  
-  // Navigation
-  navigateToNextMilestone(): Promise<void>
-  navigateToPreviousMilestone(): Promise<void>
-  
-  // Cache Management
-  clearCache(): void
-  
-  // State Access
-  getActiveTab(): LearningJourneyTab | null
-  canNavigateNext(): boolean
-  canNavigatePrevious(): boolean
-}
-```
-
-#### `ContextPanel`
-
-Manages contextual recommendations:
-
-```typescript
-class ContextPanel {
-  // Context Analysis
-  updateContext(): Promise<void>
-  refreshContext(): void
-  
-  // Recommendations
-  fetchRecommendations(): Promise<void>
-  refreshRecommendations(): void
-  
-  // User Actions
-  openLearningJourney(url: string, title: string): void
-  toggleStepsExpansion(index: number): Promise<void>
-  
-  // Navigation
-  navigateToPath(path: string): void
-}
-```
-
-### Utility Functions
-
-#### Content Fetching (Decoupled Interface)
-
-```typescript
-// Primary content fetching function
-fetchLearningJourneyContent(url: string): Promise<LearningJourneyContent | null>
-
-// Navigation helpers
-getNextMilestoneUrl(content: LearningJourneyContent): string | null
-getPreviousMilestoneUrl(content: LearningJourneyContent): string | null
-
-// Cache management
-clearLearningJourneyCache(): void
-clearSpecificJourneyCache(baseUrl: string): void
-```
-
-#### React Integration
-
-```typescript
-// Hooks for component integration
-useContextPanel(): ContextPanel
-useLearningJourneyPanel(): CombinedLearningJourneyPanel
-
-// Ready-to-use React components
-ContextPanelComponent(): React.ReactElement
-LearningJourneyPanelComponent(): React.ReactElement
-```
+For detailed API documentation, see:
+- **[Documentation Panel API](src/components/docs-panel/README.md)** - Main panel functionality
+- **[Utilities API](src/utils/README.md)** - Business logic and data fetching hooks
+- **[Configuration API](src/components/AppConfig/README.md)** - Plugin configuration
 
 ## Troubleshooting
 
@@ -733,6 +417,8 @@ const preloadNextMilestone = async (content: LearningJourneyContent) => {
   }
 };
 ```
+
+For more troubleshooting information, see the component-specific documentation linked above.
 
 ### Debugging Tips
 

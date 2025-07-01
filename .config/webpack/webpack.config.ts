@@ -168,7 +168,7 @@ const config = async (env: Env): Promise<Configuration> => {
               comments: (_, { type, value }) => type === 'comment2' && value.trim().startsWith('[create-plugin]'),
             },
             compress: {
-              drop_console: env.production ? ['log', 'info'] : false,
+              drop_console: ['log', 'info'],
             },
           },
         }),
@@ -254,6 +254,7 @@ const config = async (env: Env): Promise<Configuration> => {
             new ESLintPlugin({
               extensions: ['.ts', '.tsx'],
               lintDirtyModulesOnly: Boolean(env.development), // don't lint on start, only lint changed files
+              failOnError: Boolean(env.production),
             }),
           ]
         : []),
