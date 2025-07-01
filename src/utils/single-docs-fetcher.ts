@@ -118,6 +118,7 @@ function processInteractiveElements(element: Element) {
     const targetAction = block.getAttribute('data-targetaction');
     const reftarget = block.getAttribute('data-reftarget');
     const value = block.getAttribute('data-targetvalue') || '';
+    const requirements = block.getAttribute('data-requirements') || 'exists-reftarget';
 
     if (!targetAction || !reftarget) {
       console.warn("Interactive link missing target action or ref target:", block.textContent);
@@ -128,6 +129,16 @@ function processInteractiveElements(element: Element) {
     
     const createButton = (text: string, className = '') => {
       const button = document.createElement('button');
+
+      // Some processing has to be done by the visual display component, so we need to copy the attributes
+      // forward to the button that the interactivity implies.  This allows the visual display component
+      // to manipulate the data structure, rather than just taking the event when the button is clicked.
+      // Effectively we want the same data dispatched on button click and on the actual button attributes.
+      button.setAttribute('data-requirements', requirements);
+      button.setAttribute('data-targetaction', targetAction);
+      button.setAttribute('data-reftarget', reftarget);
+      button.setAttribute('data-targetvalue', value);
+
       button.textContent = text;
       if (className) {
         button.className = className;
@@ -141,64 +152,14 @@ function processInteractiveElements(element: Element) {
     
     if(targetAction === "highlight" || targetAction === "button") {
       console.log("Adding show me and do it for selector " + reftarget);
-      showEventAction = `document.dispatchEvent(
-          new CustomEvent("interactive-${targetAction}-show", 
-            { 
-              detail: {
-                reftarget: '${reftarget.replace(/'/g, "\\'")}' 
-              }
-            }
-          ))`;
-      doEventAction = `document.dispatchEvent(
-          new CustomEvent("interactive-${targetAction}", 
-            { 
-              detail: {
-                reftarget: '${reftarget.replace(/'/g, "\\'")}' 
-              }
-            }
-          ))`;
+      showEventAction = `document.dispatchEvent(new CustomEvent("interactive-${targetAction}-show"))`;
+      doEventAction = `document.dispatchEvent(new CustomEvent("interactive-${targetAction}"))`;
     } else if(targetAction === "formfill") { 
-      showEventAction = `document.dispatchEvent(
-          new CustomEvent('interactive-formfill-show', 
-            { 
-              detail: { 
-                reftarget: '${reftarget.replace(/'/g, "\\'")}', 
-                value: '${value.replace(/'/g, "\\'") || ''}' 
-              }
-            }
-          )
-        )`;
-      doEventAction = `document.dispatchEvent(
-          new CustomEvent('interactive-formfill', 
-            { 
-              detail: { 
-                reftarget: '${reftarget.replace(/'/g, "\\'")}', 
-                value: '${value.replace(/'/g, "\\'") || ''}' 
-              }
-            }
-          )
-        )`;  
+      showEventAction = `document.dispatchEvent(new CustomEvent('interactive-formfill-show'))`;
+      doEventAction = `document.dispatchEvent(new CustomEvent('interactive-formfill'))`;  
     } else if(targetAction === "sequence") {
-      showEventAction = `document.dispatchEvent(
-        new CustomEvent('interactive-sequence-show', 
-          { 
-            detail: { 
-              reftarget: '${reftarget.replace(/'/g, "\\'")}', 
-              value: '${value.replace(/'/g, "\\'") || ''}'
-            }
-          }
-        )
-      )`;
-      doEventAction = `document.dispatchEvent(
-        new CustomEvent('interactive-sequence', 
-          { 
-            detail: { 
-              reftarget: '${reftarget.replace(/'/g, "\\'")}', 
-              value: '${value.replace(/'/g, "\\'") || ''}'
-            }
-          }
-        )
-      )`;  
+      showEventAction = `document.dispatchEvent(new CustomEvent('interactive-sequence-show'))`;
+      doEventAction = `document.dispatchEvent(new CustomEvent('interactive-sequence'))`;  
     } else {
       showEventAction = `document.alert("Unknown target action: ${targetAction}")`;
       doEventAction = `document.alert("Unknown target action: ${targetAction}")`;

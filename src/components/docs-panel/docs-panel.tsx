@@ -517,10 +517,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
   // Link handling is now managed by the useLinkClickHandler hook
 
-
-
-
-
   return (
     <div className={styles.container}>
       <div className={styles.topBar}>
@@ -696,7 +692,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                     </div>
                   </div>
                 )}
-                <div 
+                <div id='inner-docs-content'
                   ref={contentRef}
                   className={journeyContentStyles}
                   dangerouslySetInnerHTML={{ __html: activeTab.content.content }}

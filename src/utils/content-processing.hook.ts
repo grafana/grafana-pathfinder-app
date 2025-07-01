@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { LearningJourneyContent } from './docs-fetcher';
 import { SingleDocsContent } from './single-docs-fetcher';
+import { useInteractiveElements } from './interactive.hook';
 
 interface UseContentProcessingProps {
   contentRef: React.RefObject<HTMLDivElement>;
@@ -13,6 +14,12 @@ export function useContentProcessing({
   activeTabContent, 
   activeTabDocsContent 
 }: UseContentProcessingProps) {
+  
+  // Get the interactive elements functions
+  const { checkElementRequirements } = useInteractiveElements();
+
+  // Create a ref to store the requirement checking function so we can call it from other effects
+  const recheckRequirementsRef = useRef<(() => Promise<void>) | null>(null);
 
   // Process tables and add expand/collapse functionality
   useEffect(() => {
@@ -451,4 +458,318 @@ export function useContentProcessing({
       }
     });
   }, [activeTabContent, activeTabDocsContent, contentRef]);
-} 
+
+  // Check requirements for interactive elements and enable/disable buttons
+  useEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement) {return;}
+
+    const elementsWithRequirements = contentElement.querySelectorAll('[data-requirements]');
+    
+    if (elementsWithRequirements.length === 0) {
+      return;
+    }
+    
+    // Function to update element state based on requirement check
+    const updateElementState = (element: HTMLElement, satisfied: boolean, isChecking = false) => {
+      // Remove all requirement state classes
+      element.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
+      
+      if (isChecking) {
+        element.classList.add('requirements-checking');
+        
+        // For buttons, show loading state but don't disable
+        if (element.tagName.toLowerCase() === 'button') {
+          const originalText = element.getAttribute('data-original-text') || element.textContent || '';
+          if (!element.getAttribute('data-original-text')) {
+            element.setAttribute('data-original-text', originalText);
+          }
+          element.innerHTML = `
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline-block; margin-right: 4px; animation: spin 1s linear infinite;">
+              <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
+            </svg>
+            Checking...
+          `;
+        }
+      } else {
+        const originalText = element.getAttribute('data-original-text');
+        
+        if (satisfied) {
+          element.classList.add('requirements-satisfied');
+          
+          if (element.tagName.toLowerCase() === 'button') {
+            (element as HTMLButtonElement).disabled = false;
+            element.setAttribute('aria-disabled', 'false');
+            if (originalText) {
+              element.textContent = originalText;
+            }
+          }
+        } else {
+          element.classList.add('requirements-failed');
+          
+          if (element.tagName.toLowerCase() === 'button') {
+            (element as HTMLButtonElement).disabled = true;
+            element.setAttribute('aria-disabled', 'true');
+            if (originalText) {
+              element.textContent = originalText;
+            }
+            
+            // Add tooltip or title to explain why it's disabled
+            const requirements = element.getAttribute('data-requirements') || '';
+            element.title = `Requirements not met: ${requirements}`;
+          }
+        }
+      }
+    };
+
+    // Check requirements for all elements
+    const checkAllRequirements = async () => {
+      // Set all elements to checking state first
+      Array.from(elementsWithRequirements).forEach(element => {
+        updateElementState(element as HTMLElement, false, true);
+      });
+
+      // Check requirements in parallel for better performance
+      const checkPromises = Array.from(elementsWithRequirements).map(async (element, index) => {
+        const htmlElement = element as HTMLElement;
+
+        try {
+          const result = await checkElementRequirements(htmlElement);
+          updateElementState(htmlElement, result.pass, false);
+          return { element: htmlElement, result, index };
+        } catch (error) {
+          console.error(`Error checking requirements for element ${index + 1}:`, error);
+          updateElementState(htmlElement, false, false);
+          return { element: htmlElement, result: null, index, error };
+        }
+      });
+
+      try {
+        const results = await Promise.allSettled(checkPromises);
+        const rejected = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+        
+        if (rejected.length > 0) {
+          console.warn('Some requirement checks failed:', rejected.map(r => r.reason));
+        }
+      } catch (error) {
+        console.error('Error in requirement checking process:', error);
+      }
+    };
+
+    // Add some CSS for the requirement states if not already present
+    if (!document.querySelector('#requirement-styles')) {
+      const style = document.createElement('style');
+      style.id = 'requirement-styles';
+      style.textContent = `
+        .requirements-checking {
+          opacity: 0.7;
+        }
+        
+        .requirements-satisfied {
+          /* Visual feedback for satisfied requirements */
+        }
+        
+        .requirements-failed {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        
+        .requirements-failed button {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // Store the function in ref so other effects can call it
+    recheckRequirementsRef.current = checkAllRequirements;
+
+    // Start the requirement checking process
+    checkAllRequirements();
+
+  }, [activeTabContent, activeTabDocsContent, contentRef, checkElementRequirements]);
+
+  // Add DOM mutation observer and event listeners for automatic re-checking
+  useEffect(() => {
+    const contentElement = contentRef.current;
+    if (!contentElement) {return;}
+
+    let recheckTimeout: NodeJS.Timeout;
+
+    // Debounced re-check function to avoid excessive calls
+    const debouncedRecheck = () => {
+      if (recheckTimeout) {
+        clearTimeout(recheckTimeout);
+      }
+      recheckTimeout = setTimeout(() => {
+        if (recheckRequirementsRef.current) {
+          recheckRequirementsRef.current();
+        }
+      }, 500); // Wait 500ms after last change
+    };
+
+    // Listen for interactive element completion events
+    const handleInteractiveCompletion = (event: Event) => {
+      const target = event.target as HTMLElement;
+      if (target && target.classList.contains('interactive-completed')) {
+        debouncedRecheck();
+      }
+    };
+
+         // Listen for DOM mutations that might affect requirements
+     const mutationObserver = new MutationObserver((mutations) => {
+       let shouldRecheck = false;
+
+       mutations.forEach((mutation) => {
+         // Check for added/removed nodes that might affect requirements
+         if (mutation.type === 'childList') {
+           const addedNodes = Array.from(mutation.addedNodes);
+           const removedNodes = Array.from(mutation.removedNodes);
+           
+           // Be more aggressive about detecting changes - any new element could affect requirements
+           const hasElementChanges = [...addedNodes, ...removedNodes].some(node => {
+             return node.nodeType === Node.ELEMENT_NODE;
+           });
+
+           if (hasElementChanges) {
+             shouldRecheck = true;
+           }
+         }
+
+         // Check for attribute changes that might affect requirements
+         if (mutation.type === 'attributes') {
+           shouldRecheck = true;
+         }
+       });
+
+       if (shouldRecheck) {
+         debouncedRecheck();
+       }
+     });
+
+    // Start observing
+    mutationObserver.observe(contentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['disabled', 'aria-disabled', 'data-requirements', 'data-reftarget']
+    });
+
+    // Listen for interactive completion events
+    contentElement.addEventListener('DOMSubtreeModified', handleInteractiveCompletion);
+    
+    // Listen for focus changes that might indicate state changes
+    const handleFocusChange = () => {
+      // Small delay to allow any state changes to complete
+      setTimeout(() => {
+        debouncedRecheck();
+      }, 100);
+    };
+
+    document.addEventListener('focusin', handleFocusChange);
+    document.addEventListener('focusout', handleFocusChange);
+
+         // Listen for custom events that indicate state changes
+     const handleStateChange = (event: Event) => {
+       // For interactive action completions or backup recheck, re-check immediately instead of debounced
+         if (event.type === 'interactive-action-completed' || event.type === 'force-requirements-recheck') {
+                    setTimeout(() => {
+             if (recheckRequirementsRef.current) {
+               recheckRequirementsRef.current().catch(error => {
+                 console.error('Error during requirements re-check:', error);
+               });
+             } else {
+               console.warn('recheckRequirementsRef.current is not available, doing direct re-check');
+               
+               // Fallback: directly find and check all elements with requirements
+               const currentElementsWithRequirements = contentElement.querySelectorAll('[data-requirements]');
+               
+               if (currentElementsWithRequirements.length > 0) {
+                 // Run requirement checks directly
+                 Array.from(currentElementsWithRequirements).forEach(async (element) => {
+                   const htmlElement = element as HTMLElement;
+                   
+                   try {
+                     const result = await checkElementRequirements(htmlElement);
+                     
+                     // Update the element state (inline version)
+                     htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
+                     if (result.pass) {
+                       htmlElement.classList.add('requirements-satisfied');
+                       if (htmlElement.tagName.toLowerCase() === 'button') {
+                         (htmlElement as HTMLButtonElement).disabled = false;
+                         htmlElement.setAttribute('aria-disabled', 'false');
+                       }
+                     } else {
+                       htmlElement.classList.add('requirements-failed');
+                       if (htmlElement.tagName.toLowerCase() === 'button') {
+                         (htmlElement as HTMLButtonElement).disabled = true;
+                         htmlElement.setAttribute('aria-disabled', 'true');
+                       }
+                     }
+                   } catch (error) {
+                     console.error('Fallback error for element:', error);
+                     // Set failed state (inline version)
+                     htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
+                     htmlElement.classList.add('requirements-failed');
+                     if (htmlElement.tagName.toLowerCase() === 'button') {
+                       (htmlElement as HTMLButtonElement).disabled = true;
+                       htmlElement.setAttribute('aria-disabled', 'true');
+                     }
+                   }
+                 });
+               }
+             }
+           }, 100); // Small delay to let DOM settle
+       } else {
+         debouncedRecheck();
+       }
+     };
+
+         // Listen for events that might indicate data source changes
+     const stateChangeEvents = [
+       'datasource-added',
+       'datasource-removed', 
+       'datasource-updated',
+       'connection-established',
+       'navigation-complete',
+       'interactive-action-completed',  // Our custom event from interactive.hook.ts
+       'force-requirements-recheck'     // Backup event from interactive.hook.ts
+     ];
+
+         stateChangeEvents.forEach(eventType => {
+       document.addEventListener(eventType, handleStateChange);
+     });
+
+         return () => {
+       // Cleanup
+       mutationObserver.disconnect();
+       contentElement.removeEventListener('DOMSubtreeModified', handleInteractiveCompletion);
+       document.removeEventListener('focusin', handleFocusChange);
+       document.removeEventListener('focusout', handleFocusChange);
+       stateChangeEvents.forEach(eventType => {
+         document.removeEventListener(eventType, handleStateChange);
+       });
+       if (recheckTimeout) {
+         clearTimeout(recheckTimeout);
+       }
+     };
+   }, [contentRef]);
+
+   // Expose manual re-check function
+   const manualRecheck = useCallback(() => {
+     if (recheckRequirementsRef.current) {
+       recheckRequirementsRef.current();
+     }
+   }, []);
+
+   return {
+     recheckRequirements: manualRecheck
+   };
+}  
