@@ -8,6 +8,10 @@
   "info": {
     "keywords": ["app"],
     "description": "A documentation plugin that provides contextual help and quick access to Grafana resources",
+    "screenshots": [
+      { "name": "Recommended reading", "path": "img/screenshot_1.png" },
+      { "name": "Progress through reading", "path": "img/screenshot_2.png" }
+    ],
     "author": {
       "name": "Grafana"
     },
@@ -15,7 +19,6 @@
       "small": "img/logo.svg",
       "large": "img/logo.svg"
     },
-    "screenshots": [],
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },
