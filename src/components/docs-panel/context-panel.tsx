@@ -39,7 +39,6 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
   }
 
   public openDocsPage(url: string, title: string) {
-    console.log('ContextPanel.openDocsPage called with:', { url, title, hasCallback: !!this.state.onOpenDocsPage });
     if (this.state.onOpenDocsPage) {
       this.state.onOpenDocsPage(url, title);
     } else {

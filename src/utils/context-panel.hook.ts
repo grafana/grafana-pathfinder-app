@@ -101,11 +101,9 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     
     // Check if location actually changed
     if (lastLocationRef.current.path === currentPath && lastLocationRef.current.url === currentUrl) {
-      console.log('Location unchanged, skipping context update');
       return;
     }
     
-    console.log('Updating context for location:', { from: lastLocationRef.current.path, to: currentPath });
     lastLocationRef.current = { path: currentPath, url: currentUrl };
 
     setIsLoading(true);
@@ -189,7 +187,6 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [onOpenLearningJourney]);
 
   const openDocsPage = useCallback((url: string, title: string) => {
-    console.log('useContextPanel.openDocsPage called with:', { url, title, hasCallback: !!onOpenDocsPage });
     if (onOpenDocsPage) {
       onOpenDocsPage(url, title);
     } else {

@@ -101,13 +101,11 @@ function filterUsefulRecommendations(recommendations: Recommendation[]): Recomme
     // Remove generic learning journeys landing page (no specific journey)
     if (url === 'https://grafana.com/docs/learning-journeys' || 
         url === 'https://grafana.com/docs/learning-journeys/') {
-      console.log(`🗑️ Filtering out generic landing page: ${url}`);
       return false;
     }
     
     // Remove URLs that are just the base with query parameters but no journey path
     if (url.match(/^https:\/\/grafana\.com\/docs\/learning-journeys\/?\?/)) {
-      console.log(`🗑️ Filtering out landing page with query params: ${url}`);
       return false;
     }
     
@@ -141,8 +139,6 @@ function sortRecommendationsByAccuracy(recommendations: Recommendation[]): Recom
   const sortedLearningJourneys = learningJourneys.sort(sortByAccuracy);
   const sortedDocsPages = docsPages.sort(sortByAccuracy);
   
-  console.log(`Sorted ${sortedLearningJourneys.length} learning journeys and ${sortedDocsPages.length} docs pages by match accuracy`);
-  
   // Return learning journeys first, then docs pages
   return [...sortedLearningJourneys, ...sortedDocsPages];
 }
@@ -161,12 +157,9 @@ export async function fetchRecommendations(
       path: currentPath,
       datasources: dataSources.map(ds => ds.name),
       tags: contextTags,
-      user_id: config.bootData.user.uid,
+      user_id: config.bootData.user.analytics.identifier,
       user_role: config.bootData.user.orgRole || 'Viewer',
     };
-
-    console.log('Sending context to recommender service:', payload);
-    console.log('Generated context tags:', contextTags);
 
     // Send request to your recommender service
     const response = await fetch(`${getRecommenderServiceUrl()}/recommend`, {
@@ -193,13 +186,11 @@ export async function fetchRecommendations(
     recommendations.push(defaultR);
     
     // Only fetch step counts for learning journey recommendations
-    console.log('Processing recommendations by type...');
     const processedRecommendations = await Promise.all(
       recommendations.map(async (recommendation) => {
         // Only fetch milestone data for learning journeys
         if (recommendation.type === 'learning-journey' || !recommendation.type) {
           try {
-            console.log(`Fetching step counts and summary for learning journey: ${recommendation.title}`);
             const journeyContent = await fetchLearningJourneyContent(recommendation.url);
             return {
               ...recommendation,
@@ -218,7 +209,6 @@ export async function fetchRecommendations(
           }
         } else {
           // For docs pages, don't fetch milestone data
-          console.log(`Skipping milestone fetch for docs page: ${recommendation.title}`);
           return {
             ...recommendation,
             totalSteps: 0, // Docs pages don't have steps
@@ -228,8 +218,6 @@ export async function fetchRecommendations(
         }
       })
     );
-
-    console.log('Loaded recommendations with step counts:', processedRecommendations);
     
     // Filter out unhelpful recommendations
     const filteredRecommendations = filterUsefulRecommendations(processedRecommendations);
@@ -239,7 +227,6 @@ export async function fetchRecommendations(
     // Within each type, sort by matchAccuracy (highest first)
     const sortedRecommendations = sortRecommendationsByAccuracy(filteredRecommendations);
     
-    console.log('Sorted recommendations by match accuracy:', sortedRecommendations);
     return {
       recommendations: sortedRecommendations,
       error: null,

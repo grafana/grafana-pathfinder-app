@@ -18,14 +18,13 @@ const DOCS_CACHE_DURATION = 1; // 5 * 60 * 1000; // 5 minutes
 function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'User-Agent': 'Mozilla/5.0 (compatible; GrafanaDocsReader/1.0)',
+    'User-Agent': 'Mozilla/5.0 (compatible; GrafanaDocsPlugin/1.0)',
   };
   
   // Authenticate if username is provided (password can be empty)
   if (getDocsUsername()) {
     const credentials = btoa(`${getDocsUsername()}:${getDocsPassword() || ''}`);
     headers['Authorization'] = `Basic ${credentials}`;
-    console.log(`🔐 Adding Basic Auth for user: ${getDocsUsername()}`);
   }
   
   return headers;
@@ -50,7 +49,6 @@ function getUnstyledContentUrl(url: string): string {
   // Re-attach hash fragment if it exists
   if (hash) {
     unstyledUrl += `#${hash}`;
-    console.log(`🔗 Preserved hash fragment: ${url} -> ${unstyledUrl}`);
   }
   
   return unstyledUrl;
@@ -64,13 +62,9 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     
-    console.log('Extracting docs content for:', url);
-    console.log('HTML length:', html.length);
-    
     // Extract title from h1 (unstyled.html always has content directly in body)
     const titleElement = doc.querySelector('h1');
     const title = titleElement?.textContent?.trim() || 'Documentation';
-    console.log('Extracted title:', title);
     
     // For unstyled.html, content is always in body
     const mainElement = doc.querySelector('body');
@@ -85,12 +79,8 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
       };
     }
     
-    console.log('Body element innerHTML length before processing:', mainElement.innerHTML.length);
-    
     // Process the content
     const processedContent = processSingleDocsContent(mainElement, url);
-    
-    console.log('Processed content length:', processedContent.length);
     
     return {
       title,
@@ -112,8 +102,6 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
 function processInteractiveElements(element: Element) {
   const interactiveLinks = element.querySelectorAll('a.interactive, span.interactive, li.interactive');
   interactiveLinks.forEach(block => {
-    console.log("Interactive link found:", block.textContent);
-    
     const tagName = block.tagName.toLowerCase();
     const targetAction = block.getAttribute('data-targetaction');
     const reftarget = block.getAttribute('data-reftarget');
@@ -125,8 +113,6 @@ function processInteractiveElements(element: Element) {
       return;
     }
 
-    console.log("Adding show me and do it buttons for " + tagName + " target " + reftarget + " with " + targetAction);
-    
     const createButton = (text: string, className = '') => {
       const button = document.createElement('button');
 
@@ -151,7 +137,6 @@ function processInteractiveElements(element: Element) {
     let doEventAction = "";
     
     if(targetAction === "highlight" || targetAction === "button") {
-      console.log("Adding show me and do it for selector " + reftarget);
       showEventAction = `document.dispatchEvent(new CustomEvent("interactive-${targetAction}-show"))`;
       doEventAction = `document.dispatchEvent(new CustomEvent("interactive-${targetAction}"))`;
     } else if(targetAction === "formfill") { 
@@ -206,15 +191,10 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
     'head', 'script', 'style', 'noscript', 'grammarly-desktop-integration'
   ];
   
-  console.log('Content length before removing unwanted elements:', clonedElement.innerHTML.length);
-  
   unwantedSelectors.forEach(selector => {
     const elements = clonedElement.querySelectorAll(selector);
-    console.log(`Removing ${elements.length} elements with selector: ${selector}`);
     elements.forEach(el => el.remove());
   });
-  
-  console.log('Content length after removing unwanted elements:', clonedElement.innerHTML.length);
   
   // Process images - fix relative URLs and add lightbox functionality
   const images = clonedElement.querySelectorAll('img');
@@ -268,8 +248,6 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
           : originalSrc.startsWith('../') 
             ? `${getDocsBaseUrl()}/docs/${originalSrc.replace(/^\.\.\//, '')}`
             : `${getDocsBaseUrl()}/docs/${originalSrc}`;
-    
-    console.log(`🎥 Video URL processing: ${originalSrc} -> ${newSrc}`);
     
     // Set the fixed source
     if (dataSrc) {
@@ -373,8 +351,6 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
       
       // Replace the original code element with the pre wrapper
       code.parentNode?.replaceChild(preWrapper, code);
-      
-      console.log(`🔄 Converted standalone code to code block: ${code.textContent?.substring(0, 50)}...`);
     } else {
       // Keep as inline code
       code.classList.add('docs-inline-code');
@@ -385,7 +361,6 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
 
   // Process links to handle docs links vs external links differently
   const links = clonedElement.querySelectorAll('a[href]');
-  console.log(`🔗 Processing ${links.length} links in docs content`);
   
   links.forEach((link, index) => {
     const href = link.getAttribute('href');
@@ -397,7 +372,6 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
         // Absolute path from root
         finalHref = `${getDocsBaseUrl()}${href}`;
         link.setAttribute('href', finalHref);
-        console.log(`🔗 Link ${index}: Fixed absolute path ${href} -> ${finalHref}`);
       } else if (href.startsWith('../') && !href.startsWith('http')) {
         // Relative path going up directories - likely a docs link
         // Convert to absolute URL by resolving relative to current docs context
@@ -406,7 +380,6 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
           const resolvedUrl = new URL(href, currentUrl);
           finalHref = resolvedUrl.href;
           link.setAttribute('href', finalHref);
-          console.log(`🔗 Link ${index}: Resolved relative URL ${href} -> ${finalHref} (base: ${currentUrl})`);
         } catch (error) {
           console.warn(`🔗 Link ${index}: Failed to resolve relative URL ${href}, leaving as-is`);
         }
@@ -417,7 +390,6 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
           const resolvedUrl = new URL(href, currentUrl);
           finalHref = resolvedUrl.href;
           link.setAttribute('href', finalHref);
-          console.log(`🔗 Link ${index}: Resolved simple relative URL ${href} -> ${finalHref} (base: ${currentUrl})`);
         } catch (error) {
           console.warn(`🔗 Link ${index}: Failed to resolve simple relative URL ${href}, leaving as-is`);
         }
@@ -427,23 +399,16 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
       const isDocsLink = finalHref.startsWith(`${docsBaseUrl}/docs/`) || 
                         (href.startsWith('/docs/') && !href.startsWith('//'));
       
-      console.log(`🔗 Link ${index}: href="${href}", finalHref="${finalHref}", isDocsLink=${isDocsLink}`);
-      
       if (isDocsLink) {
         // Docs links - will be handled by app tab system
         link.setAttribute('data-docs-internal-link', 'true');
         link.setAttribute('data-docs-link', 'true');
-        console.log(`🔗 Link ${index}: Added data-docs-internal-link="true" to docs link: ${finalHref}`);
-        // Don't set target="_blank" for docs links - they'll be handled by our click handler
       } else {
         // External links - open in new browser tab
         link.setAttribute('target', '_blank');
         link.setAttribute('rel', 'noopener noreferrer');
         link.setAttribute('data-docs-link', 'true');
-        console.log(`🔗 Link ${index}: Added target="_blank" to external link: ${finalHref}`);
       }
-    } else {
-      console.log(`🔗 Link ${index}: No href attribute found`);
     }
   });
   
@@ -453,7 +418,6 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
   
   // Remove interactive guide sections and their preceding headers
   const guideSections = clonedElement.querySelectorAll('div.guide[x-data]');
-  console.log(`🗑️ Found ${guideSections.length} interactive guide sections to remove`);
   
   guideSections.forEach((guideSection, index) => {
     // Check for immediately preceding header element
@@ -469,10 +433,7 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
     
     // If the previous element is a header, remove it too
     if (previousElement && /^H[1-6]$/.test(previousElement.tagName)) {
-      console.log(`🗑️ Guide ${index + 1}: Removing header "${previousElement.textContent?.trim()}" and guide section`);
       previousElement.remove();
-    } else {
-      console.log(`🗑️ Guide ${index + 1}: Removing guide section (no preceding header found)`);
     }
     
     // Remove the guide section
@@ -481,14 +442,11 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
 
   // Process admonitions (notes, warnings, etc.) - simplify to match learning journey style
   const admonitions = clonedElement.querySelectorAll('.admonition');
-  console.log(`📝 Found ${admonitions.length} admonitions to process`);
   
   admonitions.forEach((admonition, index) => {
     const blockquote = admonition.querySelector('blockquote');
     
     if (blockquote) {
-      console.log(`📝 Admonition ${index + 1}: Processing with blockquote structure`);
-      
       // Create a simple wrapper div with admonition classes (matching learning journey structure)
       const wrapper = clonedElement.ownerDocument.createElement('div');
       
@@ -517,11 +475,6 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
       // Wrap the blockquote and replace the original admonition
       wrapper.appendChild(blockquote);
       admonition.parentNode?.replaceChild(wrapper, admonition);
-      
-      console.log(`📝 Admonition ${index + 1}: Converted to simple learning journey style`);
-    } else {
-      console.log(`📝 Admonition ${index + 1}: No blockquote found, removing`);
-      admonition.remove();
     }
   });
   
@@ -531,9 +484,6 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
     table.classList.add('docs-table');
   });
   
-  console.log('Final processed content length:', clonedElement.innerHTML.length);
-  console.log('Final content preview (first 500 chars):', clonedElement.innerHTML.substring(0, 500));
-  
   return clonedElement.innerHTML;
 }
 
@@ -541,11 +491,8 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
  * Fetch single docs content with multiple strategies
  */
 export async function fetchSingleDocsContent(url: string): Promise<SingleDocsContent | null> {
-  console.log(`Fetching single docs content from: ${url}`);
-  
   // Use unstyled.html version for content fetching
   const unstyledUrl = getUnstyledContentUrl(url);
-  console.log(`Using unstyled URL: ${unstyledUrl}`);
   
   // Split hash fragment for fetch (server doesn't need it) but preserve for content
   const [fetchUrl, hashFragment] = unstyledUrl.split('#');
@@ -553,28 +500,22 @@ export async function fetchSingleDocsContent(url: string): Promise<SingleDocsCon
   // Check cache first (use original URL as cache key)
   const cached = docsContentCache.get(url);
   if (cached && Date.now() - cached.timestamp < DOCS_CACHE_DURATION) {
-    console.log('Returning cached docs content for:', url);
     return cached.content;
   }
   
   // Try fetch with retry logic for redirects
   try {
-    console.log('🚀 Starting docs fetch with redirect handling...');
     const startTime = Date.now();
     const htmlContent = await fetchWithRetry(fetchUrl); // Fetch without hash
     const duration = Date.now() - startTime;
     
     if (htmlContent && htmlContent.trim().length > 0) {
-      console.log(`✅ Docs fetch with retry succeeded in ${duration}ms, content length: ${htmlContent.length}`);
       const content = extractSingleDocsContent(htmlContent, url); // Use original URL for content
       
       // Add hash fragment to the content for scrolling
       if (hashFragment) {
         content.hashFragment = hashFragment;
-        console.log(`🔗 Added hash fragment for scrolling: #${hashFragment}`);
       }
-      
-      console.log(`📄 Extracted docs content: ${content.title}`);
       
       // Cache the result (use original URL as cache key)
       docsContentCache.set(url, { content, timestamp: Date.now() });
@@ -596,8 +537,6 @@ export async function fetchSingleDocsContent(url: string): Promise<SingleDocsCon
  */
 async function fetchDirectFast(url: string): Promise<string | null> {
   try {
-    console.log('🌐 Trying direct docs fetch for:', url);
-    
     const headers = getAuthHeaders();
     
     // For authenticated requests, we might need additional CORS handling
@@ -612,17 +551,15 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     if (getDocsUsername()) {
       fetchOptions.mode = 'cors';
       fetchOptions.credentials = 'omit'; // Don't send cookies, use explicit auth headers
-      console.log('🔐 Using authenticated direct docs fetch');
     } else {
       fetchOptions.mode = 'cors';
-      console.log('📂 Using non-authenticated direct docs fetch');
     }
     
     const response = await fetch(url, fetchOptions);
     
     // Log redirect information
     if (response.url !== url) {
-      console.log(`🔄 Redirect detected: ${url} -> ${response.url}`);
+      // Ignore
     }
     
     if (!response.ok) {
@@ -631,7 +568,6 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     }
     
     const content = await response.text();
-    console.log(`✅ Successfully fetched docs (${content.length} chars) from:`, response.url);
     return content;
   } catch (error) {
     console.warn(`❌ Direct docs fetch failed for ${url}:`, error);
@@ -643,8 +579,6 @@ async function fetchDirectFast(url: string): Promise<string | null> {
  * Try multiple URL patterns to handle redirects and moved pages
  */
 async function fetchWithRetry(originalUrl: string): Promise<string | null> {
-  console.log(`🔄 Starting fetchWithRetry for: ${originalUrl}`);
-  
   // First try the original URL
   let content = await fetchDirectFast(originalUrl);
   if (content && content.trim().length > 0) {
@@ -656,11 +590,9 @@ async function fetchWithRetry(originalUrl: string): Promise<string | null> {
   
   for (let i = 0; i < urlVariations.length; i++) {
     const variation = urlVariations[i];
-    console.log(`🔄 Retry ${i + 1}/${urlVariations.length}: Trying variation: ${variation}`);
     
     content = await fetchDirectFast(variation);
     if (content && content.trim().length > 0) {
-      console.log(`✅ Success with URL variation: ${variation}`);
       return content;
     }
   }
@@ -705,11 +637,6 @@ function generateUrlVariations(url: string): string[] {
     .filter(p => p !== baseUrlWithUnstyled && p.includes('/unstyled.html'))
     .map(p => hashFragment ? `${p}#${hashFragment}` : p);
   
-  console.log(`🔄 Generated ${uniquePatterns.length} URL variations for: ${url}`);
-  uniquePatterns.forEach((pattern, index) => {
-    console.log(`  ${index + 1}. ${pattern}`);
-  });
-  
   return uniquePatterns;
 }
 
@@ -719,7 +646,6 @@ function generateUrlVariations(url: string): string[] {
 export function clearSingleDocsCache(): void {
   try {
     docsContentCache.clear();
-    console.log('Cleared single docs cache');
   } catch (error) {
     console.warn('Failed to clear single docs cache:', error);
   }
@@ -731,7 +657,6 @@ export function clearSingleDocsCache(): void {
 export function clearSpecificDocsCache(url: string): void {
   try {
     docsContentCache.delete(url);
-    console.log(`Cleared docs cache for: ${url}`);
   } catch (error) {
     console.warn('Failed to clear specific docs cache:', error);
   }
