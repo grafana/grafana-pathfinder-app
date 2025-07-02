@@ -102,7 +102,6 @@ function getAuthHeaders(): Record<string, string> {
   if (getDocsUsername()) {
     const credentials = btoa(`${getDocsUsername()}:${getDocsPassword() || ''}`);
     headers['Authorization'] = `Basic ${credentials}`;
-    console.log(`🔐 Adding Basic Auth for user: ${getDocsUsername()}`);
   }
   
   return headers;
@@ -145,7 +144,6 @@ function getUnstyledContentUrl(url: string): string {
   // Re-attach hash fragment if it exists
   if (hash) {
     unstyledUrl += `#${hash}`;
-    console.log(`🔗 Preserved hash fragment in learning journey: ${url} -> ${unstyledUrl}`);
   }
   
   return unstyledUrl;
@@ -160,8 +158,6 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     const absoluteBaseUrl = baseUrl.startsWith('/') ? `${getDocsBaseUrl()}${baseUrl}` : baseUrl;
     const jsonUrl = `${absoluteBaseUrl}index.json`;
     
-    console.log(`📋 Fetching milestones from JSON: ${jsonUrl}`);
-    
     const jsonContent = await fetchDirectFast(jsonUrl);
     
     if (!jsonContent || jsonContent.trim().length === 0) {
@@ -174,8 +170,6 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     if (!Array.isArray(jsonData)) {
       throw new Error('JSON data is not an array');
     }
-    
-    console.log(`📋 Found ${jsonData.length} items in JSON`);
     
     // Filter items that should be milestones (have step numbers OR are conclusion pages)
     const milestoneItems = jsonData.filter(item => 
@@ -191,8 +185,6 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
       const stepB = b.params.step || 999;
       return stepA - stepB;
     });
-    
-    console.log(`📋 Found ${milestoneItems.length} milestone items in JSON`);
     
     // Create milestones using array index + 1 for consistent numbering
     const milestones: Milestone[] = milestoneItems.map((item, index) => {
@@ -215,7 +207,6 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
             title: sideItem.title
           }))
         };
-        console.log(`📍 Added ${sideJourneys.items.length} side journey items for milestone ${milestoneNumber}`);
       }
       
       // Extract related_journeys if present (typically in destination-reached milestone)
@@ -228,7 +219,6 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
             title: relatedItem.title
           }))
         };
-        console.log(`🔗 Added ${relatedJourneys.items.length} related journey items for milestone ${milestoneNumber}`);
       }
       
       // Extract conclusion image if present (typically in destination-reached milestone)
@@ -243,10 +233,7 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
           width: item.params.cta.image.width || 735,
           height: item.params.cta.image.height || 175
         };
-        console.log(`🎉 Added conclusion image for milestone ${milestoneNumber}: ${imageSrc}`);
       }
-      
-      console.log(`📍 Added milestone ${milestoneNumber}: ${title} (${absoluteUrl})`);
       
       return {
         number: milestoneNumber,
@@ -264,7 +251,6 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
       throw new Error('No valid milestones found in JSON data');
     }
     
-    console.log(`✅ Successfully extracted ${milestones.length} milestones from JSON`);
     return milestones;
     
   } catch (error) {
@@ -293,7 +279,6 @@ function extractJourneySummary(doc: Document): string {
     }
     
     const summary = summaryParts.join(' ');
-    console.log(`📝 Extracted summary (${summary.length} chars): ${summary.substring(0, 100)}...`);
     return summary;
   } catch (error) {
     console.warn('Failed to extract journey summary:', error);
@@ -327,15 +312,12 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
     
     if (!milestones) {
       // Fresh journey start - fetch milestones from JSON
-      console.log('Fresh journey start - fetching milestones from JSON');
-      
       try {
         milestones = await fetchMilestonesFromJson(baseUrl);
         
         // Cache the milestones for this learning journey
         if (milestones.length > 0) {
           cacheMilestones(baseUrl, milestones);
-          console.log(`Cached ${milestones.length} milestones for journey`);
         }
         
         totalMilestones = milestones.length;
@@ -347,7 +329,6 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
       }
     } else {
       // Use cached milestone information
-      console.log('Using cached milestone information');
       totalMilestones = milestones.length;
       
       // Determine current milestone from URL
@@ -363,13 +344,8 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
         const activeMilestone = milestones.find(m => m.number === currentMilestone);
         if (activeMilestone) {
           activeMilestone.isActive = true;
-          console.log(`✅ Set milestone ${currentMilestone} as active: ${activeMilestone.title}`);
         }
-      } else {
-        console.log(`📍 Current milestone ${currentMilestone} is cover page`);
       }
-      
-      console.log(`🧭 Navigation state: Current=${currentMilestone}, Total=${totalMilestones}`);
     }
     
     // Now determine if this is a cover page based on milestone detection
@@ -386,24 +362,20 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
       
       // Add conclusion image at the top if present
       if (currentMilestoneData?.conclusionImage) {
-        console.log(`🎉 Adding conclusion image for milestone ${currentMilestone}`);
         finalContent = addConclusionImageToContent(finalContent, currentMilestoneData.conclusionImage);
       }
       
       // Add side journeys section for milestone pages (not cover pages)
       if (currentMilestoneData?.sideJourneys && currentMilestoneData.sideJourneys.items.length > 0) {
-        console.log(`📚 Adding side journeys section for milestone ${currentMilestone}`);
         finalContent = appendSideJourneysToContent(finalContent, currentMilestoneData.sideJourneys);
       }
       
       // Add related journeys section (typically for destination-reached milestone)
       if (currentMilestoneData?.relatedJourneys && currentMilestoneData.relatedJourneys.items.length > 0) {
-        console.log(`🔗 Adding related journeys section for milestone ${currentMilestone}`);
         finalContent = appendRelatedJourneysToContent(finalContent, currentMilestoneData.relatedJourneys);
       }
       
       // Add bottom navigation for milestone pages
-      console.log(`🧭 Adding bottom navigation for milestone ${currentMilestone}`);
       finalContent = appendBottomNavigationToContent(finalContent, currentMilestone, totalMilestones);
     }
     
@@ -517,8 +489,6 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean, u
       // Remove fixed width/height attributes to make it responsive
       iframe.removeAttribute('width');
       iframe.removeAttribute('height');
-      
-      console.log(`📺 Made ${isYouTube ? 'YouTube' : 'video'} iframe responsive`);
     } else {
       // For non-video iframes, just make them responsive
       iframe.classList.add('journey-general-iframe');
@@ -530,8 +500,6 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean, u
         iframe.style.width = '100%';
         iframe.style.maxWidth = '100%';
       }
-      
-      console.log('📄 Made general iframe responsive');
     }
     
     // Ensure iframe has a title for accessibility
@@ -559,7 +527,6 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean, u
         // Absolute path from root
         finalHref = `${docsBaseUrl}${href}`;
         link.setAttribute('href', finalHref);
-        console.log(`🔗 Link ${index}: Fixed absolute path ${href} -> ${finalHref}`);
       } else if (href.startsWith('../') || (!href.startsWith('http') && !href.startsWith('mailto:') && !href.startsWith('#'))) {
         // Relative path (either ../path or simple path like "alertmanager/")
         const currentUrl = url; // Use the current page URL as context
@@ -567,7 +534,6 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean, u
           const resolvedUrl = new URL(href, currentUrl);
           finalHref = resolvedUrl.href;
           link.setAttribute('href', finalHref);
-          console.log(`🔗 Link ${index}: Resolved relative URL ${href} -> ${finalHref} (base: ${currentUrl})`);
         } catch (error) {
           console.warn(`🔗 Link ${index}: Failed to resolve relative URL ${href}, leaving as-is`);
         }
@@ -634,8 +600,6 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean, u
         
         // Replace the original code element with the pre wrapper
         code.parentNode?.replaceChild(preWrapper, code);
-        
-        console.log(`🔄 Converted standalone code to journey code block: ${code.textContent?.substring(0, 50)}...`);
       } else {
         // Keep as inline code
         code.classList.add('journey-inline-code');
@@ -725,8 +689,6 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean, u
       // Initially hide the content (collapsed by default)
       (content as HTMLElement).style.display = 'none';
     }
-    
-    console.log(`📁 Processed collapsible section ${index + 1}`);
   });
   
   // For cover pages, add our own "Start Journey" button
@@ -754,11 +716,8 @@ function processLearningJourneyContent(element: Element, isCoverPage: boolean, u
  * Fetch learning journey content with multiple strategies
  */
 export async function fetchLearningJourneyContent(url: string): Promise<LearningJourneyContent | null> {
-  console.log(`Fetching learning journey content from: ${url}`);
-  
   // Use unstyled.html version for content fetching
   const unstyledUrl = getUnstyledContentUrl(url);
-  console.log(`Using unstyled URL: ${unstyledUrl}`);
   
   // Split hash fragment for fetch (server doesn't need it) but preserve for content
   const [fetchUrl, hashFragment] = unstyledUrl.split('#');
@@ -766,25 +725,22 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
   // Check cache first (use original URL as cache key)
   const cached = contentCache.get(url);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    console.log('Returning cached content for:', url);
     return cached.content;
   }
   
   // Check if this looks like a cover page vs milestone page
   const isCoverPageUrl = url.endsWith('/') && !url.includes('/business-value') && !url.includes('/when-to') && !url.includes('/verify');
-  console.log(`URL appears to be cover page: ${isCoverPageUrl}`);
   
   // Try direct fetch - first try the unstyled URL, then with trailing slash if needed
   let htmlContent: string | null = null;
   
   try {
-    console.log('🚀 Starting learning journey fetch with redirect handling...');
     const startTime = Date.now();
     htmlContent = await fetchJourneyWithRetry(fetchUrl); // Fetch without hash
     const duration = Date.now() - startTime;
     
     if (htmlContent && htmlContent.trim().length > 0) {
-      console.log(`✅ Learning journey fetch with retry succeeded in ${duration}ms, content length: ${htmlContent.length}`);
+      // Success
     } else {
       console.warn(`❌ Learning journey fetch with retry returned empty content after ${duration}ms`);
       htmlContent = null;
@@ -799,7 +755,6 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
     const urlWithSlash = url + '/';
     const unstyledUrlWithSlash = getUnstyledContentUrl(urlWithSlash);
     const [fetchUrlWithSlash] = unstyledUrlWithSlash.split('#'); // Remove hash for fetch
-    console.log(`Trying milestone URL with trailing slash: ${unstyledUrlWithSlash}`);
     
     try {
       const startTime = Date.now();
@@ -807,7 +762,7 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
       const duration = Date.now() - startTime;
       
       if (htmlContent && htmlContent.trim().length > 0) {
-        console.log(`✅ Learning journey fetch with slash and retry succeeded in ${duration}ms, content length: ${htmlContent.length}`);
+        // Success
       } else {
         console.warn(`❌ Learning journey fetch with slash and retry returned empty content after ${duration}ms`);
         htmlContent = null;
@@ -829,10 +784,7 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
   // Add hash fragment to the content for scrolling
   if (hashFragment) {
     content.hashFragment = hashFragment;
-    console.log(`🔗 Added hash fragment for learning journey scrolling: #${hashFragment}`);
   }
-  
-  console.log(`Extracted content: ${content.title}, milestones: ${content.milestones.length}`);
   
   // Cache the result (use original URL as cache key)
   contentCache.set(url, { content, timestamp: Date.now() });
@@ -845,8 +797,6 @@ export async function fetchLearningJourneyContent(url: string): Promise<Learning
  */
 async function fetchDirectFast(url: string): Promise<string | null> {
   try {
-    console.log('🌐 Trying direct learning journey fetch for:', url);
-    
     const headers = getAuthHeaders();
     
     // For authenticated requests, we might need additional CORS handling
@@ -861,17 +811,15 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     if (getDocsUsername()) {
       fetchOptions.mode = 'cors';
       fetchOptions.credentials = 'omit'; // Don't send cookies, use explicit auth headers
-      console.log('🔐 Using authenticated direct fetch');
     } else {
       fetchOptions.mode = 'cors';
-      console.log('📂 Using non-authenticated direct fetch');
     }
     
     const response = await fetch(url, fetchOptions);
     
     // Log redirect information
     if (response.url !== url) {
-      console.log(`🔄 Learning journey redirect detected: ${url} -> ${response.url}`);
+      // Redirect detected
     }
     
     if (!response.ok) {
@@ -880,7 +828,6 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     }
     
     const content = await response.text();
-    console.log(`✅ Successfully fetched learning journey (${content.length} chars) from:`, response.url);
     return content;
   } catch (error) {
     console.warn(`❌ Direct learning journey fetch failed for ${url}:`, error);
@@ -892,8 +839,6 @@ async function fetchDirectFast(url: string): Promise<string | null> {
  * Try multiple URL patterns for learning journeys to handle redirects
  */
 async function fetchJourneyWithRetry(originalUrl: string): Promise<string | null> {
-  console.log(`🔄 Starting fetchJourneyWithRetry for: ${originalUrl}`);
-  
   // First try the original URL
   let content = await fetchDirectFast(originalUrl);
   if (content && content.trim().length > 0) {
@@ -905,11 +850,9 @@ async function fetchJourneyWithRetry(originalUrl: string): Promise<string | null
   
   for (let i = 0; i < urlVariations.length; i++) {
     const variation = urlVariations[i];
-    console.log(`🔄 Journey retry ${i + 1}/${urlVariations.length}: Trying variation: ${variation}`);
     
     content = await fetchDirectFast(variation);
     if (content && content.trim().length > 0) {
-      console.log(`✅ Success with learning journey URL variation: ${variation}`);
       return content;
     }
   }
@@ -952,11 +895,6 @@ function generateJourneyUrlVariations(url: string): string[] {
     .filter(p => p !== baseUrlWithUnstyled && p.includes('/unstyled.html'))
     .map(p => hashFragment ? `${p}#${hashFragment}` : p);
   
-  console.log(`🔄 Generated ${uniquePatterns.length} learning journey URL variations for: ${url}`);
-  uniquePatterns.forEach((pattern, index) => {
-    console.log(`  ${index + 1}. ${pattern}`);
-  });
-  
   return uniquePatterns;
 }
 
@@ -964,11 +902,8 @@ function generateJourneyUrlVariations(url: string): string[] {
  * Get next milestone URL
  */
 export function getNextMilestoneUrl(content: LearningJourneyContent): string | null {
-  console.log(`🔄 Getting next milestone from current: ${content.currentMilestone} of ${content.totalMilestones}`);
-  
   // If we're on the cover page (milestone 0), go to milestone 1
   if (content.currentMilestone === 0 && content.milestones.length > 0) {
-    console.log(`📍 From cover page -> milestone 1: ${content.milestones[0].url}`);
     return content.milestones[0].url;
   }
   
@@ -976,12 +911,10 @@ export function getNextMilestoneUrl(content: LearningJourneyContent): string | n
   if (content.currentMilestone > 0 && content.currentMilestone < content.totalMilestones) {
     const nextMilestone = content.milestones.find(m => m.number === content.currentMilestone + 1);
     if (nextMilestone) {
-      console.log(`📍 From milestone ${content.currentMilestone} -> milestone ${nextMilestone.number}: ${nextMilestone.url}`);
       return nextMilestone.url;
     }
   }
   
-  console.log(`❌ No next milestone available from current: ${content.currentMilestone}`);
   return null;
 }
 
@@ -989,11 +922,9 @@ export function getNextMilestoneUrl(content: LearningJourneyContent): string | n
  * Get previous milestone URL
  */
 export function getPreviousMilestoneUrl(content: LearningJourneyContent): string | null {
-  console.log(`🔄 Getting previous milestone from current: ${content.currentMilestone} of ${content.totalMilestones}`);
-  
   // If we're on milestone 1, can't go back (cover page isn't navigable via previous)
   if (content.currentMilestone <= 1) {
-    console.log(`❌ Cannot go back from milestone ${content.currentMilestone}`);
+
     return null;
   }
   
@@ -1001,12 +932,10 @@ export function getPreviousMilestoneUrl(content: LearningJourneyContent): string
   if (content.currentMilestone > 1 && content.currentMilestone <= content.totalMilestones) {
     const prevMilestone = content.milestones.find(m => m.number === content.currentMilestone - 1);
     if (prevMilestone) {
-      console.log(`📍 From milestone ${content.currentMilestone} -> milestone ${prevMilestone.number}: ${prevMilestone.url}`);
       return prevMilestone.url;
     }
   }
   
-  console.log(`❌ No previous milestone available from current: ${content.currentMilestone}`);
   return null;
 }
 
@@ -1034,7 +963,6 @@ export function clearLearningJourneyCache(): void {
     // Clear content cache
     contentCache.clear();
     
-    console.log(`Cleared ${keysToRemove.length} learning journey caches, milestone cache, and content cache`);
   } catch (error) {
     console.warn('Failed to clear learning journey cache:', error);
   }
@@ -1075,7 +1003,6 @@ export function clearSpecificJourneyCache(baseUrl: string): void {
       localStorage.removeItem(key);
     });
     
-    console.log(`Cleared cache for journey: ${journeyBaseUrl} (${urlsToRemove.length} content entries, ${keysToRemove.length} localStorage entries)`);
   } catch (error) {
     console.warn('Failed to clear specific journey cache:', error);
   }
@@ -1117,7 +1044,6 @@ export function clearSpecificJourneyContentCache(baseUrl: string): void {
       localStorage.removeItem(key);
     });
     
-    console.log(`Cleared content cache for journey (preserving milestones): ${journeyBaseUrl} (${urlsToRemove.length} content entries, ${keysToRemove.length} localStorage entries)`);
   } catch (error) {
     console.warn('Failed to clear specific journey content cache:', error);
   }
@@ -1127,9 +1053,6 @@ export function clearSpecificJourneyContentCache(baseUrl: string): void {
  * Find current milestone number from URL - improved matching
  */
 function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
-  console.log(`Finding milestone for URL: ${url}`);
-  console.log(`Available milestones:`, milestones.map(m => ({ number: m.number, url: m.url })));
-  
   // Try exact URL match (with and without trailing slash)
   const urlWithSlash = url.endsWith('/') ? url : url + '/';
   const urlWithoutSlash = url.endsWith('/') ? url.slice(0, -1) : url;
@@ -1145,7 +1068,6 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
         urlWithSlash === milestoneWithSlash ||
         urlWithoutSlash === milestone.url ||
         urlWithoutSlash === milestoneWithoutSlash) {
-      console.log(`✅ URL match found: milestone ${milestone.number} (${milestone.url})`);
       return milestone.number;
     }
   }
@@ -1153,13 +1075,9 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
   // Check if this URL looks like a journey base URL (cover page)
   const baseUrl = getLearningJourneyBaseUrl(url);
   if (url === baseUrl || url + '/' === baseUrl || url === baseUrl + '/') {
-    console.log(`✅ Cover page detected for base URL: ${baseUrl}`);
     return 0;
   }
   
-  console.log(`❌ No milestone match found for URL: ${url}`);
-  console.log(`❌ Base URL: ${baseUrl}`);
-  console.log(`❌ Defaulting to cover page (milestone 0)`);
   return 0; // Default to cover page instead of milestone 1
 }
 

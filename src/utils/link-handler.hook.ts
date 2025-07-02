@@ -49,9 +49,6 @@ export function useLinkClickHandler({
         if (activeTab?.content?.milestones && activeTab.content.milestones.length > 0) {
           const firstMilestone = activeTab.content.milestones[0];
           if (firstMilestone.url) {
-            console.log('🚀 Starting learning journey, navigating to first milestone:');
-            console.log('🚀 First milestone URL:', firstMilestone.url);
-            console.log('🚀 First milestone object:', firstMilestone);
             model.loadTabContent(activeTab.id, firstMilestone.url);
           }
         } else {
@@ -81,11 +78,9 @@ export function useLinkClickHandler({
         event.stopPropagation();
         
         const linkUrl = sideJourneyLink.getAttribute('data-side-journey-url');
-        const linkTitle = sideJourneyLink.getAttribute('data-side-journey-title');
+
         
         if (linkUrl) {
-          console.log('🔗 Side journey link clicked:', { url: linkUrl, title: linkTitle });
-          
           // All side journey links open in new browser tab for simplicity
           const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
           window.open(fullUrl, '_blank', 'noopener,noreferrer');
@@ -103,8 +98,6 @@ export function useLinkClickHandler({
         const linkTitle = relatedJourneyLink.getAttribute('data-related-journey-title');
         
         if (linkUrl) {
-          console.log('🔗 Related journey link clicked:', { url: linkUrl, title: linkTitle });
-          
           // Related journey links open in new app tabs (learning journeys)
           const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
           model.openLearningJourney(fullUrl, linkTitle || 'Related Journey');
@@ -121,18 +114,12 @@ export function useLinkClickHandler({
         const buttonText = bottomNavButton.textContent?.trim().toLowerCase();
         
         if (buttonText?.includes('previous') || buttonText?.includes('prev')) {
-          console.log('🔗 Bottom Previous button clicked');
           if (model.canNavigatePrevious()) {
             model.navigateToPreviousMilestone();
-          } else {
-            console.log('⚠️ Cannot navigate to previous milestone');
           }
         } else if (buttonText?.includes('next')) {
-          console.log('🔗 Bottom Next button clicked');
           if (model.canNavigateNext()) {
             model.navigateToNextMilestone();
-          } else {
-            console.log('⚠️ Cannot navigate to next milestone');
           }
         }
       }
@@ -148,7 +135,6 @@ export function useLinkClickHandler({
             button.closest('[class*="content"]')) {
           event.preventDefault();
           event.stopPropagation();
-          console.log('🔗 Generic Previous button clicked');
           if (model.canNavigatePrevious()) {
             model.navigateToPreviousMilestone();
           }
@@ -156,7 +142,6 @@ export function useLinkClickHandler({
                    button.closest('[class*="content"]')) {
           event.preventDefault();
           event.stopPropagation();
-          console.log('🔗 Generic Next button clicked');
           if (model.canNavigateNext()) {
             model.navigateToNextMilestone();
           }

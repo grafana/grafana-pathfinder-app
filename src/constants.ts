@@ -25,7 +25,6 @@ let pluginConfig: DocsPluginConfig = {};
 export const ConfigService = {
   setConfig: (config: DocsPluginConfig) => {
     pluginConfig = config;
-    console.log('🔧 ConfigService initialized with config:', config);
   },
   
   getConfig: (): DocsPluginConfig => ({

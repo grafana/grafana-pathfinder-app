@@ -89,8 +89,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     }
   }
 
-
-
   private generateTabId(): string {
     return `journey-tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
@@ -103,24 +101,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         return;
       }
 
-      console.log('🔄 Loading content for restored active tab:', activeTab.title);
-      console.log('🔄 Tab details:', { 
-        id: activeTab.id, 
-        baseUrl: activeTab.baseUrl, 
-        currentUrl: activeTab.currentUrl,
-        type: activeTab.type 
-      });
-
       // Load content based on tab type, using currentUrl to preserve exact position
       if (activeTab.type === 'docs' && !activeTab.docsContent && !activeTab.isLoading) {
-        console.log('🔄 Loading docs content for restored tab at:', activeTab.currentUrl);
         this.loadDocsTabContent(activeTab.id, activeTab.currentUrl);
       } else if (activeTab.type !== 'docs' && !activeTab.content && !activeTab.isLoading) {
-        console.log('🔄 Loading journey content for restored tab at:', activeTab.currentUrl);
         // Use currentUrl (specific milestone) rather than baseUrl (journey start)
         this.loadTabContent(activeTab.id, activeTab.currentUrl);
-      } else {
-        console.log('🔄 Active tab already has content or is loading, skipping initialization');
       }
     }, 100);
   }
@@ -131,7 +117,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       const storedTabs = localStorage.getItem(TABS_STORAGE_KEY);
       if (storedTabs) {
         const persistedTabs: PersistedTabData[] = JSON.parse(storedTabs);
-        console.log(`📚 Restoring ${persistedTabs.length} persisted tabs from storage`);
         
         // Convert persisted data back to full tab objects
         const restoredTabs: LearningJourneyTab[] = persistedTabs.map(persistedTab => ({
@@ -183,7 +168,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     try {
       const storedActiveTabId = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
       if (storedActiveTabId && tabs.some(tab => tab.id === storedActiveTabId)) {
-        console.log(`📚 Restoring active tab: ${storedActiveTabId}`);
         return storedActiveTabId;
       }
     } catch (error) {
@@ -209,7 +193,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       
       localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(tabsToSave));
       localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, this.state.activeTabId);
-      console.log(`💾 Saved ${tabsToSave.length} tabs to storage, active: ${this.state.activeTabId}`);
     } catch (error) {
       console.warn('Failed to save tabs to storage:', error);
     }
@@ -219,7 +202,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     try {
       localStorage.removeItem(TABS_STORAGE_KEY);
       localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
-      console.log('🗑️ Cleared persisted tabs from storage');
     } catch (error) {
       console.warn('Failed to clear persisted tabs:', error);
     }
@@ -254,8 +236,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async loadTabContent(tabId: string, url: string) {
-    console.log(`🔄 Loading content for tab: ${tabId}, URL: ${url}`);
-    
     // Find the tab and set loading state
     const tab = this.state.tabs.find(t => t.id === tabId);
     if (!tab) {
@@ -295,10 +275,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       // Save tabs to storage after content loading (preserves milestone position)
       this.saveTabsToStorage();
       
-      console.log(`✅ Successfully loaded content for tab: ${tabId}${content ? `, milestone: ${content.currentMilestone}/${content.totalMilestones}` : ''}`);
     } catch (error) {
       console.error(`Failed to load tab content: ${error}`);
-      
+
       const errorUpdatedTabs = this.state.tabs.map(t => 
         t.id === tabId 
           ? { 
@@ -339,7 +318,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     // Clear content cache for the specific journey but preserve milestone cache
     // Milestone cache is needed for URL-to-milestone matching when reopening tabs
     if (tabToClose && tabToClose.baseUrl) {
-      console.log(`Clearing content cache for closed journey: ${tabToClose.baseUrl}`);
       clearSpecificJourneyContentCache(tabToClose.baseUrl);
     }
   }
@@ -354,10 +332,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     const tab = this.state.tabs.find(t => t.id === tabId);
     if (tab && tabId !== 'recommendations' && !tab.isLoading && !tab.error) {
       if (tab.type === 'docs' && !tab.docsContent) {
-        console.log('🔄 Loading docs content for switched tab at:', tab.currentUrl);
         this.loadDocsTabContent(tabId, tab.currentUrl); // Use currentUrl to restore exact page
       } else if (tab.type !== 'docs' && !tab.content) {
-        console.log('🔄 Loading journey content for switched tab at:', tab.currentUrl);
         this.loadTabContent(tabId, tab.currentUrl); // Use currentUrl to restore exact milestone
       }
     }
@@ -398,9 +374,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async openDocsPage(url: string, title?: string): Promise<string> {
-    console.log('📄 CombinedLearningJourneyPanel.openDocsPage called with:', { url, title });
-    console.log('📄 URL type:', typeof url, 'URL value:', url);
-    
     const tabId = this.generateTabId();
     const newTab: LearningJourneyTab = {
       id: tabId,
@@ -431,8 +404,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async loadDocsTabContent(tabId: string, url: string) {
-    console.log('📄 loadDocsTabContent called with:', { tabId, url });
-    
     const tabIndex = this.state.tabs.findIndex(tab => tab.id === tabId);
     if (tabIndex === -1) {return;}
 
@@ -446,7 +417,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      console.log('📄 About to call fetchSingleDocsContent with URL:', url);
       const docsContent = await fetchSingleDocsContent(url);
       
       const finalTabs = [...this.state.tabs];
@@ -471,8 +441,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         if ((shouldUpdateTitle && docsContent?.title) || urlChanged) {
           this.saveTabsToStorage();
         }
-        
-        console.log('Successfully loaded docs:', docsContent?.title);
       }
     } catch (error) {
       console.error('Failed to load docs:', error);
@@ -516,25 +484,18 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     addGlobalInteractiveStyles();
   }, []);
 
-
-
   // Listen for auto-launch tutorial events
   useEffect(() => {
-    console.log('🎓 Setting up auto-launch tutorial event listener');
-    
+    // Listen for the auto-launch tutorial event
     const handleAutoLaunchTutorial = (event: CustomEvent) => {
       const { url, type, title } = event.detail;
-      console.log('🎓 Received auto-launch tutorial event:', { url, type, title });
-      console.log('🎓 Model available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(model)));
       
       try {
         if (type === 'learning-journey') {
           // Open as learning journey
-          console.log('🎓 Opening as learning journey...');
           model.openLearningJourney(url, title);
         } else {
           // Open as docs page
-          console.log('🎓 Opening as docs page...');
           model.openDocsPage(url, title);
         }
       } catch (error) {
@@ -544,11 +505,9 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
     // Listen for the auto-launch tutorial event
     document.addEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);
-    console.log('🎓 Auto-launch tutorial event listener registered');
 
     // Cleanup
     return () => {
-      console.log('🎓 Cleaning up auto-launch tutorial event listener');
       document.removeEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);
     };
   }, [model]);
@@ -591,29 +550,19 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     if (!contentElement) {return;}
 
     const handleDocsLinkClick = (e: Event) => {
-      console.log('🔗 Click event detected on:', e.target);
       const target = e.target as HTMLElement;
       const link = target.closest('a') as HTMLAnchorElement;
       
       if (link) {
-        console.log('🔗 Found link element:', link);
-        console.log('🔗 Link href:', link.getAttribute('href'));
-        console.log('🔗 Link attributes:', Array.from(link.attributes).map(a => `${a.name}="${a.value}"`));
-        
         const hasInternalAttribute = link.hasAttribute('data-docs-internal-link');
-        console.log('🔗 Has data-docs-internal-link attribute:', hasInternalAttribute);
         
         if (hasInternalAttribute) {
-          console.log('🔗 Intercepting internal docs link!');
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
           
           const href = link.getAttribute('href');
           if (href) {
-            console.log('🔗 Intercepted docs link click:', href);
-            
-            // Extract title from link text or use default
             const title = link.textContent?.trim() || 'Documentation';
             
             // Make sure we have a valid docs URL
@@ -622,15 +571,10 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
             // If it's a relative URL starting with /docs/, make it absolute
             if (href.startsWith('/docs/')) {
               finalUrl = `https://grafana.com${href}`;
-              console.log('🔗 Converted relative URL to absolute:', finalUrl);
             }
             
             // Determine if it's a learning journey or regular docs page
             const isLearningJourney = finalUrl.includes('/learning-journeys/');
-            
-            console.log('🔗 Final URL to open in app tab:', finalUrl);
-            console.log('🔗 Is learning journey:', isLearningJourney);
-            console.log('🔗 Title:', title);
             
             if (isLearningJourney) {
               model.openLearningJourney(finalUrl, title);
@@ -638,23 +582,16 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
               model.openDocsPage(finalUrl, title);
             }
           }
-        } else {
-          console.log('🔗 Link does not have data-docs-internal-link attribute, allowing default behavior');
         }
-      } else {
-        console.log('🔗 No link element found in click target');
       }
     };
 
     // Add event listener for docs internal links - use capture phase to intercept early
     contentElement.addEventListener('click', handleDocsLinkClick, true);
 
-    console.log('🔗 Added click listener to content element');
-
     // Cleanup
     return () => {
       contentElement.removeEventListener('click', handleDocsLinkClick, true);
-      console.log('🔗 Removed click listener from content element');
     };
   }, [activeTab, model]);
 
@@ -673,9 +610,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     }
 
     if (hashFragment) {
-      console.log(`🎯 Attempting to scroll to anchor: #${hashFragment}`);
-      
-      // Small delay to ensure content is fully rendered
       setTimeout(() => {
         // Try multiple element selection strategies
         const targetElement = 
@@ -690,7 +624,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           contentElement.querySelector(`h6:contains("${hashFragment.replace(/-/g, ' ')}")`);
 
         if (targetElement) {
-          console.log(`✅ Found anchor element:`, targetElement);
           targetElement.scrollIntoView({ 
             behavior: 'smooth', 
             block: 'start',
@@ -716,7 +649,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           for (const element of allElements) {
             if (element.id.toLowerCase().includes(hashFragment.toLowerCase()) ||
                 element.textContent?.toLowerCase().replace(/\s+/g, '-').includes(hashFragment.toLowerCase())) {
-              console.log(`🔍 Found fallback anchor element:`, element);
               element.scrollIntoView({ behavior: 'smooth', block: 'start' });
               break;
             }

@@ -453,8 +453,6 @@ export function useContentProcessing({
                 ? `${getDocsBaseUrl()}/docs/${originalSrc.replace(/^\.\.\//, '')}`
                 : `${getDocsBaseUrl()}/docs/${originalSrc}`;
         
-        console.log(`🎥 Video URL fix: ${originalSrc} -> ${fixedSrc}`);
-        
         // If video has data-src, set up lazy loading
         if (dataSrc && !videoElement.src) {
           videoElement.setAttribute('data-src', fixedSrc);
@@ -585,7 +583,7 @@ export function useContentProcessing({
         
         // Add click analytics if needed (placeholder for future implementation)
         button.addEventListener('click', () => {
-          console.log('Grafana Play button clicked:', button.getAttribute('href'));
+          // Analytics placeholder
         });
       }
     });

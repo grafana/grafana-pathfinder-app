@@ -178,11 +178,8 @@ export function useInteractiveElements() {
     
     // Dispatch custom event when action completes
     if (state === 'completed') {
-      console.log('🎯 Interactive action completed, triggering DIRECT requirement re-check');
-      
-             // Direct approach: Find and re-check ALL elements with requirements immediately
+      // Direct approach: Find and re-check ALL elements with requirements immediately
        setTimeout(() => {
-         console.log('🔄 Re-checking all interactive elements...');
          const allElementsWithRequirements = document.querySelectorAll('[data-requirements]');
          
          if (allElementsWithRequirements.length > 0) {
@@ -247,7 +244,6 @@ export function useInteractiveElements() {
   }
   
   const interactiveFocus = useCallback((data: InteractiveElementData, click = true) => {
-    console.log("Interactive focus called for:", data.reftarget, "click:", click);
     const interactiveElement = findInteractiveElement(data.reftarget);
     
     if (interactiveElement) {
@@ -282,7 +278,6 @@ export function useInteractiveElements() {
   }, []);
 
   const interactiveButton = useCallback((data: InteractiveElementData, click = true) => { // eslint-disable-line react-hooks/exhaustive-deps
-    console.log("Interactive button called for:", data.reftarget, "click:", click);
     const interactiveElement = findInteractiveElement(data.reftarget);
     
     if (interactiveElement) {
@@ -291,7 +286,6 @@ export function useInteractiveElements() {
 
     try {
       const buttons = findButtonByText(data.reftarget);
-      console.log(`Found ${buttons.length} buttons containing text "${data.reftarget}"`);
       
       buttons.forEach(button => {
         if (!click) {
@@ -325,11 +319,8 @@ export function useInteractiveElements() {
   const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly = false): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
     // This is here so recursion cannot happen
     if(activeRefsRef.current.has(data.reftarget)) {
-      console.log("Interactive sequence already active for:", data.reftarget);
       return data.reftarget;
     }
-
-    console.log("Interactive sequence called for:", data.reftarget, "showOnly:", showOnly);
     const interactiveElement = findInteractiveElement(data.reftarget);
     
     if (interactiveElement) {
@@ -378,7 +369,6 @@ export function useInteractiveElements() {
 
   const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm = true) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
-    console.log(`Interactive form fill called, targeting: ${data.reftarget} with ${value}, fillForm: ${fillForm}`);
     const interactiveElement = findInteractiveElement(data.reftarget);
     
     if (interactiveElement) {
@@ -605,8 +595,6 @@ export function useInteractiveElements() {
    * Core requirement checking logic that works with InteractiveElementData
    */
   const checkRequirementsFromData = async (data: InteractiveElementData): Promise<InteractiveRequirementsCheck> => {
-    console.log("Checking requirements for interactive element:", data);
-
     const requirements = data.requirements;
     if (!requirements) {
       console.warn("No requirements found for interactive element");
@@ -648,7 +636,6 @@ export function useInteractiveElements() {
    */
   const checkElementRequirements = async (element: HTMLElement): Promise<InteractiveRequirementsCheck> => {
     const data = extractInteractiveDataFromElement(element);
-    console.log("Checking requirements for element:", data);
     return checkRequirementsFromData(data);
   }
 
@@ -668,7 +655,6 @@ export function useInteractiveElements() {
     // Note, that rather than use await here we're using regular promises, because this is an 
     // event handler (which doesn't return promises, fire and forget)
     const handleCustomEvent = (event: CustomEvent) => {
-      console.log("React got the event!", event);
       
       // Find the interactive element that triggered this event
       let interactiveElement: HTMLElement | null = null;
@@ -710,8 +696,6 @@ export function useInteractiveElements() {
         console.warn("Available interactive elements:", document.querySelectorAll('[data-targetaction]'));
         return;
       }
-
-      console.log("Found interactive element:", interactiveElement);
 
       // Extract data from the element instead of using event.detail
       const data = extractInteractiveDataFromElement(interactiveElement);
