@@ -9,7 +9,7 @@ import {
   fetchGrafanaVersion, 
   fetchRecommendations 
 } from './context-data-fetcher';
-import { generateContextTags, ContextState } from './context-analysis';
+import { generateContextTags, ContextState, detectVisualizationType } from './context-analysis';
 
 export interface UseContextPanelOptions {
   onOpenLearningJourney?: (url: string, title: string) => void;
@@ -32,6 +32,7 @@ export interface UseContextPanelReturn {
   isLoadingRecommendations: boolean;
   recommendationsError: string | null;
   otherDocsExpanded: boolean;
+  visualizationType: string | null;
   
   // Actions
   refreshContext: () => void;
@@ -61,9 +62,10 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
   const [otherDocsExpanded, setOtherDocsExpanded] = useState(false);
+  const [visualizationType, setVisualizationType] = useState<string | null>(null);
 
   // Track last processed location to avoid unnecessary updates
-  const lastLocationRef = useRef<{ path: string; url: string }>({ path: '', url: '' });
+  const lastLocationRef = useRef<{ path: string; url: string; vizType?: string }>({ path: '', url: '' });
 
   // Fetch recommendations with context analysis
   const fetchRecommendationsData = useCallback(async (
@@ -71,7 +73,8 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     dataSources: DataSource[],
     pathSegments: string[],
     searchParams: Record<string, string>,
-    dashboardInfo: DashboardInfo | null
+    dashboardInfo: DashboardInfo | null,
+    visualizationType?: string
   ) => {
     setIsLoadingRecommendations(true);
     setRecommendationsError(null);
@@ -83,6 +86,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       searchParams,
       dataSources,
       dashboardInfo,
+      visualizationType: visualizationType || undefined,
     };
     const contextTags = generateContextTags(contextState);
 
@@ -94,17 +98,108 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     setIsLoadingRecommendations(false);
   }, []);
 
+  // Set up visualization type observer
+  useEffect(() => {
+    const observeVizChanges = () => {
+      const currentVizType = detectVisualizationType();
+      if (currentVizType !== visualizationType) {
+        setVisualizationType(currentVizType);
+        
+        // Trigger recommendations refresh if we're in panel edit mode and viz type changed
+        if (currentVizType && lastLocationRef.current.vizType !== currentVizType) {
+          lastLocationRef.current.vizType = currentVizType;
+          // Debounce the refresh to avoid excessive calls
+          setTimeout(() => {
+            // Call fetchRecommendationsData directly with the detected viz type
+            // instead of relying on state which might not be updated yet
+            fetchRecommendationsData(currentPath, dataSources, pathSegments, searchParams, dashboardInfo, currentVizType);
+          }, 500);
+        }
+      }
+    };
+
+    // Initial detection
+    observeVizChanges();
+
+    // Set up MutationObserver to watch for DOM changes
+    const observer = new MutationObserver((mutations) => {
+      let shouldCheck = false;
+      
+      mutations.forEach((mutation) => {
+        // Check if any changes occurred to viz picker buttons or their content
+        if (mutation.type === 'childList') {
+          const addedNodes = Array.from(mutation.addedNodes);
+          const hasVizPickerChanges = addedNodes.some(node => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node as Element;
+              return element.matches('[data-testid*="toggle-viz-picker"]') ||
+                     element.querySelector('[data-testid*="toggle-viz-picker"]') ||
+                     element.matches('img[src*="/plugins/panel/"]') ||
+                     element.querySelector('img[src*="/plugins/panel/"]');
+            }
+            return false;
+          });
+          
+          if (hasVizPickerChanges) {
+            shouldCheck = true;
+          }
+        } else if (mutation.type === 'attributes') {
+          const target = mutation.target as Element;
+          if (target.matches('[data-testid*="toggle-viz-picker"]') ||
+              target.matches('img[src*="/plugins/panel/"]') ||
+              target.closest('[data-testid*="toggle-viz-picker"]')) {
+            shouldCheck = true;
+          }
+        }
+      });
+
+      if (shouldCheck) {
+        // Debounce the check to avoid excessive calls
+        setTimeout(observeVizChanges, 100);
+      }
+    });
+
+    // Start observing the document for changes
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src', 'data-testid', 'aria-expanded']
+    });
+
+    // Also listen for click events on viz picker buttons
+    const handleVizPickerClick = (event: Event) => {
+      const target = event.target as Element;
+      const vizPickerButton = target.closest('[data-testid*="toggle-viz-picker"]');
+      
+      if (vizPickerButton) {
+        // Wait a bit for the UI to update after the click
+        setTimeout(observeVizChanges, 200);
+      }
+    };
+
+    document.addEventListener('click', handleVizPickerClick);
+
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('click', handleVizPickerClick);
+    };
+  }, [visualizationType, fetchRecommendationsData, currentPath, dataSources, pathSegments, searchParams, dashboardInfo]);
+
   // Update context data based on current location
   const updateContext = useCallback(async () => {
     const currentPath = window.location.pathname;
     const currentUrl = window.location.href;
+    const currentVizType = detectVisualizationType();
     
-    // Check if location actually changed
-    if (lastLocationRef.current.path === currentPath && lastLocationRef.current.url === currentUrl) {
+    // Check if location actually changed (including viz type)
+    if (lastLocationRef.current.path === currentPath && 
+        lastLocationRef.current.url === currentUrl &&
+        lastLocationRef.current.vizType === currentVizType) {
       return;
     }
     
-    lastLocationRef.current = { path: currentPath, url: currentUrl };
+    lastLocationRef.current = { path: currentPath, url: currentUrl, vizType: currentVizType || undefined };
 
     setIsLoading(true);
 
@@ -128,6 +223,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     setTimestamp(timestamp);
     setSearchParams(searchParams);
     setTheme(theme);
+    setVisualizationType(currentVizType);
 
     // Fetch additional context data in parallel
     const [dataSources, dashboardInfo, grafanaVersion] = await Promise.all([
@@ -142,8 +238,8 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
     setIsLoading(false);
 
-    // Fetch recommendations after we have the data sources
-    await fetchRecommendationsData(currentPath, dataSources, pathSegments, searchParams, dashboardInfo);
+    // Fetch recommendations after we have the data sources and viz type
+    await fetchRecommendationsData(currentPath, dataSources, pathSegments, searchParams, dashboardInfo, currentVizType || undefined);
   }, [fetchRecommendationsData]);
 
   // Set up location listener
@@ -177,8 +273,8 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [updateContext]);
 
   const refreshRecommendations = useCallback(() => {
-    fetchRecommendationsData(currentPath, dataSources, pathSegments, searchParams, dashboardInfo);
-  }, [fetchRecommendationsData, currentPath, dataSources, pathSegments, searchParams, dashboardInfo]);
+    fetchRecommendationsData(currentPath, dataSources, pathSegments, searchParams, dashboardInfo, visualizationType || undefined);
+  }, [fetchRecommendationsData, currentPath, dataSources, pathSegments, searchParams, dashboardInfo, visualizationType]);
 
   const openLearningJourney = useCallback((url: string, title: string) => {
     if (onOpenLearningJourney) {
@@ -233,6 +329,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     isLoadingRecommendations,
     recommendationsError,
     otherDocsExpanded,
+    visualizationType,
     
     // Actions
     refreshContext,
