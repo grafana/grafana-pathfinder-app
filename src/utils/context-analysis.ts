@@ -6,6 +6,66 @@ export interface ContextState {
   searchParams: Record<string, string>;
   dataSources: DataSource[];
   dashboardInfo: DashboardInfo | null;
+  visualizationType?: string;
+}
+
+/**
+ * Detect the current visualization type from the dashboard edit interface
+ */
+export function detectVisualizationType(): string | null {
+  try {
+    // Look for the active visualization picker button - try multiple selectors
+    let vizPickerButtons = document.querySelectorAll('[data-testid="data-testid toggle-viz-picker"]');
+    
+    // If not found, try alternative selectors
+    if (vizPickerButtons.length === 0) {
+      vizPickerButtons = document.querySelectorAll('[data-testid*="toggle-viz-picker"]');
+    }
+    
+    // Also try finding by aria-label
+    if (vizPickerButtons.length === 0) {
+      vizPickerButtons = document.querySelectorAll('[aria-label="Change visualization"]');
+    }
+    
+    for (const button of vizPickerButtons) {
+      // Check if this button is in an active/visible state (not in a hidden dropdown)
+      const buttonElement = button as HTMLElement;
+      const isVisible = buttonElement.offsetParent !== null;
+      
+      if (isVisible) {
+        // Try to extract viz type from image src
+        const img = buttonElement.querySelector('img');
+        if (img && img.src) {
+          const srcMatch = img.src.match(/\/plugins\/panel\/([^\/]+)\//);
+          if (srcMatch) {
+            return srcMatch[1]; // e.g., "stat", "gauge", "timeseries"
+          }
+        }
+        
+        // Fallback: extract from text content
+        const textDiv = buttonElement.querySelector('div');
+        if (textDiv && textDiv.textContent) {
+          return textDiv.textContent.trim().toLowerCase();
+        }
+      }
+    }
+    
+    // Also check for panel type in edit mode query params
+    const urlParams = new URLSearchParams(window.location.search);
+    const editPanel = urlParams.get('editPanel');
+    if (editPanel) {
+      // Check if there's a panelType parameter
+      const panelType = urlParams.get('panelType');
+      if (panelType) {
+        return panelType;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.warn('Failed to detect visualization type:', error);
+    return null;
+  }
 }
 
 /**
@@ -157,6 +217,12 @@ export function generateContextTags(state: ContextState): string[] {
   }
   if (searchParams.fullscreen) {
     tags.push('fullscreen');
+  }
+
+  // Add visualization type tag if detected
+  if (state.visualizationType) {
+    tags.push(`visualization:${state.visualizationType}`);
+    tags.push('panel-editing');
   }
 
   // Remove duplicates and return
