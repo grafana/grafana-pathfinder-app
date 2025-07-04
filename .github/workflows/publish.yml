@@ -41,7 +41,7 @@ jobs:
       branch: ${{ github.event.inputs.branch }}
       environment: ${{ github.event.inputs.environment }}
       docs-only: ${{ fromJSON(github.event.inputs.docs-only) }}
-      scopes: ${{ env.SCOPES }}
+      scopes: grafana_cloud
 
       # TODO: add here any other CI custom inputs you may need:
       #   https://enghub.grafana-ops.net/docs/default/component/grafana-plugins-platform/plugins-ci-github-actions/010-plugins-ci-github-actions/#customizing-the-workflows-with-inputs
