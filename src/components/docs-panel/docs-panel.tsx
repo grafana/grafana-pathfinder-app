@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { css } from '@emotion/css';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
@@ -469,6 +469,80 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   const activeTab = model.getActiveTab();
   const isRecommendationsTab = activeTabId === TAB_CONFIG.RECOMMENDATIONS_ID;
 
+  // Tab overflow management
+  const tabListRef = useRef<HTMLDivElement>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [visibleTabs, setVisibleTabs] = useState<LearningJourneyTab[]>(tabs);
+  const [overflowedTabs, setOverflowedTabs] = useState<LearningJourneyTab[]>([]);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const chevronButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Calculate visible vs overflowed tabs
+  const calculateTabVisibility = useCallback(() => {
+    const tabContainer = tabListRef.current;
+    if (!tabContainer) {
+      setVisibleTabs(tabs);
+      setOverflowedTabs([]);
+      return;
+    }
+
+    const containerWidth = tabContainer.clientWidth;
+    const tabMinWidth = 140; // From styles: minWidth: '140px'
+    const chevronWidth = 120; // More accurate width for chevron button (from maxWidth: '120px')
+    const gap = 4; // From styles: gap: theme.spacing(0.5) ≈ 4px
+
+    // First, calculate how many tabs can fit without any chevron
+    const maxTabsWithoutChevron = Math.floor(containerWidth / (tabMinWidth + gap));
+    
+    if (tabs.length <= maxTabsWithoutChevron) {
+      // All tabs fit without needing a chevron
+      setVisibleTabs(tabs);
+      setOverflowedTabs([]);
+      return;
+    }
+
+    // Some tabs need to overflow - calculate how many can fit WITH a chevron
+    const availableWidthWithChevron = containerWidth - chevronWidth - gap; // Reserve space for chevron + gap
+    const maxTabsWithChevron = Math.floor(availableWidthWithChevron / (tabMinWidth + gap));
+    const numVisibleTabs = Math.max(1, maxTabsWithChevron); // Always show at least 1 tab
+
+    setVisibleTabs(tabs.slice(0, numVisibleTabs));
+    setOverflowedTabs(tabs.slice(numVisibleTabs));
+  }, [tabs]);
+
+  // Recalculate tab visibility when tabs change or window resizes
+  useEffect(() => {
+    calculateTabVisibility();
+  }, [calculateTabVisibility]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      calculateTabVisibility();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [calculateTabVisibility]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) &&
+          chevronButtonRef.current && !chevronButtonRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isDropdownOpen]);
+
   // Create combined content styles that include interactive styles
   const journeyContentStyles = css`
     ${journeyContentHtml(theme)}
@@ -681,8 +755,9 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
       {/* Tab Bar */}
       <div className={styles.tabBar}>
-        <div className={styles.tabList}>
-          {tabs.map((tab) => (
+        <div className={styles.tabList} ref={tabListRef}>
+          {/* Render visible tabs */}
+          {visibleTabs.map((tab) => (
             <div
               key={tab.id}
               className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
@@ -721,7 +796,78 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
               </div>
             </div>
           ))}
+          
+          {/* Render chevron button for overflowed tabs */}
+          {overflowedTabs.length > 0 && (
+            <div className={styles.tabOverflow}>
+              <button
+                ref={chevronButtonRef}
+                className={`${styles.tab} ${styles.chevronTab}`}
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                aria-label={`Show ${overflowedTabs.length} more tabs`}
+                aria-expanded={isDropdownOpen}
+                aria-haspopup="true"
+              >
+                <div className={styles.tabContent}>
+                  <Icon name="angle-right" size="sm" className={styles.chevronIcon} />
+                  <span className={styles.tabTitle}>
+                    {overflowedTabs.length} more
+                  </span>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
+        
+        {/* Render dropdown outside of tabList but inside tabBar */}
+        {isDropdownOpen && overflowedTabs.length > 0 && (
+          <div ref={dropdownRef} className={styles.tabDropdown} role="menu" aria-label="More tabs">
+            {overflowedTabs.map((tab) => (
+              <button
+                key={tab.id}
+                className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
+                onClick={() => {
+                  model.setActiveTab(tab.id);
+                  setIsDropdownOpen(false);
+                }}
+                role="menuitem"
+                aria-label={`Switch to ${tab.title}`}
+              >
+                <div className={styles.dropdownItemContent}>
+                  {tab.id !== 'recommendations' && (
+                    <Icon 
+                      name={tab.type === 'docs' ? 'file-alt' : 'book'} 
+                      size="xs" 
+                      className={styles.dropdownItemIcon} 
+                    />
+                  )}
+                  <span className={styles.dropdownItemTitle}>
+                    {tab.isLoading ? (
+                      <>
+                        <Icon name="sync" size="xs" />
+                        <span>Loading...</span>
+                      </>
+                    ) : (
+                      tab.title
+                    )}
+                  </span>
+                  {tab.id !== 'recommendations' && (
+                    <IconButton
+                      name="times"
+                      size="sm"
+                      aria-label={`Close ${tab.title}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        model.closeTab(tab.id);
+                      }}
+                      className={styles.dropdownItemClose}
+                    />
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className={styles.content}>
