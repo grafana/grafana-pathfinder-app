@@ -996,7 +996,7 @@ export function getLearningJourneyCompletionPercentage(journeyUrl: string): numb
         
         // Find tabs that match this learning journey
         const matchingTabs = persistedTabs.filter((tab: any) => {
-          if (!tab.baseUrl || !tab.currentUrl) return false;
+          if (!tab.baseUrl || !tab.currentUrl) {return false;}
           const tabBaseUrl = getLearningJourneyBaseUrl(tab.baseUrl);
           return tabBaseUrl === baseUrl;
         });
