@@ -172,11 +172,12 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     }
     
     // Filter items that should be milestones (have step numbers OR are conclusion pages)
+    // and exclude items marked with grafana.skip: true
     const milestoneItems = jsonData.filter(item => 
       item.params && item.permalink && (
         typeof item.params.step === 'number' || 
         (item.params.cta && item.params.cta.type === 'conclusion')
-      )
+      ) && !(item.params.grafana && item.params.grafana.skip === true)
     );
     
     // Sort by step number if available, otherwise conclusion pages go last
@@ -187,6 +188,8 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     });
     
     // Create milestones using array index + 1 for consistent numbering
+    // Note: milestoneItems has already been filtered to exclude skipped milestones,
+    // so the numbering will be sequential without gaps (1, 2, 3, etc.)
     const milestones: Milestone[] = milestoneItems.map((item, index) => {
       const title = item.params.title || item.params.menutitle || `Step ${index + 1}`;
       const duration = '2-3 min'; // Default duration since JSON doesn't include this
