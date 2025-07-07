@@ -19,7 +19,6 @@ import {
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
   clearSpecificJourneyCache,
-  clearSpecificJourneyContentCache
 } from '../../utils/docs-fetcher';
 import { 
   fetchSingleDocsContent, 
@@ -541,6 +540,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
+    return undefined;
   }, [isDropdownOpen]);
 
   // Create combined content styles that include interactive styles
