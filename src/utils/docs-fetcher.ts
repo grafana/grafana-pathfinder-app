@@ -321,7 +321,6 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
         }
         
         totalMilestones = milestones.length;
-        currentMilestone = 0; // Cover page
         
       } catch (error) {
         console.error('Failed to fetch milestones from JSON:', error);
@@ -330,21 +329,21 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
     } else {
       // Use cached milestone information
       totalMilestones = milestones.length;
-      
-      // Determine current milestone from URL
-      currentMilestone = findCurrentMilestoneFromUrl(url, milestones);
-      
-      // Reset all milestone active states first, then set the current one
-      milestones.forEach(milestone => {
-        milestone.isActive = false;
-      });
-      
-      // Set the current milestone as active
-      if (currentMilestone > 0 && currentMilestone <= milestones.length) {
-        const activeMilestone = milestones.find(m => m.number === currentMilestone);
-        if (activeMilestone) {
-          activeMilestone.isActive = true;
-        }
+    }
+    
+    // Always determine current milestone from URL (whether milestones were cached or freshly fetched)
+    currentMilestone = findCurrentMilestoneFromUrl(url, milestones);
+    
+    // Reset all milestone active states first, then set the current one
+    milestones.forEach(milestone => {
+      milestone.isActive = false;
+    });
+    
+    // Set the current milestone as active
+    if (currentMilestone > 0 && currentMilestone <= milestones.length) {
+      const activeMilestone = milestones.find(m => m.number === currentMilestone);
+      if (activeMilestone) {
+        activeMilestone.isActive = true;
       }
     }
     
@@ -1072,12 +1071,25 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
     }
   }
   
+  // Try more flexible matching - check if URL contains the milestone path
+  for (const milestone of milestones) {
+    const milestonePath = new URL(milestone.url).pathname;
+    const urlPath = new URL(url).pathname;
+    
+    if (urlPath === milestonePath || 
+        urlPath + '/' === milestonePath || 
+        urlPath === milestonePath + '/') {
+      return milestone.number;
+    }
+  }
+  
   // Check if this URL looks like a journey base URL (cover page)
   const baseUrl = getLearningJourneyBaseUrl(url);
   if (url === baseUrl || url + '/' === baseUrl || url === baseUrl + '/') {
     return 0;
   }
   
+  console.warn(`No milestone match found for URL: ${url}, defaulting to cover page`);
   return 0; // Default to cover page instead of milestone 1
 }
 

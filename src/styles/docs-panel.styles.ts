@@ -363,9 +363,45 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.primary,
   }),
   navButton: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(0.5),
+    padding: `${theme.spacing(0.75)} ${theme.spacing(1.25)}`,
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    minWidth: '70px',
+    
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+    },
+    
+    '&:active': {
+      transform: 'translateY(0)',
+      boxShadow: 'none',
+    },
+    
     '&:disabled': {
-      opacity: 0.5,
+      backgroundColor: theme.colors.action.disabledBackground,
+      color: theme.colors.action.disabledText,
       cursor: 'not-allowed',
+      opacity: 0.5,
+      transform: 'none',
+      boxShadow: 'none',
+    },
+    
+    '& svg': {
+      width: '14px',
+      height: '14px',
+      flexShrink: 0,
     },
   }),
   progressBar: css({
