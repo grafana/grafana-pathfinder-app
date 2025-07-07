@@ -18,6 +18,7 @@ import {
   LearningJourneyContent,
   getNextMilestoneUrl,
   getPreviousMilestoneUrl,
+  clearSpecificJourneyCache,
   clearSpecificJourneyContentCache
 } from '../../utils/docs-fetcher';
 import { 
@@ -315,10 +316,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     // Save tabs to storage after closing
     this.saveTabsToStorage();
 
-    // Clear content cache for the specific journey but preserve milestone cache
-    // Milestone cache is needed for URL-to-milestone matching when reopening tabs
+    // Clear ALL cache for the specific journey when app tab is closed
+    // This ensures reopening the journey starts fresh from the beginning
     if (tabToClose && tabToClose.baseUrl) {
-      clearSpecificJourneyContentCache(tabToClose.baseUrl);
+      clearSpecificJourneyCache(tabToClose.baseUrl);
     }
   }
 
@@ -674,27 +675,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           </div>
         </div>
         <div className={styles.actions}>
-          {!isRecommendationsTab && activeTab && (
-            <>
-              <IconButton
-                name="external-link-alt"
-                aria-label="Open original documentation"
-                onClick={() => {
-                  // For docs tabs, use baseUrl or docsContent.url
-                  // For learning journey tabs, use content.url
-                  const url = activeTab.type === 'docs' 
-                    ? (activeTab.docsContent?.url || activeTab.baseUrl)
-                    : activeTab.content?.url;
-                  
-                  if (url) {
-                    window.open(url, '_blank', 'noopener,noreferrer');
-                  }
-                }}
-                tooltip="Open original documentation in new tab"
-                tooltipPlacement="left"
-              />
-            </>
-          )}
+          {/* Actions moved to content meta areas for better context */}
         </div>
       </div>
 
@@ -773,13 +754,24 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           if (!isRecommendationsTab && activeTab?.type === 'docs' && activeTab?.docsContent && !activeTab.isLoading) {
             return (
               <div className={styles.docsContent}>
-                <div className={styles.contentMeta}>
-                  <div className={styles.metaInfo}>
-                    <span>Documentation</span>
-                  </div>
-                  <small>
-                    Last updated: {new Date(activeTab.docsContent.lastFetched).toLocaleString()}
-                  </small>
+
+                
+                {/* Content Action Bar */}
+                <div className={styles.contentActionBar}>
+                  <IconButton
+                    name="external-link-alt"
+                    size="xs"
+                    aria-label="Open this page in new tab"
+                    onClick={() => {
+                      const url = activeTab.docsContent?.url || activeTab.baseUrl;
+                      if (url) {
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                    tooltip="Open this page in new tab"
+                    tooltipPlacement="top"
+                    className={styles.actionButton}
+                  />
                 </div>
                 
                 <div 
@@ -835,6 +827,37 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                     </div>
                   </div>
                 )}
+                
+                {/* Content Meta for cover pages (when no milestone progress is shown) */}
+                {!(activeTab.content.currentMilestone > 0 && activeTab.content.milestones.length > 0) && (
+                  <div className={styles.contentMeta}>
+                    <div className={styles.metaInfo}>
+                      <span>Learning Journey</span>
+                    </div>
+                    <small>
+                      {activeTab.content.totalMilestones > 0 ? `${activeTab.content.totalMilestones} milestones` : 'Interactive journey'}
+                    </small>
+                  </div>
+                )}
+                
+                {/* Content Action Bar */}
+                <div className={styles.contentActionBar}>
+                  <IconButton
+                    name="external-link-alt"
+                    size="xs"
+                    aria-label="Open this journey in new tab"
+                    onClick={() => {
+                      const url = activeTab.content?.url;
+                      if (url) {
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                    tooltip="Open this journey in new tab"
+                    tooltipPlacement="top"
+                    className={styles.actionButton}
+                  />
+                </div>
+                
                 <div id='inner-docs-content'
                   ref={contentRef}
                   className={journeyContentStyles}

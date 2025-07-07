@@ -968,6 +968,65 @@ export function clearLearningJourneyCache(): void {
 }
 
 /**
+ * Get completion percentage for a learning journey from browser cache
+ * Returns 0-100 based on the highest milestone the user has reached
+ */
+export function getLearningJourneyCompletionPercentage(journeyUrl: string): number {
+  try {
+    const baseUrl = getLearningJourneyBaseUrl(journeyUrl);
+    
+    // Check for cached milestones to get total count
+    const cachedMilestones = getCachedMilestones(baseUrl);
+    if (!cachedMilestones || cachedMilestones.length === 0) {
+      return 0; // No cache available, default to 0%
+    }
+    
+    const totalMilestones = cachedMilestones.length;
+    
+    // Check localStorage for persisted tabs to find the highest milestone reached
+    let highestMilestone = 0;
+    
+    try {
+      const storedTabs = localStorage.getItem('grafana-docs-plugin-tabs');
+      if (storedTabs) {
+        const persistedTabs = JSON.parse(storedTabs);
+        
+        // Find tabs that match this learning journey
+        const matchingTabs = persistedTabs.filter((tab: any) => {
+          if (!tab.baseUrl || !tab.currentUrl) return false;
+          const tabBaseUrl = getLearningJourneyBaseUrl(tab.baseUrl);
+          return tabBaseUrl === baseUrl;
+        });
+        
+        // Find the highest milestone from matching tabs
+        matchingTabs.forEach((tab: any) => {
+          if (tab.currentUrl && cachedMilestones) {
+            const milestone = findCurrentMilestoneFromUrl(tab.currentUrl, cachedMilestones);
+            if (milestone > highestMilestone) {
+              highestMilestone = milestone;
+            }
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to read tab cache for completion percentage:', error);
+    }
+    
+    // Calculate percentage: 0% for cover page, milestone/total for actual progress
+    if (highestMilestone === 0) {
+      return 0; // Cover page or no progress
+    }
+    
+    const percentage = Math.round((highestMilestone / totalMilestones) * 100);
+    return Math.min(percentage, 100); // Cap at 100%
+    
+  } catch (error) {
+    console.warn('Failed to calculate completion percentage:', error);
+    return 0;
+  }
+}
+
+/**
  * Clear cache for a specific learning journey
  */
 export function clearSpecificJourneyCache(baseUrl: string): void {

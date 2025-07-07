@@ -162,6 +162,17 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                     <span>Summary</span>
                                     <Icon name={recommendation.summaryExpanded ? "angle-up" : "angle-down"} size="sm" />
                                   </button>
+                                  {/* Show completion percentage for learning journeys */}
+                                  {(recommendation.type !== 'docs-page') && typeof recommendation.completionPercentage === 'number' && (
+                                    <div className={styles.completionInfo}>
+                                      <div 
+                                        className={styles.completionPercentage}
+                                        data-completion={recommendation.completionPercentage}
+                                      >
+                                        {recommendation.completionPercentage}% complete
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                               

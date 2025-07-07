@@ -1,6 +1,6 @@
 import { getBackendSrv, config } from '@grafana/runtime';
 import { getRecommenderServiceUrl } from '../constants';
-import { fetchLearningJourneyContent, Milestone } from './docs-fetcher';
+import { fetchLearningJourneyContent, Milestone, getLearningJourneyCompletionPercentage } from './docs-fetcher';
 
 // Interfaces extracted from context-panel.tsx
 export interface DataSource {
@@ -32,6 +32,7 @@ export interface Recommendation {
   stepsExpanded?: boolean;
   summary?: string; // Journey summary from first 3 paragraphs
   summaryExpanded?: boolean; // Track summary expansion state
+  completionPercentage?: number; // 0-100 based on browser cache progress for learning journeys
   [key: string]: any; // Allow for additional attributes from the server
 }
 
@@ -192,28 +193,35 @@ export async function fetchRecommendations(
         if (recommendation.type === 'learning-journey' || !recommendation.type) {
           try {
             const journeyContent = await fetchLearningJourneyContent(recommendation.url);
+            const completionPercentage = getLearningJourneyCompletionPercentage(recommendation.url);
+            
             return {
               ...recommendation,
               totalSteps: journeyContent?.milestones?.length || 0,
               milestones: journeyContent?.milestones || [],
               summary: journeyContent?.summary || '',
+              completionPercentage: completionPercentage,
             };
           } catch (error) {
             console.warn(`Failed to fetch steps for learning journey ${recommendation.title}:`, error);
+            const completionPercentage = getLearningJourneyCompletionPercentage(recommendation.url);
+            
             return {
               ...recommendation,
               totalSteps: 0,
               milestones: [],
               summary: '',
+              completionPercentage: completionPercentage,
             };
           }
         } else {
-          // For docs pages, don't fetch milestone data
+          // For docs pages, don't fetch milestone data or completion percentage
           return {
             ...recommendation,
             totalSteps: 0, // Docs pages don't have steps
             milestones: [],
             summary: '',
+            completionPercentage: undefined, // Docs pages don't have completion
           };
         }
       })

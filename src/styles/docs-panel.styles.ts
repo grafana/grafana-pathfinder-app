@@ -333,6 +333,47 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'column',
     gap: theme.spacing(0.5),
   }),
+  contentActionBar: css({
+    padding: theme.spacing(0.5, 2),
+    backgroundColor: theme.colors.background.canvas,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    flexShrink: 0,
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    minHeight: '32px',
+  }),
+  actionButton: css({
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+    },
+    
+    '&:active': {
+      transform: 'translateY(0)',
+      boxShadow: 'none',
+    },
+    
+    '& svg': {
+      width: '12px',
+      height: '12px',
+      flexShrink: 0,
+    },
+  }),
 });
 
 export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
