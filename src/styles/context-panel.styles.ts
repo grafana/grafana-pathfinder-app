@@ -25,8 +25,8 @@ export const getContainerStyles = (theme: GrafanaTheme2) => ({
   contextSections: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(2),
-    padding: theme.spacing(2),
+    gap: theme.spacing(1),
+    padding: theme.spacing(1),
     width: '100%',
     maxWidth: '100%',
     boxSizing: 'border-box',
@@ -39,18 +39,18 @@ export const getStateStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1),
-    padding: theme.spacing(2),
+    padding: theme.spacing(1.5),
     justifyContent: 'center',
     backgroundColor: theme.colors.background.secondary,
     borderRadius: theme.shape.radius.default,
     border: `1px solid ${theme.colors.border.weak}`,
-    margin: theme.spacing(2),
+    margin: theme.spacing(1),
   }),
   errorContainer: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1),
-    padding: theme.spacing(2),
+    padding: theme.spacing(1.5),
     backgroundColor: theme.colors.background.secondary,
     borderRadius: theme.shape.radius.default,
     border: `1px solid ${theme.colors.border.weak}`,
@@ -59,7 +59,7 @@ export const getStateStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: theme.spacing(2),
+    padding: theme.spacing(1.5),
     backgroundColor: theme.colors.background.secondary,
     borderRadius: theme.shape.radius.default,
     border: `1px solid ${theme.colors.border.weak}`,
@@ -72,11 +72,11 @@ export const getSectionHeaderStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: theme.spacing(3, 2),
+    gap: theme.spacing(0.5),
+    padding: theme.spacing(1.5, 1),
     textAlign: 'center',
     borderBottom: `1px solid ${theme.colors.border.weak}`,
-    marginBottom: theme.spacing(2),
+    marginBottom: theme.spacing(1),
   }),
   headerIcon: css({
     color: theme.colors.primary.main,
@@ -84,13 +84,13 @@ export const getSectionHeaderStyles = (theme: GrafanaTheme2) => ({
   }),
   sectionTitle: css({
     margin: 0,
-    fontSize: theme.typography.h4.fontSize,
-    fontWeight: theme.typography.fontWeightBold,
+    fontSize: theme.typography.h5.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.primary,
   }),
   sectionSubtitle: css({
     margin: 0,
-    fontSize: theme.typography.body.fontSize,
+    fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
     maxWidth: '400px',
   }),
@@ -101,27 +101,27 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
   recommendationsContainer: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(3),
+    gap: theme.spacing(1.5),
   }),
   recommendationsGrid: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(2),
+    gap: theme.spacing(1),
     width: '100%',
     maxWidth: '100%',
   }),
   recommendationCard: css({
-    padding: theme.spacing(2),
+    padding: theme.spacing(1.5),
     width: '100%',
     maxWidth: '100%',
     boxSizing: 'border-box',
     display: 'flex',
     flexDirection: 'column',
-    minHeight: '120px',
+    minHeight: '100px',
   }),
   compactCard: css({
-    padding: theme.spacing(1.5),
-    minHeight: '80px', // Much smaller for docs pages
+    padding: theme.spacing(1),
+    minHeight: '70px', // Much smaller for docs pages
   }),
   recommendationCardContent: css({
     display: 'flex',
@@ -139,13 +139,13 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: theme.spacing(2),
+    gap: theme.spacing(1.5),
     width: '100%',
     maxWidth: '100%',
-    marginBottom: theme.spacing(2),
+    marginBottom: theme.spacing(1),
   }),
   compactHeader: css({
-    marginBottom: theme.spacing(1), // Reduced bottom margin for docs pages
+    marginBottom: theme.spacing(0.5), // Reduced bottom margin for docs pages
     alignItems: 'center', // Center align for cleaner look
   }),
   recommendationCardTitle: css({
@@ -199,7 +199,7 @@ export const getCardMetadataStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: theme.spacing(1),
+    paddingTop: theme.spacing(0.5),
     borderTop: `1px solid ${theme.colors.border.weak}`,
   }),
   stepsInfo: css({
@@ -213,6 +213,24 @@ export const getCardMetadataStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(2),
     width: '100%',
+  }),
+  completionInfo: css({
+    display: 'flex',
+    alignItems: 'center',
+    marginLeft: 'auto',
+  }),
+  completionPercentage: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.success.main,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
+    borderRadius: theme.shape.radius.default,
+    whiteSpace: 'nowrap',
+    
+    // Special styling for 0% completion (not started)
+    '&[data-completion="0"]': {
+      color: theme.colors.text.secondary,
+    },
   }),
   summaryButton: css({
     display: 'flex',
