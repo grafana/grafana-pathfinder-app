@@ -1,0 +1,102 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+Here is a list of Grafana Labs products with their descriptions and common use cases.
+
+### Grafana
+Grafana is an open-source platform for monitoring and observability. It allows you to query, visualize, alert on, and understand your metrics no matter where they are stored.
+
+**Common Use Cases:**
+*   Creating and sharing dynamic and interactive dashboards.
+*   Visualizing data from a wide variety of data sources.
+*   Setting up alerts based on metrics and logs.
+*   Fostering a data-driven culture by enabling teams to explore and share data.
+
+### Grafana Loki
+Grafana Loki is a horizontally scalable, multi-tenant log aggregation system inspired by Prometheus. It is designed to be very cost-effective and easy to operate.
+
+**Common Use Cases:**
+*   Aggregating logs from all your applications and infrastructure.
+*   Querying and filtering logs using LogQL, a query language similar to PromQL.
+*   Correlating logs with metrics and traces to get a complete picture of your system.
+
+### Grafana Tempo
+Grafana Tempo is a high-scale, minimal-dependency distributed tracing backend. It is designed to be a simple and cost-effective way to store and query traces.
+
+**Common Use Cases:**
+*   Storing and retrieving traces from applications instrumented with OpenTelemetry, Jaeger, or Zipkin.
+*   Debugging and understanding the flow of requests through a distributed system.
+*   Integrating with Grafana for seamless correlation between metrics, logs, and traces.
+
+### Grafana Mimir
+Grafana Mimir is a scalable, long-term storage solution for Prometheus metrics. It allows you to aggregate metrics from multiple Prometheus instances into a single, globally-viewable dashboard.
+
+**Common Use Cases:**
+*   Centralized, long-term storage for Prometheus metrics.
+*   High-performance querying of large volumes of time-series data.
+*   Creating a single-pane-of-glass view of metrics from across your entire infrastructure.
+
+### Grafana Pyroscope
+Grafana Pyroscope is a continuous profiling platform that helps you find performance issues in your code. It allows you to understand which parts of your code are consuming the most resources.
+
+**Common Use Cases:**
+*   Identifying and debugging performance bottlenecks in applications.
+*   Optimizing resource utilization and reducing infrastructure costs.
+*   Analyzing CPU and memory usage over time to improve application performance.
+
+### Grafana k6
+Grafana k6 is a modern, open-source load testing tool for engineering teams. It allows you to write tests in JavaScript and run them from the command line or the cloud.
+
+**Common Use Cases:**
+*   Performance and load testing of APIs, microservices, and websites.
+*   Ensuring the reliability and scalability of your systems.
+*   Integrating performance testing into your CI/CD pipelines.
+
+### Grafana IRM (Incident Response Management)
+Grafana IRM is a suite of tools designed to help you manage incidents from detection to resolution. It includes Grafana OnCall and Grafana Incident.
+
+**Common Use Cases:**
+*   **Grafana OnCall:** Managing on-call schedules, escalations, and notifications to ensure that the right people are alerted when an incident occurs.
+*   **Grafana Incident:** Automating incident response workflows, from creating a dedicated Slack channel to tracking action items and generating post-mortems.
+
+### Grafana Cloud
+Grafana Cloud is a fully managed, composable observability platform that brings together all of Grafana's open-source and enterprise products into a single, easy-to-use solution.
+
+**Common Use Cases:**
+*   Organizations that want to use the Grafana stack without the overhead of managing the infrastructure themselves.
+*   Getting started quickly with a complete observability solution.
+*   Scaling observability as your organization grows.
+
+### Grafana Enterprise
+Grafana Enterprise is a self-managed, commercial edition of Grafana that includes additional features and support for enterprise use cases.
+
+**Common Use Cases:**
+*   Organizations with strict security and compliance requirements that need to run Grafana on their own infrastructure.
+*   Accessing enterprise-grade features such as enhanced security, reporting, and data source integrations.
+*   Receiving dedicated support from Grafana Labs.
+
+### Grafana Beyla
+Grafana Beyla is an eBPF-based application auto-instrumentation tool. It allows you to capture telemetry data from your applications without modifying their code.
+
+**Common Use Cases:**
+*   Gaining visibility into the performance of applications without manual instrumentation.
+*   Reducing the time and effort required to instrument a large number of services.
+*   Monitoring applications written in languages that are difficult to instrument.
+
+### Grafana Faro
+Grafana Faro is a frontend application observability SDK. It allows you to collect real-user monitoring (RUM) data from your web applications.
+
+**Common Use Cases:**
+*   Understanding the end-user experience of your web applications.
+*   Identifying and debugging frontend performance issues.
+*   Collecting data on page load times, JavaScript errors, and other frontend events.
+
+### Grafana Alloy
+Grafana Alloy is a distribution of the OpenTelemetry Collector with added support for Prometheus pipelines.
+
+**Common Use Cases:**
+*   Collecting and processing telemetry data from a variety of sources.
+*   Sending data to multiple observability backends.
+*   Building custom telemetry pipelines.
