@@ -28,6 +28,51 @@ Child of: N/A
 Product: Grafana Cloud
 Child of: Grafana OSS
 
+# Prefix: /docs/grafana-cloud/security-and-account-management/
+
+Feature: Security & Account Management
+Child of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/send-data/
+
+Feature: Instrument and Send Data
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/send-data/metrics/
+
+Feature: Send Metrics
+Child Of: Instrument and Send Data
+
+# Prefix: /docs/grafana-cloud/send-data/logs/
+
+Feature: Send Logs
+Child Of: Instrument and Send Data
+
+# Prefix: /docs/grafana-cloud/send-data/traces/
+
+Feature: Send Traces
+Child Of: Instrument and Send Data
+
+# Prefix: /docs/grafana-cloud/send-data/aws-privatelink/
+
+Feature: AWS PrivateLink
+Child Of: Instrument and Send Data
+
+# Prefix: /docs/grafana-cloud/send-data/azure-privatelink/
+
+Feature: Azure PrivateLink
+Child Of: Instrument and Send Data
+
+# Prefix: /docs/grafana-cloud/send-data/gcp-psc/
+
+Feature: GCP Private Service Connect
+Child Of: Instrument and Send Data
+
+# Prefix: /docs/grafana-cloud/send-data/otlp/
+
+Feature: OpenTelemetry
+Child Of: Instrument and Send Data
+
 # Prefix: /docs/k6/
 
 Product: K6
@@ -53,10 +98,41 @@ Child of: N/A
 Product: Grafana Belya
 Child of: N/A
 
+# Prefix: /docs/grafana/latest/explore/
+
+Product: Explore
+Child of: Grafana OSS
+
 # Prefix: /docs/grafana/latest/explore/simplified-exploration/
 
 Product: Drilldown
+Child of: Explore
+
+# Prefix: /docs/grafana/latest/observability-as-code/
+
+Feature: As-Code
 Child of: Grafana OSS
+
+# Prefix: /docs/grafana/latest/observability-as-code/grafana-cli/
+
+Feature: Grafana CLI
+Child Of: As-Code
+
+# Prefix: /docs/grafana/latest/observability-as-code/foundation-sdk/
+
+Feature: Foundation SDK
+Child Of: As-Code
+
+# Prefix: /docs/grafana/latest/troubleshooting/
+
+Feature: Troubleshooting
+Child Of: Grafana OSS
+
+# Prefix: /docs/grafana/latest/getting-started/
+
+Feature: Getting started with OSS
+Child Of: Grafana OSS
+OSS Only: true
 
 # Prefix: /docs/k6-studio/
 
@@ -67,6 +143,39 @@ Child Of: K6
 
 Product: Loki
 Child Of: N/A
+
+# Prefix: /docs/loki/latest/setup/
+
+Feature: Loki Setup
+Child Of: Loki
+OSS Only: true
+
+# Prefix: /docs/loki/latest/configure/
+
+Feature: Loki Configure
+Child Of: Loki
+OSS Only: true
+
+# Prefix: /docs/loki/latest/send-data/
+
+Feature: Loki Send Data
+Child Of: Loki
+
+# Prefix: /docs/loki/latest/query/
+
+Feature: Loki Query
+Child Of: Loki
+
+# Prefix: /docs/loki/latest/operations/
+
+Feature: Loki Manage Operations
+Child Of: Loki
+OSS Only: true
+
+# Prefix: /docs/loki/latest/reference/
+
+Feature: Loki Reference
+Child Of: Loki
 
 # Prefix: /docs/mimir
 
@@ -88,19 +197,34 @@ Child Of: Grafana Cloud
 Product: Grafana Tempo
 Child Of: N/A
 
+# Prefix: Monitor Applications
+
+Feature: Monitor Applications
+Child Of: Grafana Cloud
+
 # Prefix: /docs/grafana-cloud/monitor-applications/frontend-observability/
 
 Product: Grafana Faro
-Child Of: Grafana Cloud
+Child Of: Monitor Applications
 
 # Prefix: /docs/grafana-cloud/monitor-applications/asserts/
 
 Product: Grafana Asserts
-Child Of: Grafana Cloud
+Child Of: Monitor Applications
 
 # Prefix: /docs/grafana-cloud/monitor-applications/ai-observability/
 
 Product: Grafana AI Observability
+Child Of: Monitor Applications
+
+# Prefix: /docs/grafana-cloud/cost-management-and-billing/
+
+Feature: Cost Management & Billing
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/visualizations/
+
+Feature: Visualize Data
 Child Of: Grafana Cloud
 
 # Prefix: /docs/grafana-cloud/send-data/fleet-management/
@@ -120,12 +244,54 @@ Child Of: Grafana Cloud
 
 # Prefix: /docs/grafana-cloud/alerting-and-irm/alerting/
 
-Product: Alerting
-Child Of: Grafana Cloud
+Feature: Alerting
+Child Of: IRM
 
 # Prefix: /docs/grafana/latest/alerting/
 
-Product: Alerting
+Feature: Alerting
+Child Of: Grafana OSS
+
+# Prefix: /docs/grafana/latest/dashboards/
+
+Feature: Dashboards
+Child Of: Grafana OSS
+
+# Prefix: /docs/grafana/latest/datasources/
+
+Feature: Data Sources
+Child Of: Grafana OSS
+
+# Prefix: /docs/grafana/latest/administration/
+
+Feature: Grafana Administration
+Child Of: Grafana OSS
+
+# Prefix: /docs/grafana/latest/upgrade-guide/
+
+Feature: Upgrading
+Child Of: Grafana OSS
+OSS Only: True
+
+# Prefix: /docs/grafana/latest/setup-grafana/
+
+Feature: Setup
+Child Of: Grafana OSS
+OSS Only: True
+
+# Prefix: /docs/grafana/latest/panels-visualizations/
+
+Feature: Panels & Visualizations
+Child Of: Grafana OSS
+
+# Prefix: /docs/grafana/latest/panels-visualizations/query-transform-data/
+
+Feature: Query & Transform Data
+Child Of: Grafana OSS
+
+# Prefix: /docs/grafana/latest/search/
+
+Feature: Search
 Child Of: Grafana OSS
 
 # Prefix: /docs/grafana-cloud/alerting-and-irm/slo/
