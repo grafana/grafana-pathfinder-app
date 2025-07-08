@@ -1,0 +1,155 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Docs Struture Mapping
+
+This file describes the connection between documentation URLs and broad product areas described
+in @grafana-products.mdc, as well as features described in @app-states.mdc.
+
+Below are a set of URL prefixes, and the associated product and/or features.
+
+The prefixes refer to locations in Grafana docs, so it is assumed that they correspond
+to URLs that start with https://grafana.com.
+
+When this file states that something is the "Child of" something else, this does **not** mean
+that it is a child in the navigational sense, but in the product sense.  It means more like
+"this is a sub-feature or a sub-product of the parent", even though their documentation may be
+in different places.
+
+# Prefix: /docs/grafana/
+
+Product: Grafana OSS
+Child of: N/A
+
+# Prefix: /docs/grafana-cloud/
+
+Product: Grafana Cloud
+Child of: Grafana OSS
+
+# Prefix: /docs/k6/
+
+Product: K6
+Child of: N/A
+
+# Prefix: /docs/grafana/latest/introduction/grafana-enterprise/
+
+Product: Grafana Enterprise
+Child of: Grafana OSS
+
+# Prefix: /docs/helm-charts
+
+Product: Grafana Helm Charts
+Child of: N/A
+
+# Prefix: /docs/alloy/
+
+Product: Grafana Alloy
+Child of: N/A
+
+# Prefix: /docs/beyla/
+
+Product: Grafana Belya
+Child of: N/A
+
+# Prefix: /docs/grafana/latest/explore/simplified-exploration/
+
+Product: Drilldown
+Child of: Grafana OSS
+
+# Prefix: /docs/k6-studio/
+
+Product: K6 Studio
+Child Of: K6
+
+# Prefix: /docs/loki/
+
+Product: Loki
+Child Of: N/A
+
+# Prefix: /docs/mimir
+
+Product: Mimir
+Child Of: N/A
+
+# Prefix: /docs/pyroscope/
+
+Product: Pyroscope
+Child Of: N/A
+
+# Prefix: /docs/oncall/
+
+Product: Grafana OnCall
+Child Of: Grafana Cloud
+
+# Prefix: /docs/tempo
+
+Product: Grafana Tempo
+Child Of: N/A
+
+# Prefix: /docs/grafana-cloud/monitor-applications/frontend-observability/
+
+Product: Grafana Faro
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/monitor-applications/asserts/
+
+Product: Grafana Asserts
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/monitor-applications/ai-observability/
+
+Product: Grafana AI Observability
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/send-data/fleet-management/
+
+Product: Fleet Management
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/
+
+Product: Cloud Provider Observability
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/alerting-and-irm/irm/
+
+Product: IRM
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/alerting-and-irm/alerting/
+
+Product: Alerting
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana/latest/alerting/
+
+Product: Alerting
+Child Of: Grafana OSS
+
+# Prefix: /docs/grafana-cloud/alerting-and-irm/slo/
+
+Product: SLOs
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/testing/synthetic-monitoring/
+
+Product: Synthetic Monitoring
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/alerting-and-irm/machine-learning/
+
+Product: Machine Learning
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/monitor-applications/application-observability/
+
+Product: Application Observability
+Child Of: Grafana Cloud
+
+# Prefix: /docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/
+
+Product: Kubernetes Monitoring
+Child Of: Grafana OSS
+
