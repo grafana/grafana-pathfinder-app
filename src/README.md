@@ -124,3 +124,134 @@ This organization makes the codebase more maintainable, testable, and easier for
 - **Utility Types**: Leverages TypeScript's advanced type system
 
 This architecture ensures the plugin is scalable, maintainable, and follows modern React and Grafana development best practices.
+
+## Current Context Tags Map
+
+Looking at the `context-analysis.ts` code, here's a comprehensive list of all the tag types that can be derived:
+
+### **Primary Entity:Action Tags**
+```
+dashboard:create|edit|view|configure|delete|import|export
+datasource:create|edit|view|configure|test|delete
+explore:query
+alert:create|edit|view|configure|delete
+admin:create|edit|view|configure|delete
+plugin:create|edit|view|configure
+app:create|edit|view|configure
+connection:create|edit|view|configure
+```
+
+### **Dashboard Context Tags**
+```
+dashboard-tag:{tag-name}           # e.g., dashboard-tag:monitoring
+panel:create|edit|view
+panel-type:{viz-type}             # e.g., panel-type:timeseries, panel-type:bar-chart
+```
+
+### **Datasource Context Tags**
+```
+datasource-type:{type}            # e.g., datasource-type:prometheus, datasource-type:elasticsearch
+available-datasource:{type}       # Only shown during create/view actions
+```
+
+### **Explore Context Tags**
+```
+explore:query
+explore:split-view
+query-type:{datasource-type}      # e.g., query-type:prometheus, query-type:elasticsearch
+```
+
+### **Alert Context Tags**
+```
+alert-type:alerting|recording
+alert-rule:create|edit|view|configure|delete
+alert-notification:create|edit|view|configure|delete
+alert-group:create|edit|view|configure|delete
+alert-silence:create|edit|view|configure|delete
+```
+
+### **Admin Context Tags**
+```
+admin-users:create|edit|view|configure|delete
+admin-orgs:create|edit|view|configure|delete
+admin-plugins:create|edit|view|configure|delete
+admin-settings:create|edit|view|configure|delete
+```
+
+### **Plugin Context Tags**
+```
+plugin:app|datasource|panel
+plugin-app:{plugin-id}
+plugin-datasource:{plugin-id}
+plugin-panel:{plugin-id}
+```
+
+### **App Context Tags**
+```
+app:view|configure
+app-type:{short-name}             # e.g., app-type:metricsdrilldown, app-type:logs
+```
+
+### **UI Context Tags**
+```
+ui:tabbed
+ui:fullscreen
+ui:kiosk
+dashboard:variables
+```
+
+## 📊 **Tag Pattern Examples**
+
+**Dashboard editing with timeseries panel:**
+```javascript
+[
+  "dashboard:edit",
+  "panel:edit", 
+  "panel-type:timeseries"
+]
+```
+
+**Datasource configuration:**
+```javascript
+[
+  "datasource:edit",
+  "datasource-type:prometheus"
+]
+```
+
+**Explore with multiple datasources:**
+```javascript
+[
+  "explore:query",
+  "explore:split-view",
+  "query-type:prometheus",
+  "query-type:elasticsearch"
+]
+```
+
+**Alert rule creation:**
+```javascript
+[
+  "alert:create",
+  "alert-type:alerting",
+  "alert-rule:create"
+]
+```
+
+**App usage:**
+```javascript
+[
+  "app:view",
+  "app-type:metricsdrilldown"
+]
+```
+
+## 🎯 **Total Tag Universe**
+
+- **~15 primary entities** × **~8 actions** = **~120 entity:action combinations**
+- **~25 known datasource types** for `datasource-type:` and `query-type:` tags
+- **~50+ visualization types** for `panel-type:` tags  
+- **Hundreds of possible app types** for `app-type:` tags
+- **Dynamic dashboard tags** based on user-defined dashboard tags
+
+**Result**: The system can generate **thousands of unique, contextually relevant tags** to provide precise recommendations to users based on their current Grafana context.
