@@ -172,11 +172,12 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     }
     
     // Filter items that should be milestones (have step numbers OR are conclusion pages)
+    // and exclude items marked with grafana.skip: true
     const milestoneItems = jsonData.filter(item => 
       item.params && item.permalink && (
         typeof item.params.step === 'number' || 
         (item.params.cta && item.params.cta.type === 'conclusion')
-      )
+      ) && !(item.params.grafana && item.params.grafana.skip === true)
     );
     
     // Sort by step number if available, otherwise conclusion pages go last
@@ -187,6 +188,8 @@ async function fetchMilestonesFromJson(baseUrl: string): Promise<Milestone[]> {
     });
     
     // Create milestones using array index + 1 for consistent numbering
+    // Note: milestoneItems has already been filtered to exclude skipped milestones,
+    // so the numbering will be sequential without gaps (1, 2, 3, etc.)
     const milestones: Milestone[] = milestoneItems.map((item, index) => {
       const title = item.params.title || item.params.menutitle || `Step ${index + 1}`;
       const duration = '2-3 min'; // Default duration since JSON doesn't include this
@@ -321,7 +324,6 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
         }
         
         totalMilestones = milestones.length;
-        currentMilestone = 0; // Cover page
         
       } catch (error) {
         console.error('Failed to fetch milestones from JSON:', error);
@@ -330,21 +332,21 @@ async function extractLearningJourneyContent(html: string, url: string): Promise
     } else {
       // Use cached milestone information
       totalMilestones = milestones.length;
-      
-      // Determine current milestone from URL
-      currentMilestone = findCurrentMilestoneFromUrl(url, milestones);
-      
-      // Reset all milestone active states first, then set the current one
-      milestones.forEach(milestone => {
-        milestone.isActive = false;
-      });
-      
-      // Set the current milestone as active
-      if (currentMilestone > 0 && currentMilestone <= milestones.length) {
-        const activeMilestone = milestones.find(m => m.number === currentMilestone);
-        if (activeMilestone) {
-          activeMilestone.isActive = true;
-        }
+    }
+    
+    // Always determine current milestone from URL (whether milestones were cached or freshly fetched)
+    currentMilestone = findCurrentMilestoneFromUrl(url, milestones);
+    
+    // Reset all milestone active states first, then set the current one
+    milestones.forEach(milestone => {
+      milestone.isActive = false;
+    });
+    
+    // Set the current milestone as active
+    if (currentMilestone > 0 && currentMilestone <= milestones.length) {
+      const activeMilestone = milestones.find(m => m.number === currentMilestone);
+      if (activeMilestone) {
+        activeMilestone.isActive = true;
       }
     }
     
@@ -969,6 +971,65 @@ export function clearLearningJourneyCache(): void {
 }
 
 /**
+ * Get completion percentage for a learning journey from browser cache
+ * Returns 0-100 based on the highest milestone the user has reached
+ */
+export function getLearningJourneyCompletionPercentage(journeyUrl: string): number {
+  try {
+    const baseUrl = getLearningJourneyBaseUrl(journeyUrl);
+    
+    // Check for cached milestones to get total count
+    const cachedMilestones = getCachedMilestones(baseUrl);
+    if (!cachedMilestones || cachedMilestones.length === 0) {
+      return 0; // No cache available, default to 0%
+    }
+    
+    const totalMilestones = cachedMilestones.length;
+    
+    // Check localStorage for persisted tabs to find the highest milestone reached
+    let highestMilestone = 0;
+    
+    try {
+      const storedTabs = localStorage.getItem('grafana-docs-plugin-tabs');
+      if (storedTabs) {
+        const persistedTabs = JSON.parse(storedTabs);
+        
+        // Find tabs that match this learning journey
+        const matchingTabs = persistedTabs.filter((tab: any) => {
+          if (!tab.baseUrl || !tab.currentUrl) {return false;}
+          const tabBaseUrl = getLearningJourneyBaseUrl(tab.baseUrl);
+          return tabBaseUrl === baseUrl;
+        });
+        
+        // Find the highest milestone from matching tabs
+        matchingTabs.forEach((tab: any) => {
+          if (tab.currentUrl && cachedMilestones) {
+            const milestone = findCurrentMilestoneFromUrl(tab.currentUrl, cachedMilestones);
+            if (milestone > highestMilestone) {
+              highestMilestone = milestone;
+            }
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to read tab cache for completion percentage:', error);
+    }
+    
+    // Calculate percentage: 0% for cover page, milestone/total for actual progress
+    if (highestMilestone === 0) {
+      return 0; // Cover page or no progress
+    }
+    
+    const percentage = Math.round((highestMilestone / totalMilestones) * 100);
+    return Math.min(percentage, 100); // Cap at 100%
+    
+  } catch (error) {
+    console.warn('Failed to calculate completion percentage:', error);
+    return 0;
+  }
+}
+
+/**
  * Clear cache for a specific learning journey
  */
 export function clearSpecificJourneyCache(baseUrl: string): void {
@@ -1072,12 +1133,25 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
     }
   }
   
+  // Try more flexible matching - check if URL contains the milestone path
+  for (const milestone of milestones) {
+    const milestonePath = new URL(milestone.url).pathname;
+    const urlPath = new URL(url).pathname;
+    
+    if (urlPath === milestonePath || 
+        urlPath + '/' === milestonePath || 
+        urlPath === milestonePath + '/') {
+      return milestone.number;
+    }
+  }
+  
   // Check if this URL looks like a journey base URL (cover page)
   const baseUrl = getLearningJourneyBaseUrl(url);
   if (url === baseUrl || url + '/' === baseUrl || url === baseUrl + '/') {
     return 0;
   }
   
+  console.warn(`No milestone match found for URL: ${url}, defaulting to cover page`);
   return 0; // Default to cover page instead of milestone 1
 }
 

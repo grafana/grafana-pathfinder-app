@@ -117,7 +117,7 @@ export const getContainerStyles = (theme: GrafanaTheme2) => ({
     borderRadius: '0',
     display: 'flex',
     flexDirection: 'column',
-    overflow: 'hidden',
+    overflow: 'hidden', // Keep container contained
     margin: 0,
     height: '100%',
     width: '100%',
@@ -205,7 +205,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     padding: theme.spacing(0.5, 1),
     backgroundColor: theme.colors.background.canvas,
     borderBottom: `1px solid ${theme.colors.border.weak}`,
-    overflow: 'hidden',
+    overflow: 'visible', // Allow dropdown to extend below tab bar
+    position: 'relative', // Positioning context for absolute dropdown
   }),
   tabList: css({
     label: 'combined-journey-tab-list',
@@ -213,18 +214,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    overflow: 'auto',
+    overflow: 'hidden', // Hide overflowing tabs (dropdown is now outside)
     flex: 1,
-    '&::-webkit-scrollbar': {
-      height: '4px',
-    },
-    '&::-webkit-scrollbar-track': {
-      background: 'transparent',
-    },
-    '&::-webkit-scrollbar-thumb': {
-      background: theme.colors.border.medium,
-      borderRadius: '2px',
-    },
   }),
   tab: css({
     label: 'combined-journey-tab',
@@ -232,7 +223,7 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     padding: theme.spacing(0.75, 1.5),
     cursor: 'pointer',
-    backgroundColor: theme.colors.background.secondary,
+    backgroundColor: 'transparent',
     border: `1px solid ${theme.colors.border.weak}`,
     borderBottom: 'none',
     borderRadius: `${theme.shape.radius.default}px ${theme.shape.radius.default}px 0 0`,
@@ -240,9 +231,11 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     maxWidth: '220px',
     position: 'relative',
     transition: 'all 0.2s ease',
+    color: theme.colors.text.secondary,
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
       borderColor: theme.colors.border.medium,
+      color: theme.colors.text.primary,
     },
     '&:not(:first-child)': {
       marginLeft: '-1px',
@@ -250,12 +243,16 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
   }),
   activeTab: css({
     label: 'combined-journey-active-tab',
-    backgroundColor: theme.colors.background.primary,
-    borderColor: theme.colors.border.medium,
-    borderBottomColor: theme.colors.background.primary,
+    backgroundColor: theme.colors.primary.main,
+    borderColor: theme.colors.primary.main,
+    borderBottomColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
     zIndex: 1,
+    fontWeight: theme.typography.fontWeightMedium,
     '&:hover': {
-      backgroundColor: theme.colors.background.primary,
+      backgroundColor: theme.colors.primary.main,
+      borderColor: theme.colors.primary.main,
+      color: theme.colors.primary.contrastText,
     },
   }),
   tabContent: css({
@@ -269,7 +266,7 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
   }),
   tabIcon: css({
     label: 'combined-journey-tab-icon',
-    color: theme.colors.text.secondary,
+    color: 'inherit',
     flexShrink: 0,
   }),
   tabTitle: css({
@@ -278,7 +275,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     overflow: 'hidden',
     whiteSpace: 'nowrap',
     fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
+    fontWeight: 'inherit',
+    color: 'inherit',
     flex: 1,
     minWidth: 0,
   }),
@@ -296,6 +294,116 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     flexShrink: 0,
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  // Tab overflow dropdown styles
+  tabOverflow: css({
+    label: 'combined-journey-tab-overflow',
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+  }),
+  chevronTab: css({
+    label: 'combined-journey-chevron-tab',
+    minWidth: '100px',
+    maxWidth: '120px',
+    borderColor: theme.colors.border.medium,
+    backgroundColor: theme.colors.background.secondary,
+    color: theme.colors.text.primary,
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.strong,
+    },
+  }),
+  chevronIcon: css({
+    label: 'combined-journey-chevron-icon',
+    color: theme.colors.text.secondary,
+    flexShrink: 0,
+  }),
+  tabDropdown: css({
+    label: 'combined-journey-tab-dropdown',
+    position: 'absolute',
+    top: '100%',
+    right: theme.spacing(1), // Align with tabBar padding
+    zIndex: 9999, // High z-index to appear above content
+    minWidth: '200px',
+    maxWidth: '300px',
+    backgroundColor: theme.colors.background.primary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: theme.shape.radius.default,
+    boxShadow: theme.shadows.z3,
+    padding: theme.spacing(0.5),
+    marginTop: theme.spacing(0.25),
+    maxHeight: '60vh',
+    overflowY: 'auto',
+  }),
+  dropdownItem: css({
+    label: 'combined-journey-dropdown-item',
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    padding: theme.spacing(0.75, 1),
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    color: theme.colors.text.primary,
+    textAlign: 'left',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+    '&:focus': {
+      backgroundColor: theme.colors.action.hover,
+      outline: `2px solid ${theme.colors.primary.main}`,
+      outlineOffset: '-2px',
+    },
+  }),
+  activeDropdownItem: css({
+    label: 'combined-journey-active-dropdown-item',
+    backgroundColor: theme.colors.primary.transparent,
+    color: theme.colors.primary.main,
+    fontWeight: theme.typography.fontWeightMedium,
+    '&:hover': {
+      backgroundColor: theme.colors.primary.transparent,
+    },
+  }),
+  dropdownItemContent: css({
+    label: 'combined-journey-dropdown-item-content',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    width: '100%',
+    minWidth: 0,
+  }),
+  dropdownItemIcon: css({
+    label: 'combined-journey-dropdown-item-icon',
+    color: 'inherit',
+    flexShrink: 0,
+  }),
+  dropdownItemTitle: css({
+    label: 'combined-journey-dropdown-item-title',
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: 'inherit',
+  }),
+  dropdownItemClose: css({
+    label: 'combined-journey-dropdown-item-close',
+    padding: theme.spacing(0.25),
+    margin: 0,
+    minWidth: 'auto',
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    flexShrink: 0,
+    opacity: 0.7,
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      opacity: 1,
     },
   }),
 });
@@ -333,6 +441,47 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'column',
     gap: theme.spacing(0.5),
   }),
+  contentActionBar: css({
+    padding: theme.spacing(0.5, 2),
+    backgroundColor: theme.colors.background.canvas,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    flexShrink: 0,
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    minHeight: '32px',
+  }),
+  actionButton: css({
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+    },
+    
+    '&:active': {
+      transform: 'translateY(0)',
+      boxShadow: 'none',
+    },
+    
+    '& svg': {
+      width: '12px',
+      height: '12px',
+      flexShrink: 0,
+    },
+  }),
 });
 
 export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
@@ -363,9 +512,45 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.primary,
   }),
   navButton: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(0.5),
+    padding: `${theme.spacing(0.75)} ${theme.spacing(1.25)}`,
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    minWidth: '70px',
+    
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+    },
+    
+    '&:active': {
+      transform: 'translateY(0)',
+      boxShadow: 'none',
+    },
+    
     '&:disabled': {
-      opacity: 0.5,
+      backgroundColor: theme.colors.action.disabledBackground,
+      color: theme.colors.action.disabledText,
       cursor: 'not-allowed',
+      opacity: 0.5,
+      transform: 'none',
+      boxShadow: 'none',
+    },
+    
+    '& svg': {
+      width: '14px',
+      height: '14px',
+      flexShrink: 0,
     },
   }),
   progressBar: css({

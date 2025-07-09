@@ -72,14 +72,30 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   
   const styles = useStyles2(getStyles);
 
-  // Group recommendations by type
+  // Group recommendations by match accuracy, regardless of content type
   const learningJourneys = recommendations.filter((rec: Recommendation) => rec.type === 'learning-journey' || !rec.type);
-  const otherDocs = recommendations.filter((rec: Recommendation) => rec.type === 'docs-page');
+  const allDocs = recommendations.filter((rec: Recommendation) => rec.type === 'docs-page');
   
-  // If there are no learning journeys but there are docs, promote docs to primary display
-  const shouldPromoteDocsAsPrimary = learningJourneys.length === 0 && otherDocs.length > 0;
-  const primaryRecommendations = shouldPromoteDocsAsPrimary ? otherDocs : learningJourneys;
-  const secondaryDocs = shouldPromoteDocsAsPrimary ? [] : otherDocs;
+  // Primary recommendations: high-confidence items get prominent display
+  const highConfidenceLearningJourneys = learningJourneys.filter((rec: Recommendation) => (rec.matchAccuracy ?? 0) >= 0.5);
+  const perfectMatchDocs = allDocs.filter((rec: Recommendation) => rec.matchAccuracy === 1);
+  
+  // Secondary recommendations: low-confidence learning journeys + imperfect docs
+  const lowConfidenceLearningJourneys = learningJourneys.filter((rec: Recommendation) => (rec.matchAccuracy ?? 0) < 0.5);
+  const imperfectDocs = allDocs.filter((rec: Recommendation) => rec.matchAccuracy !== 1);
+  
+  // Primary section: sort by match accuracy descending (best matches first, regardless of type)
+  const primaryRecommendations = [...highConfidenceLearningJourneys, ...perfectMatchDocs]
+    .sort((a, b) => (b.matchAccuracy ?? 0) - (a.matchAccuracy ?? 0));
+  
+  // Secondary section: sort by match accuracy descending
+  const secondaryRecommendations = [...lowConfidenceLearningJourneys, ...imperfectDocs]
+    .sort((a, b) => (b.matchAccuracy ?? 0) - (a.matchAccuracy ?? 0));
+  
+  // Fallback: if we have no primary recommendations but have secondary items, promote all to primary
+  const shouldPromoteAllAsPrimary = primaryRecommendations.length === 0 && secondaryRecommendations.length > 0;
+  const finalPrimaryRecommendations = shouldPromoteAllAsPrimary ? secondaryRecommendations : primaryRecommendations;
+  const secondaryDocs = shouldPromoteAllAsPrimary ? [] : secondaryRecommendations;
 
   return (
     <div className={styles.container}>
@@ -124,15 +140,15 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             
             {!isLoadingRecommendations && recommendations.length > 0 && (
               <div className={styles.recommendationsContainer}>
-                {/* Primary Recommendations Section (Learning Journeys or Docs if no journeys) */}
-                {primaryRecommendations.length > 0 && (
+                {/* Primary Recommendations Section (High-Confidence Items, sorted by accuracy) */}
+                {finalPrimaryRecommendations.length > 0 && (
                   <div className={styles.recommendationsGrid}>
-                    {primaryRecommendations.map((recommendation, index) => (
+                    {finalPrimaryRecommendations.map((recommendation, index) => (
                       <Card key={index} className={`${styles.recommendationCard} ${recommendation.type === 'docs-page' ? styles.compactCard : ''}`}>
                         <div className={`${styles.recommendationCardContent} ${recommendation.type === 'docs-page' ? styles.compactCardContent : ''}`}>
                           <div className={`${styles.cardHeader} ${recommendation.type === 'docs-page' ? styles.compactHeader : ''}`}>
                             <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
-                            <div className={styles.cardActions}>
+                            <div className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}>
                               <button 
                                 onClick={() => {
                                   if (recommendation.type === 'docs-page') {
@@ -162,6 +178,17 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                     <span>Summary</span>
                                     <Icon name={recommendation.summaryExpanded ? "angle-up" : "angle-down"} size="sm" />
                                   </button>
+                                  {/* Show completion percentage for learning journeys */}
+                                  {(recommendation.type !== 'docs-page') && typeof recommendation.completionPercentage === 'number' && (
+                                    <div className={styles.completionInfo}>
+                                      <div 
+                                        className={styles.completionPercentage}
+                                        data-completion={recommendation.completionPercentage}
+                                      >
+                                        {recommendation.completionPercentage}% complete
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                               
@@ -198,6 +225,23 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                       </div>
                                     </div>
                                   )}
+                                  
+                                  {/* Sticky CTA button at bottom of summary */}
+                                  <div className={styles.summaryCta}>
+                                    <button 
+                                      onClick={() => {
+                                        if (recommendation.type === 'docs-page') {
+                                          openDocsPage(recommendation.url, recommendation.title);
+                                        } else {
+                                          openLearningJourney(recommendation.url, recommendation.title);
+                                        }
+                                      }}
+                                      className={styles.summaryCtaButton}
+                                    >
+                                      <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
+                                      {recommendation.type === 'docs-page' ? 'View Documentation' : 'Start Learning Journey'}
+                                    </button>
+                                  </div>
                                 </div>
                               )}
                             </>
@@ -208,7 +252,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                   </div>
                 )}
 
-                {/* Other Relevant Docs Section - only show when there are secondary docs */}
+                {/* Other Relevant Docs Section - low-confidence items */}
                 {secondaryDocs.length > 0 && (
                   <div className={styles.otherDocsSection}>
                     <div className={styles.otherDocsHeader}>
