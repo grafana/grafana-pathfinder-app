@@ -183,8 +183,15 @@ export async function fetchRecommendations(
       type: 'docs-page',
       summary: 'A test of interactive elements.',
     };
+    const defaultR2: Recommendation = {
+      title: 'Tutorial Environment Demo',
+      url: 'https://raw.githubusercontent.com/Jayclifford345/tutorial-environment/refs/heads/master/',
+      type: 'docs-page',
+      summary: 'Additional tutorial environment for testing interactive elements.',
+    };
     const recommendations = data.recommendations || [];
     recommendations.push(defaultR);
+    recommendations.push(defaultR2);
     
     // Only fetch step counts for learning journey recommendations
     const processedRecommendations = await Promise.all(
