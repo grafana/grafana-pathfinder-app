@@ -135,86 +135,71 @@ function extractEntity(pathSegments: string[]): string | null {
 }
 
 /**
- * Detect datasource type from DOM elements
+ * Detect datasource type from DOM elements with retry logic for rendering time
  */
 function detectDatasourceTypeFromDOM(): string | null {
-  try {
-    // Known datasource types (common ones)
-    const knownTypes = [
-      'prometheus', 'grafana', 'cloudwatch', 'elasticsearch', 'influxdb',
-      'mysql', 'postgres', 'postgresql', 'azure', 'stackdriver',
-      'datadog', 'jaeger', 'zipkin', 'tempo', 'loki', 'alertmanager',
-      'graphite', 'opentsdb', 'mixed', 'dashboard', 'testdata',
-      'parca', 'pyroscope', 'x-ray', 'newrelic', 'splunk', 'mimir'
-    ];
-    
-    // Strategy 1: Look for the specific pattern from your example
-    // <div class="css-1tvqsb7"><div class="css-1sts4md">Type</div>Elasticsearch</div>
-    const typeContainers = document.querySelectorAll('.css-1tvqsb7, .type-container, .datasource-type-container');
-    for (const container of typeContainers) {
-      const typeLabel = container.querySelector('.css-1sts4md, .type-label');
-      if (typeLabel && typeLabel.textContent?.toLowerCase().includes('type')) {
-        // Get the text content excluding the type label
-        const fullText = container.textContent || '';
-        const labelText = typeLabel.textContent || '';
-        const typeValue = fullText.replace(labelText, '').trim().toLowerCase();
+  // Known datasource types (common ones)
+  const knownTypes = [
+    'prometheus', 'grafana', 'cloudwatch', 'elasticsearch', 'influxdb',
+    'mysql', 'postgres', 'postgresql', 'azure', 'stackdriver',
+    'datadog', 'jaeger', 'zipkin', 'tempo', 'loki', 'alertmanager',
+    'graphite', 'opentsdb', 'mixed', 'dashboard', 'testdata',
+    'parca', 'pyroscope', 'x-ray', 'newrelic', 'splunk', 'mimir'
+  ];
+  
+  const detectType = (): string | null => {
+    try {
+      // Strategy 1: Look for the specific pattern "Type: OpenTSDB"
+      // <div class="css-3oq5wu">Type: OpenTSDB</div>
+      const typeElements = document.querySelectorAll('div[class*="css-"], .type-label, .datasource-type');
+      
+      for (const element of typeElements) {
+        const text = element.textContent?.trim() || '';
         
-                 // Check if it matches a known type
-         for (const type of knownTypes) {
-           if (typeValue.includes(type)) {
-             return type;
-           }
-         }
+        // Look for "Type: {datasource}" pattern
+        const typeMatch = text.match(/Type:\s*(.+)/i);
+        if (typeMatch) {
+          const typeValue = typeMatch[1].trim().toLowerCase();
+          
+          // Check if it matches a known type
+          for (const type of knownTypes) {
+            if (typeValue.includes(type)) {
+              return type;
+            }
+          }
+        }
       }
-    }
-    
-    // Strategy 2: Look for text content that includes known types
-    const bodyText = document.body.textContent?.toLowerCase() || '';
-    for (const type of knownTypes) {
-      // Look for patterns like "Type: Elasticsearch" or "Elasticsearch datasource"
-      const patterns = [
-        `type\\s*:?\\s*${type}`,
-        `${type}\\s+datasource`,
-        `datasource\\s+type\\s*:?\\s*${type}`,
-      ];
       
-             for (const pattern of patterns) {
-         const regex = new RegExp(pattern, 'i');
-         if (regex.test(bodyText)) {
-           return type;
-         }
-       }
-    }
-    
-    // Strategy 3: Look for headings that contain the type
-    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6, .page-title, .section-title');
-    for (const heading of headings) {
-      const text = heading.textContent?.toLowerCase() || '';
-             for (const type of knownTypes) {
-         if (text.includes(type)) {
-           return type;
-         }
-       }
-    }
-    
-    // Strategy 4: Look for plugin-specific indicators
-    const plugins = document.querySelectorAll('[data-plugin-id], .plugin-signature');
-    for (const plugin of plugins) {
-      const pluginId = plugin.getAttribute('data-plugin-id') || 
-                      plugin.textContent?.toLowerCase() || '';
+      // Strategy 2: Look for datasource type in page content
+      const bodyText = document.body.textContent?.toLowerCase() || '';
       
-             // Extract datasource type from plugin ID
-       const cleaned = pluginId.replace('grafana-', '').replace('-datasource', '').replace('-plugin', '');
-       if (cleaned && cleaned !== pluginId && knownTypes.includes(cleaned)) {
-         return cleaned;
-       }
-         }
-     
-     return null;
-  } catch (error) {
-    console.warn('Failed to detect datasource type from DOM:', error);
-    return null;
-  }
+      // Look for "Type: {datasource}" pattern in body text
+      const typeMatch = bodyText.match(/type:\s*([a-zA-Z0-9\-_]+)/i);
+      if (typeMatch) {
+        const typeValue = typeMatch[1].toLowerCase();
+        for (const type of knownTypes) {
+          if (typeValue.includes(type)) {
+            return type;
+          }
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      return null;
+    }
+  };
+  
+  // Try immediately first
+  let result = detectType();
+  if (result) return result;
+  
+  // If not found, try again after a short delay to account for rendering
+  setTimeout(() => {
+    result = detectType();
+  }, 100);
+  
+  return result;
 }
 
 /**
@@ -233,16 +218,10 @@ function getCurrentDataSource(pathSegments: string[], dataSources: DataSource[])
     return foundDs || null;
   }
   
-  // Check if we're in the new connections/datasources path
-  if (pathSegments[0] === 'connections' && pathSegments[1] === 'datasources' && pathSegments.length > 3) {
-    const dsId = pathSegments[3]; // /connections/datasources/edit/{id}
-    
-    // Find by ID (numeric) or name
-    const foundDs = dataSources.find(ds => 
-      ds.id.toString() === dsId || ds.name === dsId
-    );
-    
-    return foundDs || null;
+  // For connections/datasources path, we can't match by UID in URL
+  // We'll rely on DOM detection for the datasource type
+  if (pathSegments[0] === 'connections' && pathSegments[1] === 'datasources') {
+    return null; // Will fall back to DOM detection
   }
   
   // Check if we're in explore with a datasource
