@@ -46,7 +46,7 @@ export interface ContextPayload {
   tags: string[];
   user_id: string;
   user_role: string;
-  targetPlatform: string;
+  platform: string;
 }
 
 // Data fetching functions extracted from context panel
@@ -161,7 +161,7 @@ export async function fetchRecommendations(
       tags: contextTags,
       user_id: config.bootData.user.analytics.identifier,
       user_role: config.bootData.user.orgRole || 'Viewer',
-      targetPlatform: config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss',
+      platform: config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss',
     };
 
     // Send request to your recommender service
