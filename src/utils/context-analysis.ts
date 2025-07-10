@@ -80,21 +80,21 @@ function createCompoundTag(entity: string, action: string): string {
  */
 function detectAction(path: string, searchParams: Record<string, string>): string {
   // Check URL parameters first (more specific)
-  if (searchParams.editPanel) return 'edit';
-  if (searchParams.addPanel) return 'create';
-  if (searchParams.sharePanel) return 'share';
-  if (searchParams.inspect) return 'inspect';
-  if (searchParams.viewPanel) return 'view';
+  if (searchParams.editPanel) {return 'edit';}
+  if (searchParams.addPanel) {return 'create';}
+  if (searchParams.sharePanel) {return 'share';}
+  if (searchParams.inspect) {return 'inspect';}
+  if (searchParams.viewPanel) {return 'view';}
   
   // Check path patterns
-  if (path.includes('/new')) return 'create';
-  if (path.includes('/edit')) return 'edit';
-  if (path.includes('/settings') || path.includes('/config')) return 'configure';
-  if (path.includes('/query')) return 'query';
-  if (path.includes('/test')) return 'test';
-  if (path.includes('/delete')) return 'delete';
-  if (path.includes('/import')) return 'import';
-  if (path.includes('/export')) return 'export';
+  if (path.includes('/new')) {return 'create';}
+  if (path.includes('/edit')) {return 'edit';}
+  if (path.includes('/settings') || path.includes('/config')) {return 'configure';}
+  if (path.includes('/query')) {return 'query';}
+  if (path.includes('/test')) {return 'test';}
+  if (path.includes('/delete')) {return 'delete';}
+  if (path.includes('/import')) {return 'import';}
+  if (path.includes('/export')) {return 'export';}
   
   return 'view'; // Default action
 }
@@ -103,7 +103,7 @@ function detectAction(path: string, searchParams: Record<string, string>): strin
  * Extract specific entity from path segments with better context awareness
  */
 function extractEntity(pathSegments: string[]): string | null {
-  if (pathSegments.length === 0) return null;
+  if (pathSegments.length === 0) {return null;}
   
   // Handle compound paths that need more context
   if (pathSegments.length >= 2) {
@@ -181,7 +181,7 @@ function detectDatasourceTypeFromDOM(): string | null {
   
   // Try immediately first
   let result = detectType();
-  if (result) return result;
+  if (result) {return result;}
   
   // If not found, try again after a short delay to account for rendering
   setTimeout(() => {
@@ -239,7 +239,7 @@ function getCurrentDataSource(pathSegments: string[], dataSources: DataSource[])
 function extractAlertContext(pathSegments: string[], searchParams: Record<string, string>): string[] {
   const tags: string[] = [];
   
-  if (pathSegments[0] !== 'alerting') return tags;
+  if (pathSegments[0] !== 'alerting') {return tags;}
   
   const alertSection = pathSegments[1];
   const action = detectAction(window.location.pathname, searchParams);
@@ -353,7 +353,7 @@ function detectAlertType(pathSegments: string[], searchParams: Record<string, st
 function extractPluginContext(pathSegments: string[]): string[] {
   const tags: string[] = [];
   
-  if (pathSegments[0] !== 'plugins') return tags;
+  if (pathSegments[0] !== 'plugins') {return tags;}
   
   const pluginType = pathSegments[1]; // app, datasource, panel
   const pluginId = pathSegments[2];
@@ -380,7 +380,7 @@ function extractDashboardContext(
   const tags: string[] = [];
   
   // Handle both /d/ and /dashboard/ paths
-  if (pathSegments[0] !== 'd' && pathSegments[0] !== 'dashboard') return tags;
+  if (pathSegments[0] !== 'd' && pathSegments[0] !== 'dashboard') {return tags;}
   
   // Add dashboard tags if available (only for existing dashboards)
   if (dashboardInfo && dashboardInfo.tags && dashboardInfo.tags.length > 0) {
@@ -449,7 +449,7 @@ function extractExploreContext(
 ): string[] {
   const tags: string[] = [];
   
-  if (pathSegments[0] !== 'explore') return tags;
+  if (pathSegments[0] !== 'explore') {return tags;}
   
   tags.push(createCompoundTag('explore', 'query'));
   
@@ -481,7 +481,7 @@ function extractExploreContext(
 function extractAdminContext(pathSegments: string[], searchParams: Record<string, string>): string[] {
   const tags: string[] = [];
   
-  if (pathSegments[0] !== 'admin') return tags;
+  if (pathSegments[0] !== 'admin') {return tags;}
   
   const adminSection = pathSegments[1];
   const action = detectAction(window.location.pathname, searchParams);
@@ -520,7 +520,7 @@ function extractDatasourceContext(
   const isDatasourcePath = pathSegments[0] === 'datasources' || 
                           (pathSegments[0] === 'connections' && pathSegments[1] === 'datasources');
   
-  if (!isDatasourcePath) return tags;
+  if (!isDatasourcePath) {return tags;}
   
   const action = detectAction(window.location.pathname, searchParams);
   const currentDs = getCurrentDataSource(pathSegments, dataSources);
@@ -558,7 +558,7 @@ function extractDatasourceContext(
 function extractAppContext(pathSegments: string[], searchParams: Record<string, string>): string[] {
   const tags: string[] = [];
   
-  if (pathSegments[0] !== 'a') return tags;
+  if (pathSegments[0] !== 'a') {return tags;}
   
   const action = detectAction(window.location.pathname, searchParams);
   
