@@ -80,21 +80,21 @@ function createCompoundTag(entity: string, action: string): string {
  */
 function detectAction(path: string, searchParams: Record<string, string>): string {
   // Check URL parameters first (more specific)
-  if (searchParams.editPanel) return 'edit';
-  if (searchParams.addPanel) return 'create';
-  if (searchParams.sharePanel) return 'share';
-  if (searchParams.inspect) return 'inspect';
-  if (searchParams.viewPanel) return 'view';
+  if (searchParams.editPanel) {return 'edit';}
+  if (searchParams.addPanel) {return 'create';}
+  if (searchParams.sharePanel) {return 'share';}
+  if (searchParams.inspect) {return 'inspect';}
+  if (searchParams.viewPanel) {return 'view';}
   
   // Check path patterns
-  if (path.includes('/new')) return 'create';
-  if (path.includes('/edit')) return 'edit';
-  if (path.includes('/settings') || path.includes('/config')) return 'configure';
-  if (path.includes('/query')) return 'query';
-  if (path.includes('/test')) return 'test';
-  if (path.includes('/delete')) return 'delete';
-  if (path.includes('/import')) return 'import';
-  if (path.includes('/export')) return 'export';
+  if (path.includes('/new')) {return 'create';}
+  if (path.includes('/edit')) {return 'edit';}
+  if (path.includes('/settings') || path.includes('/config')) {return 'configure';}
+  if (path.includes('/query')) {return 'query';}
+  if (path.includes('/test')) {return 'test';}
+  if (path.includes('/delete')) {return 'delete';}
+  if (path.includes('/import')) {return 'import';}
+  if (path.includes('/export')) {return 'export';}
   
   return 'view'; // Default action
 }
@@ -103,7 +103,7 @@ function detectAction(path: string, searchParams: Record<string, string>): strin
  * Extract specific entity from path segments with better context awareness
  */
 function extractEntity(pathSegments: string[]): string | null {
-  if (pathSegments.length === 0) return null;
+  if (pathSegments.length === 0) {return null;}
   
   // Handle compound paths that need more context
   if (pathSegments.length >= 2) {
@@ -135,86 +135,60 @@ function extractEntity(pathSegments: string[]): string | null {
 }
 
 /**
- * Detect datasource type from DOM elements
+ * Detect datasource type from DOM elements with retry logic for rendering time
  */
 function detectDatasourceTypeFromDOM(): string | null {
-  try {
-    // Known datasource types (common ones)
-    const knownTypes = [
-      'prometheus', 'grafana', 'cloudwatch', 'elasticsearch', 'influxdb',
-      'mysql', 'postgres', 'postgresql', 'azure', 'stackdriver',
-      'datadog', 'jaeger', 'zipkin', 'tempo', 'loki', 'alertmanager',
-      'graphite', 'opentsdb', 'mixed', 'dashboard', 'testdata',
-      'parca', 'pyroscope', 'x-ray', 'newrelic', 'splunk', 'mimir'
-    ];
-    
-    // Strategy 1: Look for the specific pattern from your example
-    // <div class="css-1tvqsb7"><div class="css-1sts4md">Type</div>Elasticsearch</div>
-    const typeContainers = document.querySelectorAll('.css-1tvqsb7, .type-container, .datasource-type-container');
-    for (const container of typeContainers) {
-      const typeLabel = container.querySelector('.css-1sts4md, .type-label');
-      if (typeLabel && typeLabel.textContent?.toLowerCase().includes('type')) {
-        // Get the text content excluding the type label
-        const fullText = container.textContent || '';
-        const labelText = typeLabel.textContent || '';
-        const typeValue = fullText.replace(labelText, '').trim().toLowerCase();
+  const detectType = (): string | null => {
+    try {
+      // Strategy 1: Look for the specific pattern "Type: OpenTSDB"
+      // <div class="css-3oq5wu">Type: OpenTSDB</div>
+      const typeElements = document.querySelectorAll('div[class*="css-"], .type-label, .datasource-type');
+      
+      for (const element of typeElements) {
+        const text = element.textContent?.trim() || '';
         
-                 // Check if it matches a known type
-         for (const type of knownTypes) {
-           if (typeValue.includes(type)) {
-             return type;
-           }
-         }
+        // Look for "Type: {datasource}" pattern
+        const typeMatch = text.match(/Type:\s*(.+)/i);
+        if (typeMatch) {
+          const typeValue = typeMatch[1].trim().toLowerCase();
+          // Clean up the type value (remove extra spaces, special chars)
+          const cleanType = typeValue.replace(/[^a-zA-Z0-9\-_]/g, '').toLowerCase();
+          if (cleanType) {
+            return cleanType;
+          }
+        }
       }
-    }
-    
-    // Strategy 2: Look for text content that includes known types
-    const bodyText = document.body.textContent?.toLowerCase() || '';
-    for (const type of knownTypes) {
-      // Look for patterns like "Type: Elasticsearch" or "Elasticsearch datasource"
-      const patterns = [
-        `type\\s*:?\\s*${type}`,
-        `${type}\\s+datasource`,
-        `datasource\\s+type\\s*:?\\s*${type}`,
-      ];
       
-             for (const pattern of patterns) {
-         const regex = new RegExp(pattern, 'i');
-         if (regex.test(bodyText)) {
-           return type;
-         }
-       }
-    }
-    
-    // Strategy 3: Look for headings that contain the type
-    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6, .page-title, .section-title');
-    for (const heading of headings) {
-      const text = heading.textContent?.toLowerCase() || '';
-             for (const type of knownTypes) {
-         if (text.includes(type)) {
-           return type;
-         }
-       }
-    }
-    
-    // Strategy 4: Look for plugin-specific indicators
-    const plugins = document.querySelectorAll('[data-plugin-id], .plugin-signature');
-    for (const plugin of plugins) {
-      const pluginId = plugin.getAttribute('data-plugin-id') || 
-                      plugin.textContent?.toLowerCase() || '';
+      // Strategy 2: Look for datasource type in page content
+      const bodyText = document.body.textContent || '';
       
-             // Extract datasource type from plugin ID
-       const cleaned = pluginId.replace('grafana-', '').replace('-datasource', '').replace('-plugin', '');
-       if (cleaned && cleaned !== pluginId && knownTypes.includes(cleaned)) {
-         return cleaned;
-       }
-         }
-     
-     return null;
-  } catch (error) {
-    console.warn('Failed to detect datasource type from DOM:', error);
-    return null;
-  }
+      // Look for "Type: {datasource}" pattern in body text
+      const typeMatch = bodyText.match(/Type:\s*([a-zA-Z0-9\-_\s]+)/i);
+      if (typeMatch) {
+        const typeValue = typeMatch[1].trim().toLowerCase();
+        // Clean up the type value (remove extra spaces, special chars)
+        const cleanType = typeValue.replace(/[^a-zA-Z0-9\-_]/g, '').toLowerCase();
+        if (cleanType) {
+          return cleanType;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      return null;
+    }
+  };
+  
+  // Try immediately first
+  let result = detectType();
+  if (result) {return result;}
+  
+  // If not found, try again after a short delay to account for rendering
+  setTimeout(() => {
+    result = detectType();
+  }, 100);
+  
+  return result;
 }
 
 /**
@@ -233,16 +207,10 @@ function getCurrentDataSource(pathSegments: string[], dataSources: DataSource[])
     return foundDs || null;
   }
   
-  // Check if we're in the new connections/datasources path
-  if (pathSegments[0] === 'connections' && pathSegments[1] === 'datasources' && pathSegments.length > 3) {
-    const dsId = pathSegments[3]; // /connections/datasources/edit/{id}
-    
-    // Find by ID (numeric) or name
-    const foundDs = dataSources.find(ds => 
-      ds.id.toString() === dsId || ds.name === dsId
-    );
-    
-    return foundDs || null;
+  // For connections/datasources path, we can't match by UID in URL
+  // We'll rely on DOM detection for the datasource type
+  if (pathSegments[0] === 'connections' && pathSegments[1] === 'datasources') {
+    return null; // Will fall back to DOM detection
   }
   
   // Check if we're in explore with a datasource
@@ -271,7 +239,7 @@ function getCurrentDataSource(pathSegments: string[], dataSources: DataSource[])
 function extractAlertContext(pathSegments: string[], searchParams: Record<string, string>): string[] {
   const tags: string[] = [];
   
-  if (pathSegments[0] !== 'alerting') return tags;
+  if (pathSegments[0] !== 'alerting') {return tags;}
   
   const alertSection = pathSegments[1];
   const action = detectAction(window.location.pathname, searchParams);
@@ -385,7 +353,7 @@ function detectAlertType(pathSegments: string[], searchParams: Record<string, st
 function extractPluginContext(pathSegments: string[]): string[] {
   const tags: string[] = [];
   
-  if (pathSegments[0] !== 'plugins') return tags;
+  if (pathSegments[0] !== 'plugins') {return tags;}
   
   const pluginType = pathSegments[1]; // app, datasource, panel
   const pluginId = pathSegments[2];
@@ -412,7 +380,7 @@ function extractDashboardContext(
   const tags: string[] = [];
   
   // Handle both /d/ and /dashboard/ paths
-  if (pathSegments[0] !== 'd' && pathSegments[0] !== 'dashboard') return tags;
+  if (pathSegments[0] !== 'd' && pathSegments[0] !== 'dashboard') {return tags;}
   
   // Add dashboard tags if available (only for existing dashboards)
   if (dashboardInfo && dashboardInfo.tags && dashboardInfo.tags.length > 0) {
@@ -481,7 +449,7 @@ function extractExploreContext(
 ): string[] {
   const tags: string[] = [];
   
-  if (pathSegments[0] !== 'explore') return tags;
+  if (pathSegments[0] !== 'explore') {return tags;}
   
   tags.push(createCompoundTag('explore', 'query'));
   
@@ -513,7 +481,7 @@ function extractExploreContext(
 function extractAdminContext(pathSegments: string[], searchParams: Record<string, string>): string[] {
   const tags: string[] = [];
   
-  if (pathSegments[0] !== 'admin') return tags;
+  if (pathSegments[0] !== 'admin') {return tags;}
   
   const adminSection = pathSegments[1];
   const action = detectAction(window.location.pathname, searchParams);
@@ -552,7 +520,7 @@ function extractDatasourceContext(
   const isDatasourcePath = pathSegments[0] === 'datasources' || 
                           (pathSegments[0] === 'connections' && pathSegments[1] === 'datasources');
   
-  if (!isDatasourcePath) return tags;
+  if (!isDatasourcePath) {return tags;}
   
   const action = detectAction(window.location.pathname, searchParams);
   const currentDs = getCurrentDataSource(pathSegments, dataSources);
@@ -590,7 +558,7 @@ function extractDatasourceContext(
 function extractAppContext(pathSegments: string[], searchParams: Record<string, string>): string[] {
   const tags: string[] = [];
   
-  if (pathSegments[0] !== 'a') return tags;
+  if (pathSegments[0] !== 'a') {return tags;}
   
   const action = detectAction(window.location.pathname, searchParams);
   
