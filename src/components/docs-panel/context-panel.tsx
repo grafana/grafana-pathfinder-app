@@ -171,7 +171,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                               <div className={styles.cardMetadata}>
                                 <div className={styles.summaryInfo}>
                                   <button
-                                    onClick={() => toggleSummaryExpansion(index)}
+                                    onClick={() => toggleSummaryExpansion(recommendation.url)}
                                     className={styles.summaryButton}
                                   >
                                     <Icon name="info-circle" size="sm" />

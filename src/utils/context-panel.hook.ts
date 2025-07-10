@@ -39,7 +39,7 @@ export interface UseContextPanelReturn {
   refreshRecommendations: () => void;
   openLearningJourney: (url: string, title: string) => void;
   openDocsPage: (url: string, title: string) => void;
-  toggleSummaryExpansion: (index: number) => void;
+  toggleSummaryExpansion: (recommendationUrl: string) => void;
   navigateToPath: (path: string) => void;
   toggleOtherDocsExpansion: () => void;
 }
@@ -290,18 +290,17 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     }
   }, [onOpenDocsPage]);
 
-  const toggleSummaryExpansion = useCallback((index: number) => {
+  const toggleSummaryExpansion = useCallback((recommendationUrl: string) => {
     setRecommendations(prevRecommendations => {
-      const newRecommendations = [...prevRecommendations];
-      const recommendation = newRecommendations[index];
-      
-      // Toggle summary expansion state
-      newRecommendations[index] = {
-        ...recommendation,
-        summaryExpanded: !recommendation.summaryExpanded,
-      };
-      
-      return newRecommendations;
+      return prevRecommendations.map(rec => {
+        if (rec.url === recommendationUrl) {
+          return {
+            ...rec,
+            summaryExpanded: !rec.summaryExpanded,
+          };
+        }
+        return rec;
+      });
     });
   }, []);
 
