@@ -138,15 +138,6 @@ function extractEntity(pathSegments: string[]): string | null {
  * Detect datasource type from DOM elements with retry logic for rendering time
  */
 function detectDatasourceTypeFromDOM(): string | null {
-  // Known datasource types (common ones)
-  const knownTypes = [
-    'prometheus', 'grafana', 'cloudwatch', 'elasticsearch', 'influxdb',
-    'mysql', 'postgres', 'postgresql', 'azure', 'stackdriver',
-    'datadog', 'jaeger', 'zipkin', 'tempo', 'loki', 'alertmanager',
-    'graphite', 'opentsdb', 'mixed', 'dashboard', 'testdata',
-    'parca', 'pyroscope', 'x-ray', 'newrelic', 'splunk', 'mimir'
-  ];
-  
   const detectType = (): string | null => {
     try {
       // Strategy 1: Look for the specific pattern "Type: OpenTSDB"
@@ -160,27 +151,25 @@ function detectDatasourceTypeFromDOM(): string | null {
         const typeMatch = text.match(/Type:\s*(.+)/i);
         if (typeMatch) {
           const typeValue = typeMatch[1].trim().toLowerCase();
-          
-          // Check if it matches a known type
-          for (const type of knownTypes) {
-            if (typeValue.includes(type)) {
-              return type;
-            }
+          // Clean up the type value (remove extra spaces, special chars)
+          const cleanType = typeValue.replace(/[^a-zA-Z0-9\-_]/g, '').toLowerCase();
+          if (cleanType) {
+            return cleanType;
           }
         }
       }
       
       // Strategy 2: Look for datasource type in page content
-      const bodyText = document.body.textContent?.toLowerCase() || '';
+      const bodyText = document.body.textContent || '';
       
       // Look for "Type: {datasource}" pattern in body text
-      const typeMatch = bodyText.match(/type:\s*([a-zA-Z0-9\-_]+)/i);
+      const typeMatch = bodyText.match(/Type:\s*([a-zA-Z0-9\-_\s]+)/i);
       if (typeMatch) {
-        const typeValue = typeMatch[1].toLowerCase();
-        for (const type of knownTypes) {
-          if (typeValue.includes(type)) {
-            return type;
-          }
+        const typeValue = typeMatch[1].trim().toLowerCase();
+        // Clean up the type value (remove extra spaces, special chars)
+        const cleanType = typeValue.replace(/[^a-zA-Z0-9\-_]/g, '').toLowerCase();
+        if (cleanType) {
+          return cleanType;
         }
       }
       
