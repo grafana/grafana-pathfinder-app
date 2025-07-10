@@ -330,10 +330,15 @@ export function useInteractiveElements() {
     try {
       const targetElements = document.querySelectorAll(data.reftarget);
 
-      if(targetElements.length === 0 || targetElements.length > 1) {
-        const msg = (targetElements.length + 
-          " interactive sequence elements found matching selector: " + data.reftarget + 
-          " - this is not supported");
+      if(targetElements.length === 0) {
+        const msg = `No interactive sequence container found matching selector: ${data.reftarget}`;
+        console.error(msg);
+        throw new Error(msg);
+      }
+      
+      if(targetElements.length > 1) {
+        const msg = `${targetElements.length} interactive sequence containers found matching selector: ${data.reftarget} - this is not supported (must be exactly 1)`;
+        console.error(msg);
         throw new Error(msg);
       } 
 
@@ -341,6 +346,11 @@ export function useInteractiveElements() {
 
       // Find all interactive elements within the sequence container
       const interactiveElements = Array.from(targetElements[0].querySelectorAll('.interactive[data-targetaction]:not([data-targetaction="sequence"])'));
+      
+      if (interactiveElements.length === 0) {
+        const msg = `No interactive elements found within sequence container: ${data.reftarget}`;
+        throw new Error(msg);
+      }
       
       if (!showOnly) {
         // Full sequence: Show each step, then do each step, one by one
@@ -358,7 +368,7 @@ export function useInteractiveElements() {
       activeRefsRef.current.delete(data.reftarget);
       return data.reftarget;
     } catch (error) {
-      console.error("Error in interactiveSequence:", error);
+      console.error(`Error in interactiveSequence for ${data.reftarget}:`, error);
       if (interactiveElement) {
         setInteractiveState(interactiveElement, 'error');
       }
@@ -464,69 +474,155 @@ export function useInteractiveElements() {
 
   // Define helper functions using refs to avoid circular dependencies
   runInteractiveSequenceRef.current = async (elements: Element[], showMode: boolean): Promise<void> => {
-    for (const element of elements) {
-      const data = extractInteractiveDataFromElement(element as HTMLElement);
-
-      if (!data.targetaction || !data.reftarget) {
-        console.warn("Skipping element with missing targetAction or reftarget:", element);
-        continue;
-      }
-
-      try {
-        if (data.targetaction === 'highlight') {
-          interactiveFocus(data, !showMode); // Show mode = don't click, Do mode = click
-        } else if (data.targetaction === 'button') {
-          interactiveButton(data, !showMode); // Show mode = don't click, Do mode = click
-        } else if (data.targetaction === 'formfill') {
-          interactiveFormFill(data, !showMode); // Show mode = don't fill, Do mode = fill
-        }
-
-        // Wait for animation to complete between each action
-        await new Promise(resolve => setTimeout(resolve, 1300));
-      } catch (error) {
-        console.error(`Error processing interactive element ${data.targetaction} ${data.reftarget}:`, error);
-      }
-    }
-  };
-
-  runStepByStepSequenceRef.current = async (elements: Element[]): Promise<void> => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 2000; // 2 seconds between retries
+    
     for (let i = 0; i < elements.length; i++) {
       const element = elements[i];
       const data = extractInteractiveDataFromElement(element as HTMLElement);
 
       if (!data.targetaction || !data.reftarget) {
-        console.warn("Skipping element with missing targetAction or reftarget:", element);
         continue;
       }
 
-      try {
-        // Step 1: Show what we're about to do
-        if (data.targetaction === 'highlight') {
-          interactiveFocus(data, false); // Show mode - highlight only
-        } else if (data.targetaction === 'button') {
-          interactiveButton(data, false); // Show mode - highlight only
-        } else if (data.targetaction === 'formfill') {
-          interactiveFormFill(data, false); // Show mode - highlight only
-        }
+      // Retry logic for each element
+      let retryCount = 0;
+      let elementCompleted = false;
+      
+      while (!elementCompleted && retryCount < MAX_RETRIES) {
+        try {
+          // Check requirements using the existing system
+          const requirementsCheck = await checkRequirementsFromData(data);
+          
+          if (!requirementsCheck.pass) {
+            retryCount++;
+            if (retryCount < MAX_RETRIES) {
+              // Wait and retry
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              continue;
+            } else {
+              // Max retries reached, skip this element
+              break;
+            }
+          }
 
-        // Wait for highlight animation to complete before doing the action
-        await new Promise(resolve => setTimeout(resolve, 1300));
+          if (data.targetaction === 'highlight') {
+            interactiveFocus(data, !showMode); // Show mode = don't click, Do mode = click
+          } else if (data.targetaction === 'button') {
+            interactiveButton(data, !showMode); // Show mode = don't click, Do mode = click
+          } else if (data.targetaction === 'formfill') {
+            interactiveFormFill(data, !showMode); // Show mode = don't fill, Do mode = fill
+          }
 
-        // Step 2: Actually do the action
-        if (data.targetaction === 'highlight') {
-          interactiveFocus(data, true); // Do mode - click
-        } else if (data.targetaction === 'button') {
-          interactiveButton(data, true); // Do mode - click
-        } else if (data.targetaction === 'formfill') {
-          interactiveFormFill(data, true); // Do mode - fill form
-        }
+          // Mark element as completed
+          elementCompleted = true;
 
-        // Brief pause before next step (if not the last step)
-        if (i < elements.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 800));
+          // Wait for animation to complete between each action
+          await new Promise(resolve => setTimeout(resolve, 1300));
+          
+        } catch (error) {
+          console.error(`Error processing interactive element ${data.targetaction} ${data.reftarget}:`, error);
+          retryCount++;
+          
+          if (retryCount < MAX_RETRIES) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          } else {
+            // Max retries reached, skip this element
+            break;
+          }
         }
-      } catch (error) {
-        console.error(`Error in step ${i + 1} for ${data.targetaction} ${data.reftarget}:`, error);
+      }
+    }
+  };
+
+  runStepByStepSequenceRef.current = async (elements: Element[]): Promise<void> => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 2000; // 2 seconds between retries
+    
+    for (let i = 0; i < elements.length; i++) {
+      const element = elements[i];
+      const data = extractInteractiveDataFromElement(element as HTMLElement);
+
+      if (!data.targetaction || !data.reftarget) {
+        continue;
+      }
+
+      // Retry logic for each step
+      let retryCount = 0;
+      let stepCompleted = false;
+      
+      while (!stepCompleted && retryCount < MAX_RETRIES) {
+        try {
+          // Check requirements using the existing system
+          const requirementsCheck = await checkRequirementsFromData(data);
+          
+          if (!requirementsCheck.pass) {
+            retryCount++;
+            if (retryCount < MAX_RETRIES) {
+              // Wait and retry
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              continue;
+            } else {
+              // Max retries reached, skip this step
+              break;
+            }
+          }
+
+          // Step 1: Show what we're about to do
+          if (data.targetaction === 'highlight') {
+            interactiveFocus(data, false); // Show mode - highlight only
+          } else if (data.targetaction === 'button') {
+            interactiveButton(data, false); // Show mode - highlight only
+          } else if (data.targetaction === 'formfill') {
+            interactiveFormFill(data, false); // Show mode - highlight only
+          }
+
+          // Wait for highlight animation to complete before doing the action
+          await new Promise(resolve => setTimeout(resolve, 1300));
+
+          // Check requirements again before performing the action
+          const secondCheck = await checkRequirementsFromData(data);
+          if (!secondCheck.pass) {
+            retryCount++;
+            if (retryCount < MAX_RETRIES) {
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              continue;
+            } else {
+              break;
+            }
+          }
+
+          // Step 2: Actually do the action
+          if (data.targetaction === 'highlight') {
+            interactiveFocus(data, true); // Do mode - click
+          } else if (data.targetaction === 'button') {
+            interactiveButton(data, true); // Do mode - click
+          } else if (data.targetaction === 'formfill') {
+            interactiveFormFill(data, true); // Do mode - fill form
+          }
+
+          // Mark step as completed
+          stepCompleted = true;
+
+          // Wait after actions that might cause state changes
+          const baseDelay = 800;
+          const actionDelay = data.targetaction === 'button' ? 1500 : baseDelay;
+          
+          if (i < elements.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, actionDelay));
+          }
+          
+        } catch (error) {
+          console.error(`Error in interactive step for ${data.targetaction} ${data.reftarget}:`, error);
+          retryCount++;
+          
+          if (retryCount < MAX_RETRIES) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          } else {
+            // Max retries reached, skip this step
+            break;
+          }
+        }
       }
     }
   };
@@ -534,20 +630,14 @@ export function useInteractiveElements() {
   const reftargetExistsCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
     // For button actions, check if buttons with matching text exist
     if (data.targetaction === 'button') {
-      // console.log(`🔍 Checking for buttons containing text: "${data.reftarget}"`);
       const buttons = findButtonByText(data.reftarget);
-      // console.log(`🔍 Found ${buttons.length} buttons with matching text`);
       
       if (buttons.length > 0) {
-        // buttons.forEach((button, index) => {
-        //   console.log(`🔍 Button ${index + 1}: "${getAllTextContent(button)}" (${button.tagName})`);
-        // });
         return {
           requirement: check,
           pass: true,
         };
       } else {
-        console.warn(`❌ No buttons found containing text: "${data.reftarget}"`);
         return {
           requirement: check,
           pass: false,
