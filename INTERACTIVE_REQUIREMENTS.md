@@ -37,6 +37,23 @@ Multiple requirements can be combined:
 
 Implicit requirements are automatically enforced by the system and do not need to be declared in HTML.
 
+### Dual Workflow System
+
+The requirements system recognizes two types of workflows:
+
+1. **Regular Workflow**: Traditional sequential steps using "Show Me" and "Do It" buttons
+   - Follow strict sequential dependency rules
+   - Only one step enabled at a time within the workflow
+   - Steps must be completed in order
+
+2. **Section Workflows**: Independent parent-level workflows using "Do Section" buttons
+   - Each "do section" button is its own separate workflow
+   - Eligible for "Trust but Verify" treatment independently
+   - Can be enabled simultaneously with regular workflow steps
+   - Function as parent containers for sequences of interactive steps
+
+This dual system allows for both structured tutorials (regular workflow) and independent section-level actions (section workflows) to coexist and function properly.
+
 ### 1. Sequential Dependency
 
 **Rule**: If button `n` is not enabled because its requirements are not satisfied, no later buttons in the sequence may be enabled.
@@ -121,19 +138,42 @@ step.
 ## Logical Step Grouping
 
 **Concept**: Interactive elements with the same `data-reftarget` and `data-targetaction` attributes belong to the same logical step, regardless of their button type (`show` vs `do`).
+There is a special exception: the "do section" button or similar, which wraps together a 
+whole sequence of interactive steps, is its own separate workflow. Such "do section" buttons
+should be considered separately, as the parent of the individual steps.  If an interactive
+guide is to have more than one section, the "do section" grouping buttons function according
+to the same set of rules as any interactive section, as described in this document.
 
 **Implementation**: 
 - "Show Me" and "Do It" buttons for the same action are grouped together
 - Requirements checking applies to the entire step, not individual buttons
 - When any button in a step completes, the entire step is marked as completed
 - All buttons in a step share the same enabled/disabled state
+- **SPECIAL EXCEPTION**: "Do section" buttons (`data-targetaction="sequence"`) are always treated as separate logical steps, regardless of their `reftarget` matching other elements
 
 **Example**:
 ```html
 <!-- These buttons belong to the same logical step -->
 <button data-reftarget="Save Dashboard" data-targetaction="button" data-button-type="show">Show me</button>
 <button data-reftarget="Save Dashboard" data-targetaction="button" data-button-type="do">Do it</button>
+
+<!-- This "do section" button is its own separate logical step -->
+<button data-reftarget="Save Dashboard" data-targetaction="sequence" data-button-type="do">Do SECTION</button>
+
+<!-- Even if multiple section buttons have the same reftarget, they are separate steps -->
+<button data-reftarget="Save Dashboard" data-targetaction="sequence" data-button-type="do">Do SECTION</button>
 ```
+
+In this example:
+- **Regular Workflow**: Show me/Do it buttons for "Save Dashboard" (grouped together, follows sequential rules)
+- **Section Workflow A**: First "do section" button (independent workflow, eligible for Trust but Verify)
+- **Section Workflow B**: Second "do section" button (independent workflow, eligible for Trust but Verify)
+
+**Processing Logic**:
+- Regular workflow: Only one step enabled at a time (sequential dependency)
+- Section workflows: Each eligible section button can be enabled independently (Trust but Verify)
+- Both workflows can have enabled steps simultaneously
+- Completion tracking works independently for each workflow
 
 **Benefits**:
 - Consistent user experience across Show/Do buttons

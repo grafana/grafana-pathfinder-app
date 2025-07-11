@@ -178,18 +178,25 @@ export function getInteractiveElementsInOrder(container?: HTMLElement): HTMLElem
  * 2. Completion state - completed steps are skipped and kept disabled
  * 3. Trust but Verify the First Step - when no steps are completed, always check first step
  * 
- * PERFORMANCE OPTIMIZATION: Only checks requirements for ONE step per run
- * - Completed steps: fast-disable without requirements check
- * - Future steps: fast-disable without requirements check  
- * - Current step: the only one that gets an expensive requirements check
+ * DUAL WORKFLOW SUPPORT:
+ * - Regular workflow: Show Me/Do It buttons follow sequential rules
+ * - Section workflows: Each "do section" button is its own independent workflow
  * 
- * CURRENT STEP SELECTION:
- * - If no steps completed: Current step = first step (Trust but Verify rule)
- * - If some steps completed: Current step = first non-completed step (One Step at a Time)
+ * PERFORMANCE OPTIMIZATION: Only checks requirements for eligible steps
+ * - Completed steps: fast-disable without requirements check
+ * - Future regular steps: fast-disable without requirements check  
+ * - Current regular step: gets expensive requirements check
+ * - Eligible section steps: each gets Trust but Verify treatment
+ * 
+ * STEP SELECTION LOGIC:
+ * - Regular steps: If no regular steps completed, first regular step is current
+ * - Regular steps: If some regular steps completed, first non-completed regular step is current
+ * - Section steps: Each non-completed section step is eligible for Trust but Verify
  * 
  * LOGICAL STEP GROUPING:
  * - Elements with same reftarget+targetaction = same logical step
  * - "Show Me" and "Do It" buttons belong to the same step
+ * - "Do section" buttons (targetaction="sequence") are always separate steps
  * - Requirements checking applies to the entire step, not individual buttons
  */
 export async function checkRequirementsSequentially(
@@ -218,48 +225,85 @@ export async function checkRequirementsSequentially(
     updateElementState(element, { isChecking: true });
   });
   
-  // STEP 1: Determine the current step based on completion state
-  let currentStepIndex = -1;
-  let hasAnyCompletedSteps = false;
+  // STEP 1: Separate steps into regular workflow vs section workflows
+  const regularSteps = steps.filter(step => step.targetaction !== 'sequence');
+  const sectionSteps = steps.filter(step => step.targetaction === 'sequence');
   
-  // Check if any steps have been completed
-  for (let i = 0; i < steps.length; i++) {
-    if (isStepCompleted(steps[i])) {
-      hasAnyCompletedSteps = true;
+  console.log(`📊 Workflow analysis: ${regularSteps.length} regular steps, ${sectionSteps.length} section steps`);
+  
+  // STEP 1A: Determine current step for regular workflow
+  let currentRegularStepIndex = -1;
+  let hasAnyCompletedRegularSteps = false;
+  
+  // Check if any regular steps have been completed
+  for (let i = 0; i < regularSteps.length; i++) {
+    if (isStepCompleted(regularSteps[i])) {
+      hasAnyCompletedRegularSteps = true;
       break;
     }
   }
   
-  if (!hasAnyCompletedSteps) {
-    // TRUST BUT VERIFY THE FIRST STEP: When no steps are completed, 
-    // always check the first step (special exception to One Step at a Time)
-    currentStepIndex = 0;
-    console.log('🏁 No steps completed - checking first step (Trust but Verify rule)');
-  } else {
-    // Find the first non-completed step (normal One Step at a Time behavior)
-    for (let i = 0; i < steps.length; i++) {
-      if (!isStepCompleted(steps[i])) {
-        currentStepIndex = i;
-        break;
+  if (regularSteps.length > 0) {
+    if (!hasAnyCompletedRegularSteps) {
+      // TRUST BUT VERIFY THE FIRST REGULAR STEP
+      currentRegularStepIndex = 0;
+      console.log('🏁 No regular steps completed - checking first regular step (Trust but Verify rule)');
+    } else {
+      // Find the first non-completed regular step
+      for (let i = 0; i < regularSteps.length; i++) {
+        if (!isStepCompleted(regularSteps[i])) {
+          currentRegularStepIndex = i;
+          break;
+        }
       }
+      console.log(`🎯 Found first non-completed regular step: ${currentRegularStepIndex + 1}`);
     }
-    console.log(`🎯 Found first non-completed step: ${currentStepIndex + 1}`);
   }
   
-  // STEP 2: Process each step based on its position relative to the current step
+  // STEP 1B: Determine which section steps are eligible (Trust but Verify for each)
+  const eligibleSectionSteps = sectionSteps.filter(step => !isStepCompleted(step));
+  console.log(`🔧 ${eligibleSectionSteps.length} section steps eligible for Trust but Verify`);
+  
+  // STEP 1C: Create a map of steps to their processing strategy
+  const stepProcessingPlan = new Map<InteractiveStep, 'current' | 'eligible' | 'completed' | 'disabled'>();
+  
+  // Plan regular steps
+  for (let i = 0; i < regularSteps.length; i++) {
+    const step = regularSteps[i];
+    if (isStepCompleted(step)) {
+      stepProcessingPlan.set(step, 'completed');
+    } else if (i === currentRegularStepIndex) {
+      stepProcessingPlan.set(step, 'current');
+    } else {
+      stepProcessingPlan.set(step, 'disabled');
+    }
+  }
+  
+  // Plan section steps - each eligible section step gets Trust but Verify
+  for (const sectionStep of sectionSteps) {
+    if (isStepCompleted(sectionStep)) {
+      stepProcessingPlan.set(sectionStep, 'completed');
+    } else {
+      stepProcessingPlan.set(sectionStep, 'eligible'); // Trust but Verify
+    }
+  }
+  
+  // STEP 2: Process each step based on its processing plan
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
+    const processingType = stepProcessingPlan.get(step) || 'disabled';
     result.processedElements += step.buttons.length;
     
-    if (isStepCompleted(step)) {
+    if (processingType === 'completed') {
       // FAST-DISABLE: Already completed steps stay disabled, no requirements check needed
       updateStepState(step, { isCompleted: true });
       result.completed += step.buttons.length;
       console.log(`✅ Step ${i + 1} already completed (${step.buttons.length} buttons)`);
       
-    } else if (i === currentStepIndex) {
-      // CURRENT STEP: This is the only step that gets an expensive requirements check
-      console.log(`🔍 Checking requirements for current step ${i + 1}/${steps.length} (${step.buttons.length} buttons)`);
+    } else if (processingType === 'current' || processingType === 'eligible') {
+      // CURRENT/ELIGIBLE STEP: This gets an expensive requirements check
+      const stepType = processingType === 'current' ? 'current' : 'eligible section';
+      console.log(`🔍 Checking requirements for ${stepType} step ${i + 1}/${steps.length} (${step.buttons.length} buttons)`);
       
       try {
         // Use the first button of the step for requirements checking
@@ -270,7 +314,7 @@ export async function checkRequirementsSequentially(
           // Enable all buttons in this step - they should all be enabled together
           updateStepState(step, { satisfied: true });
           result.satisfied += step.buttons.length;
-          console.log(`✅ Current step ${i + 1} enabled (${step.buttons.length} buttons: ${step.buttons.map(b => b.getAttribute('data-button-type') || 'unknown').join(', ')})`);
+          console.log(`✅ ${stepType} step ${i + 1} enabled (${step.buttons.length} buttons: ${step.buttons.map(b => b.getAttribute('data-button-type') || 'unknown').join(', ')})`);
         } else {
           // Current step failed - disable all buttons in this step
           updateStepState(step, { 
@@ -279,10 +323,10 @@ export async function checkRequirementsSequentially(
           });
           result.failed += step.buttons.length;
           result.failedAtIndex = i;
-          console.log(`❌ Current step ${i + 1} failed (${step.buttons.length} buttons):`, requirementsCheck.error);
+          console.log(`❌ ${stepType} step ${i + 1} failed (${step.buttons.length} buttons):`, requirementsCheck.error);
         }
       } catch (error) {
-        console.error(`💥 Error checking requirements for current step ${i + 1}:`, error);
+        console.error(`💥 Error checking requirements for ${stepType} step ${i + 1}:`, error);
         updateStepState(step, { 
           satisfied: false, 
           error: 'Error checking requirements' 
@@ -300,9 +344,15 @@ export async function checkRequirementsSequentially(
   }
   
   // STEP 3: Log the final state for debugging
+  const enabledSteps = Array.from(stepProcessingPlan.entries())
+    .filter(([_, type]) => type === 'current' || type === 'eligible')
+    .map(([step, type]) => `${step.targetaction === 'sequence' ? 'section' : 'regular'} (${type})`)
+    .join(', ');
+  
   console.log(`📊 Sequential requirements check complete:`, {
-    currentStep: currentStepIndex >= 0 ? currentStepIndex + 1 : 'none',
-    strategy: hasAnyCompletedSteps ? 'First non-completed' : 'Trust but Verify first step',
+    enabledSteps: enabledSteps || 'none',
+    regularSteps: regularSteps.length,
+    sectionSteps: sectionSteps.length,
     totalElements: result.totalElements,
     totalSteps: steps.length,
     satisfied: result.satisfied,
@@ -475,15 +525,28 @@ export interface InteractiveStep {
 /**
  * Group interactive elements by their logical step
  * Elements with the same reftarget and targetaction belong to the same step
+ * SPECIAL EXCEPTION: "do section" buttons (targetaction="sequence") are always treated as separate logical steps
  */
 export function groupInteractiveElementsByStep(elements: HTMLElement[]): InteractiveStep[] {
   const stepMap = new Map<string, InteractiveStep>();
+  let sectionButtonCounter = 0; // Counter for unique "do section" button steps
   
   elements.forEach((element, index) => {
     const reftarget = element.getAttribute('data-reftarget') || '';
     const targetaction = element.getAttribute('data-targetaction') || '';
     const requirements = element.getAttribute('data-requirements') || '';
-    const stepKey = `${reftarget}|${targetaction}`;
+    
+    let stepKey: string;
+    
+    // SPECIAL EXCEPTION: "do section" buttons are always treated as separate logical steps
+    if (targetaction === 'sequence') {
+      // Each "do section" button gets its own unique step, even if they have the same reftarget
+      stepKey = `section-${sectionButtonCounter++}-${reftarget}|${targetaction}`;
+      console.log(`🔧 Creating separate step for "do section" button with key: ${stepKey}`);
+    } else {
+      // Regular buttons are grouped by reftarget + targetaction (Show Me / Do It grouping)
+      stepKey = `${reftarget}|${targetaction}`;
+    }
     
     if (!stepMap.has(stepKey)) {
       stepMap.set(stepKey, {
