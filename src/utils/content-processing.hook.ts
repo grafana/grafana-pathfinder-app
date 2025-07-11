@@ -797,7 +797,7 @@ export function useContentProcessing({
       document.removeEventListener('interactive-action-completed', handleInteractiveActionCompleted);
     };
 
-  }, [activeTabContent, activeTabDocsContent, checkElementRequirements]);
+  }, [activeTabContent, activeTabDocsContent, checkElementRequirements, contentRef]);
 
   // Add DOM mutation observer and event listeners for automatic re-checking
   useEffect(() => {
@@ -836,7 +836,9 @@ export function useContentProcessing({
            
            // Only recheck if interactive elements are added/removed
            const hasInteractiveChanges = [...addedNodes, ...removedNodes].some(node => {
-             if (node.nodeType !== Node.ELEMENT_NODE) return false;
+             if (node.nodeType !== Node.ELEMENT_NODE) {
+               return false;
+             }
              const element = node as Element;
              
              // Check if the node itself or any descendant has interactive attributes
