@@ -75,7 +75,7 @@ export function useContentProcessing({
       'pre.docs-standalone-code',
       'pre[class*="language-"]',
       'pre:has(code)',
-      'pre'
+      'pre' // This will catch all remaining pre elements including new plain ones
     ];
     
     const allPreElements = new Set<HTMLPreElement>();
@@ -107,6 +107,23 @@ export function useContentProcessing({
     Array.from(allPreElements).forEach((preElement, index) => {
       if (preElement.querySelector('.code-copy-button')) {
         return;
+      }
+      
+      // Ensure pre element has proper styling class if it doesn't already have one
+      if (!preElement.classList.contains('journey-code-block') && 
+          !preElement.classList.contains('docs-code-snippet') && 
+          !preElement.classList.contains('journey-standalone-code') && 
+          !preElement.classList.contains('docs-standalone-code') &&
+          !preElement.className.includes('language-')) {
+        // Add appropriate class based on content type
+        if (activeTabContent && activeTabContent.content) {
+          preElement.classList.add('journey-code-block');
+        } else if (activeTabDocsContent && activeTabDocsContent.content) {
+          preElement.classList.add('docs-code-snippet');
+        } else {
+          // Default fallback
+          preElement.classList.add('docs-code-snippet');
+        }
       }
       
       const codeElement = preElement.querySelector('code') || preElement;
