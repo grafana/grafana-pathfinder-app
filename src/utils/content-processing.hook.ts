@@ -822,13 +822,7 @@ export function useContentProcessing({
       }, 500); // Wait 500ms after last change
     };
 
-    // Listen for legacy DOM subtree modification events (deprecated event type)
-    const handleDomSubtreeModified = (event: Event) => {
-      const target = event.target as HTMLElement;
-      if (target && target.classList.contains('interactive-completed')) {
-        debouncedRecheck();
-      }
-    };
+
 
          // Listen for DOM mutations that might affect requirements (avoiding infinite loops)
      const mutationObserver = new MutationObserver((mutations) => {
@@ -880,8 +874,7 @@ export function useContentProcessing({
       attributeFilter: ['data-requirements', 'data-reftarget'] // Removed disabled/aria-disabled to prevent loops
     });
 
-    // Listen for interactive completion events
-    contentElement.addEventListener('DOMSubtreeModified', handleDomSubtreeModified);
+
     
     // Listen for focus changes that might indicate state changes
     const handleFocusChange = () => {
@@ -917,7 +910,6 @@ export function useContentProcessing({
          return () => {
        // Cleanup
        mutationObserver.disconnect();
-       contentElement.removeEventListener('DOMSubtreeModified', handleDomSubtreeModified);
        document.removeEventListener('focusin', handleFocusChange);
        document.removeEventListener('focusout', handleFocusChange);
        generalStateChangeEvents.forEach(eventType => {
