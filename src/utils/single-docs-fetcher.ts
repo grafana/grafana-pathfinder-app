@@ -367,6 +367,14 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
     if (href) {
       let finalHref = href;
       
+      // Handle anchor links (starting with #) - these should scroll within the page
+      if (href.startsWith('#')) {
+        // Mark as internal anchor link for special handling
+        link.setAttribute('data-docs-anchor-link', 'true');
+        link.setAttribute('data-anchor-target', href.substring(1)); // Remove the # prefix
+        return; // Don't process further
+      }
+      
       // Fix relative URLs with configurable base URL
       if (href.startsWith('/')) {
         // Absolute path from root

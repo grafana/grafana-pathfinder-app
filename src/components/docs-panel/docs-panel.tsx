@@ -630,8 +630,61 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       
       if (link) {
         const hasInternalAttribute = link.hasAttribute('data-docs-internal-link');
+        const hasAnchorAttribute = link.hasAttribute('data-docs-anchor-link');
         
-        if (hasInternalAttribute) {
+        if (hasAnchorAttribute) {
+          // Handle anchor links - scroll to target element within the page
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          
+          const anchorTarget = link.getAttribute('data-anchor-target');
+          if (anchorTarget) {
+            // Use the same element selection strategy as the existing anchor scrolling code
+            const targetElement = 
+              contentElement.querySelector(`#${anchorTarget}`) ||
+              contentElement.querySelector(`[id="${anchorTarget}"]`) ||
+              contentElement.querySelector(`[name="${anchorTarget}"]`) ||
+              contentElement.querySelector(`h1:contains("${anchorTarget.replace(/-/g, ' ')}")`) ||
+              contentElement.querySelector(`h2:contains("${anchorTarget.replace(/-/g, ' ')}")`) ||
+              contentElement.querySelector(`h3:contains("${anchorTarget.replace(/-/g, ' ')}")`) ||
+              contentElement.querySelector(`h4:contains("${anchorTarget.replace(/-/g, ' ')}")`) ||
+              contentElement.querySelector(`h5:contains("${anchorTarget.replace(/-/g, ' ')}")`) ||
+              contentElement.querySelector(`h6:contains("${anchorTarget.replace(/-/g, ' ')}")`);
+
+            if (targetElement) {
+              targetElement.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'start',
+                inline: 'nearest'
+              });
+              
+              // Add a highlight effect to make it obvious
+              const originalBackground = (targetElement as HTMLElement).style.backgroundColor;
+              (targetElement as HTMLElement).style.backgroundColor = theme.colors.warning.main;
+              (targetElement as HTMLElement).style.transition = 'background-color 0.3s ease';
+              
+              setTimeout(() => {
+                (targetElement as HTMLElement).style.backgroundColor = originalBackground;
+                setTimeout(() => {
+                  (targetElement as HTMLElement).style.transition = '';
+                }, 300);
+              }, 2000);
+              
+            } else {
+              console.warn(`❌ Could not find anchor element for: #${anchorTarget}`);
+              // Fallback: try to find any element with text content matching the anchor
+              const allElements = contentElement.querySelectorAll('h1, h2, h3, h4, h5, h6, [id], [name]');
+              for (const element of allElements) {
+                if (element.id.toLowerCase().includes(anchorTarget.toLowerCase()) ||
+                    element.textContent?.toLowerCase().replace(/\s+/g, '-').includes(anchorTarget.toLowerCase())) {
+                  element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  break;
+                }
+              }
+            }
+          }
+        } else if (hasInternalAttribute) {
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
@@ -668,7 +721,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     return () => {
       contentElement.removeEventListener('click', handleDocsLinkClick, true);
     };
-  }, [activeTab, model]);
+  }, [activeTab, model, theme]);
 
   // Handle anchor scrolling when content with hash fragments loads
   useEffect(() => {

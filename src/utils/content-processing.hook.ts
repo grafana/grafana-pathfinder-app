@@ -724,6 +724,24 @@ export function useContentProcessing({
           100% { transform: rotate(360deg); }
         }
         
+        /* Anchor link styling */
+        a[data-docs-anchor-link] {
+          color: #1f77b4;
+          text-decoration: underline;
+          cursor: pointer;
+          transition: color 0.2s ease;
+        }
+        
+        a[data-docs-anchor-link]:hover {
+          color: #0d5fa3;
+          text-decoration: underline;
+        }
+        
+        a[data-docs-anchor-link]:focus {
+          outline: 2px solid #1f77b4;
+          outline-offset: 2px;
+        }
+        
         /* Video styling for better rendering - responsive sizing */
         .video-container {
           position: relative;
