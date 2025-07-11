@@ -875,46 +875,13 @@ export function useContentProcessing({
     });
 
 
-    
-    // Listen for focus changes that might indicate state changes
-    const handleFocusChange = () => {
-      // Small delay to allow any state changes to complete
-      setTimeout(() => {
-        debouncedRecheck();
-      }, 100);
-    };
 
-    document.addEventListener('focusin', handleFocusChange);
-    document.addEventListener('focusout', handleFocusChange);
 
-         // Listen for non-interactive state changes only
-     const handleGeneralStateChange = (event: Event) => {
-       console.log('📝 General state change event detected:', event.type);
-       debouncedRecheck();
-     };
 
-         // Listen for events that might indicate data source changes (excluding interactive events)
-     const generalStateChangeEvents = [
-       'datasource-added',
-       'datasource-removed', 
-       'datasource-updated',
-       'connection-established',
-       'navigation-complete'
-     ];
-
-         generalStateChangeEvents.forEach(eventType => {
-       console.log(`🎧 Adding general event listener for: ${eventType}`);
-       document.addEventListener(eventType, handleGeneralStateChange);
-     });
 
          return () => {
        // Cleanup
        mutationObserver.disconnect();
-       document.removeEventListener('focusin', handleFocusChange);
-       document.removeEventListener('focusout', handleFocusChange);
-       generalStateChangeEvents.forEach(eventType => {
-         document.removeEventListener(eventType, handleGeneralStateChange);
-       });
        if (recheckTimeout) {
          clearTimeout(recheckTimeout);
        }
