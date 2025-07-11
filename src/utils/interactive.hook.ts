@@ -2,7 +2,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { fetchDataSources } from './context-data-fetcher';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
-import { markElementCompleted, waitForReactUpdates } from './requirements.util';
+import { markElementCompleted, waitForReactUpdates, groupInteractiveElementsByStep, markStepCompleted, InteractiveStep } from './requirements.util';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -188,22 +188,39 @@ export function useInteractiveElements() {
         textContent: element.textContent?.trim()
       });
       
-      // Mark the entire logical step as completed (all buttons with same reftarget + targetaction)
+      // Use centralized step management to mark the entire logical step as completed
       const reftarget = element.getAttribute('data-reftarget');
       const targetaction = element.getAttribute('data-targetaction');
       
       if (reftarget && targetaction) {
-        // Find all buttons that belong to the same logical step
-        const stepButtons = document.querySelectorAll(`[data-reftarget="${reftarget}"][data-targetaction="${targetaction}"]`);
+        // Find all interactive elements in the document to identify the step
+        const allInteractiveElements = document.querySelectorAll('[data-requirements]') as NodeListOf<HTMLElement>;
+        const elementArray = Array.from(allInteractiveElements);
         
-        console.log(`📋 Marking entire step as completed: ${stepButtons.length} buttons with reftarget="${reftarget}" targetaction="${targetaction}"`);
+        // Group elements by step using centralized logic
+        const steps = groupInteractiveElementsByStep(elementArray);
         
-        // Mark all buttons in this step as completed
-        stepButtons.forEach((button, index) => {
-          const buttonType = button.getAttribute('data-button-type') || 'unknown';
-          console.log(`  ✅ Marking button ${index + 1} as completed: ${buttonType}`);
-          markElementCompleted(button as HTMLElement);
-        });
+        // Find the step that contains this element
+        const elementStep = steps.find((step: InteractiveStep) => 
+          step.reftarget === reftarget && 
+          step.targetaction === targetaction
+        );
+        
+        if (elementStep) {
+          console.log(`📋 Marking entire step as completed: ${elementStep.buttons.length} buttons with reftarget="${reftarget}" targetaction="${targetaction}"`);
+          
+          // Use centralized step completion logic
+          markStepCompleted(elementStep);
+          
+          elementStep.buttons.forEach((button: HTMLElement, index: number) => {
+            const buttonType = button.getAttribute('data-button-type') || 'unknown';
+            console.log(`  ✅ Marking button ${index + 1} as completed: ${buttonType}`);
+          });
+        } else {
+          // Fallback: mark just this element as completed
+          console.log('⚠️ No step found, marking only this element as completed');
+          markElementCompleted(element);
+        }
       } else {
         // Fallback: mark just this element as completed
         console.log('⚠️ No reftarget/targetaction found, marking only this element as completed');
