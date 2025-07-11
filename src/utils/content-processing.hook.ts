@@ -781,8 +781,8 @@ export function useContentProcessing({
           disabledElements: document.querySelectorAll('.requirements-disabled').length
         });
         
-        // For interactive action completions or backup recheck, wait for React updates then re-check
-        if (event.type === 'interactive-action-completed' || event.type === 'force-requirements-recheck') {
+        // For interactive action completions, wait for React updates then re-check
+        if (event.type === 'interactive-action-completed') {
           console.log('⚡ Processing interactive completion event, waiting for React updates...');
           console.log('⚡ Event detail:', (event as CustomEvent).detail);
           console.log('⚡ recheckRequirementsRef.current available:', !!recheckRequirementsRef.current);
@@ -819,10 +819,9 @@ export function useContentProcessing({
         }
       };
 
-      // Listen for events that might indicate data source changes
+      // Listen for interactive completion events
       const stateChangeEvents = [
-        'interactive-action-completed',  // Our custom event from interactive.hook.ts
-        'force-requirements-recheck'     // Backup event from interactive.hook.ts
+        'interactive-action-completed'   // Our custom event from interactive.hook.ts
       ];
 
       stateChangeEvents.forEach(eventType => {

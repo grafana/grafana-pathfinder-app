@@ -218,15 +218,6 @@ export function useInteractiveElements() {
         });
         document.dispatchEvent(event);
         console.log('✅ Event dispatched successfully');
-        
-        // Also dispatch backup event for safety
-        setTimeout(() => {
-          console.log('🔄 Dispatching backup force-requirements-recheck event');
-          const backupEvent = new CustomEvent('force-requirements-recheck', {
-            detail: { element, state, backup: true }
-          });
-          document.dispatchEvent(backupEvent);
-        }, 100);
       });
     }
   }
