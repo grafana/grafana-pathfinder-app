@@ -824,6 +824,40 @@ export function useInteractiveElements() {
     });
   }, []);
 
+  /**
+   * Check if a DOM node contains interactive elements
+   * More explicit and performant than querySelector
+   */
+  const nodeContainsInteractiveElements = useCallback((node: Node): boolean => {
+    // Only check Element nodes
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return false;
+    }
+    
+    const element = node as Element;
+    
+    // Check if the element itself is an interactive button
+    if (element.classList.contains('interactive-button') && 
+        element.hasAttribute('data-targetaction') && 
+        element.hasAttribute('data-reftarget')) {
+      return true;
+    }
+    
+    // Check if any child elements are interactive buttons
+    // Use getElementsByClassName for better performance than querySelector
+    const interactiveElements = element.getElementsByClassName('interactive-button');
+    
+    for (let i = 0; i < interactiveElements.length; i++) {
+      const interactiveElement = interactiveElements[i];
+      if (interactiveElement.hasAttribute('data-targetaction') && 
+          interactiveElement.hasAttribute('data-reftarget')) {
+        return true;
+      }
+    }
+    
+    return false;
+  }, []);
+
   // Effect to attach/detach event listeners when DOM changes
   useEffect(() => {
     // Attach event listeners to existing interactive elements
@@ -837,15 +871,8 @@ export function useInteractiveElements() {
         if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
           // Check if any added nodes contain interactive elements
           mutation.addedNodes.forEach((node) => {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              const element = node as Element;
-              // Check if the node itself is interactive or contains interactive elements
-              if (element.querySelector && (
-                element.matches('[data-targetaction][data-reftarget].interactive-button') ||
-                element.querySelector('[data-targetaction][data-reftarget].interactive-button')
-              )) {
-                shouldReattach = true;
-              }
+            if (nodeContainsInteractiveElements(node)) {
+              shouldReattach = true;
             }
           });
         }
@@ -870,7 +897,7 @@ export function useInteractiveElements() {
       observer.disconnect();
       detachInteractiveEventListeners();
     };
-  }, [attachInteractiveEventListeners, detachInteractiveEventListeners]);
+  }, [attachInteractiveEventListeners, detachInteractiveEventListeners, nodeContainsInteractiveElements]);
 
   // Keep the old custom event system for backward compatibility, but it should no longer be needed
   useEffect(() => { // eslint-disable-line react-hooks/exhaustive-deps
