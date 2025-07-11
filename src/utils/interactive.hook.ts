@@ -2,6 +2,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { fetchDataSources } from './context-data-fetcher';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
+import { markElementCompleted, waitForReactUpdates } from './requirements.util';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -167,6 +168,8 @@ export function useInteractiveElements() {
   }
 
   function setInteractiveState(element: HTMLElement, state: 'idle' | 'running' | 'completed' | 'error') {
+    console.log(`🎭 Setting interactive state: ${state} for element:`, element);
+    
     // Remove all state classes
     element.classList.remove('interactive-running', 'interactive-completed', 'interactive-error');
     
@@ -175,56 +178,56 @@ export function useInteractiveElements() {
       element.classList.add(`interactive-${state}`);
     }
     
-    // Dispatch custom event when action completes
+    // Handle completion state (implicit requirement #2)
     if (state === 'completed') {
-      // Direct approach: Find and re-check ALL elements with requirements immediately
-       setTimeout(() => {
-         const allElementsWithRequirements = document.querySelectorAll('[data-requirements]');
-         
-         if (allElementsWithRequirements.length > 0) {
-           Promise.all(Array.from(allElementsWithRequirements).map(async (element, index) => {
-             const htmlElement = element as HTMLElement;
-             
-             try {
-               const result = await checkElementRequirements(htmlElement);
-                             
-               // Update element state directly
-               htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
-               
-               if (result.pass) {
-                 htmlElement.classList.add('requirements-satisfied');
-                 if (htmlElement.tagName.toLowerCase() === 'button') {
-                   (htmlElement as HTMLButtonElement).disabled = false;
-                   htmlElement.setAttribute('aria-disabled', 'false');
-                   const originalText = htmlElement.getAttribute('data-original-text');
-                   if (originalText) {
-                     htmlElement.textContent = originalText;
-                   }
-                 }
-               } else {
-                 htmlElement.classList.add('requirements-failed');
-                 if (htmlElement.tagName.toLowerCase() === 'button') {
-                   (htmlElement as HTMLButtonElement).disabled = true;
-                   htmlElement.setAttribute('aria-disabled', 'true');
-                   const requirements = htmlElement.getAttribute('data-requirements') || '';
-                   htmlElement.title = `Requirements not met: ${requirements}`;
-                 }
-               }
-             } catch (error) {
-               console.error(`Error checking element ${index + 1}:`, error);
-               // Set failed state
-               htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
-               htmlElement.classList.add('requirements-failed');
-               if (htmlElement.tagName.toLowerCase() === 'button') {
-                 (htmlElement as HTMLButtonElement).disabled = true;
-                 htmlElement.setAttribute('aria-disabled', 'true');
-               }
-             }
-           })).catch(error => {
-             console.error('Error during requirement re-check:', error);
-           });
-        }
-      }, 150); // Small delay to let DOM settle
+      console.log('🎯 Marking element as completed:', {
+        element: element.tagName,
+        reftarget: element.getAttribute('data-reftarget'),
+        targetaction: element.getAttribute('data-targetaction'),
+        buttonType: element.getAttribute('data-button-type'),
+        textContent: element.textContent?.trim()
+      });
+      
+      // Mark the entire logical step as completed (all buttons with same reftarget + targetaction)
+      const reftarget = element.getAttribute('data-reftarget');
+      const targetaction = element.getAttribute('data-targetaction');
+      
+      if (reftarget && targetaction) {
+        // Find all buttons that belong to the same logical step
+        const stepButtons = document.querySelectorAll(`[data-reftarget="${reftarget}"][data-targetaction="${targetaction}"]`);
+        
+        console.log(`📋 Marking entire step as completed: ${stepButtons.length} buttons with reftarget="${reftarget}" targetaction="${targetaction}"`);
+        
+        // Mark all buttons in this step as completed
+        stepButtons.forEach((button, index) => {
+          const buttonType = button.getAttribute('data-button-type') || 'unknown';
+          console.log(`  ✅ Marking button ${index + 1} as completed: ${buttonType}`);
+          markElementCompleted(button as HTMLElement);
+        });
+      } else {
+        // Fallback: mark just this element as completed
+        console.log('⚠️ No reftarget/targetaction found, marking only this element as completed');
+        markElementCompleted(element);
+      }
+      
+      // Wait for React updates to complete, then dispatch event to trigger requirements re-check
+      waitForReactUpdates().then(() => {
+        console.log('🔔 Dispatching interactive-action-completed event');
+        const event = new CustomEvent('interactive-action-completed', {
+          detail: { element, state }
+        });
+        document.dispatchEvent(event);
+        console.log('✅ Event dispatched successfully');
+        
+        // Also dispatch backup event for safety
+        setTimeout(() => {
+          console.log('🔄 Dispatching backup force-requirements-recheck event');
+          const backupEvent = new CustomEvent('force-requirements-recheck', {
+            detail: { element, state, backup: true }
+          });
+          document.dispatchEvent(backupEvent);
+        }, 100);
+      });
     }
   }
 
@@ -264,9 +267,9 @@ export function useInteractiveElements() {
       
       // Mark as completed after successful execution
       if (interactiveElement) {
-        setTimeout(() => {
+        waitForReactUpdates().then(() => {
           setInteractiveState(interactiveElement, 'completed');
-        }, 500);
+        });
       }
     } catch (error) {
       console.error("Error in interactiveFocus:", error);
@@ -298,9 +301,9 @@ export function useInteractiveElements() {
       
       // Mark as completed after successful execution
       if (interactiveElement) {
-        setTimeout(() => {
+        waitForReactUpdates().then(() => {
           setInteractiveState(interactiveElement, 'completed');
-        }, 500);
+        });
       }
     } catch (error) {
       console.error("Error in interactiveButton:", error);
@@ -458,9 +461,9 @@ export function useInteractiveElements() {
       
       // Mark as completed after successful execution
       if (interactiveElement) {
-        setTimeout(() => {
+        waitForReactUpdates().then(() => {
           setInteractiveState(interactiveElement, 'completed');
-        }, 500);
+        });
       }
       
     } catch (error) {
@@ -683,7 +686,7 @@ export function useInteractiveElements() {
   /**
    * Core requirement checking logic that works with InteractiveElementData
    */
-  const checkRequirementsFromData = async (data: InteractiveElementData): Promise<InteractiveRequirementsCheck> => {
+  const checkRequirementsFromData = useCallback(async (data: InteractiveElementData): Promise<InteractiveRequirementsCheck> => {
     const requirements = data.requirements;
     if (!requirements) {
       console.warn("No requirements found for interactive element");
@@ -718,15 +721,15 @@ export function useInteractiveElements() {
       pass: results.every(result => result.pass),
       error: results,  
     }
-  }
+  }, []);
 
   /**
    * Check requirements directly from a DOM element
    */
-  const checkElementRequirements = async (element: HTMLElement): Promise<InteractiveRequirementsCheck> => {
+  const checkElementRequirements = useCallback(async (element: HTMLElement): Promise<InteractiveRequirementsCheck> => {
     const data = extractInteractiveDataFromElement(element);
     return checkRequirementsFromData(data);
-  }
+  }, [checkRequirementsFromData]);
 
   /**
    * Enhanced function that returns both requirements check and extracted data

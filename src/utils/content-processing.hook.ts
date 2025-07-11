@@ -3,6 +3,7 @@ import { LearningJourneyContent } from './docs-fetcher';
 import { SingleDocsContent } from './single-docs-fetcher';
 import { useInteractiveElements } from './interactive.hook';
 import { getDocsBaseUrl } from '../constants';
+import { checkAllElementRequirements, waitForReactUpdates } from './requirements.util';
 
 interface UseContentProcessingProps {
   contentRef: React.RefObject<HTMLDivElement>;
@@ -621,126 +622,34 @@ export function useContentProcessing({
     const contentElement = contentRef.current;
     if (!contentElement) {return;}
 
-    const elementsWithRequirements = contentElement.querySelectorAll('[data-requirements]');
-    
-    if (elementsWithRequirements.length === 0) {
-      return;
-    }
-    
-    // Function to update element state based on requirement check
-    const updateElementState = (element: HTMLElement, satisfied: boolean, isChecking = false) => {
-      // Remove all requirement state classes
-      element.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
-      
-      if (isChecking) {
-        element.classList.add('requirements-checking');
-        
-        // For buttons, show loading state but don't disable
-        if (element.tagName.toLowerCase() === 'button') {
-          const originalText = element.getAttribute('data-original-text') || element.textContent || '';
-          if (!element.getAttribute('data-original-text')) {
-            element.setAttribute('data-original-text', originalText);
-          }
-          element.innerHTML = `
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline-block; margin-right: 4px; animation: spin 1s linear infinite;">
-              <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
-            </svg>
-            Checking...
-          `;
-        }
-      } else {
-        const originalText = element.getAttribute('data-original-text');
-        
-        if (satisfied) {
-          element.classList.add('requirements-satisfied');
-          
-          if (element.tagName.toLowerCase() === 'button') {
-            (element as HTMLButtonElement).disabled = false;
-            element.setAttribute('aria-disabled', 'false');
-            if (originalText) {
-              element.textContent = originalText;
-            }
-          }
-        } else {
-          element.classList.add('requirements-failed');
-          
-          if (element.tagName.toLowerCase() === 'button') {
-            (element as HTMLButtonElement).disabled = true;
-            element.setAttribute('aria-disabled', 'true');
-            if (originalText) {
-              element.textContent = originalText;
-            }
-            
-            // Add tooltip or title to explain why it's disabled
-            const requirements = element.getAttribute('data-requirements') || '';
-            element.title = `Requirements not met: ${requirements}`;
-          }
-        }
-      }
-    };
-
-    // Check requirements for all elements
-    const checkAllRequirements = async () => {
-      // Set all elements to checking state first
-      Array.from(elementsWithRequirements).forEach(element => {
-        updateElementState(element as HTMLElement, false, true);
-      });
-
-      // Check requirements in parallel for better performance
-      const checkPromises = Array.from(elementsWithRequirements).map(async (element, index) => {
-        const htmlElement = element as HTMLElement;
-
-        try {
-          const result = await checkElementRequirements(htmlElement);
-          updateElementState(htmlElement, result.pass, false);
-          return { element: htmlElement, result, index };
-        } catch (error) {
-          console.error(`Error checking requirements for element ${index + 1}:`, error);
-          updateElementState(htmlElement, false, false);
-          return { element: htmlElement, result: null, index, error };
-        }
-      });
-
+    // Use unified requirements checking with sequential mode (implicit requirements)
+    const checkAllRequirements = async (): Promise<void> => {
       try {
-        const results = await Promise.allSettled(checkPromises);
-        const rejected = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+        const result = await checkAllElementRequirements(
+          contentElement, 
+          checkElementRequirements, 
+          true // Enable sequential mode for implicit requirements
+        );
         
-        if (rejected.length > 0) {
-          console.warn('Some requirement checks failed:', rejected.map(r => r.reason));
-        }
+        // Log the result for debugging
+        console.log('Requirements check completed:', {
+          total: result.totalElements,
+          satisfied: result.satisfied,
+          failed: result.failed,
+          completed: result.completed,
+          disabled: result.disabled,
+          failedAtIndex: result.failedAtIndex
+        });
       } catch (error) {
-        console.error('Error in requirement checking process:', error);
+        console.error('Error in unified requirements checking:', error);
       }
     };
 
-    // Add some CSS for the requirement states and video styling if not already present
-    if (!document.querySelector('#requirement-styles')) {
+    // Add video and other non-requirement styles if not already present
+    if (!document.querySelector('#content-processing-styles')) {
       const style = document.createElement('style');
-      style.id = 'requirement-styles';
+      style.id = 'content-processing-styles';
       style.textContent = `
-        .requirements-checking {
-          opacity: 0.7;
-        }
-        
-        .requirements-satisfied {
-          /* Visual feedback for satisfied requirements */
-        }
-        
-        .requirements-failed {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-        
-        .requirements-failed button {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-        
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        
         /* Anchor link styling */
         a[data-docs-anchor-link] {
           color: #1f77b4;
@@ -854,16 +763,20 @@ export function useContentProcessing({
     // Start the requirement checking process
     checkAllRequirements();
 
-  }, [activeTabContent, activeTabDocsContent, contentRef, checkElementRequirements]);
+  }, [activeTabContent, activeTabDocsContent, checkElementRequirements]);
 
   // Add DOM mutation observer and event listeners for automatic re-checking
   // disabling missing dependency warning for time being till better solution is found
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const contentElement = contentRef.current;
-    if (!contentElement) {return;}
+    if (!contentElement) {
+      return;
+    }
 
     let recheckTimeout: NodeJS.Timeout;
+
+
 
     // Debounced re-check function to avoid excessive calls
     const debouncedRecheck = () => {
@@ -941,57 +854,27 @@ export function useContentProcessing({
          // Listen for custom events that indicate state changes
          /* eslint-disable react-hooks/exhaustive-deps */
      const handleStateChange = (event: Event) => {
-       // For interactive action completions or backup recheck, re-check immediately instead of debounced
+       console.log('🔔 State change event detected:', {
+         type: event.type,
+         detail: (event as CustomEvent).detail,
+         timestamp: new Date().toISOString()
+       });
+       
+       // For interactive action completions or backup recheck, wait for React updates then re-check
          if (event.type === 'interactive-action-completed' || event.type === 'force-requirements-recheck') {
-                    setTimeout(() => {
+           console.log('⚡ Processing interactive completion event, waiting for React updates...');
+           waitForReactUpdates().then(() => {
              if (recheckRequirementsRef.current) {
+               console.log('🔄 Executing React-synchronized requirements recheck');
                recheckRequirementsRef.current().catch(error => {
-                 console.error('Error during requirements re-check:', error);
+                 console.error('💥 Error during requirements re-check:', error);
                });
              } else {
-               console.warn('recheckRequirementsRef.current is not available, doing direct re-check');
-               
-               // Fallback: directly find and check all elements with requirements
-               const currentElementsWithRequirements = contentElement.querySelectorAll('[data-requirements]');
-               
-               if (currentElementsWithRequirements.length > 0) {
-                 // Run requirement checks directly
-                 Array.from(currentElementsWithRequirements).forEach(async (element) => {
-                   const htmlElement = element as HTMLElement;
-                   
-                   try {
-                     const result = await checkElementRequirements(htmlElement);
-                     
-                     // Update the element state (inline version)
-                     htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
-                     if (result.pass) {
-                       htmlElement.classList.add('requirements-satisfied');
-                       if (htmlElement.tagName.toLowerCase() === 'button') {
-                         (htmlElement as HTMLButtonElement).disabled = false;
-                         htmlElement.setAttribute('aria-disabled', 'false');
-                       }
-                     } else {
-                       htmlElement.classList.add('requirements-failed');
-                       if (htmlElement.tagName.toLowerCase() === 'button') {
-                         (htmlElement as HTMLButtonElement).disabled = true;
-                         htmlElement.setAttribute('aria-disabled', 'true');
-                       }
-                     }
-                   } catch (error) {
-                     console.error('Fallback error for element:', error);
-                     // Set failed state (inline version)
-                     htmlElement.classList.remove('requirements-satisfied', 'requirements-failed', 'requirements-checking');
-                     htmlElement.classList.add('requirements-failed');
-                     if (htmlElement.tagName.toLowerCase() === 'button') {
-                       (htmlElement as HTMLButtonElement).disabled = true;
-                       htmlElement.setAttribute('aria-disabled', 'true');
-                     }
-                   }
-                 });
-               }
+               console.warn('⚠️ No recheckRequirementsRef.current available');
              }
-           }, 100); // Small delay to let DOM settle
+           });
        } else {
+         console.log('📝 Using debounced recheck for event:', event.type);
          debouncedRecheck();
        }
      };
