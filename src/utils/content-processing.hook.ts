@@ -763,11 +763,96 @@ export function useContentProcessing({
     // Start the requirement checking process
     checkAllRequirements();
 
+    // Set up event listeners for interactive completion events AFTER content is loaded
+    // This ensures listeners are active when interactive elements are present
+    const setupInteractiveEventListeners = () => {
+      // Listen for custom events that indicate state changes
+      const handleStateChange = (event: Event) => {
+        console.log('🔔 State change event detected:', {
+          type: event.type,
+          detail: (event as CustomEvent).detail,
+          timestamp: new Date().toISOString()
+        });
+        
+        console.log('🔔 Current DOM state before processing:', {
+          completedElements: document.querySelectorAll('[data-completed="true"]').length,
+          requirementsElements: document.querySelectorAll('[data-requirements]').length,
+          satisfiedElements: document.querySelectorAll('.requirements-satisfied').length,
+          disabledElements: document.querySelectorAll('.requirements-disabled').length
+        });
+        
+        // For interactive action completions or backup recheck, wait for React updates then re-check
+        if (event.type === 'interactive-action-completed' || event.type === 'force-requirements-recheck') {
+          console.log('⚡ Processing interactive completion event, waiting for React updates...');
+          console.log('⚡ Event detail:', (event as CustomEvent).detail);
+          console.log('⚡ recheckRequirementsRef.current available:', !!recheckRequirementsRef.current);
+          
+          waitForReactUpdates().then(() => {
+            // Add a small delay to ensure DOM updates are complete
+            setTimeout(() => {
+              if (recheckRequirementsRef.current) {
+                console.log('🔄 Executing React-synchronized requirements recheck');
+                recheckRequirementsRef.current().catch(error => {
+                  console.error('💥 Error during requirements re-check:', error);
+                });
+              } else {
+                console.warn('⚠️ No recheckRequirementsRef.current available - falling back to direct requirements check');
+                // Fallback: call requirements checking directly if ref is not available
+                if (contentRef.current) {
+                  checkAllElementRequirements(
+                    contentRef.current, 
+                    checkElementRequirements, 
+                    true
+                  ).then(result => {
+                    console.log('🔄 Fallback requirements check completed:', result);
+                  }).catch((error: any) => {
+                    console.error('💥 Error during fallback requirements re-check:', error);
+                  });
+                } else {
+                  console.error('💥 No contentRef.current available for fallback');
+                }
+              }
+            }, 50); // Small delay to ensure DOM is updated
+          }).catch(error => {
+            console.error('💥 Error in waitForReactUpdates:', error);
+          });
+        }
+      };
+
+      // Listen for events that might indicate data source changes
+      const stateChangeEvents = [
+        'interactive-action-completed',  // Our custom event from interactive.hook.ts
+        'force-requirements-recheck'     // Backup event from interactive.hook.ts
+      ];
+
+      stateChangeEvents.forEach(eventType => {
+        console.log(`🎧 Adding post-content event listener for: ${eventType}`);
+        document.addEventListener(eventType, handleStateChange);
+      });
+      
+      console.log(`🎧 Post-content event listeners attached:`, stateChangeEvents);
+      
+      // Store cleanup function
+      return () => {
+        stateChangeEvents.forEach(eventType => {
+          document.removeEventListener(eventType, handleStateChange);
+        });
+      };
+    };
+
+    // Set up the interactive event listeners after content is loaded
+    const cleanupInteractiveListeners = setupInteractiveEventListeners();
+    
+    // Store cleanup function for this specific content load
+    return () => {
+      if (cleanupInteractiveListeners) {
+        cleanupInteractiveListeners();
+      }
+    };
+
   }, [activeTabContent, activeTabDocsContent, checkElementRequirements]);
 
   // Add DOM mutation observer and event listeners for automatic re-checking
-  // disabling missing dependency warning for time being till better solution is found
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const contentElement = contentRef.current;
     if (!contentElement) {
@@ -851,47 +936,24 @@ export function useContentProcessing({
     document.addEventListener('focusin', handleFocusChange);
     document.addEventListener('focusout', handleFocusChange);
 
-         // Listen for custom events that indicate state changes
-         /* eslint-disable react-hooks/exhaustive-deps */
-     const handleStateChange = (event: Event) => {
-       console.log('🔔 State change event detected:', {
-         type: event.type,
-         detail: (event as CustomEvent).detail,
-         timestamp: new Date().toISOString()
-       });
-       
-       // For interactive action completions or backup recheck, wait for React updates then re-check
-         if (event.type === 'interactive-action-completed' || event.type === 'force-requirements-recheck') {
-           console.log('⚡ Processing interactive completion event, waiting for React updates...');
-           waitForReactUpdates().then(() => {
-             if (recheckRequirementsRef.current) {
-               console.log('🔄 Executing React-synchronized requirements recheck');
-               recheckRequirementsRef.current().catch(error => {
-                 console.error('💥 Error during requirements re-check:', error);
-               });
-             } else {
-               console.warn('⚠️ No recheckRequirementsRef.current available');
-             }
-           });
-       } else {
-         console.log('📝 Using debounced recheck for event:', event.type);
-         debouncedRecheck();
-       }
+         // Listen for non-interactive state changes only
+     const handleGeneralStateChange = (event: Event) => {
+       console.log('📝 General state change event detected:', event.type);
+       debouncedRecheck();
      };
 
-         // Listen for events that might indicate data source changes
-     const stateChangeEvents = [
+         // Listen for events that might indicate data source changes (excluding interactive events)
+     const generalStateChangeEvents = [
        'datasource-added',
        'datasource-removed', 
        'datasource-updated',
        'connection-established',
-       'navigation-complete',
-       'interactive-action-completed',  // Our custom event from interactive.hook.ts
-       'force-requirements-recheck'     // Backup event from interactive.hook.ts
+       'navigation-complete'
      ];
 
-         stateChangeEvents.forEach(eventType => {
-       document.addEventListener(eventType, handleStateChange);
+         generalStateChangeEvents.forEach(eventType => {
+       console.log(`🎧 Adding general event listener for: ${eventType}`);
+       document.addEventListener(eventType, handleGeneralStateChange);
      });
 
          return () => {
@@ -900,8 +962,8 @@ export function useContentProcessing({
        contentElement.removeEventListener('DOMSubtreeModified', handleInteractiveCompletion);
        document.removeEventListener('focusin', handleFocusChange);
        document.removeEventListener('focusout', handleFocusChange);
-       stateChangeEvents.forEach(eventType => {
-         document.removeEventListener(eventType, handleStateChange);
+       generalStateChangeEvents.forEach(eventType => {
+         document.removeEventListener(eventType, handleGeneralStateChange);
        });
        if (recheckTimeout) {
          clearTimeout(recheckTimeout);
