@@ -740,6 +740,139 @@ export function useInteractiveElements() {
     return { requirementsCheck, interactiveData: data };
   };
 
+  /**
+   * Find and attach event listeners to interactive elements in the DOM
+   * This replaces the need for inline onclick handlers
+   */
+  const attachInteractiveEventListeners = useCallback(() => {
+    // Find all interactive elements with data attributes
+    const interactiveElements = document.querySelectorAll('[data-targetaction][data-reftarget].interactive-button');
+    
+    interactiveElements.forEach((element) => {
+      const htmlElement = element as HTMLElement;
+      
+      // Skip if already has event listener attached
+      if (htmlElement.hasAttribute('data-listener-attached')) {
+        return;
+      }
+      
+      // Mark as having listener attached
+      htmlElement.setAttribute('data-listener-attached', 'true');
+      
+      // Extract interactive data
+      const data = extractInteractiveDataFromElement(htmlElement);
+      const buttonType = htmlElement.getAttribute('data-button-type') || 'do';
+      
+      // Create click handler
+      const clickHandler = async (event: Event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        try {
+          // Check requirements before executing
+          const requirementsCheck = await checkRequirementsFromData(data);
+          
+          if (!requirementsCheck.pass) {
+            console.warn("Requirements not met for interactive element:", data);
+            console.warn("Requirements check results:", requirementsCheck);
+            return;
+          }
+          
+          // Execute the appropriate action based on button type and target action
+          const isShowMode = buttonType === 'show';
+          
+          if (data.targetaction === 'highlight') {
+            interactiveFocus(data, !isShowMode); // Show mode = don't click, Do mode = click
+          } else if (data.targetaction === 'button') {
+            interactiveButton(data, !isShowMode); // Show mode = don't click, Do mode = click
+          } else if (data.targetaction === 'formfill') {
+            interactiveFormFill(data, !isShowMode); // Show mode = don't fill, Do mode = fill
+          } else if (data.targetaction === 'sequence') {
+            await interactiveSequence(data, isShowMode); // Show mode = highlight only, Do mode = full sequence
+          } else {
+            console.warn("Unknown target action:", data.targetaction);
+          }
+        } catch (error) {
+          console.error("Error in interactive element click handler:", error);
+        }
+      };
+      
+      // Attach click listener
+      htmlElement.addEventListener('click', clickHandler);
+      
+      // Store the handler so we can remove it later if needed
+      (htmlElement as any).__interactiveClickHandler = clickHandler;
+    });
+  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveSequence, checkRequirementsFromData]);
+
+  /**
+   * Remove event listeners from interactive elements
+   */
+  const detachInteractiveEventListeners = useCallback(() => {
+    const interactiveElements = document.querySelectorAll('[data-listener-attached="true"]');
+    
+    interactiveElements.forEach((element) => {
+      const htmlElement = element as HTMLElement;
+      const handler = (htmlElement as any).__interactiveClickHandler;
+      
+      if (handler) {
+        htmlElement.removeEventListener('click', handler);
+        delete (htmlElement as any).__interactiveClickHandler;
+      }
+      
+      htmlElement.removeAttribute('data-listener-attached');
+    });
+  }, []);
+
+  // Effect to attach/detach event listeners when DOM changes
+  useEffect(() => {
+    // Attach event listeners to existing interactive elements
+    attachInteractiveEventListeners();
+    
+    // Set up mutation observer to handle dynamically added content
+    const observer = new MutationObserver((mutations) => {
+      let shouldReattach = false;
+      
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          // Check if any added nodes contain interactive elements
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node as Element;
+              // Check if the node itself is interactive or contains interactive elements
+              if (element.querySelector && (
+                element.matches('[data-targetaction][data-reftarget].interactive-button') ||
+                element.querySelector('[data-targetaction][data-reftarget].interactive-button')
+              )) {
+                shouldReattach = true;
+              }
+            }
+          });
+        }
+      });
+      
+      if (shouldReattach) {
+        // Small delay to let DOM settle
+        setTimeout(() => {
+          attachInteractiveEventListeners();
+        }, 100);
+      }
+    });
+    
+    // Start observing
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+    
+    // Cleanup function
+    return () => {
+      observer.disconnect();
+      detachInteractiveEventListeners();
+    };
+  }, [attachInteractiveEventListeners, detachInteractiveEventListeners]);
+
+  // Keep the old custom event system for backward compatibility, but it should no longer be needed
   useEffect(() => { // eslint-disable-line react-hooks/exhaustive-deps
     // Note, that rather than use await here we're using regular promises, because this is an 
     // event handler (which doesn't return promises, fire and forget)
@@ -852,5 +985,7 @@ export function useInteractiveElements() {
     checkElementRequirements,
     checkRequirementsFromData,
     checkRequirementsWithData,
+    attachInteractiveEventListeners,
+    detachInteractiveEventListeners,
   };
 } 
