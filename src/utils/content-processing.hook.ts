@@ -763,90 +763,38 @@ export function useContentProcessing({
     // Start the requirement checking process
     checkAllRequirements();
 
-    // Set up event listeners for interactive completion events AFTER content is loaded
-    // This ensures listeners are active when interactive elements are present
-    const setupInteractiveEventListeners = () => {
-      // Listen for custom events that indicate state changes
-      const handleStateChange = (event: Event) => {
-        console.log('🔔 State change event detected:', {
-          type: event.type,
-          detail: (event as CustomEvent).detail,
-          timestamp: new Date().toISOString()
-        });
-        
-        console.log('🔔 Current DOM state before processing:', {
-          completedElements: document.querySelectorAll('[data-completed="true"]').length,
-          requirementsElements: document.querySelectorAll('[data-requirements]').length,
-          satisfiedElements: document.querySelectorAll('.requirements-satisfied').length,
-          disabledElements: document.querySelectorAll('.requirements-disabled').length
-        });
-        
-        // For interactive action completions, wait for React updates then re-check
-        if (event.type === 'interactive-action-completed') {
-          console.log('⚡ Processing interactive completion event, waiting for React updates...');
-          console.log('⚡ Event detail:', (event as CustomEvent).detail);
-          console.log('⚡ recheckRequirementsRef.current available:', !!recheckRequirementsRef.current);
-          
-          waitForReactUpdates().then(() => {
-            // Add a small delay to ensure DOM updates are complete
-            setTimeout(() => {
-              if (recheckRequirementsRef.current) {
-                console.log('🔄 Executing React-synchronized requirements recheck');
-                recheckRequirementsRef.current().catch(error => {
-                  console.error('💥 Error during requirements re-check:', error);
-                });
-              } else {
-                console.warn('⚠️ No recheckRequirementsRef.current available - falling back to direct requirements check');
-                // Fallback: call requirements checking directly if ref is not available
-                if (contentRef.current) {
-                  checkAllElementRequirements(
-                    contentRef.current, 
-                    checkElementRequirements, 
-                    true
-                  ).then(result => {
-                    console.log('🔄 Fallback requirements check completed:', result);
-                  }).catch((error: any) => {
-                    console.error('💥 Error during fallback requirements re-check:', error);
-                  });
-                } else {
-                  console.error('💥 No contentRef.current available for fallback');
-                }
-              }
-            }, 50); // Small delay to ensure DOM is updated
-          }).catch(error => {
-            console.error('💥 Error in waitForReactUpdates:', error);
-          });
-        }
-      };
-
-      // Listen for interactive completion events
-      const stateChangeEvents = [
-        'interactive-action-completed'   // Our custom event from interactive.hook.ts
-      ];
-
-      stateChangeEvents.forEach(eventType => {
-        console.log(`🎧 Adding post-content event listener for: ${eventType}`);
-        document.addEventListener(eventType, handleStateChange);
+    // Listen specifically for interactive action completion to trigger requirements rechecking
+    // This is the one remaining case where content-processing needs to react to interactive events
+    const handleInteractiveCompletion = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('🔔 Interactive action completed, triggering requirements recheck:', {
+        type: customEvent.type,
+        detail: customEvent.detail,
+        timestamp: new Date().toISOString()
       });
-      
-      console.log(`🎧 Post-content event listeners attached:`, stateChangeEvents);
-      
-      // Store cleanup function
-      return () => {
-        stateChangeEvents.forEach(eventType => {
-          document.removeEventListener(eventType, handleStateChange);
-        });
-      };
+
+      // Wait for React updates then re-check requirements
+      waitForReactUpdates().then(() => {
+        // Small delay to ensure DOM updates are complete
+        setTimeout(() => {
+          if (recheckRequirementsRef.current) {
+            console.log('🔄 Executing requirements recheck after interactive completion');
+            recheckRequirementsRef.current().catch(error => {
+              console.error('💥 Error during requirements re-check:', error);
+            });
+          }
+        }, 50);
+      }).catch(error => {
+        console.error('💥 Error in waitForReactUpdates:', error);
+      });
     };
 
-    // Set up the interactive event listeners after content is loaded
-    const cleanupInteractiveListeners = setupInteractiveEventListeners();
+    // Set up single focused event listener for interactive completions
+    document.addEventListener('interactive-action-completed', handleInteractiveCompletion);
     
-    // Store cleanup function for this specific content load
+    // Cleanup function
     return () => {
-      if (cleanupInteractiveListeners) {
-        cleanupInteractiveListeners();
-      }
+      document.removeEventListener('interactive-action-completed', handleInteractiveCompletion);
     };
 
   }, [activeTabContent, activeTabDocsContent, checkElementRequirements]);
@@ -882,43 +830,54 @@ export function useContentProcessing({
       }
     };
 
-         // Listen for DOM mutations that might affect requirements
+         // Listen for DOM mutations that might affect requirements (avoiding infinite loops)
      const mutationObserver = new MutationObserver((mutations) => {
        let shouldRecheck = false;
 
        mutations.forEach((mutation) => {
-         // Check for added/removed nodes that might affect requirements
+         // Check for added/removed nodes that might contain interactive elements
          if (mutation.type === 'childList') {
            const addedNodes = Array.from(mutation.addedNodes);
            const removedNodes = Array.from(mutation.removedNodes);
            
-           // Be more aggressive about detecting changes - any new element could affect requirements
-           const hasElementChanges = [...addedNodes, ...removedNodes].some(node => {
-             return node.nodeType === Node.ELEMENT_NODE;
+           // Only recheck if interactive elements are added/removed
+           const hasInteractiveChanges = [...addedNodes, ...removedNodes].some(node => {
+             if (node.nodeType !== Node.ELEMENT_NODE) return false;
+             const element = node as Element;
+             
+             // Check if the node itself or any descendant has interactive attributes
+             return element.hasAttribute('data-requirements') || 
+                    element.querySelector('[data-requirements]') !== null;
            });
 
-           if (hasElementChanges) {
+           if (hasInteractiveChanges) {
              shouldRecheck = true;
            }
          }
 
-         // Check for attribute changes that might affect requirements
-         if (mutation.type === 'attributes') {
-           shouldRecheck = true;
+         // Only recheck for attribute changes that actually affect requirements logic
+         if (mutation.type === 'attributes' && mutation.attributeName) {
+           const attrName = mutation.attributeName;
+           // Only recheck if the core requirements attributes change
+           // Do NOT recheck for disabled/aria-disabled as those are OUTPUTS of requirements checking
+           if (attrName === 'data-requirements' || attrName === 'data-reftarget') {
+             shouldRecheck = true;
+           }
          }
        });
 
        if (shouldRecheck) {
+         console.log('🔄 DOM changes detected that may affect requirements, scheduling recheck');
          debouncedRecheck();
        }
      });
 
-    // Start observing
+    // Start observing - only watch for changes that actually affect requirements
     mutationObserver.observe(contentElement, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['disabled', 'aria-disabled', 'data-requirements', 'data-reftarget']
+      attributeFilter: ['data-requirements', 'data-reftarget'] // Removed disabled/aria-disabled to prevent loops
     });
 
     // Listen for interactive completion events

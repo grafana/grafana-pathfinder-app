@@ -205,11 +205,28 @@ Initial → Checking → (Satisfied|Failed|Disabled|Completed)
 
 ## Technical Implementation
 
+### Event System Architecture
+
+**Unified Event Handling**: The system uses a single, modern event handling architecture:
+
+- **Direct Click Handlers**: Interactive elements use direct click event listeners attached via `attachInteractiveEventListeners()`
+- **Requirements Rechecking**: Completion events trigger automatic requirements rechecking via `interactive-action-completed` events
+- **Mutation Monitoring**: DOM changes are monitored to detect new interactive content, with careful loop prevention
+
+**Architecture Benefits**:
+- **Single Source of Truth**: All interactive handling flows through one system
+- **No Event Duplication**: Eliminates race conditions from competing event systems
+- **Loop Prevention**: Mutation observers only watch for meaningful changes (new content, requirement changes)
+- **Performance**: Direct handlers are more efficient than document-level event delegation
+
+**Legacy Systems Removed**: Previous dual event systems (custom events + manual listeners) have been consolidated into the unified approach.
+
 ### DOM Attributes
 
 - `data-requirements`: Comma-separated list of explicit requirements
 - `data-completed`: Set to "true" when action is completed (implicit requirement #2)
 - `data-original-text`: Stores original button text for restoration
+- `data-listener-attached`: Marks elements with modern click handlers attached
 
 ### CSS Classes
 
@@ -230,6 +247,15 @@ When using sequential mode, the system stops checking requirements as soon as on
 - **Performance**: Avoids unnecessary requirement checks
 - **User Experience**: Clear indication that previous steps must be completed
 - **Logical Flow**: Enforces step-by-step progression
+
+### Infinite Loop Prevention
+
+The system includes multiple safeguards against infinite loops:
+
+- **Mutation Observer Filtering**: Only monitors changes to `data-requirements` and `data-reftarget` attributes (not `disabled`/`aria-disabled` which are outputs)
+- **Interactive Content Detection**: DOM changes only trigger rechecking if actual interactive elements are added/removed
+- **Debounced Rechecking**: Multiple rapid changes are batched to prevent excessive processing
+- **Separate Concerns**: Event handling (interactive.hook.ts) and requirements checking (content-processing.hook.ts) have clear boundaries
 
 ## Usage Examples
 
