@@ -154,6 +154,15 @@ export async function fetchRecommendations(
   error: string | null;
 }> {
   try {
+    // Validate that we have a path
+    if (!currentPath) {
+      console.error('fetchRecommendations called with empty path');
+      return {
+        recommendations: [],
+        error: 'No path provided for recommendations',
+      };
+    }
+
     // Prepare the payload for the recommender service
     const payload: ContextPayload = {
       path: currentPath,

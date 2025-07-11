@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useCallback, useRef } from 'react';
 import { fetchDataSources } from './context-data-fetcher';
+import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -128,6 +129,11 @@ function getAllTextContent(element: Element): string {
 }
 
 export function useInteractiveElements() {
+  // Initialize global interactive styles
+  useEffect(() => {
+    addGlobalInteractiveStyles();
+  }, []);
+
   function highlight(element: HTMLElement) {
     // Add highlight class for better styling
     element.classList.add('interactive-highlighted');
@@ -136,23 +142,16 @@ export function useInteractiveElements() {
     const highlightOutline = document.createElement('div');
     highlightOutline.className = 'interactive-highlight-outline';
     
-    // Position the outline around the target element
+    // Position the outline around the target element using CSS custom properties
     const rect = element.getBoundingClientRect();
     const scrollTop = window.scrollY || document.documentElement.scrollTop;
     const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
     
-    highlightOutline.style.position = 'absolute';
-    highlightOutline.style.top = `${rect.top + scrollTop - 4}px`;
-    highlightOutline.style.left = `${rect.left + scrollLeft - 4}px`;
-    highlightOutline.style.width = `${rect.width + 8}px`;
-    highlightOutline.style.height = `${rect.height + 8}px`;
-    highlightOutline.style.border = '2px solid #FF8800'; // Grafana orange
-    highlightOutline.style.borderRadius = '4px';
-    highlightOutline.style.pointerEvents = 'none';
-    highlightOutline.style.zIndex = '9999';
-    highlightOutline.style.backgroundColor = 'rgba(255, 136, 0, 0.1)';
-    highlightOutline.style.boxShadow = '0 0 0 4px rgba(255, 136, 0, 0.2)';
-    highlightOutline.style.animation = 'highlight-pulse 1.2s ease-in-out';
+    // Use CSS custom properties instead of inline styles to avoid CSP violations
+    highlightOutline.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
+    highlightOutline.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
+    highlightOutline.style.setProperty('--highlight-width', `${rect.width + 8}px`);
+    highlightOutline.style.setProperty('--highlight-height', `${rect.height + 8}px`);
     
     document.body.appendChild(highlightOutline);
     
@@ -162,7 +161,7 @@ export function useInteractiveElements() {
       if (highlightOutline.parentNode) {
         highlightOutline.parentNode.removeChild(highlightOutline);
       }
-    }, 1200);
+    }, 2000); // Match animation duration
     
     return element;
   }

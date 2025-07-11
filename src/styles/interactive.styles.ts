@@ -231,6 +231,17 @@ export const addGlobalInteractiveStyles = () => {
     }
     
     .interactive-highlight-outline {
+      position: absolute;
+      top: var(--highlight-top);
+      left: var(--highlight-left);
+      width: var(--highlight-width);
+      height: var(--highlight-height);
+      border: 2px solid #FF8800;
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 9999;
+      background-color: rgba(255, 136, 0, 0.1);
+      box-shadow: 0 0 0 4px rgba(255, 136, 0, 0.2);
       animation: highlight-pulse 2s ease-in-out forwards;
     }
     
