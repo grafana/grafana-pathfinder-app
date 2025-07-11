@@ -765,7 +765,7 @@ export function useContentProcessing({
 
     // Listen specifically for interactive action completion to trigger requirements rechecking
     // This is the one remaining case where content-processing needs to react to interactive events
-    const handleInteractiveCompletion = (event: Event) => {
+    const handleInteractiveActionCompleted = (event: Event) => {
       const customEvent = event as CustomEvent;
       console.log('🔔 Interactive action completed, triggering requirements recheck:', {
         type: customEvent.type,
@@ -790,11 +790,11 @@ export function useContentProcessing({
     };
 
     // Set up single focused event listener for interactive completions
-    document.addEventListener('interactive-action-completed', handleInteractiveCompletion);
+    document.addEventListener('interactive-action-completed', handleInteractiveActionCompleted);
     
     // Cleanup function
     return () => {
-      document.removeEventListener('interactive-action-completed', handleInteractiveCompletion);
+      document.removeEventListener('interactive-action-completed', handleInteractiveActionCompleted);
     };
 
   }, [activeTabContent, activeTabDocsContent, checkElementRequirements]);
@@ -822,8 +822,8 @@ export function useContentProcessing({
       }, 500); // Wait 500ms after last change
     };
 
-    // Listen for interactive element completion events
-    const handleInteractiveCompletion = (event: Event) => {
+    // Listen for legacy DOM subtree modification events (deprecated event type)
+    const handleDomSubtreeModified = (event: Event) => {
       const target = event.target as HTMLElement;
       if (target && target.classList.contains('interactive-completed')) {
         debouncedRecheck();
@@ -881,7 +881,7 @@ export function useContentProcessing({
     });
 
     // Listen for interactive completion events
-    contentElement.addEventListener('DOMSubtreeModified', handleInteractiveCompletion);
+    contentElement.addEventListener('DOMSubtreeModified', handleDomSubtreeModified);
     
     // Listen for focus changes that might indicate state changes
     const handleFocusChange = () => {
@@ -917,7 +917,7 @@ export function useContentProcessing({
          return () => {
        // Cleanup
        mutationObserver.disconnect();
-       contentElement.removeEventListener('DOMSubtreeModified', handleInteractiveCompletion);
+       contentElement.removeEventListener('DOMSubtreeModified', handleDomSubtreeModified);
        document.removeEventListener('focusin', handleFocusChange);
        document.removeEventListener('focusout', handleFocusChange);
        generalStateChangeEvents.forEach(eventType => {
