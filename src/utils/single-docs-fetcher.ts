@@ -113,63 +113,46 @@ function processInteractiveElements(element: Element) {
       return;
     }
 
-    const createButton = (text: string, className = '') => {
+    const createButton = (text: string, className = '', buttonType: 'show' | 'do' = 'do') => {
       const button = document.createElement('button');
 
-      // Some processing has to be done by the visual display component, so we need to copy the attributes
-      // forward to the button that the interactivity implies.  This allows the visual display component
-      // to manipulate the data structure, rather than just taking the event when the button is clicked.
-      // Effectively we want the same data dispatched on button click and on the actual button attributes.
+      // Copy the interactive data attributes to the button
       button.setAttribute('data-requirements', requirements);
       button.setAttribute('data-targetaction', targetAction);
       button.setAttribute('data-reftarget', reftarget);
       button.setAttribute('data-targetvalue', value);
+      
+      // Add button type attribute to distinguish between show and do buttons
+      button.setAttribute('data-button-type', buttonType);
+      
+      // Add class to identify this as an interactive button
+      button.classList.add('interactive-button');
 
       button.textContent = text;
       if (className) {
-        button.className = className;
+        button.className += ` ${className}`;
       }
       return button;
     };
 
-    // Create event actions for both show and do
-    let showEventAction = "";
-    let doEventAction = "";
-    
-    if(targetAction === "highlight" || targetAction === "button") {
-      showEventAction = `document.dispatchEvent(new CustomEvent("interactive-${targetAction}-show"))`;
-      doEventAction = `document.dispatchEvent(new CustomEvent("interactive-${targetAction}"))`;
-    } else if(targetAction === "formfill") { 
-      showEventAction = `document.dispatchEvent(new CustomEvent('interactive-formfill-show'))`;
-      doEventAction = `document.dispatchEvent(new CustomEvent('interactive-formfill'))`;  
-    } else if(targetAction === "sequence") {
-      showEventAction = `document.dispatchEvent(new CustomEvent('interactive-sequence-show'))`;
-      doEventAction = `document.dispatchEvent(new CustomEvent('interactive-sequence'))`;  
-    } else {
-      showEventAction = `document.alert("Unknown target action: ${targetAction}")`;
-      doEventAction = `document.alert("Unknown target action: ${targetAction}")`;
-    }
-
     if (tagName === 'a') {
-      // For anchor tags, just add the do action (maintains backward compatibility)
-      block.setAttribute('onclick', doEventAction);
+      // For anchor tags, add data attributes so they can be handled by the React component
+      block.setAttribute('data-button-type', 'do');
+      block.classList.add('interactive-button');
+      // No onclick handler - will be handled by React component
     } else {
       // Create button container for better layout
       const buttonContainer = document.createElement('div');
       buttonContainer.className = 'interactive-button-container';
       
       if (targetAction === "sequence") {
-        // For sequence, create a single button that shows then does
-        const sequenceButton = createButton('Do SECTION', 'interactive-sequence-button');
-        sequenceButton.setAttribute('onclick', doEventAction);
+        // For sequence, create a single button that executes the sequence
+        const sequenceButton = createButton('Do SECTION', 'interactive-sequence-button', 'do');
         buttonContainer.appendChild(sequenceButton);
       } else {
         // For individual actions, create both Show me and Do it buttons
-        const showButton = createButton('Show me', 'interactive-show-button');
-        showButton.setAttribute('onclick', showEventAction);
-        
-        const doButton = createButton('Do it', 'interactive-do-button');
-        doButton.setAttribute('onclick', doEventAction);
+        const showButton = createButton('Show me', 'interactive-show-button', 'show');
+        const doButton = createButton('Do it', 'interactive-do-button', 'do');
         
         buttonContainer.appendChild(showButton);
         buttonContainer.appendChild(doButton);
@@ -366,6 +349,14 @@ function processSingleDocsContent(mainElement: Element, url: string): string {
     const href = link.getAttribute('href');
     if (href) {
       let finalHref = href;
+      
+      // Handle anchor links (starting with #) - these should scroll within the page
+      if (href.startsWith('#')) {
+        // Mark as internal anchor link for special handling
+        link.setAttribute('data-docs-anchor-link', 'true');
+        link.setAttribute('data-anchor-target', href.substring(1)); // Remove the # prefix
+        return; // Don't process further
+      }
       
       // Fix relative URLs with configurable base URL
       if (href.startsWith('/')) {
