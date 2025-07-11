@@ -39,7 +39,7 @@ export interface UseContextPanelReturn {
   refreshRecommendations: () => void;
   openLearningJourney: (url: string, title: string) => void;
   openDocsPage: (url: string, title: string) => void;
-  toggleSummaryExpansion: (index: number) => void;
+  toggleSummaryExpansion: (recommendationUrl: string) => void;
   navigateToPath: (path: string) => void;
   toggleOtherDocsExpansion: () => void;
 }
@@ -76,6 +76,12 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     dashboardInfo: DashboardInfo | null,
     visualizationType?: string
   ) => {
+    // Skip if no path provided
+    if (!currentPath) {
+      console.warn('fetchRecommendationsData called with empty path, skipping');
+      return;
+    }
+
     setIsLoadingRecommendations(true);
     setRecommendationsError(null);
 
@@ -188,9 +194,17 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
   // Update context data based on current location
   const updateContext = useCallback(async () => {
-    const currentPath = window.location.pathname;
+    // Use Grafana location service for more reliable path tracking
+    const location = locationService.getLocation();
+    const currentPath = location.pathname || window.location.pathname || '';
     const currentUrl = window.location.href;
     const currentVizType = detectVisualizationType();
+    
+    // Skip if path is empty (transitional state)
+    if (!currentPath) {
+      console.warn('Empty path detected during navigation, skipping context update');
+      return;
+    }
     
     // Check if location actually changed (including viz type)
     if (lastLocationRef.current.path === currentPath && 
@@ -244,25 +258,32 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
   // Set up location listener
   useEffect(() => {
-    // Initial context update
-    updateContext();
+    // Initial context update with a small delay to ensure DOM is ready
+    const initialUpdateTimeout = setTimeout(() => {
+      updateContext();
+    }, 100);
 
     // Set up listener for location changes
     const history = locationService.getHistory();
     if (history) {
       const unlisten = history.listen((location: any) => {
-        // Use updateContext which now has built-in change detection
-        updateContext();
+        // Add a small delay to handle race conditions during navigation
+        setTimeout(() => {
+          updateContext();
+        }, 50);
       });
 
       // Cleanup listener on unmount
       return () => {
+        clearTimeout(initialUpdateTimeout);
         unlisten();
       };
     }
     
-    // Return empty cleanup function if no history available
-    return () => {};
+    // Return cleanup function
+    return () => {
+      clearTimeout(initialUpdateTimeout);
+    };
   }, [updateContext]); // Only depend on updateContext, not path/url state
 
   // Actions
@@ -290,18 +311,17 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     }
   }, [onOpenDocsPage]);
 
-  const toggleSummaryExpansion = useCallback((index: number) => {
+  const toggleSummaryExpansion = useCallback((recommendationUrl: string) => {
     setRecommendations(prevRecommendations => {
-      const newRecommendations = [...prevRecommendations];
-      const recommendation = newRecommendations[index];
-      
-      // Toggle summary expansion state
-      newRecommendations[index] = {
-        ...recommendation,
-        summaryExpanded: !recommendation.summaryExpanded,
-      };
-      
-      return newRecommendations;
+      return prevRecommendations.map(rec => {
+        if (rec.url === recommendationUrl) {
+          return {
+            ...rec,
+            summaryExpanded: !rec.summaryExpanded,
+          };
+        }
+        return rec;
+      });
     });
   }, []);
 

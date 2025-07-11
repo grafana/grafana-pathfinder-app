@@ -46,6 +46,7 @@ export interface ContextPayload {
   tags: string[];
   user_id: string;
   user_role: string;
+  platform: string;
 }
 
 // Data fetching functions extracted from context panel
@@ -153,6 +154,15 @@ export async function fetchRecommendations(
   error: string | null;
 }> {
   try {
+    // Validate that we have a path
+    if (!currentPath) {
+      console.error('fetchRecommendations called with empty path');
+      return {
+        recommendations: [],
+        error: 'No path provided for recommendations',
+      };
+    }
+
     // Prepare the payload for the recommender service
     const payload: ContextPayload = {
       path: currentPath,
@@ -160,6 +170,7 @@ export async function fetchRecommendations(
       tags: contextTags,
       user_id: config.bootData.user.analytics.identifier,
       user_role: config.bootData.user.orgRole || 'Viewer',
+      platform: config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss',
     };
 
     // Send request to your recommender service
@@ -183,8 +194,15 @@ export async function fetchRecommendations(
       type: 'docs-page',
       summary: 'A test of interactive elements.',
     };
+    const defaultR2: Recommendation = {
+      title: 'Tutorial Environment Demo',
+      url: 'https://raw.githubusercontent.com/Jayclifford345/tutorial-environment/refs/heads/master/',
+      type: 'docs-page',
+      summary: 'Additional tutorial environment for testing interactive elements.',
+    };
     const recommendations = data.recommendations || [];
     recommendations.push(defaultR);
+    recommendations.push(defaultR2);
     
     // Only fetch step counts for learning journey recommendations
     const processedRecommendations = await Promise.all(
