@@ -588,7 +588,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   }, [model]);
 
   // Use custom hooks for cleaner organization
-  useInteractiveElements();
+  useInteractiveElements({ containerRef: contentRef });
   
   useContentProcessing({
     contentRef,

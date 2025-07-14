@@ -12,6 +12,26 @@ export interface DataSource {
   access?: string;
 }
 
+export interface User {
+  id: number;
+  uid: string;
+  email: string;
+  name: string;
+  login: string;
+  isGrafanaAdmin: boolean;
+  theme: string;
+  orgId: number;
+  isDisabled: boolean;
+  isExternal: boolean;
+  isExternallySynced: boolean;
+  isGrafanaAdminExternallySynced: boolean;
+  authLabels: string[];
+  updatedAt: string;
+  createdAt: string;
+  avatarUrl: string;
+  isProvisioned: boolean;
+}
+
 export interface DashboardInfo {
   id?: number;
   title?: string;
@@ -57,6 +77,16 @@ export async function fetchDataSources(): Promise<DataSource[]> {
   } catch (error) {
     console.warn('Failed to fetch data sources:', error);
     return [];
+  }
+}
+
+export async function fetchUser(): Promise<User | null> {
+  try {
+    const user = await getBackendSrv().get('/api/user');
+    return user; 
+  } catch (error) {
+    console.warn('Failed to fetch user:', error);
+    return null;
   }
 }
 
@@ -187,6 +217,12 @@ export async function fetchRecommendations(
     }
 
     const data: RecommenderResponse = await response.json();
+    const defaultR0: Recommendation = {
+      title: 'Build Your First Dashboard',
+      url: 'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/r-grafana',
+      type: 'docs-page',
+      summary: 'Dynamic walk-through of building a dashboard.',
+    };
     const defaultR: Recommendation = {
       title: 'Product Interactive Tutorial Demo',
       // This will have /unstyled.html added to it.
@@ -201,6 +237,7 @@ export async function fetchRecommendations(
       summary: 'Additional tutorial environment for testing interactive elements.',
     };
     const recommendations = data.recommendations || [];
+    recommendations.push(defaultR0);
     recommendations.push(defaultR);
     recommendations.push(defaultR2);
     

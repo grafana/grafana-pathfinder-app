@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useCallback, useRef } from 'react';
-import { fetchDataSources } from './context-data-fetcher';
+import { fetchDataSources, fetchUser } from './context-data-fetcher';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 import { markElementCompleted, waitForReactUpdates, groupInteractiveElementsByStep, markStepCompleted, InteractiveStep } from './requirements.util';
 
@@ -91,25 +91,6 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
 
 
 /**
- * Find button elements that contain the specified text (case-insensitive, substring match)
- * Searches through all child text nodes, not just direct textContent
- */
-function findButtonByText(targetText: string): HTMLButtonElement[] {
-  if (!targetText || typeof targetText !== 'string') {
-    return [];
-  }
-
-  const buttons = document.querySelectorAll('button');
-  const searchText = targetText.toLowerCase().trim();
-  
-  return Array.from(buttons).filter((button) => {
-    // Get all text content from the button and its descendants
-    const allText = getAllTextContent(button).toLowerCase();
-    return allText.includes(searchText);
-  }) as HTMLButtonElement[];
-}
-
-/**
  * Recursively get all text content from an element and its descendants
  */
 function getAllTextContent(element: Element): string {
@@ -129,11 +110,38 @@ function getAllTextContent(element: Element): string {
   return text.trim();
 }
 
-export function useInteractiveElements() {
+interface UseInteractiveElementsOptions {
+  containerRef?: React.RefObject<HTMLElement>;
+}
+
+export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
+  const { containerRef } = options;
+  
   // Initialize global interactive styles
   useEffect(() => {
     addGlobalInteractiveStyles();
   }, []);
+
+  /**
+   * Find button elements that contain the specified text (case-insensitive, substring match)
+   * Searches through all child text nodes, not just direct textContent
+   */
+  function findButtonByText(targetText: string): HTMLButtonElement[] {
+    if (!targetText || typeof targetText !== 'string') {
+      return [];
+    }
+
+    // In this special case we want to look through the entire document, since for finding
+    // buttons we want to click, we have to look outside the docs plugin frame.
+    const buttons = document.querySelectorAll('button');
+    const searchText = targetText.toLowerCase().trim();
+    
+    return Array.from(buttons).filter((button) => {
+      // Get all text content from the button and its descendants
+      const allText = getAllTextContent(button).toLowerCase();
+      return allText.includes(searchText);
+    }) as HTMLButtonElement[];
+  }
 
   function highlight(element: HTMLElement) {
     // Add highlight class for better styling
@@ -191,8 +199,9 @@ export function useInteractiveElements() {
       const targetaction = element.getAttribute('data-targetaction');
       
       if (reftarget && targetaction) {
-        // Find all interactive elements in the document to identify the step
-        const allInteractiveElements = document.querySelectorAll('[data-requirements]') as NodeListOf<HTMLElement>;
+        // Find all interactive elements in the current container to identify the step
+        const searchContainer = containerRef?.current || document;
+        const allInteractiveElements = searchContainer.querySelectorAll('[data-requirements]') as NodeListOf<HTMLElement>;
         const elementArray = Array.from(allInteractiveElements);
         
         // Group elements by step using centralized logic
@@ -239,7 +248,8 @@ export function useInteractiveElements() {
 
   function findInteractiveElement(reftarget: string): HTMLElement | null {
     // Try to find the interactive element that triggered this action
-    const interactiveElements = document.querySelectorAll('.interactive[data-targetaction]');
+    const searchContainer = containerRef?.current || document;
+    const interactiveElements = searchContainer.querySelectorAll('.interactive[data-targetaction]');
     
     for (const element of interactiveElements) {
       const elementReftarget = element.getAttribute('data-reftarget');
@@ -258,6 +268,7 @@ export function useInteractiveElements() {
       setInteractiveState(interactiveElement, 'running');
     }
     
+    // Search entire document for the target, which is outside of docs plugin frame.
     const targetElements = document.querySelectorAll(data.reftarget);
     
     try {
@@ -336,7 +347,8 @@ export function useInteractiveElements() {
     }
     
     try {
-      const targetElements = document.querySelectorAll(data.reftarget);
+      const searchContainer = containerRef?.current || document;
+      const targetElements = searchContainer.querySelectorAll(data.reftarget);
 
       if(targetElements.length === 0) {
         const msg = `No interactive sequence container found matching selector: ${data.reftarget}`;
@@ -394,76 +406,77 @@ export function useInteractiveElements() {
     }
     
     try {
+      // Search entire document for the target, which is outside of docs plugin frame.
       const targetElements = document.querySelectorAll(data.reftarget);
       
       if (targetElements.length === 0) {
         console.warn(`No elements found matching selector: ${data.reftarget}`);
         return;
+      } else if(targetElements.length > 1) {
+        console.warn(`Multiple elements found matching selector: ${data.reftarget}`);
+      }
+
+      const targetElement = targetElements[0] as HTMLElement;
+      
+        if (!fillForm) {
+          // Show mode: only highlight, don't fill the form
+          highlight(targetElement);
+          return;
+        }
+
+        // Do mode: don't highlight, just fill the form
+        const tagName = targetElement.tagName.toLowerCase();
+        const inputType = (targetElement as HTMLInputElement).type ? (targetElement as HTMLInputElement).type.toLowerCase() : '';
+        
+        if (tagName === 'input') {
+          if (inputType === 'checkbox' || inputType === 'radio') {
+            (targetElement as HTMLInputElement).checked = value !== 'false' && value !== '0' && value !== '';
+          } else {
+            (targetElement as HTMLInputElement).value = value;
+          }
+        } else if (tagName === 'textarea') {
+          (targetElement as HTMLTextAreaElement).value = value;
+        } else if (tagName === 'select') {
+          (targetElement as HTMLSelectElement).value = value;
+        } else {
+          targetElement.textContent = value;
+        }
+      
+      // Trigger multiple events to notify all possible listeners
+      targetElement.focus();
+      const focusEvent = new Event('focus', { bubbles: true });
+      targetElement.dispatchEvent(focusEvent);
+      
+      const inputEvent = new Event('input', { bubbles: true });
+      targetElement.dispatchEvent(inputEvent);
+      
+      const keyDownEvent = new KeyboardEvent('keydown', { bubbles: true, key: 'Tab' });
+      targetElement.dispatchEvent(keyDownEvent);
+      
+      const keyUpEvent = new KeyboardEvent('keyup', { bubbles: true, key: 'Tab' });
+      targetElement.dispatchEvent(keyUpEvent);
+      
+      const changeEvent = new Event('change', { bubbles: true });
+      targetElement.dispatchEvent(changeEvent);
+      
+      const blurEvent = new Event('blur', { bubbles: true });
+      targetElement.dispatchEvent(blurEvent);
+      targetElement.blur();
+      
+      // For React specifically, manually trigger React's internal events
+      if ((targetElement as any)._valueTracker) {
+        (targetElement as any)._valueTracker.setValue('');
       }
       
-      targetElements.forEach(function(te, index) {
-         const targetElement = te as HTMLElement;
-
-         if (!fillForm) {
-           // Show mode: only highlight, don't fill the form
-           highlight(targetElement);
-           return;
-         }
-
-         // Do mode: don't highlight, just fill the form
-         const tagName = targetElement.tagName.toLowerCase();
-         const inputType = (targetElement as HTMLInputElement).type ? (targetElement as HTMLInputElement).type.toLowerCase() : '';
-         
-         if (tagName === 'input') {
-           if (inputType === 'checkbox' || inputType === 'radio') {
-             (targetElement as HTMLInputElement).checked = value !== 'false' && value !== '0' && value !== '';
-           } else {
-             (targetElement as HTMLInputElement).value = value;
-           }
-         } else if (tagName === 'textarea') {
-           (targetElement as HTMLTextAreaElement).value = value;
-         } else if (tagName === 'select') {
-           (targetElement as HTMLSelectElement).value = value;
-         } else {
-           targetElement.textContent = value;
-         }
+      // Custom property descriptor approach for React/Vue compatibility
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+      if (nativeInputValueSetter && (tagName === 'input' || tagName === 'textarea')) {
+        nativeInputValueSetter.call(targetElement, value);
         
-        // Trigger multiple events to notify all possible listeners
-        targetElement.focus();
-        const focusEvent = new Event('focus', { bubbles: true });
-        targetElement.dispatchEvent(focusEvent);
-        
-        const inputEvent = new Event('input', { bubbles: true });
-        targetElement.dispatchEvent(inputEvent);
-        
-        const keyDownEvent = new KeyboardEvent('keydown', { bubbles: true, key: 'Tab' });
-        targetElement.dispatchEvent(keyDownEvent);
-        
-        const keyUpEvent = new KeyboardEvent('keyup', { bubbles: true, key: 'Tab' });
-        targetElement.dispatchEvent(keyUpEvent);
-        
-        const changeEvent = new Event('change', { bubbles: true });
-        targetElement.dispatchEvent(changeEvent);
-        
-        const blurEvent = new Event('blur', { bubbles: true });
-        targetElement.dispatchEvent(blurEvent);
-        targetElement.blur();
-        
-        // For React specifically, manually trigger React's internal events
-        if ((targetElement as any)._valueTracker) {
-          (targetElement as any)._valueTracker.setValue('');
-        }
-        
-        // Custom property descriptor approach for React/Vue compatibility
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-        if (nativeInputValueSetter && (tagName === 'input' || tagName === 'textarea')) {
-          nativeInputValueSetter.call(targetElement, value);
-          
-          const syntheticEvent = new Event('input', { bubbles: true }) as any;
-          syntheticEvent.simulated = true;
-          targetElement.dispatchEvent(syntheticEvent);
-        }
-      });
+        const syntheticEvent = new Event('input', { bubbles: true }) as any;
+        syntheticEvent.simulated = true;
+        targetElement.dispatchEvent(syntheticEvent);
+      }
       
       // Mark as completed after successful execution
       if (interactiveElement) {
@@ -672,6 +685,31 @@ export function useInteractiveElements() {
     };
   }
 
+  const isAdminCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    const user = await fetchUser();
+    if(user && user.isGrafanaAdmin) {
+      return {
+        requirement: check,
+        pass: true,
+        context: user,
+      }
+    } else if(user) {
+      return {
+        requirement: check,
+        pass: false,
+        error: "User is not an admin",
+        context: user,
+      }
+    }
+
+    return {
+      requirement: check,
+      pass: false,
+      error: "User is not logged in",
+      context: user,
+    }
+  }
+
   const hasDatasourcesCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
     const dataSources = await fetchDataSources();
     if(dataSources.length > 0) {
@@ -710,11 +748,14 @@ export function useInteractiveElements() {
         return reftargetExistsCHECK(data, check);
       } else if(check === 'has-datasources') {
         return hasDatasourcesCHECK(data, check);
+      } else if(check === 'is-admin') {
+        return isAdminCHECK(data, check);
       }
 
+      console.warn("Unknown requirement:", check);
       return {
         requirement: check,
-        pass: false,
+        pass: true,
         error: "Unknown requirement",
         context: data,
       }
@@ -754,8 +795,9 @@ export function useInteractiveElements() {
    * This replaces the need for inline onclick handlers
    */
   const attachInteractiveEventListeners = useCallback(() => {
-    // Find all interactive elements with data attributes
-    const interactiveElements = document.querySelectorAll('[data-targetaction][data-reftarget].interactive-button');
+    // Find all interactive elements with data attributes in the scoped container
+    const searchContainer = containerRef?.current || document;
+    const interactiveElements = searchContainer.querySelectorAll('[data-targetaction][data-reftarget].interactive-button');
     
     interactiveElements.forEach((element) => {
       const htmlElement = element as HTMLElement;
@@ -812,13 +854,14 @@ export function useInteractiveElements() {
       // Store the handler so we can remove it later if needed
       (htmlElement as any).__interactiveClickHandler = clickHandler;
     });
-  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveSequence, checkRequirementsFromData]);
+  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveSequence, checkRequirementsFromData, containerRef]);
 
   /**
    * Remove event listeners from interactive elements
    */
   const detachInteractiveEventListeners = useCallback(() => {
-    const interactiveElements = document.querySelectorAll('[data-listener-attached="true"]');
+    const searchContainer = containerRef?.current || document;
+    const interactiveElements = searchContainer.querySelectorAll('[data-listener-attached="true"]');
     
     interactiveElements.forEach((element) => {
       const htmlElement = element as HTMLElement;
@@ -831,7 +874,7 @@ export function useInteractiveElements() {
       
       htmlElement.removeAttribute('data-listener-attached');
     });
-  }, []);
+  }, [containerRef]);
 
   /**
    * Check if a DOM node contains interactive elements
