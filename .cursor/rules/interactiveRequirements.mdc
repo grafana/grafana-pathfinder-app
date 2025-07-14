@@ -29,11 +29,21 @@ the docs-plugin could check that condition was true.
 - **Usage**: For interactive elements that require data sources to function
 - **Example**: `data-requirements="has-datasources"`
 
+#### `is-admin`
+- **Purpose**: Ensures the current user has Grafana admin privileges
+- **Usage**: For interactive elements that require admin access to function properly
+- **Example**: `data-requirements="is-admin"`
+
+#### `navmenu-open`
+- **Purpose**: Ensures the Grafana navigation menu is open/visible
+- **Usage**: For interactive elements that need to interact with navigation menu items
+- **Example**: `data-requirements="navmenu-open"`
+
 ### Combining Requirements
 
 Multiple requirements can be combined:
 ```html
-<button data-requirements="exists-reftarget,has-datasources" 
+<button data-requirements="exists-reftarget,has-datasources,is-admin" 
         data-targetaction="button" 
         data-reftarget="Add Dashboard">
   Click to add dashboard
@@ -226,6 +236,13 @@ When using sequential mode, the system stops checking requirements as soon as on
         data-targetaction="button" 
         data-reftarget="Apply">
   Apply changes
+</button>
+
+<!-- Step 4: Requires navigation menu to be open -->
+<button data-requirements="navmenu-open,exists-reftarget" 
+        data-targetaction="button" 
+        data-reftarget="Connections">
+  Navigate to Connections
 </button>
 ```
 

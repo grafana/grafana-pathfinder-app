@@ -685,6 +685,23 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     };
   }
 
+  const navmenuOpenCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    const navmenu = document.querySelector('ul[aria-label="Navigation"]');
+    if(navmenu) {
+      return {
+        requirement: check,
+        pass: true,
+      }
+    }
+
+    return {
+      requirement: check,
+      pass: false,
+      error: "Navmenu is not open",
+      context: data,
+    }
+  }
+
   const isAdminCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
     const user = await fetchUser();
     if(user && user.isGrafanaAdmin) {
@@ -750,6 +767,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         return hasDatasourcesCHECK(data, check);
       } else if(check === 'is-admin') {
         return isAdminCHECK(data, check);
+      } else if(check === 'navmenu-open') {
+        return navmenuOpenCHECK(data, check);
       }
 
       console.warn("Unknown requirement:", check);
