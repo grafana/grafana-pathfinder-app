@@ -195,10 +195,20 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       });
       
       // Use centralized step management to mark the entire logical step as completed
+      const sectionId = element.getAttribute('data-section-id');
+      const stepId = element.getAttribute('data-step-id');
       const reftarget = element.getAttribute('data-reftarget');
       const targetaction = element.getAttribute('data-targetaction');
       
-      if (reftarget && targetaction) {
+      // Determine the unique identifier for this element's step
+      let uniqueId: string | null = null;
+      if (sectionId) {
+        uniqueId = `section-${sectionId}`;
+      } else if (stepId) {
+        uniqueId = `step-${stepId}`;
+      }
+      
+      if (uniqueId) {
         // Find all interactive elements in the current container to identify the step
         const searchContainer = containerRef?.current || document;
         const allInteractiveElements = searchContainer.querySelectorAll('[data-requirements]') as NodeListOf<HTMLElement>;
@@ -207,14 +217,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         // Group elements by step using centralized logic
         const steps = groupInteractiveElementsByStep(elementArray);
         
-        // Find the step that contains this element
+        // Find the step that contains this element using the unique identifier
         const elementStep = steps.find((step: InteractiveStep) => 
-          step.reftarget === reftarget && 
-          step.targetaction === targetaction
+          step.uniqueId === uniqueId
         );
         
         if (elementStep) {
-          console.log(`📋 Marking entire step as completed: ${elementStep.buttons.length} buttons with reftarget="${reftarget}" targetaction="${targetaction}"`);
+          console.log(`📋 Marking entire step as completed: ${elementStep.buttons.length} buttons with uniqueId="${uniqueId}"`);
           
           // Use centralized step completion logic
           markStepCompleted(elementStep);
@@ -225,13 +234,38 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           });
         } else {
           // Fallback: mark just this element as completed
-          console.log('⚠️ No step found, marking only this element as completed');
+          console.log('⚠️ No step found with unique ID, marking only this element as completed');
           markElementCompleted(element);
         }
       } else {
-        // Fallback: mark just this element as completed
-        console.log('⚠️ No reftarget/targetaction found, marking only this element as completed');
-        markElementCompleted(element);
+        // Fallback for elements without section/step IDs: use old method
+        console.warn('⚠️ Interactive element missing section/step ID, using fallback completion');
+        if (reftarget && targetaction) {
+          // Find all interactive elements in the current container to identify the step
+          const searchContainer = containerRef?.current || document;
+          const allInteractiveElements = searchContainer.querySelectorAll('[data-requirements]') as NodeListOf<HTMLElement>;
+          const elementArray = Array.from(allInteractiveElements);
+          
+          // Group elements by step using centralized logic
+          const steps = groupInteractiveElementsByStep(elementArray);
+          
+          // Find the step that contains this element using fallback method
+          const elementStep = steps.find((step: InteractiveStep) => 
+            step.reftarget === reftarget && 
+            step.targetaction === targetaction
+          );
+          
+          if (elementStep) {
+            console.log(`📋 Marking entire step as completed (fallback): ${elementStep.buttons.length} buttons with reftarget="${reftarget}" targetaction="${targetaction}"`);
+            markStepCompleted(elementStep);
+          } else {
+            markElementCompleted(element);
+          }
+        } else {
+          // Final fallback: mark just this element as completed
+          console.log('⚠️ No reftarget/targetaction found, marking only this element as completed');
+          markElementCompleted(element);
+        }
       }
       
       // Wait for React updates to complete, then dispatch event to trigger requirements re-check

@@ -142,6 +142,15 @@ function processInteractiveElements(element: Element) {
       // Add reference to the parent interactive element's unique ID for precise step grouping
       button.setAttribute('data-parent-id', block.id);
       
+      // CRITICAL: Copy section/step IDs to buttons for unique identification
+      if (targetAction === 'sequence') {
+        // Section buttons inherit the section ID
+        button.setAttribute('data-section-id', `${sectionId}`);
+      } else {
+        // Regular step buttons inherit the step ID
+        button.setAttribute('data-step-id', `${sectionId}.${stepId}`);
+      }
+      
       // Add class to identify this as an interactive button
       button.classList.add('interactive-button');
 
@@ -161,6 +170,16 @@ function processInteractiveElements(element: Element) {
       // For anchor tags, add data attributes so they can be handled by the React component
       block.setAttribute('data-button-type', 'do');
       block.setAttribute('data-parent-id', block.id);
+      
+      // CRITICAL: Copy section/step IDs to anchor tags for unique identification
+      if (targetAction === 'sequence') {
+        // Section buttons inherit the section ID
+        block.setAttribute('data-section-id', `${sectionId}`);
+      } else {
+        // Regular step buttons inherit the step ID
+        block.setAttribute('data-step-id', `${sectionId}.${stepId}`);
+      }
+      
       block.classList.add('interactive-button');
       // No onclick handler - will be handled by React component
     } else {

@@ -535,45 +535,56 @@ export interface InteractiveStep {
   requirements: string;
   buttons: HTMLElement[];
   stepIndex: number;
+  // New unique identifiers for precise step targeting
+  sectionId: string | null;
+  stepId: string | null;
+  uniqueId: string; // Either sectionId or stepId, used as the primary key
 }
 
 /**
- * Group interactive elements by their logical step
- * Elements with the same reftarget and targetaction belong to the same step
- * SPECIAL EXCEPTION: "do section" buttons (targetaction="sequence") are always treated as separate logical steps
+ * Group interactive elements by their logical step using unique section/step IDs
+ * Elements with the same data-section-id or data-step-id belong to the same step
+ * This ensures precise step targeting without cross-section interference
  */
 export function groupInteractiveElementsByStep(elements: HTMLElement[]): InteractiveStep[] {
   const stepMap = new Map<string, InteractiveStep>();
-  let sectionButtonCounter = 0; // Counter for unique "do section" button steps
   
   elements.forEach((element, index) => {
     const reftarget = element.getAttribute('data-reftarget') || '';
     const targetaction = element.getAttribute('data-targetaction') || '';
     const requirements = element.getAttribute('data-requirements') || '';
+    const sectionId = element.getAttribute('data-section-id');
+    const stepId = element.getAttribute('data-step-id');
     
-    let stepKey: string;
-    
-    // SPECIAL EXCEPTION: "do section" buttons are always treated as separate logical steps
-    if (targetaction === 'sequence') {
-      // Each "do section" button gets its own unique step, even if they have the same reftarget
-      stepKey = `section-${sectionButtonCounter++}-${reftarget}|${targetaction}`;
-      console.log(`🔧 Creating separate step for "do section" button with key: ${stepKey}`);
+    // Determine the unique identifier for this step
+    let uniqueId: string;
+    if (sectionId) {
+      // Section buttons (targetaction="sequence") use their section ID
+      uniqueId = `section-${sectionId}`;
+    } else if (stepId) {
+      // Regular step buttons use their step ID
+      uniqueId = `step-${stepId}`;
     } else {
-      // Regular buttons are grouped by reftarget + targetaction (Show Me / Do It grouping)
-      stepKey = `${reftarget}|${targetaction}`;
+      // Fallback to the old method for elements without section/step IDs
+      uniqueId = `fallback-${reftarget}|${targetaction}`;
+      console.warn(`⚠️ Interactive element missing section/step ID, using fallback: ${uniqueId}`);
     }
     
-    if (!stepMap.has(stepKey)) {
-      stepMap.set(stepKey, {
+    if (!stepMap.has(uniqueId)) {
+      stepMap.set(uniqueId, {
         reftarget,
         targetaction,
         requirements,
         buttons: [],
-        stepIndex: stepMap.size // Sequential step index
+        stepIndex: stepMap.size, // Sequential step index
+        sectionId,
+        stepId,
+        uniqueId
       });
+      console.log(`🔧 Created new step with unique ID: ${uniqueId} (section: ${sectionId}, step: ${stepId})`);
     }
     
-    stepMap.get(stepKey)!.buttons.push(element);
+    stepMap.get(uniqueId)!.buttons.push(element);
   });
   
   return Array.from(stepMap.values());
