@@ -102,7 +102,8 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
 function processInteractiveElements(element: Element) {
   const interactiveLinks = element.querySelectorAll('a.interactive, span.interactive, li.interactive');
   // We need to ensure that every interactive element has a unique ID we can target
-  let interactiveId = 0;
+  let stepId = 0;
+  let sectionId = 0;
   interactiveLinks.forEach(block => {
     const tagName = block.tagName.toLowerCase();
     const targetAction = block.getAttribute('data-targetaction');
@@ -113,6 +114,17 @@ function processInteractiveElements(element: Element) {
     if (!targetAction || !reftarget) {
       console.warn("Interactive link missing target action or ref target:", block.textContent);
       return;
+    }
+
+    if (targetAction === 'sequence') {
+      // Increment counter only when starting a next, so the value will stay current for
+      // child steps to inherit.
+      sectionId++; 
+      stepId = 0;
+      block.setAttribute('data-section-id', `${sectionId}`);
+    } else {
+      stepId++;
+      block.setAttribute('data-step-id', `${sectionId}.${stepId}`);
     }
 
     const createButton = (text: string, className = '', buttonType: 'show' | 'do' = 'do') => {
@@ -142,8 +154,7 @@ function processInteractiveElements(element: Element) {
 
     // Ensure that every interactive element has a unique ID we can target
     if (!block.hasAttribute('id')) {
-      block.setAttribute('id', `__interactive-${interactiveId}`);
-      interactiveId++;
+      block.setAttribute('id', `__interactive-${block.getAttribute('data-section-id') || block.getAttribute('data-step-id')}`);
     }
 
     if (tagName === 'a') {
