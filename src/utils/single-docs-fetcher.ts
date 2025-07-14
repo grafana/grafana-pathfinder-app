@@ -101,6 +101,8 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
 
 function processInteractiveElements(element: Element) {
   const interactiveLinks = element.querySelectorAll('a.interactive, span.interactive, li.interactive');
+  // We need to ensure that every interactive element has a unique ID we can target
+  let interactiveId = 0;
   interactiveLinks.forEach(block => {
     const tagName = block.tagName.toLowerCase();
     const targetAction = block.getAttribute('data-targetaction');
@@ -134,6 +136,12 @@ function processInteractiveElements(element: Element) {
       }
       return button;
     };
+
+    // Ensure that every interactive element has a unique ID we can target
+    if (!block.hasAttribute('id')) {
+      block.setAttribute('id', `__interactive-${interactiveId}`);
+      interactiveId++;
+    }
 
     if (tagName === 'a') {
       // For anchor tags, add data attributes so they can be handled by the React component
