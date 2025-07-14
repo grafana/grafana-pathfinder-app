@@ -48,6 +48,13 @@ export interface SequentialRequirementsResult {
 }
 
 /**
+ * Type guard to check if an element is an HTMLButtonElement
+ */
+function isHTMLButtonElement(element: HTMLElement): element is HTMLButtonElement {
+  return element.tagName.toLowerCase() === 'button' && element instanceof HTMLButtonElement;
+}
+
+/**
  * Update element visual state based on requirement check results
  * Consolidates all the state management logic that was duplicated across files
  */
@@ -67,11 +74,17 @@ export function updateElementState(element: HTMLElement, config: ElementStateCon
   if (isChecking) {
     element.classList.add('requirements-checking');
     
-    if (element.tagName.toLowerCase() === 'button') {
+    if (isHTMLButtonElement(element)) {
       const originalText = element.getAttribute('data-original-text') || element.textContent || '';
       if (!element.getAttribute('data-original-text')) {
         element.setAttribute('data-original-text', originalText);
       }
+      
+      // Disable button to prevent duplicate actions during checking
+      element.disabled = true;
+      element.setAttribute('aria-disabled', 'true');
+      element.title = 'Checking requirements...';
+      
       element.innerHTML = `
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline-block; margin-right: 4px; animation: spin 1s linear infinite;">
           <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
@@ -89,8 +102,8 @@ export function updateElementState(element: HTMLElement, config: ElementStateCon
     element.classList.add('requirements-completed');
     element.setAttribute('data-completed', 'true');
     
-    if (element.tagName.toLowerCase() === 'button') {
-      (element as HTMLButtonElement).disabled = true;
+    if (isHTMLButtonElement(element)) {
+      element.disabled = true;
       element.setAttribute('aria-disabled', 'true');
       element.title = 'This step has been completed';
       if (originalText) {
@@ -104,8 +117,8 @@ export function updateElementState(element: HTMLElement, config: ElementStateCon
   if (isDisabled) {
     element.classList.add('requirements-disabled');
     
-    if (element.tagName.toLowerCase() === 'button') {
-      (element as HTMLButtonElement).disabled = true;
+    if (isHTMLButtonElement(element)) {
+      element.disabled = true;
       element.setAttribute('aria-disabled', 'true');
       element.title = 'Previous steps must be completed first';
       if (originalText) {
@@ -119,8 +132,8 @@ export function updateElementState(element: HTMLElement, config: ElementStateCon
   if (satisfied) {
     element.classList.add('requirements-satisfied');
     
-    if (element.tagName.toLowerCase() === 'button') {
-      (element as HTMLButtonElement).disabled = false;
+    if (isHTMLButtonElement(element)) {
+      element.disabled = false;
       element.setAttribute('aria-disabled', 'false');
       element.removeAttribute('title');
       if (originalText) {
@@ -130,8 +143,8 @@ export function updateElementState(element: HTMLElement, config: ElementStateCon
   } else {
     element.classList.add('requirements-failed');
     
-    if (element.tagName.toLowerCase() === 'button') {
-      (element as HTMLButtonElement).disabled = true;
+    if (isHTMLButtonElement(element)) {
+      element.disabled = true;
       element.setAttribute('aria-disabled', 'true');
       
       const requirements = element.getAttribute('data-requirements') || '';
@@ -381,10 +394,12 @@ export function addRequirementStyles(): void {
       opacity: 0.7;
     }
     
-    .requirements-satisfied {
-      /* Visual feedback for satisfied requirements */
+    button.requirements-checking {
+      opacity: 0.7;
+      cursor: not-allowed;
+      pointer-events: none;
     }
-    
+        
     .requirements-failed {
       opacity: 0.5;
       cursor: not-allowed;
