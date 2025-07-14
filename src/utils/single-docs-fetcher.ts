@@ -127,6 +127,9 @@ function processInteractiveElements(element: Element) {
       // Add button type attribute to distinguish between show and do buttons
       button.setAttribute('data-button-type', buttonType);
       
+      // Add reference to the parent interactive element's unique ID for precise step grouping
+      button.setAttribute('data-parent-id', block.id);
+      
       // Add class to identify this as an interactive button
       button.classList.add('interactive-button');
 
@@ -146,6 +149,7 @@ function processInteractiveElements(element: Element) {
     if (tagName === 'a') {
       // For anchor tags, add data attributes so they can be handled by the React component
       block.setAttribute('data-button-type', 'do');
+      block.setAttribute('data-parent-id', block.id);
       block.classList.add('interactive-button');
       // No onclick handler - will be handled by React component
     } else {
