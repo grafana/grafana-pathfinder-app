@@ -295,8 +295,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     return null;
   }
   
-  const interactiveFocus = useCallback((data: InteractiveElementData, click = true) => {
-    const interactiveElement = findInteractiveElement(data.reftarget);
+  const interactiveFocus = useCallback((data: InteractiveElementData, click = true, clickedElement: HTMLElement | null = null) => {
+    const interactiveElement = clickedElement || findInteractiveElement(data.reftarget);
     
     if (interactiveElement) {
       setInteractiveState(interactiveElement, 'running');
@@ -330,8 +330,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, []);
 
-  const interactiveButton = useCallback((data: InteractiveElementData, click = true) => { // eslint-disable-line react-hooks/exhaustive-deps
-    const interactiveElement = findInteractiveElement(data.reftarget);
+  const interactiveButton = useCallback((data: InteractiveElementData, click = true, clickedElement: HTMLElement | null = null) => { // eslint-disable-line react-hooks/exhaustive-deps
+    const interactiveElement = clickedElement || findInteractiveElement(data.reftarget);
     
     if (interactiveElement) {
       setInteractiveState(interactiveElement, 'running');
@@ -369,12 +369,12 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   const runInteractiveSequenceRef = useRef<(elements: Element[], showMode: boolean) => Promise<void>>();
   const runStepByStepSequenceRef = useRef<(elements: Element[]) => Promise<void>>();
 
-  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly = false): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly = false, clickedElement: HTMLElement | null = null): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
     // This is here so recursion cannot happen
     if(activeRefsRef.current.has(data.reftarget)) {
       return data.reftarget;
     }
-    const interactiveElement = findInteractiveElement(data.reftarget);
+    const interactiveElement = clickedElement || findInteractiveElement(data.reftarget);
     
     if (interactiveElement) {
       setInteractiveState(interactiveElement, 'running');
@@ -431,9 +431,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, []);
 
-  const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm = true) => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm = true, clickedElement: HTMLElement | null = null) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
-    const interactiveElement = findInteractiveElement(data.reftarget);
+    const interactiveElement = clickedElement || findInteractiveElement(data.reftarget);
     
     if (interactiveElement) {
       setInteractiveState(interactiveElement, 'running');
@@ -886,13 +886,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           const isShowMode = buttonType === 'show';
           
           if (data.targetaction === 'highlight') {
-            interactiveFocus(data, !isShowMode); // Show mode = don't click, Do mode = click
+            interactiveFocus(data, !isShowMode, htmlElement); // Show mode = don't click, Do mode = click
           } else if (data.targetaction === 'button') {
-            interactiveButton(data, !isShowMode); // Show mode = don't click, Do mode = click
+            interactiveButton(data, !isShowMode, htmlElement); // Show mode = don't click, Do mode = click
           } else if (data.targetaction === 'formfill') {
-            interactiveFormFill(data, !isShowMode); // Show mode = don't fill, Do mode = fill
+            interactiveFormFill(data, !isShowMode, htmlElement); // Show mode = don't fill, Do mode = fill
           } else if (data.targetaction === 'sequence') {
-            await interactiveSequence(data, isShowMode); // Show mode = highlight only, Do mode = full sequence
+            await interactiveSequence(data, isShowMode, htmlElement); // Show mode = highlight only, Do mode = full sequence
           } else {
             console.warn("Unknown target action:", data.targetaction);
           }
