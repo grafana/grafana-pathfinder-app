@@ -396,7 +396,7 @@ export function addRequirementStyles(): void {
       border-color: #c3e6cb !important;
     }
     
-    .requirements-completed button {
+    button.requirements-completed {
       background-color: #28a745 !important;
       border-color: #28a745 !important;
       color: white !important;
@@ -411,16 +411,16 @@ export function addRequirementStyles(): void {
       border-color: #dee2e6 !important;
     }
     
-    .requirements-disabled button {
+    button.requirements-disabled {
       opacity: 0.3;
       cursor: not-allowed;
       background-color: #6c757d !important;
       border-color: #6c757d !important;
     }
     
-    .requirements-failed button,
-    .requirements-completed button,
-    .requirements-disabled button {
+    button.requirements-failed,
+    button.requirements-completed,
+    button.requirements-disabled {
       cursor: not-allowed;
     }
     

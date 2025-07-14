@@ -168,8 +168,6 @@ export function useInteractiveElements() {
   }
 
   function setInteractiveState(element: HTMLElement, state: 'idle' | 'running' | 'completed' | 'error') {
-    console.log(`🎭 Setting interactive state: ${state} for element:`, element);
-    
     // Remove all state classes
     element.classList.remove('interactive-running', 'interactive-completed', 'interactive-error');
     
