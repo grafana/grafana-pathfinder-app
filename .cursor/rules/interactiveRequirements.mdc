@@ -11,9 +11,13 @@ Interactive elements in documentation content have two types of requirements tha
 
 ## Tutorial-Specific Requirements
 
-Tutorial-specific requirements are declared in the `data-requirements` attribute of interactive elements. Multiple requirements are comma-separated.
+Tutorial-specific requirements are declared in the `data-requirements` attribute of interactive elements. Multiple requirements are comma-separated. It is expected that this list will grow 
+over time as we have new kinds of interactive tutorials. For example, one tutorial might require
+that you have Alloy set up sending data to Grafana Cloud before you can proceed with learning
+how the Kubernetes product works; for that tutorial, we'd have to extend data-requirements so that
+the docs-plugin could check that condition was true.
 
-### Supported Requirements
+### Currently Supported Requirements
 
 #### `exists-reftarget`
 - **Purpose**: Ensures the target element exists in the DOM before the interactive action can be executed
@@ -39,8 +43,18 @@ Multiple requirements can be combined:
 ## Docs Plugin Requirements
 
 Docs plugin requirements are automatically enforced by the system and control interactive behavior.
+The objective of these requirements are as follows:
+
+1. Make it hard for the user to take confusing or nonsense actions (doing steps out of order)
+2. Maximize the chances that the workflow goes smoothly as the user expects
+3. Maximize safety: the docs-plugin should not allow you to take a step which can't succeed, as
+this creates negative surprise.
 
 ### Dual Workflow System
+
+Imagine a tutorial that has multiple sections of instructions. An example might be "create a 
+datasource" (5 steps) followed by "configure an alert" (5 steps).  This would be a total of 
+10 steps in two discrete sections.
 
 The system supports two types of workflows:
 
@@ -54,9 +68,16 @@ The system supports two types of workflows:
    - Can be enabled simultaneously with regular workflow steps
    - Function as parent containers for sequences of interactive steps
 
+Interactive tutorials can be thought of as a sequence of sections, each section having any
+number of discrete actions. **No further nesting is permitted**.  Sections may not contain
+sections, only discrete steps/regular workflows.
+
 ### Sequential Dependency
 
 **Rule**: Only one step in a regular workflow can be enabled at a time. Later steps are automatically disabled until previous steps complete.
+
+In other words, users are not permitted to skip steps, this easily leads to broken states. If steps
+are truly useless, the tutorial's content should change.
 
 **Implementation**:
 - Interactive elements are processed in DOM order
@@ -76,6 +97,8 @@ Step 4: 🚫 Auto-disabled (previous step failed)
 
 **Rule**: Once an interactive action completes successfully, the element becomes disabled to prevent re-execution.
 
+We _do not assume that actions are idempotent_. 
+
 **Implementation**:
 - Completed elements are marked with `data-completed="true"`
 - Visual state: `requirements-completed` class with green background and checkmark
@@ -91,11 +114,15 @@ After:  [Do it ✓] (disabled, green background)
 
 **Rule**: The first step of an interactive workflow is always checked for requirements when no other step has been completed.
 
-**Rationale**: Users need a place to start. This provides a special exception to the sequential dependency rule for the first step only.
+**Rationale**: Users need a place to start. This provides a special exception to the sequential dependency rule for the first step only.  Still, requirements checking must be done for every 
+element which could be executed, to avoid brokenness. (Clicking a button that cannot work, because
+its requirements haven't been met; bad experience). 
 
 ### Logical Step Grouping
 
 **Concept**: Interactive elements with the same `data-reftarget` and `data-targetaction` attributes belong to the same logical step.
+
+Note!  The original semantic HTML of the tutorial doesn't include interactive buttons; those are rendered by the docs plugin. This rule arises as a result of how we render the buttons.  Should the button rendering change, this rule needs to be revisted.
 
 **Special Exception**: "Do section" buttons (`data-targetaction="sequence"`) are always treated as separate logical steps, regardless of their `reftarget` matching other elements.
 
