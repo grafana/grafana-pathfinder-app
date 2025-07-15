@@ -2,7 +2,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { fetchDataSources, fetchUser } from './context-data-fetcher';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
-import { markElementCompleted, waitForReactUpdates, groupInteractiveElementsByStep, markStepCompleted, InteractiveStep } from './requirements.util';
+import { waitForReactUpdates, groupInteractiveElementsByStep, markStepCompleted, InteractiveStep } from './requirements.util';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -175,6 +175,15 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     return element;
   }
 
+  /**
+   * Set the visual and logical state of an interactive element.
+   * 
+   * ARCHITECTURAL DECISION: This function operates under the strong assumption that ALL
+   * interactive elements have unique step IDs (either data-section-id or data-step-id).
+   * This assumption is guaranteed by the processInteractiveElements function in 
+   * single-docs-fetcher.ts, which assigns unique IDs to every interactive element during
+   * content processing. No fallback mechanisms are provided - violations will throw errors.
+   */
   function setInteractiveState(element: HTMLElement, state: 'idle' | 'running' | 'completed' | 'error') {
     // Remove all state classes
     element.classList.remove('interactive-running', 'interactive-completed', 'interactive-error');
@@ -194,78 +203,53 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         textContent: element.textContent?.trim()
       });
       
-      // Use centralized step management to mark the entire logical step as completed
+      // STRONG ASSUMPTION: All interactive elements have unique step IDs
+      // This is guaranteed by single-docs-fetcher.ts processInteractiveElements function
+      // which assigns either data-section-id or data-step-id to every interactive element
       const sectionId = element.getAttribute('data-section-id');
       const stepId = element.getAttribute('data-step-id');
-      const reftarget = element.getAttribute('data-reftarget');
-      const targetaction = element.getAttribute('data-targetaction');
       
       // Determine the unique identifier for this element's step
-      let uniqueId: string | null = null;
-      if (sectionId) {
-        uniqueId = `section-${sectionId}`;
-      } else if (stepId) {
-        uniqueId = `step-${stepId}`;
+      const uniqueId: string = sectionId ? `section-${sectionId}` : `step-${stepId}`;
+      
+      if (!sectionId && !stepId) {
+        throw new Error(`Interactive element missing required unique step ID: reftarget=${element.getAttribute('data-reftarget')}, targetaction=${element.getAttribute('data-targetaction')}`);
       }
       
-      if (uniqueId) {
-        // Find all interactive elements in the current container to identify the step
-        const searchContainer = containerRef?.current || document;
-        const allInteractiveElements = searchContainer.querySelectorAll('[data-requirements]') as NodeListOf<HTMLElement>;
-        const elementArray = Array.from(allInteractiveElements);
+      // Find all interactive elements in the current container to identify the step
+      const searchContainer = containerRef?.current || document;
+      const allInteractiveElements = searchContainer.querySelectorAll('[data-requirements]') as NodeListOf<HTMLElement>;
+      const elementArray = Array.from(allInteractiveElements);
+      
+      // Group elements by step using centralized logic
+      const steps = groupInteractiveElementsByStep(elementArray);
+      
+      // Find the step that contains this element using the unique identifier
+      const elementStep = steps.find((step: InteractiveStep) => 
+        step.uniqueId === uniqueId
+      );
+      
+      if (elementStep) {
+        console.log(`📋 Marking entire step as completed: ${elementStep.buttons.length} buttons with uniqueId="${uniqueId}"`);
         
-        // Group elements by step using centralized logic
-        const steps = groupInteractiveElementsByStep(elementArray);
+        // Use centralized step completion logic
+        markStepCompleted(elementStep);
         
-        // Find the step that contains this element using the unique identifier
-        const elementStep = steps.find((step: InteractiveStep) => 
-          step.uniqueId === uniqueId
-        );
-        
-        if (elementStep) {
-          console.log(`📋 Marking entire step as completed: ${elementStep.buttons.length} buttons with uniqueId="${uniqueId}"`);
-          
-          // Use centralized step completion logic
-          markStepCompleted(elementStep);
-          
-          elementStep.buttons.forEach((button: HTMLElement, index: number) => {
-            const buttonType = button.getAttribute('data-button-type') || 'unknown';
-            console.log(`  ✅ Marking button ${index + 1} as completed: ${buttonType}`);
-          });
-        } else {
-          // Fallback: mark just this element as completed
-          console.log('⚠️ No step found with unique ID, marking only this element as completed');
-          markElementCompleted(element);
-        }
+        elementStep.buttons.forEach((button: HTMLElement, index: number) => {
+          const buttonType = button.getAttribute('data-button-type') || 'unknown';
+          console.log(`  ✅ Marking button ${index + 1} as completed: ${buttonType}`);
+        });
       } else {
-        // Fallback for elements without section/step IDs: use old method
-        console.warn('⚠️ Interactive element missing section/step ID, using fallback completion');
-        if (reftarget && targetaction) {
-          // Find all interactive elements in the current container to identify the step
-          const searchContainer = containerRef?.current || document;
-          const allInteractiveElements = searchContainer.querySelectorAll('[data-requirements]') as NodeListOf<HTMLElement>;
-          const elementArray = Array.from(allInteractiveElements);
-          
-          // Group elements by step using centralized logic
-          const steps = groupInteractiveElementsByStep(elementArray);
-          
-          // Find the step that contains this element using fallback method
-          const elementStep = steps.find((step: InteractiveStep) => 
-            step.reftarget === reftarget && 
-            step.targetaction === targetaction
-          );
-          
-          if (elementStep) {
-            console.log(`📋 Marking entire step as completed (fallback): ${elementStep.buttons.length} buttons with reftarget="${reftarget}" targetaction="${targetaction}"`);
-            markStepCompleted(elementStep);
-          } else {
-            markElementCompleted(element);
-          }
-        } else {
-          // Final fallback: mark just this element as completed
-          console.log('⚠️ No reftarget/targetaction found, marking only this element as completed');
-          markElementCompleted(element);
-        }
+        // This should never happen if our step grouping logic is correct
+        console.error('💥 CRITICAL: No step found with unique ID despite element having ID! This indicates a bug in step grouping logic.');
+        console.error('Details:', {
+          uniqueId,
+          sectionId,
+          stepId,
+          availableSteps: steps.map(s => s.uniqueId),
+          element: element.tagName
+        });
+        throw new Error(`Step not found for unique ID: ${uniqueId}`);
       }
       
       // Wait for React updates to complete, then dispatch event to trigger requirements re-check
