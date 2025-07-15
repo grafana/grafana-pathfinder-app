@@ -185,6 +185,16 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    * content processing. No fallback mechanisms are provided - violations will throw errors.
    */
   function setInteractiveState(element: HTMLElement, state: 'idle' | 'running' | 'completed' | 'error') {
+    // ASSUMPTION: All interactive elements have unique step IDs
+    // This is guaranteed by single-docs-fetcher.ts processInteractiveElements function
+    // which assigns either data-section-id or data-step-id to every interactive element
+    const sectionId = element.getAttribute('data-section-id');
+    const stepId = element.getAttribute('data-step-id');
+
+    if (!sectionId && !stepId) {
+      throw new Error(`Interactive element missing required unique step ID: reftarget=${element.getAttribute('data-reftarget')}, targetaction=${element.getAttribute('data-targetaction')}`);
+    }
+
     // Remove all state classes
     element.classList.remove('interactive-running', 'interactive-completed', 'interactive-error');
     
@@ -202,20 +212,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         buttonType: element.getAttribute('data-button-type'),
         textContent: element.textContent?.trim()
       });
-      
-      // STRONG ASSUMPTION: All interactive elements have unique step IDs
-      // This is guaranteed by single-docs-fetcher.ts processInteractiveElements function
-      // which assigns either data-section-id or data-step-id to every interactive element
-      const sectionId = element.getAttribute('data-section-id');
-      const stepId = element.getAttribute('data-step-id');
-      
+            
       // Determine the unique identifier for this element's step
       const uniqueId: string = sectionId ? `section-${sectionId}` : `step-${stepId}`;
-      
-      if (!sectionId && !stepId) {
-        throw new Error(`Interactive element missing required unique step ID: reftarget=${element.getAttribute('data-reftarget')}, targetaction=${element.getAttribute('data-targetaction')}`);
-      }
-      
+            
       // Find all interactive elements in the current container to identify the step
       const searchContainer = containerRef?.current || document;
       const allInteractiveElements = searchContainer.querySelectorAll('[data-requirements]') as NodeListOf<HTMLElement>;
