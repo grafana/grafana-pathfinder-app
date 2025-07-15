@@ -280,27 +280,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }
 
-  function findInteractiveElement(reftarget: string): HTMLElement | null {
-    // Try to find the interactive element that triggered this action
-    const searchContainer = containerRef?.current || document;
-    const interactiveElements = searchContainer.querySelectorAll('.interactive[data-targetaction]');
-    
-    for (const element of interactiveElements) {
-      const elementReftarget = element.getAttribute('data-reftarget');
-      if (elementReftarget === reftarget) {
-        return element as HTMLElement;
-      }
-    }
-    
-    return null;
-  }
-  
-  const interactiveFocus = useCallback((data: InteractiveElementData, click = true, clickedElement: HTMLElement | null = null) => {
-    const interactiveElement = clickedElement || findInteractiveElement(data.reftarget);
-    
-    if (interactiveElement) {
-      setInteractiveState(interactiveElement, 'running');
-    }
+  const interactiveFocus = useCallback((data: InteractiveElementData, click: boolean, clickedElement: HTMLElement) => {
+    setInteractiveState(clickedElement, 'running');
     
     // Search entire document for the target, which is outside of docs plugin frame.
     const targetElements = document.querySelectorAll(data.reftarget);
@@ -317,25 +298,17 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       });
       
       // Mark as completed after successful execution
-      if (interactiveElement) {
-        waitForReactUpdates().then(() => {
-          setInteractiveState(interactiveElement, 'completed');
-        });
-      }
+      waitForReactUpdates().then(() => {
+        setInteractiveState(clickedElement, 'completed');
+      });
     } catch (error) {
       console.error("Error in interactiveFocus:", error);
-      if (interactiveElement) {
-        setInteractiveState(interactiveElement, 'error');
-      }
+      setInteractiveState(clickedElement, 'error');
     }
   }, []);
 
-  const interactiveButton = useCallback((data: InteractiveElementData, click = true, clickedElement: HTMLElement | null = null) => { // eslint-disable-line react-hooks/exhaustive-deps
-    const interactiveElement = clickedElement || findInteractiveElement(data.reftarget);
-    
-    if (interactiveElement) {
-      setInteractiveState(interactiveElement, 'running');
-    }
+  const interactiveButton = useCallback((data: InteractiveElementData, click: boolean, clickedElement: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
+    setInteractiveState(clickedElement, 'running');
 
     try {
       const buttons = findButtonByText(data.reftarget);
@@ -351,16 +324,12 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       });
       
       // Mark as completed after successful execution
-      if (interactiveElement) {
-        waitForReactUpdates().then(() => {
-          setInteractiveState(interactiveElement, 'completed');
-        });
-      }
+      waitForReactUpdates().then(() => {
+        setInteractiveState(clickedElement, 'completed');
+      });
     } catch (error) {
       console.error("Error in interactiveButton:", error);
-      if (interactiveElement) {
-        setInteractiveState(interactiveElement, 'error');
-      }
+      setInteractiveState(clickedElement, 'error');
     }
   }, []);
 
@@ -369,16 +338,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   const runInteractiveSequenceRef = useRef<(elements: Element[], showMode: boolean) => Promise<void>>();
   const runStepByStepSequenceRef = useRef<(elements: Element[]) => Promise<void>>();
 
-  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly = false, clickedElement: HTMLElement | null = null): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly: boolean, clickedElement: HTMLElement): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
     // This is here so recursion cannot happen
     if(activeRefsRef.current.has(data.reftarget)) {
       return data.reftarget;
     }
-    const interactiveElement = clickedElement || findInteractiveElement(data.reftarget);
     
-    if (interactiveElement) {
-      setInteractiveState(interactiveElement, 'running');
-    }
+    setInteractiveState(clickedElement, 'running');
     
     try {
       const searchContainer = containerRef?.current || document;
@@ -415,29 +381,22 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       }
       
       // Mark as completed after successful execution
-      if (interactiveElement) {
-        setInteractiveState(interactiveElement, 'completed');
-      }
+      setInteractiveState(clickedElement, 'completed');
       
       activeRefsRef.current.delete(data.reftarget);
       return data.reftarget;
     } catch (error) {
       console.error(`Error in interactiveSequence for ${data.reftarget}:`, error);
-      if (interactiveElement) {
-        setInteractiveState(interactiveElement, 'error');
-      }
+      setInteractiveState(clickedElement, 'error');
       activeRefsRef.current.delete(data.reftarget);
       throw error;
     }
   }, []);
 
-  const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm = true, clickedElement: HTMLElement | null = null) => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm: boolean, clickedElement: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
-    const interactiveElement = clickedElement || findInteractiveElement(data.reftarget);
     
-    if (interactiveElement) {
-      setInteractiveState(interactiveElement, 'running');
-    }
+    setInteractiveState(clickedElement, 'running');
     
     try {
       // Search entire document for the target, which is outside of docs plugin frame.
@@ -513,17 +472,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       }
       
       // Mark as completed after successful execution
-      if (interactiveElement) {
-        waitForReactUpdates().then(() => {
-          setInteractiveState(interactiveElement, 'completed');
-        });
-      }
+      waitForReactUpdates().then(() => {
+        setInteractiveState(clickedElement, 'completed');
+      });
       
     } catch (error) {
       console.error('Error applying interactive action for selector ' + data.reftarget);
-      if (interactiveElement) {
-        setInteractiveState(interactiveElement, 'error');
-      }
+      setInteractiveState(clickedElement, 'error');
     }
   }, []);
 
@@ -562,11 +517,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           }
 
           if (data.targetaction === 'highlight') {
-            interactiveFocus(data, !showMode); // Show mode = don't click, Do mode = click
+            interactiveFocus(data, !showMode, element as HTMLElement); // Show mode = don't click, Do mode = click
           } else if (data.targetaction === 'button') {
-            interactiveButton(data, !showMode); // Show mode = don't click, Do mode = click
+            interactiveButton(data, !showMode, element as HTMLElement); // Show mode = don't click, Do mode = click
           } else if (data.targetaction === 'formfill') {
-            interactiveFormFill(data, !showMode); // Show mode = don't fill, Do mode = fill
+            interactiveFormFill(data, !showMode, element as HTMLElement); // Show mode = don't fill, Do mode = fill
           }
 
           // Mark element as completed
@@ -625,11 +580,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
           // Step 1: Show what we're about to do
           if (data.targetaction === 'highlight') {
-            interactiveFocus(data, false); // Show mode - highlight only
+            interactiveFocus(data, false, element as HTMLElement); // Show mode - highlight only
           } else if (data.targetaction === 'button') {
-            interactiveButton(data, false); // Show mode - highlight only
+            interactiveButton(data, false, element as HTMLElement); // Show mode - highlight only
           } else if (data.targetaction === 'formfill') {
-            interactiveFormFill(data, false); // Show mode - highlight only
+            interactiveFormFill(data, false, element as HTMLElement); // Show mode - highlight only
           }
 
           // Wait for highlight animation to complete before doing the action
@@ -649,11 +604,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
           // Step 2: Actually do the action
           if (data.targetaction === 'highlight') {
-            interactiveFocus(data, true); // Do mode - click
+            interactiveFocus(data, true, element as HTMLElement); // Do mode - click
           } else if (data.targetaction === 'button') {
-            interactiveButton(data, true); // Do mode - click
+            interactiveButton(data, true, element as HTMLElement); // Do mode - click
           } else if (data.targetaction === 'formfill') {
-            interactiveFormFill(data, true); // Do mode - fill form
+            interactiveFormFill(data, true, element as HTMLElement); // Do mode - fill form
           }
 
           // Mark step as completed
