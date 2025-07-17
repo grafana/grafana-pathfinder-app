@@ -272,17 +272,20 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     const targetElements = document.querySelectorAll(data.reftarget);
     
     try {
-      targetElements.forEach(element => {
-        if (!click) {
-          // Show mode: only highlight, don't click
+      if (!click) {
+        // Show mode: only highlight, don't click - NO step completion
+        targetElements.forEach(element => {
           highlight((element as HTMLElement));
-        } else {
-          // Do mode: just click, don't highlight
-          (element as HTMLElement).click();
-        }
+        });
+        return; // Early return - don't mark as completed in show mode
+      }
+
+      // Do mode: just click, don't highlight
+      targetElements.forEach(element => {
+        (element as HTMLElement).click();
       });
       
-      // Mark as completed after successful execution
+      // Mark as completed after successful execution (only in Do mode)
       waitForReactUpdates().then(() => {
         setInteractiveState(clickedElement, 'completed');
       });
@@ -298,17 +301,20 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     try {
       const buttons = findButtonByText(data.reftarget);
       
-      buttons.forEach(button => {
-        if (!click) {
-          // Show mode: only highlight, don't click
+      if (!click) {
+        // Show mode: only highlight, don't click - NO step completion
+        buttons.forEach(button => {
           highlight(button);
-        } else {
-          // Do mode: just click, don't highlight
-          button.click();
-        }
+        });
+        return; // Early return - don't mark as completed in show mode
+      }
+
+      // Do mode: just click, don't highlight
+      buttons.forEach(button => {
+        button.click();
       });
       
-      // Mark as completed after successful execution
+      // Mark as completed after successful execution (only in Do mode)
       waitForReactUpdates().then(() => {
         setInteractiveState(clickedElement, 'completed');
       });
