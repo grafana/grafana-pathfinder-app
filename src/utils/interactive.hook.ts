@@ -405,55 +405,61 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         const tagName = targetElement.tagName.toLowerCase();
         const inputType = (targetElement as HTMLInputElement).type ? (targetElement as HTMLInputElement).type.toLowerCase() : '';
         
+        // CONSOLIDATED APPROACH: Set value once using the most compatible method
         if (tagName === 'input') {
           if (inputType === 'checkbox' || inputType === 'radio') {
+            // Handle checkbox/radio inputs - no duplicate events issue here
             (targetElement as HTMLInputElement).checked = value !== 'false' && value !== '0' && value !== '';
           } else {
-            (targetElement as HTMLInputElement).value = value;
+            // Use React-compatible native setter approach for text inputs
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+            if (nativeInputValueSetter) {
+              nativeInputValueSetter.call(targetElement, value);
+              
+              // Reset React's value tracker if present (must be done after setting value)
+              if ((targetElement as any)._valueTracker) {
+                (targetElement as any)._valueTracker.setValue('');
+              }
+            } else {
+              // Fallback for edge cases where native setter isn't available
+              (targetElement as HTMLInputElement).value = value;
+            }
           }
         } else if (tagName === 'textarea') {
-          (targetElement as HTMLTextAreaElement).value = value;
+          // Use React-compatible native setter approach for textareas
+          const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+          if (nativeTextareaSetter) {
+            nativeTextareaSetter.call(targetElement, value);
+            
+            // Reset React's value tracker if present
+            if ((targetElement as any)._valueTracker) {
+              (targetElement as any)._valueTracker.setValue('');
+            }
+          } else {
+            // Fallback for edge cases
+            (targetElement as HTMLTextAreaElement).value = value;
+          }
         } else if (tagName === 'select') {
+          // Select elements don't have the same React issues, use direct assignment
           (targetElement as HTMLSelectElement).value = value;
         } else {
+          // For other elements, set text content
           targetElement.textContent = value;
         }
       
-      // Trigger multiple events to notify all possible listeners
+      // Dispatch events ONCE in proper sequence to notify all listeners
+      // This mimics natural user interaction: focus -> input -> change -> blur
       targetElement.focus();
-      const focusEvent = new Event('focus', { bubbles: true });
-      targetElement.dispatchEvent(focusEvent);
+      targetElement.dispatchEvent(new Event('focus', { bubbles: true }));
       
-      const inputEvent = new Event('input', { bubbles: true });
-      targetElement.dispatchEvent(inputEvent);
+      // Only dispatch input/change events for form controls that support them
+      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+        targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+        targetElement.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       
-      const keyDownEvent = new KeyboardEvent('keydown', { bubbles: true, key: 'Tab' });
-      targetElement.dispatchEvent(keyDownEvent);
-      
-      const keyUpEvent = new KeyboardEvent('keyup', { bubbles: true, key: 'Tab' });
-      targetElement.dispatchEvent(keyUpEvent);
-      
-      const changeEvent = new Event('change', { bubbles: true });
-      targetElement.dispatchEvent(changeEvent);
-      
-      const blurEvent = new Event('blur', { bubbles: true });
-      targetElement.dispatchEvent(blurEvent);
       targetElement.blur();
-      
-      // For React specifically, manually trigger React's internal events
-      if ((targetElement as any)._valueTracker) {
-        (targetElement as any)._valueTracker.setValue('');
-      }
-      
-      // Custom property descriptor approach for React/Vue compatibility
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-      if (nativeInputValueSetter && (tagName === 'input' || tagName === 'textarea')) {
-        nativeInputValueSetter.call(targetElement, value);
-        
-        const syntheticEvent = new Event('input', { bubbles: true }) as any;
-        syntheticEvent.simulated = true;
-        targetElement.dispatchEvent(syntheticEvent);
-      }
+      targetElement.dispatchEvent(new Event('blur', { bubbles: true }));
       
       // Mark as completed after successful execution
       waitForReactUpdates().then(() => {
