@@ -113,7 +113,7 @@ function processInteractiveElements(element: Element) {
     const requirements = block.getAttribute('data-requirements') || (
       // Navigate action doesn't need a DOM element to exist, so no requirement.
       // All others automatically inherit exists-reftarget as a check requirement.
-      targetAction == 'navigate' ? '' : 'exists-reftarget'
+      targetAction === 'navigate' ? '' : 'exists-reftarget'
     )
 
     if (!targetAction || !reftarget) {
