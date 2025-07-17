@@ -109,7 +109,12 @@ function processInteractiveElements(element: Element) {
     const targetAction = block.getAttribute('data-targetaction');
     const reftarget = block.getAttribute('data-reftarget');
     const value = block.getAttribute('data-targetvalue') || '';
-    const requirements = block.getAttribute('data-requirements') || 'exists-reftarget';
+    
+    const requirements = block.getAttribute('data-requirements') || (
+      // Navigate action doesn't need a DOM element to exist, so no requirement.
+      // All others automatically inherit exists-reftarget as a check requirement.
+      targetAction == 'navigate' ? '' : 'exists-reftarget'
+    )
 
     if (!targetAction || !reftarget) {
       console.warn("Interactive link missing target action or ref target:", block.textContent);

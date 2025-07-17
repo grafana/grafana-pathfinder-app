@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useCallback, useRef } from 'react';
+import { locationService } from '@grafana/runtime';
 import { fetchDataSources, fetchUser } from './context-data-fetcher';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 import { waitForReactUpdates, groupInteractiveElementsByStep, markStepCompleted, InteractiveStep } from './requirements.util';
@@ -472,6 +473,48 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, []);
 
+  const interactiveNavigate = useCallback((data: InteractiveElementData, navigate: boolean, clickedElement: HTMLElement) => {
+    setInteractiveState(clickedElement, 'running');
+    
+    try {
+      if (!navigate) {
+        // Show mode: highlight the current location or show where we would navigate
+        // For navigation, we can highlight the current URL or show a visual indicator
+        // Since there's no specific element to highlight, we'll just show a brief visual feedback
+        console.log(`🔍 Show mode: Would navigate to ${data.reftarget}`);
+        
+        // Provide visual feedback by briefly highlighting the browser location bar concept
+        // or show a toast/notification (for now, just log and complete)
+        waitForReactUpdates().then(() => {
+          setInteractiveState(clickedElement, 'completed');
+        });
+        return;
+      }
+
+      // Do mode: actually navigate to the target URL
+      console.log(`🧭 Navigating to: ${data.reftarget}`);
+      
+      // Use Grafana's idiomatic navigation pattern via locationService
+      // This handles both internal Grafana routes and external URLs appropriately
+      if (data.reftarget.startsWith('http://') || data.reftarget.startsWith('https://')) {
+        // External URL - open in new tab to preserve current Grafana session
+        window.open(data.reftarget, '_blank', 'noopener,noreferrer');
+      } else {
+        // Internal Grafana route - use locationService for proper routing
+        locationService.push(data.reftarget);
+      }
+      
+      // Mark as completed after successful navigation
+      waitForReactUpdates().then(() => {
+        setInteractiveState(clickedElement, 'completed');
+      });
+      
+    } catch (error) {
+      console.error('Error in interactiveNavigate:', error);
+      setInteractiveState(clickedElement, 'error');
+    }
+  }, []);
+
   // Define helper functions using refs to avoid circular dependencies
   runInteractiveSequenceRef.current = async (elements: Element[], showMode: boolean): Promise<void> => {
     const MAX_RETRIES = 3;
@@ -512,6 +555,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             interactiveButton(data, !showMode, element as HTMLElement); // Show mode = don't click, Do mode = click
           } else if (data.targetaction === 'formfill') {
             interactiveFormFill(data, !showMode, element as HTMLElement); // Show mode = don't fill, Do mode = fill
+          } else if (data.targetaction === 'navigate') {
+            interactiveNavigate(data, !showMode, element as HTMLElement); // Show mode = show target, Do mode = navigate
           }
 
           // Mark element as completed
@@ -575,6 +620,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             interactiveButton(data, false, element as HTMLElement); // Show mode - highlight only
           } else if (data.targetaction === 'formfill') {
             interactiveFormFill(data, false, element as HTMLElement); // Show mode - highlight only
+          } else if (data.targetaction === 'navigate') {
+            interactiveNavigate(data, false, element as HTMLElement); // Show mode - show target only
           }
 
           // Wait for highlight animation to complete before doing the action
@@ -599,6 +646,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             interactiveButton(data, true, element as HTMLElement); // Do mode - click
           } else if (data.targetaction === 'formfill') {
             interactiveFormFill(data, true, element as HTMLElement); // Do mode - fill form
+          } else if (data.targetaction === 'navigate') {
+            interactiveNavigate(data, true, element as HTMLElement); // Do mode - navigate
           }
 
           // Mark step as completed
@@ -836,6 +885,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             interactiveButton(data, !isShowMode, htmlElement); // Show mode = don't click, Do mode = click
           } else if (data.targetaction === 'formfill') {
             interactiveFormFill(data, !isShowMode, htmlElement); // Show mode = don't fill, Do mode = fill
+          } else if (data.targetaction === 'navigate') {
+            interactiveNavigate(data, !isShowMode, htmlElement); // Show mode = show target, Do mode = navigate
           } else if (data.targetaction === 'sequence') {
             await interactiveSequence(data, isShowMode, htmlElement); // Show mode = highlight only, Do mode = full sequence
           } else {
@@ -852,7 +903,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       // Store the handler so we can remove it later if needed
       (htmlElement as any).__interactiveClickHandler = clickHandler;
     });
-  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveSequence, checkRequirementsFromData, containerRef]);
+  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence, checkRequirementsFromData, containerRef]);
 
   /**
    * Remove event listeners from interactive elements
@@ -956,6 +1007,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     interactiveButton,
     interactiveSequence,
     interactiveFormFill,
+    interactiveNavigate,
     checkElementRequirements,
     checkRequirementsFromData,
     checkRequirementsWithData,

@@ -120,6 +120,7 @@ interface SingleDocsContent {
 - `interactiveFocus()` - Highlights and focuses UI elements
 - `interactiveButton()` - Finds and clicks buttons by text
 - `interactiveFormFill()` - Fills form fields with values
+- `interactiveNavigate()` - Navigates to URLs using Grafana's locationService
 - `interactiveSequence()` - Runs sequences of interactions
 
 **Event Handling**:
