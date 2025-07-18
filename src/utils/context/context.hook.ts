@@ -59,7 +59,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       console.error('Failed to fetch context data:', error);
       setContextData(prev => ({ ...prev, isLoading: false }));
     }
-  }, []);
+  }, []); // Empty dependency array - setContextData is stable
 
   // Debounced refresh to avoid excessive API calls
   const debouncedRefresh = useCallback((delay = 300) => {
@@ -92,7 +92,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     } finally {
       setIsLoadingRecommendations(false);
     }
-  }, []);
+  }, []); // Empty dependency array - setContextData and setIsLoadingRecommendations are stable
 
   // Enhanced location and context change detection
   useEffect(() => {
@@ -210,7 +210,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
         clearTimeout(refreshTimeoutRef.current);
       }
     };
-  }, [debouncedRefresh]); // Include debouncedRefresh dependency
+  }, [debouncedRefresh]); // debouncedRefresh is stable due to useCallback
 
   // Fetch recommendations when context data changes (but not when loading)
   const tagsString = contextData.tags?.join(',') || '';
@@ -218,14 +218,14 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     if (!contextData.isLoading && contextData.currentPath) {
       fetchRecommendations(contextData);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- contextData would cause infinite loop
   }, [
     contextData.isLoading, 
     contextData.currentPath, 
     tagsString, // Extracted to separate variable
     contextData.visualizationType,
-    fetchRecommendations,
-    contextData
-  ]);
+    fetchRecommendations
+  ]); // fetchRecommendations is stable due to useCallback with empty deps
 
   // Actions
   const refreshContext = useCallback(() => {
