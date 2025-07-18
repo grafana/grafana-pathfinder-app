@@ -197,6 +197,7 @@ export function useContentProcessing({
           
           try {
             // Fallback for older browsers - execCommand is deprecated but still needed for compatibility
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
             const success = document.execCommand('copy');
             if (success) {
               copyButton.innerHTML = `
@@ -300,6 +301,7 @@ export function useContentProcessing({
           
           try {
             // Fallback for older browsers - execCommand is deprecated but still needed for compatibility
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
             const success = document.execCommand('copy');
             if (success) {
               copyButton.innerHTML = `

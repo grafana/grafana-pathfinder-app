@@ -48,7 +48,7 @@ export class ContextService {
       recommendationsError: null,
       visualizationType: this.detectVisualizationType(),
       grafanaVersion: this.getGrafanaVersion(),
-      theme: config.theme.type || 'dark',
+      theme: config.theme2.isDark ? 'dark' : 'light',
       timestamp: new Date().toISOString(),
       searchParams,
     };
@@ -246,9 +246,9 @@ export class ContextService {
     }
 
     // UI context
-    if (searchParams.tab) tags.push('ui:tabbed');
-    if (searchParams.fullscreen) tags.push('ui:fullscreen');
-    if (searchParams.kiosk) tags.push('ui:kiosk');
+    if (searchParams.tab) {tags.push('ui:tabbed');}
+    if (searchParams.fullscreen) {tags.push('ui:fullscreen');}
+    if (searchParams.kiosk) {tags.push('ui:kiosk');}
 
     return [...new Set(tags)];
   }
@@ -257,7 +257,7 @@ export class ContextService {
    * Extract entity from path segments
    */
   private static extractEntity(pathSegments: string[]): string | null {
-    if (pathSegments.length === 0) return null;
+    if (pathSegments.length === 0) {return null;}
     
     const entityMap: Record<string, string> = {
       'd': 'dashboard',
@@ -278,10 +278,10 @@ export class ContextService {
    * Detect action from path and search params
    */
   private static detectAction(pathSegments: string[], searchParams: Record<string, string>): string {
-    if (searchParams.editPanel || searchParams.editview) return 'edit';
-    if (pathSegments.includes('new')) return 'create';
-    if (pathSegments.includes('edit')) return 'edit';
-    if (pathSegments.includes('settings')) return 'configure';
+    if (searchParams.editPanel || searchParams.editview) {return 'edit';}
+    if (pathSegments.includes('new')) {return 'create';}
+    if (pathSegments.includes('edit')) {return 'edit';}
+    if (pathSegments.includes('settings')) {return 'configure';}
     return 'view';
   }
 
@@ -378,7 +378,7 @@ export class ContextService {
       const typeA = a.type === 'learning-journey' || !a.type ? 0 : 1;
       const typeB = b.type === 'learning-journey' || !b.type ? 0 : 1;
       
-      if (typeA !== typeB) return typeA - typeB;
+      if (typeA !== typeB) {return typeA - typeB;}
       
       const accuracyA = a.matchAccuracy ?? 0;
       const accuracyB = b.matchAccuracy ?? 0;

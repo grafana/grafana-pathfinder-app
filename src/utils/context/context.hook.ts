@@ -73,7 +73,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
   // Fetch recommendations
   const fetchRecommendations = useCallback(async (contextData: ContextData) => {
-    if (!contextData.currentPath || contextData.isLoading) return;
+    if (!contextData.currentPath || contextData.isLoading) {return;}
     
     setIsLoadingRecommendations(true);
     try {
@@ -210,9 +210,10 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
         clearTimeout(refreshTimeoutRef.current);
       }
     };
-  }, []); // Empty dependency array - this effect should only run once
+  }, [debouncedRefresh]); // Include debouncedRefresh dependency
 
   // Fetch recommendations when context data changes (but not when loading)
+  const tagsString = contextData.tags?.join(',') || '';
   useEffect(() => {
     if (!contextData.isLoading && contextData.currentPath) {
       fetchRecommendations(contextData);
@@ -220,9 +221,10 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [
     contextData.isLoading, 
     contextData.currentPath, 
-    contextData.tags?.join(','), // Convert array to string for comparison
+    tagsString, // Extracted to separate variable
     contextData.visualizationType,
-    fetchRecommendations
+    fetchRecommendations,
+    contextData
   ]);
 
   // Actions
