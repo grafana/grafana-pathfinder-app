@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { safeEventHandler, safeEventListenerOptions } from './safe-event-handler.util';
 
 interface LearningJourneyTab {
   id: string;
@@ -35,7 +36,7 @@ export function useKeyboardShortcuts({
     const handleKeyDown = (event: KeyboardEvent) => {
       // Ctrl/Cmd + W to close current tab (except recommendations)
       if ((event.ctrlKey || event.metaKey) && event.key === 'w') {
-        event.preventDefault();
+        safeEventHandler(event, { preventDefault: true });
         if (activeTab && activeTab.id !== 'recommendations') {
           model.closeTab(activeTab.id);
         }
@@ -43,7 +44,7 @@ export function useKeyboardShortcuts({
       
       // Ctrl/Cmd + Tab to switch between tabs
       if ((event.ctrlKey || event.metaKey) && event.key === 'Tab') {
-        event.preventDefault();
+        safeEventHandler(event, { preventDefault: true });
         const currentIndex = tabs.findIndex(tab => tab.id === activeTabId);
         const nextIndex = event.shiftKey 
           ? (currentIndex - 1 + tabs.length) % tabs.length
@@ -54,12 +55,12 @@ export function useKeyboardShortcuts({
       // Arrow keys for milestone navigation (only for learning journey tabs)
       if (!isRecommendationsTab) {
         if (event.altKey && event.key === 'ArrowRight') {
-          event.preventDefault();
+          safeEventHandler(event, { preventDefault: true });
           model.navigateToNextMilestone();
         }
         
         if (event.altKey && event.key === 'ArrowLeft') {
-          event.preventDefault();
+          safeEventHandler(event, { preventDefault: true });
           model.navigateToPreviousMilestone();
         }
       }

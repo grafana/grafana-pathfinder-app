@@ -4,6 +4,7 @@ import { locationService } from '@grafana/runtime';
 import { fetchDataSources, fetchUser } from './context-data-fetcher';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 import { waitForReactUpdates, groupInteractiveElementsByStep, markStepCompleted, InteractiveStep } from './requirements.util';
+import { safeEventHandler, safeEventListenerOptions } from './safe-event-handler.util';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -861,8 +862,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       
       // Create click handler
       const clickHandler = async (event: Event) => {
-        event.preventDefault();
-        event.stopPropagation();
+        safeEventHandler(event, {
+          preventDefault: true,
+          stopPropagation: true,
+        });
         
         try {
           // Check requirements before executing

@@ -4,6 +4,7 @@ import { SingleDocsContent } from './single-docs-fetcher';
 import { useInteractiveElements } from './interactive.hook';
 import { getDocsBaseUrl } from '../constants';
 import { checkAllElementRequirements, waitForReactUpdates } from './requirements.util';
+import { safeEventHandler, safeEventListenerOptions } from './safe-event-handler.util';
 
 interface UseContentProcessingProps {
   contentRef: React.RefObject<HTMLDivElement>;
@@ -41,8 +42,10 @@ export function useContentProcessing({
         button.classList.add('expanded');
         
         const handleClick = (e: Event) => {
-          e.preventDefault();
-          e.stopPropagation();
+          safeEventHandler(e, {
+            preventDefault: true,
+            stopPropagation: true,
+          });
           
           const isExpanded = !tableWrapper.classList.contains('collapsed');
           
@@ -152,8 +155,10 @@ export function useContentProcessing({
       
       // Add click handler
       copyButton.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+        safeEventHandler(e, {
+          preventDefault: true,
+          stopPropagation: true,
+        });
         
         try {
           await navigator.clipboard.writeText(codeText);
@@ -255,8 +260,10 @@ export function useContentProcessing({
       
       // Add click handler
       copyButton.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+        safeEventHandler(e, {
+          preventDefault: true,
+          stopPropagation: true,
+        });
         
         try {
           await navigator.clipboard.writeText(codeText);
@@ -355,8 +362,10 @@ export function useContentProcessing({
         
         // Add click handler
         newTrigger.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
+          safeEventHandler(e, {
+            preventDefault: true,
+            stopPropagation: true,
+          });
           
           const isExpanded = content.style.display !== 'none';
           
@@ -405,7 +414,7 @@ export function useContentProcessing({
           const handleKeyDown = (e: Event) => {
             const keyEvent = e as KeyboardEvent;
             if (keyEvent.key === 'Enter' || keyEvent.key === ' ') {
-              e.preventDefault();
+              safeEventHandler(e, { preventDefault: true });
               (card as HTMLElement).click();
             }
           };

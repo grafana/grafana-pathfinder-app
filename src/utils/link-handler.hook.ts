@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
+import { safeEventHandler, safeEventListenerOptions } from './safe-event-handler.util';
 
 interface LearningJourneyTab {
   id: string;
@@ -41,8 +42,10 @@ export function useLinkClickHandler({
       const startElement = target.closest('[data-journey-start="true"]') as HTMLElement;
       
       if (startElement) {
-        event.preventDefault();
-        event.stopPropagation();
+        safeEventHandler(event, {
+          preventDefault: true,
+          stopPropagation: true,
+        });
         
         // Navigate to the first milestone
         const activeTab = model.getActiveTab();
@@ -60,8 +63,10 @@ export function useLinkClickHandler({
       const image = target.closest('img') as HTMLImageElement;
       
       if (image && !image.classList.contains('journey-conclusion-header')) {
-        event.preventDefault();
-        event.stopPropagation();
+        safeEventHandler(event, {
+          preventDefault: true,
+          stopPropagation: true,
+        });
         
         const imageSrc = image.src;
         const imageAlt = image.alt || 'Image';
@@ -74,8 +79,10 @@ export function useLinkClickHandler({
       const sideJourneyLink = target.closest('[data-side-journey-link]') as HTMLElement;
       
       if (sideJourneyLink) {
-        event.preventDefault();
-        event.stopPropagation();
+        safeEventHandler(event, {
+          preventDefault: true,
+          stopPropagation: true,
+        });
         
         const linkUrl = sideJourneyLink.getAttribute('data-side-journey-url');
 
@@ -91,8 +98,10 @@ export function useLinkClickHandler({
       const relatedJourneyLink = target.closest('[data-related-journey-link]') as HTMLElement;
       
       if (relatedJourneyLink) {
-        event.preventDefault();
-        event.stopPropagation();
+        safeEventHandler(event, {
+          preventDefault: true,
+          stopPropagation: true,
+        });
         
         const linkUrl = relatedJourneyLink.getAttribute('data-related-journey-url');
         const linkTitle = relatedJourneyLink.getAttribute('data-related-journey-title');
@@ -108,8 +117,10 @@ export function useLinkClickHandler({
       const bottomNavButton = target.closest('.journey-bottom-nav-button') as HTMLElement;
       
       if (bottomNavButton) {
-        event.preventDefault();
-        event.stopPropagation();
+        safeEventHandler(event, {
+          preventDefault: true,
+          stopPropagation: true,
+        });
         
         const buttonText = bottomNavButton.textContent?.trim().toLowerCase();
         
@@ -133,15 +144,19 @@ export function useLinkClickHandler({
         // Check if this looks like a navigation button in the content area
         if ((buttonText?.includes('previous') || buttonText?.includes('prev') || buttonText?.includes('←')) && 
             button.closest('[class*="content"]')) {
-          event.preventDefault();
-          event.stopPropagation();
+          safeEventHandler(event, {
+            preventDefault: true,
+            stopPropagation: true,
+          });
           if (model.canNavigatePrevious()) {
             model.navigateToPreviousMilestone();
           }
         } else if ((buttonText?.includes('next') || buttonText?.includes('→')) && 
                    button.closest('[class*="content"]')) {
-          event.preventDefault();
-          event.stopPropagation();
+          safeEventHandler(event, {
+            preventDefault: true,
+            stopPropagation: true,
+          });
           if (model.canNavigateNext()) {
             model.navigateToNextMilestone();
           }
