@@ -539,9 +539,7 @@ export async function fetchSingleDocsContent(url: string): Promise<SingleDocsCon
   
   // Try fetch with retry logic for redirects
   try {
-    const startTime = Date.now();
     const htmlContent = await fetchWithRetry(fetchUrl); // Fetch without hash
-    const duration = Date.now() - startTime;
     
     if (htmlContent && htmlContent.trim().length > 0) {
       const content = extractSingleDocsContent(htmlContent, url); // Use original URL for content
