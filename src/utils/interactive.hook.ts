@@ -196,14 +196,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       throw new Error(`Interactive element missing required unique step ID: reftarget=${element.getAttribute('data-reftarget')}, targetaction=${element.getAttribute('data-targetaction')}`);
     }
 
-    // Remove all state classes
-    element.classList.remove('interactive-running', 'interactive-completed', 'interactive-error');
-    
-    // Add the new state class
-    if (state !== 'idle') {
-      element.classList.add(`interactive-${state}`);
-    }
-    
     // Handle completion state (implicit requirement #2)
     if (state === 'completed') {
       console.log('🎯 Marking element as completed:', {

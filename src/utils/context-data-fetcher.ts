@@ -113,12 +113,12 @@ export async function fetchDashboardInfo(currentPath: string): Promise<Dashboard
   }
 }
 
-export async function fetchGrafanaVersion(): Promise<string> {
+export function fetchGrafanaVersion(): string {
   try {
-    const health = await getBackendSrv().get('/api/health');
-    return health.version || 'Unknown';
+    // Use runtime config instead of API endpoint for Grafana Cloud compatibility
+    return config.bootData.settings.buildInfo.version || 'Unknown';
   } catch (error) {
-    console.warn('Failed to fetch Grafana version:', error);
+    console.warn('Failed to fetch Grafana version from runtime config:', error);
     return 'Unknown';
   }
 }

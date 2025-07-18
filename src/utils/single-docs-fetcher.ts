@@ -555,14 +555,13 @@ export async function fetchSingleDocsContent(url: string): Promise<SingleDocsCon
       docsContentCache.set(url, { content, timestamp: Date.now() });
       
       return content;
-    } else {
-      console.warn(`❌ Docs fetch with retry returned empty content after ${duration}ms`);
     }
   } catch (error) {
-    console.warn(`❌ Docs fetch with retry failed:`, error);
+    // Silent catch - let final error logging handle it
   }
   
-  console.error('Direct docs fetch failed for URL:', url);
+  // Only log error on final failure after all retry attempts
+  console.error('Failed to fetch docs content after all retry attempts for URL:', url);
   return null;
 }
 
@@ -591,20 +590,14 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     
     const response = await fetch(url, fetchOptions);
     
-    // Log redirect information
-    if (response.url !== url) {
-      // Ignore
-    }
-    
     if (!response.ok) {
-      console.warn(`❌ Fetch failed with status ${response.status} for: ${url}`);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
     const content = await response.text();
     return content;
   } catch (error) {
-    console.warn(`❌ Direct docs fetch failed for ${url}:`, error);
+    // Don't log here - let the retry logic handle final error logging
     return null;
   }
 }
