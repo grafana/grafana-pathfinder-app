@@ -4,7 +4,7 @@ import { SingleDocsContent } from './single-docs-fetcher';
 import { useInteractiveElements } from './interactive.hook';
 import { getDocsBaseUrl } from '../constants';
 import { checkAllElementRequirements, waitForReactUpdates } from './requirements.util';
-import { safeEventHandler, safeEventListenerOptions } from './safe-event-handler.util';
+import { safeEventHandler } from './safe-event-handler.util';
 
 interface UseContentProcessingProps {
   contentRef: React.RefObject<HTMLDivElement>;

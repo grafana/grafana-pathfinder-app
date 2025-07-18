@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { safeEventHandler, safeEventListenerOptions } from './safe-event-handler.util';
+import { safeEventHandler } from './safe-event-handler.util';
 
 interface LearningJourneyTab {
   id: string;

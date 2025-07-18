@@ -4,14 +4,9 @@ import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana
 import { Icon, useStyles2, Card } from '@grafana/ui';
 import { locationService } from '@grafana/runtime';
 
-// Import refactored utilities
+// Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
-import { 
-  Recommendation, 
-} from '../../utils/context-data-fetcher';
-import { useContextPanel } from '../../utils/context-panel.hook';
-
-// Interfaces now imported from context-data-fetcher.ts
+import { useContextPanel, Recommendation } from '../../utils/context';
 
 interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
@@ -52,23 +47,25 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 }
 
 function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
-  // Use the context panel hook for all logic
-  const contextPanelState = useContextPanel({
+  // Use the simplified context hook
+  const {
+    contextData,
+    isLoadingRecommendations,
+    otherDocsExpanded,
+    openLearningJourney,
+    openDocsPage,
+    toggleSummaryExpansion,
+    toggleOtherDocsExpansion,
+  } = useContextPanel({
     onOpenLearningJourney: model.state.onOpenLearningJourney,
     onOpenDocsPage: model.state.onOpenDocsPage,
   });
   
   const {
     recommendations,
-    isLoadingRecommendations,
-    recommendationsError,
     isLoading,
-    otherDocsExpanded,
-    openLearningJourney,
-    openDocsPage,
-    toggleSummaryExpansion,
-    toggleOtherDocsExpansion,
-  } = contextPanelState;
+    recommendationsError,
+  } = contextData;
   
   const styles = useStyles2(getStyles);
 

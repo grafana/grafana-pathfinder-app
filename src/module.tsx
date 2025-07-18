@@ -1,6 +1,7 @@
 import { AppPlugin, type AppRootProps } from '@grafana/data';
 import { LoadingPlaceholder } from '@grafana/ui';
 import React, { Suspense, lazy } from 'react';
+import { reportAppInteraction, UserInteraction } from './lib/analytics';
 
 const LazyApp = lazy(() => import('./components/App/App'));
 const LazyMemoizedContextPanel = lazy(() =>
@@ -22,6 +23,25 @@ plugin.addComponent({
   title: 'Documentation-Panel',
   description: 'Opens Documentation App',
   component: function ContextSidebar() {
+    // Track when the sidebar component is mounted and unmounted
+    React.useEffect(() => {
+      // Component mounted - sidebar actually opened
+      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+        action: 'open',
+        source: 'sidebar_mount',
+        timestamp: Date.now(),
+      });
+      
+      // Return cleanup function that runs when component unmounts (sidebar closed)
+      return () => {
+        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+          action: 'close',
+          source: 'sidebar_unmount',
+          timestamp: Date.now(),
+        });
+      };
+    }, []);
+
     return (
       <Suspense fallback={<LoadingPlaceholder text="" />}>
         <LazyMemoizedContextPanel />
@@ -44,7 +64,7 @@ plugin.addLink({
     };
   },
   onClick: () => {
-    // do nothing
-    void 0;
+    // No analytics tracking here since we can't reliably determine if we're opening or closing
+    // Component lifecycle tracking above provides accurate open/close events
   },
 });

@@ -1,10 +1,10 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useCallback, useRef } from 'react';
-import { locationService } from '@grafana/runtime';
-import { fetchDataSources, fetchUser } from './context-data-fetcher';
+import { locationService, config } from '@grafana/runtime';
+import { ContextService } from './context';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 import { waitForReactUpdates, groupInteractiveElementsByStep, markStepCompleted, InteractiveStep } from './requirements.util';
-import { safeEventHandler, safeEventListenerOptions } from './safe-event-handler.util';
+import { safeEventHandler } from './safe-event-handler.util';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -730,32 +730,32 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }
 
   const isAdminCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    const user = await fetchUser();
-    if(user && user.isGrafanaAdmin) {
+    const user = config.bootData.user;
+    if (user && user.isGrafanaAdmin) {
       return {
         requirement: check,
         pass: true,
         context: user,
-      }
-    } else if(user) {
+      };
+    } else if (user) {
       return {
         requirement: check,
         pass: false,
         error: "User is not an admin",
         context: user,
-      }
+      };
     }
 
     return {
       requirement: check,
       pass: false,
-      error: "User is not logged in",
-      context: user,
-    }
+      error: "Unable to determine user admin status",
+      context: null,
+    };
   }
 
   const hasDatasourcesCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    const dataSources = await fetchDataSources();
+    const dataSources = await ContextService.fetchDataSources();
     if(dataSources.length > 0) {
       return {
         requirement: check,

@@ -8,7 +8,7 @@ import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useContentProcessing } from '../../utils/content-processing.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
-import { safeEventHandler, safeEventListenerOptions } from '../../utils/safe-event-handler.util';
+import { safeEventHandler } from '../../utils/safe-event-handler.util';
 import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../styles/docs-panel.styles';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles, addGlobalInteractiveStyles } from '../../styles/interactive.styles';
