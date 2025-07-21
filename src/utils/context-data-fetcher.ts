@@ -80,16 +80,6 @@ export async function fetchDataSources(): Promise<DataSource[]> {
   }
 }
 
-export async function fetchUser(): Promise<User | null> {
-  try {
-    const user = await getBackendSrv().get('/api/user');
-    return user; 
-  } catch (error) {
-    console.warn('Failed to fetch user:', error);
-    return null;
-  }
-}
-
 export async function fetchDashboardInfo(currentPath: string): Promise<DashboardInfo | null> {
   try {
     // Check if we're on a dashboard page
