@@ -5,13 +5,11 @@ Business logic, data fetching, and utility functions organized by functionality.
 ## File Organization
 
 ### 🔄 **Data Fetching**
-- `docs-fetcher.ts` - Learning journey content and milestones
-- `single-docs-fetcher.ts` - Standalone documentation pages
+- `docs-retrieval/` - Unified content fetching system (replaces old docs-fetcher.ts and single-docs-fetcher.ts)
 
 ### 🎣 **React Hooks** (Post-Refactor)
 - `interactive.hook.ts` - Interactive element handling
-- `content-processing.hook.ts` - Content processing and enhancement
-- `keyboard-shortcuts.hook.ts` - Keyboard navigation
+- `keyboard-shortcuts.hook.ts` - Keyboard navigation  
 - `link-handler.hook.ts` - Link click handling and lightbox
 
 ### ⚙️ **Requirements System**
@@ -24,85 +22,31 @@ Business logic, data fetching, and utility functions organized by functionality.
 
 ---
 
-## Data Fetching Files
+## New Unified Data Fetching System
 
-### `docs-fetcher.ts` ⭐ **Learning Journey Engine**
-**Purpose**: Comprehensive learning journey content fetching, processing, and navigation
+### `docs-retrieval/` ⭐ **Unified Content System**
+**Purpose**: Modern React-first architecture for all content fetching and rendering
 **Role**: 
-- Fetches and processes learning journey content
-- Manages milestone navigation and progress
-- Handles content caching and URL resolution
-- Processes interactive elements and content enhancement
+- Unified system replacing old `docs-fetcher.ts`, `single-docs-fetcher.ts`, and `content-processing.hook.ts`
+- Fetches both learning journeys and documentation pages
+- React component-based rendering instead of DOM manipulation
+- Clean separation between data fetching and presentation
 
 **Key Features**:
-- **Multi-Strategy Fetching**: Direct fetch with authentication support
-- **Milestone Management**: JSON-based milestone discovery and caching
-- **Content Processing**: HTML processing for interactive elements
-- **Navigation Logic**: Next/previous milestone URL resolution
-- **Intelligent Caching**: Content and milestone caching with cleanup
-
-**Major Interfaces**:
-```typescript
-interface LearningJourneyContent {
-  title: string;
-  content: string;
-  url: string;
-  currentMilestone: number;
-  totalMilestones: number;
-  milestones: Milestone[];
-  lastFetched: string;
-  summary?: string;
-}
-
-interface Milestone {
-  number: number;
-  title: string;
-  duration: string;
-  url: string;
-  isActive: boolean;
-  sideJourneys?: SideJourneys;
-  relatedJourneys?: RelatedJourneys;
-  conclusionImage?: ConclusionImage;
-}
-```
+- **Unified Fetching**: Single system handles all content types
+- **React Components**: Interactive elements as proper React components
+- **Type Safety**: Complete TypeScript coverage with unified `RawContent` type
+- **Performance**: Smart HTML parsing only when needed, React virtual DOM optimization
+- **Testable Architecture**: Each component easily unit tested
 
 **Core Functions**:
-- `fetchLearningJourneyContent()` - Main content fetching
-- `getNextMilestoneUrl()` / `getPreviousMilestoneUrl()` - Navigation
-- `clearLearningJourneyCache()` - Cache management
+- `fetchContent()` - Main unified content fetching
+- `ContentRenderer` - React component for rendering content
+- `InteractiveBridge` - Connects React components to existing interactive logic
 
 **Used By**:
-- `src/components/docs-panel/docs-panel.tsx` - Main content loading
-- `src/components/docs-panel/context-panel.tsx` - Milestone data for recommendations
-
----
-
-### `single-docs-fetcher.ts` ⭐ **Documentation Page Engine**
-**Purpose**: Fetches and processes standalone documentation pages
-**Role**: 
-- Handles single documentation page content
-- Processes interactive elements and code blocks
-- Manages docs-specific caching
-- Supports authentication for private docs
-
-**Key Features**:
-- **Unstyled Content**: Fetches `/unstyled.html` versions for clean content
-- **Content Processing**: Code blocks, images, links, admonitions
-- **Interactive Elements**: Processes embedded interactive tutorials
-- **Authentication**: Support for authenticated docs access
-
-**Core Interface**:
-```typescript
-interface SingleDocsContent {
-  title: string;
-  content: string;
-  url: string;
-  lastFetched: string;
-}
-```
-
-**Used By**:
-- `src/components/docs-panel/docs-panel.tsx` - Docs tab content loading
+- `src/components/docs-panel/docs-panel.tsx` - All content rendering
+- `src/utils/context/context.service.ts` - Recommendation processing
 
 ---
 
@@ -138,31 +82,7 @@ const events = [
 
 ---
 
-### `content-processing.hook.ts` ⭐ **Content Enhancement**
-**Purpose**: Processes and enhances documentation content after rendering
-**Role**: 
-- Adds copy buttons to code blocks and inline code
-- Processes tables for responsive behavior
-- Handles collapsible sections
-- Enhances user experience with interactive elements
 
-**Extracted From**: Main docs panel (~300 lines)
-**Key Features**:
-- **Code Copy Buttons**: Automatic copy button injection
-- **Table Processing**: Expand/collapse functionality
-- **Collapsible Sections**: Interactive expand/collapse behavior
-- **Cross-browser Support**: Handles different clipboard APIs
-
-**Processing Areas**:
-- Code blocks (`pre` elements) with copy buttons
-- Inline code elements with mini copy buttons
-- Tables with responsive wrappers
-- Collapsible sections with click handlers
-
-**Used By**:
-- `src/components/docs-panel/docs-panel.tsx` - Content enhancement
-
----
 
 ### `keyboard-shortcuts.hook.ts` ⭐ **Navigation Shortcuts**
 **Purpose**: Provides keyboard shortcuts for efficient navigation
@@ -347,8 +267,8 @@ isElementCompleted(element)
 ```
 
 **Integration**:
-- Used by `content-processing.hook.ts` for main requirements checking
-- Used by `interactive.hook.ts` for completion tracking
+- Used by `interactive.hook.ts` for completion tracking and requirements checking
+- Used by React interactive components in `docs-retrieval/components/`
 - Replaces ~200 lines of duplicated logic across multiple files
 - Documented in `/INTERACTIVE_REQUIREMENTS.md` for comprehensive usage guide
 

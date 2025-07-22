@@ -182,13 +182,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    * 
    * ARCHITECTURAL DECISION: This function operates under the strong assumption that ALL
    * interactive elements have unique step IDs (either data-section-id or data-step-id).
-   * This assumption is guaranteed by the processInteractiveElements function in 
-   * single-docs-fetcher.ts, which assigns unique IDs to every interactive element during
-   * content processing. No fallback mechanisms are provided - violations will throw errors.
+   * This assumption is guaranteed by the content processing system in the docs-retrieval
+   * module, which assigns unique IDs to every interactive element during content
+   * processing. No fallback mechanisms are provided - violations will throw errors.
    */
   function setInteractiveState(element: HTMLElement, state: 'idle' | 'running' | 'completed' | 'error') {
     // ASSUMPTION: All interactive elements have unique step IDs
-    // This is guaranteed by single-docs-fetcher.ts processInteractiveElements function
+    // This is guaranteed by the docs-retrieval content processing system
     // which assigns either data-section-id or data-step-id to every interactive element
     const sectionId = element.getAttribute('data-section-id');
     const stepId = element.getAttribute('data-step-id');

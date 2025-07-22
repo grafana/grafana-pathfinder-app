@@ -412,7 +412,7 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
   journeyContent: css({
     backgroundColor: theme.colors.background.secondary,
     border: 'none',
-    overflow: 'hidden',
+    overflow: 'auto',
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
@@ -420,7 +420,7 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
   docsContent: css({
     backgroundColor: theme.colors.background.secondary,
     border: `1px solid ${theme.colors.border.weak}`,
-    overflow: 'hidden',
+    overflow: 'auto',
     flex: 1,
     display: 'flex',
     flexDirection: 'column',

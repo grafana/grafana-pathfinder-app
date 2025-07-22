@@ -74,32 +74,32 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
   },
   
   // Images - responsive and well-styled with lightbox cursor
-  '& img': {
-    maxWidth: '100%',
-    height: 'auto',
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
-    margin: `${theme.spacing(2)} auto`,
-    display: 'block',
-    boxShadow: theme.shadows.z1,
-    transition: 'all 0.2s ease',
-    cursor: 'zoom-in',
-    
+'& img.content-image': {
+  maxWidth: '100%',
+  height: 'auto',
+  borderRadius: theme.shape.radius.default,
+  border: `1px solid ${theme.colors.border.weak}`,
+  margin: `${theme.spacing(2)} auto`,
+  display: 'block',
+  boxShadow: theme.shadows.z1,
+  transition: 'all 0.2s ease',
+  cursor: 'zoom-in',
+
+  '&:hover': {
+    boxShadow: theme.shadows.z2,
+    transform: 'scale(1.02)',
+    borderColor: theme.colors.primary.main,
+  },
+
+  // If you need to override anything for special image headers, you can add:
+  '&.journey-conclusion-header': {
+    cursor: 'default',
     '&:hover': {
-      boxShadow: theme.shadows.z2,
-      transform: 'scale(1.02)',
-      borderColor: theme.colors.primary.main,
-    },
-    
-    '&.journey-conclusion-header': {
-      cursor: 'default',
-      
-      '&:hover': {
-        transform: 'none',
-        borderColor: theme.colors.border.weak,
-      },
+      transform: 'none',
+      borderColor: theme.colors.border.weak,
     },
   },
+},
 
   // Links
   '& a': {

@@ -1,46 +1,50 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { css } from '@emotion/css';
+// Combined Learning Journey and Docs Panel
+// Post-refactoring unified component using new content system only
 
-import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, IconButton, useStyles2, Spinner, Alert, useTheme2 } from '@grafana/ui';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
+import { IconButton, Alert, Spinner, Icon, Button, useStyles2 } from '@grafana/ui';
+import { GrafanaTheme2 } from '@grafana/data';
+
 
 import { useInteractiveElements } from '../../utils/interactive.hook';
-import { useContentProcessing } from '../../utils/content-processing.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
-import { safeEventHandler } from '../../utils/safe-event-handler.util';
-import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../styles/docs-panel.styles';
-import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
-import { getInteractiveStyles, addGlobalInteractiveStyles } from '../../styles/interactive.styles';
-import { TAB_CONFIG } from '../../constants/selectors';
+
+
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
+// Import new unified content system
 import { 
-  fetchLearningJourneyContent, 
-  LearningJourneyContent,
-  getNextMilestoneUrl,
-  getPreviousMilestoneUrl,
-  clearSpecificJourneyCache,
-} from '../../utils/docs-fetcher';
-import { 
-  fetchSingleDocsContent, 
-  SingleDocsContent 
-} from '../../utils/single-docs-fetcher';
+  fetchContent,
+  ContentRenderer, 
+  RawContent,
+  InteractiveBridge,
+  getNextMilestoneUrlFromContent,
+  getPreviousMilestoneUrlFromContent,
+  getJourneyCompletionPercentage,
+  setJourneyCompletionPercentage
+} from '../../utils/docs-retrieval';
 import { ContextPanel } from './context-panel';
+
+import { getStyles as getComponentStyles } from '../../styles/docs-panel.styles';
+import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
+
+// Conversion functions no longer needed - new system works directly with RawContent
 
 interface LearningJourneyTab {
   id: string;
   title: string;
   baseUrl: string;
   currentUrl: string; // The specific milestone/page URL currently loaded
-  content: LearningJourneyContent | null;
+  content: RawContent | null; // Unified content type
   isLoading: boolean;
   error: string | null;
   type?: 'learning-journey' | 'docs';
-  docsContent?: SingleDocsContent | null;
+  // docsContent is no longer needed - everything is in content as RawContent
 }
 
 interface PersistedTabData {
@@ -57,8 +61,7 @@ interface CombinedPanelState extends SceneObjectState {
   contextPanel: ContextPanel;
 }
 
-// localStorage keys for tab persistence
-const TABS_STORAGE_KEY = 'grafana-docs-plugin-tabs';
+const STORAGE_KEY = 'grafana-docs-plugin-tabs';
 const ACTIVE_TAB_STORAGE_KEY = 'grafana-docs-plugin-active-tab';
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
@@ -69,90 +72,79 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public constructor() {
-    const contextPanel = new ContextPanel((url: string, title: string) => {
-      this.openLearningJourney(url, title);
-    }, (url: string, title: string) => {
-      this.openDocsPage(url, title);
-    });
-
-    // Restore tabs from localStorage
     const restoredTabs = CombinedLearningJourneyPanel.restoreTabsFromStorage();
-    const restoredActiveTabId = CombinedLearningJourneyPanel.restoreActiveTabFromStorage(restoredTabs);
+    const contextPanel = new ContextPanel(
+      (url: string, title: string) => this.openLearningJourney(url, title),
+      (url: string, title: string) => this.openDocsPage(url, title)
+    );
+
+    const activeTabId = CombinedLearningJourneyPanel.restoreActiveTabFromStorage(restoredTabs);
 
     super({
       tabs: restoredTabs,
-      activeTabId: restoredActiveTabId,
-      contextPanel,
+      activeTabId,
+      contextPanel
     });
 
-    // Initialize restored active tab content if needed
-    if (restoredActiveTabId !== 'recommendations') {
-      this.initializeRestoredActiveTab();
-    }
+    // Initialize the active tab if needed
+    this.initializeRestoredActiveTab();
   }
 
   private generateTabId(): string {
-    return `journey-tab-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    return `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   }
 
   private initializeRestoredActiveTab(): void {
-    // Small delay to ensure the state has been updated
-    setTimeout(() => {
-      const activeTab = this.getActiveTab();
-      if (!activeTab || activeTab.id === 'recommendations') {
-        return;
+    const activeTab = this.state.tabs.find(t => t.id === this.state.activeTabId);
+    if (activeTab && activeTab.id !== 'recommendations') {
+      // If we have an active tab but no content, load it
+      if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
+        if (activeTab.type === 'docs') {
+          this.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+        } else {
+          this.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+        }
       }
-
-      // Load content based on tab type, using currentUrl to preserve exact position
-      if (activeTab.type === 'docs' && !activeTab.docsContent && !activeTab.isLoading) {
-        this.loadDocsTabContent(activeTab.id, activeTab.currentUrl);
-      } else if (activeTab.type !== 'docs' && !activeTab.content && !activeTab.isLoading) {
-        // Use currentUrl (specific milestone) rather than baseUrl (journey start)
-        this.loadTabContent(activeTab.id, activeTab.currentUrl);
-      }
-    }, 100);
+    }
   }
 
-  // Static methods for tab persistence
   private static restoreTabsFromStorage(): LearningJourneyTab[] {
     try {
-      const storedTabs = localStorage.getItem(TABS_STORAGE_KEY);
-      if (storedTabs) {
-        const persistedTabs: PersistedTabData[] = JSON.parse(storedTabs);
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsedData: PersistedTabData[] = JSON.parse(stored);
         
-        // Convert persisted data back to full tab objects
-        const restoredTabs: LearningJourneyTab[] = persistedTabs.map(persistedTab => ({
-          id: persistedTab.id,
-          title: persistedTab.title,
-          baseUrl: persistedTab.baseUrl,
-          currentUrl: persistedTab.currentUrl || persistedTab.baseUrl, // Fallback for old data
-          content: null, // Content will be loaded on demand
-          isLoading: false,
-          error: null,
-          type: persistedTab.type,
-          docsContent: null, // Content will be loaded on demand
-        }));
+        const tabs: LearningJourneyTab[] = [
+          {
+            id: 'recommendations',
+            title: 'Recommendations',
+            baseUrl: '',
+            currentUrl: '',
+            content: null,
+            isLoading: false,
+            error: null,
+          }
+        ];
         
-        // Always ensure recommendations tab is first
-        const recommendationsTab: LearningJourneyTab = {
-          id: 'recommendations',
-          title: 'Recommendations',
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-        };
+        parsedData.forEach(data => {
+          tabs.push({
+            id: data.id,
+            title: data.title,
+            baseUrl: data.baseUrl,
+            currentUrl: data.currentUrl || data.baseUrl,
+            content: null, // Will be loaded when tab becomes active
+            isLoading: false,
+            error: null,
+            type: data.type || 'learning-journey',
+          });
+        });
         
-        // Filter out recommendations tab from restored tabs and prepend it
-        const otherTabs = restoredTabs.filter(tab => tab.id !== 'recommendations');
-        return [recommendationsTab, ...otherTabs];
+        return tabs;
       }
     } catch (error) {
-      console.warn('Failed to restore tabs from storage:', error);
+      console.error('Failed to restore tabs from storage:', error);
     }
     
-    // Fallback to default state
     return [
       {
         id: 'recommendations',
@@ -168,21 +160,30 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
   private static restoreActiveTabFromStorage(tabs: LearningJourneyTab[]): string {
     try {
-      const storedActiveTabId = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-      if (storedActiveTabId && tabs.some(tab => tab.id === storedActiveTabId)) {
-        return storedActiveTabId;
+      const stored = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+      if (stored) {
+        let activeTabId: string;
+        
+        // Handle both JSON string and raw string cases
+        try {
+          activeTabId = JSON.parse(stored);
+        } catch {
+          // If JSON.parse fails, treat it as a raw string
+          activeTabId = stored;
+        }
+        
+        const tabExists = tabs.some(t => t.id === activeTabId);
+        return tabExists ? activeTabId : 'recommendations';
       }
     } catch (error) {
-      console.warn('Failed to restore active tab from storage:', error);
+      console.error('Failed to restore active tab from storage:', error);
     }
     
-    // Fallback to recommendations tab
     return 'recommendations';
   }
 
   private saveTabsToStorage(): void {
     try {
-      // Only persist non-recommendations tabs with essential data
       const tabsToSave: PersistedTabData[] = this.state.tabs
         .filter(tab => tab.id !== 'recommendations')
         .map(tab => ({
@@ -193,79 +194,69 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
           type: tab.type,
         }));
       
-      localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(tabsToSave));
-      localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, this.state.activeTabId);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(tabsToSave));
+      localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(this.state.activeTabId));
     } catch (error) {
-      console.warn('Failed to save tabs to storage:', error);
+      console.error('Failed to save tabs to storage:', error);
     }
   }
 
   public static clearPersistedTabs(): void {
     try {
-      localStorage.removeItem(TABS_STORAGE_KEY);
+      localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
     } catch (error) {
-      console.warn('Failed to clear persisted tabs:', error);
+      console.error('Failed to clear persisted tabs:', error);
     }
   }
 
   public async openLearningJourney(url: string, title?: string): Promise<string> {
+    const finalTitle = title || 'Learning Journey';
     const tabId = this.generateTabId();
+    
     const newTab: LearningJourneyTab = {
       id: tabId,
-      title: title || 'Loading...',
+      title: finalTitle,
       baseUrl: url,
-      currentUrl: url, // Store the specific milestone URL
+      currentUrl: url,
       content: null,
-      isLoading: false, // Start as not loading - we'll load on demand
+      isLoading: true,
       error: null,
+      type: 'learning-journey',
     };
 
-    const updatedTabs = [...this.state.tabs, newTab];
-    
     this.setState({
-      tabs: updatedTabs,
-      activeTabId: tabId,
+      tabs: [...this.state.tabs, newTab],
+      activeTabId: tabId
     });
 
-    // Save tabs to storage
-    this.saveTabsToStorage();
-
-    // Load content immediately when tab is created and activated
-    await this.loadTabContent(tabId, url);
+    // Load content for the tab
+    this.loadTabContent(tabId, url);
     
     return tabId;
   }
 
   public async loadTabContent(tabId: string, url: string) {
-    // Find the tab and set loading state
-    const tab = this.state.tabs.find(t => t.id === tabId);
-    if (!tab) {
-      console.error(`Tab ${tabId} not found`);
-      return;
-    }
-
-    // Update tab state to loading and set the currentUrl to the URL being loaded
+    // Update tab to loading state
     const updatedTabs = this.state.tabs.map(t => 
       t.id === tabId 
         ? { 
             ...t, 
             isLoading: true, 
-            error: null, 
-            currentUrl: url  // Update currentUrl when loading new content
+            error: null,
           }
         : t
     );
     this.setState({ tabs: updatedTabs });
 
     try {
-      const content = await fetchLearningJourneyContent(url);
+      const result = await fetchContent(url);
       
       const finalUpdatedTabs = this.state.tabs.map(t => 
         t.id === tabId 
           ? { 
               ...t, 
-              content: content, 
+              content: result.content, 
               isLoading: false, 
               error: null,
               currentUrl: url  // Ensure currentUrl is set to the actual loaded URL
@@ -274,19 +265,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       );
       this.setState({ tabs: finalUpdatedTabs });
       
-      // Save tabs to storage after content loading (preserves milestone position)
-      this.saveTabsToStorage();
-      
     } catch (error) {
-      console.error(`Failed to load tab content: ${error}`);
-
+      console.error(`Failed to load journey content for tab ${tabId}:`, error);
+      
       const errorUpdatedTabs = this.state.tabs.map(t => 
         t.id === tabId 
           ? { 
               ...t, 
               isLoading: false, 
-              error: `Failed to load content: ${error instanceof Error ? error.message : 'Unknown error'}`,
-              currentUrl: url  // Keep currentUrl even on error for retry purposes
+              error: error instanceof Error ? error.message : 'Failed to load content',
             }
           : t
       );
@@ -295,33 +282,39 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public closeTab(tabId: string) {
-    // Don't allow closing the recommendations tab
-    if (tabId === 'recommendations') {return;}
-
-    // Get the tab before removing it so we can clear its cache
-    const tabToClose = this.state.tabs.find(tab => tab.id === tabId);
-
-    const updatedTabs = this.state.tabs.filter(tab => tab.id !== tabId);
-    
-    // If we're closing the active tab, switch to recommendations or another tab
-    let newActiveTabId = this.state.activeTabId;
-    if (this.state.activeTabId === tabId) {
-      newActiveTabId = 'recommendations'; // Always fall back to recommendations
+    if (tabId === 'recommendations') {
+      return; // Can't close recommendations tab
     }
 
-    this.setState({
-      tabs: updatedTabs,
-      activeTabId: newActiveTabId,
+    const currentTabs = this.state.tabs;
+    const tabToClose = currentTabs.find(t => t.id === tabId);
+    const tabIndex = currentTabs.findIndex(t => t.id === tabId);
+    
+    // Remove the tab
+    const newTabs = currentTabs.filter(t => t.id !== tabId);
+    
+    // Determine new active tab
+    let newActiveTabId = this.state.activeTabId;
+    if (this.state.activeTabId === tabId) {
+      if (tabIndex > 0 && tabIndex < currentTabs.length - 1) {
+        // Choose the next tab if available
+        newActiveTabId = currentTabs[tabIndex + 1].id;
+      } else if (tabIndex > 0) {
+        // Choose the previous tab if at the end
+        newActiveTabId = currentTabs[tabIndex - 1].id;
+      } else {
+        // Default to recommendations if only tab
+        newActiveTabId = 'recommendations';
+      }
+    }
+    
+    this.setState({ 
+      tabs: newTabs,
+      activeTabId: newActiveTabId
     });
 
     // Save tabs to storage after closing
     this.saveTabsToStorage();
-
-    // Clear ALL cache for the specific journey when app tab is closed
-    // This ensures reopening the journey starts fresh from the beginning
-    if (tabToClose && tabToClose.baseUrl) {
-      clearSpecificJourneyCache(tabToClose.baseUrl);
-    }
   }
 
   public setActiveTab(tabId: string) {
@@ -333,149 +326,135 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     // If switching to a tab that hasn't loaded content yet, load it
     const tab = this.state.tabs.find(t => t.id === tabId);
     if (tab && tabId !== 'recommendations' && !tab.isLoading && !tab.error) {
-      if (tab.type === 'docs' && !tab.docsContent) {
-        this.loadDocsTabContent(tabId, tab.currentUrl); // Use currentUrl to restore exact page
+      if (tab.type === 'docs' && !tab.content) {
+        this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
       } else if (tab.type !== 'docs' && !tab.content) {
-        this.loadTabContent(tabId, tab.currentUrl); // Use currentUrl to restore exact milestone
+        this.loadTabContent(tabId, tab.currentUrl || tab.baseUrl);
       }
     }
   }
 
   public async navigateToNextMilestone() {
     const activeTab = this.getActiveTab();
-    if (!activeTab?.content || activeTab.id === 'recommendations') {return;}
-
-    const nextUrl = getNextMilestoneUrl(activeTab.content);
-    if (nextUrl) {
-      await this.loadTabContent(activeTab.id, nextUrl);
+    if (activeTab && activeTab.content) {
+      const nextUrl = getNextMilestoneUrlFromContent(activeTab.content);
+      if (nextUrl) {
+        this.loadTabContent(activeTab.id, nextUrl);
+      }
     }
   }
 
   public async navigateToPreviousMilestone() {
     const activeTab = this.getActiveTab();
-    if (!activeTab?.content || activeTab.id === 'recommendations') {return;}
-
-    const prevUrl = getPreviousMilestoneUrl(activeTab.content);
-    if (prevUrl) {
-      await this.loadTabContent(activeTab.id, prevUrl);
+    if (activeTab && activeTab.content) {
+      const prevUrl = getPreviousMilestoneUrlFromContent(activeTab.content);
+      if (prevUrl) {
+        this.loadTabContent(activeTab.id, prevUrl);
+      }
     }
   }
 
   public getActiveTab(): LearningJourneyTab | null {
-    return this.state.tabs.find(tab => tab.id === this.state.activeTabId) || null;
+    return this.state.tabs.find(t => t.id === this.state.activeTabId) || null;
   }
 
   public canNavigateNext(): boolean {
     const activeTab = this.getActiveTab();
-    return activeTab?.content && activeTab.id !== 'recommendations' ? getNextMilestoneUrl(activeTab.content) !== null : false;
+    return activeTab?.content ? getNextMilestoneUrlFromContent(activeTab.content) !== null : false;
   }
 
   public canNavigatePrevious(): boolean {
     const activeTab = this.getActiveTab();
-    return activeTab?.content && activeTab.id !== 'recommendations' ? getPreviousMilestoneUrl(activeTab.content) !== null : false;
+    return activeTab?.content ? getPreviousMilestoneUrlFromContent(activeTab.content) !== null : false;
   }
 
   public async openDocsPage(url: string, title?: string): Promise<string> {
+    const finalTitle = title || 'Documentation';
     const tabId = this.generateTabId();
+    
     const newTab: LearningJourneyTab = {
       id: tabId,
-      title: title || 'Loading...',
+      title: finalTitle,
       baseUrl: url,
-      currentUrl: url, // Store the specific docs page URL
+      currentUrl: url,
       content: null,
-      isLoading: false,
+      isLoading: true,
       error: null,
       type: 'docs',
-      docsContent: null,
     };
 
-    const updatedTabs = [...this.state.tabs, newTab];
-    
     this.setState({
-      tabs: updatedTabs,
-      activeTabId: tabId,
+      tabs: [...this.state.tabs, newTab],
+      activeTabId: tabId
     });
 
-    // Save tabs to storage
-    this.saveTabsToStorage();
-
-    // Load docs content immediately when tab is created and activated
-    await this.loadDocsTabContent(tabId, url);
+    // Load docs content for the tab
+    this.loadDocsTabContent(tabId, url);
     
     return tabId;
   }
 
   public async loadDocsTabContent(tabId: string, url: string) {
-    const tabIndex = this.state.tabs.findIndex(tab => tab.id === tabId);
-    if (tabIndex === -1) {return;}
-
     // Update tab to loading state
-    const updatedTabs = [...this.state.tabs];
-    updatedTabs[tabIndex] = {
-      ...updatedTabs[tabIndex],
-      isLoading: true,
-      error: null,
-    };
+    const updatedTabs = this.state.tabs.map(t => 
+      t.id === tabId 
+        ? { 
+            ...t, 
+            isLoading: true, 
+            error: null
+          }
+        : t
+    );
     this.setState({ tabs: updatedTabs });
 
     try {
-      const docsContent = await fetchSingleDocsContent(url);
+      const result = await fetchContent(url);
       
-      const finalTabs = [...this.state.tabs];
-      const finalTabIndex = finalTabs.findIndex(tab => tab.id === tabId);
+      const finalUpdatedTabs = this.state.tabs.map(t => 
+        t.id === tabId 
+          ? { 
+              ...t, 
+              content: result.content,
+              isLoading: false, 
+              error: null,
+              currentUrl: url,
+            }
+          : t
+      );
+      this.setState({ tabs: finalUpdatedTabs });
       
-      if (finalTabIndex !== -1) {
-        // Only update title if it's still "Loading..." (preserve original title)
-        const shouldUpdateTitle = finalTabs[finalTabIndex].title === 'Loading...';
-        const urlChanged = finalTabs[finalTabIndex].currentUrl !== url;
-        
-        finalTabs[finalTabIndex] = {
-          ...finalTabs[finalTabIndex],
-          docsContent: docsContent,
-          currentUrl: url, // Update currentUrl to track current page
-          title: shouldUpdateTitle ? (docsContent?.title || finalTabs[finalTabIndex].title) : finalTabs[finalTabIndex].title,
-          isLoading: false,
-          error: docsContent ? null : 'Failed to load documentation',
-        };
-        this.setState({ tabs: finalTabs });
-        
-        // Save tabs to storage if title was updated or URL changed
-        if ((shouldUpdateTitle && docsContent?.title) || urlChanged) {
-          this.saveTabsToStorage();
-        }
-      }
     } catch (error) {
-      console.error('Failed to load docs:', error);
-      const errorTabs = [...this.state.tabs];
-      const errorTabIndex = errorTabs.findIndex(tab => tab.id === tabId);
+      console.error(`Failed to load docs content for tab ${tabId}:`, error);
       
-      if (errorTabIndex !== -1) {
-        errorTabs[errorTabIndex] = {
-          ...errorTabs[errorTabIndex],
-          docsContent: null,
-          isLoading: false,
-          error: error instanceof Error ? error.message : 'Failed to load documentation',
-        };
-        this.setState({ tabs: errorTabs });
-      }
+      const errorUpdatedTabs = this.state.tabs.map(t => 
+        t.id === tabId 
+          ? { 
+              ...t,
+              isLoading: false, 
+              error: error instanceof Error ? error.message : 'Failed to load documentation'
+            }
+          : t
+      );
+      this.setState({ tabs: errorUpdatedTabs });
     }
   }
 }
 
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
   const { tabs, activeTabId, contextPanel } = model.useState();
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const activeTab = tabs.find(t => t.id === activeTabId) || null;
+  const isRecommendationsTab = activeTabId === 'recommendations';
+  const theme = useStyles2((theme: GrafanaTheme2) => theme);
+  
   const styles = useStyles2(getStyles);
-  const theme = useTheme2();
-  const contentRef = useRef<HTMLDivElement>(null);
-  const activeTab = model.getActiveTab();
-  const isRecommendationsTab = activeTabId === TAB_CONFIG.RECOMMENDATIONS_ID;
 
   // Tab overflow management
   const tabListRef = useRef<HTMLDivElement>(null);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [visibleTabs, setVisibleTabs] = useState<LearningJourneyTab[]>(tabs);
   const [overflowedTabs, setOverflowedTabs] = useState<LearningJourneyTab[]>([]);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const chevronButtonRef = useRef<HTMLButtonElement>(null);
 
   // Calculate visible vs overflowed tabs
@@ -487,13 +466,23 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       return;
     }
 
+    // Wait for container to have proper dimensions
+    if (tabContainer.clientWidth === 0) {
+      setTimeout(calculateTabVisibility, 50);
+      return;
+    }
+
     const containerWidth = tabContainer.clientWidth;
     const tabMinWidth = 140; // From styles: minWidth: '140px'
-    const chevronWidth = 120; // More accurate width for chevron button (from maxWidth: '120px')
-    const gap = 4; // From styles: gap: theme.spacing(0.5) ≈ 4px
+    const chevronWidth = 100; // Reduced from 120 - more accurate for actual button
+    const gap = 4; // From styles: gap spacing
+    const padding = 8; // Container padding buffer
 
-    // First, calculate how many tabs can fit without any chevron
-    const maxTabsWithoutChevron = Math.floor(containerWidth / (tabMinWidth + gap));
+    // Calculate available width more accurately
+    const actualAvailableWidth = containerWidth - padding;
+
+    // First, calculate how many tabs can fit without any chevron (be less aggressive)
+    const maxTabsWithoutChevron = Math.floor(actualAvailableWidth / (tabMinWidth + gap));
     
     if (tabs.length <= maxTabsWithoutChevron) {
       // All tabs fit without needing a chevron
@@ -503,7 +492,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     }
 
     // Some tabs need to overflow - calculate how many can fit WITH a chevron
-    const availableWidthWithChevron = containerWidth - chevronWidth - gap; // Reserve space for chevron + gap
+    const availableWidthWithChevron = actualAvailableWidth - chevronWidth - gap;
     const maxTabsWithChevron = Math.floor(availableWidthWithChevron / (tabMinWidth + gap));
     const numVisibleTabs = Math.max(1, maxTabsWithChevron); // Always show at least 1 tab
 
@@ -519,13 +508,55 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   useEffect(() => {
     const handleResize = () => {
       calculateTabVisibility();
+      if (isDropdownOpen) {
+        setIsDropdownOpen(false);
+      }
     };
 
     window.addEventListener('resize', handleResize);
     return () => {
       window.removeEventListener('resize', handleResize);
     };
-  }, [calculateTabVisibility]);
+  }, [calculateTabVisibility, isDropdownOpen]);
+
+  // Content-specific styles using the unified content system
+  const journeyContentStyles = useStyles2(journeyContentHtml);
+  const docsContentStyles = useStyles2(docsContentHtml);
+
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Initialize the interactive bridge and use custom hooks for cleaner organization
+  const interactiveHookFunctions = useInteractiveElements({ containerRef: contentRef });
+  
+  // Initialize the interactive bridge with the hook functions
+  React.useEffect(() => {
+    if (interactiveHookFunctions) {
+      const bridge = InteractiveBridge.getInstance();
+      bridge.initializeWithHook(interactiveHookFunctions);
+    }
+  }, [interactiveHookFunctions]);
+
+  // Use custom hooks for cleaner organization - no more content processing hook needed!
+  useKeyboardShortcuts({
+    tabs,
+    activeTabId,
+    activeTab,
+    isRecommendationsTab,
+    model,
+  });
+
+  useLinkClickHandler({ 
+    contentRef, 
+    activeTab, 
+    theme,
+    model 
+  });
+
+  // Save tabs to storage when state changes
+  React.useEffect(() => {
+    // Call via setState to trigger storage save
+    model.setState({ tabs, activeTabId });
+  }, [tabs, activeTabId]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -545,376 +576,69 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     return undefined;
   }, [isDropdownOpen]);
 
-  // Create combined content styles that include interactive styles
-  const journeyContentStyles = css`
-    ${journeyContentHtml(theme)}
-    ${getInteractiveStyles(theme)}
-  `;
-  const docsContentStyles = css`
-    ${docsContentHtml(theme)}
-    ${getInteractiveStyles(theme)}
-  `;
-
-  // Add global modal and interactive styles on component mount
+  // Auto-launch tutorial detection
   useEffect(() => {
-    addGlobalModalStyles();
-    addGlobalInteractiveStyles();
-  }, []);
-
-  // Listen for auto-launch tutorial events
-  useEffect(() => {
-    // Listen for the auto-launch tutorial event
     const handleAutoLaunchTutorial = (event: CustomEvent) => {
-      const { url, type, title } = event.detail;
+      const { url, title } = event.detail;
       
-      try {
-        if (type === 'learning-journey') {
-          // Open as learning journey
-          model.openLearningJourney(url, title);
-        } else {
-          // Open as docs page
-          model.openDocsPage(url, title);
-        }
-      } catch (error) {
-        console.error('Failed to handle auto-launch tutorial:', error);
+      // Track auto-launch tutorial analytics
+      reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
+        journey_title: title,
+        journey_url: url,
+        trigger_source: 'auto_launch_tutorial',
+        interaction_location: 'docs_panel'
+      });
+
+      if (url && title) {
+        model.openLearningJourney(url, title);
       }
     };
 
-    // Listen for the auto-launch tutorial event
     document.addEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);
-
-    // Cleanup
+    
     return () => {
       document.removeEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);
     };
   }, [model]);
 
-  // Use custom hooks for cleaner organization
-  useInteractiveElements({ containerRef: contentRef });
-  
-  useContentProcessing({
-    contentRef,
-    activeTabContent: activeTab?.content,
-    activeTabDocsContent: activeTab?.docsContent,
-  });
-
-  useKeyboardShortcuts({
-    tabs,
-    activeTabId,
-    activeTab,
-    isRecommendationsTab,
-    model,
-  });
-
-  useLinkClickHandler({
-    contentRef,
-    activeTab,
-    theme,
-    model: {
-      loadTabContent: (tabId: string, url: string) => model.loadTabContent(tabId, url),
-      openLearningJourney: (url: string, title: string) => model.openLearningJourney(url, title),
-      getActiveTab: () => model.getActiveTab(),
-      navigateToNextMilestone: () => model.navigateToNextMilestone(),
-      navigateToPreviousMilestone: () => model.navigateToPreviousMilestone(),
-      canNavigateNext: () => model.canNavigateNext(),
-      canNavigatePrevious: () => model.canNavigatePrevious(),
-    },
-  });
-
-  // Handle docs internal links to open in new app tabs instead of browser tabs
+  // Scroll tracking
   useEffect(() => {
-    const contentElement = contentRef.current;
-    if (!contentElement) {return;}
-
-    const handleDocsLinkClick = (e: Event) => {
-      const target = e.target as HTMLElement;
-      const link = target.closest('a') as HTMLAnchorElement;
+    if (activeTab && activeTab.content && contentRef.current) {
+      const cleanup = setupScrollTracking(
+        contentRef.current,
+        activeTab,
+        isRecommendationsTab
+      );
       
-      if (link) {
-        const hasInternalAttribute = link.hasAttribute('data-docs-internal-link');
-        const hasAnchorAttribute = link.hasAttribute('data-docs-anchor-link');
-        
-        if (hasAnchorAttribute) {
-          // Handle anchor links - scroll to target element within the page
-          safeEventHandler(e, {
-            preventDefault: true,
-            stopPropagation: true,
-            stopImmediatePropagation: true,
-          });
-          
-          const anchorTarget = link.getAttribute('data-anchor-target');
-          if (anchorTarget) {
-            // Use the same element selection strategy as the existing anchor scrolling code
-            const targetElement = 
-              contentElement.querySelector(`#${anchorTarget}`) ||
-              contentElement.querySelector(`[id="${anchorTarget}"]`) ||
-              contentElement.querySelector(`[name="${anchorTarget}"]`) ||
-              contentElement.querySelector(`h1:contains("${anchorTarget.replace(/-/g, ' ')}")`) ||
-              contentElement.querySelector(`h2:contains("${anchorTarget.replace(/-/g, ' ')}")`) ||
-              contentElement.querySelector(`h3:contains("${anchorTarget.replace(/-/g, ' ')}")`) ||
-              contentElement.querySelector(`h4:contains("${anchorTarget.replace(/-/g, ' ')}")`) ||
-              contentElement.querySelector(`h5:contains("${anchorTarget.replace(/-/g, ' ')}")`) ||
-              contentElement.querySelector(`h6:contains("${anchorTarget.replace(/-/g, ' ')}")`);
-
-            if (targetElement) {
-              targetElement.scrollIntoView({ 
-                behavior: 'smooth', 
-                block: 'start',
-                inline: 'nearest'
-              });
-              
-              // Add a highlight effect to make it obvious
-              const originalBackground = (targetElement as HTMLElement).style.backgroundColor;
-              (targetElement as HTMLElement).style.backgroundColor = theme.colors.warning.main;
-              (targetElement as HTMLElement).style.transition = 'background-color 0.3s ease';
-              
-              setTimeout(() => {
-                (targetElement as HTMLElement).style.backgroundColor = originalBackground;
-                setTimeout(() => {
-                  (targetElement as HTMLElement).style.transition = '';
-                }, 300);
-              }, 2000);
-              
-            } else {
-              console.warn(`❌ Could not find anchor element for: #${anchorTarget}`);
-              // Fallback: try to find any element with text content matching the anchor
-              const allElements = contentElement.querySelectorAll('h1, h2, h3, h4, h5, h6, [id], [name]');
-              for (const element of allElements) {
-                if (element.id.toLowerCase().includes(anchorTarget.toLowerCase()) ||
-                    element.textContent?.toLowerCase().replace(/\s+/g, '-').includes(anchorTarget.toLowerCase())) {
-                  element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  break;
-                }
-              }
-            }
-          }
-        } else if (hasInternalAttribute) {
-          safeEventHandler(e, {
-            preventDefault: true,
-            stopPropagation: true,
-            stopImmediatePropagation: true,
-          });
-          
-          const href = link.getAttribute('href');
-          if (href) {
-            const title = link.textContent?.trim() || 'Documentation';
-            
-            // Make sure we have a valid docs URL
-            let finalUrl = href;
-            
-            // If it's a relative URL starting with /docs/, make it absolute
-            if (href.startsWith('/docs/')) {
-              finalUrl = `https://grafana.com${href}`;
-            }
-            
-            // Determine if it's a learning journey or regular docs page
-            const isLearningJourney = finalUrl.includes('/learning-journeys/');
-            
-            if (isLearningJourney) {
-              model.openLearningJourney(finalUrl, title);
-            } else {
-              model.openDocsPage(finalUrl, title);
-            }
-          }
-        }
-      }
-    };
-
-    // Add event listener for docs internal links - use capture phase to intercept early
-    contentElement.addEventListener('click', handleDocsLinkClick, true);
-
-    // Cleanup
-    return () => {
-      contentElement.removeEventListener('click', handleDocsLinkClick, true);
-    };
-  }, [activeTab, model, theme]);
-
-  // Handle anchor scrolling when content with hash fragments loads
-  useEffect(() => {
-    const contentElement = contentRef.current;
-    if (!contentElement || !activeTab) {return;}
-
-    let hashFragment: string | undefined;
-    
-    // Get hash fragment from either docs content or learning journey content
-    if (activeTab.type === 'docs' && activeTab.docsContent?.hashFragment) {
-      hashFragment = activeTab.docsContent.hashFragment;
-    } else if (activeTab.type !== 'docs' && activeTab.content?.hashFragment) {
-      hashFragment = activeTab.content.hashFragment;
+      return cleanup;
     }
+  }, [activeTab, activeTab?.content, isRecommendationsTab]);
 
-    if (hashFragment) {
-      setTimeout(() => {
-        // Try multiple element selection strategies
-        const targetElement = 
-          contentElement.querySelector(`#${hashFragment}`) ||
-          contentElement.querySelector(`[id="${hashFragment}"]`) ||
-          contentElement.querySelector(`[name="${hashFragment}"]`) ||
-          contentElement.querySelector(`h1:contains("${hashFragment.replace(/-/g, ' ')}")`) ||
-          contentElement.querySelector(`h2:contains("${hashFragment.replace(/-/g, ' ')}")`) ||
-          contentElement.querySelector(`h3:contains("${hashFragment.replace(/-/g, ' ')}")`) ||
-          contentElement.querySelector(`h4:contains("${hashFragment.replace(/-/g, ' ')}")`) ||
-          contentElement.querySelector(`h5:contains("${hashFragment.replace(/-/g, ' ')}")`) ||
-          contentElement.querySelector(`h6:contains("${hashFragment.replace(/-/g, ' ')}")`);
 
-        if (targetElement) {
-          targetElement.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'start',
-            inline: 'nearest'
-          });
-          
-          // Add a highlight effect to make it obvious
-          const originalBackground = (targetElement as HTMLElement).style.backgroundColor;
-          (targetElement as HTMLElement).style.backgroundColor = theme.colors.warning.main;
-          (targetElement as HTMLElement).style.transition = 'background-color 0.3s ease';
-          
-          setTimeout(() => {
-            (targetElement as HTMLElement).style.backgroundColor = originalBackground;
-            setTimeout(() => {
-              (targetElement as HTMLElement).style.transition = '';
-            }, 300);
-          }, 2000);
-          
-        } else {
-          console.warn(`❌ Could not find anchor element for: #${hashFragment}`);
-          // Fallback: try to find any element with text content matching the hash
-          const allElements = contentElement.querySelectorAll('h1, h2, h3, h4, h5, h6, [id], [name]');
-          for (const element of allElements) {
-            if (element.id.toLowerCase().includes(hashFragment.toLowerCase()) ||
-                element.textContent?.toLowerCase().replace(/\s+/g, '-').includes(hashFragment.toLowerCase())) {
-              element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              break;
-            }
-          }
-        }
-      }, 100);
-    }
-  }, [activeTab?.docsContent?.hashFragment, activeTab?.content?.hashFragment, activeTab?.isLoading, activeTab, contentRef, theme]);
-
-  // Track scroll events for analytics - fire once per unique docs page
-  useEffect(() => {
-    return setupScrollTracking(contentRef.current, activeTab, isRecommendationsTab);
-  }, [activeTab, isRecommendationsTab]);
-
-  // Link handling is now managed by the useLinkClickHandler hook
 
   return (
     <div className={styles.container}>
       <div className={styles.topBar}>
-        <div className={styles.title}>
-          <div className={styles.titleContent}>
-            <div className={styles.appIcon}>
-              <Icon name="book" size="lg" />
-            </div>
-            <div className={styles.titleText}>
-              Documentation
-            </div>
-          </div>
-        </div>
-        <div className={styles.actions}>
-          {/* Actions moved to content meta areas for better context */}
-        </div>
-      </div>
-
-      {/* Tab Bar */}
-      <div className={styles.tabBar}>
-        <div className={styles.tabList} ref={tabListRef}>
-          {/* Render visible tabs */}
-          {visibleTabs.map((tab) => (
-            <div
-              key={tab.id}
-              className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
-              onClick={() => model.setActiveTab(tab.id)}
-            >
-              <div className={styles.tabContent}>
-                {tab.id !== 'recommendations' && (
-                  <Icon 
-                    name={tab.type === 'docs' ? 'file-alt' : 'book'} 
-                    size="xs" 
-                    className={styles.tabIcon} 
-                  />
-                )}
-                <span className={styles.tabTitle} title={tab.title}>
-                  {tab.isLoading ? (
-                    <>
-                      <Icon name="sync" size="xs" />
-                      <span className={styles.loadingText}>Loading...</span>
-                    </>
-                  ) : (
-                    tab.title
-                  )}
-                </span>
-                {tab.id !== 'recommendations' && (
-                  <IconButton
-                    name="times"
-                    size="sm"
-                    aria-label="Close tab"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      
-                      // Track close tab analytics
-                      reportAppInteraction(UserInteraction.CloseTabClick, {
-                        tab_type: tab.type || 'learning-journey',
-                        tab_title: tab.title,
-                        tab_url: tab.currentUrl || tab.baseUrl,
-                        close_location: 'tab_bar'
-                      });
-                      
-                      model.closeTab(tab.id);
-                    }}
-                    className={styles.closeButton}
-                  />
-                )}
-              </div>
-            </div>
-          ))}
-          
-          {/* Render chevron button for overflowed tabs */}
-          {overflowedTabs.length > 0 && (
-            <div className={styles.tabOverflow}>
-              <button
-                ref={chevronButtonRef}
-                className={`${styles.tab} ${styles.chevronTab}`}
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                aria-label={`Show ${overflowedTabs.length} more tabs`}
-                aria-expanded={isDropdownOpen}
-                aria-haspopup="true"
-              >
-                <div className={styles.tabContent}>
-                  <Icon name="angle-right" size="sm" className={styles.chevronIcon} />
-                  <span className={styles.tabTitle}>
-                    {overflowedTabs.length} more
-                  </span>
-                </div>
-              </button>
-            </div>
-          )}
-        </div>
-        
-        {/* Render dropdown outside of tabList but inside tabBar */}
-        {isDropdownOpen && overflowedTabs.length > 0 && (
-          <div ref={dropdownRef} className={styles.tabDropdown} role="menu" aria-label="More tabs">
-            {overflowedTabs.map((tab) => (
+        <div className={styles.tabBar}>
+          <div className={styles.tabList} ref={tabListRef}>
+            {/* Render visible tabs */}
+            {visibleTabs.map((tab) => (
               <button
                 key={tab.id}
-                className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
-                onClick={() => {
-                  model.setActiveTab(tab.id);
-                  setIsDropdownOpen(false);
-                }}
-                role="menuitem"
-                aria-label={`Switch to ${tab.title}`}
+                className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
+                onClick={() => model.setActiveTab(tab.id)}
+                disabled={tab.isLoading}
+                title={tab.title}
               >
-                <div className={styles.dropdownItemContent}>
+                <div className={styles.tabContent}>
                   {tab.id !== 'recommendations' && (
                     <Icon 
                       name={tab.type === 'docs' ? 'file-alt' : 'book'} 
                       size="xs" 
-                      className={styles.dropdownItemIcon} 
+                      className={styles.tabIcon} 
                     />
                   )}
-                  <span className={styles.dropdownItemTitle}>
+                  <span className={styles.tabTitle}>
                     {tab.isLoading ? (
                       <>
                         <Icon name="sync" size="xs" />
@@ -932,24 +656,102 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                       onClick={(e) => {
                         e.stopPropagation();
                         
-                        // Track close tab analytics
                         reportAppInteraction(UserInteraction.CloseTabClick, {
                           tab_type: tab.type || 'learning-journey',
                           tab_title: tab.title,
                           tab_url: tab.currentUrl || tab.baseUrl,
-                          close_location: 'dropdown'
+                          close_location: 'tab_button'
                         });
                         
                         model.closeTab(tab.id);
                       }}
-                      className={styles.dropdownItemClose}
+                      className={styles.closeButton}
                     />
                   )}
                 </div>
               </button>
             ))}
+            
+            {/* Render chevron button for overflowed tabs */}
+            {overflowedTabs.length > 0 && (
+              <div className={styles.tabOverflow}>
+                <button
+                  ref={chevronButtonRef}
+                  className={`${styles.tab} ${styles.chevronTab}`}
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  aria-label={`Show ${overflowedTabs.length} more tabs`}
+                  aria-expanded={isDropdownOpen}
+                  aria-haspopup="true"
+                >
+                  <div className={styles.tabContent}>
+                    <Icon name="angle-right" size="sm" className={styles.chevronIcon} />
+                    <span className={styles.tabTitle}>
+                      {overflowedTabs.length} more
+                    </span>
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
-        )}
+          
+          {/* Render dropdown outside of tabList but inside tabBar */}
+          {isDropdownOpen && overflowedTabs.length > 0 && (
+            <div ref={dropdownRef} className={styles.tabDropdown} role="menu" aria-label="More tabs">
+              {overflowedTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
+                  onClick={() => {
+                    model.setActiveTab(tab.id);
+                    setIsDropdownOpen(false);
+                  }}
+                  role="menuitem"
+                  aria-label={`Switch to ${tab.title}`}
+                >
+                  <div className={styles.dropdownItemContent}>
+                    {tab.id !== 'recommendations' && (
+                      <Icon 
+                        name={tab.type === 'docs' ? 'file-alt' : 'book'} 
+                        size="xs" 
+                        className={styles.dropdownItemIcon} 
+                      />
+                    )}
+                    <span className={styles.dropdownItemTitle}>
+                      {tab.isLoading ? (
+                        <>
+                          <Icon name="sync" size="xs" />
+                          <span>Loading...</span>
+                        </>
+                      ) : (
+                        tab.title
+                      )}
+                    </span>
+                    {tab.id !== 'recommendations' && (
+                      <IconButton
+                        name="times"
+                        size="sm"
+                        aria-label={`Close ${tab.title}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          
+                          reportAppInteraction(UserInteraction.CloseTabClick, {
+                            tab_type: tab.type || 'learning-journey',
+                            tab_title: tab.title,
+                            tab_url: tab.currentUrl || tab.baseUrl,
+                            close_location: 'dropdown'
+                          });
+                          
+                          model.closeTab(tab.id);
+                        }}
+                        className={styles.dropdownItemClose}
+                      />
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className={styles.content}>
@@ -978,53 +780,30 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
             );
           }
           
-          // Show docs content
-          if (!isRecommendationsTab && activeTab?.type === 'docs' && activeTab?.docsContent && !activeTab.isLoading) {
+          // Show content - both learning journeys and docs use the same ContentRenderer now!
+          if (!isRecommendationsTab && activeTab?.content && !activeTab.isLoading) {
             return (
-              <div className={styles.docsContent}>
+              <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
 
-                
-                {/* Content Action Bar */}
-                <div className={styles.contentActionBar}>
-                  <IconButton
-                    name="external-link-alt"
-                    size="xs"
-                    aria-label="Open this page in new tab"
-                    onClick={() => {
-                      const url = activeTab.docsContent?.url || activeTab.baseUrl;
-                      if (url) {
-                        // Track open documentation button analytics
-                        reportAppInteraction(UserInteraction.OpenDocumentationButton, {
-                          content_type: 'docs',
-                          content_title: activeTab.title,
-                          content_url: url,
-                          interaction_location: 'docs_content_action_bar'
-                        });
-                        
-                        window.open(url, '_blank', 'noopener,noreferrer');
-                      }
-                    }}
-                    tooltip="Open this page in new tab"
-                    tooltipPlacement="top"
-                    className={styles.actionButton}
-                  />
-                </div>
-                
-                <div 
-                  ref={contentRef}
-                  className={docsContentStyles}
-                  dangerouslySetInnerHTML={{ __html: activeTab.docsContent.content }}
-                />
-              </div>
-            );
-          }
-          
-          // Show learning journey content
-          if (!isRecommendationsTab && activeTab?.type !== 'docs' && activeTab?.content && !activeTab.isLoading) {
-            return (
-              <div className={styles.journeyContent}>
-                {/* Milestone Progress - only show for milestone pages (currentMilestone > 0) */}
-                {activeTab.content.currentMilestone > 0 && activeTab.content.milestones.length > 0 && (
+                {/* Content Meta for cover pages (when no milestone progress is shown) */}
+                {activeTab.type !== 'docs' && activeTab.content.type === 'learning-journey' && 
+                 activeTab.content.metadata.learningJourney && 
+                 !(activeTab.content.metadata.learningJourney.currentMilestone > 0) && (
+                  <div className={styles.contentMeta}>
+                    <div className={styles.metaInfo}>
+                      <span>Learning Journey</span>
+                    </div>
+                    <small>
+                      {(activeTab.content.metadata.learningJourney.totalMilestones > 0) ? 
+                        `${activeTab.content.metadata.learningJourney.totalMilestones} milestones` : 
+                        'Interactive journey'}
+                    </small>
+                  </div>
+                )}
+
+                {/* Milestone Progress - only show for learning journey milestone pages */}
+                {activeTab.type !== 'docs' && activeTab.content.type === 'learning-journey' && 
+                 activeTab.content.metadata.learningJourney && activeTab.content.metadata.learningJourney.currentMilestone > 0 && (
                   <div className={styles.milestoneProgress}>
                     <div className={styles.progressInfo}>
                       <div className={styles.progressHeader}>
@@ -1033,12 +812,11 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                           size="sm"
                           aria-label="Previous milestone"
                           onClick={() => {
-                            // Track milestone arrow interaction analytics
                             reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
                               journey_title: activeTab.title,
                               journey_url: activeTab.baseUrl,
-                              current_milestone: activeTab.content?.currentMilestone || 0,
-                              total_milestones: activeTab.content?.totalMilestones || 0,
+                              current_milestone: activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
+                              total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
                               direction: 'backward',
                               interaction_location: 'milestone_progress_bar'
                             });
@@ -1051,19 +829,18 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                           className={styles.navButton}
                         />
                         <span className={styles.milestoneText}>
-                          Milestone {activeTab.content.currentMilestone} of {activeTab.content.totalMilestones}
+                          Milestone {activeTab.content.metadata.learningJourney.currentMilestone} of {activeTab.content.metadata.learningJourney.totalMilestones}
                         </span>
                         <IconButton
                           name="arrow-right"
                           size="sm"
                           aria-label="Next milestone"
                           onClick={() => {
-                            // Track milestone arrow interaction analytics
                             reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
                               journey_title: activeTab.title,
                               journey_url: activeTab.baseUrl,
-                              current_milestone: activeTab.content?.currentMilestone || 0,
-                              total_milestones: activeTab.content?.totalMilestones || 0,
+                              current_milestone: activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
+                              total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
                               direction: 'forward',
                               interaction_location: 'milestone_progress_bar'
                             });
@@ -1078,25 +855,13 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                       </div>
                       <div className={styles.progressBar}>
                         <div 
-                          className={styles.progressFill}
+                          className={styles.progressFill} 
                           style={{ 
-                            width: `${(activeTab.content.currentMilestone / activeTab.content.totalMilestones) * 100}%` 
-                          }}
+                            width: `${(activeTab.content.metadata.learningJourney.currentMilestone / activeTab.content.metadata.learningJourney.totalMilestones) * 100}%` 
+                          }} 
                         />
                       </div>
                     </div>
-                  </div>
-                )}
-                
-                {/* Content Meta for cover pages (when no milestone progress is shown) */}
-                {!(activeTab.content.currentMilestone > 0 && activeTab.content.milestones.length > 0) && (
-                  <div className={styles.contentMeta}>
-                    <div className={styles.metaInfo}>
-                      <span>Learning Journey</span>
-                    </div>
-                    <small>
-                      {activeTab.content.totalMilestones > 0 ? `${activeTab.content.totalMilestones} milestones` : 'Interactive journey'}
-                    </small>
                   </div>
                 )}
                 
@@ -1105,34 +870,45 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                   <IconButton
                     name="external-link-alt"
                     size="xs"
-                    aria-label="Open this journey in new tab"
+                    aria-label={`Open this ${activeTab.type === 'docs' ? 'page' : 'journey'} in new tab`}
                     onClick={() => {
-                      const url = activeTab.content?.url;
+                      const url = activeTab.content?.url || activeTab.baseUrl;
                       if (url) {
-                        // Track open documentation button analytics for learning journeys
                         reportAppInteraction(UserInteraction.OpenDocumentationButton, {
-                          content_type: 'learning-journey',
+                          content_type: activeTab.type || 'learning-journey',
                           content_title: activeTab.title,
                           content_url: url,
-                          interaction_location: 'journey_content_action_bar',
-                          current_milestone: activeTab.content?.currentMilestone || 0,
-                          total_milestones: activeTab.content?.totalMilestones || 0
+                          interaction_location: `${activeTab.type === 'docs' ? 'docs' : 'journey'}_content_action_bar`,
+                          ...(activeTab.type !== 'docs' && activeTab.content?.metadata.learningJourney && {
+                            current_milestone: activeTab.content.metadata.learningJourney.currentMilestone,
+                            total_milestones: activeTab.content.metadata.learningJourney.totalMilestones
+                          })
                         });
                         
                         window.open(url, '_blank', 'noopener,noreferrer');
                       }
                     }}
-                    tooltip="Open this journey in new tab"
+                    tooltip={`Open this ${activeTab.type === 'docs' ? 'page' : 'journey'} in new tab`}
                     tooltipPlacement="top"
                     className={styles.actionButton}
                   />
                 </div>
                 
-                <div id='inner-docs-content'
-                  ref={contentRef}
-                  className={journeyContentStyles}
-                  dangerouslySetInnerHTML={{ __html: activeTab.content.content }}
-                />
+                {/* Unified Content Renderer - works for both learning journeys and docs! */}
+                <div id='inner-docs-content' style={{ 
+                  flex: 1, 
+                  overflow: 'auto',
+                  minHeight: 0 
+                }}>
+                  <ContentRenderer
+                    content={activeTab.content}
+                    containerRef={contentRef}
+                    className={activeTab.type === 'docs' ? docsContentStyles : journeyContentStyles}
+                    onContentReady={() => {
+                      // Content is ready - any additional setup can go here
+                    }}
+                  />
+                </div>
               </div>
             );
           }
@@ -1147,4 +923,4 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 // Export the main component and keep backward compatibility
 export { CombinedLearningJourneyPanel };
 export class LearningJourneyPanel extends CombinedLearningJourneyPanel {}
-export class DocsPanel extends CombinedLearningJourneyPanel {}
+export class DocsPanel extends CombinedLearningJourneyPanel {} 
