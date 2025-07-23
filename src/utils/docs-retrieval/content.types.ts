@@ -122,3 +122,38 @@ export interface ContentFetchResult {
   /** Error message if fetch failed */
   error?: string;
 }
+
+// Parsing error types for fail-fast content rendering
+export interface ParseError {
+  type: 'html_parsing' | 'element_creation' | 'attribute_mapping' | 'children_processing';
+  message: string;
+  element?: string; // HTML snippet that caused the error
+  location?: string; // Where in the parsing process the error occurred
+  originalError?: Error;
+}
+
+export interface ParseResult<T> {
+  isValid: boolean;
+  data?: T;
+  errors: ParseError[];
+  warnings: string[];
+}
+
+// These interfaces are defined in html-parser.ts and re-exported
+export interface ParsedElement {
+  type: string;
+  props: Record<string, any>;
+  children: Array<ParsedElement | string>;
+  originalHTML?: string;
+}
+
+export interface ParsedContent {
+  elements: ParsedElement[];
+  hasInteractiveElements: boolean;
+  hasCodeBlocks: boolean;
+  hasExpandableTables: boolean;
+  hasImages: boolean;
+}
+
+// Extend existing interfaces with the new result pattern
+export type ContentParseResult = ParseResult<ParsedContent>;

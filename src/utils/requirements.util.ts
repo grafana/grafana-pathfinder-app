@@ -231,7 +231,7 @@ export async function checkRequirementsSequentially(
   
   // Group elements by logical step (same reftarget + targetaction)
   const steps = groupInteractiveElementsByStep(elements);
-  console.log(`📋 Grouped ${elements.length} elements into ${steps.length} logical steps`);
+  // console.log(`📋 Grouped ${elements.length} elements into ${steps.length} logical steps`);
   
   // Set all elements to checking state initially
   elements.forEach(element => {
@@ -242,7 +242,7 @@ export async function checkRequirementsSequentially(
   const regularSteps = steps.filter(step => step.targetaction !== 'sequence');
   const sectionSteps = steps.filter(step => step.targetaction === 'sequence');
   
-  console.log(`📊 Workflow analysis: ${regularSteps.length} regular steps, ${sectionSteps.length} section steps`);
+  // console.log(`📊 Workflow analysis: ${regularSteps.length} regular steps, ${sectionSteps.length} section steps`);
   
   // STEP 1A: Determine current step for regular workflow
   let currentRegularStepIndex = -1;
@@ -260,7 +260,7 @@ export async function checkRequirementsSequentially(
     if (!hasAnyCompletedRegularSteps) {
       // TRUST BUT VERIFY THE FIRST REGULAR STEP
       currentRegularStepIndex = 0;
-      console.log('🏁 No regular steps completed - checking first regular step (Trust but Verify rule)');
+      // console.log('🏁 No regular steps completed - checking first regular step (Trust but Verify rule)');
     } else {
       // Find the first non-completed regular step
       for (let i = 0; i < regularSteps.length; i++) {
@@ -269,13 +269,13 @@ export async function checkRequirementsSequentially(
           break;
         }
       }
-      console.log(`🎯 Found first non-completed regular step: ${currentRegularStepIndex + 1}`);
+      // console.log(`🎯 Found first non-completed regular step: ${currentRegularStepIndex + 1}`);
     }
   }
   
   // STEP 1B: Determine which section steps are eligible (Trust but Verify for each)
-  const eligibleSectionSteps = sectionSteps.filter(step => !isStepCompleted(step));
-  console.log(`🔧 ${eligibleSectionSteps.length} section steps eligible for Trust but Verify`);
+  // const eligibleSectionSteps = sectionSteps.filter(step => !isStepCompleted(step));
+  // console.log(`🔧 ${eligibleSectionSteps.length} section steps eligible for Trust but Verify`);
   
   // STEP 1C: Create a map of steps to their processing strategy
   const stepProcessingPlan = new Map<InteractiveStep, 'current' | 'eligible' | 'completed' | 'disabled'>();
@@ -311,12 +311,12 @@ export async function checkRequirementsSequentially(
       // FAST-DISABLE: Already completed steps stay disabled, no requirements check needed
       updateStepState(step, { isCompleted: true });
       result.completed += step.buttons.length;
-      console.log(`✅ Step ${i + 1} already completed (${step.buttons.length} buttons)`);
+      // console.log(`✅ Step ${i + 1} already completed (${step.buttons.length} buttons)`);
       
     } else if (processingType === 'current' || processingType === 'eligible') {
       // CURRENT/ELIGIBLE STEP: This gets an expensive requirements check
       const stepType = processingType === 'current' ? 'current' : 'eligible section';
-      console.log(`🔍 Checking requirements for ${stepType} step ${i + 1}/${steps.length} (${step.buttons.length} buttons)`);
+      // console.log(`🔍 Checking requirements for ${stepType} step ${i + 1}/${steps.length} (${step.buttons.length} buttons)`);
       
       try {
         // Use the first button of the step for requirements checking
@@ -352,7 +352,7 @@ export async function checkRequirementsSequentially(
       // FAST-DISABLE: Future steps are disabled without requirements check (One Step at a Time)
       updateStepState(step, { isDisabled: true });
       result.disabled += step.buttons.length;
-      console.log(`⏸️ Future step ${i + 1} disabled (${step.buttons.length} buttons: One Step at a Time)`);
+      // console.log(`⏸️ Future step ${i + 1} disabled (${step.buttons.length} buttons: One Step at a Time)`);
     }
   }
   
@@ -581,7 +581,7 @@ export function groupInteractiveElementsByStep(elements: HTMLElement[]): Interac
         stepId,
         uniqueId
       });
-      console.log(`🔧 Created new step with unique ID: ${uniqueId} (section: ${sectionId}, step: ${stepId})`);
+      // console.log(`🔧 Created new step with unique ID: ${uniqueId} (section: ${sectionId}, step: ${stepId})`);
     }
     
     stepMap.get(uniqueId)!.buttons.push(element);

@@ -1,10 +1,10 @@
 import React, { useRef, useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 
-import { RawContent } from './content.types';
+import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 import { parseHTMLToComponents, ParsedElement } from './html-parser';
-import { InteractiveSection, InteractiveStep, CodeBlock, ExpandableTable, ImageRenderer } from './components/interactive-components';
+import { InteractiveSection, InteractiveStep, CodeBlock, ExpandableTable, ImageRenderer, ContentParsingError } from './components/interactive-components';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
   try {
@@ -105,55 +105,55 @@ interface ContentProcessorProps {
 function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
   
-  let parsedContent;
-  try {
-    parsedContent = parseHTMLToComponents(html, baseUrl);
-  } catch (error) {
-    console.error('[DocsPlugin] Failed to parse HTML content:', error);
-    // Fallback to raw HTML if parsing fails
-    return (
-      <div ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
-    );
-  }
-
-  function flattenElements(elements: any[]): any[] {
-    return elements.reduce((acc, el) => {
-      if (Array.isArray(el)) {
-        acc.push(...flattenElements(el));
-      } else if (el !== null && el !== undefined) {
-        acc.push(el);
-      }
-      return acc;
-    }, []);
-  }
-
-  try {
-    const flattenedElements = flattenElements(parsedContent.elements);
+  // Parse HTML with fail-fast error handling
+  const parseResult: ContentParseResult = parseHTMLToComponents(html, baseUrl);
+  
+  // Single decision point: either we have valid React components or we display errors
+  if (!parseResult.isValid) {
+    console.error('[DocsPlugin] Content parsing failed:', parseResult.errors);
     return (
       <div ref={ref}>
-        {flattenedElements.map((element, index) => {
-          try {
-            return renderParsedElement(element, `element-${index}`);
-          } catch (error) {
-            console.warn('[DocsPlugin] Failed to render element at index', index, ':', element, error);
-            // Fallback to raw HTML for problematic elements
-            return (
-              <div
-                key={`fallback-${index}`}
-                dangerouslySetInnerHTML={{ __html: element.originalHTML || '' }}
-              />
-            );
-          }
-        })}
+        <ContentParsingError
+          errors={parseResult.errors}
+          warnings={parseResult.warnings}
+          fallbackHtml={html}
+          onRetry={() => {
+            // In a real implementation, this could trigger a re-parse or content refetch
+            console.log('Retry parsing requested');
+            window.location.reload();
+          }}
+        />
       </div>
     );
-  } catch (error) {
-    console.error('[DocsPlugin] Failed to render content processor:', error);
-    // Final fallback to raw HTML
+  }
+
+  // Success case: render parsed content
+  const { data: parsedContent } = parseResult;
+  
+  if (!parsedContent) {
+    console.error('[DocsPlugin] Parsing succeeded but no data returned');
     return (
-      <div ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
+      <div ref={ref}>
+        <ContentParsingError
+          errors={[{
+            type: 'html_parsing',
+            message: 'Parsing succeeded but no content data was returned',
+            location: 'ContentProcessor'
+          }]}
+          warnings={parseResult.warnings}
+          fallbackHtml={html}
+        />
+      </div>
     );
   }
+
+  return (
+    <div ref={ref}>
+      {parsedContent.elements.map((element, index) => 
+        renderParsedElement(element, `element-${index}`)
+      )}
+    </div>
+  );
 }
 
 function renderParsedElement(
@@ -161,7 +161,7 @@ function renderParsedElement(
   key: string | number
 ): React.ReactNode {
   if (Array.isArray(element)) {
-    return element.map((child, i) => renderParsedElement(child, i));
+    return element.map((child, i) => renderParsedElement(child, `${key}-${i}`));
   }
   
   // Handle special cases first
@@ -175,7 +175,7 @@ function renderParsedElement(
           requirements={element.props.requirements}
           outcomes={element.props.outcomes}
         >
-          {element.children.map((child, childIndex) =>
+          {element.children.map((child: ParsedElement | string, childIndex: number) =>
             typeof child === 'string'
               ? child
               : renderParsedElement(child, `${key}-child-${childIndex}`)
@@ -226,6 +226,8 @@ function renderParsedElement(
         />
       );
     case 'raw-html':
+      // This should only be used for specific known-safe content
+      console.warn('[DocsPlugin] Rendering raw HTML - this should be rare in the new architecture');
       return (
         <div
           key={key}
@@ -233,58 +235,38 @@ function renderParsedElement(
         />
       );
     default:
-      // Enhanced error handling for standard HTML elements
-      if (
-        !element.type ||
-        (typeof element.type !== 'string' && typeof element.type !== 'function')
-      ) {
-        console.warn('[DocsPlugin] Invalid element type for parsed element:', element);
-        // Fallback to raw HTML for problematic elements
-        return (
-          <div
-            key={key}
-            dangerouslySetInnerHTML={{ __html: element.originalHTML || '' }}
-          />
-        );
+      // Standard HTML elements - strict validation
+      if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
+        console.error('[DocsPlugin] Invalid element type for parsed element:', element);
+        throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
       }
       
-      try {
-        // Handle void/self-closing elements that shouldn't have children
-        const voidElements = new Set([
-          'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
-          'link', 'meta', 'param', 'source', 'track', 'wbr'
-        ]);
+      // Handle void/self-closing elements that shouldn't have children
+      const voidElements = new Set([
+        'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+        'link', 'meta', 'param', 'source', 'track', 'wbr'
+      ]);
+      
+      if (typeof element.type === 'string' && voidElements.has(element.type)) {
+        // Void elements should not have children
+        return React.createElement(
+          element.type,
+          { key, ...element.props }
+        );
+      } else {
+        // Regular elements can have children
+        const children = element.children?.map((child: ParsedElement | string, childIndex: number) => {
+          if (typeof child === 'string') {
+            // Preserve whitespace in text content
+            return child.length > 0 ? child : null;
+          }
+          return renderParsedElement(child, `${key}-child-${childIndex}`);
+        }).filter((child: React.ReactNode) => child !== null);
         
-        if (typeof element.type === 'string' && voidElements.has(element.type)) {
-          // Void elements should not have children
-          return React.createElement(
-            element.type,
-            { key, ...element.props }
-          );
-        } else {
-          // Regular elements can have children
-          const children = element.children?.map((child, childIndex) => {
-            if (typeof child === 'string') {
-              // Preserve whitespace in text content
-              return child.length > 0 ? child : null;
-            }
-            return renderParsedElement(child, `${key}-child-${childIndex}`);
-          }).filter(child => child !== null);
-          
-          return React.createElement(
-            element.type,
-            { key, ...element.props },
-            ...(children && children.length > 0 ? children : [])
-          );
-        }
-      } catch (e) {
-        console.warn('[DocsPlugin] React.createElement failed for element:', element, e);
-        // Fallback to raw HTML when React.createElement fails
-        return (
-          <div
-            key={key}
-            dangerouslySetInnerHTML={{ __html: element.originalHTML || '' }}
-          />
+        return React.createElement(
+          element.type,
+          { key, ...element.props },
+          ...(children && children.length > 0 ? children : [])
         );
       }
   }
