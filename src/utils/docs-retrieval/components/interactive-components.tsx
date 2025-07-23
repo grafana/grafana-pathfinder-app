@@ -310,12 +310,6 @@ export function InteractiveStep({
   
   // Get the interactive functions from the hook
   const { executeInteractiveAction } = useInteractiveElements();
-  
-  // Generate a unique ID for this step that persists across renders (no prefix - system will add it)
-  const uniqueId = useMemo(() => 
-    `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
-    []
-  );
 
   const handleShowAction = useCallback(async () => {
     if (disabled || isShowRunning || isCompleted) return;
