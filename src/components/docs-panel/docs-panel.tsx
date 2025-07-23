@@ -455,6 +455,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   const { tabs, activeTabId, contextPanel } = model.useState();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownOpenTimeRef = useRef<number>(0);
 
   const activeTab = tabs.find(t => t.id === activeTabId) || null;
   const isRecommendationsTab = activeTabId === 'recommendations';
@@ -468,11 +469,16 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   const [visibleTabs, setVisibleTabs] = useState<LearningJourneyTab[]>(tabs);
   const [overflowedTabs, setOverflowedTabs] = useState<LearningJourneyTab[]>([]);
   const chevronButtonRef = useRef<HTMLButtonElement>(null);
+  const lastCalculationRef = useRef<{
+    containerWidth: number;
+    tabTitles: string[];
+    visibleCount: number;
+  } | null>(null);
 
-  // Calculate visible vs overflowed tabs
+  // Calculate visible vs overflowed tabs - simplified and less aggressive approach
   const calculateTabVisibility = useCallback(() => {
     const tabContainer = tabListRef.current;
-    if (!tabContainer) {
+    if (!tabContainer || tabs.length === 0) {
       setVisibleTabs(tabs);
       setOverflowedTabs([]);
       return;
@@ -480,54 +486,113 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
     // Wait for container to have proper dimensions
     if (tabContainer.clientWidth === 0) {
-      setTimeout(calculateTabVisibility, 50);
+      requestAnimationFrame(() => calculateTabVisibility());
       return;
     }
 
     const containerWidth = tabContainer.clientWidth;
-    const tabMinWidth = 120; // From styles: minWidth: '140px'
-    const chevronWidth = 100; // Reduced from 120 - more accurate for actual button
-    const gap = 4; // From styles: gap spacing
-    const padding = 8; // Container padding buffer
-
-    // Calculate available width more accurately
-    const actualAvailableWidth = containerWidth - padding;
-
-    // First, calculate how many tabs can fit without any chevron (be less aggressive)
-    const maxTabsWithoutChevron = Math.floor(actualAvailableWidth / (tabMinWidth + gap));
     
-    if (tabs.length <= maxTabsWithoutChevron) {
-      // All tabs fit without needing a chevron
+    // Much more conservative approach - only show dropdown when really necessary
+    const estimatedTabWidth = 180; // Average tab width
+    const chevronWidth = 120;
+    const gap = 8;
+    const generousBuffer = 80; // Much larger buffer
+    
+    // Simple calculation: can we fit all tabs with a generous buffer?
+    const estimatedTotalWidth = (tabs.length * estimatedTabWidth) + ((tabs.length - 1) * gap);
+    
+    if (estimatedTotalWidth + generousBuffer <= containerWidth) {
       setVisibleTabs(tabs);
       setOverflowedTabs([]);
       return;
     }
-
-    // Some tabs need to overflow - calculate how many can fit WITH a chevron
-    const availableWidthWithChevron = actualAvailableWidth - chevronWidth - gap;
-    const maxTabsWithChevron = Math.floor(availableWidthWithChevron / (tabMinWidth + gap));
-    const numVisibleTabs = Math.max(1, maxTabsWithChevron); // Always show at least 1 tab
-
-    setVisibleTabs(tabs.slice(0, numVisibleTabs));
-    setOverflowedTabs(tabs.slice(numVisibleTabs));
+    
+    // Even if we can't fit all tabs easily, only create dropdown if we have many tabs
+    // or the container is genuinely small
+    if (tabs.length <= 2 || containerWidth < 400) {
+      setVisibleTabs(tabs);
+      setOverflowedTabs([]);
+      return;
+    }
+    
+    // Calculate how many tabs we can show with chevron
+    const availableForTabs = containerWidth - chevronWidth - generousBuffer;
+    const maxVisibleTabs = Math.floor(availableForTabs / (estimatedTabWidth + gap));
+    const visibleCount = Math.max(2, Math.min(maxVisibleTabs, tabs.length - 1)); // Show at least 2, leave at least 1 for dropdown
+    
+    setVisibleTabs(tabs.slice(0, visibleCount));
+    setOverflowedTabs(tabs.slice(visibleCount));
   }, [tabs]);
 
-  // Recalculate tab visibility when tabs change or window resizes
+  // Recalculate tab visibility when tabs change
   useEffect(() => {
-    calculateTabVisibility();
+    // Use a small delay to ensure DOM is fully rendered
+    const timer = setTimeout(() => {
+      calculateTabVisibility();
+    }, 10);
+    
+    return () => clearTimeout(timer);
   }, [calculateTabVisibility]);
 
+  // Use ResizeObserver to watch the tab container for size changes
   useEffect(() => {
-    const handleResize = () => {
-      calculateTabVisibility();
-      if (isDropdownOpen) {
-        setIsDropdownOpen(false);
-      }
+    const tabContainer = tabListRef.current;
+    if (!tabContainer) return;
+
+    let resizeTimeout: NodeJS.Timeout;
+    
+    const resizeObserver = new ResizeObserver((entries) => {
+      // Debounce resize events for better performance
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        for (const entry of entries) {
+          // Only recalculate if the width actually changed significantly
+          if (entry.contentBoxSize) {
+            const newWidth = entry.contentRect.width;
+            
+            const lastCalc = lastCalculationRef.current;
+            const significantWidthChange = !lastCalc || Math.abs(lastCalc.containerWidth - newWidth) > 50;
+            
+            if (significantWidthChange) {
+              calculateTabVisibility();
+              // Only close dropdown on significant resize, not minor adjustments
+              // And only if the dropdown has been open for more than 500ms
+              const timeSinceOpen = Date.now() - dropdownOpenTimeRef.current;
+              if (isDropdownOpen && timeSinceOpen > 500 && Math.abs(lastCalc?.containerWidth || 0 - newWidth) > 100) {
+                setIsDropdownOpen(false);
+              }
+            }
+          }
+        }
+      }, 100);
+    });
+
+    resizeObserver.observe(tabContainer);
+
+    return () => {
+      clearTimeout(resizeTimeout);
+      resizeObserver.disconnect();
+    };
+  }, [calculateTabVisibility, isDropdownOpen]);
+
+  // Still listen to window resize as fallback
+  useEffect(() => {
+    let resizeTimeout: NodeJS.Timeout;
+    
+    const handleWindowResize = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        calculateTabVisibility();
+        if (isDropdownOpen) {
+          setIsDropdownOpen(false);
+        }
+      }, 150);
     };
 
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', handleWindowResize);
     return () => {
-      window.removeEventListener('resize', handleResize);
+      clearTimeout(resizeTimeout);
+      window.removeEventListener('resize', handleWindowResize);
     };
   }, [calculateTabVisibility, isDropdownOpen]);
 
@@ -568,7 +633,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     model.setState({ tabs, activeTabId });
   }, [tabs, activeTabId]);
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside and handle positioning
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) &&
@@ -577,8 +642,31 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       }
     };
 
+    // Position dropdown to prevent clipping
+    const positionDropdown = () => {
+      if (isDropdownOpen && dropdownRef.current && chevronButtonRef.current) {
+        const dropdown = dropdownRef.current;
+        const chevronButton = chevronButtonRef.current;
+        
+        // Reset position attributes
+        dropdown.removeAttribute('data-position');
+        
+        // Get chevron button position
+        const chevronRect = chevronButton.getBoundingClientRect();
+        const dropdownWidth = Math.min(320, Math.max(220, dropdown.offsetWidth)); // Use CSS min/max values
+        
+        // Check if dropdown extends beyond right edge of viewport
+        if (chevronRect.right - dropdownWidth < 20) {
+          // Not enough space on right, position from left
+          dropdown.setAttribute('data-position', 'left');
+        }
+      }
+    };
+
     if (isDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      // Position dropdown after it's rendered
+      setTimeout(positionDropdown, 0);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
@@ -687,7 +775,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                 <button
                   ref={chevronButtonRef}
                   className={`${styles.tab} ${styles.chevronTab}`}
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  onClick={() => {
+                    if (!isDropdownOpen) {
+                      dropdownOpenTimeRef.current = Date.now();
+                    }
+                    setIsDropdownOpen(!isDropdownOpen);
+                  }}
                   aria-label={`Show ${overflowedTabs.length} more tabs`}
                   aria-expanded={isDropdownOpen}
                   aria-haspopup="true"

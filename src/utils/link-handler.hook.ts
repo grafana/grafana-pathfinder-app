@@ -170,7 +170,7 @@ export function useLinkClickHandler({
       }
 
       // Handle side journey links
-      const sideJourneyLink = target.closest('[data-side-journey-link]') as HTMLElement;
+      const sideJourneyLink = target.closest('[data-side-journey-link]') as HTMLAnchorElement;
       
       if (sideJourneyLink) {
         safeEventHandler(event, {
@@ -178,13 +178,29 @@ export function useLinkClickHandler({
           stopPropagation: true,
         });
         
-        const linkUrl = sideJourneyLink.getAttribute('data-side-journey-url');
-
+        // Get URL from href attribute instead of data attribute
+        const linkUrl = sideJourneyLink.getAttribute('href');
+        const linkTitle = sideJourneyLink.textContent?.trim() || 'Side Journey';
         
         if (linkUrl) {
-          // All side journey links open in new browser tab for simplicity
+          // Convert relative URLs to full URLs
           const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
-          window.open(fullUrl, '_blank', 'noopener,noreferrer');
+          
+          // Open side journey links in new app tabs (as docs pages)
+          if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
+            (model as any).openDocsPage(fullUrl, linkTitle);
+          } else {
+            // Fallback to learning journey handler
+            model.openLearningJourney(fullUrl, linkTitle);
+          }
+          
+          // Track analytics for side journey clicks
+          reportAppInteraction('docs_link_click' as UserInteraction, {
+            link_url: fullUrl,
+            link_text: linkTitle,
+            source_page: activeTab?.content?.url || 'unknown',
+            link_type: 'side_journey'
+          });
         }
       }
 

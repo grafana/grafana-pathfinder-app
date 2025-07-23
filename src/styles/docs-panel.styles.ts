@@ -326,10 +326,10 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     label: 'combined-journey-tab-dropdown',
     position: 'absolute',
     top: '100%',
-    right: theme.spacing(1), // Align with tabBar padding
+    right: 0, // Align with the right edge of the chevron button
     zIndex: 9999, // High z-index to appear above content
-    minWidth: '200px',
-    maxWidth: '300px',
+    minWidth: '220px',
+    maxWidth: '320px',
     backgroundColor: theme.colors.background.primary,
     border: `1px solid ${theme.colors.border.medium}`,
     borderRadius: theme.shape.radius.default,
@@ -338,6 +338,23 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     marginTop: theme.spacing(0.25),
     maxHeight: '60vh',
     overflowY: 'auto',
+    
+    // Prevent clipping on small screens
+    '@media (max-width: 480px)': {
+      right: 'auto',
+      left: 0,
+      minWidth: '200px',
+      maxWidth: '280px',
+    },
+    
+    // Ensure dropdown doesn't extend beyond viewport
+    transform: 'translateX(0)',
+    
+    // Alternative positioning when there's not enough space on the right
+    '&[data-position="left"]': {
+      right: 'auto',
+      left: 0,
+    },
   }),
   dropdownItem: css({
     label: 'combined-journey-dropdown-item',

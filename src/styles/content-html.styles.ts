@@ -793,18 +793,38 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     borderTop: `1px solid ${theme.colors.border.weak}`,
   },
 
-  // Side journeys section
-  '& .journey-side-journeys-section': {
+  // Side journeys section - matching actual HTML structure
+  '& .journey-side-journeys': {
     margin: `${theme.spacing(3)} 0`,
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.canvas,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  },
+
+  '& .journey-side-journeys-title': {
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing(2),
+    marginTop: 0,
   },
 
   '& .journey-side-journeys-list': {
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
   },
 
   '& .journey-side-journey-item': {
+    margin: 0,
+    padding: 0,
+  },
+
+  '& .journey-side-journey-link': {
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1.5),
@@ -815,6 +835,8 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     textDecoration: 'none',
     color: theme.colors.text.primary,
     transition: 'all 0.2s ease',
+    width: '100%',
+    boxSizing: 'border-box',
     
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
@@ -822,9 +844,19 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z1,
       textDecoration: 'none',
+      color: theme.colors.text.primary,
+    },
+
+    '&:after': {
+      content: '"↗"',
+      color: theme.colors.text.secondary,
+      fontSize: '14px',
+      marginLeft: 'auto',
+      flexShrink: 0,
     },
   },
 
+  // Legacy styles for backward compatibility
   '& .journey-side-journey-icon-circle': {
     width: '32px',
     height: '32px',
@@ -1788,6 +1820,69 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
           marginBottom: 0,
         },
       },
+    },
+  },
+
+  // Side journeys section
+  '& .journey-side-journeys': {
+    margin: `${theme.spacing(3)} 0`,
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.canvas,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  },
+
+  '& .journey-side-journeys-title': {
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing(2),
+    marginTop: 0,
+  },
+
+  '& .journey-side-journeys-list': {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
+  },
+
+  '& .journey-side-journey-item': {
+    margin: 0,
+    padding: 0,
+  },
+
+  '& .journey-side-journey-link': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1.5),
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    textDecoration: 'none',
+    color: theme.colors.text.primary,
+    transition: 'all 0.2s ease',
+    width: '100%',
+    boxSizing: 'border-box',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.medium,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+      textDecoration: 'none',
+      color: theme.colors.text.primary,
+    },
+
+    '&:after': {
+      content: '"↗"',
+      color: theme.colors.text.secondary,
+      fontSize: '14px',
+      marginLeft: 'auto',
+      flexShrink: 0,
     },
   },
 
