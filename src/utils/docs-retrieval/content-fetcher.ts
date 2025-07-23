@@ -34,7 +34,10 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Fetch raw HTML
     const html = await fetchRawHtml(cleanUrl, options);
     if (!html) {
-      return { content: null, error: 'Failed to fetch content' };
+      return { 
+        content: null, 
+        error: `Failed to fetch content from ${cleanUrl}. This may be due to the document being moved or redirected. Check browser console for detailed redirect information.` 
+      };
     }
 
     // Extract basic metadata without DOM processing
@@ -107,15 +110,17 @@ function removeHashFragment(url: string): string {
 async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<string | null> {
   const { useAuth = true, headers = {}, timeout = 10000 } = options;
   
-  // Build fetch options
+  // Build fetch options with proper redirect handling
   const fetchOptions: RequestInit = {
     method: 'GET',
     headers: {
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.5',
+      'User-Agent': 'Grafana-Docs-Plugin/1.0',
       ...headers,
     },
     signal: AbortSignal.timeout(timeout),
+    redirect: 'follow', // Explicitly follow redirects (up to 20 by default)
   };
 
   // Add auth headers if requested (from existing code)
@@ -124,53 +129,146 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
     fetchOptions.headers = { ...fetchOptions.headers, ...authHeaders };
   }
 
-  // Try multiple URL variations (from existing code)
-  const urlVariations = generateUrlVariations(url);
+  // Try the original URL first to follow redirects
+  let lastError: string | null = null;
+  let redirectInfo: string | null = null;
   
-  for (const testUrl of urlVariations) {
-    try {
-      const response = await fetch(testUrl, fetchOptions);
+  try {
+    const response = await fetch(url, fetchOptions);
+    
+    // Log redirect information if the final URL is different
+    if (response.url && response.url !== url) {
+      redirectInfo = `Redirected from ${url} to ${response.url}`;
+      console.warn(redirectInfo);
+    }
+    
+    if (response.ok) {
+      const html = await response.text();
+      if (html && html.trim()) {
+        // If this is a Grafana docs URL, we MUST get the unstyled version
+        if (response.url.includes('grafana.com/docs/')) {
+          const finalUnstyledUrl = getUnstyledContentUrl(response.url);
+          if (finalUnstyledUrl !== response.url) {
+            try {
+              const unstyledResponse = await fetch(finalUnstyledUrl, fetchOptions);
+              if (unstyledResponse.ok) {
+                const unstyledHtml = await unstyledResponse.text();
+                if (unstyledHtml && unstyledHtml.trim()) {
+                  console.warn(`Using unstyled version of redirected URL: ${finalUnstyledUrl}`);
+                  return unstyledHtml;
+                }
+              }
+              // If unstyled version fails, don't fallback - fail the request
+              lastError = `Cannot load styled Grafana docs content. Unstyled version required but failed to load: ${finalUnstyledUrl}`;
+              return null;
+            } catch (unstyledError) {
+              lastError = `Cannot load styled Grafana docs content. Unstyled version failed: ${unstyledError instanceof Error ? unstyledError.message : 'Unknown error'}`;
+              return null;
+            }
+          }
+        }
+        
+        // For non-Grafana docs or when unstyled URL is same as regular URL
+        if (redirectInfo) {
+          console.warn(`Successfully fetched content after redirect: ${redirectInfo}`);
+        }
+        return html;
+      }
+    } else if (response.status >= 300 && response.status < 400) {
+      // Handle manual redirect cases
+      const location = response.headers.get('Location');
+      if (location) {
+        lastError = `Redirect to ${location} (status ${response.status})`;
+        console.warn(`Manual redirect detected from ${url}: ${lastError}`);
+        
+        // Try to fetch the redirect target if it's a relative URL
+        if (location.startsWith('/')) {
+          const baseUrlMatch = url.match(/^(https?:\/\/[^\/]+)/);
+          if (baseUrlMatch) {
+            const fullRedirectUrl = baseUrlMatch[1] + location;
+            try {
+              const redirectResponse = await fetch(fullRedirectUrl, fetchOptions);
+              if (redirectResponse.ok) {
+                const html = await redirectResponse.text();
+                if (html && html.trim()) {
+                  console.warn(`Successfully fetched content from manual redirect: ${fullRedirectUrl}`);
+                  return html;
+                }
+              }
+            } catch (redirectError) {
+              console.warn(`Failed to fetch redirect target ${fullRedirectUrl}:`, redirectError);
+            }
+          }
+        }
+      } else {
+        lastError = `Redirect response (status ${response.status}) but no Location header`;
+      }
+    } else {
+      lastError = `HTTP ${response.status}: ${response.statusText}`;
+      console.warn(`Failed to fetch from ${url}: ${lastError}`);
+    }
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : 'Unknown error';
+    console.warn(`Failed to fetch from ${url}:`, error);
+  }
+
+  // If original URL failed, try GitHub raw content variations
+  if (!lastError?.includes('Unstyled version required')) { // Don't try GitHub for Grafana docs that need unstyled
+    const githubVariations = generateGitHubVariations(url);
+    if (githubVariations.length > 0) {
+      console.warn(`Trying GitHub raw content variations for: ${url}`);
       
-      if (response.ok) {
-        const html = await response.text();
-        if (html && html.trim()) {
-          return html;
+      for (const githubUrl of githubVariations) {
+        try {
+          const githubResponse = await fetch(githubUrl, fetchOptions);
+          if (githubResponse.ok) {
+            const githubHtml = await githubResponse.text();
+            if (githubHtml && githubHtml.trim()) {
+              console.warn(`Successfully fetched content from GitHub raw: ${githubUrl}`);
+              return githubHtml;
+            }
+          }
+        } catch (githubError) {
+          console.warn(`Failed to fetch from GitHub variation ${githubUrl}:`, githubError);
         }
       }
-    } catch (error) {
-      console.warn(`Failed to fetch from ${testUrl}:`, error);
-      // Continue to next URL variation
     }
+  }
+
+  // Log final failure with most relevant error
+  if (lastError) {
+    console.error(`Failed to fetch content from ${url}. Last error: ${lastError}`);
   }
 
   return null;
 }
 
 /**
- * Generate URL variations to try (from existing fetchers)
- * Prioritize unstyled.html versions for cleaner content
+ * Generate GitHub raw content URL variations to try
  */
-function generateUrlVariations(url: string): string[] {
+function generateGitHubVariations(url: string): string[] {
   const variations: string[] = [];
   
-  // For Grafana docs URLs, try /unstyled.html version FIRST (cleaner content)
-  if (url.includes('grafana.com/docs/')) {
-    const unstyledUrl = getUnstyledContentUrl(url);
-    variations.push(unstyledUrl);
-    
-    // Original URL as fallback
-    if (unstyledUrl !== url) {
-      variations.push(url);
-    }
-  } else {
-    // Original URL first for non-Grafana docs
-    variations.push(url);
-  }
-  
-  // For GitHub raw content, try with different refs
+  // Only try GitHub variations for GitHub URLs
   if (url.includes('github.com') || url.includes('raw.githubusercontent.com')) {
+    // Try unstyled.html version
     if (!url.includes('/unstyled.html')) {
-      variations.push(`${url}/unstyled.html`);
+      variations.push(`${url.replace(/\/$/, '')}/unstyled.html`);
+    }
+    
+    // If it's a regular GitHub URL, try converting to raw.githubusercontent.com
+    if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
+      const rawMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)/);
+      if (rawMatch) {
+        const [, owner, repo, branch, path] = rawMatch;
+        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
+        variations.push(rawUrl);
+        
+        // Also try unstyled version of raw URL
+        if (!rawUrl.includes('/unstyled.html')) {
+          variations.push(`${rawUrl}/unstyled.html`);
+        }
+      }
     }
   }
   
@@ -326,8 +424,12 @@ function extractDocSummary(html: string): string {
  * These are simplified versions that focus on data extraction only
  */
 function getLearningJourneyBaseUrl(url: string): string {
-  // Extract base URL for learning journey
-  return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
+  // Handle cases like:
+  // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
+  // https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
+  
+  const match = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-journeys\/[^\/]+)/);
+  return match ? match[1] : url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
 }
 
 async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Milestone[]> {
@@ -382,16 +484,37 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
   return [];
 }
 
+/**
+ * Find current milestone number from URL - improved version
+ */
 function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
-  // Simple URL-based milestone detection
-  const milestoneMatch = url.match(/\/milestone-(\d+)/);
-  if (milestoneMatch) {
-    return parseInt(milestoneMatch[1], 10);
+  // Try exact URL match first (with and without trailing slash)
+  for (const milestone of milestones) {
+    if (urlsMatch(url, milestone.url)) {
+      return milestone.number;
+    }
   }
   
-  // Check if URL matches any milestone URL
-  const matchingMilestone = milestones.find(m => m.url === url);
-  return matchingMilestone ? matchingMilestone.number : 0;
+  // Legacy pattern matching for milestone URLs
+  const milestoneMatch = url.match(/\/milestone-(\d+)/);
+  if (milestoneMatch) {
+    const milestoneNum = parseInt(milestoneMatch[1], 10);
+    return milestoneNum;
+  }
+  
+  // Check if this URL looks like a journey base URL (cover page)
+  const baseUrl = getLearningJourneyBaseUrl(url);
+  if (urlsMatch(url, baseUrl) || urlsMatch(url, baseUrl + '/')) {
+    return 0;
+  }  
+  
+  return 0; // Default to cover page
 }
 
- 
+/**
+ * Check if two URLs match, handling trailing slashes
+ */
+function urlsMatch(url1: string, url2: string): boolean {
+  const normalize = (u: string) => u.replace(/\/$/, '').toLowerCase();
+  return normalize(url1) === normalize(url2);
+}

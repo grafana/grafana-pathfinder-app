@@ -114,6 +114,11 @@ export function generateJourneyContentWithExtras(
 ): string {
   let enhancedContent = baseContent;
 
+  // Add "Ready to Begin" button for cover pages (milestone 0)
+  if (metadata.currentMilestone === 0 && metadata.totalMilestones > 0) {
+    enhancedContent = addReadyToBeginButton(enhancedContent, metadata);
+  }
+
   const currentMilestone = getCurrentMilestoneFromMetadata(metadata);
   
   // Add side journeys if present
@@ -131,12 +136,14 @@ export function generateJourneyContentWithExtras(
     enhancedContent = addConclusionImageToContent(enhancedContent, currentMilestone.conclusionImage);
   }
 
-  // Add bottom navigation
-  enhancedContent = appendBottomNavigationToContent(
-    enhancedContent,
-    metadata.currentMilestone,
-    metadata.totalMilestones
-  );
+  // Add bottom navigation (only for milestone pages, not cover pages)
+  if (metadata.currentMilestone > 0) {
+    enhancedContent = appendBottomNavigationToContent(
+      enhancedContent,
+      metadata.currentMilestone,
+      metadata.totalMilestones
+    );
+  }
 
   return enhancedContent;
 }
@@ -149,6 +156,33 @@ function getCurrentMilestoneFromMetadata(metadata: LearningJourneyMetadata): Mil
  * Content appending functions
  * These generate HTML strings to append to content
  */
+function addReadyToBeginButton(content: string, metadata: LearningJourneyMetadata): string {
+  // Find the first milestone by index (not by number, since JSON steps might start at 2)
+  const firstMilestone = metadata.milestones[0];
+  if (!firstMilestone) {
+    return content;
+  }
+
+  const readyToBeginHtml = `
+    <div class="journey-ready-to-begin">
+      <div class="journey-ready-container">
+        <h3>Ready to begin?</h3>
+        <button class="journey-ready-button" 
+                data-journey-start="true" 
+                data-milestone-url="${firstMilestone.url}">
+          <span class="journey-ready-icon">▶</span>
+          Ready to Begin
+        </button>
+        <p class="journey-ready-description">
+          ${metadata.totalMilestones} milestone${metadata.totalMilestones !== 1 ? 's' : ''} • Interactive journey
+        </p>
+      </div>
+    </div>
+  `;
+
+  return content + readyToBeginHtml;
+}
+
 function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys): string {
   if (!sideJourneys.items || sideJourneys.items.length === 0) {
     return content;

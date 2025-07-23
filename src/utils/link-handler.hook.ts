@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { safeEventHandler } from './safe-event-handler.util';
+import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 
 interface LearningJourneyTab {
   id: string;
@@ -20,6 +21,7 @@ interface UseLinkClickHandlerProps {
   model: {
     loadTabContent: (tabId: string, url: string) => void;
     openLearningJourney: (url: string, title: string) => void;
+    openDocsPage?: (url: string, title: string) => void;
     getActiveTab: () => LearningJourneyTab | null;
     navigateToNextMilestone: () => void;
     navigateToPreviousMilestone: () => void;
@@ -47,22 +49,114 @@ export function useLinkClickHandler({
           stopPropagation: true,
         });
         
-        // Navigate to the first milestone
+        // Get the milestone URL from the button's data attribute
+        const milestoneUrl = startElement.getAttribute('data-milestone-url');
         const activeTab = model.getActiveTab();
-        if (activeTab?.content?.milestones && activeTab.content.milestones.length > 0) {
+        
+        if (milestoneUrl && activeTab) {
+          // Track analytics for starting journey
+          reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
+            journey_title: activeTab.title,
+            journey_url: activeTab.baseUrl,
+            interaction_location: 'ready_to_begin_button',
+            total_milestones: activeTab.content?.metadata?.learningJourney?.totalMilestones || 0
+          });
+          
+          // Navigate directly to the first milestone URL
+          model.loadTabContent(activeTab.id, milestoneUrl);
+        } else if (activeTab?.content?.milestones && activeTab.content.milestones.length > 0) {
+          // Fallback: use the first milestone from content
           const firstMilestone = activeTab.content.milestones[0];
           if (firstMilestone.url) {
+            // Track analytics for fallback case
+            reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
+              journey_title: activeTab.title,
+              journey_url: activeTab.baseUrl,
+              interaction_location: 'ready_to_begin_button_fallback',
+              total_milestones: activeTab.content.milestones.length
+            });
+            
             model.loadTabContent(activeTab.id, firstMilestone.url);
           }
         } else {
-          console.warn('No milestones found to navigate to');
+          console.warn('No milestone URL found to navigate to');
+        }
+      }
+
+      // Handle regular anchor links for Grafana docs
+      const anchor = target.closest('a[href]') as HTMLAnchorElement;
+      
+      if (anchor && !startElement && !target.closest('[data-side-journey-link]') && !target.closest('[data-related-journey-link]')) {
+        const href = anchor.getAttribute('href');
+        
+        if (href) {
+          // Handle relative fragment links (like #section-name)
+          if (href.startsWith('#')) {
+            // Let the browser handle fragment navigation naturally
+            return;
+          }
+          
+          // Resolve relative URLs against current page base URL
+          let resolvedUrl = href;
+          if (!href.startsWith('http') && !href.startsWith('/')) {
+            // This is a relative link like "alertmanager/" or "../parent/"
+            const currentPageUrl = activeTab?.content?.url || activeTab?.content?.metadata?.url;
+            if (currentPageUrl) {
+              try {
+                const baseUrl = new URL(currentPageUrl);
+                resolvedUrl = new URL(href, baseUrl).href;
+              } catch (error) {
+                console.warn('Failed to resolve relative URL:', href, 'against base:', currentPageUrl, error);
+                // Fallback: assume it's relative to Grafana docs root
+                resolvedUrl = `https://grafana.com/docs/${href}`;
+              }
+            } else {
+              // No base URL available, assume it's relative to Grafana docs root
+              resolvedUrl = `https://grafana.com/docs/${href}`;
+            }
+          }
+          
+          // Handle Grafana docs links (including resolved relative links)
+          if (resolvedUrl.includes('grafana.com/docs/') || href.startsWith('/docs/')) {
+            safeEventHandler(event, {
+              preventDefault: true,
+              stopPropagation: true,
+            });
+            
+            const fullUrl = resolvedUrl.startsWith('http') ? resolvedUrl : `https://grafana.com${resolvedUrl}`;
+            const linkText = anchor.textContent?.trim() || 'Documentation';
+            
+            // Determine if it's a learning journey or regular docs
+            if (fullUrl.includes('/learning-journeys/')) {
+              model.openLearningJourney(fullUrl, linkText);
+            } else {
+              // For regular docs, use openDocsPage if available, otherwise openLearningJourney
+              if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
+                (model as any).openDocsPage(fullUrl, linkText);
+              } else {
+                model.openLearningJourney(fullUrl, linkText);
+              }
+            }
+            
+            // Track analytics for docs link clicks
+            reportAppInteraction('docs_link_click' as UserInteraction, {
+              link_url: fullUrl,
+              link_text: linkText,
+              source_page: activeTab?.content?.url || 'unknown'
+            });
+          }
+          // For external links (non-Grafana), let them open in new browser window naturally
+          else if (href.startsWith('http') && !href.includes('grafana.com')) {
+            // Let external links work normally - don't prevent default
+            return;
+          }
         }
       }
 
       // Handle image lightbox clicks
-      const image = target.closest('img') as HTMLImageElement;
+      const image = target.closest('img.content-image') as HTMLImageElement;
       
-      if (image && !image.classList.contains('journey-conclusion-header')) {
+      if (image ) {
         safeEventHandler(event, {
           preventDefault: true,
           stopPropagation: true,
@@ -176,117 +270,58 @@ export function useLinkClickHandler({
 }
 
 function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaTheme2) {
+  // Prevent multiple modals
+  if (document.querySelector('.journey-image-modal')) return;
   const imageModal = document.createElement('div');
   imageModal.className = 'journey-image-modal';
-  
-  // Create a temporary image to get natural dimensions
-  const tempImg = new Image();
-  tempImg.onload = () => {
-    const naturalWidth = tempImg.naturalWidth;
-    const naturalHeight = tempImg.naturalHeight;
-    
-    // Calculate responsive sizing
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    
-    // Account for modal padding and header (roughly 120px total)
-    const availableWidth = Math.min(viewportWidth * 0.9, viewportWidth - 40);
-    const availableHeight = Math.min(viewportHeight * 0.8, viewportHeight - 120);
-    
-    // Don't upscale small images beyond their natural size
-    const maxWidth = Math.min(availableWidth, naturalWidth);
-    const maxHeight = Math.min(availableHeight, naturalHeight);
-    
-    // Maintain aspect ratio
-    const aspectRatio = naturalWidth / naturalHeight;
-    let displayWidth = maxWidth;
-    let displayHeight = displayWidth / aspectRatio;
-    
-    if (displayHeight > maxHeight) {
-      displayHeight = maxHeight;
-      displayWidth = displayHeight * aspectRatio;
-    }
-    
-    // Ensure minimum sizes for very small images
-    const minDisplaySize = 200;
-    if (displayWidth < minDisplaySize && displayHeight < minDisplaySize) {
-      if (aspectRatio >= 1) {
-        displayWidth = Math.min(minDisplaySize, naturalWidth);
-        displayHeight = displayWidth / aspectRatio;
-      } else {
-        displayHeight = Math.min(minDisplaySize, naturalHeight);
-        displayWidth = displayHeight * aspectRatio;
-      }
-    }
-    
-    const containerWidth = Math.min(displayWidth + 40, viewportWidth - 20);
-    
-    // Use theme colors directly
-    const backgroundColor = theme.colors.background.primary;
-    const headerBackgroundColor = theme.colors.background.canvas;
-    const borderColor = theme.colors.border.weak;
-    const textColor = theme.colors.text.primary;
-    const textSecondaryColor = theme.colors.text.secondary;
-    
-    imageModal.innerHTML = `
-      <div class="journey-image-modal-backdrop">
-        <div class="journey-image-modal-container" style="
-          width: ${containerWidth}px;
-          background: ${backgroundColor};
-          border: 1px solid ${borderColor};
-        ">
-          <div class="journey-image-modal-header" style="
-            background: ${headerBackgroundColor};
-            border-bottom: 1px solid ${borderColor};
-          ">
-            <h3 class="journey-image-modal-title" style="color: ${textColor};">${imageAlt}</h3>
-            <button class="journey-image-modal-close" aria-label="Close image" style="color: ${textSecondaryColor};">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
-          </div>
-          <div class="journey-image-modal-content" style="background: ${backgroundColor};">
-            <img src="${imageSrc}" alt="${imageAlt}" class="journey-image-modal-image" 
-                 style="max-width: ${displayWidth}px; max-height: ${displayHeight}px;" />
-          </div>
+
+  // Modal HTML, no inline styles, all sizing is CSS!
+  imageModal.innerHTML = `
+    <div class="journey-image-modal-backdrop">
+      <div class="journey-image-modal-container">
+        <div class="journey-image-modal-header">
+          <h3 class="journey-image-modal-title">${imageAlt}</h3>
+          <button class="journey-image-modal-close" aria-label="Close image">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="journey-image-modal-content">
+          <img src="${imageSrc}" alt="${imageAlt}" class="journey-image-modal-image" />
         </div>
       </div>
-    `;
-    
-    // Add to body
-    document.body.appendChild(imageModal);
-    
-    // Add close functionality
-    const closeModal = () => {
-      document.body.removeChild(imageModal);
-      document.body.style.overflow = '';
-    };
-    
-    // Close on backdrop click
-    imageModal.querySelector('.journey-image-modal-backdrop')?.addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) {
-        closeModal();
-      }
-    });
-    
-    // Close on close button click
-    imageModal.querySelector('.journey-image-modal-close')?.addEventListener('click', closeModal);
-    
-    // Close on escape key
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        closeModal();
-        document.removeEventListener('keydown', handleEscape);
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
-    
-    // Prevent body scroll
-    document.body.style.overflow = 'hidden';
+    </div>
+  `;
+  document.body.appendChild(imageModal);
+
+  // Close modal utility
+  const closeModal = () => {
+    document.body.removeChild(imageModal);
+    document.body.style.overflow = '';
   };
-  
-  // Load the image to get dimensions
-  tempImg.src = imageSrc;
-} 
+
+  // Close on backdrop click
+  imageModal.querySelector('.journey-image-modal-backdrop')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+      closeModal();
+    }
+  });
+
+  // Close on close button click
+  imageModal.querySelector('.journey-image-modal-close')?.addEventListener('click', closeModal);
+
+  // Close on Escape key
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      closeModal();
+      document.removeEventListener('keydown', handleEscape);
+    }
+  };
+  document.addEventListener('keydown', handleEscape);
+
+  // Prevent background scroll
+  document.body.style.overflow = 'hidden';
+}
+

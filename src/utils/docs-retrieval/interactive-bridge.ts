@@ -3,7 +3,6 @@
 // Enables gradual migration from DOM processing to React components
 
 import { 
-  extractInteractiveDataFromElement,
   InteractiveElementData 
 } from '../interactive.hook';
 

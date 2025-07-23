@@ -3,14 +3,13 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Spinner, Icon, Button, useStyles2 } from '@grafana/ui';
+import { IconButton, Alert, Spinner, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
-
+import { addGlobalModalStyles } from '../../styles/docs-panel.styles';
 
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
-
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
@@ -22,18 +21,22 @@ import {
   InteractiveBridge,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
-  getJourneyCompletionPercentage,
-  setJourneyCompletionPercentage
 } from '../../utils/docs-retrieval';
+
+// Import learning journey helpers
+import {
+  getJourneyProgress,
+  setJourneyCompletionPercentage
+} from '../../utils/docs-retrieval/learning-journey-helpers';
+
 import { ContextPanel } from './context-panel';
 
 import { getStyles as getComponentStyles } from '../../styles/docs-panel.styles';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
+import { getInteractiveStyles } from '../../styles/interactive.styles';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
-
-// Conversion functions no longer needed - new system works directly with RawContent
 
 interface LearningJourneyTab {
   id: string;
@@ -44,7 +47,6 @@ interface LearningJourneyTab {
   isLoading: boolean;
   error: string | null;
   type?: 'learning-journey' | 'docs';
-  // docsContent is no longer needed - everything is in content as RawContent
 }
 
 interface PersistedTabData {
@@ -265,6 +267,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       );
       this.setState({ tabs: finalUpdatedTabs });
       
+      // Update completion percentage for learning journeys
+      const updatedTab = finalUpdatedTabs.find(t => t.id === tabId);
+      if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
+        const progress = getJourneyProgress(updatedTab.content);
+        setJourneyCompletionPercentage(updatedTab.baseUrl, progress);
+      }
+      
     } catch (error) {
       console.error(`Failed to load journey content for tab ${tabId}:`, error);
       
@@ -287,7 +296,6 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     }
 
     const currentTabs = this.state.tabs;
-    const tabToClose = currentTabs.find(t => t.id === tabId);
     const tabIndex = currentTabs.findIndex(t => t.id === tabId);
     
     // Remove the tab
@@ -353,6 +361,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       }
     }
   }
+
+
 
   public getActiveTab(): LearningJourneyTab | null {
     return this.state.tabs.find(t => t.id === this.state.activeTabId) || null;
@@ -441,6 +451,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 }
 
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
+  React.useEffect(() => { addGlobalModalStyles(); }, []);
   const { tabs, activeTabId, contextPanel } = model.useState();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -450,6 +461,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   const theme = useStyles2((theme: GrafanaTheme2) => theme);
   
   const styles = useStyles2(getStyles);
+  const interactiveStyles = useStyles2(getInteractiveStyles);
 
   // Tab overflow management
   const tabListRef = useRef<HTMLDivElement>(null);
@@ -473,7 +485,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     }
 
     const containerWidth = tabContainer.clientWidth;
-    const tabMinWidth = 140; // From styles: minWidth: '140px'
+    const tabMinWidth = 120; // From styles: minWidth: '140px'
     const chevronWidth = 100; // Reduced from 120 - more accurate for actual button
     const gap = 4; // From styles: gap spacing
     const padding = 8; // Container padding buffer
@@ -519,9 +531,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     };
   }, [calculateTabVisibility, isDropdownOpen]);
 
-  // Content-specific styles using the unified content system
-  const journeyContentStyles = useStyles2(journeyContentHtml);
-  const docsContentStyles = useStyles2(docsContentHtml);
+  // Content styles are applied at the component level via CSS classes
 
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -536,7 +546,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     }
   }, [interactiveHookFunctions]);
 
-  // Use custom hooks for cleaner organization - no more content processing hook needed!
+  // Use custom hooks for cleaner organization
   useKeyboardShortcuts({
     tabs,
     activeTabId,
@@ -573,7 +583,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-    return undefined;
   }, [isDropdownOpen]);
 
   // Auto-launch tutorial detection
@@ -614,7 +623,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     }
   }, [activeTab, activeTab?.content, isRecommendationsTab]);
 
-
+  // ContentRenderer renders the content with styling applied via CSS classes
 
   return (
     <div className={styles.container}>
@@ -782,28 +791,39 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           
           // Show content - both learning journeys and docs use the same ContentRenderer now!
           if (!isRecommendationsTab && activeTab?.content && !activeTab.isLoading) {
+            const isLearningJourneyTab = activeTab.type === 'learning-journey' || activeTab.type !== 'docs';
+            const showMilestoneProgress = isLearningJourneyTab && activeTab.content?.type === 'learning-journey' && 
+             activeTab.content.metadata.learningJourney && 
+             activeTab.content.metadata.learningJourney.currentMilestone > 0;
+
             return (
               <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
 
-                {/* Content Meta for cover pages (when no milestone progress is shown) */}
-                {activeTab.type !== 'docs' && activeTab.content.type === 'learning-journey' && 
-                 activeTab.content.metadata.learningJourney && 
-                 !(activeTab.content.metadata.learningJourney.currentMilestone > 0) && (
+                {/* Content Meta for learning journey pages (when no milestone progress is shown) */}
+                {isLearningJourneyTab && !showMilestoneProgress && (
                   <div className={styles.contentMeta}>
                     <div className={styles.metaInfo}>
                       <span>Learning Journey</span>
                     </div>
                     <small>
-                      {(activeTab.content.metadata.learningJourney.totalMilestones > 0) ? 
-                        `${activeTab.content.metadata.learningJourney.totalMilestones} milestones` : 
+                      {(activeTab.content?.metadata.learningJourney?.totalMilestones || 0) > 0 ? 
+                        `${activeTab.content?.metadata.learningJourney?.totalMilestones} milestones` : 
                         'Interactive journey'}
                     </small>
                   </div>
                 )}
 
+                {/* Content Meta for docs */}
+                {activeTab.type === 'docs' && (
+                  <div className={styles.contentMeta}>
+                    <div className={styles.metaInfo}>
+                      <span>Documentation</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Milestone Progress - only show for learning journey milestone pages */}
-                {activeTab.type !== 'docs' && activeTab.content.type === 'learning-journey' && 
-                 activeTab.content.metadata.learningJourney && activeTab.content.metadata.learningJourney.currentMilestone > 0 && (
+                {showMilestoneProgress && (
                   <div className={styles.milestoneProgress}>
                     <div className={styles.progressInfo}>
                       <div className={styles.progressHeader}>
@@ -829,7 +849,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                           className={styles.navButton}
                         />
                         <span className={styles.milestoneText}>
-                          Milestone {activeTab.content.metadata.learningJourney.currentMilestone} of {activeTab.content.metadata.learningJourney.totalMilestones}
+                          Milestone {activeTab.content?.metadata.learningJourney?.currentMilestone} of {activeTab.content?.metadata.learningJourney?.totalMilestones}
                         </span>
                         <IconButton
                           name="arrow-right"
@@ -857,7 +877,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         <div 
                           className={styles.progressFill} 
                           style={{ 
-                            width: `${(activeTab.content.metadata.learningJourney.currentMilestone / activeTab.content.metadata.learningJourney.totalMilestones) * 100}%` 
+                            width: `${((activeTab.content?.metadata.learningJourney?.currentMilestone || 0) / (activeTab.content?.metadata.learningJourney?.totalMilestones || 1)) * 100}%` 
                           }} 
                         />
                       </div>
@@ -900,14 +920,19 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                   overflow: 'auto',
                   minHeight: 0 
                 }}>
-                  <ContentRenderer
-                    content={activeTab.content}
-                    containerRef={contentRef}
-                    className={activeTab.type === 'docs' ? docsContentStyles : journeyContentStyles}
-                    onContentReady={() => {
-                      // Content is ready - any additional setup can go here
-                    }}
-                  />
+                  {activeTab.content && (
+                    <ContentRenderer
+                      content={activeTab.content}
+                      containerRef={contentRef}
+                      className={`${activeTab.content.type === 'learning-journey' 
+                        ? journeyContentHtml(theme) 
+                        : docsContentHtml(theme)
+                      } ${interactiveStyles}`}
+                      onContentReady={() => {
+                        // Content is ready - any additional setup can go here
+                      }}
+                    />
+                  )}
                 </div>
               </div>
             );

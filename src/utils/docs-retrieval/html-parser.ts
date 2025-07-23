@@ -17,6 +17,78 @@ export interface ParsedContent {
 }
 
 /**
+ * Safe attribute mapping for React props
+ * Filters out invalid attributes and maps HTML attributes to React props
+ */
+function mapHtmlAttributesToReactProps(element: Element): Record<string, any> {
+  const props: Record<string, any> = {};
+  
+  // HTML to React attribute mapping
+  const attributeMap: Record<string, string> = {
+    'class': 'className',
+    'for': 'htmlFor',
+    'tabindex': 'tabIndex',
+    'contenteditable': 'contentEditable',
+    'spellcheck': 'spellCheck',
+    'readonly': 'readOnly',
+    'maxlength': 'maxLength',
+    'cellpadding': 'cellPadding',
+    'cellspacing': 'cellSpacing',
+    'rowspan': 'rowSpan',
+    'colspan': 'colSpan',
+    'usemap': 'useMap',
+    'frameborder': 'frameBorder',
+  };
+
+  // Attributes that should be skipped or handled specially
+  const skipAttributes = new Set([
+    'style', // Will be handled separately if needed
+    'xmlns', // Not needed in React
+  ]);
+
+  // Valid HTML attributes that React accepts
+  const validAttributes = new Set([
+    'id', 'title', 'lang', 'dir', 'role', 'aria-label', 'aria-describedby', 
+    'aria-expanded', 'aria-hidden', 'aria-live', 'aria-atomic', 'aria-relevant',
+    'href', 'target', 'rel', 'download', 'src', 'alt', 'width', 'height',
+    'type', 'name', 'value', 'placeholder', 'disabled', 'checked', 'selected',
+    'multiple', 'size', 'accept', 'autoComplete', 'autoFocus', 'required',
+    'rows', 'cols', 'wrap', 'min', 'max', 'step', 'pattern',
+  ]);
+
+  for (const attr of element.attributes) {
+    const attrName = attr.name.toLowerCase();
+    const attrValue = attr.value;
+
+    // Skip problematic attributes
+    if (skipAttributes.has(attrName)) {
+      continue;
+    }
+
+    // Handle data-* and aria-* attributes (React accepts these as-is)
+    if (attrName.startsWith('data-') || attrName.startsWith('aria-')) {
+      props[attrName] = attrValue;
+      continue;
+    }
+
+    // Map HTML attributes to React props
+    const reactPropName = attributeMap[attrName] || attrName;
+
+    // Only include known valid attributes
+    if (validAttributes.has(attrName) || attributeMap[attrName]) {
+      // Convert boolean attributes
+      if (attrValue === '' || attrValue === attrName) {
+        props[reactPropName] = true;
+      } else {
+        props[reactPropName] = attrValue;
+      }
+    }
+  }
+
+  return props;
+}
+
+/**
  * Main HTML parser that identifies special patterns and converts them to React component data
  * Handles interactive elements, code blocks, expandable tables, images, and other special content
  */
@@ -42,6 +114,11 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ParsedCon
       if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as Element;
         const tag = el.tagName.toLowerCase();
+
+        // Skip problematic elements that often cause React issues
+        if (['script', 'style', 'meta', 'link', 'base'].includes(tag)) {
+          return null;
+        }
   
         // IMAGE: <img>
         if (tag === 'img') {
@@ -63,15 +140,16 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ParsedCon
           };
         }
   
-        // CODE BLOCK: <pre><code>
-        if (
-          tag === 'pre' &&
-          /(journey-code-block|docs-code-snippet|language-)/.test(el.className)
-        ) {
+        // CODE BLOCK: <pre> (convert all pre elements to CodeBlock components)
+        if (tag === 'pre') {
           hasCodeBlocks = true;
           const codeEl = el.querySelector('code');
           const code = codeEl ? codeEl.textContent : el.textContent;
-          const languageMatch = el.className.match(/language-([^\s"]+)/);
+          
+          // Try to detect language from class names
+          const languageMatch = (el.className || '').match(/language-([^\s"]+)/) || 
+                                (codeEl?.className || '').match(/language-([^\s"]+)/);
+          
           return {
             type: 'code-block',
             props: {
@@ -84,11 +162,32 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ParsedCon
             originalHTML: el.outerHTML,
           };
         }
+
+        // INLINE CODE: <code> (not inside pre)
+        if (tag === 'code' && el.parentElement?.tagName.toLowerCase() !== 'pre') {
+          hasCodeBlocks = true;
+          const code = el.textContent;
+          
+          // Try to detect language from class names
+          const languageMatch = (el.className || '').match(/language-([^\s"]+)/);
+          
+          return {
+            type: 'code-block',
+            props: {
+              code: code?.trim() ?? '',
+              language: languageMatch ? languageMatch[1] : undefined,
+              showCopy: true,
+              inline: true,
+            },
+            children: [],
+            originalHTML: el.outerHTML,
+          };
+        }
   
         // EXPANDABLE TABLE: <div class="expand-table-wrapper">
         if (
           tag === 'div' &&
-          /\bexpand-table-wrapper\b/.test(el.className)
+          /\bexpand-table-wrapper\b/.test(el.className || '')
         ) {
           hasExpandableTables = true;
           const table = el.querySelector('table');
@@ -106,7 +205,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ParsedCon
   
         // INTERACTIVE SECTION
         if (
-          /\binteractive\b/.test(el.className) &&
+          /\binteractive\b/.test(el.className || '') &&
           el.getAttribute('data-targetaction') === 'sequence'
         ) {
           hasInteractiveElements = true;
@@ -133,7 +232,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ParsedCon
   
         // INTERACTIVE STEP (outside of section)
         if (
-          /\binteractive\b/.test(el.className) &&
+          /\binteractive\b/.test(el.className || '') &&
           el.getAttribute('data-targetaction') &&
           el.getAttribute('data-targetaction') !== 'sequence'
         ) {
@@ -159,13 +258,14 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ParsedCon
           const walked = walk(child);
           if (walked) children.push(walked);
         });
+
+        // Use safe attribute mapping for standard HTML elements
+        const safeProps = mapHtmlAttributesToReactProps(el);
   
         // Render as standard HTML element (div, p, h2, etc)
         return {
           type: tag,
-          props: Object.fromEntries(
-            [...el.attributes].map((a) => [a.name === 'class' ? 'className' : a.name, a.value])
-          ),
+          props: safeProps,
           children,
           originalHTML: el.outerHTML,
         };

@@ -91,6 +91,20 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     borderColor: theme.colors.primary.main,
   },
 
+  // Handle inline-block images specifically
+  '&.d-inline-block': {
+    display: 'block !important', // Override utility class
+    width: '100%',
+    maxWidth: '100%',
+  },
+
+  // Handle lazyload images
+  '&.lazyload': {
+    width: '100%',
+    maxWidth: '100%',
+    height: 'auto',
+  },
+
   // If you need to override anything for special image headers, you can add:
   '&.journey-conclusion-header': {
     cursor: 'default',
@@ -454,6 +468,50 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     },
   },
 
+  // Generic iframe responsiveness for all iframes (YouTube embeds, etc.)
+  '& iframe:not([class])': {
+    maxWidth: '100%',
+    width: '100%',
+    height: 'auto',
+    aspectRatio: '16 / 9', // Default to 16:9 for video content
+    margin: `${theme.spacing(2)} 0`,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    boxShadow: theme.shadows.z1,
+    
+    // Fallback for browsers that don't support aspect-ratio
+    minHeight: '315px',
+    
+    [theme.breakpoints.down('md')]: {
+      minHeight: '250px',
+    },
+    
+    [theme.breakpoints.down('sm')]: {
+      minHeight: '200px',
+    },
+  },
+
+  // Generic iframe styling for any iframe
+  '& iframe': {
+    maxWidth: '100%',
+    
+    // If it has fixed dimensions, make it responsive
+    '&[width]': {
+      width: '100% !important',
+      height: 'auto !important',
+      aspectRatio: '16 / 9',
+      minHeight: '315px',
+      
+      [theme.breakpoints.down('md')]: {
+        minHeight: '250px',
+      },
+      
+      [theme.breakpoints.down('sm')]: {
+        minHeight: '200px',
+      },
+    },
+  },
+
   // Hide admonition wrapper - style blockquotes directly
   '& .admonition': {
     all: 'unset',
@@ -587,6 +645,54 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z2,
     },
+  },
+
+  // Journey ready to begin section (matches journey-start styling)
+  '& .journey-ready-to-begin': {
+    margin: `${theme.spacing(4)} 0`,
+    padding: theme.spacing(3),
+    backgroundColor: theme.colors.background.canvas,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    textAlign: 'center',
+  },
+
+  '& .journey-ready-container h3': {
+    marginBottom: theme.spacing(2),
+    color: theme.colors.text.primary,
+  },
+
+  '& .journey-ready-button': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: `${theme.spacing(1.5)} ${theme.spacing(3)}`,
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z2,
+    },
+  },
+
+  '& .journey-ready-icon': {
+    fontSize: '14px',
+    lineHeight: 1,
+  },
+
+  '& .journey-ready-description': {
+    marginTop: theme.spacing(1.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
   },
 
   // Tables
@@ -872,6 +978,31 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     gap: theme.spacing(2),
   },
 
+  // Alternative container class name to match HTML structure
+  '& .journey-bottom-nav-container': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing(2),
+    width: '100%',
+  },
+
+  // Progress indicator styling
+  '& .journey-progress-indicator': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    minWidth: '60px',
+    textAlign: 'center',
+  },
+
   '& .journey-bottom-nav-button': {
     display: 'flex',
     alignItems: 'center',
@@ -919,6 +1050,13 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     fontWeight: theme.typography.fontWeightMedium,
           color: theme.colors.text.secondary,
       },
+
+  // Override inline-block utility for images to maintain responsiveness
+  '& img.d-inline-block': {
+    display: 'block !important',
+    width: '100%',
+    maxWidth: '100%',
+  },
 }); 
 
 export const docsContentHtml = (theme: GrafanaTheme2) => css({
@@ -1009,6 +1147,26 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
       boxShadow: theme.shadows.z2,
       transform: 'scale(1.02)',
       borderColor: theme.colors.primary.main,
+    },
+
+    // Handle inline-block images specifically
+    '&.d-inline-block': {
+      display: 'block !important', // Override utility class
+      width: '100%',
+      maxWidth: '100%',
+    },
+
+    // Handle lazyload images
+    '&.lazyload': {
+      width: '100%',
+      maxWidth: '100%',
+      height: 'auto',
+    },
+
+    // Handle content-image class specifically
+    '&.content-image': {
+      width: '100%',
+      maxWidth: '100%',
     },
   },
 
@@ -1365,6 +1523,50 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     },
   },
 
+  // Generic iframe responsiveness for all iframes (YouTube embeds, etc.)
+  '& iframe:not([class])': {
+    maxWidth: '100%',
+    width: '100%',
+    height: 'auto',
+    aspectRatio: '16 / 9', // Default to 16:9 for video content
+    margin: `${theme.spacing(2)} 0`,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    boxShadow: theme.shadows.z1,
+    
+    // Fallback for browsers that don't support aspect-ratio
+    minHeight: '315px',
+    
+    [theme.breakpoints.down('md')]: {
+      minHeight: '250px',
+    },
+    
+    [theme.breakpoints.down('sm')]: {
+      minHeight: '200px',
+    },
+  },
+
+  // Generic iframe styling for any iframe
+  '& iframe': {
+    maxWidth: '100%',
+    
+    // If it has fixed dimensions, make it responsive
+    '&[width]': {
+      width: '100% !important',
+      height: 'auto !important',
+      aspectRatio: '16 / 9',
+      minHeight: '315px',
+      
+      [theme.breakpoints.down('md')]: {
+        minHeight: '250px',
+      },
+      
+      [theme.breakpoints.down('sm')]: {
+        minHeight: '200px',
+      },
+    },
+  },
+
   // Simple admonitions - matching learning journey style
   '& .admonition': {
     all: 'unset',
@@ -1489,6 +1691,54 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
       backgroundColor: theme.colors.border.medium,
       borderRadius: '3px',
     },
+  },
+
+  // Journey ready to begin section (matches journey-start styling)
+  '& .journey-ready-to-begin': {
+    margin: `${theme.spacing(4)} 0`,
+    padding: theme.spacing(3),
+    backgroundColor: theme.colors.background.canvas,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    textAlign: 'center',
+  },
+
+  '& .journey-ready-container h3': {
+    marginBottom: theme.spacing(2),
+    color: theme.colors.text.primary,
+  },
+
+  '& .journey-ready-button': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: `${theme.spacing(1.5)} ${theme.spacing(3)}`,
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z2,
+    },
+  },
+
+  '& .journey-ready-icon': {
+    fontSize: '14px',
+    lineHeight: 1,
+  },
+
+  '& .journey-ready-description': {
+    marginTop: theme.spacing(1.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
   },
 
   // Orange outline list styling (from learning journeys)
@@ -1715,6 +1965,13 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
   '& .justify-content-start': {
     justifyContent: 'flex-start',
   },
+
+  // Override inline-block utility for images to maintain responsiveness
+  '& img.d-inline-block': {
+    display: 'block !important',
+    width: '100%',
+    maxWidth: '100%',
+  },
   
   '& .fw-500': {
     fontWeight: 500,
@@ -1875,6 +2132,95 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     '&:hover:after': {
       transform: 'translateX(2px)',
     },
+  },
+
+  // Bottom navigation
+  '& .journey-bottom-navigation': {
+    margin: `${theme.spacing(4)} 0 ${theme.spacing(2)} 0`,
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.canvas,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  },
+
+  '& .journey-bottom-navigation-content': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing(2),
+  },
+
+  // Alternative container class name to match HTML structure
+  '& .journey-bottom-nav-container': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing(2),
+    width: '100%',
+  },
+
+  // Progress indicator styling
+  '& .journey-progress-indicator': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    minWidth: '60px',
+    textAlign: 'center',
+  },
+
+  '& .journey-bottom-nav-button': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: `${theme.spacing(1)} ${theme.spacing(2)}`,
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    minWidth: '100px',
+    
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+    },
+    
+    '&:disabled': {
+      backgroundColor: theme.colors.action.disabledBackground,
+      color: theme.colors.action.disabledText,
+      cursor: 'not-allowed',
+      opacity: 0.5,
+    },
+    
+    '& svg': {
+      width: '16px',
+      height: '16px',
+      flexShrink: 0,
+    },
+  },
+
+  '& .journey-bottom-nav-info': {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+  },
+
+  '& .journey-bottom-nav-milestone': {
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
   },
 
   // Grafana Play image styling - Compact version
