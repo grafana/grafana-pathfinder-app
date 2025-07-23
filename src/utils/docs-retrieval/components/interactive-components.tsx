@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { IconButton, Button } from '@grafana/ui';
-import { executeInteractiveAction as bridgeExecuteAction } from '../interactive-bridge';
+import { useInteractiveElements } from '../../interactive.hook';
 
 // --- Types ---
 interface BaseInteractiveProps {
@@ -149,6 +149,9 @@ export function InteractiveSection({
   const [isCompleted, setIsCompleted] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
 
+  // Get the interactive functions from the hook
+  const { executeInteractiveAction } = useInteractiveElements();
+
   // Extract interactive steps from children
   const interactiveSteps = useMemo(() => {
     const steps: Array<{
@@ -190,24 +193,22 @@ export function InteractiveSection({
         setCurrentStepIndex(i);
 
         // First, show the step (highlight it)
-        await bridgeExecuteAction(
+        await executeInteractiveAction(
           step.targetAction,
           step.refTarget,
           step.targetValue,
-          'show',
-          step.uniqueId
+          'show'
         );
 
         // Wait a bit for the highlight to be visible
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         // Then, do the step (perform the action)
-        await bridgeExecuteAction(
+        await executeInteractiveAction(
           step.targetAction,
           step.refTarget,
           step.targetValue,
-          'do',
-          step.uniqueId
+          'do'
         );
 
         // Wait between steps
@@ -228,7 +229,7 @@ export function InteractiveSection({
     } finally {
       setIsRunning(false);
     }
-  }, [disabled, isRunning, isCompleted, interactiveSteps, onComplete]);
+  }, [disabled, isRunning, isCompleted, interactiveSteps, onComplete, executeInteractiveAction]);
 
   const getStepStatus = useCallback((stepIndex: number) => {
     if (isCompleted) return 'completed';
@@ -307,6 +308,9 @@ export function InteractiveStep({
   const [isDoRunning, setIsDoRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   
+  // Get the interactive functions from the hook
+  const { executeInteractiveAction } = useInteractiveElements();
+  
   // Generate a unique ID for this step that persists across renders (no prefix - system will add it)
   const uniqueId = useMemo(() => 
     `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
@@ -317,20 +321,20 @@ export function InteractiveStep({
     if (disabled || isShowRunning || isCompleted) return;
     setIsShowRunning(true);
     try {
-      await bridgeExecuteAction(targetAction, refTarget, targetValue, 'show', uniqueId);
+      await executeInteractiveAction(targetAction, refTarget, targetValue, 'show');
       // Note: "Show me" actions don't mark the step as completed, only highlight
     } catch (error) {
       console.error('Interactive show action failed:', error);
     } finally {
       setIsShowRunning(false);
     }
-  }, [targetAction, refTarget, targetValue, uniqueId, disabled, isShowRunning, isCompleted]);
+  }, [targetAction, refTarget, targetValue, disabled, isShowRunning, isCompleted, executeInteractiveAction]);
 
   const handleDoAction = useCallback(async () => {
     if (disabled || isDoRunning || isCompleted) return;
     setIsDoRunning(true);
     try {
-      await bridgeExecuteAction(targetAction, refTarget, targetValue, 'do', uniqueId);
+      await executeInteractiveAction(targetAction, refTarget, targetValue, 'do');
       setIsCompleted(true);
       if (onComplete) onComplete();
     } catch (error) {
@@ -338,7 +342,7 @@ export function InteractiveStep({
     } finally {
       setIsDoRunning(false);
     }
-  }, [targetAction, refTarget, targetValue, uniqueId, disabled, isDoRunning, isCompleted, onComplete]);
+  }, [targetAction, refTarget, targetValue, disabled, isDoRunning, isCompleted, onComplete, executeInteractiveAction]);
 
   const getActionDescription = () => {
     switch (targetAction) {

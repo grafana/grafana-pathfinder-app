@@ -199,8 +199,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }
 
-  const interactiveFocus = useCallback((data: InteractiveElementData, click: boolean, clickedElement: HTMLElement) => {
-    setInteractiveState(clickedElement, 'running');
+  const interactiveFocus = useCallback((data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => {
+    if (clickedElement) {
+      setInteractiveState(clickedElement, 'running');
+    }
     
     // Search entire document for the target, which is outside of docs plugin frame.
     const targetElements = document.querySelectorAll(data.reftarget);
@@ -220,17 +222,23 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       });
       
       // Mark as completed after successful execution (only in Do mode)
-      waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
-      });
+      if (clickedElement) {
+        waitForReactUpdates().then(() => {
+          setInteractiveState(clickedElement, 'completed');
+        });
+      }
     } catch (error) {
       console.error("Error in interactiveFocus:", error);
-      setInteractiveState(clickedElement, 'error');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'error');
+      }
     }
   }, []);
 
-  const interactiveButton = useCallback((data: InteractiveElementData, click: boolean, clickedElement: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
-    setInteractiveState(clickedElement, 'running');
+  const interactiveButton = useCallback((data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
+    if (clickedElement) {
+      setInteractiveState(clickedElement, 'running');
+    }
 
     try {
       const buttons = findButtonByText(data.reftarget);
@@ -249,12 +257,16 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       });
       
       // Mark as completed after successful execution (only in Do mode)
-      waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
-      });
+      if (clickedElement) {
+        waitForReactUpdates().then(() => {
+          setInteractiveState(clickedElement, 'completed');
+        });
+      }
     } catch (error) {
       console.error("Error in interactiveButton:", error);
-      setInteractiveState(clickedElement, 'error');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'error');
+      }
     }
   }, []);
 
@@ -263,13 +275,15 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   const runInteractiveSequenceRef = useRef<(elements: Element[], showMode: boolean) => Promise<void>>();
   const runStepByStepSequenceRef = useRef<(elements: Element[]) => Promise<void>>();
 
-  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly: boolean, clickedElement: HTMLElement): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly: boolean, clickedElement?: HTMLElement): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
     // This is here so recursion cannot happen
     if(activeRefsRef.current.has(data.reftarget)) {
       return data.reftarget;
     }
     
-    setInteractiveState(clickedElement, 'running');
+    if (clickedElement) {
+      setInteractiveState(clickedElement, 'running');
+    }
     
     try {
       const searchContainer = containerRef?.current || document;
@@ -306,22 +320,28 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       }
       
       // Mark as completed after successful execution
-      setInteractiveState(clickedElement, 'completed');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'completed');
+      }
       
       activeRefsRef.current.delete(data.reftarget);
       return data.reftarget;
     } catch (error) {
       console.error(`Error in interactiveSequence for ${data.reftarget}:`, error);
-      setInteractiveState(clickedElement, 'error');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'error');
+      }
       activeRefsRef.current.delete(data.reftarget);
       throw error;
     }
   }, []);
 
-  const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm: boolean, clickedElement: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
     
-    setInteractiveState(clickedElement, 'running');
+    if (clickedElement) {
+      setInteractiveState(clickedElement, 'running');
+    }
     
     try {
       // Search entire document for the target, which is outside of docs plugin frame.
@@ -403,18 +423,24 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       targetElement.dispatchEvent(new Event('blur', { bubbles: true }));
       
       // Mark as completed after successful execution
-      waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
-      });
+      if (clickedElement) {
+        waitForReactUpdates().then(() => {
+          setInteractiveState(clickedElement, 'completed');
+        });
+      }
       
     } catch (error) {
       console.error('Error applying interactive action for selector ' + data.reftarget);
-      setInteractiveState(clickedElement, 'error');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'error');
+      }
     }
   }, []);
 
-  const interactiveNavigate = useCallback((data: InteractiveElementData, navigate: boolean, clickedElement: HTMLElement) => {
-    setInteractiveState(clickedElement, 'running');
+  const interactiveNavigate = useCallback((data: InteractiveElementData, navigate: boolean, clickedElement?: HTMLElement) => {
+    if (clickedElement) {
+      setInteractiveState(clickedElement, 'running');
+    }
     
     try {
       if (!navigate) {
@@ -425,9 +451,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         
         // Provide visual feedback by briefly highlighting the browser location bar concept
         // or show a toast/notification (for now, just log and complete)
-        waitForReactUpdates().then(() => {
-          setInteractiveState(clickedElement, 'completed');
-        });
+        if (clickedElement) {
+          waitForReactUpdates().then(() => {
+            setInteractiveState(clickedElement, 'completed');
+          });
+        }
         return;
       }
 
@@ -445,13 +473,17 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       }
       
       // Mark as completed after successful navigation
-      waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
-      });
+      if (clickedElement) {
+        waitForReactUpdates().then(() => {
+          setInteractiveState(clickedElement, 'completed');
+        });
+      }
       
     } catch (error) {
       console.error('Error in interactiveNavigate:', error);
-      setInteractiveState(clickedElement, 'error');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'error');
+      }
     }
   }, []);
 
@@ -779,6 +811,62 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
   // Legacy custom event system removed - all interactions now handled by modern direct click handlers
 
+  /**
+   * Direct interface for React components to execute interactive actions
+   * without needing DOM elements or the bridge pattern
+   */
+  const executeInteractiveAction = useCallback(async (
+    targetAction: string,
+    refTarget: string,
+    targetValue?: string,
+    buttonType: 'show' | 'do' = 'do'
+  ): Promise<void> => {
+    // Create InteractiveElementData directly from parameters
+    const elementData: InteractiveElementData = {
+      reftarget: refTarget,
+      targetaction: targetAction,
+      targetvalue: targetValue,
+      requirements: undefined,
+      tagName: 'button', // Simulated for React components
+      textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,
+      timestamp: Date.now(),
+    };
+
+    // No DOM element needed - React components manage their own state
+    const isShowMode = buttonType === 'show';
+
+    try {
+      // Route to appropriate function based on action type
+      switch (targetAction) {
+        case 'highlight':
+          interactiveFocus(elementData, !isShowMode, undefined);
+          break;
+
+        case 'button':
+          interactiveButton(elementData, !isShowMode, undefined);
+          break;
+
+        case 'formfill':
+          interactiveFormFill(elementData, !isShowMode, undefined);
+          break;
+
+        case 'navigate':
+          interactiveNavigate(elementData, !isShowMode, undefined);
+          break;
+
+        case 'sequence':
+          await interactiveSequence(elementData, isShowMode, undefined);
+          break;
+
+        default:
+          console.warn(`Unknown interactive action: ${targetAction}`);
+      }
+    } catch (error) {
+      console.error(`Error executing interactive action ${targetAction}:`, error);
+      throw error;
+    }
+  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence]);
+
   return {
     interactiveFocus,
     interactiveButton,
@@ -788,5 +876,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     checkElementRequirements,
     checkRequirementsFromData,
     checkRequirementsWithData,
+    executeInteractiveAction, // New direct interface for React components
   };
 } 

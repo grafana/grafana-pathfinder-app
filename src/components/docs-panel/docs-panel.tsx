@@ -18,7 +18,6 @@ import {
   fetchContent,
   ContentRenderer, 
   RawContent,
-  InteractiveBridge,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
 } from '../../utils/docs-retrieval';
@@ -600,16 +599,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Initialize the interactive bridge and use custom hooks for cleaner organization
+  // Initialize interactive elements for the content container
   const interactiveHookFunctions = useInteractiveElements({ containerRef: contentRef });
-  
-  // Initialize the interactive bridge with the hook functions
-  React.useEffect(() => {
-    if (interactiveHookFunctions) {
-      const bridge = InteractiveBridge.getInstance();
-      bridge.initializeWithHook(interactiveHookFunctions);
-    }
-  }, [interactiveHookFunctions]);
 
   // Use custom hooks for cleaner organization
   useKeyboardShortcuts({

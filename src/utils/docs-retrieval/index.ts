@@ -11,9 +11,6 @@ export * from './learning-journey-helpers';
 // React content renderer
 export * from './content-renderer';
 
-// Interactive bridge for connecting to existing system
-export * from './interactive-bridge';
-
 // HTML parser for React component conversion
 export * from './html-parser';
 
