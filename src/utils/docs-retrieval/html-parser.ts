@@ -107,7 +107,8 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ParsedCon
     function walk(node: Element | ChildNode): ParsedElement | string | null {
       if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent ?? '';
-        return text.trim() ? text : null;
+        // Preserve whitespace but filter out completely empty nodes
+        return text.length > 0 ? text : null;
       }
   
       // Handle element nodes

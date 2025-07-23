@@ -265,9 +265,8 @@ function renderParsedElement(
           // Regular elements can have children
           const children = element.children?.map((child, childIndex) => {
             if (typeof child === 'string') {
-              // Only render non-empty strings after trimming
-              const trimmed = child.trim();
-              return trimmed || null;
+              // Preserve whitespace in text content
+              return child.length > 0 ? child : null;
             }
             return renderParsedElement(child, `${key}-child-${childIndex}`);
           }).filter(child => child !== null);

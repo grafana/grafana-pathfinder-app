@@ -55,7 +55,8 @@ export class InteractiveBridge {
     targetAction: string,
     refTarget: string,
     targetValue?: string,
-    buttonType: 'show' | 'do' = 'do'
+    buttonType: 'show' | 'do' = 'do',
+    uniqueId?: string
   ): Promise<void> {
     // Create InteractiveElementData object that matches the existing system
     const elementData: InteractiveElementData = {
@@ -68,6 +69,9 @@ export class InteractiveBridge {
       timestamp: Date.now(),
     };
 
+    // Use provided unique ID or generate one if not provided (no prefix - system will add it)
+    const resolvedUniqueId = uniqueId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     // Create a temporary DOM element for compatibility with existing system
     const tempElement = document.createElement('button');
     tempElement.setAttribute('data-reftarget', refTarget);
@@ -76,6 +80,19 @@ export class InteractiveBridge {
       tempElement.setAttribute('data-targetvalue', targetValue);
     }
     tempElement.setAttribute('data-button-type', buttonType);
+    
+    // Add required unique step ID - use step-id for non-sequence actions
+    if (targetAction === 'sequence') {
+      tempElement.setAttribute('data-section-id', resolvedUniqueId);
+    } else {
+      tempElement.setAttribute('data-step-id', resolvedUniqueId);
+    }
+    
+    // Add to DOM temporarily so the interactive system can find it for step grouping
+    // We need a requirements attribute for the system to find it
+    tempElement.setAttribute('data-requirements', 'bridge-element');
+    tempElement.style.display = 'none'; // Hide it visually
+    document.body.appendChild(tempElement);
 
     const isShowMode = buttonType === 'show';
 
@@ -116,8 +133,10 @@ export class InteractiveBridge {
           console.warn(`Unknown interactive action: ${targetAction}`);
       }
     } finally {
-      // Clean up temporary element
-      tempElement.remove();
+      // Clean up temporary element from DOM
+      if (tempElement.parentNode) {
+        tempElement.parentNode.removeChild(tempElement);
+      }
     }
   }
 
@@ -128,17 +147,32 @@ export class InteractiveBridge {
   public async checkRequirements(
     targetAction: string,
     refTarget: string,
-    requirements?: string
+    requirements?: string,
+    uniqueId?: string
   ): Promise<{ pass: boolean; error?: string }> {
     if (!requirements || !this.interactiveFunctions.checkElementRequirements) {
       return { pass: true };
     }
+
+    // Use provided unique ID or generate one if not provided (no prefix - system will add it)
+    const resolvedUniqueId = uniqueId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Create temporary element with requirements
     const tempElement = document.createElement('button');
     tempElement.setAttribute('data-reftarget', refTarget);
     tempElement.setAttribute('data-targetaction', targetAction);
     tempElement.setAttribute('data-requirements', requirements);
+    
+    // Add required unique step ID - use step-id for non-sequence actions
+    if (targetAction === 'sequence') {
+      tempElement.setAttribute('data-section-id', resolvedUniqueId);
+    } else {
+      tempElement.setAttribute('data-step-id', resolvedUniqueId);
+    }
+    
+    // Add to DOM temporarily so the system can find it if needed
+    tempElement.style.display = 'none';
+    document.body.appendChild(tempElement);
 
     try {
       const result = await this.interactiveFunctions.checkElementRequirements(tempElement);
@@ -153,7 +187,10 @@ export class InteractiveBridge {
         error: error instanceof Error ? error.message : 'Requirements check failed'
       };
     } finally {
-      tempElement.remove();
+      // Clean up temporary element from DOM
+      if (tempElement.parentNode) {
+        tempElement.parentNode.removeChild(tempElement);
+      }
     }
   }
 
@@ -172,7 +209,8 @@ export async function executeInteractiveAction(
   targetAction: string,
   refTarget: string,
   targetValue?: string,
-  buttonType: 'show' | 'do' = 'do'
+  buttonType: 'show' | 'do' = 'do',
+  uniqueId?: string
 ): Promise<void> {
   const bridge = InteractiveBridge.getInstance();
   
@@ -183,7 +221,7 @@ export async function executeInteractiveAction(
     return;
   }
 
-  await bridge.executeAction(targetAction, refTarget, targetValue, buttonType);
+  await bridge.executeAction(targetAction, refTarget, targetValue, buttonType, uniqueId);
 }
 
 /**
@@ -192,7 +230,8 @@ export async function executeInteractiveAction(
 export async function checkInteractiveRequirements(
   targetAction: string,
   refTarget: string,
-  requirements?: string
+  requirements?: string,
+  uniqueId?: string
 ): Promise<{ pass: boolean; error?: string }> {
   const bridge = InteractiveBridge.getInstance();
   
@@ -201,5 +240,5 @@ export async function checkInteractiveRequirements(
     return { pass: true };
   }
 
-  return bridge.checkRequirements(targetAction, refTarget, requirements);
+  return bridge.checkRequirements(targetAction, refTarget, requirements, uniqueId);
 } 

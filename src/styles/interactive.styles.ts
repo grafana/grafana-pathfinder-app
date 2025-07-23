@@ -281,29 +281,14 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
     },
   },
 
-  '.inline-copy-btn': {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    padding: theme.spacing(0.25),
-    fontSize: '10px',
-    color: theme.colors.text.secondary,
-    borderRadius: theme.shape.radius.default,
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: '16px',
-    minHeight: '16px',
-    transition: 'all 0.15s ease-in-out',
-    '&:hover': {
-      color: theme.colors.text.primary,
-      backgroundColor: theme.colors.action.hover,
-    },
-    '&:focus': {
-      outline: 'none',
-      boxShadow: `0 0 0 2px ${theme.colors.primary.main}33`,
-    },
-  },
+'.inline-copy-btn': {
+  // Let Grafana IconButton handle all the styling
+  '& button': {
+    minWidth: '20px !important',
+    minHeight: '20px !important',
+    padding: '2px !important',
+  }
+},
 
   // Interactive Section styles
   '.interactive-section': {

@@ -75,6 +75,7 @@ function determineContentType(url: string): ContentType {
   
   // Learning journeys typically have specific URL patterns
   if (url.includes('/learning-journeys/') || 
+      url.includes('/tutorials/') || // Tutorials are structured like learning journeys
       url.includes('r-grafana') || // specific pattern from existing code
       url.includes('prometheus-datasource') ||
       url.match(/\/milestone-\d+/)) {
@@ -145,8 +146,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
     if (response.ok) {
       const html = await response.text();
       if (html && html.trim()) {
-        // If this is a Grafana docs URL, we MUST get the unstyled version
-        if (response.url.includes('grafana.com/docs/')) {
+        // If this is a Grafana docs or tutorial URL, we MUST get the unstyled version
+        if (response.url.includes('grafana.com/docs/') || response.url.includes('grafana.com/tutorials/')) {
           const finalUnstyledUrl = getUnstyledContentUrl(response.url);
           if (finalUnstyledUrl !== response.url) {
             try {
@@ -154,23 +155,25 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               if (unstyledResponse.ok) {
                 const unstyledHtml = await unstyledResponse.text();
                 if (unstyledHtml && unstyledHtml.trim()) {
-                  console.warn(`Using unstyled version of redirected URL: ${finalUnstyledUrl}`);
+                  console.warn(`Using unstyled version: ${finalUnstyledUrl}`);
                   return unstyledHtml;
                 }
               }
               // If unstyled version fails, don't fallback - fail the request
-              lastError = `Cannot load styled Grafana docs content. Unstyled version required but failed to load: ${finalUnstyledUrl}`;
+              lastError = `Cannot load styled Grafana content. Unstyled version required but failed to load: ${finalUnstyledUrl}`;
               return null;
             } catch (unstyledError) {
-              lastError = `Cannot load styled Grafana docs content. Unstyled version failed: ${unstyledError instanceof Error ? unstyledError.message : 'Unknown error'}`;
+              lastError = `Cannot load styled Grafana content. Unstyled version failed: ${unstyledError instanceof Error ? unstyledError.message : 'Unknown error'}`;
               return null;
             }
           }
         }
         
-        // For non-Grafana docs or when unstyled URL is same as regular URL
+        // For non-Grafana docs/tutorials or when unstyled URL is same as regular URL
         if (redirectInfo) {
           console.warn(`Successfully fetched content after redirect: ${redirectInfo}`);
+        } else if (response.url.includes('grafana.com/docs/') || response.url.includes('grafana.com/tutorials/')) {
+          console.warn(`Successfully fetched Grafana content: ${response.url}`);
         }
         return html;
       }
@@ -213,7 +216,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
   }
 
   // If original URL failed, try GitHub raw content variations
-  if (!lastError?.includes('Unstyled version required')) { // Don't try GitHub for Grafana docs that need unstyled
+  if (!lastError?.includes('Unstyled version required')) { // Don't try GitHub for Grafana docs/tutorials that need unstyled
     const githubVariations = generateGitHubVariations(url);
     if (githubVariations.length > 0) {
       console.warn(`Trying GitHub raw content variations for: ${url}`);
@@ -427,9 +430,19 @@ function getLearningJourneyBaseUrl(url: string): string {
   // Handle cases like:
   // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
   // https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
+  // https://grafana.com/tutorials/alerting-get-started/ -> https://grafana.com/tutorials/alerting-get-started
   
-  const match = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-journeys\/[^\/]+)/);
-  return match ? match[1] : url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
+  const learningJourneyMatch = url.match(/^(https?:\/\/[^\/]+\/docs\/learning-journeys\/[^\/]+)/);
+  if (learningJourneyMatch) {
+    return learningJourneyMatch[1];
+  }
+  
+  const tutorialMatch = url.match(/^(https?:\/\/[^\/]+\/tutorials\/[^\/]+)/);
+  if (tutorialMatch) {
+    return tutorialMatch[1];
+  }
+  
+  return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
 }
 
 async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Milestone[]> {

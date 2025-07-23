@@ -212,12 +212,18 @@ export function InteractiveStep({
 }: InteractiveStepProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  
+  // Generate a unique ID for this step that persists across renders (no prefix - system will add it)
+  const uniqueId = useMemo(() => 
+    `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
+    []
+  );
 
   const handleAction = useCallback(async () => {
     if (disabled || isRunning || isCompleted) {return;}
     setIsRunning(true);
     try {
-      await bridgeExecuteAction(targetAction, refTarget, targetValue, buttonType);
+      await bridgeExecuteAction(targetAction, refTarget, targetValue, buttonType, uniqueId);
       setIsCompleted(true);
       if (onComplete) onComplete();
     } catch (error) {
@@ -225,7 +231,7 @@ export function InteractiveStep({
     } finally {
       setIsRunning(false);
     }
-  }, [targetAction, refTarget, targetValue, buttonType, disabled, isRunning, isCompleted, onComplete]);
+  }, [targetAction, refTarget, targetValue, buttonType, uniqueId, disabled, isRunning, isCompleted, onComplete]);
 
   const getActionButtonText = () => {
     if (isCompleted) return '✓ Completed';
@@ -289,9 +295,13 @@ export function CodeBlock({
       <span className={`inline-code${className ? ` ${className}` : ''}`}>
         <code>{code}</code>
         {showCopy && (
-          <button className="inline-copy-btn" onClick={handleCopy} title="Copy code">
-            {copied ? '✓' : '📋'}
-          </button>
+          <IconButton
+            name={copied ? 'check' : 'copy'}
+            size="xs"
+            onClick={handleCopy}
+            tooltip={copied ? 'Copied!' : 'Copy code'}
+            className="inline-copy-btn"
+          />
         )}
       </span>
     );
@@ -302,12 +312,12 @@ export function CodeBlock({
       <div className="code-block-header">
         {language && <span className="code-block-language">{language}</span>}
         {showCopy && (
-          <IconButton
+         <IconButton
             name={copied ? 'check' : 'copy'}
-            size="sm"
+            size="xs"
             onClick={handleCopy}
             tooltip={copied ? 'Copied!' : 'Copy code'}
-            className="code-block-copy-btn"
+            className="inline-copy-btn"
           />
         )}
       </div>
