@@ -358,12 +358,16 @@ async function extractLearningJourneyMetadata(html: string, url: string): Promis
   const milestones = await fetchLearningJourneyMetadataFromJson(baseUrl);
   const currentMilestone = findCurrentMilestoneFromUrl(url, milestones);
   
+  // Since we now filter and renumber milestones sequentially (1, 2, 3, ...),
+  // totalMilestones is simply the array length
+  const totalMilestones = milestones.length;
+  
   // Extract summary from first few paragraphs (simple string matching)
   const summary = extractJourneySummary(html);
 
   return {
     currentMilestone,
-    totalMilestones: milestones.length,
+    totalMilestones,
     milestones,
     baseUrl,
     summary,
@@ -455,10 +459,18 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
       
       // The actual structure is an array of Hugo/Jekyll page objects
       if (Array.isArray(data)) {
-        const milestones = data.map((item, index) => {
-          // Transform Hugo/Jekyll structure to our Milestone format
+        // First, filter out milestones that should be skipped
+        const validItems = data.filter(item => {
+          // Skip if grafana.skip is true
+          return !item.params?.grafana?.skip;
+        });
+        
+        // Then map and renumber sequentially based on array position
+        const milestones = validItems.map((item, index) => {
+          // Use array index + 1 for sequential numbering (1, 2, 3, etc.)
+          // This ensures no gaps in numbering even when items are skipped
           const milestone: Milestone = {
-            number: item.params?.step || index + 1,
+            number: index + 1,
             title: item.params?.title || item.params?.menutitle || `Step ${index + 1}`,
             duration: '5-10 min', // Default duration as it's not in the data
             url: `https://grafana.com${item.permalink || item.params?.permalink || ''}`,
@@ -483,9 +495,9 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
           }
           
           return milestone;
-                }).sort((a, b) => a.number - b.number); // Sort by step number
+        });
         
-        return milestones;
+        return milestones; // Already in sequential order, no need to sort
       }
     } else {
       console.warn(`Failed to fetch metadata (${response.status}): ${indexJsonUrl}`);

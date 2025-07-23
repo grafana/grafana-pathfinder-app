@@ -306,10 +306,18 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
   '.interactive-section-header': {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: theme.spacing(1),
     padding: `${theme.spacing(1.5)} ${theme.spacing(2)}`,
     backgroundColor: theme.colors.background.secondary,
     borderBottom: `1px solid ${theme.colors.border.weak}`,
+  },
+
+  '.interactive-section-title-container': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    flex: 1,
   },
 
   '.interactive-section-toggle': {
@@ -343,14 +351,25 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
 
   '.interactive-section-title': {
     margin: 0,
-    fontSize: 'inherit',
-    fontWeight: 'inherit',
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    flex: 1,
   },
 
   '.interactive-section-checkmark': {
     color: theme.colors.success.main,
-    fontSize: '14px',
+    fontSize: '16px',
     fontWeight: 'bold',
+    marginLeft: theme.spacing(1),
+  },
+
+  '.interactive-section-spinner': {
+    color: theme.colors.warning.main,
+    fontSize: '16px',
+    fontWeight: 'bold',
+    marginLeft: theme.spacing(1),
+    animation: 'spin 1s linear infinite',
   },
 
   '.interactive-section-hint': {
@@ -370,17 +389,50 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
 
   '.interactive-section-content': {
     padding: theme.spacing(2),
+    
+    // Step status styles
+    '& .step-status-pending': {
+      opacity: 0.7,
+    },
+    
+    '& .step-status-running': {
+      borderColor: theme.colors.warning.border,
+      backgroundColor: theme.colors.warning.transparent,
+      transform: 'scale(1.02)',
+      transition: 'all 0.3s ease',
+    },
+    
+    '& .step-status-completed': {
+      borderColor: theme.colors.success.border,
+      backgroundColor: theme.colors.success.transparent,
+      opacity: 0.8,
+    },
+  },
+
+  '.interactive-section-actions': {
+    padding: theme.spacing(2),
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+    backgroundColor: theme.colors.background.canvas,
+    display: 'flex',
+    justifyContent: 'center',
+  },
+
+  '.interactive-section-do-button': {
+    minWidth: '200px',
+    fontWeight: theme.typography.fontWeightMedium,
+    
+    '&:disabled': {
+      opacity: 0.6,
+      cursor: 'not-allowed',
+    },
   },
 
   // Interactive Step styles
   '.interactive-step': {
     margin: `${theme.spacing(2)} 0`,
     padding: theme.spacing(2),
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
     backgroundColor: theme.colors.background.primary,
     '&.completed': {
-      borderColor: theme.colors.success.border,
       backgroundColor: theme.colors.success.transparent,
     },
   },
@@ -404,8 +456,34 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
 
   '.interactive-step-actions': {
     display: 'flex',
-    alignItems: 'center',
+    flexDirection: 'column',
     gap: theme.spacing(1),
+  },
+
+  '.interactive-step-action-buttons': {
+    display: 'flex',
+    gap: theme.spacing(1),
+    alignItems: 'center',
+  },
+
+  '.interactive-step-show-btn': {
+    // Secondary button styling for "Show me"
+    minWidth: '80px',
+    fontSize: theme.typography.bodySmall.fontSize,
+  },
+
+  '.interactive-step-do-btn': {
+    // Primary button styling for "Do it"
+    minWidth: '80px',
+    fontSize: theme.typography.bodySmall.fontSize,
+  },
+
+  '.interactive-step-description-text': {
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    padding: `${theme.spacing(0.5)} 0`,
   },
 
   '.interactive-step-action-btn': {
@@ -518,6 +596,12 @@ export const addGlobalInteractiveStyles = () => {
         transform: scale(0.95);
         box-shadow: 0 0 0 0 transparent;
       }
+    }
+    
+    /* Spinner animation for section running state */
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
   `;
   document.head.appendChild(style);

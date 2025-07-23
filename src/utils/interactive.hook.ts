@@ -3,8 +3,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { locationService, config } from '@grafana/runtime';
 import { ContextService } from './context';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
-import { waitForReactUpdates, groupInteractiveElementsByStep, markStepCompleted, InteractiveStep } from './requirements.util';
-import { safeEventHandler } from './safe-event-handler.util';
+import { waitForReactUpdates } from './requirements.util';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -178,82 +177,24 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }
 
   /**
-   * Set the visual and logical state of an interactive element.
-   * 
-   * ARCHITECTURAL DECISION: This function operates under the strong assumption that ALL
-   * interactive elements have unique step IDs (either data-section-id or data-step-id).
-   * This assumption is guaranteed by the content processing system in the docs-retrieval
-   * module, which assigns unique IDs to every interactive element during content
-   * processing. No fallback mechanisms are provided - violations will throw errors.
+   * Bridge elements don't need complex state management since React components
+   * handle their own state. This simplified version just logs completion.
    */
   function setInteractiveState(element: HTMLElement, state: 'idle' | 'running' | 'completed' | 'error') {
-    // ASSUMPTION: All interactive elements have unique step IDs
-    // This is guaranteed by the docs-retrieval content processing system
-    // which assigns either data-section-id or data-step-id to every interactive element
-    const sectionId = element.getAttribute('data-section-id');
-    const stepId = element.getAttribute('data-step-id');
-
-    if (!sectionId && !stepId) {
-      throw new Error(`Interactive element missing required unique step ID: reftarget=${element.getAttribute('data-reftarget')}, targetaction=${element.getAttribute('data-targetaction')}`);
-    }
-
-    // Handle completion state (implicit requirement #2)
     if (state === 'completed') {
-      console.log('🎯 Marking element as completed:', {
+      console.log('✅ Interactive action completed:', {
         element: element.tagName,
         reftarget: element.getAttribute('data-reftarget'),
         targetaction: element.getAttribute('data-targetaction'),
         buttonType: element.getAttribute('data-button-type'),
-        textContent: element.textContent?.trim()
       });
-            
-      // Determine the unique identifier for this element's step
-      const uniqueId: string = sectionId ? `section-${sectionId}` : `step-${stepId}`;
-            
-      // Find all interactive elements in the current container to identify the step
-      const searchContainer = containerRef?.current || document;
-      const allInteractiveElements = searchContainer.querySelectorAll('[data-requirements]') as NodeListOf<HTMLElement>;
-      const elementArray = Array.from(allInteractiveElements);
       
-      // Group elements by step using centralized logic
-      const steps = groupInteractiveElementsByStep(elementArray);
-      
-      // Find the step that contains this element using the unique identifier
-      const elementStep = steps.find((step: InteractiveStep) => 
-        step.uniqueId === uniqueId
-      );
-      
-      if (elementStep) {
-        console.log(`📋 Marking entire step as completed: ${elementStep.buttons.length} buttons with uniqueId="${uniqueId}"`);
-        
-        // Use centralized step completion logic
-        markStepCompleted(elementStep);
-        
-        elementStep.buttons.forEach((button: HTMLElement, index: number) => {
-          const buttonType = button.getAttribute('data-button-type') || 'unknown';
-          console.log(`  ✅ Marking button ${index + 1} as completed: ${buttonType}`);
-        });
-      } else {
-        // This should never happen if our step grouping logic is correct
-        console.error('💥 CRITICAL: No step found with unique ID despite element having ID! This indicates a bug in step grouping logic.');
-        console.error('Details:', {
-          uniqueId,
-          sectionId,
-          stepId,
-          availableSteps: steps.map(s => s.uniqueId),
-          element: element.tagName
-        });
-        throw new Error(`Step not found for unique ID: ${uniqueId}`);
-      }
-      
-      // Wait for React updates to complete, then dispatch event to trigger requirements re-check
+      // Dispatch event for any listeners
       waitForReactUpdates().then(() => {
-        console.log('🔔 Dispatching interactive-action-completed event');
         const event = new CustomEvent('interactive-action-completed', {
           detail: { element, state }
         });
         document.dispatchEvent(event);
-        console.log('✅ Event dispatched successfully');
       });
     }
   }
@@ -836,171 +777,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     return { requirementsCheck, interactiveData: data };
   };
 
-  /**
-   * Find and attach event listeners to interactive elements in the DOM
-   * This replaces the need for inline onclick handlers
-   */
-  const attachInteractiveEventListeners = useCallback(() => {
-    // Find all interactive elements with data attributes in the scoped container
-    const searchContainer = containerRef?.current || document;
-    const interactiveElements = searchContainer.querySelectorAll('[data-targetaction][data-reftarget].interactive-button');
-    
-    interactiveElements.forEach((element) => {
-      const htmlElement = element as HTMLElement;
-      
-      // Skip if already has event listener attached
-      if (htmlElement.hasAttribute('data-listener-attached')) {
-        return;
-      }
-      
-      // Mark as having listener attached
-      htmlElement.setAttribute('data-listener-attached', 'true');
-      
-      // Extract interactive data
-      const data = extractInteractiveDataFromElement(htmlElement);
-      const buttonType = htmlElement.getAttribute('data-button-type') || 'do';
-      
-      // Create click handler
-      const clickHandler = async (event: Event) => {
-        safeEventHandler(event, {
-          preventDefault: true,
-          stopPropagation: true,
-        });
-        
-        try {
-          // Check requirements before executing
-          const requirementsCheck = await checkRequirementsFromData(data);
-          
-          if (!requirementsCheck.pass) {
-            console.warn("Requirements not met for interactive element:", data);
-            console.warn("Requirements check results:", requirementsCheck);
-            return;
-          }
-          
-          // Execute the appropriate action based on button type and target action
-          const isShowMode = buttonType === 'show';
-          
-          if (data.targetaction === 'highlight') {
-            interactiveFocus(data, !isShowMode, htmlElement); // Show mode = don't click, Do mode = click
-          } else if (data.targetaction === 'button') {
-            interactiveButton(data, !isShowMode, htmlElement); // Show mode = don't click, Do mode = click
-          } else if (data.targetaction === 'formfill') {
-            interactiveFormFill(data, !isShowMode, htmlElement); // Show mode = don't fill, Do mode = fill
-          } else if (data.targetaction === 'navigate') {
-            interactiveNavigate(data, !isShowMode, htmlElement); // Show mode = show target, Do mode = navigate
-          } else if (data.targetaction === 'sequence') {
-            await interactiveSequence(data, isShowMode, htmlElement); // Show mode = highlight only, Do mode = full sequence
-          } else {
-            console.warn("Unknown target action:", data.targetaction);
-          }
-        } catch (error) {
-          console.error("Error in interactive element click handler:", error);
-        }
-      };
-      
-      // Attach click listener
-      htmlElement.addEventListener('click', clickHandler);
-      
-      // Store the handler so we can remove it later if needed
-      (htmlElement as any).__interactiveClickHandler = clickHandler;
-    });
-  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence, checkRequirementsFromData, containerRef]);
-
-  /**
-   * Remove event listeners from interactive elements
-   */
-  const detachInteractiveEventListeners = useCallback(() => {
-    const searchContainer = containerRef?.current || document;
-    const interactiveElements = searchContainer.querySelectorAll('[data-listener-attached="true"]');
-    
-    interactiveElements.forEach((element) => {
-      const htmlElement = element as HTMLElement;
-      const handler = (htmlElement as any).__interactiveClickHandler;
-      
-      if (handler) {
-        htmlElement.removeEventListener('click', handler);
-        delete (htmlElement as any).__interactiveClickHandler;
-      }
-      
-      htmlElement.removeAttribute('data-listener-attached');
-    });
-  }, [containerRef]);
-
-  /**
-   * Check if a DOM node contains interactive elements
-   * More explicit and performant than querySelector
-   */
-  const nodeContainsInteractiveElements = useCallback((node: Node): boolean => {
-    // Only check Element nodes
-    if (node.nodeType !== Node.ELEMENT_NODE) {
-      return false;
-    }
-    
-    const element = node as Element;
-    
-    // Check if the element itself is an interactive button
-    if (element.classList.contains('interactive-button') && 
-        element.hasAttribute('data-targetaction') && 
-        element.hasAttribute('data-reftarget')) {
-      return true;
-    }
-    
-    // Check if any child elements are interactive buttons
-    // Use getElementsByClassName for better performance than querySelector
-    const interactiveElements = element.getElementsByClassName('interactive-button');
-    
-    for (let i = 0; i < interactiveElements.length; i++) {
-      const interactiveElement = interactiveElements[i];
-      if (interactiveElement.hasAttribute('data-targetaction') && 
-          interactiveElement.hasAttribute('data-reftarget')) {
-        return true;
-      }
-    }
-    
-    return false;
-  }, []);
-
-  // Effect to attach/detach event listeners when DOM changes
-  useEffect(() => {
-    // Attach event listeners to existing interactive elements
-    attachInteractiveEventListeners();
-    
-    // Set up mutation observer to handle dynamically added content
-    const observer = new MutationObserver((mutations) => {
-      let shouldReattach = false;
-      
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-          // Check if any added nodes contain interactive elements
-          mutation.addedNodes.forEach((node) => {
-            if (nodeContainsInteractiveElements(node)) {
-              shouldReattach = true;
-            }
-          });
-        }
-      });
-      
-      if (shouldReattach) {
-        // Small delay to let DOM settle
-        setTimeout(() => {
-          attachInteractiveEventListeners();
-        }, 100);
-      }
-    });
-    
-    // Start observing
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-    
-    // Cleanup function
-    return () => {
-      observer.disconnect();
-      detachInteractiveEventListeners();
-    };
-  }, [attachInteractiveEventListeners, detachInteractiveEventListeners, nodeContainsInteractiveElements]);
-
   // Legacy custom event system removed - all interactions now handled by modern direct click handlers
 
   return {
@@ -1012,7 +788,5 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     checkElementRequirements,
     checkRequirementsFromData,
     checkRequirementsWithData,
-    attachInteractiveEventListeners,
-    detachInteractiveEventListeners,
   };
 } 

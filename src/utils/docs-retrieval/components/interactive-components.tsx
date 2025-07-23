@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { IconButton, Button } from '@grafana/ui';
+import { executeInteractiveAction as bridgeExecuteAction } from '../interactive-bridge';
 
 // --- Types ---
 interface BaseInteractiveProps {
@@ -15,7 +16,6 @@ interface InteractiveStepProps extends BaseInteractiveProps {
   targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence';
   refTarget: string;
   targetValue?: string;
-  buttonType?: 'show' | 'do';
   title?: string;
   description?: string;
   children?: React.ReactNode;
@@ -145,52 +145,146 @@ export function InteractiveSection({
   disabled = false,
   className,
 }: InteractiveSectionProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isRunning, setIsRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [currentStepIndex, setCurrentStepIndex] = useState(-1);
 
-  const handleStepComplete = useCallback(() => {
-    if (onComplete) {
-      setIsCompleted(true);
-      onComplete();
+  // Extract interactive steps from children
+  const interactiveSteps = useMemo(() => {
+    const steps: Array<{
+      element: React.ReactElement;
+      targetAction: string;
+      refTarget: string;
+      targetValue?: string;
+      uniqueId: string;
+    }> = [];
+    
+    React.Children.forEach(children, (child) => {
+      if (React.isValidElement(child) && 
+          (child as any).type === InteractiveStep) {
+        const props = child.props as InteractiveStepProps;
+        steps.push({
+          element: child,
+          targetAction: props.targetAction,
+          refTarget: props.refTarget,
+          targetValue: props.targetValue,
+          uniqueId: `section-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${steps.length}`
+        });
+      }
+    });
+    
+    return steps;
+  }, [children]);
+
+  const handleDoSection = useCallback(async () => {
+    if (disabled || isRunning || isCompleted || interactiveSteps.length === 0) {
+      return;
     }
-  }, [onComplete]);
+
+    setIsRunning(true);
+    setCurrentStepIndex(0);
+
+    try {
+      for (let i = 0; i < interactiveSteps.length; i++) {
+        const step = interactiveSteps[i];
+        setCurrentStepIndex(i);
+
+        // First, show the step (highlight it)
+        await bridgeExecuteAction(
+          step.targetAction,
+          step.refTarget,
+          step.targetValue,
+          'show',
+          step.uniqueId
+        );
+
+        // Wait a bit for the highlight to be visible
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Then, do the step (perform the action)
+        await bridgeExecuteAction(
+          step.targetAction,
+          step.refTarget,
+          step.targetValue,
+          'do',
+          step.uniqueId
+        );
+
+        // Wait between steps
+        if (i < interactiveSteps.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      // Mark the entire section as completed
+      setIsCompleted(true);
+      setCurrentStepIndex(-1);
+      if (onComplete) {
+        onComplete();
+      }
+    } catch (error) {
+      console.error('Error running section sequence:', error);
+      setCurrentStepIndex(-1);
+    } finally {
+      setIsRunning(false);
+    }
+  }, [disabled, isRunning, isCompleted, interactiveSteps, onComplete]);
+
+  const getStepStatus = useCallback((stepIndex: number) => {
+    if (isCompleted) return 'completed';
+    if (currentStepIndex === stepIndex) return 'running';
+    if (currentStepIndex > stepIndex) return 'completed';
+    return 'pending';
+  }, [isCompleted, currentStepIndex]);
 
   return (
     <div className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}`}>
       <div className="interactive-section-header">
-        <button
-          className="interactive-section-toggle"
-          onClick={() => setIsExpanded(!isExpanded)}
-          aria-expanded={isExpanded}
-          disabled={disabled}
-        >
-          <span className="interactive-section-icon">
-            {isExpanded ? '▼' : '▶'}
-          </span>
+        <div className="interactive-section-title-container">
           <span className="interactive-section-title">{title}</span>
           {isCompleted && <span className="interactive-section-checkmark">✓</span>}
-        </button>
-        {hints && !isExpanded && (
+          {isRunning && <span className="interactive-section-spinner">⟳</span>}
+        </div>
+        {hints && (
           <span className="interactive-section-hint" title={hints}>
             ⓘ
           </span>
         )}
       </div>
-      {description && isExpanded && (
+      
+      {description && (
         <div className="interactive-section-description">{description}</div>
       )}
-      {isExpanded && (
-        <div className="interactive-section-content">
-          {React.Children.map(children, (child) =>
-            React.isValidElement(child)
-              ? React.cloneElement(child as React.ReactElement<any>, {
-                  onComplete: handleStepComplete,
-                  disabled: disabled || child.props.disabled,
-                })
-              : child
-          )}
-        </div>
-      )}
+      
+      <div className="interactive-section-content">
+        {React.Children.map(children, (child, index) => {
+          if (React.isValidElement(child) && 
+              (child as any).type === InteractiveStep) {
+            const stepStatus = getStepStatus(index);
+            return React.cloneElement(child as React.ReactElement<any>, {
+              disabled: disabled || isRunning,
+              className: `${child.props.className || ''} step-status-${stepStatus}`,
+              key: index,
+            });
+          }
+          return child;
+        })}
+      </div>
+      
+      <div className="interactive-section-actions">
+        <Button
+          onClick={handleDoSection}
+          disabled={disabled || isRunning || isCompleted || interactiveSteps.length === 0}
+          size="md"
+          variant="primary"
+          className="interactive-section-do-button"
+          title={hints || `Run through all ${interactiveSteps.length} steps in sequence`}
+        >
+          {isCompleted ? '✓ Section Completed' : 
+           isRunning ? `Running Step ${currentStepIndex + 1}/${interactiveSteps.length}...` : 
+           `Do Section (${interactiveSteps.length} steps)`}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -199,7 +293,6 @@ export function InteractiveStep({
   targetAction,
   refTarget,
   targetValue,
-  buttonType = 'do',
   title,
   description,
   children,
@@ -210,7 +303,8 @@ export function InteractiveStep({
   disabled = false,
   className,
 }: InteractiveStepProps) {
-  const [isRunning, setIsRunning] = useState(false);
+  const [isShowRunning, setIsShowRunning] = useState(false);
+  const [isDoRunning, setIsDoRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   
   // Generate a unique ID for this step that persists across renders (no prefix - system will add it)
@@ -219,33 +313,45 @@ export function InteractiveStep({
     []
   );
 
-  const handleAction = useCallback(async () => {
-    if (disabled || isRunning || isCompleted) {return;}
-    setIsRunning(true);
+  const handleShowAction = useCallback(async () => {
+    if (disabled || isShowRunning || isCompleted) return;
+    setIsShowRunning(true);
     try {
-      await bridgeExecuteAction(targetAction, refTarget, targetValue, buttonType, uniqueId);
+      await bridgeExecuteAction(targetAction, refTarget, targetValue, 'show', uniqueId);
+      // Note: "Show me" actions don't mark the step as completed, only highlight
+    } catch (error) {
+      console.error('Interactive show action failed:', error);
+    } finally {
+      setIsShowRunning(false);
+    }
+  }, [targetAction, refTarget, targetValue, uniqueId, disabled, isShowRunning, isCompleted]);
+
+  const handleDoAction = useCallback(async () => {
+    if (disabled || isDoRunning || isCompleted) return;
+    setIsDoRunning(true);
+    try {
+      await bridgeExecuteAction(targetAction, refTarget, targetValue, 'do', uniqueId);
       setIsCompleted(true);
       if (onComplete) onComplete();
     } catch (error) {
-      console.error('Interactive action failed:', error);
+      console.error('Interactive do action failed:', error);
     } finally {
-      setIsRunning(false);
+      setIsDoRunning(false);
     }
-  }, [targetAction, refTarget, targetValue, buttonType, uniqueId, disabled, isRunning, isCompleted, onComplete]);
+  }, [targetAction, refTarget, targetValue, uniqueId, disabled, isDoRunning, isCompleted, onComplete]);
 
-  const getActionButtonText = () => {
-    if (isCompleted) return '✓ Completed';
-    if (isRunning) return 'Running...';
-    const prefix = buttonType === 'show' ? 'Show me' : 'Do';
+  const getActionDescription = () => {
     switch (targetAction) {
-      case 'button': return `${prefix}: Click "${refTarget}"`;
-      case 'highlight': return `${prefix}: Highlight element`;
-      case 'formfill': return `${prefix}: Fill form`;
-      case 'navigate': return `${prefix}: Navigate to ${refTarget}`;
-      case 'sequence': return `${prefix}: Run sequence`;
-      default: return `${prefix}: ${targetAction}`;
+      case 'button': return `Click "${refTarget}"`;
+      case 'highlight': return `Highlight element`;
+      case 'formfill': return `Fill form with "${targetValue || 'value'}"`;
+      case 'navigate': return `Navigate to ${refTarget}`;
+      case 'sequence': return `Run sequence`;
+      default: return targetAction;
     }
   };
+
+  const isAnyActionRunning = isShowRunning || isDoRunning;
 
   return (
     <div className={`interactive-step${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}`}>
@@ -255,16 +361,30 @@ export function InteractiveStep({
         {children}
       </div>
       <div className="interactive-step-actions">
-        <Button
-          onClick={handleAction}
-          disabled={disabled || isCompleted || isRunning}
-          size="sm"
-          variant={buttonType === 'show' ? 'secondary' : 'primary'}
-          className="interactive-step-action-btn"
-          title={hints}
-        >
-          {getActionButtonText()}
-        </Button>
+        <div className="interactive-step-action-buttons">
+          <Button
+            onClick={handleShowAction}
+            disabled={disabled || isCompleted || isAnyActionRunning}
+            size="sm"
+            variant="secondary"
+            className="interactive-step-show-btn"
+            title={hints || `Show me: ${getActionDescription()}`}
+          >
+            {isShowRunning ? 'Showing...' : 'Show me'}
+          </Button>
+          
+          <Button
+            onClick={handleDoAction}
+            disabled={disabled || isCompleted || isAnyActionRunning}
+            size="sm"
+            variant="primary"
+            className="interactive-step-do-btn"
+            title={hints || `Do it: ${getActionDescription()}`}
+          >
+            {isCompleted ? '✓ Completed' : isDoRunning ? 'Doing...' : 'Do it'}
+          </Button>
+        </div>
+        
         {isCompleted && <span className="interactive-step-completed-indicator">✓</span>}
       </div>
     </div>
@@ -352,6 +472,3 @@ export function ExpandableTable({
     </div>
   );
 }
-
-// Import the bridge service for connecting to existing interactive system
-import { executeInteractiveAction as bridgeExecuteAction } from '../interactive-bridge';

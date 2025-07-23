@@ -21,12 +21,9 @@ export function getNextMilestoneUrl(content: RawContent): string | null {
 
   const { currentMilestone, milestones } = content.metadata.learningJourney;
   
-  if (currentMilestone < milestones.length) {
-    const nextMilestone = milestones.find(m => m.number === currentMilestone + 1);
-    return nextMilestone ? nextMilestone.url : null;
-  }
-  
-  return null;
+  // Since milestones are now sequentially numbered from 1, we can use simple logic
+  const nextMilestone = milestones.find(m => m.number === currentMilestone + 1);
+  return nextMilestone ? nextMilestone.url : null;
 }
 
 export function getPreviousMilestoneUrl(content: RawContent): string | null {
@@ -34,14 +31,15 @@ export function getPreviousMilestoneUrl(content: RawContent): string | null {
     return null;
   }
 
-  const { currentMilestone, milestones } = content.metadata.learningJourney;
+  const { currentMilestone, milestones, baseUrl } = content.metadata.learningJourney;
   
+  // Since milestones are now sequentially numbered from 1, we can use simple logic
   if (currentMilestone > 1) {
     const prevMilestone = milestones.find(m => m.number === currentMilestone - 1);
     return prevMilestone ? prevMilestone.url : null;
   } else if (currentMilestone === 1) {
     // Go back to cover page (milestone 0)
-    return content.metadata.learningJourney.baseUrl;
+    return baseUrl;
   }
   
   return null;
@@ -93,6 +91,8 @@ export function isLastMilestone(content: RawContent): boolean {
   }
 
   const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
+  
+  // Since milestones are now sequentially numbered from 1, this is simple
   return currentMilestone === totalMilestones;
 }
 
@@ -101,7 +101,10 @@ export function isFirstMilestone(content: RawContent): boolean {
     return false;
   }
 
-  return content.metadata.learningJourney.currentMilestone === 1;
+  const { currentMilestone } = content.metadata.learningJourney;
+  
+  // Since milestones are now sequentially numbered from 1, this is simple
+  return currentMilestone === 1;
 }
 
 /**
@@ -157,8 +160,10 @@ function getCurrentMilestoneFromMetadata(metadata: LearningJourneyMetadata): Mil
  * These generate HTML strings to append to content
  */
 function addReadyToBeginButton(content: string, metadata: LearningJourneyMetadata): string {
-  // Find the first milestone by index (not by number, since JSON steps might start at 2)
-  const firstMilestone = metadata.milestones[0];
+  // Since milestones are now sequentially numbered from 1, 
+  // the first milestone is always the one with number === 1
+  const firstMilestone = metadata.milestones.find(m => m.number === 1);
+  
   if (!firstMilestone) {
     return content;
   }
@@ -254,38 +259,30 @@ function appendBottomNavigationToContent(
   currentMilestone: number, 
   totalMilestones: number
 ): string {
-  const hasNext = currentMilestone < totalMilestones;
-  const hasPrev = currentMilestone > 0;
-
   // Don't show navigation for cover pages (milestone 0)
   if (currentMilestone === 0) {
     return content;
   }
 
-  if (!hasNext && !hasPrev) {
-    return content;
-  }
-
+  // We'll still generate both buttons and let the link handler check navigation availability
+  // This ensures consistent UI structure while the actual logic is handled by the navigation functions
+  
   const navigationHtml = `
     <div class="journey-bottom-navigation">
       <div class="journey-bottom-nav-container">
-        ${hasPrev ? `
-          <button class="journey-bottom-nav-button journey-nav-prev" 
-                  data-journey-nav="prev">
-            ← Previous
-          </button>
-        ` : '<div class="journey-nav-spacer"></div>'}
+        <button class="journey-bottom-nav-button journey-nav-prev" 
+                data-journey-nav="prev">
+          ← Previous
+        </button>
         
         <div class="journey-progress-indicator">
-          ${currentMilestone} of ${totalMilestones}
+          Step ${currentMilestone} of ${totalMilestones}
         </div>
         
-        ${hasNext ? `
-          <button class="journey-bottom-nav-button journey-nav-next" 
-                  data-journey-nav="next">
-            Next →
-          </button>
-        ` : '<div class="journey-nav-spacer"></div>'}
+        <button class="journey-bottom-nav-button journey-nav-next" 
+                data-journey-nav="next">
+          Next →
+        </button>
       </div>
     </div>
   `;
