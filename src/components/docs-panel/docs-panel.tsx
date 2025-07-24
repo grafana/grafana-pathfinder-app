@@ -8,10 +8,12 @@ import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useContentProcessing } from '../../utils/content-processing.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
+import { safeEventHandler } from '../../utils/safe-event-handler.util';
 import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../styles/docs-panel.styles';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles, addGlobalInteractiveStyles } from '../../styles/interactive.styles';
 import { TAB_CONFIG } from '../../constants/selectors';
+import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
 import { 
   fetchLearningJourneyContent, 
@@ -588,7 +590,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   }, [model]);
 
   // Use custom hooks for cleaner organization
-  useInteractiveElements();
+  useInteractiveElements({ containerRef: contentRef });
   
   useContentProcessing({
     contentRef,
@@ -634,9 +636,11 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         
         if (hasAnchorAttribute) {
           // Handle anchor links - scroll to target element within the page
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
+          safeEventHandler(e, {
+            preventDefault: true,
+            stopPropagation: true,
+            stopImmediatePropagation: true,
+          });
           
           const anchorTarget = link.getAttribute('data-anchor-target');
           if (anchorTarget) {
@@ -685,9 +689,11 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
             }
           }
         } else if (hasInternalAttribute) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
+          safeEventHandler(e, {
+            preventDefault: true,
+            stopPropagation: true,
+            stopImmediatePropagation: true,
+          });
           
           const href = link.getAttribute('href');
           if (href) {
@@ -786,6 +792,11 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     }
   }, [activeTab?.docsContent?.hashFragment, activeTab?.content?.hashFragment, activeTab?.isLoading, activeTab, contentRef, theme]);
 
+  // Track scroll events for analytics - fire once per unique docs page
+  useEffect(() => {
+    return setupScrollTracking(contentRef.current, activeTab, isRecommendationsTab);
+  }, [activeTab, isRecommendationsTab]);
+
   // Link handling is now managed by the useLinkClickHandler hook
 
   return (
@@ -841,6 +852,15 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                     aria-label="Close tab"
                     onClick={(e) => {
                       e.stopPropagation();
+                      
+                      // Track close tab analytics
+                      reportAppInteraction(UserInteraction.CloseTabClick, {
+                        tab_type: tab.type || 'learning-journey',
+                        tab_title: tab.title,
+                        tab_url: tab.currentUrl || tab.baseUrl,
+                        close_location: 'tab_bar'
+                      });
+                      
                       model.closeTab(tab.id);
                     }}
                     className={styles.closeButton}
@@ -911,6 +931,15 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                       aria-label={`Close ${tab.title}`}
                       onClick={(e) => {
                         e.stopPropagation();
+                        
+                        // Track close tab analytics
+                        reportAppInteraction(UserInteraction.CloseTabClick, {
+                          tab_type: tab.type || 'learning-journey',
+                          tab_title: tab.title,
+                          tab_url: tab.currentUrl || tab.baseUrl,
+                          close_location: 'dropdown'
+                        });
+                        
                         model.closeTab(tab.id);
                       }}
                       className={styles.dropdownItemClose}
@@ -964,6 +993,14 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                     onClick={() => {
                       const url = activeTab.docsContent?.url || activeTab.baseUrl;
                       if (url) {
+                        // Track open documentation button analytics
+                        reportAppInteraction(UserInteraction.OpenDocumentationButton, {
+                          content_type: 'docs',
+                          content_title: activeTab.title,
+                          content_url: url,
+                          interaction_location: 'docs_content_action_bar'
+                        });
+                        
                         window.open(url, '_blank', 'noopener,noreferrer');
                       }
                     }}
@@ -995,7 +1032,19 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                           name="arrow-left"
                           size="sm"
                           aria-label="Previous milestone"
-                          onClick={() => model.navigateToPreviousMilestone()}
+                          onClick={() => {
+                            // Track milestone arrow interaction analytics
+                            reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
+                              journey_title: activeTab.title,
+                              journey_url: activeTab.baseUrl,
+                              current_milestone: activeTab.content?.currentMilestone || 0,
+                              total_milestones: activeTab.content?.totalMilestones || 0,
+                              direction: 'backward',
+                              interaction_location: 'milestone_progress_bar'
+                            });
+                            
+                            model.navigateToPreviousMilestone();
+                          }}
                           tooltip="Previous milestone (Alt + ←)"
                           tooltipPlacement="top"
                           disabled={!model.canNavigatePrevious() || activeTab.isLoading}
@@ -1008,7 +1057,19 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                           name="arrow-right"
                           size="sm"
                           aria-label="Next milestone"
-                          onClick={() => model.navigateToNextMilestone()}
+                          onClick={() => {
+                            // Track milestone arrow interaction analytics
+                            reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
+                              journey_title: activeTab.title,
+                              journey_url: activeTab.baseUrl,
+                              current_milestone: activeTab.content?.currentMilestone || 0,
+                              total_milestones: activeTab.content?.totalMilestones || 0,
+                              direction: 'forward',
+                              interaction_location: 'milestone_progress_bar'
+                            });
+                            
+                            model.navigateToNextMilestone();
+                          }}
                           tooltip="Next milestone (Alt + →)"
                           tooltipPlacement="top"
                           disabled={!model.canNavigateNext() || activeTab.isLoading}
@@ -1048,6 +1109,16 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                     onClick={() => {
                       const url = activeTab.content?.url;
                       if (url) {
+                        // Track open documentation button analytics for learning journeys
+                        reportAppInteraction(UserInteraction.OpenDocumentationButton, {
+                          content_type: 'learning-journey',
+                          content_title: activeTab.title,
+                          content_url: url,
+                          interaction_location: 'journey_content_action_bar',
+                          current_milestone: activeTab.content?.currentMilestone || 0,
+                          total_milestones: activeTab.content?.totalMilestones || 0
+                        });
+                        
                         window.open(url, '_blank', 'noopener,noreferrer');
                       }
                     }}

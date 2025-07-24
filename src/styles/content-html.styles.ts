@@ -8,6 +8,18 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
   lineHeight: 1.6,
   fontSize: theme.typography.body.fontSize,
   
+  // Ensure container can handle wide content
+  minWidth: 0,
+  maxWidth: '100%',
+  wordWrap: 'break-word',
+  overflowWrap: 'break-word',
+  
+  // Reset word wrapping for code elements specifically
+  '& pre, & pre code': {
+    wordWrap: 'normal',
+    overflowWrap: 'normal',
+  },
+  
   // Basic HTML elements styling
   '& h1, & h2, & h3, & h4, & h5, & h6': {
     color: theme.colors.text.primary,
@@ -120,14 +132,14 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     borderRadius: theme.shape.radius.default,
     margin: `${theme.spacing(2)} 0`,
     padding: `${theme.spacing(2)} ${theme.spacing(10)} ${theme.spacing(2)} ${theme.spacing(2)}`,
-    overflow: 'auto',
+    overflow: 'hidden', // Hide overflow for container
+    overflowX: 'auto', // Enable horizontal scrolling
     fontFamily: theme.typography.fontFamilyMonospace,
     fontSize: theme.typography.bodySmall.fontSize,
     lineHeight: 1.5,
     color: theme.colors.text.primary,
-    wordBreak: 'break-all',
-    whiteSpace: 'pre-wrap',
-    overflowWrap: 'break-word',
+    whiteSpace: 'pre', // Preserve formatting without wrapping
+    maxWidth: '100%', // Ensure container doesn't break
     
     '& code': {
       backgroundColor: 'transparent',
@@ -138,9 +150,12 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
       fontSize: 'inherit',
       color: 'inherit',
       fontWeight: 'inherit',
+      whiteSpace: 'pre', // Preserve formatting in code elements too
+      wordBreak: 'normal', // Don't break words
+      overflowWrap: 'normal', // Don't wrap
     },
     
-    // Custom scrollbar
+    // Custom scrollbar for horizontal scrolling
     '&::-webkit-scrollbar': {
       height: '8px',
       width: '8px',
@@ -158,6 +173,58 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
       
       '&:hover': {
         backgroundColor: theme.colors.border.strong,
+      },
+    },
+    
+    // Horizontal scrollbar styling
+    '&::-webkit-scrollbar:horizontal': {
+      height: '12px',
+    },
+    
+    '&::-webkit-scrollbar-thumb:horizontal': {
+      backgroundColor: theme.colors.border.medium,
+      borderRadius: theme.shape.radius.default,
+      border: `2px solid ${theme.colors.background.canvas}`,
+      
+      '&:hover': {
+        backgroundColor: theme.colors.border.strong,
+      },
+    },
+    
+    '&::-webkit-scrollbar-track:horizontal': {
+      backgroundColor: theme.colors.background.secondary,
+      borderRadius: theme.shape.radius.default,
+      margin: `0 ${theme.spacing(1)}`,
+    },
+    
+    // Mobile responsive handling
+    [theme.breakpoints.down('sm')]: {
+      padding: `${theme.spacing(1.5)} ${theme.spacing(8)} ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
+      fontSize: '12px',
+      lineHeight: 1.4,
+      
+      '&::-webkit-scrollbar': {
+        height: '6px',
+      },
+      
+      '&::-webkit-scrollbar:horizontal': {
+        height: '8px',
+      },
+    },
+    
+    // Extra small screens - ensure minimum functionality
+    '@media (max-width: 480px)': {
+      padding: `${theme.spacing(1)} ${theme.spacing(6)} ${theme.spacing(1)} ${theme.spacing(1)}`,
+      fontSize: '11px',
+      
+      '& .code-copy-button': {
+        padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
+        fontSize: '10px',
+        minWidth: '50px',
+        
+        '& .copy-text': {
+          display: 'none', // Hide text on very small screens, show only icon
+        },
       },
     },
   },
@@ -469,9 +536,11 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     backgroundColor: theme.colors.background.secondary,
     borderLeft: `3px solid ${theme.colors.primary.main}`,
     maxWidth: '100%',
+    overflow: 'hidden',
     overflowX: 'auto',
-    wordBreak: 'break-word',
-    whiteSpace: 'pre-wrap',
+    whiteSpace: 'pre',
+    wordBreak: 'normal',
+    overflowWrap: 'normal',
     
     '&::-webkit-scrollbar': {
       height: '6px',
@@ -859,6 +928,18 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
   lineHeight: 1.6,
   fontSize: theme.typography.body.fontSize,
   
+  // Ensure container can handle wide content
+  minWidth: 0,
+  maxWidth: '100%',
+  wordWrap: 'break-word',
+  overflowWrap: 'break-word',
+  
+  // Reset word wrapping for code elements specifically
+  '& pre, & pre code': {
+    wordWrap: 'normal',
+    overflowWrap: 'normal',
+  },
+  
   // Basic HTML elements styling
   '& h1, & h2, & h3, & h4, & h5, & h6': {
     color: theme.colors.text.primary,
@@ -962,14 +1043,14 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     borderRadius: theme.shape.radius.default,
     margin: `${theme.spacing(2)} 0`,
     padding: `${theme.spacing(2)} ${theme.spacing(10)} ${theme.spacing(2)} ${theme.spacing(2)}`,
-    overflow: 'auto',
+    overflow: 'hidden', // Hide overflow for container
+    overflowX: 'auto', // Enable horizontal scrolling
     fontFamily: theme.typography.fontFamilyMonospace,
     fontSize: theme.typography.bodySmall.fontSize,
     lineHeight: 1.5,
     color: theme.colors.text.primary,
-    wordBreak: 'break-all',
-    whiteSpace: 'pre-wrap',
-    overflowWrap: 'break-word',
+    whiteSpace: 'pre', // Preserve formatting without wrapping
+    maxWidth: '100%', // Ensure container doesn't break
     
     '& code': {
       backgroundColor: 'transparent',
@@ -980,9 +1061,12 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
       fontSize: 'inherit',
       color: 'inherit',
       fontWeight: 'inherit',
+      whiteSpace: 'pre', // Preserve formatting in code elements too
+      wordBreak: 'normal', // Don't break words
+      overflowWrap: 'normal', // Don't wrap
     },
     
-    // Custom scrollbar
+    // Custom scrollbar for horizontal scrolling
     '&::-webkit-scrollbar': {
       height: '8px',
       width: '8px',
@@ -1000,6 +1084,58 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
       
       '&:hover': {
         backgroundColor: theme.colors.border.strong,
+      },
+    },
+    
+    // Horizontal scrollbar styling
+    '&::-webkit-scrollbar:horizontal': {
+      height: '12px',
+    },
+    
+    '&::-webkit-scrollbar-thumb:horizontal': {
+      backgroundColor: theme.colors.border.medium,
+      borderRadius: theme.shape.radius.default,
+      border: `2px solid ${theme.colors.background.canvas}`,
+      
+      '&:hover': {
+        backgroundColor: theme.colors.border.strong,
+      },
+    },
+    
+    '&::-webkit-scrollbar-track:horizontal': {
+      backgroundColor: theme.colors.background.secondary,
+      borderRadius: theme.shape.radius.default,
+      margin: `0 ${theme.spacing(1)}`,
+    },
+    
+    // Mobile responsive handling
+    [theme.breakpoints.down('sm')]: {
+      padding: `${theme.spacing(1.5)} ${theme.spacing(8)} ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
+      fontSize: '12px',
+      lineHeight: 1.4,
+      
+      '&::-webkit-scrollbar': {
+        height: '6px',
+      },
+      
+      '&::-webkit-scrollbar:horizontal': {
+        height: '8px',
+      },
+    },
+    
+    // Extra small screens - ensure minimum functionality
+    '@media (max-width: 480px)': {
+      padding: `${theme.spacing(1)} ${theme.spacing(6)} ${theme.spacing(1)} ${theme.spacing(1)}`,
+      fontSize: '11px',
+      
+      '& .code-copy-button': {
+        padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
+        fontSize: '10px',
+        minWidth: '50px',
+        
+        '& .copy-text': {
+          display: 'none', // Hide text on very small screens, show only icon
+        },
       },
     },
   },
@@ -1335,9 +1471,11 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     backgroundColor: theme.colors.background.secondary,
     borderLeft: `3px solid ${theme.colors.primary.main}`,
     maxWidth: '100%',
+    overflow: 'hidden',
     overflowX: 'auto',
-    wordBreak: 'break-word',
-    whiteSpace: 'pre-wrap',
+    whiteSpace: 'pre',
+    wordBreak: 'normal',
+    overflowWrap: 'normal',
     
     '&::-webkit-scrollbar': {
       height: '6px',

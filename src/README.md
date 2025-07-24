@@ -100,7 +100,14 @@ The refactor introduced a clean hook-based architecture:
 - `useContentProcessing()` - Content enhancement and processing
 - `useKeyboardShortcuts()` - Navigation shortcuts
 - `useLinkClickHandler()` - Link and interaction handling
-- `useContextPanel()` - Context analysis and recommendations
+- `useContextPanel()` - Context analysis and recommendations with real-time detection
+
+### Context System Enhancements
+The context system now includes sophisticated real-time detection:
+- **DOM Mutation Observation**: Watches for changes to visualization picker and datasource picker elements
+- **Automatic Context Refresh**: Triggers recommendations refresh when context changes
+- **Enhanced Tag Generation**: Includes both visualization type and selected datasource in context tags
+- **Precise Element Detection**: Uses exact element selectors for reliable detection
 
 This organization makes the codebase more maintainable, testable, and easier for new developers to understand.
 
@@ -145,7 +152,8 @@ connection:create|edit|view|configure
 ```
 dashboard-tag:{tag-name}           # e.g., dashboard-tag:monitoring
 panel:create|edit|view
-panel-type:{viz-type}             # e.g., panel-type:timeseries, panel-type:bar-chart
+panel-type:{viz-type}             # e.g., panel-type:timeseries, panel-type:state-timeline
+selected-datasource:{name}        # e.g., selected-datasource:prometheus, selected-datasource:gdev-testdata
 ```
 
 ### **Datasource Context Tags**
@@ -207,7 +215,8 @@ dashboard:variables
 [
   "dashboard:edit",
   "panel:edit", 
-  "panel-type:timeseries"
+  "panel-type:timeseries",
+  "selected-datasource:prometheus"
 ]
 ```
 
@@ -246,12 +255,30 @@ dashboard:variables
 ]
 ```
 
+**Panel creation with datasource selection:**
+```javascript
+[
+  "dashboard:edit",
+  "panel:create",
+  "panel-type:state-timeline",
+  "selected-datasource:gdev-testdata"
+]
+```
+
 ## 🎯 **Total Tag Universe**
 
 - **~15 primary entities** × **~8 actions** = **~120 entity:action combinations**
 - **~25 known datasource types** for `datasource-type:` and `query-type:` tags
 - **~50+ visualization types** for `panel-type:` tags  
+- **Dynamic datasource names** for `selected-datasource:` tags (real-time detection)
 - **Hundreds of possible app types** for `app-type:` tags
 - **Dynamic dashboard tags** based on user-defined dashboard tags
 
 **Result**: The system can generate **thousands of unique, contextually relevant tags** to provide precise recommendations to users based on their current Grafana context.
+
+### **Real-Time Context Detection**
+
+The context system now includes real-time detection of:
+- **Visualization Type**: Automatically detects the currently selected visualization type from the viz picker button
+- **Selected Datasource**: Automatically detects the currently selected datasource from the datasource picker
+- **Context Changes**: Triggers recommendations refresh when visualization type or datasource selection changes

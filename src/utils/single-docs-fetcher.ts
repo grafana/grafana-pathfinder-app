@@ -101,16 +101,35 @@ function extractSingleDocsContent(html: string, url: string): SingleDocsContent 
 
 function processInteractiveElements(element: Element) {
   const interactiveLinks = element.querySelectorAll('a.interactive, span.interactive, li.interactive');
+  // We need to ensure that every interactive element has a unique ID we can target
+  let stepId = 0;
+  let sectionId = 0;
   interactiveLinks.forEach(block => {
     const tagName = block.tagName.toLowerCase();
     const targetAction = block.getAttribute('data-targetaction');
     const reftarget = block.getAttribute('data-reftarget');
     const value = block.getAttribute('data-targetvalue') || '';
-    const requirements = block.getAttribute('data-requirements') || 'exists-reftarget';
+    
+    const requirements = block.getAttribute('data-requirements') || (
+      // Navigate action doesn't need a DOM element to exist, so no requirement.
+      // All others automatically inherit exists-reftarget as a check requirement.
+      targetAction === 'navigate' ? '' : 'exists-reftarget'
+    )
 
     if (!targetAction || !reftarget) {
       console.warn("Interactive link missing target action or ref target:", block.textContent);
       return;
+    }
+
+    if (targetAction === 'sequence') {
+      // Increment counter only when starting a next, so the value will stay current for
+      // child steps to inherit.
+      sectionId++; 
+      stepId = 0;
+      block.setAttribute('data-section-id', `${sectionId}`);
+    } else {
+      stepId++;
+      block.setAttribute('data-step-id', `${sectionId}.${stepId}`);
     }
 
     const createButton = (text: string, className = '', buttonType: 'show' | 'do' = 'do') => {
@@ -124,6 +143,15 @@ function processInteractiveElements(element: Element) {
       
       // Add button type attribute to distinguish between show and do buttons
       button.setAttribute('data-button-type', buttonType);
+            
+      // CRITICAL: Copy section/step IDs to buttons for unique identification
+      if (targetAction === 'sequence') {
+        // Section buttons inherit the section ID
+        button.setAttribute('data-section-id', `${sectionId}`);
+      } else {
+        // Regular step buttons inherit the step ID
+        button.setAttribute('data-step-id', `${sectionId}.${stepId}`);
+      }
       
       // Add class to identify this as an interactive button
       button.classList.add('interactive-button');
@@ -135,9 +163,24 @@ function processInteractiveElements(element: Element) {
       return button;
     };
 
+    // Ensure that every interactive element has a unique ID we can target
+    if (!block.hasAttribute('id')) {
+      block.setAttribute('id', `__interactive-${block.getAttribute('data-section-id') || block.getAttribute('data-step-id')}`);
+    }
+
     if (tagName === 'a') {
       // For anchor tags, add data attributes so they can be handled by the React component
       block.setAttribute('data-button-type', 'do');
+      
+      // CRITICAL: Copy section/step IDs to anchor tags for unique identification
+      if (targetAction === 'sequence') {
+        // Section buttons inherit the section ID
+        block.setAttribute('data-section-id', `${sectionId}`);
+      } else {
+        // Regular step buttons inherit the step ID
+        block.setAttribute('data-step-id', `${sectionId}.${stepId}`);
+      }
+      
       block.classList.add('interactive-button');
       // No onclick handler - will be handled by React component
     } else {
@@ -496,9 +539,7 @@ export async function fetchSingleDocsContent(url: string): Promise<SingleDocsCon
   
   // Try fetch with retry logic for redirects
   try {
-    const startTime = Date.now();
     const htmlContent = await fetchWithRetry(fetchUrl); // Fetch without hash
-    const duration = Date.now() - startTime;
     
     if (htmlContent && htmlContent.trim().length > 0) {
       const content = extractSingleDocsContent(htmlContent, url); // Use original URL for content
@@ -512,14 +553,13 @@ export async function fetchSingleDocsContent(url: string): Promise<SingleDocsCon
       docsContentCache.set(url, { content, timestamp: Date.now() });
       
       return content;
-    } else {
-      console.warn(`❌ Docs fetch with retry returned empty content after ${duration}ms`);
     }
   } catch (error) {
-    console.warn(`❌ Docs fetch with retry failed:`, error);
+    // Silent catch - let final error logging handle it
   }
   
-  console.error('Direct docs fetch failed for URL:', url);
+  // Only log error on final failure after all retry attempts
+  console.error('Failed to fetch docs content after all retry attempts for URL:', url);
   return null;
 }
 
@@ -548,20 +588,14 @@ async function fetchDirectFast(url: string): Promise<string | null> {
     
     const response = await fetch(url, fetchOptions);
     
-    // Log redirect information
-    if (response.url !== url) {
-      // Ignore
-    }
-    
     if (!response.ok) {
-      console.warn(`❌ Fetch failed with status ${response.status} for: ${url}`);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
     const content = await response.text();
     return content;
   } catch (error) {
-    console.warn(`❌ Direct docs fetch failed for ${url}:`, error);
+    // Don't log here - let the retry logic handle final error logging
     return null;
   }
 }

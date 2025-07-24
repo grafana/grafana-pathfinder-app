@@ -14,6 +14,9 @@ Business logic, data fetching, and utility functions organized by functionality.
 - `keyboard-shortcuts.hook.ts` - Keyboard navigation
 - `link-handler.hook.ts` - Link click handling and lightbox
 
+### ⚙️ **Requirements System**
+- `requirements.util.ts` - Unified requirements checking with implicit requirements
+
 ### 🛠️ **Utilities & Configuration**
 - `docs.utils.ts` - Component utilities and factories
 - `utils.plugin.ts` - Plugin props context management
@@ -117,6 +120,7 @@ interface SingleDocsContent {
 - `interactiveFocus()` - Highlights and focuses UI elements
 - `interactiveButton()` - Finds and clicks buttons by text
 - `interactiveFormFill()` - Fills form fields with values
+- `interactiveNavigate()` - Navigates to URLs using Grafana's locationService
 - `interactiveSequence()` - Runs sequences of interactions
 
 **Event Handling**:
@@ -304,4 +308,48 @@ This directory represents the successful extraction of business logic from a mon
 - Cache invalidation strategies
 - Performance optimization
 
-This organization makes the codebase significantly more maintainable and allows developers to easily understand, modify, and extend specific functionality without affecting other parts of the system. 
+This organization makes the codebase significantly more maintainable and allows developers to easily understand, modify, and extend specific functionality without affecting other parts of the system.
+
+---
+
+## Requirements System (Enhancement)
+
+### `requirements.util.ts` ⭐ **Unified Requirements Engine**
+**Purpose**: Centralized requirements checking with implicit requirements support
+**Role**: 
+- Consolidates duplicated requirements logic from multiple hooks
+- Implements implicit requirements (sequential dependency and completion tracking)
+- Provides unified element state management
+- Optimizes performance with short-circuit evaluation
+
+**Key Features**:
+- **Sequential Processing**: Elements are checked in DOM order with dependency enforcement
+- **Completion Tracking**: Automatically marks completed actions and prevents re-execution
+- **State Management**: Unified visual state system with CSS classes
+- **Performance Optimization**: Short-circuit evaluation when requirements fail
+- **Backwards Compatibility**: Supports both sequential and parallel checking modes
+
+**Implicit Requirements**:
+1. **Sequential Dependency**: If step N fails, all subsequent steps are automatically disabled
+2. **Completion State**: Completed actions are disabled and marked with checkmarks
+
+**Major Functions**:
+```typescript
+// Unified requirements checking
+checkAllElementRequirements(container, checkFn, sequential?: boolean)
+
+// Element state management  
+updateElementState(element, config)
+
+// Completion tracking
+markElementCompleted(element)
+isElementCompleted(element)
+```
+
+**Integration**:
+- Used by `content-processing.hook.ts` for main requirements checking
+- Used by `interactive.hook.ts` for completion tracking
+- Replaces ~200 lines of duplicated logic across multiple files
+- Documented in `/INTERACTIVE_REQUIREMENTS.md` for comprehensive usage guide
+
+This enhancement provides a foundation for sophisticated tutorial flows with automatic step dependency management and progress tracking. 

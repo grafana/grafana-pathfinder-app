@@ -1,0 +1,413 @@
+# Interactive Elements Requirements System
+
+This document describes the requirements system for interactive elements in the Grafana Documentation Plugin.
+
+## Overview
+
+Interactive elements in documentation content have two types of requirements that must be satisfied before they can be executed:
+
+1. **Tutorial-Specific Requirements**: Declared in the `data-requirements` attribute by content authors
+2. **Docs Plugin Requirements**: Built-in system rules that govern interactive behavior
+
+## Tutorial-Specific Requirements
+
+Tutorial-specific requirements are declared in the `data-requirements` attribute of interactive elements. Multiple requirements are comma-separated. It is expected that this list will grow 
+over time as we have new kinds of interactive tutorials. For example, one tutorial might require
+that you have Alloy set up sending data to Grafana Cloud before you can proceed with learning
+how the Kubernetes product works; for that tutorial, we'd have to extend data-requirements so that
+the docs-plugin could check that condition was true.
+
+### Currently Supported Requirements
+
+#### `exists-reftarget`
+- **Purpose**: Ensures the target element exists in the DOM before the interactive action can be executed
+- **Usage**: Most common requirement for interactive elements
+- **Example**: `data-requirements="exists-reftarget"`
+
+#### `has-datasources`
+- **Purpose**: Ensures that Grafana has at least one configured data source
+- **Usage**: For interactive elements that require data sources to function
+- **Example**: `data-requirements="has-datasources"`
+
+#### `is-admin`
+- **Purpose**: Ensures the current user has Grafana admin privileges
+- **Usage**: For interactive elements that require admin access to function properly
+- **Example**: `data-requirements="is-admin"`
+
+#### `navmenu-open`
+- **Purpose**: Ensures the Grafana navigation menu is open/visible
+- **Usage**: For interactive elements that need to interact with navigation menu items
+- **Example**: `data-requirements="navmenu-open"`
+
+### Combining Requirements
+
+Multiple requirements can be combined:
+```html
+<button data-requirements="exists-reftarget,has-datasources,is-admin" 
+        data-targetaction="button" 
+        data-reftarget="Add Dashboard">
+  Click to add dashboard
+</button>
+```
+
+## Docs Plugin Requirements
+
+Docs plugin requirements are automatically enforced by the system and control interactive behavior.
+The objective of these requirements are as follows:
+
+1. Make it hard for the user to take confusing or nonsense actions (doing steps out of order)
+2. Maximize the chances that the workflow goes smoothly as the user expects
+3. Maximize safety: the docs-plugin should not allow you to take a step which can't succeed, as
+this creates negative surprise.
+
+### Dual Workflow System
+
+Imagine a tutorial that has multiple sections of instructions. An example might be "create a 
+datasource" (5 steps) followed by "configure an alert" (5 steps).  This would be a total of 
+10 steps in two discrete sections.
+
+The system supports two types of workflows:
+
+1. **Regular Workflow**: Sequential steps using "Show Me" and "Do It" buttons
+   - Follow strict sequential dependency rules
+   - Only one step enabled at a time within the workflow
+   - Steps must be completed in order
+
+2. **Section Workflows**: Independent workflows using "Do Section" buttons
+   - Each "do section" button is its own separate workflow
+   - Can be enabled simultaneously with regular workflow steps
+   - Function as parent containers for sequences of interactive steps
+
+Interactive tutorials can be thought of as a sequence of sections, each section having any
+number of discrete actions. **No further nesting is permitted**.  Sections may not contain
+sections, only discrete steps/regular workflows.
+
+### Sequential Dependency
+
+**Rule**: Only one step in a regular workflow can be enabled at a time. Later steps are automatically disabled until previous steps complete.
+
+In other words, users are not permitted to skip steps, this easily leads to broken states. If steps
+are truly useless, the tutorial's content should change.
+
+**Implementation**:
+- Interactive elements are processed in DOM order
+- When an element fails its requirements check, all subsequent elements are automatically disabled
+- Only the first non-completed element gets requirements checking for performance
+- Visual state: `requirements-disabled` class with dimmed appearance
+
+**Example Flow**:
+```
+Step 1: ✅ Requirements met → Enabled
+Step 2: ❌ Requirements failed → Disabled  
+Step 3: 🚫 Auto-disabled (previous step failed)
+Step 4: 🚫 Auto-disabled (previous step failed)
+```
+
+### Completion State
+
+**Rule**: Once an interactive action completes successfully, the entire logical step becomes disabled to prevent re-execution.
+
+We _do not assume that actions are idempotent_. 
+
+**Implementation**:
+- Completion is applied to entire logical steps, not individual buttons
+- All buttons within the same step (same unique ID) are marked as completed simultaneously
+- Completed elements are marked with `data-completed="true"`
+- Visual state: `requirements-completed` class with green background and checkmark
+- Button text is appended with "✓" to indicate completion
+
+**Step-Level Completion**:
+When any button in a logical step is executed:
+1. System identifies the step using the button's unique identifier (`data-section-id` or `data-step-id`)
+2. All buttons within that step are marked as completed
+3. Only buttons with the same unique ID are affected (cross-section isolation)
+
+**Example States**:
+```
+Before: [Show me] [Do it]
+After:  [Show me ✓] [Do it ✓] (both disabled, green background)
+```
+
+**Cross-Section Independence**:
+```
+Section 1: [Save Dashboard ✓] (completed)
+Section 2: [Save Dashboard]   (still enabled - different unique ID)
+```
+
+### Trust But Verify the First Step
+
+**Rule**: The first step of an interactive workflow is always checked for requirements when no other step has been completed.
+
+**Rationale**: Users need a place to start. This provides a special exception to the sequential dependency rule for the first step only.  Still, requirements checking must be done for every 
+element which could be executed, to avoid brokenness. (Clicking a button that cannot work, because
+its requirements haven't been met; bad experience).
+
+### Logical Step Grouping
+
+**Concept**: Interactive elements are grouped into logical steps using **unique section/step identifiers** to ensure precise step isolation across different sections.
+
+#### Step Identification System
+
+- **Section Elements**: Elements with `data-section-id` represent "Do Section" buttons that execute entire sequences
+  - Use `data-section-id` (e.g., "1", "2", "3") to identify the section
+  - Each section button is treated as a separate logical step regardless of content similarity
+  
+- **Step Elements**: Elements with `data-step-id` represent individual interactive steps within sections
+  - Use `data-step-id` (e.g., "1.1", "1.2", "2.1", "2.2") to identify the specific step
+  - Format: `{sectionNumber}.{stepNumber}` where section and step numbers increment independently
+
+These attributes are automatically generated by code and attached when importing tutorial HTML, and are not 
+expected to be present in documentation material.
+
+#### Unique Step Keys
+
+The system generates unique identifiers for precise step targeting:
+- **Section steps**: `section-{sectionId}` (e.g., "section-1", "section-2")
+- **Regular steps**: `step-{stepId}` (e.g., "step-1.1", "step-1.2", "step-2.1")
+- **Fallback**: `fallback-{reftarget}|{targetaction}` (for elements without unique IDs)
+
+#### Step Isolation
+
+**Critical**: Steps with identical actions in different sections are completely independent:
+- A "Save Dashboard" button in Section 1 (`data-step-id="1.3"`) is separate from a "Save Dashboard" button in Section 2 (`data-step-id="2.3"`)
+- Completing one step affects only buttons within the same logical step (same unique ID)
+- No cross-section interference or unintended completions
+
+#### Button Grouping Within Steps
+
+Within each logical step, multiple buttons can exist:
+- **Show Me** buttons (`data-button-type="show"`) - highlight the target
+- **Do It** buttons (`data-button-type="do"`) - execute the action
+- **Anchor elements** - direct navigation elements
+
+All buttons within the same logical step share the same unique identifier and are managed as a group.
+
+### Processing Order
+
+The system processes interactive elements using the following order and rules:
+
+#### 1. Element Discovery and Grouping
+- All interactive elements in the container are discovered via `[data-requirements]` selector
+- Elements are grouped by their unique identifiers (`data-section-id` or `data-step-id`)
+- Each group becomes a logical step with one or more buttons
+
+#### 2. Step Classification
+- **Regular Steps**: Elements with `data-step-id` that follow sequential dependency rules
+- **Section Steps**: Elements with `data-section-id` that operate independently
+- **Fallback Steps**: Elements without unique IDs that use legacy `reftarget|targetaction` grouping
+
+#### 3. Sequential Processing (Default Mode)
+- **Regular Steps**: Only the first non-completed regular step is eligible for requirements checking
+- **Section Steps**: All non-completed section steps are eligible (Trust But Verify principle)
+- **Completed Steps**: Fast-disabled without requirements checking for performance
+- **Future Steps**: Auto-disabled when previous regular steps fail (One Step at a Time rule)
+
+#### 4. Requirements Checking
+- Only eligible steps receive expensive requirements checking
+- All buttons within a step share the same requirements result
+- First button in each step is used as the representative for requirements checking
+
+#### 5. State Application
+- Visual states are applied to all buttons within each logical step simultaneously
+- Completion state is applied to entire steps, not individual buttons
+- Cross-section isolation ensures no interference between similar steps
+
+## Element States
+
+The requirements system manages several visual states:
+
+| Class | Description | Button State | Visual Appearance |
+|-------|-------------|--------------|-------------------|
+| `requirements-checking` | Requirements being validated | Enabled | Loading spinner |
+| `requirements-satisfied` | All requirements met | Enabled | Normal appearance |
+| `requirements-failed` | Tutorial-specific requirements not met | Disabled | Dimmed, error tooltip |
+| `requirements-disabled` | Disabled due to sequential dependency | Disabled | Very dimmed |
+| `requirements-completed` | Action already completed | Disabled | Green background, checkmark |
+
+## Technical Implementation
+
+### Event System Architecture
+
+**Unified Event Handling**: The system uses a single, modern event handling architecture:
+
+- **Direct Click Handlers**: Interactive elements use direct click event listeners attached via `attachInteractiveEventListeners()`
+- **Requirements Rechecking**: Completion events trigger automatic requirements rechecking via `interactive-action-completed` events
+- **Mutation Monitoring**: DOM changes are monitored to detect new interactive content
+
+**Infinite Loop Prevention**:
+- **Mutation Observer Filtering**: Only monitors changes to `data-requirements` and `data-reftarget` attributes
+- **Interactive Content Detection**: DOM changes only trigger rechecking if actual interactive elements are added/removed
+- **Debounced Rechecking**: Multiple rapid changes are batched to prevent excessive processing
+
+### DOM Attributes
+
+#### Core Interactive Attributes
+- `data-requirements`: Comma-separated list of tutorial-specific requirements
+- `data-targetaction`: Type of action to perform (button, formfill, highlight, sequence)
+- `data-reftarget`: Target element selector or button text to interact with
+- `data-targetvalue`: Value to use for formfill actions (optional)
+- `data-button-type`: Button type (show, do) to distinguish behavior
+
+#### Unique Identification Attributes
+- `data-section-id`: Section identifier for "Do Section" buttons (e.g., "1", "2", "3")
+- `data-step-id`: Step identifier for individual steps (e.g., "1.1", "1.2", "2.1")
+- **Note**: Elements must have either `data-section-id` OR `data-step-id` for proper isolation
+
+#### State Management Attributes
+- `data-completed`: Set to "true" when action is completed
+- `data-original-text`: Stores original button text for restoration
+- `data-listener-attached`: Marks elements with modern click handlers attached
+
+#### Attribute Inheritance
+- Generated buttons inherit the `data-section-id` or `data-step-id` from their parent interactive elements
+- This ensures all buttons within a logical step share the same unique identifier
+- Fallback elements without unique IDs use legacy `reftarget|targetaction` grouping
+
+### Performance Optimization
+
+When using sequential mode, the system stops checking requirements as soon as one element fails, automatically disabling all subsequent elements. This provides:
+
+- **Performance**: Avoids unnecessary requirement checks
+- **User Experience**: Clear indication that previous steps must be completed
+- **Logical Flow**: Enforces step-by-step progression
+
+## Usage Examples
+
+### Basic Interactive Element with Unique ID
+```html
+<span class="interactive" 
+      data-targetaction="button" 
+      data-reftarget="Save Dashboard" 
+      data-requirements="exists-reftarget"
+      data-step-id="1.3">
+  Click the Save Dashboard button
+</span>
+```
+
+### Sequential Tutorial Steps with Unique IDs
+```html
+<!-- Step 1: Will be checked first -->
+<span class="interactive" 
+      data-requirements="has-datasources" 
+      data-targetaction="button" 
+      data-reftarget="Add Panel"
+      data-step-id="1.1">
+  Add a new panel
+</span>
+
+<!-- Step 2: Only enabled if Step 1 succeeds -->
+<span class="interactive" 
+      data-requirements="exists-reftarget" 
+      data-targetaction="formfill" 
+      data-reftarget="#panel-title" 
+      data-targetvalue="My Panel"
+      data-step-id="1.2">
+  Set panel title
+</span>
+
+<!-- Step 3: Only enabled if Step 2 succeeds -->
+<span class="interactive" 
+      data-requirements="exists-reftarget" 
+      data-targetaction="button" 
+      data-reftarget="Apply"
+      data-step-id="1.3">
+  Apply changes
+</span>
+
+<!-- Step 4: Requires navigation menu to be open -->
+<span class="interactive" 
+      data-requirements="navmenu-open,exists-reftarget" 
+      data-targetaction="button" 
+      data-reftarget="Connections"
+      data-step-id="1.4">
+  Navigate to Connections
+</span>
+```
+
+### Multi-Section Tutorial with Step Isolation
+```html
+<!-- Section 1: Create Dashboard -->
+<span class="interactive"
+      data-targetaction="sequence"
+      data-reftarget="#section-1-steps"
+      data-section-id="1">
+  Complete dashboard creation
+</span>
+
+<span class="interactive" 
+      data-targetaction="button" 
+      data-reftarget="Save Dashboard" 
+      data-requirements="exists-reftarget"
+      data-step-id="1.1">
+  Save the dashboard
+</span>
+
+<!-- Section 2: Configure Alerts -->
+<span class="interactive"
+      data-targetaction="sequence"
+      data-reftarget="#section-2-steps"
+      data-section-id="2">
+  Complete alert configuration
+</span>
+
+<span class="interactive" 
+      data-targetaction="button" 
+      data-reftarget="Save Dashboard" 
+      data-requirements="exists-reftarget"
+      data-step-id="2.1">
+  Save the dashboard (independent from Section 1)
+</span>
+```
+
+### Legacy Element (Fallback Support)
+```html
+<!-- Elements without unique IDs still work but use legacy grouping -->
+<span class="interactive" 
+      data-targetaction="button" 
+      data-reftarget="Save Dashboard" 
+      data-requirements="exists-reftarget">
+  Click the Save Dashboard button (legacy mode)
+</span>
+```
+
+## Configuration
+
+### Sequential Mode (Default)
+```typescript
+await checkAllElementRequirements(container, checkFn, true);
+```
+
+### Parallel Mode
+```typescript
+await checkAllElementRequirements(container, checkFn, false);
+```
+
+Sequential mode is recommended for tutorial-style content where step order matters. Parallel mode can be used for independent interactive elements that don't depend on each other.
+
+## Error Handling
+
+### Requirements Checking Errors
+- **Unknown Requirements**: Elements with unsupported requirements are marked as failed
+- **Requirement Check Errors**: Network or validation errors mark elements as failed
+- **Missing Elements**: Elements that can't be found are marked as failed
+- **Graceful Degradation**: System continues processing other elements when individual checks fail
+
+### Unique ID System Fallbacks
+- **Missing Unique IDs**: Elements without `data-section-id` or `data-step-id` trigger warnings
+- **Fallback Grouping**: Elements without unique IDs use legacy `reftarget|targetaction` grouping
+- **Backwards Compatibility**: Existing content without unique IDs continues to function
+- **Progressive Enhancement**: New content with unique IDs gets improved isolation behavior
+
+### Step Finding Errors
+- **Step Not Found**: When completion system can't find a step, it falls back to individual element completion
+- **Multiple Fallbacks**: System tries unique ID matching first, then legacy matching if needed
+- **Isolation Preservation**: Fallback methods maintain cross-section isolation where possible
+
+## Accessibility
+
+The requirements system includes accessibility features:
+
+- **ARIA Attributes**: `aria-disabled` reflects button state
+- **Tooltips**: Disabled buttons show reason via `title` attribute
+- **Visual Indicators**: Color and opacity changes provide visual feedback
+- **Screen Readers**: State changes are announced through ARIA attributes
