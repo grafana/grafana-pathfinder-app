@@ -324,13 +324,21 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
             }
           });
           
+          // Use general attribute mapping to capture ALL data attributes
+          const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
+          
           return {
             type: 'interactive-section',
             props: {
+              // Core interactive section props
               title,
               isSequence: true,
+              // Specific data attribute mappings for React prop names
               requirements: el.getAttribute('data-requirements'),
               outcomes: el.getAttribute('data-outcomes'),
+              hints: el.getAttribute('data-hint'), // Fixed: now captures data-hint
+              // Include ALL other attributes (including future data-* attributes)
+              ...allProps,
             },
             children: stepElements,
             originalHTML: el.outerHTML,
@@ -358,15 +366,23 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
             );
           }
           
+          // Use general attribute mapping to capture ALL data attributes
+          const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
+          
           return {
             type: 'interactive-step',
             props: {
+              // Core interactive step props
               targetAction,
               refTarget,
               targetValue: el.getAttribute('data-targetvalue'),
-              requirements: el.getAttribute('data-requirements'),
-              outcomes: el.getAttribute('data-outcomes'),
               title: el.textContent?.trim(),
+              // Specific data attribute mappings for React prop names
+              requirements: el.getAttribute('data-requirements'),
+              outcomes: el.getAttribute('data-outcomes'),  
+              hints: el.getAttribute('data-hint'), // Fixed: now captures data-hint
+              // Include ALL other attributes (including future data-* attributes)
+              ...allProps,
             },
             children: [],
             originalHTML: el.outerHTML,

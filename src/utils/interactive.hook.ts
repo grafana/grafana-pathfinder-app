@@ -3,7 +3,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { locationService, config } from '@grafana/runtime';
 import { ContextService } from './context';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
-import { waitForReactUpdates } from './requirements.util';
+import { waitForReactUpdates } from './requirements-checker.hook';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -686,20 +686,34 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }
 
   const navmenuOpenCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    const navmenu = document.querySelector('ul[aria-label="Navigation"]');
-    if(navmenu) {
-      return {
-        requirement: check,
-        pass: true,
+    // Based on your HTML structure, try these selectors in order of preference
+    const selectorsToTry = [
+      // Most specific to your Grafana version
+      'div[data-testid="data-testid navigation mega-menu"]',
+      'ul[aria-label="Navigation"]',
+      'nav.css-rs8tod',
+      // Fallbacks for other versions
+      'div[data-testid*="navigation"]',
+      'nav[aria-label="Navigation"]',
+      'ul[aria-label="Main navigation"]'
+    ];
+    
+    for (const selector of selectorsToTry) {
+      const element = document.querySelector(selector);
+      if (element) {
+        return {
+          requirement: check,
+          pass: true,
+        };
       }
     }
 
     return {
       requirement: check,
       pass: false,
-      error: "Navmenu is not open",
+      error: "Navigation menu not detected - menu may be closed or selector mismatch",
       context: data,
-    }
+    };
   }
 
   const isAdminCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {

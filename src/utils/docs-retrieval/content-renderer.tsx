@@ -4,7 +4,8 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 import { parseHTMLToComponents, ParsedElement } from './html-parser';
-import { InteractiveSection, InteractiveStep, CodeBlock, ExpandableTable, ImageRenderer, ContentParsingError } from './components/interactive-components';
+import { InteractiveSection, InteractiveStep, CodeBlock, ExpandableTable, ImageRenderer, ContentParsingError, resetInteractiveCounters } from './components/interactive-components';
+import { SequentialRequirementsManager } from '../requirements-checker.hook';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
   try {
@@ -105,8 +106,30 @@ interface ContentProcessorProps {
 function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
   
+  // Reset interactive counters to ensure consistent sequential IDs for each new content
+  resetInteractiveCounters();
+  
   // Parse HTML with fail-fast error handling
   const parseResult: ContentParseResult = parseHTMLToComponents(html, baseUrl);
+
+  // Start DOM monitoring if interactive elements are present
+  useEffect(() => {
+    if (parseResult.isValid && parseResult.data) {
+      const hasInteractiveElements = parseResult.data.elements.some(el => 
+        el.type === 'interactive-section' || el.type === 'interactive-step'
+      );
+      
+      if (hasInteractiveElements) {
+        const manager = SequentialRequirementsManager.getInstance();
+        manager.startDOMMonitoring();
+        
+        return () => {
+          manager.stopDOMMonitoring();
+        };
+      }
+    }
+    return undefined;
+  }, [parseResult]);
   
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {

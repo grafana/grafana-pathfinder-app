@@ -1,7 +1,18 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { IconButton, Button, Alert } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive.hook';
+import { useSequentialRequirements } from '../../requirements-checker.hook';
 import { ParseError } from '../content.types';
+
+// Simple counters for sequential IDs
+let interactiveStepCounter = 0;
+let interactiveSectionCounter = 0;
+
+// Function to reset counters (can be called when new content loads)
+export function resetInteractiveCounters() {
+  interactiveStepCounter = 0;
+  interactiveSectionCounter = 0;
+}
 
 // --- Types ---
 interface BaseInteractiveProps {
@@ -155,11 +166,38 @@ export function InteractiveSection({
   className,
 }: InteractiveSectionProps) {
   const [isRunning, setIsRunning] = useState(false);
-  const [isCompleted, setIsCompleted] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
+
+  // Generate simple sequential section ID for requirements tracking
+  const sectionId = useMemo(() => {
+    interactiveSectionCounter++;
+    return `section-${interactiveSectionCounter}`;
+  }, []); // Empty deps so it only runs once per component mount
+
+  // Use React-based requirements checking
+  const requirementsChecker = useSequentialRequirements({
+    requirements,
+    hints,
+    sectionId,
+    targetAction: 'sequence',
+    isSequence: true,
+  });
 
   // Get the interactive functions from the hook
   const { executeInteractiveAction } = useInteractiveElements();
+
+  // Check requirements once when component mounts - prevent infinite loops
+  const hasCheckedRequirements = useRef(false);
+  useEffect(() => {
+    if (!hasCheckedRequirements.current) {
+      hasCheckedRequirements.current = true;
+      requirementsChecker.checkRequirements();
+    }
+  }, []); // Empty dependency array to run only once
+
+  // Local completion state (different from requirements completion)
+  const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
+  const isCompleted = requirementsChecker.isCompleted || isLocallyCompleted;
 
   // Extract interactive steps from children
   const interactiveSteps = useMemo(() => {
@@ -189,7 +227,7 @@ export function InteractiveSection({
   }, [children]);
 
   const handleDoSection = useCallback(async () => {
-    if (disabled || isRunning || isCompleted || interactiveSteps.length === 0) {
+    if (disabled || isRunning || isCompleted || interactiveSteps.length === 0 || !requirementsChecker.isEnabled) {
       return;
     }
 
@@ -227,7 +265,10 @@ export function InteractiveSection({
       }
 
       // Mark the entire section as completed
-      setIsCompleted(true);
+      setIsLocallyCompleted(true);
+      requirementsChecker.markCompleted();
+      // After completing section, trigger reactive check to unlock next steps
+      requirementsChecker.triggerReactiveCheck();
       setCurrentStepIndex(-1);
       if (onComplete) {
         onComplete();
@@ -238,7 +279,7 @@ export function InteractiveSection({
     } finally {
       setIsRunning(false);
     }
-  }, [disabled, isRunning, isCompleted, interactiveSteps, onComplete, executeInteractiveAction]);
+  }, [disabled, isRunning, isCompleted, interactiveSteps, onComplete, executeInteractiveAction, requirementsChecker]);
 
   const getStepStatus = useCallback((stepIndex: number) => {
     if (isCompleted) return 'completed';
@@ -284,16 +325,52 @@ export function InteractiveSection({
       <div className="interactive-section-actions">
         <Button
           onClick={handleDoSection}
-          disabled={disabled || isRunning || isCompleted || interactiveSteps.length === 0}
+          disabled={disabled || isRunning || isCompleted || interactiveSteps.length === 0 || !requirementsChecker.isEnabled}
           size="md"
           variant="primary"
           className="interactive-section-do-button"
-          title={hints || `Run through all ${interactiveSteps.length} steps in sequence`}
+          title={
+            requirementsChecker.isChecking ? 'Checking requirements...' :
+            !requirementsChecker.isEnabled && requirementsChecker.explanation ? requirementsChecker.explanation :
+            hints || `Run through all ${interactiveSteps.length} steps in sequence`
+          }
         >
-          {isCompleted ? '✓ Section Completed' : 
+          {requirementsChecker.isChecking ? 'Checking...' :
+           isCompleted ? '✓ Section Completed' : 
            isRunning ? `Running Step ${currentStepIndex + 1}/${interactiveSteps.length}...` : 
+           !requirementsChecker.isEnabled ? 'Requirements not met' :
            `Do Section (${interactiveSteps.length} steps)`}
         </Button>
+        
+        {/* Show amber explanation text when requirements aren't met */}
+        {!requirementsChecker.isEnabled && !isCompleted && !requirementsChecker.isChecking && requirementsChecker.explanation && (
+          <div className="interactive-section-requirement-explanation" style={{ 
+            color: '#ff8c00', 
+            fontSize: '0.875rem', 
+            marginTop: '8px',
+            fontStyle: 'italic',
+            lineHeight: '1.4'
+          }}>
+            {requirementsChecker.explanation}
+                       <button
+             onClick={() => {
+               requirementsChecker.checkRequirements();
+             }}
+              style={{
+                marginLeft: '8px',
+                padding: '2px 8px',
+                fontSize: '0.75rem',
+                border: '1px solid #ff8c00',
+                background: 'transparent',
+                color: '#ff8c00',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -315,37 +392,71 @@ export function InteractiveStep({
 }: InteractiveStepProps) {
   const [isShowRunning, setIsShowRunning] = useState(false);
   const [isDoRunning, setIsDoRunning] = useState(false);
-  const [isCompleted, setIsCompleted] = useState(false);
+  
+  // Generate simple sequential step ID for requirements tracking
+  const stepId = useMemo(() => {
+    // Use a simple counter approach for predictable ordering
+    interactiveStepCounter++;
+    return `step-${interactiveStepCounter}`;
+  }, []); // Empty deps so it only runs once per component mount
+
+  // Use React-based requirements checking
+  const requirementsChecker = useSequentialRequirements({
+    requirements,
+    hints,
+    stepId,
+    targetAction,
+    isSequence: false,
+  });
   
   // Get the interactive functions from the hook
   const { executeInteractiveAction } = useInteractiveElements();
 
+  // Check requirements once when component mounts - prevent infinite loops
+  const hasCheckedStepRequirements = useRef(false);
+  useEffect(() => {
+    if (!hasCheckedStepRequirements.current) {
+      hasCheckedStepRequirements.current = true;
+      requirementsChecker.checkRequirements();
+    }
+  }, []); // Empty dependency array to run only once
+
+  // Local completion state (different from requirements completion)
+  const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
+  const isCompleted = requirementsChecker.isCompleted || isLocallyCompleted;
+
   const handleShowAction = useCallback(async () => {
-    if (disabled || isShowRunning || isCompleted) return;
+    if (disabled || isShowRunning || isCompleted || !requirementsChecker.isEnabled) return;
+    
     setIsShowRunning(true);
     try {
       await executeInteractiveAction(targetAction, refTarget, targetValue, 'show');
-      // Note: "Show me" actions don't mark the step as completed, only highlight
+      // After show action, trigger a reactive check of all steps in case DOM changed
+      requirementsChecker.triggerReactiveCheck();
     } catch (error) {
       console.error('Interactive show action failed:', error);
     } finally {
       setIsShowRunning(false);
     }
-  }, [targetAction, refTarget, targetValue, disabled, isShowRunning, isCompleted, executeInteractiveAction]);
+  }, [targetAction, refTarget, targetValue, disabled, isShowRunning, isCompleted, executeInteractiveAction, stepId, requirementsChecker]);
 
   const handleDoAction = useCallback(async () => {
-    if (disabled || isDoRunning || isCompleted) return;
+    if (disabled || isDoRunning || isCompleted || !requirementsChecker.isEnabled) return;
+    
     setIsDoRunning(true);
     try {
       await executeInteractiveAction(targetAction, refTarget, targetValue, 'do');
-      setIsCompleted(true);
+      setIsLocallyCompleted(true);
+      requirementsChecker.markCompleted();
+      // After completing step, trigger reactive check of all steps to unlock next ones
+      requirementsChecker.triggerReactiveCheck();
       if (onComplete) onComplete();
     } catch (error) {
       console.error('Interactive do action failed:', error);
     } finally {
       setIsDoRunning(false);
     }
-  }, [targetAction, refTarget, targetValue, disabled, isDoRunning, isCompleted, onComplete, executeInteractiveAction]);
+  }, [targetAction, refTarget, targetValue, disabled, isDoRunning, isCompleted, onComplete, executeInteractiveAction, stepId, requirementsChecker]);
 
   const getActionDescription = () => {
     switch (targetAction) {
@@ -371,29 +482,75 @@ export function InteractiveStep({
         <div className="interactive-step-action-buttons">
           <Button
             onClick={handleShowAction}
-            disabled={disabled || isCompleted || isAnyActionRunning}
+            disabled={disabled || isCompleted || isAnyActionRunning || !requirementsChecker.isEnabled}
             size="sm"
             variant="secondary"
             className="interactive-step-show-btn"
-            title={hints || `Show me: ${getActionDescription()}`}
+            title={
+              requirementsChecker.isChecking ? 'Checking requirements...' :
+              !requirementsChecker.isEnabled && requirementsChecker.explanation ? requirementsChecker.explanation :
+              hints || `Show me: ${getActionDescription()}`
+            }
           >
-            {isShowRunning ? 'Showing...' : 'Show me'}
+            {requirementsChecker.isChecking ? 'Checking...' :
+             isShowRunning ? 'Showing...' : 
+             !requirementsChecker.isEnabled ? 'Requirements not met' :
+             'Show me'}
           </Button>
           
           <Button
             onClick={handleDoAction}
-            disabled={disabled || isCompleted || isAnyActionRunning}
+            disabled={disabled || isCompleted || isAnyActionRunning || !requirementsChecker.isEnabled}
             size="sm"
             variant="primary"
             className="interactive-step-do-btn"
-            title={hints || `Do it: ${getActionDescription()}`}
+            title={
+              requirementsChecker.isChecking ? 'Checking requirements...' :
+              !requirementsChecker.isEnabled && requirementsChecker.explanation ? requirementsChecker.explanation :
+              hints || `Do it: ${getActionDescription()}`
+            }
           >
-            {isCompleted ? '✓ Completed' : isDoRunning ? 'Doing...' : 'Do it'}
+            {requirementsChecker.isChecking ? 'Checking...' :
+             isCompleted ? '✓ Completed' : 
+             isDoRunning ? 'Doing...' : 
+             !requirementsChecker.isEnabled ? 'Requirements not met' :
+             'Do it'}
           </Button>
         </div>
         
         {isCompleted && <span className="interactive-step-completed-indicator">✓</span>}
       </div>
+      
+      {/* Show amber explanation text when requirements aren't met */}
+      {!requirementsChecker.isEnabled && !isCompleted && !requirementsChecker.isChecking && requirementsChecker.explanation && (
+        <div className="interactive-step-requirement-explanation" style={{ 
+          color: '#ff8c00', 
+          fontSize: '0.875rem', 
+          marginTop: '8px',
+          fontStyle: 'italic',
+          lineHeight: '1.4',
+          paddingLeft: '12px'
+        }}>
+          {requirementsChecker.explanation}
+                     <button
+             onClick={() => {
+               requirementsChecker.checkRequirements();
+             }}
+            style={{
+              marginLeft: '8px',
+              padding: '2px 8px',
+              fontSize: '0.75rem',
+              border: '1px solid #ff8c00',
+              background: 'transparent',
+              color: '#ff8c00',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
     </div>
   );
 }

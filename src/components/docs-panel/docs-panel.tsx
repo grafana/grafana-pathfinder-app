@@ -463,144 +463,46 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   const styles = useStyles2(getStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
 
-  // Tab overflow management
+  // Tab overflow management - SIMPLIFIED!
   const tabListRef = useRef<HTMLDivElement>(null);
   const [visibleTabs, setVisibleTabs] = useState<LearningJourneyTab[]>(tabs);
   const [overflowedTabs, setOverflowedTabs] = useState<LearningJourneyTab[]>([]);
   const chevronButtonRef = useRef<HTMLButtonElement>(null);
-  const lastCalculationRef = useRef<{
-    containerWidth: number;
-    tabTitles: string[];
-    visibleCount: number;
-  } | null>(null);
 
-  // Calculate visible vs overflowed tabs - simplified and less aggressive approach
+  // TODO: Replace with dynamic tab width calculation later
+  // For now, hard-code to show Recommendations + 1 tab, chevron the rest
   const calculateTabVisibility = useCallback(() => {
-    const tabContainer = tabListRef.current;
-    if (!tabContainer || tabs.length === 0) {
-      setVisibleTabs(tabs);
+    if (tabs.length === 0) {
+      setVisibleTabs([]);
       setOverflowedTabs([]);
       return;
     }
 
-    // Wait for container to have proper dimensions
-    if (tabContainer.clientWidth === 0) {
-      requestAnimationFrame(() => calculateTabVisibility());
-      return;
-    }
-
-    const containerWidth = tabContainer.clientWidth;
+    // Simple logic: show first 2 tabs (Recommendations + 1), chevron the rest
+    const maxVisibleTabs = 2;
     
-    // Much more conservative approach - only show dropdown when really necessary
-    const estimatedTabWidth = 180; // Average tab width
-    const chevronWidth = 120;
-    const gap = 8;
-    const generousBuffer = 80; // Much larger buffer
-    
-    // Simple calculation: can we fit all tabs with a generous buffer?
-    const estimatedTotalWidth = (tabs.length * estimatedTabWidth) + ((tabs.length - 1) * gap);
-    
-    if (estimatedTotalWidth + generousBuffer <= containerWidth) {
+    if (tabs.length <= maxVisibleTabs) {
+      // All tabs fit, no chevron needed
       setVisibleTabs(tabs);
       setOverflowedTabs([]);
-      return;
+    } else {
+      // Show first 2 tabs, chevron the rest
+      setVisibleTabs(tabs.slice(0, maxVisibleTabs));
+      setOverflowedTabs(tabs.slice(maxVisibleTabs));
     }
-    
-    // Even if we can't fit all tabs easily, only create dropdown if we have many tabs
-    // or the container is genuinely small
-    if (tabs.length <= 2 || containerWidth < 400) {
-      setVisibleTabs(tabs);
-      setOverflowedTabs([]);
-      return;
-    }
-    
-    // Calculate how many tabs we can show with chevron
-    const availableForTabs = containerWidth - chevronWidth - generousBuffer;
-    const maxVisibleTabs = Math.floor(availableForTabs / (estimatedTabWidth + gap));
-    const visibleCount = Math.max(2, Math.min(maxVisibleTabs, tabs.length - 1)); // Show at least 2, leave at least 1 for dropdown
-    
-    setVisibleTabs(tabs.slice(0, visibleCount));
-    setOverflowedTabs(tabs.slice(visibleCount));
   }, [tabs]);
 
-  // Recalculate tab visibility when tabs change
+  // Recalculate when tabs change
   useEffect(() => {
-    // Use a small delay to ensure DOM is fully rendered
-    const timer = setTimeout(() => {
-      calculateTabVisibility();
-    }, 10);
-    
-    return () => clearTimeout(timer);
+    calculateTabVisibility();
   }, [calculateTabVisibility]);
-
-  // Use ResizeObserver to watch the tab container for size changes
-  useEffect(() => {
-    const tabContainer = tabListRef.current;
-    if (!tabContainer) return;
-
-    let resizeTimeout: NodeJS.Timeout;
-    
-    const resizeObserver = new ResizeObserver((entries) => {
-      // Debounce resize events for better performance
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        for (const entry of entries) {
-          // Only recalculate if the width actually changed significantly
-          if (entry.contentBoxSize) {
-            const newWidth = entry.contentRect.width;
-            
-            const lastCalc = lastCalculationRef.current;
-            const significantWidthChange = !lastCalc || Math.abs(lastCalc.containerWidth - newWidth) > 50;
-            
-            if (significantWidthChange) {
-              calculateTabVisibility();
-              // Only close dropdown on significant resize, not minor adjustments
-              // And only if the dropdown has been open for more than 500ms
-              const timeSinceOpen = Date.now() - dropdownOpenTimeRef.current;
-              if (isDropdownOpen && timeSinceOpen > 500 && Math.abs(lastCalc?.containerWidth || 0 - newWidth) > 100) {
-                setIsDropdownOpen(false);
-              }
-            }
-          }
-        }
-      }, 100);
-    });
-
-    resizeObserver.observe(tabContainer);
-
-    return () => {
-      clearTimeout(resizeTimeout);
-      resizeObserver.disconnect();
-    };
-  }, [calculateTabVisibility, isDropdownOpen]);
-
-  // Still listen to window resize as fallback
-  useEffect(() => {
-    let resizeTimeout: NodeJS.Timeout;
-    
-    const handleWindowResize = () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        calculateTabVisibility();
-        if (isDropdownOpen) {
-          setIsDropdownOpen(false);
-        }
-      }, 150);
-    };
-
-    window.addEventListener('resize', handleWindowResize);
-    return () => {
-      clearTimeout(resizeTimeout);
-      window.removeEventListener('resize', handleWindowResize);
-    };
-  }, [calculateTabVisibility, isDropdownOpen]);
 
   // Content styles are applied at the component level via CSS classes
 
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Initialize interactive elements for the content container
-  const interactiveHookFunctions = useInteractiveElements({ containerRef: contentRef });
+  // Initialize interactive elements for the content container (side effects only)
+  useInteractiveElements({ containerRef: contentRef });
 
   // Use custom hooks for cleaner organization
   useKeyboardShortcuts({
@@ -662,6 +564,9 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
+    
+    // Return undefined for the else case
+    return undefined;
   }, [isDropdownOpen]);
 
   // Auto-launch tutorial detection
@@ -700,6 +605,9 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       
       return cleanup;
     }
+    
+    // Return undefined for the else case
+    return undefined;
   }, [activeTab, activeTab?.content, isRecommendationsTab]);
 
   // ContentRenderer renders the content with styling applied via CSS classes
@@ -760,32 +668,33 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
               </button>
             ))}
             
-            {/* Render chevron button for overflowed tabs */}
-            {overflowedTabs.length > 0 && (
-              <div className={styles.tabOverflow}>
-                <button
-                  ref={chevronButtonRef}
-                  className={`${styles.tab} ${styles.chevronTab}`}
-                  onClick={() => {
-                    if (!isDropdownOpen) {
-                      dropdownOpenTimeRef.current = Date.now();
-                    }
-                    setIsDropdownOpen(!isDropdownOpen);
-                  }}
-                  aria-label={`Show ${overflowedTabs.length} more tabs`}
-                  aria-expanded={isDropdownOpen}
-                  aria-haspopup="true"
-                >
-                  <div className={styles.tabContent}>
-                    <Icon name="angle-right" size="sm" className={styles.chevronIcon} />
-                    <span className={styles.tabTitle}>
-                      {overflowedTabs.length} more
-                    </span>
-                  </div>
-                </button>
-              </div>
-            )}
           </div>
+          
+          {/* Render chevron button for overflowed tabs - OUTSIDE tabList */}
+          {overflowedTabs.length > 0 && (
+            <div className={styles.tabOverflow}>
+              <button
+                ref={chevronButtonRef}
+                className={`${styles.tab} ${styles.chevronTab}`}
+                onClick={() => {
+                  if (!isDropdownOpen) {
+                    dropdownOpenTimeRef.current = Date.now();
+                  }
+                  setIsDropdownOpen(!isDropdownOpen);
+                }}
+                aria-label={`Show ${overflowedTabs.length} more tabs`}
+                aria-expanded={isDropdownOpen}
+                aria-haspopup="true"
+              >
+                <div className={styles.tabContent}>
+                  <Icon name="angle-right" size="sm" className={styles.chevronIcon} />
+                  <span className={styles.tabTitle}>
+                    {overflowedTabs.length} more
+                  </span>
+                </div>
+              </button>
+            </div>
+          )}
           
           {/* Render dropdown outside of tabList but inside tabBar */}
           {isDropdownOpen && overflowedTabs.length > 0 && (
@@ -1033,3 +942,4 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 export { CombinedLearningJourneyPanel };
 export class LearningJourneyPanel extends CombinedLearningJourneyPanel {}
 export class DocsPanel extends CombinedLearningJourneyPanel {} 
+

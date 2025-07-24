@@ -154,6 +154,7 @@ export const getTopBarStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1),
     padding: theme.spacing(1),
     backgroundColor: theme.colors.background.canvas,
+    // Removed overflow: 'hidden' to allow chevron button to be visible
   }),
   title: css({
     label: 'combined-journey-title',
@@ -218,6 +219,7 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(0.5),
     overflow: 'hidden', // Hide overflowing tabs (dropdown is now outside)
     flex: 1,
+    minWidth: 0, // Allow flex shrinking
   }),
   tab: css({
     label: 'combined-journey-tab',
@@ -304,6 +306,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     position: 'relative',
     display: 'flex',
     alignItems: 'center',
+    flexShrink: 0, // Don't shrink the chevron button
+    zIndex: 1, // Ensure it's above other content
   }),
   chevronTab: css({
     label: 'combined-journey-chevron-tab',
