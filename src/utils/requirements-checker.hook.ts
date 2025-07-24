@@ -100,7 +100,17 @@ export function useRequirementsChecker({
     }
     
     if (!requirements || state.isCompleted) {
-      const newState = { ...state, isEnabled: true, isChecking: false };
+      // For completed steps: keep them completed and disabled
+      // For steps without requirements: enable them
+      const newState = state.isCompleted 
+        ? { ...state, isEnabled: false, isChecking: false, isCompleted: true } // Preserve completion
+        : { ...state, isEnabled: true, isChecking: false }; // Enable if no requirements
+      
+      // Debug logging for completion state preservation
+      if (process.env.NODE_ENV === 'development' && state.isCompleted) {
+        console.warn(`🔒 Step ${uniqueId} completion state PRESERVED during re-check`);
+      }
+      
       setState(newState);
       
       // Directly notify the manager with the new state to avoid timing issues
@@ -188,6 +198,11 @@ export function useRequirementsChecker({
     // Directly notify the manager with the new state to avoid timing issues
     if (managerRef.current) {
       managerRef.current.updateStep(uniqueId, newState);
+    }
+    
+    // Debug logging for completion tracking
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`🎯 Step ${uniqueId} marked as COMPLETED`);
     }
   }, [state, uniqueId]);
   
@@ -283,31 +298,133 @@ export class SequentialRequirementsManager {
 
   // Trigger reactive checking of all steps (e.g., after completing a step or DOM changes)
   triggerReactiveCheck(): void {
-    // Notify all listeners to re-check their requirements
+    // Trigger actual requirements re-checking for all registered steps
+    this.recheckAllSteps();
+    // Also notify listeners for UI updates
     this.notifyListeners();
   }
 
-  // Start DOM change monitoring for reactive requirements checking
+  private recheckAllSteps(): void {
+    // Notify all step checkers to re-run their requirements
+    this.stepCheckers.forEach(checker => {
+      // Trigger async recheck with minimal delay to prevent race conditions
+      setTimeout(() => {
+        checker();
+      }, 10); // Reduced from 50ms to 10ms for faster unlocking
+    });
+  }
+
+  // Registry of step checker functions for reactive re-checking
+  private stepCheckers = new Set<() => void>();
+
+  registerStepChecker(checker: () => void): () => void {
+    this.stepCheckers.add(checker);
+    return () => this.stepCheckers.delete(checker);
+  }
+
+  // Pure requirements-based success detection - extensible for any data-requirements
+  async checkActionSuccess(
+    requirements?: string,
+    checkElementRequirements?: (element: HTMLElement) => Promise<any>
+  ): Promise<boolean> {
+    // If no requirements, assume success (steps without requirements should always work)
+    if (!requirements) {
+      return true;
+    }
+
+    // If we don't have the checker function, fall back to reactive checking
+    if (!checkElementRequirements) {
+      return false;
+    }
+
+    // Use the actual requirements checking system - this makes it fully extensible
+    // Any new requirement types added to the requirements system will automatically work
+    try {
+      // Create a mock element with the requirements for checking
+      const mockElement = document.createElement('div');
+      mockElement.setAttribute('data-requirements', requirements);
+      mockElement.setAttribute('data-targetaction', 'button'); // Generic action for checking
+      mockElement.setAttribute('data-reftarget', 'success-check');
+
+      // Run the actual requirements check to see if they're now satisfied
+      const result = await checkElementRequirements(mockElement);
+      return result.pass;
+    } catch (error) {
+      // If checking fails, assume the action didn't succeed
+      return false;
+    }
+  }
+
+  // Enhanced monitoring for reactive requirements checking
   private domObserver?: MutationObserver;
   private domCheckThrottle?: NodeJS.Timeout;
+  private urlCheckThrottle?: NodeJS.Timeout;
+  private lastUrl?: string;
+  private navigationUnlisten?: () => void;
 
   startDOMMonitoring(): void {
     if (this.domObserver) return; // Already monitoring
 
-    this.domObserver = new MutationObserver(() => {
-      // Throttle DOM change checks to avoid excessive triggering
-      if (this.domCheckThrottle) clearTimeout(this.domCheckThrottle);
-      this.domCheckThrottle = setTimeout(() => {
-        this.triggerReactiveCheck();
-      }, 1000); // Wait 1 second after DOM changes before checking
+    // Monitor URL changes for navigation detection
+    this.lastUrl = window.location.href;
+    this.startURLMonitoring();
+
+    // Monitor DOM changes (more selective)
+    this.domObserver = new MutationObserver((mutations) => {
+      // Only react to meaningful changes
+      const significantChange = mutations.some(mutation => {
+        // Check for navigation menu changes, plugin list changes, etc.
+        const target = mutation.target as Element;
+        return target?.closest?.('[data-testid*="nav"]') || 
+               target?.closest?.('[data-testid*="plugin"]') ||
+               target?.closest?.('[href*="/connections"]') ||
+               target?.closest?.('[href*="/dashboards"]') ||
+               target?.closest?.('[href*="/admin"]');
+      });
+
+      if (significantChange) {
+        if (this.domCheckThrottle) clearTimeout(this.domCheckThrottle);
+        this.domCheckThrottle = setTimeout(() => {
+          this.triggerReactiveCheck();
+        }, 800); // Shorter delay for DOM changes
+      }
     });
 
     this.domObserver.observe(document.body, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-testid', 'aria-label', 'class', 'style']
+      attributeFilter: ['data-testid', 'aria-label', 'class', 'href']
     });
+  }
+
+  private startURLMonitoring(): void {
+    // Monitor for URL changes (navigation)
+    const checkURL = () => {
+      const currentUrl = window.location.href;
+      if (currentUrl !== this.lastUrl) {
+        this.lastUrl = currentUrl;
+        
+        // Debounce URL change checks - wait for page to settle
+        if (this.urlCheckThrottle) clearTimeout(this.urlCheckThrottle);
+        this.urlCheckThrottle = setTimeout(() => {
+          this.triggerReactiveCheck();
+        }, 1500); // Reduced delay for faster responsiveness
+      }
+    };
+
+    // Listen for various navigation events
+    window.addEventListener('popstate', checkURL);
+    window.addEventListener('hashchange', checkURL);
+    
+    // Poll for programmatic navigation (SPA routing)
+    const urlPoller = setInterval(checkURL, 500); // More frequent polling for SPA
+    
+    this.navigationUnlisten = () => {
+      window.removeEventListener('popstate', checkURL);
+      window.removeEventListener('hashchange', checkURL);
+      clearInterval(urlPoller);
+    };
   }
 
   stopDOMMonitoring(): void {
@@ -318,6 +435,14 @@ export class SequentialRequirementsManager {
     if (this.domCheckThrottle) {
       clearTimeout(this.domCheckThrottle);
       this.domCheckThrottle = undefined;
+    }
+    if (this.urlCheckThrottle) {
+      clearTimeout(this.urlCheckThrottle);
+      this.urlCheckThrottle = undefined;
+    }
+    if (this.navigationUnlisten) {
+      this.navigationUnlisten();
+      this.navigationUnlisten = undefined;
     }
   }
   
@@ -376,7 +501,7 @@ export function useSequentialRequirements({
       timeoutId = window.setTimeout(() => {
         forceUpdate({});
         timeoutId = null;
-      }, 50); // 50ms debounce
+      }, 25); // Reduced debounce for faster UI updates
     });
     
     return () => {
@@ -389,6 +514,14 @@ export function useSequentialRequirements({
   
   // Enhanced check that considers sequential state
   const checkRequirements = useCallback(async () => {
+    // If this step is already completed, don't re-evaluate it - preserve completion state
+    if (basicChecker.isCompleted) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`⏭️ Step ${uniqueId} skipped re-evaluation (already completed)`);
+      }
+      return;
+    }
+
     // Section steps always get Trust but Verify (they are independent)
     if (isSequence) {
       await basicChecker.checkRequirements();
@@ -415,25 +548,37 @@ export function useSequentialRequirements({
       .every(([, state]) => state.isCompleted);
     
     if (isFirstStep || allPreviousCompleted) {
-              // This step gets Trust but Verify treatment - just check requirements
-        await basicChecker.checkRequirements();
-          } else {
-        // This step should be disabled due to sequential dependency
-        const sequentialError = 'Previous steps must be completed first';
-        const sequentialExplanation = 'Complete the previous steps in order before this one becomes available.';
+      // This step can be enabled - check its actual requirements
+      await basicChecker.checkRequirements();
+      // The basicChecker will update the manager with the actual requirement results
+    } else {
+      // This step should be disabled due to sequential dependency
+      const sequentialError = 'Previous steps must be completed first';
+      const sequentialExplanation = 'Complete the previous steps in order before this one becomes available.';
 
-        manager.updateStep(uniqueId, {
-          isEnabled: false,
-          isCompleted: basicChecker.isCompleted,
-          isChecking: false,
-          error: sequentialError,
-          explanation: sequentialExplanation,
-        });
-      }
+      manager.updateStep(uniqueId, {
+        isEnabled: false,
+        isCompleted: basicChecker.isCompleted,
+        isChecking: false,
+        error: sequentialError,
+        explanation: sequentialExplanation,
+      });
+    }
     
     // Don't call updateSequentialState here as it triggers listeners
     // The state is already updated via manager.updateStep above
   }, [basicChecker, manager, uniqueId, isSequence]);
+
+  // Register the checkRequirements function for reactive re-checking
+  useEffect(() => {
+    const unregisterChecker = manager.registerStepChecker(() => {
+      checkRequirements();
+    });
+    
+    return () => {
+      unregisterChecker();
+    };
+  }, [manager, checkRequirements]);
   
   const markCompleted = useCallback(() => {
     // Just delegate to the basic checker - it will update the manager directly
@@ -490,6 +635,7 @@ function mapRequirementToUserFriendlyMessage(requirement: string): string {
     // Data source requirements
     'datasource-configured': 'A data source needs to be configured first.',
     'datasource-connected': 'Please ensure the data source connection is working.',
+    'has-datasources': 'At least one data source needs to be configured.',
     
     // Page/URL requirements
     'on-page': 'Navigate to the correct page first.',
@@ -506,6 +652,54 @@ function mapRequirementToUserFriendlyMessage(requirement: string): string {
     'modal-closed': 'Please close any open dialogs first.',
   };
   
+  // Enhanced requirement type handling
+  const enhancedMappings: Array<{pattern: RegExp, message: (match: string) => string}> = [
+    {
+      pattern: /^has-permission:(.+)$/,
+      message: (permission) => `You need the '${permission}' permission to perform this action.`
+    },
+    {
+      pattern: /^has-role:(.+)$/,
+      message: (role) => `You need ${role} role or higher to perform this action.`
+    },
+    {
+      pattern: /^has-datasource:type:(.+)$/,
+      message: (type) => `A ${type} data source needs to be configured first.`
+    },
+    {
+      pattern: /^has-datasource:(.+)$/,
+      message: (name) => `The '${name}' data source needs to be configured first.`
+    },
+    {
+      pattern: /^has-plugin:(.+)$/,
+      message: (plugin) => `The '${plugin}' plugin needs to be installed and enabled.`
+    },
+    {
+      pattern: /^on-page:(.+)$/,
+      message: (page) => `Navigate to the '${page}' page first.`
+    },
+    {
+      pattern: /^has-feature:(.+)$/,
+      message: (feature) => `The '${feature}' feature needs to be enabled.`
+    },
+    {
+      pattern: /^in-environment:(.+)$/,
+      message: (env) => `This action is only available in the ${env} environment.`
+    },
+    {
+      pattern: /^min-version:(.+)$/,
+      message: (version) => `This feature requires Grafana version ${version} or higher.`
+    }
+  ];
+  
+  // Check enhanced pattern-based requirements first
+  for (const mapping of enhancedMappings) {
+    const match = requirement.match(mapping.pattern);
+    if (match) {
+      return mapping.message(match[1]);
+    }
+  }
+
   // Handle plugin-specific requirements (e.g., "require-has-plugin="volkovlabs-rss-datasource")
   if (requirement.includes('has-plugin') || requirement.includes('plugin')) {
     const pluginMatch = requirement.match(/['"]([\w-]+)['"]/);

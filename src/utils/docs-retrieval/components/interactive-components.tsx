@@ -184,7 +184,7 @@ export function InteractiveSection({
   });
 
   // Get the interactive functions from the hook
-  const { executeInteractiveAction } = useInteractiveElements();
+  const { executeInteractiveAction, checkElementRequirements } = useInteractiveElements();
 
   // Check requirements once when component mounts - prevent infinite loops
   const hasCheckedRequirements = useRef(false);
@@ -227,8 +227,14 @@ export function InteractiveSection({
   }, [children]);
 
   const handleDoSection = useCallback(async () => {
-    if (disabled || isRunning || isCompleted || interactiveSteps.length === 0 || !requirementsChecker.isEnabled) {
+    if (disabled || isRunning || interactiveSteps.length === 0 || (!isCompleted && !requirementsChecker.isEnabled)) {
       return;
+    }
+
+    // If section is completed and we're re-running, reset the completion state
+    if (isCompleted) {
+      setIsLocallyCompleted(false);
+      // Don't reset requirementsChecker completion state as it tracks the overall section requirements
     }
 
     setIsRunning(true);
@@ -238,6 +244,23 @@ export function InteractiveSection({
       for (let i = 0; i < interactiveSteps.length; i++) {
         const step = interactiveSteps[i];
         setCurrentStepIndex(i);
+
+        // Always check step requirements before executing (as requested by user)
+        if ((step.element.props as any).requirements) {
+          // Create a mock element to check requirements
+          const mockElement = document.createElement('div');
+          mockElement.setAttribute('data-requirements', (step.element.props as any).requirements);
+          mockElement.setAttribute('data-targetaction', step.targetAction);
+          mockElement.setAttribute('data-reftarget', step.refTarget);
+          
+          // Check requirements using the hook function
+          const requirementResult = await checkElementRequirements(mockElement);
+          
+          if (!requirementResult.pass) {
+            console.warn(`Step ${i + 1} requirements not met:`, requirementResult.error);
+            // Continue anyway but log the issue - section execution shouldn't stop for individual step requirements
+          }
+        }
 
         // First, show the step (highlight it)
         await executeInteractiveAction(
@@ -279,7 +302,7 @@ export function InteractiveSection({
     } finally {
       setIsRunning(false);
     }
-  }, [disabled, isRunning, isCompleted, interactiveSteps, onComplete, executeInteractiveAction, requirementsChecker]);
+  }, [disabled, isRunning, isCompleted, interactiveSteps, onComplete, executeInteractiveAction, checkElementRequirements, requirementsChecker]);
 
   const getStepStatus = useCallback((stepIndex: number) => {
     if (isCompleted) return 'completed';
@@ -325,18 +348,19 @@ export function InteractiveSection({
       <div className="interactive-section-actions">
         <Button
           onClick={handleDoSection}
-          disabled={disabled || isRunning || isCompleted || interactiveSteps.length === 0 || !requirementsChecker.isEnabled}
+          disabled={disabled || isRunning || interactiveSteps.length === 0 || (!isCompleted && !requirementsChecker.isEnabled)}
           size="md"
-          variant="primary"
+          variant={isCompleted ? "secondary" : "primary"}
           className="interactive-section-do-button"
           title={
             requirementsChecker.isChecking ? 'Checking requirements...' :
+            isCompleted ? 'Run the section again' :
             !requirementsChecker.isEnabled && requirementsChecker.explanation ? requirementsChecker.explanation :
             hints || `Run through all ${interactiveSteps.length} steps in sequence`
           }
         >
           {requirementsChecker.isChecking ? 'Checking...' :
-           isCompleted ? '✓ Section Completed' : 
+           isCompleted ? `Redo Section (${interactiveSteps.length} steps)` :
            isRunning ? `Running Step ${currentStepIndex + 1}/${interactiveSteps.length}...` : 
            !requirementsChecker.isEnabled ? 'Requirements not met' :
            `Do Section (${interactiveSteps.length} steps)`}
@@ -446,10 +470,20 @@ export function InteractiveStep({
     setIsDoRunning(true);
     try {
       await executeInteractiveAction(targetAction, refTarget, targetValue, 'do');
-      setIsLocallyCompleted(true);
-      requirementsChecker.markCompleted();
-      // After completing step, trigger reactive check of all steps to unlock next ones
-      requirementsChecker.triggerReactiveCheck();
+      
+      // Auto-unlock strategy: complete this step and trigger reactive checking
+      setTimeout(async () => {
+        // Always complete this step after "Do it" action
+        setIsLocallyCompleted(true);
+        requirementsChecker.markCompleted();
+        
+        // Single reactive check with slight delay to ensure completion state is fully propagated
+        setTimeout(() => {
+          requirementsChecker.triggerReactiveCheck();
+        }, 50); // Small delay to ensure completion state is propagated to manager
+        
+      }, 700); // Reduced delay for faster step unlocking
+      
       if (onComplete) onComplete();
     } catch (error) {
       console.error('Interactive do action failed:', error);

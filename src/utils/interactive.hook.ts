@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useCallback, useRef } from 'react';
-import { locationService, config } from '@grafana/runtime';
+import { locationService, config, hasPermission, getDataSourceSrv } from '@grafana/runtime';
 import { ContextService } from './context';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 import { waitForReactUpdates } from './requirements-checker.hook';
@@ -775,6 +775,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     const checks: string[] = requirements.split(',').map(check => check.trim());    
 
     async function performCheck(check: string, data: InteractiveElementData): Promise<CheckResult> {
+      // Legacy checks (keep for backward compatibility)
       if(check === 'exists-reftarget') {
         return reftargetExistsCHECK(data, check);
       } else if(check === 'has-datasources') {
@@ -783,6 +784,34 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         return isAdminCHECK(data, check);
       } else if(check === 'navmenu-open') {
         return navmenuOpenCHECK(data, check);
+      }
+
+      // Enhanced permission-based checks
+      else if(check.startsWith('has-permission:')) {
+        return hasPermissionCHECK(data, check);
+      } else if(check.startsWith('has-role:')) {
+        return hasRoleCHECK(data, check);
+      }
+
+      // Data source and plugin checks
+      else if(check.startsWith('has-datasource:')) {
+        return hasDataSourceCHECK(data, check);
+      } else if(check.startsWith('has-plugin:')) {
+        return hasPluginCHECK(data, check);
+      }
+
+      // Location and navigation checks
+      else if(check.startsWith('on-page:')) {
+        return onPageCHECK(data, check);
+      }
+
+      // Feature and environment checks
+      else if(check.startsWith('has-feature:')) {
+        return hasFeatureCHECK(data, check);
+      } else if(check.startsWith('in-environment:')) {
+        return inEnvironmentCHECK(data, check);
+      } else if(check.startsWith('min-version:')) {
+        return minVersionCHECK(data, check);
       }
 
       console.warn("Unknown requirement:", check);
@@ -880,6 +909,303 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       throw error;
     }
   }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence]);
+
+  /**
+   * ============================================================================
+   * EXTENSIBLE REQUIREMENTS CHECKING SYSTEM
+   * Using Grafana Runtime APIs for comprehensive state validation
+   * ============================================================================
+   */
+
+  // Enhanced permission checking using Grafana's permission system
+  const hasPermissionCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      // Extract permission action from requirement (e.g., "has-permission:dashboards:write")
+      const permission = check.replace('has-permission:', '');
+      const hasAccess = hasPermission(permission);
+      
+      if (hasAccess) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Missing permission: ${permission}`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Permission check failed: ${error}`,
+      };
+    }
+  };
+
+  // Enhanced user role checking using config.bootData.user
+  const hasRoleCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const user = config.bootData?.user;
+      if (!user) {
+        return {
+          pass: false,
+          requirement: check,
+          error: "User information not available",
+        };
+      }
+
+      const requiredRole = check.replace('has-role:', '').toLowerCase();
+      
+      let hasRole = false;
+      
+      switch (requiredRole) {
+        case 'admin':
+        case 'grafana-admin':
+          hasRole = user.isGrafanaAdmin || false;
+          break;
+        case 'editor':
+          hasRole = user.orgRole === 'Editor' || user.orgRole === 'Admin' || user.isGrafanaAdmin || false;
+          break;
+        case 'viewer':
+          hasRole = !!user.orgRole; // Any role means at least viewer
+          break;
+        default:
+          hasRole = user.orgRole === requiredRole;
+      }
+      
+      if (hasRole) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `User role '${user.orgRole || 'none'}' does not meet requirement '${requiredRole}'`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Role check failed: ${error}`,
+      };
+    }
+  };
+
+  // Enhanced data source checking using DataSourceSrv
+  const hasDataSourceCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const dataSourceSrv = getDataSourceSrv();
+      
+      // Extract data source type/name (e.g., "has-datasource:prometheus" or "has-datasource:type:loki")
+      const dsRequirement = check.replace('has-datasource:', '');
+      const isTypeCheck = dsRequirement.startsWith('type:');
+      const targetValue = isTypeCheck ? dsRequirement.replace('type:', '') : dsRequirement;
+      
+      const dataSources = dataSourceSrv.getList();
+      
+      let found = false;
+      
+      if (isTypeCheck) {
+        // Check by data source type
+        found = dataSources.some(ds => ds.type.toLowerCase() === targetValue.toLowerCase());
+      } else {
+        // Check by data source name/uid
+        found = dataSources.some(ds => 
+          ds.name.toLowerCase() === targetValue.toLowerCase() || 
+          ds.uid === targetValue
+        );
+      }
+      
+      if (found) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        const checkType = isTypeCheck ? 'type' : 'name/uid';
+        return {
+          pass: false,
+          requirement: check,
+          error: `No data source found with ${checkType}: ${targetValue}`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Data source check failed: ${error}`,
+      };
+    }
+  };
+
+  // Plugin availability checking
+  const hasPluginCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const pluginId = check.replace('has-plugin:', '');
+      
+      // Check if plugin is available in config
+      const isAppPlugin = config.apps && config.apps[pluginId];
+      const isDataSourcePlugin = config.datasources && Object.values(config.datasources).some(
+        ds => ds.type === pluginId
+      );
+      
+      if (isAppPlugin || isDataSourcePlugin) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Plugin '${pluginId}' is not installed or enabled`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Plugin check failed: ${error}`,
+      };
+    }
+  };
+
+  // Location/URL checking using locationService
+  const onPageCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const location = locationService.getLocation();
+      const requiredPath = check.replace('on-page:', '');
+      
+      // Support partial path matching and exact matching
+      const currentPath = location.pathname;
+      const matches = currentPath.includes(requiredPath) || currentPath === requiredPath;
+      
+      if (matches) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Current page '${currentPath}' does not match required path '${requiredPath}'`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Page check failed: ${error}`,
+      };
+    }
+  };
+
+  // Feature toggle checking
+  const hasFeatureCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const featureName = check.replace('has-feature:', '');
+      const featureToggles = config.featureToggles as Record<string, boolean> | undefined;
+      const isEnabled = featureToggles && featureToggles[featureName];
+      
+      if (isEnabled) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Feature toggle '${featureName}' is not enabled`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Feature check failed: ${error}`,
+      };
+    }
+  };
+
+  // Environment checking (useful for dev vs prod tutorials)
+  const inEnvironmentCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const requiredEnv = check.replace('in-environment:', '').toLowerCase();
+      const currentEnv = config.buildInfo?.env?.toLowerCase() || 'unknown';
+      
+      if (currentEnv === requiredEnv) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Current environment '${currentEnv}' does not match required '${requiredEnv}'`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Environment check failed: ${error}`,
+      };
+    }
+  };
+
+  // Version checking (useful for version-specific tutorials)
+  const minVersionCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const requiredVersion = check.replace('min-version:', '');
+      const currentVersion = config.buildInfo?.version || '0.0.0';
+      
+      // Simple semantic version comparison (major.minor.patch)
+      const parseVersion = (v: string) => v.split('.').map(n => parseInt(n, 10));
+      const [reqMajor, reqMinor, reqPatch] = parseVersion(requiredVersion);
+      const [curMajor, curMinor, curPatch] = parseVersion(currentVersion);
+      
+      const meetsRequirement = 
+        curMajor > reqMajor || 
+        (curMajor === reqMajor && curMinor > reqMinor) ||
+        (curMajor === reqMajor && curMinor === reqMinor && curPatch >= reqPatch);
+      
+      if (meetsRequirement) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Current version '${currentVersion}' does not meet minimum requirement '${requiredVersion}'`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Version check failed: ${error}`,
+      };
+    }
+  };
 
   return {
     interactiveFocus,
