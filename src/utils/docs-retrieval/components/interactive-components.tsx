@@ -204,6 +204,7 @@ export function InteractiveSection({
       hasCheckedRequirements.current = true;
       requirementsChecker.checkRequirements();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array to run only once
 
   // Local completion state (different from requirements completion)
@@ -231,7 +232,7 @@ export function InteractiveSection({
           targetAction: props.targetAction,
           refTarget: props.refTarget,
           targetValue: props.targetValue,
-          uniqueId: `section-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${steps.length}`
+          uniqueId: `section-${Date.now()}-${Math.random().toString(36).substring(2, 11)}-${steps.length}`
         });
       }
     });
@@ -381,9 +382,9 @@ export function InteractiveSection({
   }, [disabled, isRunning, isCompleted, interactiveSteps, onComplete, executeInteractiveAction, checkElementRequirements, requirementsChecker, resetSectionCompletion, handleStepComplete, sectionId]);
 
   const getStepStatus = useCallback((stepIndex: number) => {
-    if (isCompleted) return 'completed';
-    if (currentStepIndex === stepIndex) return 'running';
-    if (currentStepIndex > stepIndex) return 'completed';
+    if (isCompleted) {return 'completed';}
+    if (currentStepIndex === stepIndex) {return 'running';}
+    if (currentStepIndex > stepIndex) {return 'completed';}
     return 'pending';
   }, [isCompleted, currentStepIndex]);
 
@@ -527,6 +528,7 @@ export function InteractiveStep({
       hasCheckedStepRequirements.current = true;
       requirementsChecker.checkRequirements();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array to run only once
 
   // Listen for global requirements check events from section execution
@@ -548,7 +550,7 @@ export function InteractiveStep({
   const isCompleted = requirementsChecker.isCompleted || isLocallyCompleted;
 
   const handleShowAction = useCallback(async () => {
-    if (disabled || isShowRunning || isCompleted || !requirementsChecker.isEnabled) return;
+    if (disabled || isShowRunning || isCompleted || !requirementsChecker.isEnabled) {return;}
     
     setIsShowRunning(true);
     try {
@@ -560,10 +562,10 @@ export function InteractiveStep({
     } finally {
       setIsShowRunning(false);
     }
-  }, [targetAction, refTarget, targetValue, disabled, isShowRunning, isCompleted, executeInteractiveAction, stepId, requirementsChecker]);
+  }, [targetAction, refTarget, targetValue, disabled, isShowRunning, isCompleted, executeInteractiveAction, requirementsChecker]);
 
   const handleDoAction = useCallback(async () => {
-    if (disabled || isDoRunning || isCompleted || !requirementsChecker.isEnabled) return;
+    if (disabled || isDoRunning || isCompleted || !requirementsChecker.isEnabled) {return;}
     
     setIsDoRunning(true);
     try {
@@ -582,13 +584,13 @@ export function InteractiveStep({
         
       }, 700); // Reduced delay for faster step unlocking
       
-      if (onComplete) onComplete();
+      if (onComplete) {onComplete();}
     } catch (error) {
       console.error('Interactive do action failed:', error);
     } finally {
       setIsDoRunning(false);
     }
-  }, [targetAction, refTarget, targetValue, disabled, isDoRunning, isCompleted, onComplete, executeInteractiveAction, stepId, requirementsChecker]);
+  }, [targetAction, refTarget, targetValue, disabled, isDoRunning, isCompleted, onComplete, executeInteractiveAction, requirementsChecker]);
 
   const getActionDescription = () => {
     switch (targetAction) {

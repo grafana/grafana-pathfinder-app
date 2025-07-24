@@ -213,7 +213,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
   let hasExpandableTables = false;
   let hasImages = false;
 
-  function walk(node: Element | ChildNode, path: string = 'root'): ParsedElement | string | null {
+  function walk(node: Element | ChildNode, path = 'root'): ParsedElement | string | null {
     try {
       if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent ?? '';
@@ -351,7 +351,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
             contentEl.childNodes.forEach((child, index) => {
               try {
                 const walked = walk(child, `${currentPath}.collapse-content[${index}]`);
-                if (walked) children.push(walked);
+                if (walked) {children.push(walked);}
               } catch (error) {
                 errorCollector.addError(
                   'children_processing',
@@ -391,7 +391,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
           stepNodes.forEach((stepEl, index) => {
             try {
               const step = walk(stepEl, `${currentPath}.step[${index}]`);
-              if (step && typeof step !== 'string') stepElements.push(step);
+              if (step && typeof step !== 'string') {stepElements.push(step);}
             } catch (error) {
               errorCollector.addError(
                 'children_processing',
@@ -473,7 +473,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
         el.childNodes.forEach((child, index) => {
           try {
             const walked = walk(child, `${currentPath}[${index}]`);
-            if (walked) children.push(walked);
+            if (walked) {children.push(walked);}
           } catch (error) {
             errorCollector.addError(
               'children_processing',
@@ -515,7 +515,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
     root.childNodes.forEach((child, index) => {
       try {
         const res = walk(child, `root[${index}]`);
-        if (res && typeof res !== "string") elements.push(res);
+        if (res && typeof res !== "string") {elements.push(res);}
       } catch (error) {
         errorCollector.addError(
           'element_creation',

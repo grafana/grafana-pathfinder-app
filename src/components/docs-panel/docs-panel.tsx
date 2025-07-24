@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Spinner, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
-import { addGlobalModalStyles } from '../../styles/docs-panel.styles';
+
 
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
@@ -30,7 +30,7 @@ import {
 
 import { ContextPanel } from './context-panel';
 
-import { getStyles as getComponentStyles } from '../../styles/docs-panel.styles';
+import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../styles/docs-panel.styles';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 

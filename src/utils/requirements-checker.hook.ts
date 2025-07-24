@@ -185,7 +185,7 @@ export function useRequirementsChecker({
     checkPromiseRef.current = checkPromise;
     await checkPromise;
     checkPromiseRef.current = null;
-  }, [requirements, targetAction, uniqueId, checkElementRequirements]); // Removed state.isCompleted to prevent infinite loops
+  }, [requirements, targetAction, uniqueId, checkElementRequirements, hints, state]); // Removed state.isCompleted to prevent infinite loops
   
   const markCompleted = useCallback(() => {
     const newState = {
@@ -363,7 +363,7 @@ export class SequentialRequirementsManager {
   private navigationUnlisten?: () => void;
 
   startDOMMonitoring(): void {
-    if (this.domObserver) return; // Already monitoring
+    if (this.domObserver) {return;} // Already monitoring
 
     // Monitor URL changes for navigation detection
     this.lastUrl = window.location.href;
@@ -383,7 +383,7 @@ export class SequentialRequirementsManager {
       });
 
       if (significantChange) {
-        if (this.domCheckThrottle) clearTimeout(this.domCheckThrottle);
+        if (this.domCheckThrottle) {clearTimeout(this.domCheckThrottle);}
         this.domCheckThrottle = setTimeout(() => {
           this.triggerReactiveCheck();
         }, 800); // Shorter delay for DOM changes
@@ -406,7 +406,7 @@ export class SequentialRequirementsManager {
         this.lastUrl = currentUrl;
         
         // Debounce URL change checks - wait for page to settle
-        if (this.urlCheckThrottle) clearTimeout(this.urlCheckThrottle);
+        if (this.urlCheckThrottle) {clearTimeout(this.urlCheckThrottle);}
         this.urlCheckThrottle = setTimeout(() => {
           this.triggerReactiveCheck();
         }, 1500); // Reduced delay for faster responsiveness
@@ -510,6 +510,7 @@ export function useSequentialRequirements({
       }
       unsubscribe();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uniqueId]); // Use uniqueId instead of manager to prevent subscription loops
   
   // Enhanced check that considers sequential state

@@ -30,6 +30,46 @@ interface UseLinkClickHandlerProps {
   };
 }
 
+/**
+ * Attempts to construct an unstyled.html URL for external content
+ * This is used to try to embed external documentation in our app
+ */
+function tryConstructUnstyledUrl(originalUrl: string): string | null {
+  try {
+    const url = new URL(originalUrl);
+    
+    // Common patterns for unstyled content
+    const unstyledPatterns = [
+      // Add /unstyled.html to the path
+      () => {
+        const newUrl = new URL(originalUrl);
+        newUrl.pathname = newUrl.pathname.replace(/\/$/, '') + '/unstyled.html';
+        return newUrl.href;
+      },
+      // Replace .html with /unstyled.html
+      () => {
+        if (originalUrl.endsWith('.html')) {
+          return originalUrl.replace(/\.html$/, '/unstyled.html');
+        }
+        return null;
+      },
+      // Add unstyled query parameter
+      () => {
+        const newUrl = new URL(originalUrl);
+        newUrl.searchParams.set('unstyled', 'true');
+        return newUrl.href;
+      },
+    ];
+    
+    // Try the first pattern (most common)
+    return unstyledPatterns[0]();
+    
+  } catch (error) {
+    console.warn('Failed to construct unstyled URL for:', originalUrl, error);
+    return null;
+  }
+}
+
 export function useLinkClickHandler({ 
   contentRef, 
   activeTab, 
@@ -116,8 +156,9 @@ export function useLinkClickHandler({
             }
           }
           
-          // Handle Grafana docs links (including resolved relative links)
-          if (resolvedUrl.includes('grafana.com/docs/') || href.startsWith('/docs/')) {
+          // Handle Grafana docs and tutorials links (including resolved relative links)
+          if (resolvedUrl.includes('grafana.com/docs/') || resolvedUrl.includes('grafana.com/tutorials/') || 
+              href.startsWith('/docs/') || href.startsWith('/tutorials/')) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,
@@ -126,11 +167,11 @@ export function useLinkClickHandler({
             const fullUrl = resolvedUrl.startsWith('http') ? resolvedUrl : `https://grafana.com${resolvedUrl}`;
             const linkText = anchor.textContent?.trim() || 'Documentation';
             
-            // Determine if it's a learning journey or regular docs
+            // Determine if it's a learning journey or regular docs/tutorials
             if (fullUrl.includes('/learning-journeys/')) {
               model.openLearningJourney(fullUrl, linkText);
             } else {
-              // For regular docs, use openDocsPage if available, otherwise openLearningJourney
+              // For regular docs and tutorials, use openDocsPage if available, otherwise openLearningJourney
               if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
                 (model as any).openDocsPage(fullUrl, linkText);
               } else {
@@ -138,16 +179,58 @@ export function useLinkClickHandler({
               }
             }
             
-            // Track analytics for docs link clicks
+            // Track analytics for docs/tutorials link clicks
             reportAppInteraction('docs_link_click' as UserInteraction, {
               link_url: fullUrl,
               link_text: linkText,
-              source_page: activeTab?.content?.url || 'unknown'
+              source_page: activeTab?.content?.url || 'unknown',
+              link_type: fullUrl.includes('/tutorials/') ? 'tutorial' : 'docs'
             });
           }
-          // For external links (non-Grafana), let them open in new browser window naturally
-          else if (href.startsWith('http') && !href.includes('grafana.com')) {
-            // Let external links work normally - don't prevent default
+          // Handle GitHub links with fallback to unstyled.html
+          else if (href.includes('github.com') || href.includes('raw.githubusercontent.com')) {
+            safeEventHandler(event, {
+              preventDefault: true,
+              stopPropagation: true,
+            });
+            
+            const linkText = anchor.textContent?.trim() || 'GitHub Link';
+            
+            // Try to construct unstyled.html URL for GitHub content
+            const unstyledUrl = tryConstructUnstyledUrl(resolvedUrl);
+            
+            if (unstyledUrl) {
+              // Try to open in app first
+              if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
+                (model as any).openDocsPage(unstyledUrl, linkText);
+              } else {
+                model.openLearningJourney(unstyledUrl, linkText);
+              }
+              
+              // Track analytics for GitHub link attempts
+              reportAppInteraction('docs_link_click' as UserInteraction, {
+                link_url: unstyledUrl,
+                link_text: linkText,
+                source_page: activeTab?.content?.url || 'unknown',
+                link_type: 'github_unstyled'
+              });
+            } else {
+              // Fallback: open in new browser tab
+              window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+              
+              // Track analytics for GitHub browser fallback
+              reportAppInteraction('docs_link_click' as UserInteraction, {
+                link_url: resolvedUrl,
+                link_text: linkText,
+                source_page: activeTab?.content?.url || 'unknown',
+                link_type: 'github_browser_fallback'
+              });
+            }
+          }
+          // For ALL other external links, immediately open in new browser tab
+          else if (href.startsWith('http')) {
+            // All other external links (including other grafana.com pages) open in browser
+            // Don't prevent default - let them work normally
             return;
           }
         }
@@ -296,7 +379,7 @@ export function useLinkClickHandler({
 
 function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaTheme2) {
   // Prevent multiple modals
-  if (document.querySelector('.journey-image-modal')) return;
+  if (document.querySelector('.journey-image-modal')) {return;}
   const imageModal = document.createElement('div');
   imageModal.className = 'journey-image-modal';
 
