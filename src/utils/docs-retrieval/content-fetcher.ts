@@ -155,7 +155,6 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               if (unstyledResponse.ok) {
                 const unstyledHtml = await unstyledResponse.text();
                 if (unstyledHtml && unstyledHtml.trim()) {
-                  console.warn(`Using unstyled version: ${finalUnstyledUrl}`);
                   return unstyledHtml;
                 }
               }

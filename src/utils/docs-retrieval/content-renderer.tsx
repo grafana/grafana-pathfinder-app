@@ -246,7 +246,15 @@ function renderParsedElement(
           content={element.props.content}
           defaultCollapsed={element.props.defaultCollapsed}
           toggleText={element.props.toggleText}
-        />
+          className={element.props.className}
+          isCollapseSection={element.props.isCollapseSection}
+        >
+          {element.children.map((child: ParsedElement | string, childIndex: number) =>
+            typeof child === 'string'
+              ? child
+              : renderParsedElement(child, `${key}-child-${childIndex}`)
+          )}
+        </ExpandableTable>
       );
     case 'raw-html':
       // This should only be used for specific known-safe content

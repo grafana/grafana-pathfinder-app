@@ -780,6 +780,7 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
   '& .journey-collapse-icon': {
     transition: 'transform 0.2s ease',
     color: theme.colors.text.secondary,
+    fontSize: '12px',
     
     '&.collapsed': {
       transform: 'rotate(-90deg)',
@@ -790,6 +791,31 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     padding: theme.spacing(2),
     backgroundColor: theme.colors.background.primary,
     borderTop: `1px solid ${theme.colors.border.weak}`,
+  },
+
+  // Expandable table component
+  '& .expandable-table': {
+    margin: `${theme.spacing(2)} 0`,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    overflow: 'hidden',
+  },
+
+  '& .expandable-table-toggle-btn': {
+    width: '100%',
+    margin: 0,
+    borderRadius: 0,
+    justifyContent: 'center',
+  },
+
+  '& .expandable-table-content': {
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.primary,
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+    
+    '&.collapsed': {
+      display: 'none',
+    },
   },
 
   // Side journeys section - matching actual HTML structure
@@ -890,17 +916,33 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
   },
 
   // Related journeys section
-  '& .journey-related-journeys-section': {
+  '& .journey-related-journeys-section, & .journey-related-journeys': {
     margin: `${theme.spacing(3)} 0`,
+  },
+
+  '& .journey-related-journeys-title': {
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing(2),
+    marginTop: 0,
   },
 
   '& .journey-related-journeys-list': {
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
   },
 
   '& .journey-related-journey-item': {
+    margin: 0,
+    padding: 0,
+  },
+
+  '& .journey-related-journey-link': {
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1.5),
@@ -911,6 +953,8 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     textDecoration: 'none',
     color: theme.colors.text.primary,
     transition: 'all 0.2s ease',
+    width: '100%',
+    boxSizing: 'border-box',
     
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
@@ -918,6 +962,15 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z1,
       textDecoration: 'none',
+      color: theme.colors.text.primary,
+    },
+
+    '&:after': {
+      content: '"↗"',
+      color: theme.colors.text.secondary,
+      fontSize: '14px',
+      marginLeft: 'auto',
+      flexShrink: 0,
     },
   },
 
@@ -1881,6 +1934,133 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
       fontSize: '14px',
       marginLeft: 'auto',
       flexShrink: 0,
+    },
+  },
+
+  // Related journeys section
+  '& .journey-related-journeys-section, & .journey-related-journeys': {
+    margin: `${theme.spacing(3)} 0`,
+  },
+
+  '& .journey-related-journeys-title': {
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing(2),
+    marginTop: 0,
+  },
+
+  '& .journey-related-journeys-list': {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
+  },
+
+  '& .journey-related-journey-item': {
+    margin: 0,
+    padding: 0,
+  },
+
+  '& .journey-related-journey-link': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1.5),
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    textDecoration: 'none',
+    color: theme.colors.text.primary,
+    transition: 'all 0.2s ease',
+    width: '100%',
+    boxSizing: 'border-box',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.medium,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+      textDecoration: 'none',
+      color: theme.colors.text.primary,
+    },
+
+    '&:after': {
+      content: '"↗"',
+      color: theme.colors.text.secondary,
+      fontSize: '14px',
+      marginLeft: 'auto',
+      flexShrink: 0,
+    },
+  },
+
+  // Collapsible sections
+  '& .journey-collapse': {
+    margin: `${theme.spacing(2)} 0`,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    overflow: 'hidden',
+  },
+
+  '& .journey-collapse-trigger': {
+    width: '100%',
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.background.canvas,
+    border: 'none',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    transition: 'background-color 0.2s ease',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+  },
+
+  '& .journey-collapse-icon': {
+    transition: 'transform 0.2s ease',
+    color: theme.colors.text.secondary,
+    fontSize: '12px',
+    
+    '&.collapsed': {
+      transform: 'rotate(-90deg)',
+    },
+  },
+
+  '& .journey-collapse-content': {
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.primary,
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+  },
+
+  // Expandable table component
+  '& .expandable-table': {
+    margin: `${theme.spacing(2)} 0`,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    overflow: 'hidden',
+  },
+
+  '& .expandable-table-toggle-btn': {
+    width: '100%',
+    margin: 0,
+    borderRadius: 0,
+    justifyContent: 'center',
+  },
+
+  '& .expandable-table-content': {
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.primary,
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+    
+    '&.collapsed': {
+      display: 'none',
     },
   },
 

@@ -205,7 +205,7 @@ export function useLinkClickHandler({
       }
 
       // Handle related journey links (open in new app tabs)
-      const relatedJourneyLink = target.closest('[data-related-journey-link]') as HTMLElement;
+      const relatedJourneyLink = target.closest('[data-related-journey-link]') as HTMLAnchorElement;
       
       if (relatedJourneyLink) {
         safeEventHandler(event, {
@@ -213,13 +213,22 @@ export function useLinkClickHandler({
           stopPropagation: true,
         });
         
-        const linkUrl = relatedJourneyLink.getAttribute('data-related-journey-url');
-        const linkTitle = relatedJourneyLink.getAttribute('data-related-journey-title');
+        // Get URL from href attribute and title from text content (like side journeys)
+        const linkUrl = relatedJourneyLink.getAttribute('href');
+        const linkTitle = relatedJourneyLink.textContent?.trim() || 'Related Journey';
         
         if (linkUrl) {
           // Related journey links open in new app tabs (learning journeys)
           const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
-          model.openLearningJourney(fullUrl, linkTitle || 'Related Journey');
+          model.openLearningJourney(fullUrl, linkTitle);
+          
+          // Track analytics for related journey clicks
+          reportAppInteraction('docs_link_click' as UserInteraction, {
+            link_url: fullUrl,
+            link_text: linkTitle,
+            source_page: activeTab?.content?.url || 'unknown',
+            link_type: 'related_journey'
+          });
         }
       }
 

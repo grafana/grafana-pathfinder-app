@@ -83,6 +83,21 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
       'rows', 'cols', 'wrap', 'min', 'max', 'step', 'pattern',
     ]);
 
+    // SVG attributes that React accepts (React passes most SVG attributes through)
+    const validSvgAttributes = new Set([
+      'viewBox', 'fill', 'stroke', 'strokeWidth', 'strokeLinecap', 'strokeLinejoin',
+      'd', 'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
+      'points', 'transform', 'opacity', 'fillOpacity', 'strokeOpacity',
+      'clipPath', 'mask', 'filter', 'gradientUnits', 'gradientTransform',
+      'patternUnits', 'patternTransform', 'preserveAspectRatio',
+      'xmlns', 'xmlnsXlink', 'version', 'baseProfile',
+    ]);
+
+    // Check if element is SVG or inside SVG context
+    const isSvgElement = element.tagName.toLowerCase() === 'svg' || 
+                        element.closest('svg') !== null ||
+                        ['path', 'circle', 'rect', 'line', 'ellipse', 'polygon', 'polyline', 'g', 'defs', 'use', 'symbol', 'marker', 'clipPath', 'mask', 'pattern', 'image', 'text', 'foreignObject'].includes(element.tagName.toLowerCase());
+
     for (const attr of element.attributes) {
       try {
         const attrName = attr.name.toLowerCase();
@@ -102,8 +117,12 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
         // Map HTML attributes to React props
         const reactPropName = attributeMap[attrName] || attrName;
 
-        // Only include known valid attributes
-        if (validAttributes.has(attrName) || attributeMap[attrName]) {
+        // Check if attribute is valid for this element type
+        const isValidAttribute = validAttributes.has(attrName) || 
+                                attributeMap[attrName] ||
+                                (isSvgElement && validSvgAttributes.has(attrName));
+
+        if (isValidAttribute) {
           // Convert boolean attributes
           if (attrValue === '' || attrValue === attrName) {
             props[reactPropName] = true;
@@ -111,7 +130,10 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
             props[reactPropName] = attrValue;
           }
         } else {
-          errorCollector.addWarning(`Unknown HTML attribute '${attrName}' on ${element.tagName} element`);
+          // Only warn for non-SVG elements or truly unknown SVG attributes
+          if (!isSvgElement) {
+            errorCollector.addWarning(`Unknown HTML attribute '${attrName}' on ${element.tagName} element`);
+          }
         }
       } catch (error) {
         errorCollector.addError(
@@ -214,6 +236,9 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
         // IMAGE: <img>
         if (tag === 'img') {
           hasImages = true;
+          // Get all attributes using the safe mapping function
+          const imgProps = mapHtmlAttributesToReactProps(el, errorCollector);
+          
           return {
             type: 'image-renderer',
             props: {
@@ -225,6 +250,8 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               className: el.getAttribute('class') ?? undefined,
               title: el.getAttribute('title') ?? undefined,
               baseUrl,
+              // Include all other attributes (including data-* attributes)
+              ...imgProps,
             },
             children: [],
             originalHTML: el.outerHTML,
@@ -294,6 +321,58 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               toggleText: undefined,
             },
             children: [],
+            originalHTML: el.outerHTML,
+          };
+        }
+
+        // COLLAPSIBLE SECTION: <div class="collapse"> (but not collapse-content, collapse-trigger, etc.)
+        if (
+          tag === 'div' &&
+          el.classList.contains('collapse') && // More specific than regex
+          !el.classList.contains('collapse-content') && // Don't match collapse-content
+          !el.classList.contains('collapse-trigger') && // Don't match collapse-trigger  
+          !el.classList.contains('collapse-section') && // Don't match our own generated class
+          !/\binteractive\b/.test(el.className || '') // Don't interfere with interactive elements
+        ) {
+          hasExpandableTables = true;
+          const triggerEl = el.querySelector('.collapse-trigger');
+          const contentEl = el.querySelector('.collapse-content');
+          
+          let toggleText = 'Toggle section';
+          if (triggerEl) {
+            // Extract text from trigger, excluding icon text
+            const triggerTextEl = triggerEl.querySelector('span:first-child') || triggerEl;
+            toggleText = triggerTextEl.textContent?.trim() || 'Toggle section';
+          }
+          
+          // Parse the content as React components instead of raw HTML
+          const children: Array<ParsedElement | string> = [];
+          if (contentEl) {
+            contentEl.childNodes.forEach((child, index) => {
+              try {
+                const walked = walk(child, `${currentPath}.collapse-content[${index}]`);
+                if (walked) children.push(walked);
+              } catch (error) {
+                errorCollector.addError(
+                  'children_processing',
+                  `Failed to process collapse content child ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                  child.nodeType === Node.ELEMENT_NODE ? (child as Element).outerHTML : child.textContent?.substring(0, 100),
+                  `${currentPath}.collapse-content[${index}]`,
+                  error instanceof Error ? error : undefined
+                );
+              }
+            });
+          }
+          
+          return {
+            type: 'expandable-table',
+            props: {
+              // Don't pass content as HTML string anymore
+              defaultCollapsed: true, // Most collapse sections start collapsed
+              toggleText,
+              isCollapseSection: true, // Use a boolean flag instead of className
+            },
+            children, // Pass parsed children instead
             originalHTML: el.outerHTML,
           };
         }
