@@ -197,7 +197,9 @@ export function InteractiveSection({
 
   // Local completion state (different from requirements completion)
   const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
-  const isCompleted = requirementsChecker.isCompleted || isLocallyCompleted;
+
+  // Track completion of individual child steps
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
 
   // Extract interactive steps from children
   const interactiveSteps = useMemo(() => {
@@ -226,6 +228,29 @@ export function InteractiveSection({
     return steps;
   }, [children]);
 
+  // Check if all steps are manually completed
+  const allStepsManuallyCompleted = useMemo(() => {
+    return interactiveSteps.length > 0 && completedSteps.size === interactiveSteps.length;
+  }, [completedSteps.size, interactiveSteps.length]);
+
+  // Combined completion state - includes manual step completion
+  const isCompleted = requirementsChecker.isCompleted || isLocallyCompleted || allStepsManuallyCompleted;
+
+  // Handle individual step completion
+  const handleStepComplete = useCallback((stepIndex: number) => {
+    setCompletedSteps(prev => {
+      const newSet = new Set(prev);
+      newSet.add(stepIndex);
+      return newSet;
+    });
+  }, []);
+
+  // Reset completion state when section is reset
+  const resetSectionCompletion = useCallback(() => {
+    setIsLocallyCompleted(false);
+    setCompletedSteps(new Set());
+  }, []);
+
   const handleDoSection = useCallback(async () => {
     if (disabled || isRunning || interactiveSteps.length === 0 || (!isCompleted && !requirementsChecker.isEnabled)) {
       return;
@@ -233,7 +258,7 @@ export function InteractiveSection({
 
     // If section is completed and we're re-running, reset the completion state
     if (isCompleted) {
-      setIsLocallyCompleted(false);
+      resetSectionCompletion();
       // Don't reset requirementsChecker completion state as it tracks the overall section requirements
     }
 
@@ -281,16 +306,56 @@ export function InteractiveSection({
           'do'
         );
 
-        // Wait between steps
+        // After executing the step, check if its requirements are actually met
+        // This is crucial - we shouldn't assume the step is complete just because we ran it
+        let stepRequirementsMet = true;
+        if ((step.element.props as any).requirements) {
+          // Create a mock element to check requirements post-execution
+          const mockElement = document.createElement('div');
+          mockElement.setAttribute('data-requirements', (step.element.props as any).requirements);
+          mockElement.setAttribute('data-targetaction', step.targetAction);
+          mockElement.setAttribute('data-reftarget', step.refTarget);
+          
+          // Check requirements using the hook function
+          const postExecutionCheck = await checkElementRequirements(mockElement);
+          
+          if (!postExecutionCheck.pass) {
+            console.warn(`Step ${i + 1} requirements still not met after execution:`, postExecutionCheck.error);
+            stepRequirementsMet = false;
+          }
+        }
+
+        // If step requirements are not met after execution, break out of the sequence
+        if (!stepRequirementsMet) {
+          console.warn(`Breaking section sequence at step ${i + 1} due to unmet requirements`);
+          break;
+        }
+
+        // Only mark step as completed if requirements are actually met
+        handleStepComplete(i);
+
+        // Trigger requirements checking after each successful step to unlock subsequent steps
+        // This ensures the UI updates to show steps as enabled/unlocked as they become available
+        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to ensure DOM changes are complete
+        requirementsChecker.triggerReactiveCheck();
+        
+        // Dispatch global event to trigger all individual step requirements checking
+        document.dispatchEvent(new CustomEvent('interactive-step-requirements-check', {
+          detail: { stepIndex: i, sectionId }
+        }));
+
+        // Wait between steps (except for the last step)
         if (i < interactiveSteps.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Additional delay after requirements check to ensure visual updates propagate
+          await new Promise(resolve => setTimeout(resolve, 900));
         }
       }
 
-      // Mark the entire section as completed
+      // Mark the entire section as completed via "Do Section" button
       setIsLocallyCompleted(true);
+      // All individual steps are already marked as completed above
       requirementsChecker.markCompleted();
-      // After completing section, trigger reactive check to unlock next steps
+      // Final reactive check to unlock any subsequent sections or steps
       requirementsChecker.triggerReactiveCheck();
       setCurrentStepIndex(-1);
       if (onComplete) {
@@ -302,7 +367,7 @@ export function InteractiveSection({
     } finally {
       setIsRunning(false);
     }
-  }, [disabled, isRunning, isCompleted, interactiveSteps, onComplete, executeInteractiveAction, checkElementRequirements, requirementsChecker]);
+  }, [disabled, isRunning, isCompleted, interactiveSteps, onComplete, executeInteractiveAction, checkElementRequirements, requirementsChecker, resetSectionCompletion, handleStepComplete, sectionId]);
 
   const getStepStatus = useCallback((stepIndex: number) => {
     if (isCompleted) return 'completed';
@@ -339,6 +404,14 @@ export function InteractiveSection({
               disabled: disabled || isRunning,
               className: `${child.props.className || ''} step-status-${stepStatus}`,
               key: index,
+              onComplete: () => {
+                // Call the original onComplete if it exists
+                if (child.props.onComplete) {
+                  child.props.onComplete();
+                }
+                // Track this step as completed
+                handleStepComplete(index);
+              },
             });
           }
           return child;
@@ -376,7 +449,7 @@ export function InteractiveSection({
             lineHeight: '1.4'
           }}>
             {requirementsChecker.explanation}
-                       <button
+            <button
              onClick={() => {
                requirementsChecker.checkRequirements();
              }}
@@ -444,6 +517,20 @@ export function InteractiveStep({
       requirementsChecker.checkRequirements();
     }
   }, []); // Empty dependency array to run only once
+
+  // Listen for global requirements check events from section execution
+  useEffect(() => {
+    const handleGlobalRequirementsCheck = (event: CustomEvent) => {
+      // Trigger this step's requirements checking when section progresses
+      requirementsChecker.checkRequirements();
+    };
+
+    document.addEventListener('interactive-step-requirements-check', handleGlobalRequirementsCheck as EventListener);
+    
+    return () => {
+      document.removeEventListener('interactive-step-requirements-check', handleGlobalRequirementsCheck as EventListener);
+    };
+  }, [requirementsChecker]);
 
   // Local completion state (different from requirements completion)
   const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);

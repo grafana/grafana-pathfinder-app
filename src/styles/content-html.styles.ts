@@ -473,7 +473,6 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     maxWidth: '100%',
     width: '100%',
     height: 'auto',
-    aspectRatio: '16 / 9', // Default to 16:9 for video content
     margin: `${theme.spacing(2)} 0`,
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
@@ -1560,7 +1559,6 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     maxWidth: '100%',
     width: '100%',
     height: 'auto',
-    aspectRatio: '16 / 9', // Default to 16:9 for video content
     margin: `${theme.spacing(2)} 0`,
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,

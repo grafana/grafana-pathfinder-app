@@ -231,6 +231,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       activeTabId: tabId
     });
 
+    // Save tabs to storage immediately after creating
+    this.saveTabsToStorage();
+
     // Load content for the tab
     this.loadTabContent(tabId, url);
     
@@ -266,6 +269,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       );
       this.setState({ tabs: finalUpdatedTabs });
       
+      // Save tabs to storage after content is loaded
+      this.saveTabsToStorage();
+      
       // Update completion percentage for learning journeys
       const updatedTab = finalUpdatedTabs.find(t => t.id === tabId);
       if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
@@ -286,6 +292,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
           : t
       );
       this.setState({ tabs: errorUpdatedTabs });
+      
+      // Save tabs to storage even when there's an error
+      this.saveTabsToStorage();
     }
   }
 
@@ -397,6 +406,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       activeTabId: tabId
     });
 
+    // Save tabs to storage immediately after creating
+    this.saveTabsToStorage();
+
     // Load docs content for the tab
     this.loadDocsTabContent(tabId, url);
     
@@ -432,6 +444,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       );
       this.setState({ tabs: finalUpdatedTabs });
       
+      // Save tabs to storage after content is loaded
+      this.saveTabsToStorage();
+      
     } catch (error) {
       console.error(`Failed to load docs content for tab ${tabId}:`, error);
       
@@ -445,6 +460,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
           : t
       );
       this.setState({ tabs: errorUpdatedTabs });
+      
+      // Save tabs to storage even when there's an error
+      this.saveTabsToStorage();
     }
   }
 }
@@ -520,11 +538,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     model 
   });
 
-  // Save tabs to storage when state changes
-  React.useEffect(() => {
-    // Call via setState to trigger storage save
-    model.setState({ tabs, activeTabId });
-  }, [tabs, activeTabId]);
+  // Tab persistence is now handled explicitly in the model methods
+  // No need for automatic saving here as it's done when tabs are created/modified
 
   // Close dropdown when clicking outside and handle positioning
   useEffect(() => {
