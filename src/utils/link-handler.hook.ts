@@ -131,7 +131,7 @@ export function useLinkClickHandler({
       // Handle regular anchor links for Grafana docs
       const anchor = target.closest('a[href]') as HTMLAnchorElement;
       
-      if (anchor && !startElement && !target.closest('[data-side-journey-link]') && !target.closest('[data-related-journey-link]')) {
+      if (anchor && !startElement && !target.closest('[data-side-journey-link]') && !target.closest('[data-related-journey-link]') && !target.closest('img.content-image')) {
         const href = anchor.getAttribute('href');
         
         if (href) {
