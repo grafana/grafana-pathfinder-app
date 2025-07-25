@@ -23,6 +23,7 @@ interface InteractiveMultiStepProps {
   onStepComplete?: (stepId: string) => void;
   
   // Content and styling
+  title?: string; // Add title prop like InteractiveStep
   children?: React.ReactNode;
   className?: string;
   disabled?: boolean;
@@ -101,6 +102,7 @@ export const InteractiveMultiStep = forwardRef<
   isCompleted: parentCompleted = false,
   isCurrentlyExecuting = false,
   onStepComplete,
+  title, // Add title prop
   children,
   className,
   disabled = false,
@@ -278,6 +280,7 @@ export const InteractiveMultiStep = forwardRef<
   return (
     <div className={`interactive-step${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}${isCurrentlyExecuting ? ' executing' : ''}`}>
       <div className="interactive-step-content">
+        {title && <div className="interactive-step-title">{title}</div>}
         {children}
       </div>
       

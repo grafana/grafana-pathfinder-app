@@ -284,9 +284,8 @@ function renderParsedElement(
           internalActions={element.props.internalActions}
           requirements={element.props.requirements}
           hints={element.props.hints}
-        >
-          {element.props.title}
-        </InteractiveMultiStep>
+          title={element.props.title}
+        />
       );
     case 'image-renderer':
       return (
