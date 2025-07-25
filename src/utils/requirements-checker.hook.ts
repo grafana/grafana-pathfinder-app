@@ -316,10 +316,34 @@ export class SequentialRequirementsManager {
 
   // Registry of step checker functions for reactive re-checking
   private stepCheckers = new Set<() => void>();
+  
+  // Registry of step checker functions by step ID for targeted re-checking
+  private stepCheckersByID = new Map<string, () => void>();
 
   registerStepChecker(checker: () => void): () => void {
     this.stepCheckers.add(checker);
     return () => this.stepCheckers.delete(checker);
+  }
+  
+  registerStepCheckerByID(stepId: string, checker: () => void): () => void {
+    this.stepCheckersByID.set(stepId, checker);
+    return () => this.stepCheckersByID.delete(stepId);
+  }
+  
+  // Trigger requirements checking for a specific step (for completion cascade)
+  triggerStepCheck(stepId: string): void {
+    const checker = this.stepCheckersByID.get(stepId);
+    if (checker) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`🎯 Triggering targeted requirements check for step: ${stepId}`);
+      }
+      setTimeout(() => {
+        checker();
+      }, 10);
+    } else {
+      // Fallback to global recheck if specific step checker not found
+      this.triggerReactiveCheck();
+    }
   }
 
   // Pure requirements-based success detection - extensible for any data-requirements
@@ -572,14 +596,14 @@ export function useSequentialRequirements({
 
   // Register the checkRequirements function for reactive re-checking
   useEffect(() => {
-    const unregisterChecker = manager.registerStepChecker(() => {
+    const unregisterChecker = manager.registerStepCheckerByID(uniqueId, () => {
       checkRequirements();
     });
     
     return () => {
       unregisterChecker();
     };
-  }, [manager, checkRequirements]);
+  }, [manager, checkRequirements, uniqueId]);
   
   const markCompleted = useCallback(() => {
     // Just delegate to the basic checker - it will update the manager directly

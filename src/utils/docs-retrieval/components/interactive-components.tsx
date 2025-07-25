@@ -1,16 +1,14 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { IconButton, Button, Alert } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive.hook';
-import { useSequentialRequirements } from '../../requirements-checker.hook';
+import { useStepRequirements } from '../../step-requirements.hook';
 import { ParseError } from '../content.types';
 
-// Simple counters for sequential IDs
-let interactiveStepCounter = 0;
+// Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;
 
 // Function to reset counters (can be called when new content loads)
 export function resetInteractiveCounters() {
-  interactiveStepCounter = 0;
   interactiveSectionCounter = 0;
 }
 
@@ -31,6 +29,13 @@ interface InteractiveStepProps extends BaseInteractiveProps {
   title?: string;
   description?: string;
   children?: React.ReactNode;
+  
+  // New unified state management props (added by parent)
+  stepId?: string;
+  isEligibleForChecking?: boolean;
+  isCompleted?: boolean;
+  isCurrentlyExecuting?: boolean;
+  onStepComplete?: (stepId: string) => void;
 }
 
 interface InteractiveSectionProps extends BaseInteractiveProps {
@@ -83,6 +88,17 @@ interface ContentParsingErrorProps {
   fallbackHtml?: string;
   onRetry?: () => void;
   className?: string;
+}
+
+// --- Types for unified state management ---
+interface StepInfo {
+  stepId: string;
+  element: React.ReactElement<InteractiveStepProps>;
+  index: number;
+  targetAction: string;
+  refTarget: string;
+  targetValue?: string;
+  requirements?: string;
 }
 
 // --- Components ---
@@ -176,217 +192,179 @@ export function InteractiveSection({
   disabled = false,
   className,
 }: InteractiveSectionProps) {
-  const [isRunning, setIsRunning] = useState(false);
-  const [currentStepIndex, setCurrentStepIndex] = useState(-1);
-
-  // Generate simple sequential section ID for requirements tracking
+  // Generate simple sequential section ID
   const sectionId = useMemo(() => {
     interactiveSectionCounter++;
     return `section-${interactiveSectionCounter}`;
-  }, []); // Empty deps so it only runs once per component mount
+  }, []);
 
-  // Use React-based requirements checking
-  const requirementsChecker = useSequentialRequirements({
-    requirements,
-    hints,
-    sectionId,
-    targetAction: 'sequence',
-    isSequence: true,
-  });
+  // Sequential state management
+  const [completedSteps, setCompletedSteps] = useState(new Set<string>());
+  const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
 
   // Get the interactive functions from the hook
-  const { executeInteractiveAction, checkElementRequirements } = useInteractiveElements();
+  const { executeInteractiveAction } = useInteractiveElements();
 
-  // Check requirements once when component mounts - prevent infinite loops
-  const hasCheckedRequirements = useRef(false);
-  useEffect(() => {
-    if (!hasCheckedRequirements.current) {
-      hasCheckedRequirements.current = true;
-      requirementsChecker.checkRequirements();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array to run only once
-
-  // Local completion state (different from requirements completion)
-  const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
-
-  // Track completion of individual child steps
-  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
-
-  // Extract interactive steps from children
-  const interactiveSteps = useMemo(() => {
-    const steps: Array<{
-      element: React.ReactElement;
-      targetAction: string;
-      refTarget: string;
-      targetValue?: string;
-      uniqueId: string;
-    }> = [];
+  // Extract step information from children
+  const stepComponents = useMemo((): StepInfo[] => {
+    const steps: StepInfo[] = [];
     
-    React.Children.forEach(children, (child) => {
+    React.Children.forEach(children, (child, index) => {
       if (React.isValidElement(child) && 
-          (child as any).type === InteractiveStep) {
+          (child as any).type === InteractiveStep &&
+          child.props && 
+          typeof child.props === 'object') {
         const props = child.props as InteractiveStepProps;
+        const stepId = `${sectionId}-step-${index + 1}`;
+        
         steps.push({
-          element: child,
+          stepId,
+          element: child as React.ReactElement<InteractiveStepProps>,
+          index,
           targetAction: props.targetAction,
           refTarget: props.refTarget,
           targetValue: props.targetValue,
-          uniqueId: `section-${Date.now()}-${Math.random().toString(36).substring(2, 11)}-${steps.length}`
+          requirements: props.requirements,
         });
       }
     });
     
     return steps;
-  }, [children]);
+  }, [children, sectionId]);
 
-  // Check if all steps are manually completed
-  const allStepsManuallyCompleted = useMemo(() => {
-    return interactiveSteps.length > 0 && completedSteps.size === interactiveSteps.length;
-  }, [completedSteps.size, interactiveSteps.length]);
-
-  // Combined completion state - includes manual step completion
-  const isCompleted = requirementsChecker.isCompleted || isLocallyCompleted || allStepsManuallyCompleted;
+  // Calculate which step is eligible for checking (sequential logic)
+  const getStepEligibility = useCallback((stepIndex: number) => {
+    // First step is always eligible (Trust but Verify)
+    if (stepIndex === 0) return true;
+    
+    // Subsequent steps are eligible if all previous steps are completed
+    for (let i = 0; i < stepIndex; i++) {
+      const prevStepId = stepComponents[i].stepId;
+      if (!completedSteps.has(prevStepId)) {
+        return false;
+      }
+    }
+    return true;
+  }, [completedSteps, stepComponents]);
 
   // Handle individual step completion
-  const handleStepComplete = useCallback((stepIndex: number) => {
-    setCompletedSteps(prev => {
-      const newSet = new Set(prev);
-      newSet.add(stepIndex);
-      return newSet;
-    });
-  }, []);
+  const handleStepComplete = useCallback((stepId: string) => {
+    console.log(`🎯 Step completed: ${stepId}`);
+    setCompletedSteps(prev => new Set([...prev, stepId]));
+    setCurrentlyExecutingStep(null);
+    
+    // Check if all steps are completed
+    if (completedSteps.size + 1 >= stepComponents.length) {
+      console.log(`🏁 Section completed: ${sectionId}`);
+      onComplete?.();
+    }
+  }, [completedSteps.size, stepComponents.length, sectionId, onComplete]);
 
-  // Reset completion state when section is reset
-  const resetSectionCompletion = useCallback(() => {
-    setIsLocallyCompleted(false);
-    setCompletedSteps(new Set());
-  }, []);
+  // Execute a single step (shared between individual and sequence execution)
+  const executeStep = useCallback(async (stepInfo: StepInfo): Promise<boolean> => {
+    console.log(`🚀 Executing step: ${stepInfo.stepId} (${stepInfo.targetAction}: ${stepInfo.refTarget})`);
+    
+    try {
+      // Execute the action using existing interactive logic
+      await executeInteractiveAction(
+        stepInfo.targetAction,
+        stepInfo.refTarget,
+        stepInfo.targetValue,
+        'do'
+      );
+      
+      return true;
+    } catch (error) {
+      console.error(`❌ Step execution failed: ${stepInfo.stepId}`, error);
+      return false;
+    }
+  }, [executeInteractiveAction]);
 
+  // Handle sequence execution (do section)
   const handleDoSection = useCallback(async () => {
-    if (disabled || isRunning || interactiveSteps.length === 0 || (!isCompleted && !requirementsChecker.isEnabled)) {
+    if (disabled || isRunning || stepComponents.length === 0) {
       return;
     }
 
-    // If section is completed and we're re-running, reset the completion state
-    if (isCompleted) {
-      resetSectionCompletion();
-      // Don't reset requirementsChecker completion state as it tracks the overall section requirements
-    }
-
+    console.log(`🚀 Starting section sequence: ${sectionId} (${stepComponents.length} steps)`);
     setIsRunning(true);
-    setCurrentStepIndex(0);
+    
+    // Reset completion state for re-runs
+    setCompletedSteps(new Set());
 
     try {
-      for (let i = 0; i < interactiveSteps.length; i++) {
-        const step = interactiveSteps[i];
-        setCurrentStepIndex(i);
-
-        // Always check step requirements before executing (as requested by user)
-        if ((step.element.props as any).requirements) {
-          // Create a mock element to check requirements
-          const mockElement = document.createElement('div');
-          mockElement.setAttribute('data-requirements', (step.element.props as any).requirements);
-          mockElement.setAttribute('data-targetaction', step.targetAction);
-          mockElement.setAttribute('data-reftarget', step.refTarget);
-          
-          // Check requirements using the hook function
-          const requirementResult = await checkElementRequirements(mockElement);
-          
-          if (!requirementResult.pass) {
-            console.warn(`Step ${i + 1} requirements not met:`, requirementResult.error);
-            // Continue anyway but log the issue - section execution shouldn't stop for individual step requirements
-          }
-        }
+      for (let i = 0; i < stepComponents.length; i++) {
+        const stepInfo = stepComponents[i];
+        setCurrentlyExecutingStep(stepInfo.stepId);
 
         // First, show the step (highlight it)
+        console.log(`👁️ Showing step: ${stepInfo.stepId}`);
         await executeInteractiveAction(
-          step.targetAction,
-          step.refTarget,
-          step.targetValue,
+          stepInfo.targetAction,
+          stepInfo.refTarget,
+          stepInfo.targetValue,
           'show'
         );
 
-        // Wait a bit for the highlight to be visible
+        // Wait for highlight to be visible
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // Then, do the step (perform the action)
-        await executeInteractiveAction(
-          step.targetAction,
-          step.refTarget,
-          step.targetValue,
-          'do'
-        );
-
-        // After executing the step, check if its requirements are actually met
-        // This is crucial - we shouldn't assume the step is complete just because we ran it
-        let stepRequirementsMet = true;
-        if ((step.element.props as any).requirements) {
-          // Create a mock element to check requirements post-execution
-          const mockElement = document.createElement('div');
-          mockElement.setAttribute('data-requirements', (step.element.props as any).requirements);
-          mockElement.setAttribute('data-targetaction', step.targetAction);
-          mockElement.setAttribute('data-reftarget', step.refTarget);
+        // Then, execute the step
+        const success = await executeStep(stepInfo);
+        
+        if (success) {
+          // Mark step as completed
+          handleStepComplete(stepInfo.stepId);
           
-          // Check requirements using the hook function
-          const postExecutionCheck = await checkElementRequirements(mockElement);
-          
-          if (!postExecutionCheck.pass) {
-            console.warn(`Step ${i + 1} requirements still not met after execution:`, postExecutionCheck.error);
-            stepRequirementsMet = false;
+          // Wait between steps for visual feedback
+          if (i < stepComponents.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
-        }
-
-        // If step requirements are not met after execution, break out of the sequence
-        if (!stepRequirementsMet) {
-          console.warn(`Breaking section sequence at step ${i + 1} due to unmet requirements`);
+        } else {
+          console.warn(`⚠️ Breaking section sequence at step ${i + 1} due to execution failure`);
           break;
         }
-
-        // Only mark step as completed if requirements are actually met
-        handleStepComplete(i);
-
-        // Trigger requirements checking after each successful step to unlock subsequent steps
-        // This ensures the UI updates to show steps as enabled/unlocked as they become available
-        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to ensure DOM changes are complete
-        requirementsChecker.triggerReactiveCheck();
-        
-        // Dispatch global event to trigger all individual step requirements checking
-        document.dispatchEvent(new CustomEvent('interactive-step-requirements-check', {
-          detail: { stepIndex: i, sectionId }
-        }));
-
-        // Wait between steps (except for the last step)
-        if (i < interactiveSteps.length - 1) {
-          // Additional delay after requirements check to ensure visual updates propagate
-          await new Promise(resolve => setTimeout(resolve, 900));
-        }
       }
 
-      // Mark the entire section as completed via "Do Section" button
-      setIsLocallyCompleted(true);
-      // All individual steps are already marked as completed above
-      requirementsChecker.markCompleted();
-      // Final reactive check to unlock any subsequent sections or steps
-      requirementsChecker.triggerReactiveCheck();
-      setCurrentStepIndex(-1);
-      if (onComplete) {
-        onComplete();
-      }
+      console.log(`🏁 Section sequence completed: ${sectionId}`);
     } catch (error) {
       console.error('Error running section sequence:', error);
-      setCurrentStepIndex(-1);
     } finally {
       setIsRunning(false);
+      setCurrentlyExecutingStep(null);
     }
-  }, [disabled, isRunning, isCompleted, interactiveSteps, onComplete, executeInteractiveAction, checkElementRequirements, requirementsChecker, resetSectionCompletion, handleStepComplete, sectionId]);
+  }, [disabled, isRunning, stepComponents, sectionId, executeStep, executeInteractiveAction, handleStepComplete]);
 
-  const getStepStatus = useCallback((stepIndex: number) => {
-    if (isCompleted) {return 'completed';}
-    if (currentStepIndex === stepIndex) {return 'running';}
-    if (currentStepIndex > stepIndex) {return 'completed';}
-    return 'pending';
-  }, [isCompleted, currentStepIndex]);
+  // Render enhanced children with coordination props
+  const enhancedChildren = useMemo(() => {
+    return React.Children.map(children, (child, index) => {
+      if (React.isValidElement(child) && 
+          (child as any).type === InteractiveStep) {
+        const stepInfo = stepComponents[index];
+        if (!stepInfo) return child;
+        
+        const isEligibleForChecking = getStepEligibility(index);
+        const isCompleted = completedSteps.has(stepInfo.stepId);
+        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
+        
+        return React.cloneElement(child as React.ReactElement<InteractiveStepProps>, {
+          ...child.props,
+          stepId: stepInfo.stepId,
+          isEligibleForChecking,
+          isCompleted,
+          isCurrentlyExecuting,
+          onStepComplete: handleStepComplete,
+          disabled: disabled || isRunning,
+          key: stepInfo.stepId,
+        });
+      }
+      return child;
+    });
+  }, [children, stepComponents, getStepEligibility, completedSteps, currentlyExecutingStep, handleStepComplete, disabled, isRunning]);
+
+  // Calculate section completion status
+  const isCompleted = stepComponents.length > 0 && completedSteps.size >= stepComponents.length;
 
   return (
     <div className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}`}>
@@ -408,84 +386,35 @@ export function InteractiveSection({
       )}
       
       <div className="interactive-section-content">
-        {React.Children.map(children, (child, index) => {
-          if (React.isValidElement(child) && 
-              (child as any).type === InteractiveStep) {
-            const stepStatus = getStepStatus(index);
-            return React.cloneElement(child as React.ReactElement<any>, {
-              disabled: disabled || isRunning,
-              className: `${child.props.className || ''} step-status-${stepStatus}`,
-              key: index,
-              onComplete: () => {
-                // Call the original onComplete if it exists
-                if (child.props.onComplete) {
-                  child.props.onComplete();
-                }
-                // Track this step as completed
-                handleStepComplete(index);
-              },
-            });
-          }
-          return child;
-        })}
+        {enhancedChildren}
       </div>
       
       <div className="interactive-section-actions">
         <Button
           onClick={handleDoSection}
-          disabled={disabled || isRunning || interactiveSteps.length === 0 || (!isCompleted && !requirementsChecker.isEnabled)}
+          disabled={disabled || isRunning || stepComponents.length === 0}
           size="md"
           variant={isCompleted ? "secondary" : "primary"}
           className="interactive-section-do-button"
           title={
-            requirementsChecker.isChecking ? 'Checking requirements...' :
             isCompleted ? 'Run the section again' :
-            !requirementsChecker.isEnabled && requirementsChecker.explanation ? requirementsChecker.explanation :
-            hints || `Run through all ${interactiveSteps.length} steps in sequence`
+            isRunning ? `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...` :
+            hints || `Run through all ${stepComponents.length} steps in sequence`
           }
         >
-          {requirementsChecker.isChecking ? 'Checking...' :
-           isCompleted ? `Redo Section (${interactiveSteps.length} steps)` :
-           isRunning ? `Running Step ${currentStepIndex + 1}/${interactiveSteps.length}...` : 
-           !requirementsChecker.isEnabled ? 'Requirements not met' :
-           `Do Section (${interactiveSteps.length} steps)`}
+          {isCompleted ? `Redo Section (${stepComponents.length} steps)` :
+           isRunning ? `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...` : 
+           `Do Section (${stepComponents.length} steps)`}
         </Button>
-        
-        {/* Show amber explanation text when requirements aren't met */}
-        {!requirementsChecker.isEnabled && !isCompleted && !requirementsChecker.isChecking && requirementsChecker.explanation && (
-          <div className="interactive-section-requirement-explanation" style={{ 
-            color: '#ff8c00', 
-            fontSize: '0.875rem', 
-            marginTop: '8px',
-            fontStyle: 'italic',
-            lineHeight: '1.4'
-          }}>
-            {requirementsChecker.explanation}
-            <button
-             onClick={() => {
-               requirementsChecker.checkRequirements();
-             }}
-              style={{
-                marginLeft: '8px',
-                padding: '2px 8px',
-                fontSize: '0.75rem',
-                border: '1px solid #ff8c00',
-                background: 'transparent',
-                color: '#ff8c00',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              Retry
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
-export function InteractiveStep({
+export const InteractiveStep = forwardRef<
+  { executeStep: () => Promise<boolean> },
+  InteractiveStepProps
+>(({
   targetAction,
   refTarget,
   targetValue,
@@ -498,100 +427,118 @@ export function InteractiveStep({
   onComplete,
   disabled = false,
   className,
-}: InteractiveStepProps) {
+  // New unified state management props (passed by parent)
+  stepId,
+  isEligibleForChecking = true,
+  isCompleted: parentCompleted = false,
+  isCurrentlyExecuting = false,
+  onStepComplete,
+}, ref) => {
+  // Local UI state
+  const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
   const [isShowRunning, setIsShowRunning] = useState(false);
   const [isDoRunning, setIsDoRunning] = useState(false);
   
-  // Generate simple sequential step ID for requirements tracking
-  const stepId = useMemo(() => {
-    // Use a simple counter approach for predictable ordering
-    interactiveStepCounter++;
-    return `step-${interactiveStepCounter}`;
-  }, []); // Empty deps so it only runs once per component mount
-
-  // Use React-based requirements checking
-  const requirementsChecker = useSequentialRequirements({
-    requirements,
-    hints,
-    stepId,
-    targetAction,
-    isSequence: false,
-  });
+  // Combined completion state (parent takes precedence for coordination)
+  const isCompleted = parentCompleted || isLocallyCompleted;
   
   // Get the interactive functions from the hook
   const { executeInteractiveAction } = useInteractiveElements();
-
-  // Check requirements once when component mounts - prevent infinite loops
-  const hasCheckedStepRequirements = useRef(false);
-  useEffect(() => {
-    if (!hasCheckedStepRequirements.current) {
-      hasCheckedStepRequirements.current = true;
-      requirementsChecker.checkRequirements();
+  
+  // Use the new step requirements hook with parent coordination
+  const requirementsChecker = useStepRequirements({
+    requirements,
+    hints,
+    stepId: stepId || `step-${Date.now()}`, // Fallback if no stepId provided
+    isEligibleForChecking: isEligibleForChecking && !isCompleted
+  });
+  
+  // Execution logic (shared between individual and sequence execution)
+  const executeStep = useCallback(async (): Promise<boolean> => {
+    if (!requirementsChecker.isEnabled || isCompleted || disabled) {
+      console.warn(`⚠️ Step execution blocked: ${stepId}`, {
+        enabled: requirementsChecker.isEnabled,
+        completed: isCompleted,
+        disabled
+      });
+      return false;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array to run only once
-
-  // Listen for global requirements check events from section execution
-  useEffect(() => {
-    const handleGlobalRequirementsCheck = (event: CustomEvent) => {
-      // Trigger this step's requirements checking when section progresses
-      requirementsChecker.checkRequirements();
-    };
-
-    document.addEventListener('interactive-step-requirements-check', handleGlobalRequirementsCheck as EventListener);
     
-    return () => {
-      document.removeEventListener('interactive-step-requirements-check', handleGlobalRequirementsCheck as EventListener);
-    };
-  }, [requirementsChecker]);
-
-  // Local completion state (different from requirements completion)
-  const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
-  const isCompleted = requirementsChecker.isCompleted || isLocallyCompleted;
-
+    try {
+      console.log(`🚀 Executing step: ${stepId} (${targetAction}: ${refTarget})`);
+      
+      // Execute the action using existing interactive logic
+      await executeInteractiveAction(targetAction, refTarget, targetValue, 'do');
+      
+      // Mark as completed locally and notify parent
+      setIsLocallyCompleted(true);
+      
+      // Notify parent if we have the callback (section coordination)
+      if (onStepComplete && stepId) {
+        onStepComplete(stepId);
+      }
+      
+      // Call the original onComplete callback if provided
+      if (onComplete) {
+        onComplete();
+      }
+      
+      console.log(`✅ Step completed: ${stepId}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Step execution failed: ${stepId}`, error);
+      return false;
+    }
+  }, [
+    requirementsChecker.isEnabled,
+    isCompleted,
+    disabled,
+    stepId,
+    targetAction,
+    refTarget,
+    targetValue,
+    executeInteractiveAction,
+    onStepComplete,
+    onComplete
+  ]);
+  
+  // Expose execute method for parent (sequence execution)
+  useImperativeHandle(ref, () => ({
+    executeStep
+  }), [executeStep]);
+  
+  // Handle individual "Show me" action
   const handleShowAction = useCallback(async () => {
-    if (disabled || isShowRunning || isCompleted || !requirementsChecker.isEnabled) {return;}
+    if (disabled || isShowRunning || isCompleted || !requirementsChecker.isEnabled) {
+      return;
+    }
     
     setIsShowRunning(true);
     try {
       await executeInteractiveAction(targetAction, refTarget, targetValue, 'show');
-      // After show action, trigger a reactive check of all steps in case DOM changed
-      requirementsChecker.triggerReactiveCheck();
     } catch (error) {
       console.error('Interactive show action failed:', error);
     } finally {
       setIsShowRunning(false);
     }
-  }, [targetAction, refTarget, targetValue, disabled, isShowRunning, isCompleted, executeInteractiveAction, requirementsChecker]);
-
+  }, [targetAction, refTarget, targetValue, disabled, isShowRunning, isCompleted, requirementsChecker.isEnabled, executeInteractiveAction]);
+  
+  // Handle individual "Do it" action (delegates to executeStep)
   const handleDoAction = useCallback(async () => {
-    if (disabled || isDoRunning || isCompleted || !requirementsChecker.isEnabled) {return;}
+    if (disabled || isDoRunning || isCompleted || !requirementsChecker.isEnabled) {
+      return;
+    }
     
     setIsDoRunning(true);
     try {
-      await executeInteractiveAction(targetAction, refTarget, targetValue, 'do');
-      
-      // Auto-unlock strategy: complete this step and trigger reactive checking
-      setTimeout(async () => {
-        // Always complete this step after "Do it" action
-        setIsLocallyCompleted(true);
-        requirementsChecker.markCompleted();
-        
-        // Single reactive check with slight delay to ensure completion state is fully propagated
-        setTimeout(() => {
-          requirementsChecker.triggerReactiveCheck();
-        }, 50); // Small delay to ensure completion state is propagated to manager
-        
-      }, 700); // Reduced delay for faster step unlocking
-      
-      if (onComplete) {onComplete();}
+      await executeStep();
     } catch (error) {
       console.error('Interactive do action failed:', error);
     } finally {
       setIsDoRunning(false);
     }
-  }, [targetAction, refTarget, targetValue, disabled, isDoRunning, isCompleted, onComplete, executeInteractiveAction, requirementsChecker]);
-
+  }, [disabled, isDoRunning, isCompleted, requirementsChecker.isEnabled, executeStep]);
+  
   const getActionDescription = () => {
     switch (targetAction) {
       case 'button': return `Click "${refTarget}"`;
@@ -602,16 +549,17 @@ export function InteractiveStep({
       default: return targetAction;
     }
   };
-
-  const isAnyActionRunning = isShowRunning || isDoRunning;
-
+  
+  const isAnyActionRunning = isShowRunning || isDoRunning || isCurrentlyExecuting;
+  
   return (
-    <div className={`interactive-step${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}`}>
+    <div className={`interactive-step${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}${isCurrentlyExecuting ? ' executing' : ''}`}>
       <div className="interactive-step-content">
         {title && <div className="interactive-step-title">{title}</div>}
         {description && <div className="interactive-step-description">{description}</div>}
         {children}
       </div>
+      
       <div className="interactive-step-actions">
         <div className="interactive-step-action-buttons">
           <Button
@@ -646,7 +594,7 @@ export function InteractiveStep({
           >
             {requirementsChecker.isChecking ? 'Checking...' :
              isCompleted ? '✓ Completed' : 
-             isDoRunning ? 'Doing...' : 
+             isDoRunning || isCurrentlyExecuting ? 'Executing...' : 
              !requirementsChecker.isEnabled ? 'Requirements not met' :
              'Do it'}
           </Button>
@@ -655,7 +603,7 @@ export function InteractiveStep({
         {isCompleted && <span className="interactive-step-completed-indicator">✓</span>}
       </div>
       
-      {/* Show amber explanation text when requirements aren't met */}
+      {/* Show explanation text when requirements aren't met */}
       {!requirementsChecker.isEnabled && !isCompleted && !requirementsChecker.isChecking && requirementsChecker.explanation && (
         <div className="interactive-step-requirement-explanation" style={{ 
           color: '#ff8c00', 
@@ -666,10 +614,10 @@ export function InteractiveStep({
           paddingLeft: '12px'
         }}>
           {requirementsChecker.explanation}
-                     <button
-             onClick={() => {
-               requirementsChecker.checkRequirements();
-             }}
+          <button
+            onClick={() => {
+              requirementsChecker.checkRequirements();
+            }}
             style={{
               marginLeft: '8px',
               padding: '2px 8px',
@@ -687,7 +635,10 @@ export function InteractiveStep({
       )}
     </div>
   );
-}
+});
+
+// Add display name for debugging
+InteractiveStep.displayName = 'InteractiveStep';
 
 export function CodeBlock({
   code,
