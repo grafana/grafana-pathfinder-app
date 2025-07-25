@@ -19,31 +19,6 @@ This is a **Grafana App Plugin** that provides contextual documentation and lear
 - **Multi-Strategy Content Fetching**: Resilient approach with fallbacks for different URL patterns and content types
 - **CSS-in-JS with Theming**: Emotion styling system integrated with Grafana's theme system
 
-## Major Architectural Evolution (v1.0.2)
-
-### Completed Refactoring Achievement ✅
-Successfully transformed from monolithic to modular architecture:
-
-**Before Refactoring** (Legacy):
-- Single monolithic component file: ~3,500+ lines
-- Mixed concerns: UI rendering, business logic, styling, event handling all in one place
-- Difficult to maintain, test, and extend
-- Poor code organization and reusability
-
-**After Refactoring** (Current):
-- **Focused Components**: UI components with single responsibilities (~200-500 lines each)
-- **Extracted Business Logic**: React hooks in `/utils/*.hook.ts` files
-- **Organized Styling**: Theme-aware CSS-in-JS functions in `/styles/` directory
-- **Centralized Configuration**: Type-safe constants and selectors in `/constants/`
-- **Clear Separation**: UI, business logic, styling, and configuration cleanly separated
-
-### Refactoring Benefits Realized
-- **Maintainability**: Easy to locate and modify specific functionality
-- **Testability**: Individual functions and hooks can be unit tested in isolation
-- **Reusability**: Hooks and utilities can be shared across components
-- **Performance**: Better tree-shaking and code splitting capabilities
-- **Developer Experience**: Improved IntelliSense, type safety, and debugging
-
 ## Design Patterns in Use
 
 - **Observer Pattern**: Interactive elements system with custom events for "show me"/"do it" functionality
@@ -52,29 +27,6 @@ Successfully transformed from monolithic to modular architecture:
 - **Hook Pattern**: Business logic extracted into reusable React hooks (useContextPanel, useContentProcessing, etc.)
 - **Cache Pattern**: Multi-level caching (content cache, milestone cache) with TTL and invalidation strategies
 - **Plugin Pattern**: Extensible architecture allowing custom content sources and processing pipelines
-
-## Component Relationships (Post-Refactoring)
-
-```
-App.tsx (Root)
-├── SceneApp with docsPage
-└── PluginPropsContext.Provider
-    └── CombinedLearningJourneyPanel
-        ├── Tab Management (create/close/switch tabs)
-        ├── ContextPanel (recommendations)
-        │   └── useContextPanel hook
-        │       ├── Context analysis & data fetching
-        │       ├── Recommendation processing
-        │       └── User interaction handlers
-        └── Content Rendering
-            ├── LearningJourney content
-            ├── SingleDocs content
-            └── Content Processing Pipeline
-                ├── useContentProcessing hook
-                ├── useInteractiveElements hook
-                ├── useKeyboardShortcuts hook
-                └── useLinkClickHandler hook
-```
 
 **Key Relationships** (Updated):
 - `App.tsx` → Scene setup and auto-launch functionality
