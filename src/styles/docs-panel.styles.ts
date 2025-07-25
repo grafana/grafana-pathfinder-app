@@ -98,6 +98,8 @@ export const addGlobalModalStyles = () => {
     }
     
     .journey-image-modal-image {
+      max-width: 100%;
+      max-height: 100%;
       width: auto;
       height: auto;
       object-fit: contain;
@@ -152,6 +154,7 @@ export const getTopBarStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1),
     padding: theme.spacing(1),
     backgroundColor: theme.colors.background.canvas,
+    // Removed overflow: 'hidden' to allow chevron button to be visible
   }),
   title: css({
     label: 'combined-journey-title',
@@ -216,6 +219,7 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(0.5),
     overflow: 'hidden', // Hide overflowing tabs (dropdown is now outside)
     flex: 1,
+    minWidth: 0, // Allow flex shrinking
   }),
   tab: css({
     label: 'combined-journey-tab',
@@ -302,6 +306,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     position: 'relative',
     display: 'flex',
     alignItems: 'center',
+    flexShrink: 0, // Don't shrink the chevron button
+    zIndex: 1, // Ensure it's above other content
   }),
   chevronTab: css({
     label: 'combined-journey-chevron-tab',
@@ -324,10 +330,10 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     label: 'combined-journey-tab-dropdown',
     position: 'absolute',
     top: '100%',
-    right: theme.spacing(1), // Align with tabBar padding
+    right: 0, // Align with the right edge of the chevron button
     zIndex: 9999, // High z-index to appear above content
-    minWidth: '200px',
-    maxWidth: '300px',
+    minWidth: '220px',
+    maxWidth: '320px',
     backgroundColor: theme.colors.background.primary,
     border: `1px solid ${theme.colors.border.medium}`,
     borderRadius: theme.shape.radius.default,
@@ -336,6 +342,23 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     marginTop: theme.spacing(0.25),
     maxHeight: '60vh',
     overflowY: 'auto',
+    
+    // Prevent clipping on small screens
+    '@media (max-width: 480px)': {
+      right: 'auto',
+      left: 0,
+      minWidth: '200px',
+      maxWidth: '280px',
+    },
+    
+    // Ensure dropdown doesn't extend beyond viewport
+    transform: 'translateX(0)',
+    
+    // Alternative positioning when there's not enough space on the right
+    '&[data-position="left"]': {
+      right: 'auto',
+      left: 0,
+    },
   }),
   dropdownItem: css({
     label: 'combined-journey-dropdown-item',
@@ -412,7 +435,7 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
   journeyContent: css({
     backgroundColor: theme.colors.background.secondary,
     border: 'none',
-    overflow: 'hidden',
+    overflow: 'auto',
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
@@ -420,7 +443,7 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
   docsContent: css({
     backgroundColor: theme.colors.background.secondary,
     border: `1px solid ${theme.colors.border.weak}`,
-    overflow: 'hidden',
+    overflow: 'auto',
     flex: 1,
     display: 'flex',
     flexDirection: 'column',

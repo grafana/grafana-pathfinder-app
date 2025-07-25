@@ -43,7 +43,7 @@ Theme-aware CSS-in-JS styling organized by functionality:
 
 ### `/utils` - Business Logic & Utilities
 Organized by functionality after major refactoring:
-- **Data Fetching**: `docs-fetcher.ts`, `single-docs-fetcher.ts`, `context-data-fetcher.ts`
+- **Data Fetching**: `docs-retrieval/` (unified system), `context/context.service.ts`
 - **React Hooks**: `*.hook.ts` files for separated concerns
 - **Context Analysis**: `context-analysis.ts`, `context-panel.hook.ts`
 - **Utilities**: Configuration, routing, and component helpers

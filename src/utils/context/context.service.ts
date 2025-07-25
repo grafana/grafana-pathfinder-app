@@ -1,6 +1,6 @@
 import { getBackendSrv, config, locationService } from '@grafana/runtime';
 import { getRecommenderServiceUrl } from '../../constants';
-import { fetchLearningJourneyContent, getLearningJourneyCompletionPercentage } from '../docs-fetcher';
+import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import { 
   ContextData, 
   DataSource, 
@@ -93,6 +93,13 @@ export class ContextService {
       // Add default recommendations for testing
       const defaultRecommendations: Recommendation[] = [
         {
+          title: 'Explore logs using Logs Drilldown',
+          url: 'https://grafana.com/docs/learning-journeys/drilldown-logs/',
+          type: 'learning-journey',
+          matchAccuracy: 0.8,
+          summary: 'Learn how to explore logs using Grafana\'s Logs Drilldown feature for efficient log analysis.',
+        },
+        {
           title: 'Build Your First Dashboard',
           url: 'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/r-grafana',
           type: 'docs-page',
@@ -119,14 +126,18 @@ export class ContextService {
         allRecommendations.map(async (rec) => {
           if (rec.type === 'learning-journey' || !rec.type) {
             try {
-              const journeyContent = await fetchLearningJourneyContent(rec.url);
-              const completionPercentage = getLearningJourneyCompletionPercentage(rec.url);
+              const result = await fetchContent(rec.url);
+              const completionPercentage = getJourneyCompletionPercentage(rec.url);
+              
+              // Extract learning journey data from the unified content
+              const milestones = result.content?.metadata.learningJourney?.milestones || [];
+              const summary = result.content?.metadata.learningJourney?.summary || rec.summary || '';
               
               return {
                 ...rec,
-                totalSteps: journeyContent?.milestones?.length || 0,
-                milestones: journeyContent?.milestones || [],
-                summary: journeyContent?.summary || '',
+                totalSteps: milestones.length,
+                milestones: milestones,
+                summary: summary,
                 completionPercentage,
               };
             } catch (error) {
@@ -135,8 +146,8 @@ export class ContextService {
                 ...rec,
                 totalSteps: 0,
                 milestones: [],
-                summary: '',
-                completionPercentage: getLearningJourneyCompletionPercentage(rec.url),
+                summary: rec.summary || '',
+                completionPercentage: getJourneyCompletionPercentage(rec.url),
               };
             }
           }
