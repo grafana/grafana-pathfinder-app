@@ -431,12 +431,8 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
         ) {
           hasInteractiveElements = true;
           
-          // Extract text content by cloning element and removing spans
-          // This is more robust than trying to extract only direct text nodes
-          const elementClone = el.cloneNode(true) as Element;
-          const spansToRemove = elementClone.querySelectorAll('span.interactive');
-          spansToRemove.forEach(span => span.remove());
-          const elementTextContent = elementClone.textContent?.trim() || '';
+          // Extract text content - use all text content from the multistep element as title
+          const elementTextContent = el.textContent?.trim() || '';
           
           // Extract internal action spans (from original element)
           const internalSpans = el.querySelectorAll('span.interactive');
