@@ -1,7 +1,8 @@
-import React, { useState, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useCallback, useMemo, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { IconButton, Button, Alert } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive.hook';
 import { useStepRequirements } from '../../step-requirements.hook';
+import { useStepObjectives } from '../../step-objectives.hook';
 import { ParseError } from '../content.types';
 import { InteractiveMultiStep } from './interactive-multi-step';
 
@@ -19,7 +20,7 @@ export function resetInteractiveCounters() {
 // --- Types ---
 interface BaseInteractiveProps {
   requirements?: string;
-  outcomes?: string;
+  objectives?: string;
   hints?: string;
   onComplete?: () => void;
   disabled?: boolean;
@@ -191,7 +192,7 @@ export function InteractiveSection({
   children,
   isSequence = false,
   requirements,
-  outcomes,
+  objectives,
   hints,
   onComplete,
   disabled = false,
@@ -211,7 +212,7 @@ export function InteractiveSection({
   // Get the interactive functions from the hook
   const { executeInteractiveAction } = useInteractiveElements();
 
-  // Extract step information from children
+  // Extract step information from children first (needed for completion calculation)
   const stepComponents = useMemo((): StepInfo[] => {
     const steps: StepInfo[] = [];
     
@@ -234,12 +235,15 @@ export function InteractiveSection({
       } else if (React.isValidElement(child) && 
                  (child as any).type === InteractiveMultiStep) {
         const props = child.props as InteractiveMultiStepProps;
-        const stepId = `${sectionId}-step-${index + 1}`;
+        const stepId = `${sectionId}-multistep-${index + 1}`;
         
         steps.push({
           stepId,
           element: child as React.ReactElement<InteractiveMultiStepProps>,
           index,
+          targetAction: undefined, // Multi-step handles internally
+          refTarget: undefined,
+          targetValue: undefined,
           requirements: props.requirements,
           isMultiStep: true,
         });
@@ -248,6 +252,33 @@ export function InteractiveSection({
     
     return steps;
   }, [children, sectionId]);
+
+  if (objectives) {
+    console.log("🔍 [DEBUG] InteractiveSection: " + sectionId + " objectives", objectives);
+  }
+  
+  // Calculate base completion (steps completed) - needed for completion logic
+  const stepsCompleted = stepComponents.length > 0 && completedSteps.size >= stepComponents.length;
+  
+  // Add objectives checking for section - disable if steps are already completed
+  const objectivesChecker = useStepObjectives({
+    objectives,
+    stepId: sectionId,
+    isEligibleForChecking: !stepsCompleted // Stop checking once steps are done
+  });
+  
+  // UNIFIED completion calculation - objectives always win (clarification 1, 2)
+  const isCompleted = objectivesChecker.isObjectiveMet || stepsCompleted;
+
+  // When section objectives are met, mark all child steps as complete (clarification 2, 16)
+  useEffect(() => {
+    console.log("🔍 [DEBUG] InteractiveSection: " + sectionId + " useEffect: objectivesChecker", objectivesChecker);
+    if (objectivesChecker.isObjectiveMet && stepComponents.length > 0) {
+      const allStepIds = new Set(stepComponents.map(step => step.stepId));
+      setCompletedSteps(allStepIds);
+      console.log(`✅ Section objectives met for ${sectionId}, marking all ${allStepIds.size} child steps as complete`);
+    }
+  }, [objectivesChecker, stepComponents, sectionId]);
 
   // Calculate which step is eligible for checking (sequential logic)
   const getStepEligibility = useCallback((stepIndex: number) => {
@@ -406,9 +437,6 @@ export function InteractiveSection({
     });
   }, [children, stepComponents, getStepEligibility, completedSteps, currentlyExecutingStep, handleStepComplete, disabled, isRunning]);
 
-  // Calculate section completion status
-  const isCompleted = stepComponents.length > 0 && completedSteps.size >= stepComponents.length;
-
   return (
     <div className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}`}>
       <div className="interactive-section-header">
@@ -435,17 +463,19 @@ export function InteractiveSection({
       <div className="interactive-section-actions">
         <Button
           onClick={handleDoSection}
-          disabled={disabled || isRunning || stepComponents.length === 0}
+          disabled={disabled || isRunning || stepComponents.length === 0 || objectivesChecker.isObjectiveMet}
           size="md"
           variant={isCompleted ? "secondary" : "primary"}
           className="interactive-section-do-button"
           title={
+            objectivesChecker.isObjectiveMet ? 'Already done!' :
             isCompleted ? 'Run the section again' :
             isRunning ? `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...` :
             hints || `Run through all ${stepComponents.length} steps in sequence`
           }
         >
-          {isCompleted ? `Redo Section (${stepComponents.length} steps)` :
+          {objectivesChecker.isObjectiveMet ? 'Already done!' :
+           isCompleted ? `Redo Section (${stepComponents.length} steps)` :
            isRunning ? `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...` : 
            `Do Section (${stepComponents.length} steps)`}
         </Button>
@@ -465,7 +495,7 @@ export const InteractiveStep = forwardRef<
   description,
   children,
   requirements,
-  outcomes,
+  objectives,
   hints,
   onComplete,
   disabled = false,
@@ -496,12 +526,23 @@ export const InteractiveStep = forwardRef<
     isEligibleForChecking: isEligibleForChecking && !isCompleted
   });
   
+  // Use the new objectives hook for parallel checking (clarification 1)
+  // Use base completion (without objectives) to prevent circular dependency
+  const objectivesChecker = useStepObjectives({
+    objectives,
+    stepId: stepId || `step-${Date.now()}`,
+    isEligibleForChecking: isEligibleForChecking && !isCompleted // Use base completion
+  });
+  
+  // Combined completion state: objectives always win (clarification 1, 2)
+  const isCompletedWithObjectives = parentCompleted || isLocallyCompleted || objectivesChecker.isObjectiveMet;
+  
   // Execution logic (shared between individual and sequence execution)
   const executeStep = useCallback(async (): Promise<boolean> => {
-    if (!requirementsChecker.isEnabled || isCompleted || disabled) {
+    if (!requirementsChecker.isEnabled || isCompletedWithObjectives || disabled) {
       console.warn(`⚠️ Step execution blocked: ${stepId}`, {
         enabled: requirementsChecker.isEnabled,
-        completed: isCompleted,
+        completed: isCompletedWithObjectives,
         disabled
       });
       return false;
@@ -534,7 +575,7 @@ export const InteractiveStep = forwardRef<
     }
   }, [
     requirementsChecker.isEnabled,
-    isCompleted,
+    isCompletedWithObjectives,
     disabled,
     stepId,
     targetAction,
@@ -552,7 +593,7 @@ export const InteractiveStep = forwardRef<
   
   // Handle individual "Show me" action
   const handleShowAction = useCallback(async () => {
-    if (disabled || isShowRunning || isCompleted || !requirementsChecker.isEnabled) {
+    if (disabled || isShowRunning || isCompletedWithObjectives || !requirementsChecker.isEnabled) {
       return;
     }
     
@@ -564,11 +605,11 @@ export const InteractiveStep = forwardRef<
     } finally {
       setIsShowRunning(false);
     }
-  }, [targetAction, refTarget, targetValue, disabled, isShowRunning, isCompleted, requirementsChecker.isEnabled, executeInteractiveAction]);
+  }, [targetAction, refTarget, targetValue, disabled, isShowRunning, isCompletedWithObjectives, requirementsChecker.isEnabled, executeInteractiveAction]);
   
   // Handle individual "Do it" action (delegates to executeStep)
   const handleDoAction = useCallback(async () => {
-    if (disabled || isDoRunning || isCompleted || !requirementsChecker.isEnabled) {
+    if (disabled || isDoRunning || isCompletedWithObjectives || !requirementsChecker.isEnabled) {
       return;
     }
     
@@ -580,7 +621,7 @@ export const InteractiveStep = forwardRef<
     } finally {
       setIsDoRunning(false);
     }
-  }, [disabled, isDoRunning, isCompleted, requirementsChecker.isEnabled, executeStep]);
+  }, [disabled, isDoRunning, isCompletedWithObjectives, requirementsChecker.isEnabled, executeStep]);
   
   const getActionDescription = () => {
     switch (targetAction) {
@@ -596,7 +637,7 @@ export const InteractiveStep = forwardRef<
   const isAnyActionRunning = isShowRunning || isDoRunning || isCurrentlyExecuting;
   
   return (
-    <div className={`interactive-step${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}${isCurrentlyExecuting ? ' executing' : ''}`}>
+    <div className={`interactive-step${className ? ` ${className}` : ''}${isCompletedWithObjectives ? ' completed' : ''}${isCurrentlyExecuting ? ' executing' : ''}`}>
       <div className="interactive-step-content">
         {title && <div className="interactive-step-title">{title}</div>}
         {description && <div className="interactive-step-description">{description}</div>}
@@ -607,50 +648,53 @@ export const InteractiveStep = forwardRef<
         <div className="interactive-step-action-buttons">
           <Button
             onClick={handleShowAction}
-            disabled={disabled || isCompleted || isAnyActionRunning || !requirementsChecker.isEnabled}
+            disabled={disabled || isCompletedWithObjectives || isAnyActionRunning || (!requirementsChecker.isEnabled && !objectivesChecker.isObjectiveMet)}
             size="sm"
             variant="secondary"
             className="interactive-step-show-btn"
             title={
+              objectivesChecker.isObjectiveMet ? 'Already done!' :
               requirementsChecker.isChecking ? 'Checking requirements...' :
               hints || `Show me: ${getActionDescription()}`
             }
           >
-            {requirementsChecker.isChecking ? 'Checking...' :
+            {objectivesChecker.isObjectiveMet ? 'Already done!' :
+             requirementsChecker.isChecking ? 'Checking...' :
              isShowRunning ? 'Showing...' : 
-             !requirementsChecker.isEnabled && !isCompleted ? 'Requirements not met' :
+             !requirementsChecker.isEnabled && !isCompletedWithObjectives ? 'Requirements not met' :
              'Show me'}
           </Button>
           
           { 
             // Only show the do it button if the step is eligible or already completed.
-            // If the requirements have not been met, don't give them the option, and don't
-            // duplicate the "Requirements not met" text above.
-            (requirementsChecker.isEnabled || isCompleted) && (
+            // Objectives always win over requirements (clarification 2)
+            (requirementsChecker.isEnabled || isCompletedWithObjectives || objectivesChecker.isObjectiveMet) && (
               <Button
               onClick={handleDoAction}
-              disabled={disabled || isCompleted || isAnyActionRunning || !requirementsChecker.isEnabled}
+              disabled={disabled || isCompletedWithObjectives || isAnyActionRunning || (!requirementsChecker.isEnabled && !objectivesChecker.isObjectiveMet)}
               size="sm"
               variant="primary"
               className="interactive-step-do-btn"
               title={
+                objectivesChecker.isObjectiveMet ? 'Already done!' :
                 requirementsChecker.isChecking ? 'Checking requirements...' :
                 hints || `Do it: ${getActionDescription()}`
               }
             >
-              {requirementsChecker.isChecking ? 'Checking...' :
-              isCompleted ? '✓ Completed' : 
+              {objectivesChecker.isObjectiveMet ? 'Already done!' :
+              requirementsChecker.isChecking ? 'Checking...' :
+              isCompletedWithObjectives ? '✓ Completed' : 
               isDoRunning || isCurrentlyExecuting ? 'Executing...' : 
               'Do it'}
             </Button>
           )}
         </div>
         
-        {isCompleted && <span className="interactive-step-completed-indicator">✓</span>}
+        {isCompletedWithObjectives && <span className="interactive-step-completed-indicator">✓</span>}
       </div>
       
-      {/* Show explanation text when requirements aren't met */}
-      {!requirementsChecker.isEnabled && !isCompleted && !requirementsChecker.isChecking && requirementsChecker.explanation && (
+      {/* Show explanation text when requirements aren't met, but objectives always win (clarification 2) */}
+      {!objectivesChecker.isObjectiveMet && !requirementsChecker.isEnabled && !isCompletedWithObjectives && !requirementsChecker.isChecking && requirementsChecker.explanation && (
         <div className="interactive-step-requirement-explanation" style={{ 
           color: '#ff8c00', 
           fontSize: '0.875rem', 

@@ -24,6 +24,7 @@ export interface InteractiveElementData {
   targetaction: string;
   targetvalue?: string;
   requirements?: string;
+  objectives?: string;
   
   // Element context
   tagName: string;
@@ -53,7 +54,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   // Extract all data-* attributes except the core ones
   Array.from(element.attributes).forEach(attr => {
     if (attr.name.startsWith('data-') && 
-        !['data-reftarget', 'data-targetaction', 'data-targetvalue', 'data-requirements'].includes(attr.name)) {
+        !['data-reftarget', 'data-targetaction', 'data-targetvalue', 'data-requirements', 'data-objectives'].includes(attr.name)) {
       const key = attr.name.substring(5); // Remove 'data-' prefix
       customData[key] = attr.value;
     }
@@ -64,6 +65,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const targetaction = element.getAttribute('data-targetaction') || '';
   const targetvalue = element.getAttribute('data-targetvalue') || undefined;
   const requirements = element.getAttribute('data-requirements') || undefined;
+  const objectives = element.getAttribute('data-objectives') || undefined;
   const textContent = element.textContent?.trim() || undefined;
 
   // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
@@ -76,6 +78,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     targetaction: targetaction,
     targetvalue: targetvalue,
     requirements: requirements,
+    objectives: objectives,
     tagName: element.tagName.toLowerCase(),
     className: element.className || undefined,
     id: element.id || undefined,

@@ -414,7 +414,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               isSequence: true,
               // Specific data attribute mappings for React prop names
               requirements: el.getAttribute('data-requirements'),
-              outcomes: el.getAttribute('data-outcomes'),
+              objectives: el.getAttribute('data-objectives'),
               hints: el.getAttribute('data-hint'), // Fixed: now captures data-hint
               // Include ALL other attributes (including future data-* attributes)
               ...allProps,
@@ -498,7 +498,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               title: elementTextContent,
               // Specific data attribute mappings for React prop names
               requirements: el.getAttribute('data-requirements'),
-              outcomes: el.getAttribute('data-outcomes'),
+              objectives: el.getAttribute('data-objectives'),
               hints: el.getAttribute('data-hint'),
               // Include ALL other attributes (including future data-* attributes)
               ...allProps,
@@ -543,7 +543,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               title: el.textContent?.trim(),
               // Specific data attribute mappings for React prop names
               requirements: el.getAttribute('data-requirements'),
-              outcomes: el.getAttribute('data-outcomes'),  
+              objectives: el.getAttribute('data-objectives'),
               hints: el.getAttribute('data-hint'), // Fixed: now captures data-hint
               // Include ALL other attributes (including future data-* attributes)
               ...allProps,

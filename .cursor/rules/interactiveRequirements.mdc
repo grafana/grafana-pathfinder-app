@@ -66,11 +66,11 @@ Multiple requirements can be combined:
 
 An objective statement for a tutorial step is a statement of what an interactive step will make
 true.  It is expressed in the same language as requirements listed above, but instead, uses the
-`data-objective` attribute in interactive/semantic HTML.
+`data-objectives` attribute in interactive/semantic HTML.
 
 For example, if the purpose of a section is to have the user install the Volkov Labs RSS plugin
 so they can get something working with Grafana, then we would state the objective of the step this
-way: `data-objective="has-plugin:volkovlabs-rss-datasource"`.
+way: `data-objectives="has-plugin:volkovlabs-rss-datasource"`.
 
 This is important for multiple different reasons:
 

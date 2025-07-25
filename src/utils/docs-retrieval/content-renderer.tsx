@@ -256,7 +256,7 @@ function renderParsedElement(
           title={element.props.title || 'Interactive Section'}
           isSequence={element.props.isSequence}
           requirements={element.props.requirements}
-          outcomes={element.props.outcomes}
+          objectives={element.props.objectives}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
             typeof child === 'string'
@@ -273,7 +273,7 @@ function renderParsedElement(
           refTarget={element.props.refTarget}
           targetValue={element.props.targetValue}
           requirements={element.props.requirements}
-          outcomes={element.props.outcomes}
+          objectives={element.props.objectives}
           title={element.props.title}
         />
       );
@@ -283,6 +283,7 @@ function renderParsedElement(
           key={key}
           internalActions={element.props.internalActions}
           requirements={element.props.requirements}
+          objectives={element.props.objectives}
           hints={element.props.hints}
           title={element.props.title}
         />
