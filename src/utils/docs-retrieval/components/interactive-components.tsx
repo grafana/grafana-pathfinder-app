@@ -570,34 +570,37 @@ export const InteractiveStep = forwardRef<
             className="interactive-step-show-btn"
             title={
               requirementsChecker.isChecking ? 'Checking requirements...' :
-              !requirementsChecker.isEnabled && requirementsChecker.explanation ? requirementsChecker.explanation :
               hints || `Show me: ${getActionDescription()}`
             }
           >
             {requirementsChecker.isChecking ? 'Checking...' :
              isShowRunning ? 'Showing...' : 
-             !requirementsChecker.isEnabled ? 'Requirements not met' :
+             !requirementsChecker.isEnabled && !isCompleted ? 'Requirements not met' :
              'Show me'}
           </Button>
           
-          <Button
-            onClick={handleDoAction}
-            disabled={disabled || isCompleted || isAnyActionRunning || !requirementsChecker.isEnabled}
-            size="sm"
-            variant="primary"
-            className="interactive-step-do-btn"
-            title={
-              requirementsChecker.isChecking ? 'Checking requirements...' :
-              !requirementsChecker.isEnabled && requirementsChecker.explanation ? requirementsChecker.explanation :
-              hints || `Do it: ${getActionDescription()}`
-            }
-          >
-            {requirementsChecker.isChecking ? 'Checking...' :
-             isCompleted ? '✓ Completed' : 
-             isDoRunning || isCurrentlyExecuting ? 'Executing...' : 
-             !requirementsChecker.isEnabled ? 'Requirements not met' :
-             'Do it'}
-          </Button>
+          { 
+            // Only show the do it button if the step is eligible or already completed.
+            // If the requirements have not been met, don't give them the option, and don't
+            // duplicate the "Requirements not met" text above.
+            (requirementsChecker.isEnabled || isCompleted) && (
+              <Button
+              onClick={handleDoAction}
+              disabled={disabled || isCompleted || isAnyActionRunning || !requirementsChecker.isEnabled}
+              size="sm"
+              variant="primary"
+              className="interactive-step-do-btn"
+              title={
+                requirementsChecker.isChecking ? 'Checking requirements...' :
+                hints || `Do it: ${getActionDescription()}`
+              }
+            >
+              {requirementsChecker.isChecking ? 'Checking...' :
+              isCompleted ? '✓ Completed' : 
+              isDoRunning || isCurrentlyExecuting ? 'Executing...' : 
+              'Do it'}
+            </Button>
+          )}
         </div>
         
         {isCompleted && <span className="interactive-step-completed-indicator">✓</span>}
