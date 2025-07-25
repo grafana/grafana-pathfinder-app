@@ -78,6 +78,9 @@ The system supports two types of workflows:
    - Can be enabled simultaneously with regular workflow steps
    - Function as parent containers for sequences of interactive steps
 
+3. **Multistep Workflows**: These are a hybrid of the two above. For a full
+discussion, see `multistepActions.mdc`.
+
 Interactive tutorials can be thought of as a sequence of sections, each section having any
 number of discrete actions. **No further nesting is permitted**.  Sections may not contain
 sections, only discrete steps/regular workflows.
@@ -249,7 +252,7 @@ The requirements system manages several visual states:
 
 #### Core Interactive Attributes
 - `data-requirements`: Comma-separated list of tutorial-specific requirements
-- `data-targetaction`: Type of action to perform (button, formfill, highlight, sequence)
+- `data-targetaction`: Type of action to perform (button, formfill, highlight, sequence, multistep)
 - `data-reftarget`: Target element selector or button text to interact with
 - `data-targetvalue`: Value to use for formfill actions (optional)
 - `data-button-type`: Button type (show, do) to distinguish behavior
