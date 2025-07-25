@@ -1,13 +1,25 @@
 # Interactive Elements Requirements System
 
-This document describes the requirements system for interactive elements in the Grafana Documentation Plugin.
+This document describes the requirements and objectives system for interactive elements in the Grafana Documentation Plugin.
 
 ## Overview
 
-Interactive elements in documentation content have two types of requirements that must be satisfied before they can be executed:
+Interactive elements in documentation content have a system of requirements that must be satisfied before they can be executed, and a potential system of objectives or goals, that the
+tutorials are trying to accomplish.  This document lays all of that out.
 
-1. **Tutorial-Specific Requirements**: Declared in the `data-requirements` attribute by content authors
-2. **Docs Plugin Requirements**: Built-in system rules that govern interactive behavior
+1. **Docs Plugin Requirements**: Built-in system rules that govern interactive behavior
+2. **Tutorial-Specific Requirements**: Declared in the `data-requirements` attribute by content authors
+3. **Tutorial-Specific Objectives**: Declared in `data-objectives` attribute by content authors.
+
+## Docs Plugin Requirements
+
+Docs plugin requirements are automatically enforced by the system and control interactive behavior.
+The objective of these requirements are as follows:
+
+1. Make it hard for the user to take confusing or nonsense actions (doing steps out of order)
+2. Maximize the chances that the workflow goes smoothly as the user expects
+3. Maximize safety: the docs-plugin should not allow you to take a step which can't succeed, as
+this creates negative surprise.
 
 ## Tutorial-Specific Requirements
 
@@ -50,17 +62,98 @@ Multiple requirements can be combined:
 </button>
 ```
 
-## Docs Plugin Requirements
+## Tutorial-Specific Objectives
 
-Docs plugin requirements are automatically enforced by the system and control interactive behavior.
-The objective of these requirements are as follows:
+An objective statement for a tutorial step is a statement of what an interactive step will make
+true.  It is expressed in the same language as requirements listed above, but instead, uses the
+`data-objective` attribute in interactive/semantic HTML.
 
-1. Make it hard for the user to take confusing or nonsense actions (doing steps out of order)
-2. Maximize the chances that the workflow goes smoothly as the user expects
-3. Maximize safety: the docs-plugin should not allow you to take a step which can't succeed, as
-this creates negative surprise.
+For example, if the purpose of a section is to have the user install the Volkov Labs RSS plugin
+so they can get something working with Grafana, then we would state the objective of the step this
+way: `data-objective="has-plugin:volkovlabs-rss-datasource"`.
 
-### Dual Workflow System
+This is important for multiple different reasons:
+
+1. By knowing what a tutorial is trying to accomplish, we can optionally add extra UI elements
+to explain that to the user.
+2. State management and completion marking.  Suppose you're doing a tutorial, and you've already
+accomplished the first section, resulting in the plugin being installed.  What you'll expect is
+that every time you return to the tutorial, that section is marked "finished". The way the system
+will accomplish this is by adding "objectives" to requirements checking.  If an interactive step
+states an objective, and that objective has already been met, then the step can be marked as 
+finished without ever being executed!
+
+Objectives and requirements are kind of opposites of one another.  You cannot execute an
+interactive step if a requirement has been met.  And you automatically mark as successfully
+done any step whose objective has been met.  In both cases, the functionality blocks or 
+prevents execution of a step, but for different reasons.
+
+The syntax of objectives is processed exactly the same as requirements. There may be more than one objective, comma separated just as with requirements. 
+
+The differences in behavior are these:
+
+1. All items whose objectives are met are automatically marked done.
+2. If the item is a section, and the objectives are met, this means that all interactive items underneath of the section are marked done. All individual steps within that section should be marked
+as complete, AND the section should be marked as complete. This is because sections override or "own"
+all of their subordinate steps.
+3. Objectives being met does not trigger an error condition. And so: if the objective has been
+met, this may shortcut requirements checking for that item.
+
+### Clarifications on the Objectives Feature
+
+Let's consider this example:
+
+```
+  <span data-requirements="exists-reftarget,is-admin" 
+        data-objectives="has-plugin:volkovlabs-rss-datasource"
+        data-targetaction="button">
+```
+
+0. Objectives may be missing or empty on any interactive element. In such cases, this means the
+objective check always fails, as there is nothing to evaluate.
+1. Objectives can be checked at the same time, in parallel with requirements to speed things up.
+But if an objective is met, then the output of requirements checking does not matter. If, for example,
+in this example case, the `has-plugin` objective is true, then this item would be marked as done,
+_even if the user was not an admin_ (i.e. the `is-admin` requirement fails)
+2. Objectives always win, and shortcut any error messages or feedback on requirements.
+3. If an element specifies multiple objectives, e.g. `data-objectives="has-plugin:foo,has-datasource:bar"`, then ALL objectives must be met. Objective checking is "all or nothing". If any
+partial objective is not met, then the objectives are not met.
+4. Objective checking should happen continuously during user interaction, and should follow the same
+model as requirements checking.  If something is marked done, it doesn't need requirements or objectives
+checking. If something is not done, it should be checked. 
+5. At this point, live checking of Grafana state is suffient, there is no completion state persistence
+that is necessary at this point.
+6. Elements that are auto-completed via objectives should show the same green checkmark as manually
+completed steps.
+7. For sections where objectives are met, all other display stays the same; they will be shown with
+completion indicators, and with the same visual and CSS styling as if they'd been completed in the 
+usual way.
+8. Objectives are a first class part of the InteractiveElementData interface, on par with requirements.
+9. We will have a separate useStepObjectives hook to mirror useStepRequirements.
+10. The objective checking system should reuse all check functions (hasPluginCHECK, hasDatasourceCHECK, etc) as requirements. 
+11. If an objective check fails due to network or API error, the objective is not met, and the error
+is logged to the console.  This does mean that because requirements checking is happening in parallel,
+normal requirements handling should still proceed.
+12. It is possible to have objectives without requirements.  Requirements gate when an item can be 
+executed (no requirements means it can always be executed).  Objectives gate _whether or not it needs
+to be executed_.
+13. Scope: objectives should be supported for InteractiveSteps, InteractiveSections, and InteractiveMultiSteps.
+14. `data-objectives` should be parsed, extracted, and handled as a react component prop exactly the
+same as `data-requirements`.
+15. Objectives checking should use the same timeout and debounce logic as requirements checking. Ideally
+this logic is shared.
+16. Parent sections should use direct state management of children for completion marking
+17. When objectives are met, the explanation text should simply state: "Already done!"
+18. For InteractiveMultiStep, objectives should be checked before executing any internal actions,
+as with all other steps. Again as with others, if the InteractiveMultiStep component's objectives 
+have been met, all internal actions can be skipped, and marked as completed.
+
+## Implementation Details of Requirements & Objectives
+
+1. Separate hooks should be used for requirements & objectives to keep each set of hooks as a
+single responsibility.
+
+## Dual Workflow System
 
 Imagine a tutorial that has multiple sections of instructions. An example might be "create a 
 datasource" (5 steps) followed by "configure an alert" (5 steps).  This would be a total of 
