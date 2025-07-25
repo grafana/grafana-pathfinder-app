@@ -3,6 +3,13 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { safeEventHandler } from './safe-event-handler.util';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 
+// Allowed GitHub URLs that can open in app tabs (from context.service.ts defaultRecommendations)
+const ALLOWED_GITHUB_URLS = [
+  'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/r-grafana',
+  'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/prometheus-datasource',
+  'https://raw.githubusercontent.com/Jayclifford345/tutorial-environment/refs/heads/master/',
+];
+
 interface LearningJourneyTab {
   id: string;
   title: string;
@@ -36,8 +43,6 @@ interface UseLinkClickHandlerProps {
  */
 function tryConstructUnstyledUrl(originalUrl: string): string | null {
   try {
-    const url = new URL(originalUrl);
-    
     // Common patterns for unstyled content
     const unstyledPatterns = [
       // Add /unstyled.html to the path
@@ -187,7 +192,7 @@ export function useLinkClickHandler({
               link_type: fullUrl.includes('/tutorials/') ? 'tutorial' : 'docs'
             });
           }
-          // Handle GitHub links with fallback to unstyled.html
+          // Handle GitHub links - check if allowed to open in app
           else if (href.includes('github.com') || href.includes('raw.githubusercontent.com')) {
             safeEventHandler(event, {
               preventDefault: true,
@@ -196,42 +201,78 @@ export function useLinkClickHandler({
             
             const linkText = anchor.textContent?.trim() || 'GitHub Link';
             
-            // Try to construct unstyled.html URL for GitHub content
-            const unstyledUrl = tryConstructUnstyledUrl(resolvedUrl);
+            // Check if this URL is in the allowed list for app tabs
+            const isAllowedUrl = ALLOWED_GITHUB_URLS.some(allowedUrl => 
+              resolvedUrl === allowedUrl || resolvedUrl.startsWith(allowedUrl)
+            );
             
-            if (unstyledUrl) {
-              // Try to open in app first
-              if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-                (model as any).openDocsPage(unstyledUrl, linkText);
-              } else {
-                model.openLearningJourney(unstyledUrl, linkText);
-              }
+            if (isAllowedUrl) {
+              // This is an allowed URL - try to open in app with unstyled.html fallback
+              const unstyledUrl = tryConstructUnstyledUrl(resolvedUrl);
               
-              // Track analytics for GitHub link attempts
-              reportAppInteraction('docs_link_click' as UserInteraction, {
-                link_url: unstyledUrl,
-                link_text: linkText,
-                source_page: activeTab?.content?.url || 'unknown',
-                link_type: 'github_unstyled'
-              });
+              if (unstyledUrl) {
+                // Try to open in app first
+                if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
+                  (model as any).openDocsPage(unstyledUrl, linkText);
+                } else {
+                  model.openLearningJourney(unstyledUrl, linkText);
+                }
+                
+                // Track analytics for allowed GitHub link attempts
+                reportAppInteraction('docs_link_click' as UserInteraction, {
+                  link_url: unstyledUrl,
+                  link_text: linkText,
+                  source_page: activeTab?.content?.url || 'unknown',
+                  link_type: 'github_allowed_unstyled'
+                });
+              } else {
+                // Even allowed URLs fallback to opening in app without unstyled
+                if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
+                  (model as any).openDocsPage(resolvedUrl, linkText);
+                } else {
+                  model.openLearningJourney(resolvedUrl, linkText);
+                }
+                
+                // Track analytics for allowed GitHub direct attempts
+                reportAppInteraction('docs_link_click' as UserInteraction, {
+                  link_url: resolvedUrl,
+                  link_text: linkText,
+                  source_page: activeTab?.content?.url || 'unknown',
+                  link_type: 'github_allowed_direct'
+                });
+              }
             } else {
-              // Fallback: open in new browser tab
+              // Not in allowed list - open in new browser tab immediately
               window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
               
-              // Track analytics for GitHub browser fallback
+              // Track analytics for GitHub browser opening
               reportAppInteraction('docs_link_click' as UserInteraction, {
                 link_url: resolvedUrl,
                 link_text: linkText,
                 source_page: activeTab?.content?.url || 'unknown',
-                link_type: 'github_browser_fallback'
+                link_type: 'github_browser_external'
               });
             }
           }
           // For ALL other external links, immediately open in new browser tab
           else if (href.startsWith('http')) {
-            // All other external links (including other grafana.com pages) open in browser
-            // Don't prevent default - let them work normally
-            return;
+            safeEventHandler(event, {
+              preventDefault: true,
+              stopPropagation: true,
+            });
+            
+            // Open all other external links in new browser tab to keep user in Grafana
+            window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+            
+            const linkText = anchor.textContent?.trim() || 'External Link';
+            
+            // Track analytics for external link clicks
+            reportAppInteraction('docs_link_click' as UserInteraction, {
+              link_url: resolvedUrl,
+              link_text: linkText,
+              source_page: activeTab?.content?.url || 'unknown',
+              link_type: 'external_browser'
+            });
           }
         }
       }

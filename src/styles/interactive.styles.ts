@@ -598,6 +598,31 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
     
+    /* Fragment highlighting for anchor navigation */
+    .fragment-highlight {
+      position: relative;
+      background-color: rgba(255, 193, 7, 0.2) !important;
+      border-left: 4px solid #ffc107 !important;
+      padding-left: 8px !important;
+      margin-left: -12px !important;
+      animation: fragment-highlight-fade 3s ease-out forwards;
+    }
+
+    @keyframes fragment-highlight-fade {
+      0% {
+        background-color: rgba(255, 193, 7, 0.4);
+        border-left-color: #ffc107;
+      }
+      50% {
+        background-color: rgba(255, 193, 7, 0.3);
+        border-left-color: #ffc107;
+      }
+      100% {
+        background-color: rgba(255, 193, 7, 0.1);
+        border-left-color: transparent;
+      }
+    }
+    
     /* Spinner animation for section running state */
     @keyframes spin {
       0% { transform: rotate(0deg); }

@@ -41,6 +41,53 @@ function resolveRelativeUrls(html: string, baseUrl: string): string {
   }
 }
 
+/**
+ * Scroll to and highlight an element with the given fragment ID
+ */
+function scrollToFragment(fragment: string, container: HTMLElement): void {
+  try {
+    // Try multiple selectors to find the target element
+    const selectors = [
+      `#${fragment}`,
+      `[id="${fragment}"]`,
+      `[name="${fragment}"]`,
+      `a[name="${fragment}"]`,
+    ];
+
+    let targetElement: HTMLElement | null = null;
+
+    for (const selector of selectors) {
+      targetElement = container.querySelector(selector) as HTMLElement;
+      if (targetElement) {
+        break;
+      }
+    }
+
+    if (targetElement) {
+      // Scroll to the element with smooth behavior
+      targetElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+        inline: 'nearest'
+      });
+
+      // Add highlight effect
+      targetElement.classList.add('fragment-highlight');
+      
+      // Remove highlight after animation
+      setTimeout(() => {
+        targetElement!.classList.remove('fragment-highlight');
+      }, 3000);
+
+      console.warn(`📍 Scrolled to fragment #${fragment}`);
+    } else {
+      console.warn(`Fragment element not found: #${fragment}`);
+    }
+  } catch (error) {
+    console.warn(`Error scrolling to fragment #${fragment}:`, error);
+  }
+}
+
 interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
@@ -65,6 +112,18 @@ export function ContentRenderer({
     }
     return html;
   }, [content]);
+
+  // Handle fragment scrolling after content renders
+  useEffect(() => {
+    if (content.hashFragment && activeRef.current) {
+      // Wait for content to fully render before scrolling
+      const timer = setTimeout(() => {
+        scrollToFragment(content.hashFragment!, activeRef.current!);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [processedContent, content.hashFragment]);
 
   useEffect(() => {
     if (onContentReady) {
