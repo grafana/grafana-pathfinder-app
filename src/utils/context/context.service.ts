@@ -4,6 +4,7 @@ import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval'
 import { 
   ContextData, 
   DataSource, 
+  Plugin,
   DashboardInfo, 
   Recommendation, 
   ContextPayload, 
@@ -181,6 +182,19 @@ export class ContextService {
       return dataSources || [];
     } catch (error) {
       console.warn('Failed to fetch data sources:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch plugins
+   */
+  static async fetchPlugins(): Promise<Plugin[]> {
+    try {
+      const plugins = await getBackendSrv().get('/api/plugins');
+      return plugins || [];
+    } catch (error) {
+      console.warn('Failed to fetch plugins:', error);
       return [];
     }
   }

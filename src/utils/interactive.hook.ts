@@ -914,6 +914,20 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    * ============================================================================
    * EXTENSIBLE REQUIREMENTS CHECKING SYSTEM
    * Using Grafana Runtime APIs for comprehensive state validation
+   * 
+   * Available checks:
+   * - has-permission:action - Check user permissions using Grafana's permission system
+   * - has-role:role - Check user role (admin, editor, viewer)
+   * - has-datasource:name - Check if data source exists by name/uid
+   * - has-plugin:id - Check if plugin is installed by plugin ID
+   * - on-page:path - Check current page/URL path
+   * - has-feature:toggle - Check if feature toggle is enabled
+   * - in-environment:env - Check current environment (dev, prod)
+   * - min-version:x.y.z - Check minimum Grafana version
+   * - navmenu-open - Check if navigation menu is open
+   * - is-admin - Check if user is Grafana admin
+   * - has-datasources - Check if any data sources exist
+   * - exists-reftarget - Check if target element exists
    * ============================================================================
    */
 
@@ -1047,18 +1061,16 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   };
 
-  // Plugin availability checking
+  // Plugin availability checking using /api/plugins endpoint
   const hasPluginCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
     try {
       const pluginId = check.replace('has-plugin:', '');
       
-      // Check if plugin is available in config
-      const isAppPlugin = config.apps && config.apps[pluginId];
-      const isDataSourcePlugin = config.datasources && Object.values(config.datasources).some(
-        ds => ds.type === pluginId
-      );
+      // Fetch plugins from API
+      const plugins = await ContextService.fetchPlugins();
+      const pluginExists = plugins.some(plugin => plugin.id === pluginId);
       
-      if (isAppPlugin || isDataSourcePlugin) {
+      if (pluginExists) {
         return {
           pass: true,
           requirement: check,

@@ -8,6 +8,18 @@ export interface DataSource {
   access?: string;
 }
 
+export interface Plugin {
+  id: string;
+  name: string;
+  type: string;
+  info: {
+    description: string;
+    version: string;
+  };
+  enabled: boolean;
+  pinned: boolean;
+}
+
 export interface DashboardInfo {
   id?: number;
   title?: string;

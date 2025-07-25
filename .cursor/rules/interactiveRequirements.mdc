@@ -24,10 +24,10 @@ the docs-plugin could check that condition was true.
 - **Usage**: Most common requirement for interactive elements
 - **Example**: `data-requirements="exists-reftarget"`
 
-#### `has-datasources`
-- **Purpose**: Ensures that Grafana has at least one configured data source
-- **Usage**: For interactive elements that require data sources to function
-- **Example**: `data-requirements="has-datasources"`
+#### `has-plugin:plugin-id`
+- **Purpose**: Ensures that a given plugin is installed
+- **Usage**: given plugin-id should match Grafana's plugin-id concept, e.g. `volkovlabs-rss-datasource`
+- **Example**: `data-requirements="has-plugin:volkovlabs-rss-datasource"`
 
 #### `is-admin`
 - **Purpose**: Ensures the current user has Grafana admin privileges
