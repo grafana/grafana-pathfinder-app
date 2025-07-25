@@ -224,6 +224,7 @@ export const InteractiveMultiStep = forwardRef<
     isExecuting,
     stepId,
     internalActions,
+    currentActionIndex,
     checkElementRequirements,
     executeInteractiveAction,
     onStepComplete,

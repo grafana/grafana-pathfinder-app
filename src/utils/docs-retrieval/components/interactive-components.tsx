@@ -252,7 +252,7 @@ export function InteractiveSection({
   // Calculate which step is eligible for checking (sequential logic)
   const getStepEligibility = useCallback((stepIndex: number) => {
     // First step is always eligible (Trust but Verify)
-    if (stepIndex === 0) return true;
+    if (stepIndex === 0) {return true;}
     
     // Subsequent steps are eligible if all previous steps are completed
     for (let i = 0; i < stepIndex; i++) {
@@ -366,7 +366,7 @@ export function InteractiveSection({
       if (React.isValidElement(child) && 
           (child as any).type === InteractiveStep) {
         const stepInfo = stepComponents[index];
-        if (!stepInfo) return child;
+        if (!stepInfo) {return child;}
         
         const isEligibleForChecking = getStepEligibility(index);
         const isCompleted = completedSteps.has(stepInfo.stepId);
@@ -385,7 +385,7 @@ export function InteractiveSection({
       } else if (React.isValidElement(child) && 
                  (child as any).type === InteractiveMultiStep) {
         const stepInfo = stepComponents[index];
-        if (!stepInfo) return child;
+        if (!stepInfo) {return child;}
         
         const isEligibleForChecking = getStepEligibility(index);
         const isCompleted = completedSteps.has(stepInfo.stepId);
