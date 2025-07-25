@@ -266,7 +266,7 @@ const updatePlugin = async (pluginId: string, data: Partial<PluginMeta>) => {
     data,
   });
 
-  const dataResponse = await lastValueFrom(response);
+  const dataResponse = await lastValueFrom(response as any);
 
-  return dataResponse.data;
+  return (dataResponse as any).data;
 };

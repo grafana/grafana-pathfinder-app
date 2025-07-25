@@ -74,32 +74,46 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
   },
   
   // Images - responsive and well-styled with lightbox cursor
-  '& img': {
+'& img.content-image': {
+  maxWidth: '100%',
+  height: 'auto',
+  borderRadius: theme.shape.radius.default,
+  border: `1px solid ${theme.colors.border.weak}`,
+  margin: `${theme.spacing(2)} auto`,
+  display: 'block',
+  boxShadow: theme.shadows.z1,
+  transition: 'all 0.2s ease',
+  cursor: 'zoom-in',
+
+  '&:hover': {
+    boxShadow: theme.shadows.z2,
+    transform: 'scale(1.02)',
+    borderColor: theme.colors.primary.main,
+  },
+
+  // Handle inline-block images specifically
+  '&.d-inline-block': {
+    display: 'block !important', // Override utility class
+    width: '100%',
+    maxWidth: '100%',
+  },
+
+  // Handle lazyload images
+  '&.lazyload': {
+    width: '100%',
     maxWidth: '100%',
     height: 'auto',
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
-    margin: `${theme.spacing(2)} auto`,
-    display: 'block',
-    boxShadow: theme.shadows.z1,
-    transition: 'all 0.2s ease',
-    cursor: 'zoom-in',
-    
+  },
+
+  // If you need to override anything for special image headers, you can add:
+  '&.journey-conclusion-header': {
+    cursor: 'default',
     '&:hover': {
-      boxShadow: theme.shadows.z2,
-      transform: 'scale(1.02)',
-      borderColor: theme.colors.primary.main,
-    },
-    
-    '&.journey-conclusion-header': {
-      cursor: 'default',
-      
-      '&:hover': {
-        transform: 'none',
-        borderColor: theme.colors.border.weak,
-      },
+      transform: 'none',
+      borderColor: theme.colors.border.weak,
     },
   },
+},
 
   // Links
   '& a': {
@@ -451,6 +465,49 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     
     '&[data-video-enhanced]': {
       transition: 'opacity 0.3s ease',
+    },
+  },
+
+  // Generic iframe responsiveness for all iframes (YouTube embeds, etc.)
+  '& iframe:not([class])': {
+    maxWidth: '100%',
+    width: '100%',
+    height: 'auto',
+    margin: `${theme.spacing(2)} 0`,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    boxShadow: theme.shadows.z1,
+    
+    // Fallback for browsers that don't support aspect-ratio
+    minHeight: '315px',
+    
+    [theme.breakpoints.down('md')]: {
+      minHeight: '250px',
+    },
+    
+    [theme.breakpoints.down('sm')]: {
+      minHeight: '200px',
+    },
+  },
+
+  // Generic iframe styling for any iframe
+  '& iframe': {
+    maxWidth: '100%',
+    
+    // If it has fixed dimensions, make it responsive
+    '&[width]': {
+      width: '100% !important',
+      height: 'auto !important',
+      aspectRatio: '16 / 9',
+      minHeight: '315px',
+      
+      [theme.breakpoints.down('md')]: {
+        minHeight: '250px',
+      },
+      
+      [theme.breakpoints.down('sm')]: {
+        minHeight: '200px',
+      },
     },
   },
 
@@ -589,6 +646,54 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     },
   },
 
+  // Journey ready to begin section (matches journey-start styling)
+  '& .journey-ready-to-begin': {
+    margin: `${theme.spacing(4)} 0`,
+    padding: theme.spacing(3),
+    backgroundColor: theme.colors.background.canvas,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    textAlign: 'center',
+  },
+
+  '& .journey-ready-container h3': {
+    marginBottom: theme.spacing(2),
+    color: theme.colors.text.primary,
+  },
+
+  '& .journey-ready-button': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: `${theme.spacing(1.5)} ${theme.spacing(3)}`,
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z2,
+    },
+  },
+
+  '& .journey-ready-icon': {
+    fontSize: '14px',
+    lineHeight: 1,
+  },
+
+  '& .journey-ready-description': {
+    marginTop: theme.spacing(1.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
+  },
+
   // Tables
   '& table': {
     width: '100%',
@@ -675,6 +780,7 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
   '& .journey-collapse-icon': {
     transition: 'transform 0.2s ease',
     color: theme.colors.text.secondary,
+    fontSize: '12px',
     
     '&.collapsed': {
       transform: 'rotate(-90deg)',
@@ -687,18 +793,63 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     borderTop: `1px solid ${theme.colors.border.weak}`,
   },
 
-  // Side journeys section
-  '& .journey-side-journeys-section': {
+  // Expandable table component
+  '& .expandable-table': {
+    margin: `${theme.spacing(2)} 0`,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    overflow: 'hidden',
+  },
+
+  '& .expandable-table-toggle-btn': {
+    width: '100%',
+    margin: 0,
+    borderRadius: 0,
+    justifyContent: 'center',
+  },
+
+  '& .expandable-table-content': {
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.primary,
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+    
+    '&.collapsed': {
+      display: 'none',
+    },
+  },
+
+  // Side journeys section - matching actual HTML structure
+  '& .journey-side-journeys': {
     margin: `${theme.spacing(3)} 0`,
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.canvas,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  },
+
+  '& .journey-side-journeys-title': {
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing(2),
+    marginTop: 0,
   },
 
   '& .journey-side-journeys-list': {
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
   },
 
   '& .journey-side-journey-item': {
+    margin: 0,
+    padding: 0,
+  },
+
+  '& .journey-side-journey-link': {
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1.5),
@@ -709,6 +860,8 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     textDecoration: 'none',
     color: theme.colors.text.primary,
     transition: 'all 0.2s ease',
+    width: '100%',
+    boxSizing: 'border-box',
     
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
@@ -716,9 +869,19 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z1,
       textDecoration: 'none',
+      color: theme.colors.text.primary,
+    },
+
+    '&:after': {
+      content: '"↗"',
+      color: theme.colors.text.secondary,
+      fontSize: '14px',
+      marginLeft: 'auto',
+      flexShrink: 0,
     },
   },
 
+  // Legacy styles for backward compatibility
   '& .journey-side-journey-icon-circle': {
     width: '32px',
     height: '32px',
@@ -753,17 +916,33 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
   },
 
   // Related journeys section
-  '& .journey-related-journeys-section': {
+  '& .journey-related-journeys-section, & .journey-related-journeys': {
     margin: `${theme.spacing(3)} 0`,
+  },
+
+  '& .journey-related-journeys-title': {
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing(2),
+    marginTop: 0,
   },
 
   '& .journey-related-journeys-list': {
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
   },
 
   '& .journey-related-journey-item': {
+    margin: 0,
+    padding: 0,
+  },
+
+  '& .journey-related-journey-link': {
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1.5),
@@ -774,6 +953,8 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     textDecoration: 'none',
     color: theme.colors.text.primary,
     transition: 'all 0.2s ease',
+    width: '100%',
+    boxSizing: 'border-box',
     
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
@@ -781,6 +962,15 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z1,
       textDecoration: 'none',
+      color: theme.colors.text.primary,
+    },
+
+    '&:after': {
+      content: '"↗"',
+      color: theme.colors.text.secondary,
+      fontSize: '14px',
+      marginLeft: 'auto',
+      flexShrink: 0,
     },
   },
 
@@ -872,6 +1062,31 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     gap: theme.spacing(2),
   },
 
+  // Alternative container class name to match HTML structure
+  '& .journey-bottom-nav-container': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing(2),
+    width: '100%',
+  },
+
+  // Progress indicator styling
+  '& .journey-progress-indicator': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    minWidth: '60px',
+    textAlign: 'center',
+  },
+
   '& .journey-bottom-nav-button': {
     display: 'flex',
     alignItems: 'center',
@@ -919,6 +1134,13 @@ export const journeyContentHtml = (theme: GrafanaTheme2) => css({
     fontWeight: theme.typography.fontWeightMedium,
           color: theme.colors.text.secondary,
       },
+
+  // Override inline-block utility for images to maintain responsiveness
+  '& img.d-inline-block': {
+    display: 'block !important',
+    width: '100%',
+    maxWidth: '100%',
+  },
 }); 
 
 export const docsContentHtml = (theme: GrafanaTheme2) => css({
@@ -1009,6 +1231,26 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
       boxShadow: theme.shadows.z2,
       transform: 'scale(1.02)',
       borderColor: theme.colors.primary.main,
+    },
+
+    // Handle inline-block images specifically
+    '&.d-inline-block': {
+      display: 'block !important', // Override utility class
+      width: '100%',
+      maxWidth: '100%',
+    },
+
+    // Handle lazyload images
+    '&.lazyload': {
+      width: '100%',
+      maxWidth: '100%',
+      height: 'auto',
+    },
+
+    // Handle content-image class specifically
+    '&.content-image': {
+      width: '100%',
+      maxWidth: '100%',
     },
   },
 
@@ -1365,6 +1607,49 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     },
   },
 
+  // Generic iframe responsiveness for all iframes (YouTube embeds, etc.)
+  '& iframe:not([class])': {
+    maxWidth: '100%',
+    width: '100%',
+    height: 'auto',
+    margin: `${theme.spacing(2)} 0`,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    boxShadow: theme.shadows.z1,
+    
+    // Fallback for browsers that don't support aspect-ratio
+    minHeight: '315px',
+    
+    [theme.breakpoints.down('md')]: {
+      minHeight: '250px',
+    },
+    
+    [theme.breakpoints.down('sm')]: {
+      minHeight: '200px',
+    },
+  },
+
+  // Generic iframe styling for any iframe
+  '& iframe': {
+    maxWidth: '100%',
+    
+    // If it has fixed dimensions, make it responsive
+    '&[width]': {
+      width: '100% !important',
+      height: 'auto !important',
+      aspectRatio: '16 / 9',
+      minHeight: '315px',
+      
+      [theme.breakpoints.down('md')]: {
+        minHeight: '250px',
+      },
+      
+      [theme.breakpoints.down('sm')]: {
+        minHeight: '200px',
+      },
+    },
+  },
+
   // Simple admonitions - matching learning journey style
   '& .admonition': {
     all: 'unset',
@@ -1491,6 +1776,54 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     },
   },
 
+  // Journey ready to begin section (matches journey-start styling)
+  '& .journey-ready-to-begin': {
+    margin: `${theme.spacing(4)} 0`,
+    padding: theme.spacing(3),
+    backgroundColor: theme.colors.background.canvas,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    textAlign: 'center',
+  },
+
+  '& .journey-ready-container h3': {
+    marginBottom: theme.spacing(2),
+    color: theme.colors.text.primary,
+  },
+
+  '& .journey-ready-button': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: `${theme.spacing(1.5)} ${theme.spacing(3)}`,
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z2,
+    },
+  },
+
+  '& .journey-ready-icon': {
+    fontSize: '14px',
+    lineHeight: 1,
+  },
+
+  '& .journey-ready-description': {
+    marginTop: theme.spacing(1.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    fontStyle: 'italic',
+  },
+
   // Orange outline list styling (from learning journeys)
   '& .orange-outline-list': {
     borderRadius: '12px',
@@ -1538,6 +1871,196 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
           marginBottom: 0,
         },
       },
+    },
+  },
+
+  // Side journeys section
+  '& .journey-side-journeys': {
+    margin: `${theme.spacing(3)} 0`,
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.canvas,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  },
+
+  '& .journey-side-journeys-title': {
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing(2),
+    marginTop: 0,
+  },
+
+  '& .journey-side-journeys-list': {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
+  },
+
+  '& .journey-side-journey-item': {
+    margin: 0,
+    padding: 0,
+  },
+
+  '& .journey-side-journey-link': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1.5),
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    textDecoration: 'none',
+    color: theme.colors.text.primary,
+    transition: 'all 0.2s ease',
+    width: '100%',
+    boxSizing: 'border-box',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.medium,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+      textDecoration: 'none',
+      color: theme.colors.text.primary,
+    },
+
+    '&:after': {
+      content: '"↗"',
+      color: theme.colors.text.secondary,
+      fontSize: '14px',
+      marginLeft: 'auto',
+      flexShrink: 0,
+    },
+  },
+
+  // Related journeys section
+  '& .journey-related-journeys-section, & .journey-related-journeys': {
+    margin: `${theme.spacing(3)} 0`,
+  },
+
+  '& .journey-related-journeys-title': {
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing(2),
+    marginTop: 0,
+  },
+
+  '& .journey-related-journeys-list': {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
+  },
+
+  '& .journey-related-journey-item': {
+    margin: 0,
+    padding: 0,
+  },
+
+  '& .journey-related-journey-link': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1.5),
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    textDecoration: 'none',
+    color: theme.colors.text.primary,
+    transition: 'all 0.2s ease',
+    width: '100%',
+    boxSizing: 'border-box',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.medium,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+      textDecoration: 'none',
+      color: theme.colors.text.primary,
+    },
+
+    '&:after': {
+      content: '"↗"',
+      color: theme.colors.text.secondary,
+      fontSize: '14px',
+      marginLeft: 'auto',
+      flexShrink: 0,
+    },
+  },
+
+  // Collapsible sections
+  '& .journey-collapse': {
+    margin: `${theme.spacing(2)} 0`,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    overflow: 'hidden',
+  },
+
+  '& .journey-collapse-trigger': {
+    width: '100%',
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.background.canvas,
+    border: 'none',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    transition: 'background-color 0.2s ease',
+    
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+    },
+  },
+
+  '& .journey-collapse-icon': {
+    transition: 'transform 0.2s ease',
+    color: theme.colors.text.secondary,
+    fontSize: '12px',
+    
+    '&.collapsed': {
+      transform: 'rotate(-90deg)',
+    },
+  },
+
+  '& .journey-collapse-content': {
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.primary,
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+  },
+
+  // Expandable table component
+  '& .expandable-table': {
+    margin: `${theme.spacing(2)} 0`,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    overflow: 'hidden',
+  },
+
+  '& .expandable-table-toggle-btn': {
+    width: '100%',
+    margin: 0,
+    borderRadius: 0,
+    justifyContent: 'center',
+  },
+
+  '& .expandable-table-content': {
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.primary,
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+    
+    '&.collapsed': {
+      display: 'none',
     },
   },
 
@@ -1715,6 +2238,13 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
   '& .justify-content-start': {
     justifyContent: 'flex-start',
   },
+
+  // Override inline-block utility for images to maintain responsiveness
+  '& img.d-inline-block': {
+    display: 'block !important',
+    width: '100%',
+    maxWidth: '100%',
+  },
   
   '& .fw-500': {
     fontWeight: 500,
@@ -1875,6 +2405,95 @@ export const docsContentHtml = (theme: GrafanaTheme2) => css({
     '&:hover:after': {
       transform: 'translateX(2px)',
     },
+  },
+
+  // Bottom navigation
+  '& .journey-bottom-navigation': {
+    margin: `${theme.spacing(4)} 0 ${theme.spacing(2)} 0`,
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.canvas,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  },
+
+  '& .journey-bottom-navigation-content': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing(2),
+  },
+
+  // Alternative container class name to match HTML structure
+  '& .journey-bottom-nav-container': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing(2),
+    width: '100%',
+  },
+
+  // Progress indicator styling
+  '& .journey-progress-indicator': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+    minWidth: '60px',
+    textAlign: 'center',
+  },
+
+  '& .journey-bottom-nav-button': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: `${theme.spacing(1)} ${theme.spacing(2)}`,
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    minWidth: '100px',
+    
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+    },
+    
+    '&:disabled': {
+      backgroundColor: theme.colors.action.disabledBackground,
+      color: theme.colors.action.disabledText,
+      cursor: 'not-allowed',
+      opacity: 0.5,
+    },
+    
+    '& svg': {
+      width: '16px',
+      height: '16px',
+      flexShrink: 0,
+    },
+  },
+
+  '& .journey-bottom-nav-info': {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+  },
+
+  '& .journey-bottom-nav-milestone': {
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
   },
 
   // Grafana Play image styling - Compact version

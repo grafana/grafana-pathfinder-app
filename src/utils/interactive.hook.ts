@@ -1,10 +1,9 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useCallback, useRef } from 'react';
-import { locationService, config } from '@grafana/runtime';
+import { locationService, config, hasPermission, getDataSourceSrv } from '@grafana/runtime';
 import { ContextService } from './context';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
-import { waitForReactUpdates, groupInteractiveElementsByStep, markStepCompleted, InteractiveStep } from './requirements.util';
-import { safeEventHandler } from './safe-event-handler.util';
+import { waitForReactUpdates } from './requirements-checker.hook';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -178,88 +177,32 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }
 
   /**
-   * Set the visual and logical state of an interactive element.
-   * 
-   * ARCHITECTURAL DECISION: This function operates under the strong assumption that ALL
-   * interactive elements have unique step IDs (either data-section-id or data-step-id).
-   * This assumption is guaranteed by the processInteractiveElements function in 
-   * single-docs-fetcher.ts, which assigns unique IDs to every interactive element during
-   * content processing. No fallback mechanisms are provided - violations will throw errors.
+   * Bridge elements don't need complex state management since React components
+   * handle their own state. This simplified version just logs completion.
    */
   function setInteractiveState(element: HTMLElement, state: 'idle' | 'running' | 'completed' | 'error') {
-    // ASSUMPTION: All interactive elements have unique step IDs
-    // This is guaranteed by single-docs-fetcher.ts processInteractiveElements function
-    // which assigns either data-section-id or data-step-id to every interactive element
-    const sectionId = element.getAttribute('data-section-id');
-    const stepId = element.getAttribute('data-step-id');
-
-    if (!sectionId && !stepId) {
-      throw new Error(`Interactive element missing required unique step ID: reftarget=${element.getAttribute('data-reftarget')}, targetaction=${element.getAttribute('data-targetaction')}`);
-    }
-
-    // Handle completion state (implicit requirement #2)
     if (state === 'completed') {
-      console.log('🎯 Marking element as completed:', {
+      console.log('✅ Interactive action completed:', {
         element: element.tagName,
         reftarget: element.getAttribute('data-reftarget'),
         targetaction: element.getAttribute('data-targetaction'),
         buttonType: element.getAttribute('data-button-type'),
-        textContent: element.textContent?.trim()
       });
-            
-      // Determine the unique identifier for this element's step
-      const uniqueId: string = sectionId ? `section-${sectionId}` : `step-${stepId}`;
-            
-      // Find all interactive elements in the current container to identify the step
-      const searchContainer = containerRef?.current || document;
-      const allInteractiveElements = searchContainer.querySelectorAll('[data-requirements]') as NodeListOf<HTMLElement>;
-      const elementArray = Array.from(allInteractiveElements);
       
-      // Group elements by step using centralized logic
-      const steps = groupInteractiveElementsByStep(elementArray);
-      
-      // Find the step that contains this element using the unique identifier
-      const elementStep = steps.find((step: InteractiveStep) => 
-        step.uniqueId === uniqueId
-      );
-      
-      if (elementStep) {
-        console.log(`📋 Marking entire step as completed: ${elementStep.buttons.length} buttons with uniqueId="${uniqueId}"`);
-        
-        // Use centralized step completion logic
-        markStepCompleted(elementStep);
-        
-        elementStep.buttons.forEach((button: HTMLElement, index: number) => {
-          const buttonType = button.getAttribute('data-button-type') || 'unknown';
-          console.log(`  ✅ Marking button ${index + 1} as completed: ${buttonType}`);
-        });
-      } else {
-        // This should never happen if our step grouping logic is correct
-        console.error('💥 CRITICAL: No step found with unique ID despite element having ID! This indicates a bug in step grouping logic.');
-        console.error('Details:', {
-          uniqueId,
-          sectionId,
-          stepId,
-          availableSteps: steps.map(s => s.uniqueId),
-          element: element.tagName
-        });
-        throw new Error(`Step not found for unique ID: ${uniqueId}`);
-      }
-      
-      // Wait for React updates to complete, then dispatch event to trigger requirements re-check
+      // Dispatch event for any listeners
       waitForReactUpdates().then(() => {
-        console.log('🔔 Dispatching interactive-action-completed event');
         const event = new CustomEvent('interactive-action-completed', {
           detail: { element, state }
         });
         document.dispatchEvent(event);
-        console.log('✅ Event dispatched successfully');
       });
     }
   }
 
-  const interactiveFocus = useCallback((data: InteractiveElementData, click: boolean, clickedElement: HTMLElement) => {
-    setInteractiveState(clickedElement, 'running');
+  const interactiveFocus = useCallback((data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => {
+    if (clickedElement) {
+      setInteractiveState(clickedElement, 'running');
+    }
     
     // Search entire document for the target, which is outside of docs plugin frame.
     const targetElements = document.querySelectorAll(data.reftarget);
@@ -279,17 +222,23 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       });
       
       // Mark as completed after successful execution (only in Do mode)
-      waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
-      });
+      if (clickedElement) {
+        waitForReactUpdates().then(() => {
+          setInteractiveState(clickedElement, 'completed');
+        });
+      }
     } catch (error) {
       console.error("Error in interactiveFocus:", error);
-      setInteractiveState(clickedElement, 'error');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'error');
+      }
     }
   }, []);
 
-  const interactiveButton = useCallback((data: InteractiveElementData, click: boolean, clickedElement: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
-    setInteractiveState(clickedElement, 'running');
+  const interactiveButton = useCallback((data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
+    if (clickedElement) {
+      setInteractiveState(clickedElement, 'running');
+    }
 
     try {
       const buttons = findButtonByText(data.reftarget);
@@ -308,12 +257,16 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       });
       
       // Mark as completed after successful execution (only in Do mode)
-      waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
-      });
+      if (clickedElement) {
+        waitForReactUpdates().then(() => {
+          setInteractiveState(clickedElement, 'completed');
+        });
+      }
     } catch (error) {
       console.error("Error in interactiveButton:", error);
-      setInteractiveState(clickedElement, 'error');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'error');
+      }
     }
   }, []);
 
@@ -322,13 +275,15 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   const runInteractiveSequenceRef = useRef<(elements: Element[], showMode: boolean) => Promise<void>>();
   const runStepByStepSequenceRef = useRef<(elements: Element[]) => Promise<void>>();
 
-  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly: boolean, clickedElement: HTMLElement): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly: boolean, clickedElement?: HTMLElement): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
     // This is here so recursion cannot happen
     if(activeRefsRef.current.has(data.reftarget)) {
       return data.reftarget;
     }
     
-    setInteractiveState(clickedElement, 'running');
+    if (clickedElement) {
+      setInteractiveState(clickedElement, 'running');
+    }
     
     try {
       const searchContainer = containerRef?.current || document;
@@ -365,22 +320,28 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       }
       
       // Mark as completed after successful execution
-      setInteractiveState(clickedElement, 'completed');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'completed');
+      }
       
       activeRefsRef.current.delete(data.reftarget);
       return data.reftarget;
     } catch (error) {
       console.error(`Error in interactiveSequence for ${data.reftarget}:`, error);
-      setInteractiveState(clickedElement, 'error');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'error');
+      }
       activeRefsRef.current.delete(data.reftarget);
       throw error;
     }
   }, []);
 
-  const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm: boolean, clickedElement: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
     
-    setInteractiveState(clickedElement, 'running');
+    if (clickedElement) {
+      setInteractiveState(clickedElement, 'running');
+    }
     
     try {
       // Search entire document for the target, which is outside of docs plugin frame.
@@ -462,18 +423,24 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       targetElement.dispatchEvent(new Event('blur', { bubbles: true }));
       
       // Mark as completed after successful execution
-      waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
-      });
+      if (clickedElement) {
+        waitForReactUpdates().then(() => {
+          setInteractiveState(clickedElement, 'completed');
+        });
+      }
       
     } catch (error) {
       console.error('Error applying interactive action for selector ' + data.reftarget);
-      setInteractiveState(clickedElement, 'error');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'error');
+      }
     }
   }, []);
 
-  const interactiveNavigate = useCallback((data: InteractiveElementData, navigate: boolean, clickedElement: HTMLElement) => {
-    setInteractiveState(clickedElement, 'running');
+  const interactiveNavigate = useCallback((data: InteractiveElementData, navigate: boolean, clickedElement?: HTMLElement) => {
+    if (clickedElement) {
+      setInteractiveState(clickedElement, 'running');
+    }
     
     try {
       if (!navigate) {
@@ -484,9 +451,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         
         // Provide visual feedback by briefly highlighting the browser location bar concept
         // or show a toast/notification (for now, just log and complete)
-        waitForReactUpdates().then(() => {
-          setInteractiveState(clickedElement, 'completed');
-        });
+        if (clickedElement) {
+          waitForReactUpdates().then(() => {
+            setInteractiveState(clickedElement, 'completed');
+          });
+        }
         return;
       }
 
@@ -504,13 +473,17 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       }
       
       // Mark as completed after successful navigation
-      waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
-      });
+      if (clickedElement) {
+        waitForReactUpdates().then(() => {
+          setInteractiveState(clickedElement, 'completed');
+        });
+      }
       
     } catch (error) {
       console.error('Error in interactiveNavigate:', error);
-      setInteractiveState(clickedElement, 'error');
+      if (clickedElement) {
+        setInteractiveState(clickedElement, 'error');
+      }
     }
   }, []);
 
@@ -713,20 +686,34 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }
 
   const navmenuOpenCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    const navmenu = document.querySelector('ul[aria-label="Navigation"]');
-    if(navmenu) {
-      return {
-        requirement: check,
-        pass: true,
+    // Based on your HTML structure, try these selectors in order of preference
+    const selectorsToTry = [
+      // Most specific to your Grafana version
+      'div[data-testid="data-testid navigation mega-menu"]',
+      'ul[aria-label="Navigation"]',
+      'nav.css-rs8tod',
+      // Fallbacks for other versions
+      'div[data-testid*="navigation"]',
+      'nav[aria-label="Navigation"]',
+      'ul[aria-label="Main navigation"]'
+    ];
+    
+    for (const selector of selectorsToTry) {
+      const element = document.querySelector(selector);
+      if (element) {
+        return {
+          requirement: check,
+          pass: true,
+        };
       }
     }
 
     return {
       requirement: check,
       pass: false,
-      error: "Navmenu is not open",
+      error: "Navigation menu not detected - menu may be closed or selector mismatch",
       context: data,
-    }
+    };
   }
 
   const isAdminCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
@@ -788,6 +775,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     const checks: string[] = requirements.split(',').map(check => check.trim());    
 
     async function performCheck(check: string, data: InteractiveElementData): Promise<CheckResult> {
+      // Legacy checks (keep for backward compatibility)
       if(check === 'exists-reftarget') {
         return reftargetExistsCHECK(data, check);
       } else if(check === 'has-datasources') {
@@ -796,6 +784,34 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         return isAdminCHECK(data, check);
       } else if(check === 'navmenu-open') {
         return navmenuOpenCHECK(data, check);
+      }
+
+      // Enhanced permission-based checks
+      else if(check.startsWith('has-permission:')) {
+        return hasPermissionCHECK(data, check);
+      } else if(check.startsWith('has-role:')) {
+        return hasRoleCHECK(data, check);
+      }
+
+      // Data source and plugin checks
+      else if(check.startsWith('has-datasource:')) {
+        return hasDataSourceCHECK(data, check);
+      } else if(check.startsWith('has-plugin:')) {
+        return hasPluginCHECK(data, check);
+      }
+
+      // Location and navigation checks
+      else if(check.startsWith('on-page:')) {
+        return onPageCHECK(data, check);
+      }
+
+      // Feature and environment checks
+      else if(check.startsWith('has-feature:')) {
+        return hasFeatureCHECK(data, check);
+      } else if(check.startsWith('in-environment:')) {
+        return inEnvironmentCHECK(data, check);
+      } else if(check.startsWith('min-version:')) {
+        return minVersionCHECK(data, check);
       }
 
       console.warn("Unknown requirement:", check);
@@ -836,172 +852,360 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     return { requirementsCheck, interactiveData: data };
   };
 
-  /**
-   * Find and attach event listeners to interactive elements in the DOM
-   * This replaces the need for inline onclick handlers
-   */
-  const attachInteractiveEventListeners = useCallback(() => {
-    // Find all interactive elements with data attributes in the scoped container
-    const searchContainer = containerRef?.current || document;
-    const interactiveElements = searchContainer.querySelectorAll('[data-targetaction][data-reftarget].interactive-button');
-    
-    interactiveElements.forEach((element) => {
-      const htmlElement = element as HTMLElement;
-      
-      // Skip if already has event listener attached
-      if (htmlElement.hasAttribute('data-listener-attached')) {
-        return;
-      }
-      
-      // Mark as having listener attached
-      htmlElement.setAttribute('data-listener-attached', 'true');
-      
-      // Extract interactive data
-      const data = extractInteractiveDataFromElement(htmlElement);
-      const buttonType = htmlElement.getAttribute('data-button-type') || 'do';
-      
-      // Create click handler
-      const clickHandler = async (event: Event) => {
-        safeEventHandler(event, {
-          preventDefault: true,
-          stopPropagation: true,
-        });
-        
-        try {
-          // Check requirements before executing
-          const requirementsCheck = await checkRequirementsFromData(data);
-          
-          if (!requirementsCheck.pass) {
-            console.warn("Requirements not met for interactive element:", data);
-            console.warn("Requirements check results:", requirementsCheck);
-            return;
-          }
-          
-          // Execute the appropriate action based on button type and target action
-          const isShowMode = buttonType === 'show';
-          
-          if (data.targetaction === 'highlight') {
-            interactiveFocus(data, !isShowMode, htmlElement); // Show mode = don't click, Do mode = click
-          } else if (data.targetaction === 'button') {
-            interactiveButton(data, !isShowMode, htmlElement); // Show mode = don't click, Do mode = click
-          } else if (data.targetaction === 'formfill') {
-            interactiveFormFill(data, !isShowMode, htmlElement); // Show mode = don't fill, Do mode = fill
-          } else if (data.targetaction === 'navigate') {
-            interactiveNavigate(data, !isShowMode, htmlElement); // Show mode = show target, Do mode = navigate
-          } else if (data.targetaction === 'sequence') {
-            await interactiveSequence(data, isShowMode, htmlElement); // Show mode = highlight only, Do mode = full sequence
-          } else {
-            console.warn("Unknown target action:", data.targetaction);
-          }
-        } catch (error) {
-          console.error("Error in interactive element click handler:", error);
-        }
-      };
-      
-      // Attach click listener
-      htmlElement.addEventListener('click', clickHandler);
-      
-      // Store the handler so we can remove it later if needed
-      (htmlElement as any).__interactiveClickHandler = clickHandler;
-    });
-  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence, checkRequirementsFromData, containerRef]);
-
-  /**
-   * Remove event listeners from interactive elements
-   */
-  const detachInteractiveEventListeners = useCallback(() => {
-    const searchContainer = containerRef?.current || document;
-    const interactiveElements = searchContainer.querySelectorAll('[data-listener-attached="true"]');
-    
-    interactiveElements.forEach((element) => {
-      const htmlElement = element as HTMLElement;
-      const handler = (htmlElement as any).__interactiveClickHandler;
-      
-      if (handler) {
-        htmlElement.removeEventListener('click', handler);
-        delete (htmlElement as any).__interactiveClickHandler;
-      }
-      
-      htmlElement.removeAttribute('data-listener-attached');
-    });
-  }, [containerRef]);
-
-  /**
-   * Check if a DOM node contains interactive elements
-   * More explicit and performant than querySelector
-   */
-  const nodeContainsInteractiveElements = useCallback((node: Node): boolean => {
-    // Only check Element nodes
-    if (node.nodeType !== Node.ELEMENT_NODE) {
-      return false;
-    }
-    
-    const element = node as Element;
-    
-    // Check if the element itself is an interactive button
-    if (element.classList.contains('interactive-button') && 
-        element.hasAttribute('data-targetaction') && 
-        element.hasAttribute('data-reftarget')) {
-      return true;
-    }
-    
-    // Check if any child elements are interactive buttons
-    // Use getElementsByClassName for better performance than querySelector
-    const interactiveElements = element.getElementsByClassName('interactive-button');
-    
-    for (let i = 0; i < interactiveElements.length; i++) {
-      const interactiveElement = interactiveElements[i];
-      if (interactiveElement.hasAttribute('data-targetaction') && 
-          interactiveElement.hasAttribute('data-reftarget')) {
-        return true;
-      }
-    }
-    
-    return false;
-  }, []);
-
-  // Effect to attach/detach event listeners when DOM changes
-  useEffect(() => {
-    // Attach event listeners to existing interactive elements
-    attachInteractiveEventListeners();
-    
-    // Set up mutation observer to handle dynamically added content
-    const observer = new MutationObserver((mutations) => {
-      let shouldReattach = false;
-      
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-          // Check if any added nodes contain interactive elements
-          mutation.addedNodes.forEach((node) => {
-            if (nodeContainsInteractiveElements(node)) {
-              shouldReattach = true;
-            }
-          });
-        }
-      });
-      
-      if (shouldReattach) {
-        // Small delay to let DOM settle
-        setTimeout(() => {
-          attachInteractiveEventListeners();
-        }, 100);
-      }
-    });
-    
-    // Start observing
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-    
-    // Cleanup function
-    return () => {
-      observer.disconnect();
-      detachInteractiveEventListeners();
-    };
-  }, [attachInteractiveEventListeners, detachInteractiveEventListeners, nodeContainsInteractiveElements]);
-
   // Legacy custom event system removed - all interactions now handled by modern direct click handlers
+
+  /**
+   * Direct interface for React components to execute interactive actions
+   * without needing DOM elements or the bridge pattern
+   */
+  const executeInteractiveAction = useCallback(async (
+    targetAction: string,
+    refTarget: string,
+    targetValue?: string,
+    buttonType: 'show' | 'do' = 'do'
+  ): Promise<void> => {
+    // Create InteractiveElementData directly from parameters
+    const elementData: InteractiveElementData = {
+      reftarget: refTarget,
+      targetaction: targetAction,
+      targetvalue: targetValue,
+      requirements: undefined,
+      tagName: 'button', // Simulated for React components
+      textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,
+      timestamp: Date.now(),
+    };
+
+    // No DOM element needed - React components manage their own state
+    const isShowMode = buttonType === 'show';
+
+    try {
+      // Route to appropriate function based on action type
+      switch (targetAction) {
+        case 'highlight':
+          interactiveFocus(elementData, !isShowMode, undefined);
+          break;
+
+        case 'button':
+          interactiveButton(elementData, !isShowMode, undefined);
+          break;
+
+        case 'formfill':
+          interactiveFormFill(elementData, !isShowMode, undefined);
+          break;
+
+        case 'navigate':
+          interactiveNavigate(elementData, !isShowMode, undefined);
+          break;
+
+        case 'sequence':
+          await interactiveSequence(elementData, isShowMode, undefined);
+          break;
+
+        default:
+          console.warn(`Unknown interactive action: ${targetAction}`);
+      }
+    } catch (error) {
+      console.error(`Error executing interactive action ${targetAction}:`, error);
+      throw error;
+    }
+  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence]);
+
+  /**
+   * ============================================================================
+   * EXTENSIBLE REQUIREMENTS CHECKING SYSTEM
+   * Using Grafana Runtime APIs for comprehensive state validation
+   * ============================================================================
+   */
+
+  // Enhanced permission checking using Grafana's permission system
+  const hasPermissionCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      // Extract permission action from requirement (e.g., "has-permission:dashboards:write")
+      const permission = check.replace('has-permission:', '');
+      const hasAccess = hasPermission(permission);
+      
+      if (hasAccess) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Missing permission: ${permission}`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Permission check failed: ${error}`,
+      };
+    }
+  };
+
+  // Enhanced user role checking using config.bootData.user
+  const hasRoleCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const user = config.bootData?.user;
+      if (!user) {
+        return {
+          pass: false,
+          requirement: check,
+          error: "User information not available",
+        };
+      }
+
+      const requiredRole = check.replace('has-role:', '').toLowerCase();
+      
+      let hasRole = false;
+      
+      switch (requiredRole) {
+        case 'admin':
+        case 'grafana-admin':
+          hasRole = user.isGrafanaAdmin || false;
+          break;
+        case 'editor':
+          hasRole = user.orgRole === 'Editor' || user.orgRole === 'Admin' || user.isGrafanaAdmin || false;
+          break;
+        case 'viewer':
+          hasRole = !!user.orgRole; // Any role means at least viewer
+          break;
+        default:
+          hasRole = user.orgRole === requiredRole;
+      }
+      
+      if (hasRole) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `User role '${user.orgRole || 'none'}' does not meet requirement '${requiredRole}'`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Role check failed: ${error}`,
+      };
+    }
+  };
+
+  // Enhanced data source checking using DataSourceSrv
+  const hasDataSourceCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const dataSourceSrv = getDataSourceSrv();
+      
+      // Extract data source type/name (e.g., "has-datasource:prometheus" or "has-datasource:type:loki")
+      const dsRequirement = check.replace('has-datasource:', '');
+      const isTypeCheck = dsRequirement.startsWith('type:');
+      const targetValue = isTypeCheck ? dsRequirement.replace('type:', '') : dsRequirement;
+      
+      const dataSources = dataSourceSrv.getList();
+      
+      let found = false;
+      
+      if (isTypeCheck) {
+        // Check by data source type
+        found = dataSources.some(ds => ds.type.toLowerCase() === targetValue.toLowerCase());
+      } else {
+        // Check by data source name/uid
+        found = dataSources.some(ds => 
+          ds.name.toLowerCase() === targetValue.toLowerCase() || 
+          ds.uid === targetValue
+        );
+      }
+      
+      if (found) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        const checkType = isTypeCheck ? 'type' : 'name/uid';
+        return {
+          pass: false,
+          requirement: check,
+          error: `No data source found with ${checkType}: ${targetValue}`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Data source check failed: ${error}`,
+      };
+    }
+  };
+
+  // Plugin availability checking
+  const hasPluginCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const pluginId = check.replace('has-plugin:', '');
+      
+      // Check if plugin is available in config
+      const isAppPlugin = config.apps && config.apps[pluginId];
+      const isDataSourcePlugin = config.datasources && Object.values(config.datasources).some(
+        ds => ds.type === pluginId
+      );
+      
+      if (isAppPlugin || isDataSourcePlugin) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Plugin '${pluginId}' is not installed or enabled`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Plugin check failed: ${error}`,
+      };
+    }
+  };
+
+  // Location/URL checking using locationService
+  const onPageCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const location = locationService.getLocation();
+      const requiredPath = check.replace('on-page:', '');
+      
+      // Support partial path matching and exact matching
+      const currentPath = location.pathname;
+      const matches = currentPath.includes(requiredPath) || currentPath === requiredPath;
+      
+      if (matches) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Current page '${currentPath}' does not match required path '${requiredPath}'`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Page check failed: ${error}`,
+      };
+    }
+  };
+
+  // Feature toggle checking
+  const hasFeatureCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const featureName = check.replace('has-feature:', '');
+      const featureToggles = config.featureToggles as Record<string, boolean> | undefined;
+      const isEnabled = featureToggles && featureToggles[featureName];
+      
+      if (isEnabled) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Feature toggle '${featureName}' is not enabled`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Feature check failed: ${error}`,
+      };
+    }
+  };
+
+  // Environment checking (useful for dev vs prod tutorials)
+  const inEnvironmentCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const requiredEnv = check.replace('in-environment:', '').toLowerCase();
+      const currentEnv = config.buildInfo?.env?.toLowerCase() || 'unknown';
+      
+      if (currentEnv === requiredEnv) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Current environment '${currentEnv}' does not match required '${requiredEnv}'`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Environment check failed: ${error}`,
+      };
+    }
+  };
+
+  // Version checking (useful for version-specific tutorials)
+  const minVersionCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const requiredVersion = check.replace('min-version:', '');
+      const currentVersion = config.buildInfo?.version || '0.0.0';
+      
+      // Simple semantic version comparison (major.minor.patch)
+      const parseVersion = (v: string) => v.split('.').map(n => parseInt(n, 10));
+      const [reqMajor, reqMinor, reqPatch] = parseVersion(requiredVersion);
+      const [curMajor, curMinor, curPatch] = parseVersion(currentVersion);
+      
+      const meetsRequirement = 
+        curMajor > reqMajor || 
+        (curMajor === reqMajor && curMinor > reqMinor) ||
+        (curMajor === reqMajor && curMinor === reqMinor && curPatch >= reqPatch);
+      
+      if (meetsRequirement) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Current version '${currentVersion}' does not meet minimum requirement '${requiredVersion}'`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Version check failed: ${error}`,
+      };
+    }
+  };
 
   return {
     interactiveFocus,
@@ -1012,7 +1216,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     checkElementRequirements,
     checkRequirementsFromData,
     checkRequirementsWithData,
-    attachInteractiveEventListeners,
-    detachInteractiveEventListeners,
+    executeInteractiveAction, // New direct interface for React components
   };
 } 
