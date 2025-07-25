@@ -424,11 +424,100 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
           };
         }
 
+        // INTERACTIVE MULTI-STEP
+        if (
+          /\binteractive\b/.test(el.className || '') &&
+          el.getAttribute('data-targetaction') === 'multistep'
+        ) {
+          hasInteractiveElements = true;
+          
+          // Extract text content by cloning element and removing spans
+          // This is more robust than trying to extract only direct text nodes
+          const elementClone = el.cloneNode(true) as Element;
+          const spansToRemove = elementClone.querySelectorAll('span.interactive');
+          spansToRemove.forEach(span => span.remove());
+          const elementTextContent = elementClone.textContent?.trim() || '';
+          
+          // Extract internal action spans (from original element)
+          const internalSpans = el.querySelectorAll('span.interactive');
+          const internalActions: Array<{
+            requirements?: string;
+            targetAction: string;
+            refTarget: string;
+            targetValue?: string;
+          }> = [];
+          
+          internalSpans.forEach((span, index) => {
+            try {
+              const targetAction = span.getAttribute('data-targetaction');
+              const refTarget = span.getAttribute('data-reftarget');
+              
+              if (!targetAction || !refTarget) {
+                errorCollector.addError(
+                  'element_creation',
+                  `Multi-step internal action ${index + 1} missing required attributes (data-targetaction and data-reftarget)`,
+                  span.outerHTML,
+                  `${currentPath}.multistep.action[${index}]`
+                );
+                return;
+              }
+              
+              internalActions.push({
+                requirements: span.getAttribute('data-requirements') || undefined,
+                targetAction,
+                refTarget,
+                targetValue: span.getAttribute('data-targetvalue') || undefined,
+              });
+              
+              // Remove the internal span since it's just metadata
+              span.remove();
+            } catch (error) {
+              errorCollector.addError(
+                'element_creation',
+                `Failed to process multi-step internal action ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                span.outerHTML,
+                `${currentPath}.multistep.action[${index}]`,
+                error instanceof Error ? error : undefined
+              );
+            }
+          });
+          
+          if (internalActions.length === 0) {
+            errorCollector.addError(
+              'element_creation',
+              `Multi-step element has no valid internal actions`,
+              el.outerHTML,
+              currentPath
+            );
+          }
+          
+          // Use general attribute mapping to capture ALL data attributes
+          const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
+          
+          return {
+            type: 'interactive-multi-step',
+            props: {
+              // Core multi-step props
+              internalActions,
+              title: elementTextContent,
+              // Specific data attribute mappings for React prop names
+              requirements: el.getAttribute('data-requirements'),
+              outcomes: el.getAttribute('data-outcomes'),
+              hints: el.getAttribute('data-hint'),
+              // Include ALL other attributes (including future data-* attributes)
+              ...allProps,
+            },
+            children: [], // Children are captured in title above
+            originalHTML: el.outerHTML,
+          };
+        }
+
         // INTERACTIVE STEP (outside of section)
         if (
           /\binteractive\b/.test(el.className || '') &&
           el.getAttribute('data-targetaction') &&
-          el.getAttribute('data-targetaction') !== 'sequence'
+          el.getAttribute('data-targetaction') !== 'sequence' &&
+          el.getAttribute('data-targetaction') !== 'multistep'
         ) {
           hasInteractiveElements = true;
           

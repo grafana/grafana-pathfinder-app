@@ -3,6 +3,10 @@ import { IconButton, Button, Alert } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive.hook';
 import { useStepRequirements } from '../../step-requirements.hook';
 import { ParseError } from '../content.types';
+import { InteractiveMultiStep } from './interactive-multi-step';
+
+// Get the props type for InteractiveMultiStep
+type InteractiveMultiStepProps = React.ComponentProps<typeof InteractiveMultiStep>;
 
 // Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;
@@ -93,12 +97,13 @@ interface ContentParsingErrorProps {
 // --- Types for unified state management ---
 interface StepInfo {
   stepId: string;
-  element: React.ReactElement<InteractiveStepProps>;
+  element: React.ReactElement<InteractiveStepProps> | React.ReactElement<any>;
   index: number;
-  targetAction: string;
-  refTarget: string;
+  targetAction?: string; // Optional for multi-step
+  refTarget?: string; // Optional for multi-step
   targetValue?: string;
   requirements?: string;
+  isMultiStep: boolean; // Flag to identify component type
 }
 
 // --- Components ---
@@ -212,9 +217,7 @@ export function InteractiveSection({
     
     React.Children.forEach(children, (child, index) => {
       if (React.isValidElement(child) && 
-          (child as any).type === InteractiveStep &&
-          child.props && 
-          typeof child.props === 'object') {
+          (child as any).type === InteractiveStep) {
         const props = child.props as InteractiveStepProps;
         const stepId = `${sectionId}-step-${index + 1}`;
         
@@ -226,6 +229,19 @@ export function InteractiveSection({
           refTarget: props.refTarget,
           targetValue: props.targetValue,
           requirements: props.requirements,
+          isMultiStep: false,
+        });
+      } else if (React.isValidElement(child) && 
+                 (child as any).type === InteractiveMultiStep) {
+        const props = child.props as InteractiveMultiStepProps;
+        const stepId = `${sectionId}-step-${index + 1}`;
+        
+        steps.push({
+          stepId,
+          element: child as React.ReactElement<InteractiveMultiStepProps>,
+          index,
+          requirements: props.requirements,
+          isMultiStep: true,
         });
       }
     });
@@ -263,13 +279,19 @@ export function InteractiveSection({
 
   // Execute a single step (shared between individual and sequence execution)
   const executeStep = useCallback(async (stepInfo: StepInfo): Promise<boolean> => {
+    // For multi-step components, skip execution here - they handle their own execution
+    if (stepInfo.isMultiStep) {
+      console.log(`🔄 Skipping section-level execution for multi-step: ${stepInfo.stepId} (handled internally)`);
+      return true; // Multi-step components handle their own execution
+    }
+    
     console.log(`🚀 Executing step: ${stepInfo.stepId} (${stepInfo.targetAction}: ${stepInfo.refTarget})`);
     
     try {
       // Execute the action using existing interactive logic
       await executeInteractiveAction(
-        stepInfo.targetAction,
-        stepInfo.refTarget,
+        stepInfo.targetAction!,
+        stepInfo.refTarget!,
         stepInfo.targetValue,
         'do'
       );
@@ -298,17 +320,19 @@ export function InteractiveSection({
         const stepInfo = stepComponents[i];
         setCurrentlyExecutingStep(stepInfo.stepId);
 
-        // First, show the step (highlight it)
-        console.log(`👁️ Showing step: ${stepInfo.stepId}`);
-        await executeInteractiveAction(
-          stepInfo.targetAction,
-          stepInfo.refTarget,
-          stepInfo.targetValue,
-          'show'
-        );
+        // First, show the step (highlight it) - skip for multi-step components
+        if (!stepInfo.isMultiStep) {
+          console.log(`👁️ Showing step: ${stepInfo.stepId}`);
+          await executeInteractiveAction(
+            stepInfo.targetAction!,
+            stepInfo.refTarget!,
+            stepInfo.targetValue,
+            'show'
+          );
 
-        // Wait for highlight to be visible
-        await new Promise(resolve => setTimeout(resolve, 1500));
+          // Wait for highlight to be visible
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
 
         // Then, execute the step
         const success = await executeStep(stepInfo);
@@ -350,6 +374,25 @@ export function InteractiveSection({
         
         return React.cloneElement(child as React.ReactElement<InteractiveStepProps>, {
           ...child.props,
+          stepId: stepInfo.stepId,
+          isEligibleForChecking,
+          isCompleted,
+          isCurrentlyExecuting,
+          onStepComplete: handleStepComplete,
+          disabled: disabled || isRunning,
+          key: stepInfo.stepId,
+        });
+      } else if (React.isValidElement(child) && 
+                 (child as any).type === InteractiveMultiStep) {
+        const stepInfo = stepComponents[index];
+        if (!stepInfo) return child;
+        
+        const isEligibleForChecking = getStepEligibility(index);
+        const isCompleted = completedSteps.has(stepInfo.stepId);
+        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
+        
+        return React.cloneElement(child as React.ReactElement<InteractiveMultiStepProps>, {
+          ...(child.props as InteractiveMultiStepProps),
           stepId: stepInfo.stepId,
           isEligibleForChecking,
           isCompleted,
@@ -642,6 +685,9 @@ export const InteractiveStep = forwardRef<
 
 // Add display name for debugging
 InteractiveStep.displayName = 'InteractiveStep';
+
+// Re-export InteractiveMultiStep for convenience
+export { InteractiveMultiStep } from './interactive-multi-step';
 
 export function CodeBlock({
   code,

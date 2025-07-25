@@ -4,7 +4,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 import { parseHTMLToComponents, ParsedElement } from './html-parser';
-import { InteractiveSection, InteractiveStep, CodeBlock, ExpandableTable, ImageRenderer, ContentParsingError, resetInteractiveCounters } from './components/interactive-components';
+import { InteractiveSection, InteractiveStep, InteractiveMultiStep, CodeBlock, ExpandableTable, ImageRenderer, ContentParsingError, resetInteractiveCounters } from './components/interactive-components';
 import { SequentialRequirementsManager } from '../requirements-checker.hook';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
@@ -276,6 +276,17 @@ function renderParsedElement(
           outcomes={element.props.outcomes}
           title={element.props.title}
         />
+      );
+    case 'interactive-multi-step':
+      return (
+        <InteractiveMultiStep
+          key={key}
+          internalActions={element.props.internalActions}
+          requirements={element.props.requirements}
+          hints={element.props.hints}
+        >
+          {element.props.title}
+        </InteractiveMultiStep>
       );
     case 'image-renderer':
       return (
