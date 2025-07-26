@@ -34,16 +34,12 @@ interface InteractiveMultiStepProps {
 
 /**
  * Just-in-time requirements checker for individual actions within a multi-step
- * Similar to useStepRequirements but designed for dynamic checking during execution
- * 
- * NOTE: This follows the same pattern as useStepRequirements but is simplified for
- * one-time checks without state management. If requirements checking logic becomes
- * more complex, consider refactoring both to share a common base function.
+ * Uses the interactive hook's checkRequirementsFromData to handle both pure and DOM-dependent checks
  */
 async function checkActionRequirements(
   action: InternalAction, 
   actionIndex: number,
-  checkElementRequirements: (element: HTMLElement) => Promise<any>
+  checkRequirementsFromData: (data: any) => Promise<any>
 ): Promise<{ pass: boolean; explanation?: string }> {
   
   if (!action.requirements) {
@@ -51,14 +47,15 @@ async function checkActionRequirements(
   }
   
   try {
-    // Create mock element for requirements checking (same pattern as useStepRequirements)
-    const mockElement = document.createElement('div');
-    mockElement.setAttribute('data-requirements', action.requirements);
-    mockElement.setAttribute('data-targetaction', action.targetAction);
-    mockElement.setAttribute('data-reftarget', action.refTarget || '');
-    if (action.targetValue) {
-      mockElement.setAttribute('data-targetvalue', action.targetValue);
-    }
+    // Create data structure compatible with checkRequirementsFromData
+    const actionData = {
+      requirements: action.requirements,
+      targetaction: action.targetAction,
+      reftarget: action.refTarget || '',
+      targetvalue: action.targetValue,
+      textContent: `multistep-action-${actionIndex + 1}`,
+      tagName: 'span'
+    };
     
     // Check requirements with timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -66,7 +63,7 @@ async function checkActionRequirements(
     });
     
     const result = await Promise.race([
-      checkElementRequirements(mockElement),
+      checkRequirementsFromData(actionData),
       timeoutPromise
     ]);
     
@@ -75,7 +72,7 @@ async function checkActionRequirements(
     } else {
       // Generate user-friendly explanation
       const errorMessage = result.error?.map((e: any) => e.error || e.requirement).join(', ');
-      const explanation = result.explanation || `Step ${actionIndex + 1} requirements not met: ${errorMessage}`;
+      const explanation = `Step ${actionIndex + 1} requirements not met: ${errorMessage}`;
       
       return { 
         pass: false, 
@@ -120,7 +117,7 @@ export const InteractiveMultiStep = forwardRef<
   const isCompleted = parentCompleted || isLocallyCompleted;
   
   // Get the interactive functions from the hook
-  const { executeInteractiveAction, checkElementRequirements } = useInteractiveElements();
+  const { executeInteractiveAction, checkRequirementsFromData } = useInteractiveElements();
   
   // Use step checker hook for overall multi-step requirements and objectives
   const checker = useStepChecker({
@@ -177,7 +174,7 @@ export const InteractiveMultiStep = forwardRef<
         
         // Just-in-time requirements checking for this specific action
         if (action.requirements) {
-          const requirementsResult = await checkActionRequirements(action, i, checkElementRequirements);
+          const requirementsResult = await checkActionRequirements(action, i, checkRequirementsFromData);
           if (!requirementsResult.pass) {
             console.error(`❌ Multi-step ${stepId}: Internal action ${i + 1} requirements failed`, requirementsResult.explanation);
             setExecutionError(requirementsResult.explanation || 'Action requirements not met');
@@ -237,7 +234,7 @@ export const InteractiveMultiStep = forwardRef<
     stepId,
     internalActions,
     executeInteractiveAction,
-    checkElementRequirements,
+    checkRequirementsFromData,
     onStepComplete,
     onComplete,
     checker.completionReason

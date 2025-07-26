@@ -10,9 +10,9 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useInteractiveElements } from './interactive.hook';
 import { getRequirementExplanation } from './requirement-explanations';
 import { SequentialRequirementsManager } from './requirements-checker.hook';
+import { useInteractiveElements } from './interactive.hook';
 
 export interface UseStepCheckerProps {
   requirements?: string;
@@ -47,7 +47,7 @@ export function useStepChecker({
   objectives,
   hints,
   stepId,
-  isEligibleForChecking
+  isEligibleForChecking = true
 }: UseStepCheckerProps): UseStepCheckerReturn {
   const [state, setState] = useState({
     isEnabled: false,
@@ -58,8 +58,7 @@ export function useStepChecker({
     error: undefined as string | undefined,
   });
 
-  // Get the requirements checking function to reuse its logic
-  const { checkElementRequirements } = useInteractiveElements();
+  // Requirements checking is now handled by the pure requirements utility
   
   // Manager integration for state propagation
   const managerRef = useRef<SequentialRequirementsManager | null>(null);
@@ -86,20 +85,23 @@ export function useStepChecker({
     }
   }, [stepId]);
 
+  // Get the interactive elements hook for proper requirements checking
+  const { checkRequirementsFromData } = useInteractiveElements();
+
   /**
-   * Shared condition checking logic for both objectives and requirements
-   * Reuses existing checkElementRequirements infrastructure
+   * Check conditions (requirements or objectives) using proper DOM check functions
    */
-  const checkConditions = useCallback(async (
-    conditions: string, 
-    type: 'objectives' | 'requirements'
-  ): Promise<{ pass: boolean; error?: string }> => {
+  const checkConditions = useCallback(async (conditions: string, type: 'requirements' | 'objectives') => {
     try {
-      // Create mock element for condition checking, reusing requirements logic
-      const mockElement = document.createElement('div');
-      mockElement.setAttribute('data-requirements', conditions); // Reuse requirements checking
-      mockElement.setAttribute('data-targetaction', 'button');
-      mockElement.setAttribute('data-reftarget', stepId);
+      // Create proper InteractiveElementData structure
+      const actionData = {
+        requirements: conditions,
+        targetaction: 'button' as const,
+        reftarget: stepId,
+        textContent: stepId,
+        tagName: 'div' as const,
+        objectives: type === 'objectives' ? conditions : undefined
+      };
       
       // Add timeout to prevent hanging (same as original hooks)
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -107,7 +109,7 @@ export function useStepChecker({
       });
       
       const result = await Promise.race([
-        checkElementRequirements(mockElement),
+        checkRequirementsFromData(actionData),
         timeoutPromise
       ]);
       
@@ -121,7 +123,7 @@ export function useStepChecker({
       const errorMessage = error instanceof Error ? error.message : `Failed to check ${type}`;
       return { pass: false, error: errorMessage };
     }
-  }, [stepId, checkElementRequirements]);
+  }, [stepId, checkRequirementsFromData]);
 
   /**
    * Core checking logic with proper priority:

@@ -1,9 +1,14 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useCallback, useRef } from 'react';
-import { locationService, config, hasPermission, getDataSourceSrv } from '@grafana/runtime';
-import { ContextService } from './context';
+import { locationService } from '@grafana/runtime';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 import { waitForReactUpdates } from './requirements-checker.hook';
+import { 
+  checkRequirements, 
+  RequirementsCheckOptions, 
+  CheckResultError,
+  DOMCheckFunctions 
+} from './requirements-checker.utils';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -651,190 +656,105 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   };
 
-  const reftargetExistsCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    // For button actions, check if buttons with matching text exist
-    if (data.targetaction === 'button') {
-      const buttons = findButtonByText(data.reftarget);
-      
-      if (buttons.length > 0) {
-        return {
-          requirement: check,
-          pass: true,
-        };
-      } else {
-        return {
-          requirement: check,
-          pass: false,
-          error: `No buttons found containing text: "${data.reftarget}"`,
-          context: data,
-        };
-      }
-    }
-    
-    // For other actions, check if the CSS selector matches an element
-    const targetElement = document.querySelector(data.reftarget);
-    if (targetElement) {
-      return {
-        requirement: check,
-        pass: true,
-      };
-    } 
-      
-    return {
-      requirement: check,
-      pass: false,
-      error: "Element not found",
-      context: data,
-    };
-  }
 
-  const navmenuOpenCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    // Based on your HTML structure, try these selectors in order of preference
-    const selectorsToTry = [
-      // Most specific to your Grafana version
-      'div[data-testid="data-testid navigation mega-menu"]',
-      'ul[aria-label="Navigation"]',
-      'nav.css-rs8tod',
-      // Fallbacks for other versions
-      'div[data-testid*="navigation"]',
-      'nav[aria-label="Navigation"]',
-      'ul[aria-label="Main navigation"]'
-    ];
-    
-    for (const selector of selectorsToTry) {
-      const element = document.querySelector(selector);
-      if (element) {
-        return {
-          requirement: check,
-          pass: true,
-        };
-      }
-    }
-
-    return {
-      requirement: check,
-      pass: false,
-      error: "Navigation menu not detected - menu may be closed or selector mismatch",
-      context: data,
-    };
-  }
-
-  const isAdminCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    const user = config.bootData.user;
-    if (user && user.isGrafanaAdmin) {
-      return {
-        requirement: check,
-        pass: true,
-        context: user,
-      };
-    } else if (user) {
-      return {
-        requirement: check,
-        pass: false,
-        error: "User is not an admin",
-        context: user,
-      };
-    }
-
-    return {
-      requirement: check,
-      pass: false,
-      error: "Unable to determine user admin status",
-      context: null,
-    };
-  }
-
-  const hasDatasourcesCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    const dataSources = await ContextService.fetchDataSources();
-    if(dataSources.length > 0) {
-      return {
-        requirement: check,
-        pass: true,
-      }
-    }
-
-    return {
-      requirement: check,
-      pass: false,
-      error: "No data sources found",
-      context: dataSources,
-    }
-  }      
 
   /**
-   * Core requirement checking logic that works with InteractiveElementData
+   * Create DOM check functions for requirements that need DOM access
+   */
+  const domCheckFunctions: DOMCheckFunctions = {
+    reftargetExistsCHECK: async (reftarget: string, targetAction: string): Promise<CheckResultError> => {
+      // For button actions, check if buttons with matching text exist
+      if (targetAction === 'button') {
+        const buttons = findButtonByText(reftarget);
+        
+        if (buttons.length > 0) {
+          return {
+            requirement: 'exists-reftarget',
+            pass: true,
+          };
+        } else {
+          return {
+            requirement: 'exists-reftarget',
+            pass: false,
+            error: `No buttons found containing text: "${reftarget}"`,
+          };
+        }
+      }
+      
+      // For other actions, check if the CSS selector matches an element
+      const targetElement = document.querySelector(reftarget);
+      if (targetElement) {
+        return {
+          requirement: 'exists-reftarget',
+          pass: true,
+        };
+      } 
+        
+      return {
+        requirement: 'exists-reftarget',
+        pass: false,
+        error: "Element not found",
+      };
+    },
+
+    navmenuOpenCHECK: async (): Promise<CheckResultError> => {
+      // Based on your HTML structure, try these selectors in order of preference
+      const selectorsToTry = [
+        // Most specific to your Grafana version
+        'div[data-testid="data-testid navigation mega-menu"]',
+        'ul[aria-label="Navigation"]',
+        'nav.css-rs8tod',
+        // Fallbacks for other versions
+        'div[data-testid*="navigation"]',
+        'nav[aria-label="Navigation"]',
+        'ul[aria-label="Main navigation"]'
+      ];
+      
+      for (const selector of selectorsToTry) {
+        const element = document.querySelector(selector);
+        if (element) {
+          return {
+            requirement: 'navmenu-open',
+            pass: true,
+          };
+        }
+      }
+
+      return {
+        requirement: 'navmenu-open',
+        pass: false,
+        error: "Navigation menu not detected - menu may be closed or selector mismatch",
+      };
+    }
+  };
+
+  /**
+   * Core requirement checking logic using the new pure requirements utility
+   * Replaces the mock element anti-pattern with direct requirements checking
    */
   const checkRequirementsFromData = useCallback(async (data: InteractiveElementData): Promise<InteractiveRequirementsCheck> => {
-    const requirements = data.requirements;
-    if (!requirements) {
-      console.warn("No requirements found for interactive element");
-      return {
-        requirements: requirements || '',
-        pass: true,
-        error: []
-      }
-    }
+    const options: RequirementsCheckOptions = {
+      requirements: data.requirements || '',
+      targetAction: data.targetaction,
+      refTarget: data.reftarget,
+      targetValue: data.targetvalue,
+      stepId: data.textContent || 'unknown'
+    };
 
-    const checks: string[] = requirements.split(',').map(check => check.trim());    
-
-    async function performCheck(check: string, data: InteractiveElementData): Promise<CheckResult> {
-      // Legacy checks (keep for backward compatibility)
-      if(check === 'exists-reftarget') {
-        return reftargetExistsCHECK(data, check);
-      } else if(check === 'has-datasources') {
-        return hasDatasourcesCHECK(data, check);
-      } else if(check === 'is-admin') {
-        return isAdminCHECK(data, check);
-      } else if(check === 'navmenu-open') {
-        return navmenuOpenCHECK(data, check);
-      }
-
-      // Enhanced permission-based checks
-      else if(check.startsWith('has-permission:')) {
-        return hasPermissionCHECK(data, check);
-      } else if(check.startsWith('has-role:')) {
-        return hasRoleCHECK(data, check);
-      }
-
-      // Data source and plugin checks
-      else if(check.startsWith('has-datasource:')) {
-        return hasDataSourceCHECK(data, check);
-      } else if(check.startsWith('has-plugin:')) {
-        return hasPluginCHECK(data, check);
-      } else if(check.startsWith('has-dashboard-named:')) {
-        return hasDashboardNamedCHECK(data, check);
-      }
-
-      // Location and navigation checks
-      else if(check.startsWith('on-page:')) {
-        return onPageCHECK(data, check);
-      }
-
-      // Feature and environment checks
-      else if(check.startsWith('has-feature:')) {
-        return hasFeatureCHECK(data, check);
-      } else if(check.startsWith('in-environment:')) {
-        return inEnvironmentCHECK(data, check);
-      } else if(check.startsWith('min-version:')) {
-        return minVersionCHECK(data, check);
-      }
-
-      console.warn("Unknown requirement:", check);
-      return {
-        requirement: check,
-        pass: true,
-        error: "Unknown requirement",
-        context: data,
-      }
-    }
-
-    const results = await Promise.all(checks.map(check => performCheck(check, data)));
-
+    // Use the new pure requirements checker
+    const result = await checkRequirements(options, domCheckFunctions);
+    
+    // Convert to the expected format for backward compatibility
     return {
-      requirements: requirements,
-      pass: results.every(result => result.pass),
-      error: results,  
-    }
+      requirements: result.requirements,
+      pass: result.pass,
+      error: result.error.map(e => ({
+        requirement: e.requirement,
+        pass: e.pass,
+        error: e.error,
+        context: e.context,
+      }))
+    };
   }, []);
 
   /**
@@ -917,346 +837,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
   /**
    * ============================================================================
-   * EXTENSIBLE REQUIREMENTS CHECKING SYSTEM
-   * Using Grafana Runtime APIs for comprehensive state validation
-   * 
-   * Available checks:
-   * - has-permission:action - Check user permissions using Grafana's permission system
-   * - has-role:role - Check user role (admin, editor, viewer)
-   * - has-datasource:name - Check if data source exists by name/uid
-   * - has-plugin:id - Check if plugin is installed by plugin ID
-   * - has-dashboard-named:name - Check if dashboard exists by exact title match
-   * - on-page:path - Check current page/URL path
-   * - has-feature:toggle - Check if feature toggle is enabled
-   * - in-environment:env - Check current environment (dev, prod)
-   * - min-version:x.y.z - Check minimum Grafana version
-   * - navmenu-open - Check if navigation menu is open
-   * - is-admin - Check if user is Grafana admin
-   * - has-datasources - Check if any data sources exist
-   * - exists-reftarget - Check if target element exists
+   * DOM-DEPENDENT CHECK FUNCTIONS
+   * These functions require DOM access and stay in the interactive hook
+   * Pure requirement checks have been moved to requirements-checker.utils.ts
    * ============================================================================
    */
-
-  // Enhanced permission checking using Grafana's permission system
-  const hasPermissionCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    try {
-      // Extract permission action from requirement (e.g., "has-permission:dashboards:write")
-      const permission = check.replace('has-permission:', '');
-      const hasAccess = hasPermission(permission);
-      
-      if (hasAccess) {
-        return {
-          pass: true,
-          requirement: check,
-          error: "",
-        };
-      } else {
-        return {
-          pass: false,
-          requirement: check,
-          error: `Missing permission: ${permission}`,
-        };
-      }
-    } catch (error) {
-      return {
-        pass: false,
-        requirement: check,
-        error: `Permission check failed: ${error}`,
-      };
-    }
-  };
-
-  // Enhanced user role checking using config.bootData.user
-  const hasRoleCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    try {
-      const user = config.bootData?.user;
-      if (!user) {
-        return {
-          pass: false,
-          requirement: check,
-          error: "User information not available",
-        };
-      }
-
-      const requiredRole = check.replace('has-role:', '').toLowerCase();
-      
-      let hasRole = false;
-      
-      switch (requiredRole) {
-        case 'admin':
-        case 'grafana-admin':
-          hasRole = user.isGrafanaAdmin || false;
-          break;
-        case 'editor':
-          hasRole = user.orgRole === 'Editor' || user.orgRole === 'Admin' || user.isGrafanaAdmin || false;
-          break;
-        case 'viewer':
-          hasRole = !!user.orgRole; // Any role means at least viewer
-          break;
-        default:
-          hasRole = user.orgRole === requiredRole;
-      }
-      
-      if (hasRole) {
-        return {
-          pass: true,
-          requirement: check,
-          error: "",
-        };
-      } else {
-        return {
-          pass: false,
-          requirement: check,
-          error: `User role '${user.orgRole || 'none'}' does not meet requirement '${requiredRole}'`,
-        };
-      }
-    } catch (error) {
-      return {
-        pass: false,
-        requirement: check,
-        error: `Role check failed: ${error}`,
-      };
-    }
-  };
-
-  // Enhanced data source checking using DataSourceSrv
-  const hasDataSourceCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    try {
-      const dataSourceSrv = getDataSourceSrv();
-      
-      // Extract data source type/name (e.g., "has-datasource:prometheus" or "has-datasource:type:loki")
-      const dsRequirement = check.replace('has-datasource:', '');
-      const isTypeCheck = dsRequirement.startsWith('type:');
-      const targetValue = isTypeCheck ? dsRequirement.replace('type:', '') : dsRequirement;
-      
-      const dataSources = dataSourceSrv.getList();
-      
-      let found = false;
-      
-      if (isTypeCheck) {
-        // Check by data source type
-        found = dataSources.some(ds => ds.type.toLowerCase() === targetValue.toLowerCase());
-      } else {
-        // Check by data source name/uid
-        found = dataSources.some(ds => 
-          ds.name.toLowerCase() === targetValue.toLowerCase() || 
-          ds.uid === targetValue
-        );
-      }
-      
-      if (found) {
-        return {
-          pass: true,
-          requirement: check,
-          error: "",
-        };
-      } else {
-        const checkType = isTypeCheck ? 'type' : 'name/uid';
-        return {
-          pass: false,
-          requirement: check,
-          error: `No data source found with ${checkType}: ${targetValue}`,
-        };
-      }
-    } catch (error) {
-      return {
-        pass: false,
-        requirement: check,
-        error: `Data source check failed: ${error}`,
-      };
-    }
-  };
-
-  // Plugin availability checking using /api/plugins endpoint
-  const hasPluginCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    try {
-      const pluginId = check.replace('has-plugin:', '');
-      
-      // Fetch plugins from API
-      const plugins = await ContextService.fetchPlugins();
-      const pluginExists = plugins.some(plugin => plugin.id === pluginId);
-      
-      if (pluginExists) {
-        return {
-          pass: true,
-          requirement: check,
-          error: "",
-        };
-      } else {
-        return {
-          pass: false,
-          requirement: check,
-          error: `Plugin '${pluginId}' is not installed or enabled`,
-        };
-      }
-    } catch (error) {
-      return {
-        pass: false,
-        requirement: check,
-        error: `Plugin check failed: ${error}`,
-      };
-    }
-  };
-
-  // Dashboard availability checking using /api/search endpoint
-  const hasDashboardNamedCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    try {
-      const dashboardName = check.replace('has-dashboard-named:', '');
-      
-      // Fetch dashboards from API
-      const dashboards = await ContextService.fetchDashboardsByName(dashboardName);
-      const dashboardExists = dashboards.some(dashboard => 
-        dashboard.title.toLowerCase() === dashboardName.toLowerCase()
-      );
-      
-      if (dashboardExists) {
-        return {
-          pass: true,
-          requirement: check,
-          error: "",
-        };
-      } else {
-        return {
-          pass: false,
-          requirement: check,
-          error: `Dashboard named '${dashboardName}' not found`,
-        };
-      }
-    } catch (error) {
-      return {
-        pass: false,
-        requirement: check,
-        error: `Dashboard check failed: ${error}`,
-      };
-    }
-  };
-
-  // Location/URL checking using locationService
-  const onPageCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    try {
-      const location = locationService.getLocation();
-      const requiredPath = check.replace('on-page:', '');
-      
-      // Support partial path matching and exact matching
-      const currentPath = location.pathname;
-      const matches = currentPath.includes(requiredPath) || currentPath === requiredPath;
-      
-      if (matches) {
-        return {
-          pass: true,
-          requirement: check,
-          error: "",
-        };
-      } else {
-        return {
-          pass: false,
-          requirement: check,
-          error: `Current page '${currentPath}' does not match required path '${requiredPath}'`,
-        };
-      }
-    } catch (error) {
-      return {
-        pass: false,
-        requirement: check,
-        error: `Page check failed: ${error}`,
-      };
-    }
-  };
-
-  // Feature toggle checking
-  const hasFeatureCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    try {
-      const featureName = check.replace('has-feature:', '');
-      const featureToggles = config.featureToggles as Record<string, boolean> | undefined;
-      const isEnabled = featureToggles && featureToggles[featureName];
-      
-      if (isEnabled) {
-        return {
-          pass: true,
-          requirement: check,
-          error: "",
-        };
-      } else {
-        return {
-          pass: false,
-          requirement: check,
-          error: `Feature toggle '${featureName}' is not enabled`,
-        };
-      }
-    } catch (error) {
-      return {
-        pass: false,
-        requirement: check,
-        error: `Feature check failed: ${error}`,
-      };
-    }
-  };
-
-  // Environment checking (useful for dev vs prod tutorials)
-  const inEnvironmentCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    try {
-      const requiredEnv = check.replace('in-environment:', '').toLowerCase();
-      const currentEnv = config.buildInfo?.env?.toLowerCase() || 'unknown';
-      
-      if (currentEnv === requiredEnv) {
-        return {
-          pass: true,
-          requirement: check,
-          error: "",
-        };
-      } else {
-        return {
-          pass: false,
-          requirement: check,
-          error: `Current environment '${currentEnv}' does not match required '${requiredEnv}'`,
-        };
-      }
-    } catch (error) {
-      return {
-        pass: false,
-        requirement: check,
-        error: `Environment check failed: ${error}`,
-      };
-    }
-  };
-
-  // Version checking (useful for version-specific tutorials)
-  const minVersionCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
-    try {
-      const requiredVersion = check.replace('min-version:', '');
-      const currentVersion = config.buildInfo?.version || '0.0.0';
-      
-      // Simple semantic version comparison (major.minor.patch)
-      const parseVersion = (v: string) => v.split('.').map(n => parseInt(n, 10));
-      const [reqMajor, reqMinor, reqPatch] = parseVersion(requiredVersion);
-      const [curMajor, curMinor, curPatch] = parseVersion(currentVersion);
-      
-      const meetsRequirement = 
-        curMajor > reqMajor || 
-        (curMajor === reqMajor && curMinor > reqMinor) ||
-        (curMajor === reqMajor && curMinor === reqMinor && curPatch >= reqPatch);
-      
-      if (meetsRequirement) {
-        return {
-          pass: true,
-          requirement: check,
-          error: "",
-        };
-      } else {
-        return {
-          pass: false,
-          requirement: check,
-          error: `Current version '${currentVersion}' does not meet minimum requirement '${requiredVersion}'`,
-        };
-      }
-    } catch (error) {
-      return {
-        pass: false,
-        requirement: check,
-        error: `Version check failed: ${error}`,
-      };
-    }
-  };
 
   return {
     interactiveFocus,
