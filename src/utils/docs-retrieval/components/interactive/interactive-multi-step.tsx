@@ -1,8 +1,8 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Button } from '@grafana/ui';
 
-import { useInteractiveElements } from '../../interactive.hook';
-import { useStepChecker } from '../../step-checker.hook';
+import { useInteractiveElements } from '../../../interactive.hook';
+import { useStepChecker } from '../../../step-checker.hook';
 
 interface InternalAction {
   targetAction: string;
