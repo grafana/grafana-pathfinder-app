@@ -129,7 +129,7 @@ completed steps.
 completion indicators, and with the same visual and CSS styling as if they'd been completed in the 
 usual way.
 8. Objectives are a first class part of the InteractiveElementData interface, on par with requirements.
-9. We will have a separate useStepObjectives hook to mirror useStepRequirements.
+9. (Previous requirement removed)
 10. The objective checking system should reuse all check functions (hasPluginCHECK, hasDatasourceCHECK, etc) as requirements. 
 11. If an objective check fails due to network or API error, the objective is not met, and the error
 is logged to the console.  This does mean that because requirements checking is happening in parallel,
@@ -148,10 +148,22 @@ this logic is shared.
 as with all other steps. Again as with others, if the InteractiveMultiStep component's objectives 
 have been met, all internal actions can be skipped, and marked as completed.
 
-## Implementation Details of Requirements & Objectives
+## Disambiguating Requirements and Objectives
 
-1. Separate hooks should be used for requirements & objectives to keep each set of hooks as a
-single responsibility.
+1. When both data-requirements and data-objectives exist, we check objectives first, and ignore
+requirements if they exist.  
+2. If a step 1 has objectives that are met, step 2 is automatically eligible, because it is the
+next step (see the "one step at a time" principle)
+3. Error state priority: if objective checks fail, and requirements check succeeds, show the 
+requirements state (enabled) and log the error to the console.
+4. Performance strategy: use smart checking: skip requirements checking if objectives have been
+met.  This means check objectives first, requirements second.
+5. Always expose the first specific condition that was met or failed. An explanation can be
+"Already done!" (objectives met) or "Plugin foo is missing" (requirements failed).
+6. For now, the manager does not need to understand the difference between completion types
+(manually completed vs. satisifed via objective checking)
+7. If an objective becomes met while a user is manually executing a step, continue execution, and
+mark complete at the end. Do not interrupt the execution of a step.
 
 ## Dual Workflow System
 

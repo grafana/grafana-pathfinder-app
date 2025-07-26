@@ -1,22 +1,20 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Button } from '@grafana/ui';
-import { useInteractiveElements } from '../../interactive.hook';
-import { useStepRequirements } from '../../step-requirements.hook';
-import { useStepObjectives } from '../../step-objectives.hook';
-import { getRequirementExplanation } from '../../requirement-explanations';
 
-// Types for internal actions extracted from HTML
+import { useInteractiveElements } from '../../interactive.hook';
+import { useStepChecker } from '../../step-checker.hook';
+
 interface InternalAction {
-  requirements?: string;
   targetAction: string;
-  refTarget: string;
+  refTarget?: string;
   targetValue?: string;
+  requirements?: string;
 }
 
 interface InteractiveMultiStepProps {
   internalActions: InternalAction[];
   
-  // Standard InteractiveStep props for parent coordination
+  // State management (passed by parent section)
   stepId?: string;
   isEligibleForChecking?: boolean;
   isCompleted?: boolean;
@@ -57,7 +55,7 @@ async function checkActionRequirements(
     const mockElement = document.createElement('div');
     mockElement.setAttribute('data-requirements', action.requirements);
     mockElement.setAttribute('data-targetaction', action.targetAction);
-    mockElement.setAttribute('data-reftarget', action.refTarget);
+    mockElement.setAttribute('data-reftarget', action.refTarget || '');
     if (action.targetValue) {
       mockElement.setAttribute('data-targetvalue', action.targetValue);
     }
@@ -74,22 +72,21 @@ async function checkActionRequirements(
     
     if (result.pass) {
       return { pass: true };
+    } else {
+      // Generate user-friendly explanation
+      const errorMessage = result.error?.map((e: any) => e.error || e.requirement).join(', ');
+      const explanation = result.explanation || `Step ${actionIndex + 1} requirements not met: ${errorMessage}`;
+      
+      return { 
+        pass: false, 
+        explanation: explanation
+      };
     }
-    
-    // Generate user-friendly explanation
-    const errorMessage = result.error?.map((e: any) => e.error || e.requirement).join(', ');
-    const explanation = getRequirementExplanation(action.requirements, undefined, errorMessage);
-    
-    return { 
-      pass: false, 
-      explanation: `Step ${actionIndex + 1} requirements not met: ${explanation}`
-    };
-    
   } catch (error) {
     console.error(`Requirements check failed for action ${actionIndex + 1}:`, error);
     return { 
       pass: false, 
-      explanation: `Step ${actionIndex + 1}: Failed to check requirements`
+      explanation: `Step ${actionIndex + 1} requirements check failed: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
 }
@@ -125,30 +122,23 @@ export const InteractiveMultiStep = forwardRef<
   // Get the interactive functions from the hook
   const { executeInteractiveAction, checkElementRequirements } = useInteractiveElements();
   
-  // Use step requirements hook for overall multi-step requirements (like any other step)
-  const requirementsChecker = useStepRequirements({
+  // Use step checker hook for overall multi-step requirements and objectives
+  const checker = useStepChecker({
     requirements,
+    objectives,
     hints,
     stepId: stepId || `multistep-${Date.now()}`,
     isEligibleForChecking: isEligibleForChecking && !isCompleted
   });
   
-  // Use step objectives hook for overall multi-step objectives (like any other step)
-  // Use base completion (without objectives) to prevent circular dependency
-  const objectivesChecker = useStepObjectives({
-    objectives,
-    stepId: stepId || `multistep-${Date.now()}`,
-    isEligibleForChecking: isEligibleForChecking && !isCompleted // Use base completion
-  });
-  
   // Combined completion state: objectives always win (clarification 1, 2, 18)
-  const isCompletedWithObjectives = parentCompleted || isLocallyCompleted || objectivesChecker.isObjectiveMet;
+  const isCompletedWithObjectives = parentCompleted || isLocallyCompleted || (checker.completionReason === 'objectives');
   
   // Main execution logic (similar to InteractiveSection's sequence execution)
   const executeStep = useCallback(async (): Promise<boolean> => {
-    if (!requirementsChecker.isEnabled || isCompletedWithObjectives || disabled || isExecuting) {
+    if (!checker.isEnabled || isCompletedWithObjectives || disabled || isExecuting) {
       console.warn(`⚠️ Multi-step execution blocked: ${stepId}`, {
-        enabled: requirementsChecker.isEnabled,
+        enabled: checker.isEnabled,
         completed: isCompletedWithObjectives,
         disabled,
         executing: isExecuting
@@ -157,7 +147,7 @@ export const InteractiveMultiStep = forwardRef<
     }
     
     // Check objectives before executing internal actions (clarification 18)
-    if (objectivesChecker.isObjectiveMet) {
+    if (checker.completionReason === 'objectives') {
       console.log(`✅ Multi-step objectives already met for ${stepId}, skipping all internal actions`);
       setIsLocallyCompleted(true);
       
@@ -174,57 +164,49 @@ export const InteractiveMultiStep = forwardRef<
       return true;
     }
     
-    console.log(`🚀 Starting multi-step execution: ${stepId} (${internalActions.length} actions)`);
     setIsExecuting(true);
     setExecutionError(null);
-    setCurrentActionIndex(-1);
     
     try {
-      // Execute each internal action in sequence (same pattern as InteractiveSection)
+      // Execute each internal action in sequence
       for (let i = 0; i < internalActions.length; i++) {
         const action = internalActions[i];
         setCurrentActionIndex(i);
         
-        console.log(`🔍 Checking requirements for action ${i + 1}/${internalActions.length}`);
+        console.log(`🔄 Multi-step ${stepId}: Executing internal action ${i + 1}/${internalActions.length}`, action);
         
-        // Just-in-time requirements check for this specific action
-        const requirementsCheck = await checkActionRequirements(action, i, checkElementRequirements);
-        if (!requirementsCheck.pass) {
-          const errorMsg = requirementsCheck.explanation || `Step ${i + 1} requirements not met`;
-          console.error(`❌ Multi-step stopped at action ${i + 1}: ${errorMsg}`);
-          setExecutionError(errorMsg);
-          return false;
+        // Just-in-time requirements checking for this specific action
+        if (action.requirements) {
+          const requirementsResult = await checkActionRequirements(action, i, checkElementRequirements);
+          if (!requirementsResult.pass) {
+            console.error(`❌ Multi-step ${stepId}: Internal action ${i + 1} requirements failed`, requirementsResult.explanation);
+            setExecutionError(requirementsResult.explanation || 'Action requirements not met');
+            return false;
+          }
         }
         
-        // Show the action (highlight)
-        console.log(`👁️ Showing action ${i + 1}: ${action.targetAction} → ${action.refTarget}`);
-        await executeInteractiveAction(
-          action.targetAction,
-          action.refTarget,
-          action.targetValue,
-          'show'
-        );
-        
-        // Wait for highlight to be visible
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // Execute the action
-        console.log(`🎯 Executing action ${i + 1}: ${action.targetAction} → ${action.refTarget}`);
-        await executeInteractiveAction(
-          action.targetAction,
-          action.refTarget,
-          action.targetValue,
-          'do'
-        );
-        
-        // Wait between actions for visual feedback
-        if (i < internalActions.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        // Execute the action (show first, then do)
+        try {
+          // Show mode (highlight what will be acted upon)
+          await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'show');
+          
+          // Small delay between show and do for better UX
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Do mode (actually perform the action)
+          await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'do');
+          
+          console.log(`✅ Multi-step ${stepId}: Internal action ${i + 1} completed successfully`);
+        } catch (actionError) {
+          console.error(`❌ Multi-step ${stepId}: Internal action ${i + 1} execution failed`, actionError);
+          const errorMessage = actionError instanceof Error ? actionError.message : 'Action execution failed';
+          setExecutionError(`Step ${i + 1} failed: ${errorMessage}`);
+          return false;
         }
       }
       
-      // All actions completed successfully
-      console.log(`✅ Multi-step completed successfully: ${stepId}`);
+      // All internal actions completed successfully
+      console.log(`✅ Multi-step completed: ${stepId}`);
       setIsLocallyCompleted(true);
       
       // Notify parent if we have the callback (section coordination)
@@ -238,30 +220,27 @@ export const InteractiveMultiStep = forwardRef<
       }
       
       return true;
-      
     } catch (error) {
-      const errorMsg = `Execution failed at step ${currentActionIndex + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`;
       console.error(`❌ Multi-step execution failed: ${stepId}`, error);
-      setExecutionError(errorMsg);
+      const errorMessage = error instanceof Error ? error.message : 'Multi-step execution failed';
+      setExecutionError(errorMessage);
       return false;
-      
     } finally {
       setIsExecuting(false);
       setCurrentActionIndex(-1);
     }
   }, [
-    requirementsChecker.isEnabled,
+    checker.isEnabled,
     isCompletedWithObjectives,
     disabled,
     isExecuting,
     stepId,
     internalActions,
-    currentActionIndex,
-    checkElementRequirements,
     executeInteractiveAction,
+    checkElementRequirements,
     onStepComplete,
     onComplete,
-    objectivesChecker.isObjectiveMet
+    checker.completionReason
   ]);
   
   // Expose execute method for parent (sequence execution)
@@ -271,33 +250,35 @@ export const InteractiveMultiStep = forwardRef<
   
   // Handle "Do it" button click
   const handleDoAction = useCallback(async () => {
-    if (disabled || isExecuting || isCompletedWithObjectives || !requirementsChecker.isEnabled) {
+    if (disabled || isExecuting || isCompletedWithObjectives || !checker.isEnabled) {
       return;
     }
     
     await executeStep();
-  }, [disabled, isExecuting, isCompletedWithObjectives, requirementsChecker.isEnabled, executeStep]);
+  }, [disabled, isExecuting, isCompletedWithObjectives, checker.isEnabled, executeStep]);
   
   const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
   
   // Generate button text based on current state
   const getButtonText = () => {
-    if (objectivesChecker.isObjectiveMet) {
+    if (checker.completionReason === 'objectives') {
       return 'Already done!';
     }
-    if (requirementsChecker.isChecking) {
+    if (checker.isChecking) {
       return 'Checking...';
     }
     if (isCompletedWithObjectives) {
       return '✓ Completed';
     }
     if (isExecuting) {
-      return `Executing ${currentActionIndex + 1}/${internalActions.length}...`;
+      return currentActionIndex >= 0 
+        ? `Executing ${currentActionIndex + 1}/${internalActions.length}...`
+        : 'Executing...';
     }
     if (executionError) {
       return executionError;
     }
-    if (!requirementsChecker.isEnabled && !isCompletedWithObjectives) {
+    if (!checker.isEnabled && !isCompletedWithObjectives) {
       return 'Requirements not met';
     }
     return 'Do it';
@@ -305,19 +286,25 @@ export const InteractiveMultiStep = forwardRef<
   
   // Generate button title/tooltip based on current state
   const getButtonTitle = () => {
-    if (objectivesChecker.isObjectiveMet) {
+    if (checker.completionReason === 'objectives') {
       return 'Already done!';
     }
-    if (requirementsChecker.isChecking) {
+    if (checker.isChecking) {
       return 'Checking requirements...';
     }
+    if (isCompletedWithObjectives) {
+      return 'Multi-step completed';
+    }
+    if (isExecuting) {
+      return 'Multi-step execution in progress...';
+    }
     if (executionError) {
-      return executionError;
+      return `Execution failed: ${executionError}`;
     }
-    if (hints) {
-      return hints;
+    if (!checker.isEnabled && !isCompletedWithObjectives) {
+      return 'Requirements not met for multi-step execution';
     }
-    return `Execute ${internalActions.length} steps in sequence`;
+    return hints || `Execute ${internalActions.length} steps in sequence`;
   };
   
   return (
@@ -330,10 +317,10 @@ export const InteractiveMultiStep = forwardRef<
       <div className="interactive-step-actions">
         <div className="interactive-step-action-buttons">
           {/* Only show "Do it" button when requirements are met OR step is completed */}
-          {(requirementsChecker.isEnabled || isCompletedWithObjectives) && (
+          {(checker.isEnabled || isCompletedWithObjectives) && (
             <Button
               onClick={handleDoAction}
-              disabled={disabled || isCompletedWithObjectives || isAnyActionRunning || (!requirementsChecker.isEnabled && !isCompletedWithObjectives)}
+              disabled={disabled || isCompletedWithObjectives || isAnyActionRunning || (!checker.isEnabled && !isCompletedWithObjectives)}
               size="sm"
               variant="primary"
               className="interactive-step-do-btn"
@@ -348,7 +335,7 @@ export const InteractiveMultiStep = forwardRef<
       </div>
       
       {/* Show explanation text when requirements aren't met, but objectives always win (clarification 2) */}
-      {!objectivesChecker.isObjectiveMet && !requirementsChecker.isEnabled && !isCompletedWithObjectives && !requirementsChecker.isChecking && requirementsChecker.explanation && (
+      {checker.completionReason !== 'objectives' && !checker.isEnabled && !isCompletedWithObjectives && !checker.isChecking && checker.explanation && (
         <div className="interactive-step-requirement-explanation" style={{ 
           color: '#ff8c00', 
           fontSize: '0.875rem', 
@@ -357,10 +344,10 @@ export const InteractiveMultiStep = forwardRef<
           lineHeight: '1.4',
           paddingLeft: '12px'
         }}>
-          {requirementsChecker.explanation}
+          {checker.explanation}
           <button
             onClick={() => {
-              requirementsChecker.checkRequirements();
+              checker.checkStep();
             }}
             style={{
               marginLeft: '8px',
@@ -379,7 +366,7 @@ export const InteractiveMultiStep = forwardRef<
       )}
       
       {/* Show execution error when available */}
-      {executionError && !requirementsChecker.isChecking && (
+      {executionError && !checker.isChecking && (
         <div className="interactive-step-requirement-explanation" style={{ 
           color: '#dc3545', 
           fontSize: '0.875rem', 
@@ -392,7 +379,7 @@ export const InteractiveMultiStep = forwardRef<
           <button
             onClick={() => {
               setExecutionError(null);
-              requirementsChecker.checkRequirements();
+              checker.checkStep();
             }}
             style={{
               marginLeft: '8px',
