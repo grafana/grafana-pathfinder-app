@@ -801,6 +801,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         return hasDataSourceCHECK(data, check);
       } else if(check.startsWith('has-plugin:')) {
         return hasPluginCHECK(data, check);
+      } else if(check.startsWith('has-dashboard-named:')) {
+        return hasDashboardNamedCHECK(data, check);
       }
 
       // Location and navigation checks
@@ -923,6 +925,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    * - has-role:role - Check user role (admin, editor, viewer)
    * - has-datasource:name - Check if data source exists by name/uid
    * - has-plugin:id - Check if plugin is installed by plugin ID
+   * - has-dashboard-named:name - Check if dashboard exists by exact title match
    * - on-page:path - Check current page/URL path
    * - has-feature:toggle - Check if feature toggle is enabled
    * - in-environment:env - Check current environment (dev, prod)
@@ -1091,6 +1094,39 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         pass: false,
         requirement: check,
         error: `Plugin check failed: ${error}`,
+      };
+    }
+  };
+
+  // Dashboard availability checking using /api/search endpoint
+  const hasDashboardNamedCHECK = async (data: InteractiveElementData, check: string): Promise<CheckResult> => {
+    try {
+      const dashboardName = check.replace('has-dashboard-named:', '');
+      
+      // Fetch dashboards from API
+      const dashboards = await ContextService.fetchDashboardsByName(dashboardName);
+      const dashboardExists = dashboards.some(dashboard => 
+        dashboard.title.toLowerCase() === dashboardName.toLowerCase()
+      );
+      
+      if (dashboardExists) {
+        return {
+          pass: true,
+          requirement: check,
+          error: "",
+        };
+      } else {
+        return {
+          pass: false,
+          requirement: check,
+          error: `Dashboard named '${dashboardName}' not found`,
+        };
+      }
+    } catch (error) {
+      return {
+        pass: false,
+        requirement: check,
+        error: `Dashboard check failed: ${error}`,
       };
     }
   };

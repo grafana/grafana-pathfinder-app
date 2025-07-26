@@ -41,6 +41,15 @@ the docs-plugin could check that condition was true.
 - **Usage**: given plugin-id should match Grafana's plugin-id concept, e.g. `volkovlabs-rss-datasource`
 - **Example**: `data-requirements="has-plugin:volkovlabs-rss-datasource"`
 
+#### `has-datasource:typename`
+- **Purpose**: Ensures that a datasource exists of the given type
+- **Example**: Example: `data-requirements="has-datasource:volkovlabs-rss-datasource"
+
+#### `has-dashboard-named:name`
+- **Purpose**: Ensures that a dashboard exists with the specified exact title
+- **Usage**: dashboard-name should match the exact dashboard title in Grafana
+- **Example**: `data-requirements="has-dashboard-named:Foobar"`
+
 #### `is-admin`
 - **Purpose**: Ensures the current user has Grafana admin privileges
 - **Usage**: For interactive elements that require admin access to function properly

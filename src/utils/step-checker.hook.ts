@@ -159,7 +159,7 @@ export function useStepChecker({
 
       // STEP 2: Check eligibility (sequential dependencies)
       if (!isEligibleForChecking) {
-        console.log(`⏭️ [DEBUG] Step ${stepId} not eligible due to sequential dependency`);
+        // console.log(`⏭️ [DEBUG] Step ${stepId} not eligible due to sequential dependency`);
         const blockedState = {
           isEnabled: false,
           isCompleted: false,
