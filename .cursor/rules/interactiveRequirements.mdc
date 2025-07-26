@@ -36,19 +36,35 @@ the docs-plugin could check that condition was true.
 - **Usage**: Most common requirement for interactive elements
 - **Example**: `data-requirements="exists-reftarget"`
 
-#### `has-plugin:plugin-id`
-- **Purpose**: Ensures that a given plugin is installed
-- **Usage**: given plugin-id should match Grafana's plugin-id concept, e.g. `volkovlabs-rss-datasource`
-- **Example**: `data-requirements="has-plugin:volkovlabs-rss-datasource"`
+#### `has-datasources`
+- **Purpose**: Ensures that at least one data source exists in Grafana
+- **Usage**: For interactive elements that require any data source to be configured
+- **Example**: `data-requirements="has-datasources"`
 
-#### `has-datasource:typename`
-- **Purpose**: Ensures that a datasource exists of the given type
-- **Example**: Example: `data-requirements="has-datasource:volkovlabs-rss-datasource"
+#### `has-datasource:name`
+- **Purpose**: Ensures that a data source exists with the specified name or UID
+- **Usage**: name should match either the data source name or UID in Grafana. Use `type:typename` to check by data source type instead
+- **Example**: `data-requirements="has-datasource:prometheus"` or `data-requirements="has-datasource:type:loki"`
+
+#### `has-plugin:plugin-id`
+- **Purpose**: Ensures that a given plugin is installed and enabled
+- **Usage**: plugin-id should match Grafana's plugin ID concept, e.g. `volkovlabs-rss-datasource`
+- **Example**: `data-requirements="has-plugin:volkovlabs-rss-datasource"`
 
 #### `has-dashboard-named:name`
 - **Purpose**: Ensures that a dashboard exists with the specified exact title
-- **Usage**: dashboard-name should match the exact dashboard title in Grafana
+- **Usage**: dashboard-name should match the exact dashboard title in Grafana (case-insensitive)
 - **Example**: `data-requirements="has-dashboard-named:Foobar"`
+
+#### `has-permission:action`
+- **Purpose**: Ensures the current user has the specified Grafana permission
+- **Usage**: Uses Grafana's permission system to check user access
+- **Example**: `data-requirements="has-permission:dashboards:write"`
+
+#### `has-role:role`
+- **Purpose**: Ensures the current user has the specified organizational role
+- **Usage**: Supports roles: admin, editor, viewer, or grafana-admin
+- **Example**: `data-requirements="has-role:admin"`
 
 #### `is-admin`
 - **Purpose**: Ensures the current user has Grafana admin privileges
@@ -59,6 +75,26 @@ the docs-plugin could check that condition was true.
 - **Purpose**: Ensures the Grafana navigation menu is open/visible
 - **Usage**: For interactive elements that need to interact with navigation menu items
 - **Example**: `data-requirements="navmenu-open"`
+
+#### `on-page:path`
+- **Purpose**: Ensures the user is currently on a specific page/URL path
+- **Usage**: Supports both partial and exact path matching
+- **Example**: `data-requirements="on-page:/dashboard"`
+
+#### `has-feature:toggle`
+- **Purpose**: Ensures that a specific Grafana feature toggle is enabled
+- **Usage**: Check if experimental or optional features are available
+- **Example**: `data-requirements="has-feature:alerting"`
+
+#### `in-environment:env`
+- **Purpose**: Ensures the tutorial runs in a specific environment
+- **Usage**: Useful for dev vs prod specific tutorials
+- **Example**: `data-requirements="in-environment:development"`
+
+#### `min-version:x.y.z`
+- **Purpose**: Ensures Grafana version meets minimum requirements
+- **Usage**: Uses semantic version comparison (major.minor.patch)
+- **Example**: `data-requirements="min-version:9.0.0"`
 
 ### Combining Requirements
 
