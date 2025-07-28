@@ -1,6 +1,5 @@
 ---
 description: Grafana & Grafana Cloud Application States to URL Mappings
-globs:
 alwaysApply: false
 ---
 # Grafana Cloud & Application States to URL Mappings
