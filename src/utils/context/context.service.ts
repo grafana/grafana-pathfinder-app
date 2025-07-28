@@ -4,6 +4,8 @@ import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval'
 import { 
   ContextData, 
   DataSource, 
+  Plugin,
+  DashboardSearchResult,
   DashboardInfo, 
   Recommendation, 
   ContextPayload, 
@@ -181,6 +183,37 @@ export class ContextService {
       return dataSources || [];
     } catch (error) {
       console.warn('Failed to fetch data sources:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch plugins
+   */
+  static async fetchPlugins(): Promise<Plugin[]> {
+    try {
+      const plugins = await getBackendSrv().get('/api/plugins');
+      return plugins || [];
+    } catch (error) {
+      console.warn('Failed to fetch plugins:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch dashboards by name using search API
+   */
+  static async fetchDashboardsByName(name: string): Promise<DashboardSearchResult[]> {
+    try {
+      const dashboards = await getBackendSrv().get('/api/search', {
+        type: 'dash-db',
+        limit: 100,
+        deleted: false,
+        query: name
+      });
+      return dashboards || [];
+    } catch (error) {
+      console.warn('Failed to fetch dashboards:', error);
       return [];
     }
   }
