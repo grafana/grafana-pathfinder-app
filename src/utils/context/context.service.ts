@@ -95,13 +95,6 @@ export class ContextService {
       // Add default recommendations for testing
       const defaultRecommendations: Recommendation[] = [
         {
-          title: 'Explore logs using Logs Drilldown',
-          url: 'https://grafana.com/docs/learning-journeys/drilldown-logs/',
-          type: 'learning-journey',
-          matchAccuracy: 0.8,
-          summary: 'Learn how to explore logs using Grafana\'s Logs Drilldown feature for efficient log analysis.',
-        },
-        {
           title: 'Build Your First Dashboard',
           url: 'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/r-grafana',
           type: 'docs-page',
@@ -122,6 +115,8 @@ export class ContextService {
       ];
 
       const allRecommendations = [...(data.recommendations || []), ...defaultRecommendations];
+
+      console.warn('allRecommendations', allRecommendations);
       
       // Process recommendations
       const processedRecommendations = await Promise.all(
