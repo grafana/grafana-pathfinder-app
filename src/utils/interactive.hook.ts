@@ -152,7 +152,94 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }) as HTMLButtonElement[];
   }
 
-  function highlight(element: HTMLElement) {
+  /**
+   * Ensure navigation is open if the target element is in the navigation area
+   */
+  function ensureNavigationOpen(element: HTMLElement): Promise<void> {
+    return new Promise((resolve) => {
+      // Check if element is within navigation (common nav selectors)
+      const isInNavigation = element.closest('nav, [class*="nav"], [class*="menu"], [class*="sidebar"]') !== null;
+      
+      if (!isInNavigation) {
+        resolve();
+        return;
+      }
+      
+      // Look for the mega menu toggle button
+      const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
+      if (!megaMenuToggle) {
+        resolve();
+        return;
+      }
+      
+      // Check if navigation appears to be closed (button has certain attributes/classes that indicate closed state)
+      const ariaExpanded = megaMenuToggle.getAttribute('aria-expanded');
+      const isNavClosed = ariaExpanded === 'false' || ariaExpanded === null;
+      
+      if (isNavClosed) {
+        console.warn('🚪 Opening navigation menu for interactive element access');
+        megaMenuToggle.click();
+        
+        // Give the navigation time to open, then dock it
+        setTimeout(() => {
+          // Look for the dock menu button and click it to keep the menu docked
+          const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
+          if (dockMenuButton) {
+            console.warn('📌 Docking navigation menu to keep it in place');
+            dockMenuButton.click();
+            
+            // Give the dock animation time to complete
+            setTimeout(() => {
+              resolve();
+            }, 200);
+          } else {
+            console.warn('⚠️ Dock menu button not found, navigation will remain in modal mode');
+            resolve();
+          }
+        }, 300);
+      } else {
+        resolve();
+      }
+    });
+  }
+  
+  /**
+   * Ensure element is visible in the viewport by scrolling it into view
+   */
+  function ensureElementVisible(element: HTMLElement): Promise<void> {
+    return new Promise((resolve) => {
+      // Check if element is visible in viewport
+      const rect = element.getBoundingClientRect();
+      const isVisible = (
+        rect.top >= 0 &&
+        rect.left >= 0 &&
+        rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+        rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+      );
+      
+      if (!isVisible) {
+        console.warn('📜 Scrolling element into view for better visibility');
+        element.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center', 
+          inline: 'center' 
+        });
+        
+        // Give scroll animation time to complete
+        setTimeout(() => {
+          resolve();
+        }, 500);
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  async function highlight(element: HTMLElement) {
+    // First, ensure navigation is open and element is visible
+    await ensureNavigationOpen(element);
+    await ensureElementVisible(element);
+    
     // Add highlight class for better styling
     element.classList.add('interactive-highlighted');
     
@@ -207,7 +294,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }
 
-  const interactiveFocus = useCallback((data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => {
+  const interactiveFocus = useCallback(async (data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => {
     if (clickedElement) {
       setInteractiveState(clickedElement, 'running');
     }
@@ -217,17 +304,23 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     
     try {
       if (!click) {
-        // Show mode: only highlight, don't click - NO step completion
-        targetElements.forEach(element => {
-          highlight((element as HTMLElement));
-        });
+        // Show mode: ensure visibility and highlight, don't click - NO step completion
+        for (const element of targetElements) {
+          const htmlElement = element as HTMLElement;
+          await ensureNavigationOpen(htmlElement);
+          await ensureElementVisible(htmlElement);
+          await highlight(htmlElement);
+        }
         return; // Early return - don't mark as completed in show mode
       }
 
-      // Do mode: just click, don't highlight
-      targetElements.forEach(element => {
-        (element as HTMLElement).click();
-      });
+      // Do mode: ensure visibility then click, don't highlight
+      for (const element of targetElements) {
+        const htmlElement = element as HTMLElement;
+        await ensureNavigationOpen(htmlElement);
+        await ensureElementVisible(htmlElement);
+        htmlElement.click();
+      }
       
       // Mark as completed after successful execution (only in Do mode)
       if (clickedElement) {
@@ -243,7 +336,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, []);
 
-  const interactiveButton = useCallback((data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveButton = useCallback(async (data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
     if (clickedElement) {
       setInteractiveState(clickedElement, 'running');
     }
@@ -252,17 +345,21 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       const buttons = findButtonByText(data.reftarget);
       
       if (!click) {
-        // Show mode: only highlight, don't click - NO step completion
-        buttons.forEach(button => {
-          highlight(button);
-        });
+        // Show mode: ensure visibility and highlight, don't click - NO step completion
+        for (const button of buttons) {
+          await ensureNavigationOpen(button);
+          await ensureElementVisible(button);
+          await highlight(button);
+        }
         return; // Early return - don't mark as completed in show mode
       }
 
-      // Do mode: just click, don't highlight
-      buttons.forEach(button => {
+      // Do mode: ensure visibility then click, don't highlight
+      for (const button of buttons) {
+        await ensureNavigationOpen(button);
+        await ensureElementVisible(button);
         button.click();
-      });
+      }
       
       // Mark as completed after successful execution (only in Do mode)
       if (clickedElement) {
@@ -344,7 +441,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, []);
 
-  const interactiveFormFill = useCallback((data: InteractiveElementData, fillForm: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveFormFill = useCallback(async (data: InteractiveElementData, fillForm: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
     
     if (clickedElement) {
@@ -364,57 +461,61 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
       const targetElement = targetElements[0] as HTMLElement;
       
-        if (!fillForm) {
-          // Show mode: only highlight, don't fill the form
-          highlight(targetElement);
-          return;
-        }
+      // Always ensure navigation is open and element is visible first
+      await ensureNavigationOpen(targetElement);
+      await ensureElementVisible(targetElement);
+      
+      if (!fillForm) {
+        // Show mode: only highlight, don't fill the form
+        await highlight(targetElement);
+        return;
+      }
 
-        // Do mode: don't highlight, just fill the form
-        const tagName = targetElement.tagName.toLowerCase();
-        const inputType = (targetElement as HTMLInputElement).type ? (targetElement as HTMLInputElement).type.toLowerCase() : '';
+      // Do mode: don't highlight, just fill the form
+      const tagName = targetElement.tagName.toLowerCase();
+      const inputType = (targetElement as HTMLInputElement).type ? (targetElement as HTMLInputElement).type.toLowerCase() : '';
         
-        // CONSOLIDATED APPROACH: Set value once using the most compatible method
-        if (tagName === 'input') {
-          if (inputType === 'checkbox' || inputType === 'radio') {
-            // Handle checkbox/radio inputs - no duplicate events issue here
-            (targetElement as HTMLInputElement).checked = value !== 'false' && value !== '0' && value !== '';
-          } else {
-            // Use React-compatible native setter approach for text inputs
-            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-            if (nativeInputValueSetter) {
-              nativeInputValueSetter.call(targetElement, value);
-              
-              // Reset React's value tracker if present (must be done after setting value)
-              if ((targetElement as any)._valueTracker) {
-                (targetElement as any)._valueTracker.setValue('');
-              }
-            } else {
-              // Fallback for edge cases where native setter isn't available
-              (targetElement as HTMLInputElement).value = value;
-            }
-          }
-        } else if (tagName === 'textarea') {
-          // Use React-compatible native setter approach for textareas
-          const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-          if (nativeTextareaSetter) {
-            nativeTextareaSetter.call(targetElement, value);
+      // CONSOLIDATED APPROACH: Set value once using the most compatible method
+      if (tagName === 'input') {
+        if (inputType === 'checkbox' || inputType === 'radio') {
+          // Handle checkbox/radio inputs - no duplicate events issue here
+          (targetElement as HTMLInputElement).checked = value !== 'false' && value !== '0' && value !== '';
+        } else {
+          // Use React-compatible native setter approach for text inputs
+          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+          if (nativeInputValueSetter) {
+            nativeInputValueSetter.call(targetElement, value);
             
-            // Reset React's value tracker if present
+            // Reset React's value tracker if present (must be done after setting value)
             if ((targetElement as any)._valueTracker) {
               (targetElement as any)._valueTracker.setValue('');
             }
           } else {
-            // Fallback for edge cases
-            (targetElement as HTMLTextAreaElement).value = value;
+            // Fallback for edge cases where native setter isn't available
+            (targetElement as HTMLInputElement).value = value;
           }
-        } else if (tagName === 'select') {
-          // Select elements don't have the same React issues, use direct assignment
-          (targetElement as HTMLSelectElement).value = value;
-        } else {
-          // For other elements, set text content
-          targetElement.textContent = value;
         }
+      } else if (tagName === 'textarea') {
+        // Use React-compatible native setter approach for textareas
+        const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+        if (nativeTextareaSetter) {
+          nativeTextareaSetter.call(targetElement, value);
+          
+          // Reset React's value tracker if present
+          if ((targetElement as any)._valueTracker) {
+            (targetElement as any)._valueTracker.setValue('');
+          }
+        } else {
+          // Fallback for edge cases
+          (targetElement as HTMLTextAreaElement).value = value;
+        }
+      } else if (tagName === 'select') {
+        // Select elements don't have the same React issues, use direct assignment
+        (targetElement as HTMLSelectElement).value = value;
+      } else {
+        // For other elements, set text content
+        targetElement.textContent = value;
+      }
       
       // Dispatch events ONCE in proper sequence to notify all listeners
       // This mimics natural user interaction: focus -> input -> change -> blur
@@ -495,6 +596,61 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, []);
 
+  /**
+   * Fix navigation requirements by opening and docking the navigation menu
+   * This function can be called by the "Fix this" button for navigation requirements
+   */
+  function fixNavigationRequirements(): Promise<void> {
+    return new Promise((resolve) => {
+      // Look for the mega menu toggle button
+      const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
+      if (!megaMenuToggle) {
+        console.warn('⚠️ Mega menu toggle button not found');
+        resolve();
+        return;
+      }
+      
+      // Check if navigation is already open
+      const ariaExpanded = megaMenuToggle.getAttribute('aria-expanded');
+      const isNavClosed = ariaExpanded === 'false' || ariaExpanded === null;
+      
+      if (isNavClosed) {
+        console.warn('🔧 Fixing navigation: Opening and docking menu');
+        megaMenuToggle.click();
+        
+        // Give the navigation time to open, then dock it
+        setTimeout(() => {
+          const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
+          if (dockMenuButton) {
+            console.warn('📌 Docking navigation menu to keep it in place');
+            dockMenuButton.click();
+            
+            // Give the dock animation time to complete
+            setTimeout(() => {
+              resolve();
+            }, 200);
+          } else {
+            console.warn('⚠️ Dock menu button not found, navigation opened but not docked');
+            resolve();
+          }
+        }, 300);
+      } else {
+        // Navigation is already open, just try to dock it if needed
+        const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
+        if (dockMenuButton) {
+          console.warn('📌 Navigation already open, ensuring it is docked');
+          dockMenuButton.click();
+          setTimeout(() => {
+            resolve();
+          }, 200);
+        } else {
+          console.warn('✅ Navigation already open and accessible');
+          resolve();
+        }
+      }
+    });
+  }
+
   // Define helper functions using refs to avoid circular dependencies
   runInteractiveSequenceRef.current = async (elements: Element[], showMode: boolean): Promise<void> => {
     const MAX_RETRIES = 3;
@@ -530,11 +686,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           }
 
           if (data.targetaction === 'highlight') {
-            interactiveFocus(data, !showMode, element as HTMLElement); // Show mode = don't click, Do mode = click
+            await interactiveFocus(data, !showMode, element as HTMLElement); // Show mode = don't click, Do mode = click
           } else if (data.targetaction === 'button') {
-            interactiveButton(data, !showMode, element as HTMLElement); // Show mode = don't click, Do mode = click
+            await interactiveButton(data, !showMode, element as HTMLElement); // Show mode = don't click, Do mode = click
           } else if (data.targetaction === 'formfill') {
-            interactiveFormFill(data, !showMode, element as HTMLElement); // Show mode = don't fill, Do mode = fill
+            await interactiveFormFill(data, !showMode, element as HTMLElement); // Show mode = don't fill, Do mode = fill
           } else if (data.targetaction === 'navigate') {
             interactiveNavigate(data, !showMode, element as HTMLElement); // Show mode = show target, Do mode = navigate
           }
@@ -595,11 +751,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
           // Step 1: Show what we're about to do
           if (data.targetaction === 'highlight') {
-            interactiveFocus(data, false, element as HTMLElement); // Show mode - highlight only
+            await interactiveFocus(data, false, element as HTMLElement); // Show mode - highlight only
           } else if (data.targetaction === 'button') {
-            interactiveButton(data, false, element as HTMLElement); // Show mode - highlight only
+            await interactiveButton(data, false, element as HTMLElement); // Show mode - highlight only
           } else if (data.targetaction === 'formfill') {
-            interactiveFormFill(data, false, element as HTMLElement); // Show mode - highlight only
+            await interactiveFormFill(data, false, element as HTMLElement); // Show mode - highlight only
           } else if (data.targetaction === 'navigate') {
             interactiveNavigate(data, false, element as HTMLElement); // Show mode - show target only
           }
@@ -621,11 +777,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
           // Step 2: Actually do the action
           if (data.targetaction === 'highlight') {
-            interactiveFocus(data, true, element as HTMLElement); // Do mode - click
+            await interactiveFocus(data, true, element as HTMLElement); // Do mode - click
           } else if (data.targetaction === 'button') {
-            interactiveButton(data, true, element as HTMLElement); // Do mode - click
+            await interactiveButton(data, true, element as HTMLElement); // Do mode - click
           } else if (data.targetaction === 'formfill') {
-            interactiveFormFill(data, true, element as HTMLElement); // Do mode - fill form
+            await interactiveFormFill(data, true, element as HTMLElement); // Do mode - fill form
           } else if (data.targetaction === 'navigate') {
             interactiveNavigate(data, true, element as HTMLElement); // Do mode - navigate
           }
@@ -807,15 +963,15 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       // Route to appropriate function based on action type
       switch (targetAction) {
         case 'highlight':
-          interactiveFocus(elementData, !isShowMode, undefined);
+          await interactiveFocus(elementData, !isShowMode, undefined);
           break;
 
         case 'button':
-          interactiveButton(elementData, !isShowMode, undefined);
+          await interactiveButton(elementData, !isShowMode, undefined);
           break;
 
         case 'formfill':
-          interactiveFormFill(elementData, !isShowMode, undefined);
+          await interactiveFormFill(elementData, !isShowMode, undefined);
           break;
 
         case 'navigate':
@@ -853,5 +1009,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     checkRequirementsFromData,
     checkRequirementsWithData,
     executeInteractiveAction, // New direct interface for React components
+    fixNavigationRequirements, // Add the new function to the return object
   };
 } 

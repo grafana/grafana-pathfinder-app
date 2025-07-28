@@ -32,10 +32,12 @@ export interface UseStepCheckerReturn {
   completionReason: 'none' | 'objectives' | 'manual';
   explanation?: string;
   error?: string;
+  canFixRequirement?: boolean; // Whether the requirement can be automatically fixed
   
   // Actions
   checkStep: () => Promise<void>;
   markCompleted: () => void;
+  fixRequirement?: () => Promise<void>; // Function to automatically fix the requirement
 }
 
 /**
@@ -86,8 +88,11 @@ export function useStepChecker({
   }, [stepId]);
 
   // Get the interactive elements hook for proper requirements checking
-  const { checkRequirementsFromData } = useInteractiveElements();
-
+  const { checkRequirementsFromData, fixNavigationRequirements } = useInteractiveElements();
+  
+  // Check if this step has navigation requirements that can be fixed
+  const canFixRequirement = requirements?.includes('navmenu-open') || false;
+  
   /**
    * Check conditions (requirements or objectives) using proper DOM check functions
    */
@@ -227,6 +232,36 @@ export function useStepChecker({
   }, [objectives, requirements, hints, stepId, isEligibleForChecking, updateManager, checkConditions]);
 
   /**
+   * Fix navigation requirements by opening and docking the menu
+   */
+  const fixRequirement = useCallback(async () => {
+    if (!canFixRequirement || !fixNavigationRequirements) {
+      return;
+    }
+    
+    try {
+      setState(prev => ({ ...prev, isChecking: true }));
+      
+      // Use the fix function from the interactive hook
+      await fixNavigationRequirements();
+      
+      // After fixing, recheck the requirements
+      await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for UI to update
+      
+      // Trigger a requirements check to see if the fix worked
+      await checkStep();
+      
+    } catch (error) {
+      console.error('Failed to fix navigation requirements:', error);
+      setState(prev => ({ 
+        ...prev, 
+        isChecking: false,
+        error: 'Failed to fix navigation requirements'
+      }));
+    }
+  }, [canFixRequirement, fixNavigationRequirements, checkStep]);
+
+  /**
    * Manual completion (for user-executed steps)
    */
   const markCompleted = useCallback(() => {
@@ -270,5 +305,7 @@ export function useStepChecker({
     ...state,
     checkStep,
     markCompleted,
+    canFixRequirement,
+    fixRequirement: canFixRequirement ? fixRequirement : undefined,
   };
 } 

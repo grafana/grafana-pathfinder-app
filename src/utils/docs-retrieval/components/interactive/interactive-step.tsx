@@ -227,8 +227,12 @@ export const InteractiveStep = forwardRef<
         }}>
           {checker.explanation}
           <button
-            onClick={() => {
-              checker.checkStep();
+            onClick={async () => {
+              if (checker.canFixRequirement && checker.fixRequirement) {
+                await checker.fixRequirement();
+              } else {
+                checker.checkStep();
+              }
             }}
             style={{
               marginLeft: '8px',
@@ -241,7 +245,7 @@ export const InteractiveStep = forwardRef<
               cursor: 'pointer'
             }}
           >
-            Retry
+            {checker.canFixRequirement ? 'Fix this' : 'Retry'}
           </button>
         </div>
       )}
