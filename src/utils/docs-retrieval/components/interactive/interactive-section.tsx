@@ -30,6 +30,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   isCompleted?: boolean;
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
+  resetTrigger?: number; // Signal from parent to reset local completion state
 }
 
 export interface InteractiveSectionProps extends BaseInteractiveProps {
@@ -81,6 +82,7 @@ export function InteractiveSection({
   const [completedSteps, setCompletedSteps] = useState(new Set<string>());
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
 
   // Get the interactive functions from the hook
   const { executeInteractiveAction } = useInteractiveElements();
@@ -141,11 +143,12 @@ export function InteractiveSection({
   });
   
   // UNIFIED completion calculation - objectives always win (clarification 1, 2)
-  const isCompleted = (objectivesChecker.completionReason === 'objectives') || stepsCompleted;
+  const isCompletedByObjectives = objectivesChecker.completionReason === 'objectives';
+  const isCompleted = isCompletedByObjectives || stepsCompleted;
 
   // When section objectives are met, mark all child steps as complete (clarification 2, 16)
   useEffect(() => {
-    if (objectivesChecker.completionReason === 'objectives' && stepComponents.length > 0) {
+    if (isCompletedByObjectives && stepComponents.length > 0) {
       const allStepIds = new Set(stepComponents.map(step => step.stepId));
 
       if (completedSteps && completedSteps.size !== allStepIds.size) {
@@ -153,7 +156,7 @@ export function InteractiveSection({
         console.log(`✅ Section objectives met for ${sectionId}, marking all ${allStepIds.size} child steps as complete`);
       }
     }
-  }, [objectivesChecker, stepComponents, sectionId, completedSteps]);
+  }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
 
   // Calculate which step is eligible for checking (sequential logic)
   const getStepEligibility = useCallback((stepIndex: number) => {
@@ -236,8 +239,8 @@ export function InteractiveSection({
             'show'
           );
 
-          // Wait for highlight to be visible
-          await new Promise(resolve => setTimeout(resolve, 1500));
+          // Wait for highlight to be visible and animation to complete
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
         // Then, execute the step
@@ -249,7 +252,7 @@ export function InteractiveSection({
           
           // Wait between steps for visual feedback
           if (i < stepComponents.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 1200));
           }
         } else {
           console.warn(`⚠️ Breaking section sequence at step ${i + 1} due to execution failure`);
@@ -257,7 +260,7 @@ export function InteractiveSection({
         }
       }
 
-      console.log(`🏁 Section sequence completed: ${sectionId}`);
+
     } catch (error) {
       console.error('Error running section sequence:', error);
     } finally {
@@ -265,6 +268,17 @@ export function InteractiveSection({
       setCurrentlyExecutingStep(null);
     }
   }, [disabled, isRunning, stepComponents, sectionId, executeStep, executeInteractiveAction, handleStepComplete]);
+
+  // Handle section reset (clear completed steps and reset individual step states)
+  const handleResetSection = useCallback(() => {
+    if (disabled || isRunning) {
+      return;
+    }
+
+    setCompletedSteps(new Set());
+    setCurrentlyExecutingStep(null);
+    setResetTrigger(prev => prev + 1); // Signal child steps to reset their local state
+  }, [disabled, isRunning, sectionId]);
 
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {
@@ -286,6 +300,7 @@ export function InteractiveSection({
           isCurrentlyExecuting,
           onStepComplete: handleStepComplete,
           disabled: disabled || isRunning,
+          resetTrigger, // Pass reset signal to child steps
           key: stepInfo.stepId,
         });
       } else if (React.isValidElement(child) && 
@@ -305,12 +320,13 @@ export function InteractiveSection({
           isCurrentlyExecuting,
           onStepComplete: handleStepComplete,
           disabled: disabled || isRunning,
+          resetTrigger, // Pass reset signal to child multi-steps
           key: stepInfo.stepId,
         });
       }
       return child;
     });
-  }, [children, stepComponents, getStepEligibility, completedSteps, currentlyExecutingStep, handleStepComplete, disabled, isRunning]);
+  }, [children, stepComponents, getStepEligibility, completedSteps, currentlyExecutingStep, handleStepComplete, disabled, isRunning, resetTrigger]);
 
   return (
     <div className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}`}>
@@ -337,20 +353,20 @@ export function InteractiveSection({
       
       <div className="interactive-section-actions">
         <Button
-          onClick={handleDoSection}
-          disabled={disabled || isRunning || stepComponents.length === 0 || objectivesChecker.completionReason === 'objectives'}
+          onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
+          disabled={disabled || isRunning || stepComponents.length === 0 || isCompletedByObjectives}
           size="md"
           variant={isCompleted ? "secondary" : "primary"}
           className="interactive-section-do-button"
           title={
-            objectivesChecker.completionReason === 'objectives' ? 'Already done!' :
-            isCompleted ? 'Run the section again' :
+            isCompletedByObjectives ? 'Already done!' :
+            stepsCompleted && !isCompletedByObjectives ? 'Reset section and clear all step completion to allow manual re-interaction' :
             isRunning ? `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...` :
             hints || `Run through all ${stepComponents.length} steps in sequence`
           }
         >
-          {objectivesChecker.completionReason === 'objectives' ? 'Already done!' :
-           isCompleted ? `Redo Section (${stepComponents.length} steps)` :
+          {isCompletedByObjectives ? 'Already done!' :
+           stepsCompleted && !isCompletedByObjectives ? 'Reset Section' :
            isRunning ? `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...` : 
            `Do Section (${stepComponents.length} steps)`}
         </Button>

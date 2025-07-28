@@ -1,4 +1,4 @@
-import React, { useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { Button } from '@grafana/ui';
 
 import { useInteractiveElements } from '../../../interactive.hook';
@@ -30,6 +30,10 @@ interface InteractiveMultiStepProps {
   requirements?: string; // Overall requirements for the multi-step
   objectives?: string; // Overall objectives for the multi-step
   onComplete?: () => void;
+  
+  // Timing configuration
+  stepDelay?: number; // Delay between steps in milliseconds (default: 1200ms)
+  resetTrigger?: number; // Signal from parent to reset local completion state
 }
 
 /**
@@ -106,12 +110,23 @@ export const InteractiveMultiStep = forwardRef<
   requirements,
   objectives,
   onComplete,
+  stepDelay = 1200, // Default 1200ms delay between steps
+  resetTrigger,
 }, ref) => {
   // Local UI state (similar to InteractiveStep)
   const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
   const [currentActionIndex, setCurrentActionIndex] = useState(-1);
   const [executionError, setExecutionError] = useState<string | null>(null);
+  
+  // Handle reset trigger from parent section
+  useEffect(() => {
+    if (resetTrigger && resetTrigger > 0) {
+      console.log(`🔄 Resetting multi-step local completion: ${stepId}`);
+      setIsLocallyCompleted(false);
+      setExecutionError(null); // Also clear any execution errors
+    }
+  }, [resetTrigger, stepId]);
   
   // Combined completion state (parent takes precedence for coordination)
   const isCompleted = parentCompleted || isLocallyCompleted;
@@ -187,13 +202,18 @@ export const InteractiveMultiStep = forwardRef<
           // Show mode (highlight what will be acted upon)
           await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'show');
           
-          // Small delay between show and do for better UX
-          await new Promise(resolve => setTimeout(resolve, 300));
+          // Small delay between show and do for better UX and animation visibility
+          await new Promise(resolve => setTimeout(resolve, 600));
           
           // Do mode (actually perform the action)
           await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'do');
           
-          console.log(`✅ Multi-step ${stepId}: Internal action ${i + 1} completed successfully`);
+
+          
+          // Add delay between steps (but not after the last step)
+          if (i < internalActions.length - 1 && stepDelay > 0) {
+            await new Promise(resolve => setTimeout(resolve, stepDelay));
+          }
         } catch (actionError) {
           console.error(`❌ Multi-step ${stepId}: Internal action ${i + 1} execution failed`, actionError);
           const errorMessage = actionError instanceof Error ? actionError.message : 'Action execution failed';
@@ -203,7 +223,7 @@ export const InteractiveMultiStep = forwardRef<
       }
       
       // All internal actions completed successfully
-      console.log(`✅ Multi-step completed: ${stepId}`);
+
       setIsLocallyCompleted(true);
       
       // Notify parent if we have the callback (section coordination)
@@ -237,7 +257,8 @@ export const InteractiveMultiStep = forwardRef<
     checkRequirementsFromData,
     onStepComplete,
     onComplete,
-    checker.completionReason
+    checker.completionReason,
+    stepDelay
   ]);
   
   // Expose execute method for parent (sequence execution)

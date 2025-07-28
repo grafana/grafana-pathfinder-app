@@ -1,4 +1,4 @@
-import React, { useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { Button } from '@grafana/ui';
 
 import { useInteractiveElements } from '../../../interactive.hook';
@@ -27,11 +27,20 @@ export const InteractiveStep = forwardRef<
   isCompleted: parentCompleted = false,
   isCurrentlyExecuting = false,
   onStepComplete,
+  resetTrigger,
 }, ref) => {
   // Local UI state
   const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
   const [isShowRunning, setIsShowRunning] = useState(false);
   const [isDoRunning, setIsDoRunning] = useState(false);
+  
+  // Handle reset trigger from parent section
+  useEffect(() => {
+    if (resetTrigger && resetTrigger > 0) {
+      console.log(`🔄 Resetting step local completion: ${stepId}`);
+      setIsLocallyCompleted(false);
+    }
+  }, [resetTrigger, stepId]);
   
   // Combined completion state (parent takes precedence for coordination)
   const isCompleted = parentCompleted || isLocallyCompleted;
