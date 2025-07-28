@@ -132,8 +132,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }, []);
 
   /**
-   * Find button elements that contain the specified text (case-insensitive, substring match)
-   * Searches through all child text nodes, not just direct textContent
+   * Find button elements that contain the specified text (case-insensitive)
+   * Prioritizes exact matches over partial matches
    */
   function findButtonByText(targetText: string): HTMLButtonElement[] {
     if (!targetText || typeof targetText !== 'string') {
@@ -145,11 +145,34 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     const buttons = document.querySelectorAll('button');
     const searchText = targetText.toLowerCase().trim();
     
-    return Array.from(buttons).filter((button) => {
+    const exactMatches: HTMLButtonElement[] = [];
+    const partialMatches: HTMLButtonElement[] = [];
+    
+    Array.from(buttons).forEach((button) => {
       // Get all text content from the button and its descendants
-      const allText = getAllTextContent(button).toLowerCase();
-      return allText.includes(searchText);
-    }) as HTMLButtonElement[];
+      const allText = getAllTextContent(button).toLowerCase().trim();
+      
+      if (!allText) return;
+      
+      if (allText === searchText) {
+        // Exact match
+        exactMatches.push(button as HTMLButtonElement);
+      } else if (allText.includes(searchText)) {
+        // Partial match
+        partialMatches.push(button as HTMLButtonElement);
+      }
+    });
+    
+    // Return exact matches if any exist, otherwise return partial matches
+    if (exactMatches.length > 0) {
+      console.warn(`🎯 Found ${exactMatches.length} exact matches for "${targetText}"`);
+      return exactMatches;
+    } else if (partialMatches.length > 0) {
+      console.warn(`🔍 Found ${partialMatches.length} partial matches for "${targetText}"`);
+      return partialMatches;
+    }
+    
+    return [];
   }
 
   /**
