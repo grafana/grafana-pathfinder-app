@@ -6,15 +6,16 @@
  */
 {
   "extends": ["@grafana/eslint-config"],
+  "plugins": ["deprecation"],
   "root": true,
-  "rules": {
+  "rules": {    
     "react/prop-types": "off"
   },
   "overrides": [
     {
       "files": ["src/**/*.{ts,tsx}"],
       "rules": {
-        "@typescript-eslint/no-deprecated": "warn"
+        "deprecation/deprecation": "warn",
       },
       "parserOptions": {
         "project": "./tsconfig.json"

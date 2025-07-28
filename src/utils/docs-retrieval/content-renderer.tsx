@@ -4,7 +4,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 import { parseHTMLToComponents, ParsedElement } from './html-parser';
-import { InteractiveSection, InteractiveStep, CodeBlock, ExpandableTable, ImageRenderer, ContentParsingError, resetInteractiveCounters } from './components/interactive-components';
+import { InteractiveSection, InteractiveStep, InteractiveMultiStep, CodeBlock, ExpandableTable, ImageRenderer, ContentParsingError, resetInteractiveCounters } from './components/interactive-components';
 import { SequentialRequirementsManager } from '../requirements-checker.hook';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
@@ -256,7 +256,7 @@ function renderParsedElement(
           title={element.props.title || 'Interactive Section'}
           isSequence={element.props.isSequence}
           requirements={element.props.requirements}
-          outcomes={element.props.outcomes}
+          objectives={element.props.objectives}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
             typeof child === 'string'
@@ -273,7 +273,18 @@ function renderParsedElement(
           refTarget={element.props.refTarget}
           targetValue={element.props.targetValue}
           requirements={element.props.requirements}
-          outcomes={element.props.outcomes}
+          objectives={element.props.objectives}
+          title={element.props.title}
+        />
+      );
+    case 'interactive-multi-step':
+      return (
+        <InteractiveMultiStep
+          key={key}
+          internalActions={element.props.internalActions}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          hints={element.props.hints}
           title={element.props.title}
         />
       );
