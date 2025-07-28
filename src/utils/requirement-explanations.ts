@@ -10,7 +10,7 @@
 export function mapRequirementToUserFriendlyMessage(requirement: string): string {
   const requirementMappings: Record<string, string> = {
     // Navigation requirements
-    'navmenu-open': 'The navigation menu needs to be open. Look for the menu icon (☰) in the top-left corner.',
+    'navmenu-open': 'The navigation menu needs to be open and docked. Click "Fix this" to automatically open and dock the navigation menu.',
     'navmenu-closed': 'Please close the navigation menu first.',
     
     // Authentication requirements  

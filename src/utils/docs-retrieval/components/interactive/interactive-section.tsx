@@ -278,7 +278,7 @@ export function InteractiveSection({
     setCompletedSteps(new Set());
     setCurrentlyExecutingStep(null);
     setResetTrigger(prev => prev + 1); // Signal child steps to reset their local state
-  }, [disabled, isRunning, sectionId]);
+  }, [disabled, isRunning]);
 
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {

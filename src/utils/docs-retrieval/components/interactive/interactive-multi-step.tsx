@@ -364,8 +364,12 @@ export const InteractiveMultiStep = forwardRef<
         }}>
           {checker.explanation}
           <button
-            onClick={() => {
-              checker.checkStep();
+            onClick={async () => {
+              if (checker.canFixRequirement && checker.fixRequirement) {
+                await checker.fixRequirement();
+              } else {
+                checker.checkStep();
+              }
             }}
             style={{
               marginLeft: '8px',
@@ -378,7 +382,7 @@ export const InteractiveMultiStep = forwardRef<
               cursor: 'pointer'
             }}
           >
-            Retry
+            {checker.canFixRequirement ? 'Fix this' : 'Retry'}
           </button>
         </div>
       )}
@@ -395,9 +399,13 @@ export const InteractiveMultiStep = forwardRef<
         }}>
           {executionError}
           <button
-            onClick={() => {
+            onClick={async () => {
               setExecutionError(null);
-              checker.checkStep();
+              if (checker.canFixRequirement && checker.fixRequirement) {
+                await checker.fixRequirement();
+              } else {
+                checker.checkStep();
+              }
             }}
             style={{
               marginLeft: '8px',
@@ -410,7 +418,7 @@ export const InteractiveMultiStep = forwardRef<
               cursor: 'pointer'
             }}
           >
-            Retry
+            {checker.canFixRequirement ? 'Fix this' : 'Retry'}
           </button>
         </div>
       )}
