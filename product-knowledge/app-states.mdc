@@ -1,0 +1,669 @@
+---
+description: Grafana & Grafana Cloud Application States to URL Mappings
+alwaysApply: false
+---
+# Grafana Cloud & Application States to URL Mappings
+
+This document gives a semi-comprehensive mapping between reachable URLs in Grafana Cloud, and application areas, along
+with notes on what those application areas do.  Finally, it gives the best documentation page
+for learning how to get started with that application state, focused on practical how-to steps
+wherever possible.
+
+## Warning
+
+There are two _different kinds of URLs_ referred to in this document.  URLs of the form
+
+`URL: /path/to/resource` refer to Grafana OSS / Grafana Cloud application states.
+
+`Best doc: <url>` URLs refer to documentation and learning materials on the Grafana website.
+
+## General Notes on URL Schemes
+
+Every organization in Grafana gets its own base URL which is generally `orgName.grafana.net`.  All URLs in this guide are 
+partial fragment matches relative to that base URL.  There are infinitely many possible URLs, and so subsequent fragments and
+URL parameters are ommitted in this guide.  As a concrete example, when a URL in this document is listed as /path/to/resource,
+this URL is intended to match all of the following examples:
+
+* `https://john.grafana.net/path/to/resource`
+* `https://john.grafana.net/path/to/resource/subitem`
+* `https://john.grafana.net/path/to/resource/?x=1&y=2#anchor`
+
+And so on.
+
+# Navigation Hierarchy
+
+## Home
+
+URL: /a/cloud-home-app
+
+The Cloud Home app is the landing screen for every stack: it surfaces high-level usage stats, quick links to recent dashboards, and “next-step” cards that steer new users toward key observability features. A team might open Home each morning to verify that data sources are still healthy and see at-a-glance whether metrics or log volumes have spiked overnight.
+
+Best doc: https://grafana.com/docs/grafana-cloud/home/
+
+### Getting Started Guide
+
+URL: /a/grafana-setupguide-app/getting-started
+
+This guided workflow installs demo data sources and sample dashboards so newcomers can poke around Grafana Cloud without first instrumenting their own systems. It walks you through signing up, importing demo metrics, and exploring pre-built SRE and weather dashboards—perfect for onboarding a new hire who needs a safe sandbox
+
+Best doc: https://grafana.com/docs/grafana-cloud/getting-started/
+
+## Bookmarks
+
+URL: /bookmarks
+
+Bookmarks let you pin any page—dashboards, Explore, admin views—to a “Bookmarks” section that sits at the top of the left-hand nav, solving the “where did that page go?” problem as Grafana grows. A site-reliability engineer could bookmark their favorite latency dashboard and the OnCall schedule, so both are one click away during an incident.
+
+Best doc: https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/manage-dashboard-links/
+
+## Starred
+
+URL: /dashboards?starred
+
+Starring puts a ⭐ on dashboards (or individual visualizations in Explore) and makes them show up under the “Starred” filter, plus in widgets like the Dashboard List panel. It’s a lightweight way to curate a personal “mission-control” set—say, CPU, memory, and error-rate boards your team checks in every post-mortem.
+
+Best doc: https://grafana.com/docs/grafana/latest/dashboards/search-dashboards/
+
+## Dashboards
+
+URL: /dashboards
+
+The Dashboards area is where you view, create, and organize Grafana’s famous boards—mixing graphs, logs, traces, and text in one canvas. Teams typically build service-level dashboards (e.g., “payments-api overview”) that link to deeper drill-downs or alerts, giving everyone a shared source of truth. 
+
+Best doc: https://grafana.com/docs/grafana/latest/dashboards/
+
+### Playlists
+
+URL: /playlists
+
+Playlists run a set of dashboards in a timed loop—perfect for “NOC wall” monitors or demo kiosks where screens must cycle automatically. You control order, delay, and whether to loop forever or stop after one pass; Grafana scales each board to any resolution, so a single playlist can serve laptops and 4-K TVs alike. 
+
+Best doc: https://grafana.com/docs/grafana/latest/dashboards/playlist/
+
+### Snapshots
+
+URL: /dashboard/snapshots
+
+A dashboard snapshot freezes the current visual state, strips sensitive queries, and stores the metric data inside the snapshot payload so anyone with the link can explore it—no data-source access required. Teams use snapshots to share incident evidence with partners or embed a “moment-in-time” view in tickets without granting Grafana logins. 
+
+Best doc: https://grafana.com/docs/grafana/latest/dashboards/share-dashboard-snapshot/
+
+### Library Panels
+
+URL: /library-panels
+
+Library panels are single-source-of-truth visualizations that you save once and reuse across many dashboards; edit the library panel and every instance updates instantly. They cut copy-paste drift—think of a standard latency heat-map that must look identical on all 20 service dashboards. 
+
+Best doc: https://grafana.com/docs/grafana/latest/panels/library-panels/
+
+### Shared Dashboards
+
+URL: /dashboard/public
+
+Externally shared (formerly “public”) dashboards publish a read-only version to a hard-to-guess URL so stakeholders without Grafana accounts can view live data. You can pause or revoke access anytime, and an admin page lists every active share to keep sprawl in check. 
+
+Best doc: https://grafana.com/docs/grafana/latest/dashboards/public-dashboards/
+
+### Reporting
+
+URL: /reports
+
+Reporting schedules automated emails that turn any dashboard into a PDF, CSV, or embedded image, complete with variable values and the chosen time range. Typical flows include sending a Monday-morning uptime report to execs or a nightly capacity PDF to the infra mailing list—no manual exports needed. 
+
+Best doc: https://grafana.com/docs/grafana/latest/reporting/
+
+## Explore
+
+URL: /explore 
+
+Explore is a query workbench for interactive, ad-hoc digging into metrics, logs, or traces without building a full dashboard first. An engineer might paste a PromQL query to graph a single pod’s CPU, then pivot instantly to related logs or traces to chase down a spike.
+
+Best doc: https://grafana.com/docs/grafana/latest/explore/
+
+## Drilldown
+
+URL: /drilldown
+
+Metrics and Logs Drilldown pages take a selected series and open a context-rich view—showing labels, histograms, or correlated traces—so you can peel back layers without leaving Grafana. For instance, clicking a high-latency series in a dashboard can jump straight into Logs Drilldown filtered to that pod.
+
+Best doc: https://grafana.com/docs/grafana/latest/explore/simplified-exploration/
+
+### Metrics
+
+URL: /a/grafana-metricsdrilldown-app
+
+This app gives you a fully query-less Prometheus explorer: pick a data source, click through metric names and label values, and Grafana auto-draws graphs, histograms, or heat maps as you drill deeper. It’s ideal when you spot a CPU spike on a dashboard—open Metrics Drilldown, filter to job=node and instance=web-03, and instantly compare related series without writing a single PromQL line.
+
+Best doc: https://grafana.com/docs/grafana/latest/explore/simplified-exploration/metrics/
+
+### Logs
+
+URL: /a/grafana-lokiexplore-app
+
+Logs Drilldown opens a Loki (or other log source) workspace pre-grouped by labels and automatic “log patterns,” so noisy repetitions collapse and the anomalies pop out. From the same spike above you can jump here, keep the time range, and inspect only the trace_id=abc123 lines—no regex gymnastics required.
+
+Best doc: https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/
+
+### Traces
+
+URL: /a/grafana-exploretraces-app
+
+This view centres on distributed-trace analysis: a RED-metrics sidebar shows error and latency outliers, while the main panel lists sample traces you can expand into waterfall or flame-chart mode. It’s a two-click path from “API latency high” to the exact downstream call that added 400 ms.
+
+Best doc: https://grafana.com/docs/grafana/latest/explore/simplified-exploration/traces/
+
+### Profiles
+
+URL: /a/grafana-pyroscope-app/explore
+
+Powered by Pyroscope, Profiles Drilldown visualizes CPU, memory, or goroutine profiles as flamegraphs and diff views, letting you spot hot paths or regressions over time. After fixing that 400 ms trace, open Profiles Drilldown to confirm the new build cut heap allocations in half.
+
+Best doc: https://grafana.com/docs/grafana/latest/explore/simplified-exploration/profiles/
+
+## Alerts & IRM
+
+URL: /alerts-and-incidents
+
+The Alerts & Incident Response Management (IRM) hub unifies alert rules, OnCall schedules, and incident timelines in a single app. It streamlines the firefighting loop: alerts page the right rotation via OnCall, responders declare an incident, and post-incident reports are all tracked in one view.
+
+Best doc: https://grafana.com/docs/grafana/latest/alerting/
+
+### Service Center
+
+URL: /a/grafana-slo-app/services
+
+A service-oriented landing page that aggregates everything about each microservice—active alerts, open incidents, recent SLO burn, ownership metadata—so responders have one “command deck” per service. An SRE can pull up Payments-API during an outage and instantly see its 500-error alert firing, last week’s incident timeline, and the SLO budget left for the day.
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/service-center/
+
+### Alerting
+
+URL: /alerting
+
+Grafana-managed Alerting lets you build cross-datasource rules, route notifications, and track alert life-cycles—all in one pane instead of juggling Prometheus + Alertmanager silos. Teams wire Slack or PagerDuty once, then let policies decide who gets pinged and when.
+
+Best doc: https://grafana.com/docs/grafana/latest/alerting/
+
+#### Alert Rules
+
+URL: /alerting/list
+
+Define queries + thresholds that evaluate on a schedule and change state (Normal → Alerting). 	
+
+Best doc: https://grafana.com/docs/grafana/latest/alerting/manage-your-alert-rules/
+
+#### Contact Points
+ 
+URL: /alerting/notifications?search=
+
+Configure where notifications go—Slack, email, Opsgenie, webhooks.	
+
+Best doc: https://grafana.com/docs/grafana/latest/alerting/configure-notifications/manage-contact-points/
+
+#### Notification Policies
+
+URL: /alerting/routes
+
+Label-based routing tree that decides which contact point handles each alert.	
+
+Best doc: https://grafana.com/docs/grafana/latest/alerting/configure-notifications/create-notification-policy/
+
+#### Silences
+
+URL: /alerting/silences
+
+Temporary label-matched mutes so maintenance windows don’t page you.	
+
+Best doc: https://grafana.com/docs/grafana/latest/alerting/configure-notifications/create-silence/
+
+#### Active Notifications
+
+URL: /alerting/groups
+
+Real-time list of alert groups currently firing or pending.	
+
+Best doc: https://grafana.com/docs/grafana/latest/alerting/monitor-status/view-active-notifications/
+
+#### History
+
+URL: /alerting/history
+
+Audit log of every state change; great for spotting flappy rules.	
+
+Best doc: https://grafana.com/docs/grafana/latest/alerting/monitor-status/view-alert-state-history/
+
+#### Recently Deleted
+
+URL: /alerting/recently-deleted
+
+30-day recycle bin where admins can restore or purge alert rules.	
+
+Best doc: https://grafana.com/docs/grafana/latest/alerting/monitor-status/view-alert-rules/#permanently-delete-or-restore-deleted-alert-rules
+
+#### Settings
+
+URL: /alerting/admin
+
+Cluster-wide knobs: RBAC, state-history retention, default contact point, etc.	
+
+Best doc: https://grafana.com/docs/grafana/latest/alerting/set-up/configure-alertmanager/
+
+### IRM
+
+URL: /a/grafana-irm-app
+
+Grafana IRM (Incident Response Management) merges on-call scheduling, alert routing, and incident coordination. An alert flows into an Alert Group, pages the schedule defined in Escalation Chains, and responders spin up an Incident room with tasks and post-mortem templates—all without leaving Grafana.
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/get-started/
+
+#### Alert Groups
+
+URL: /a/grafana-irm-app/alert-groups
+
+Buckets multiple alert instances into one actionable thread.	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/respond-to-alerts/
+
+#### Incidents
+
+URL: /a/grafana-irm-app/incidents
+
+Lifecycle timeline, chat links, severity, custom fields.	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/incident-management/
+
+#### Tasks
+
+URL: /a/grafana-irm-app/tasks
+
+Checklist of action items inside an incident.	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/incident-management/manage-tasks/
+
+#### Schedules
+
+URL: /a/grafana-irm-app/schedules
+
+Drag-and-drop on-call rotations, overrides, follow-the-sun support.	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/manage/on-call-schedules/
+
+#### Escalation Chains
+
+URL: /a/grafana-irm-app/escalations/
+
+Ordered steps (wait x min → notify team → page manager).	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/escalation-routing/escalation-chains/
+
+#### Integrations
+
+URL: /a/grafana-irm-app/integrations/monitoring-systems
+
+Webhook & native hooks (Prometheus, Loki, Datadog, etc.).	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/integrations/
+
+#### Users
+
+URL: /a/grafana-irm-app/users
+
+Map Grafana teams to IRM on-call roles & notification rules.	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/manage/users-and-teams/
+
+#### Insights
+
+URL: /a/grafana-irm-app/insights/alerts
+
+Built-in dashboards for MTTA/MTTR, paging volume, flakiness.	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/manage/insights-and-reporting/alert-insights/
+
+#### Settings
+
+URL: /a/grafana-irm-app/settings
+
+Org-wide IRM defaults: severities, custom fields, mobile tokens.	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/
+
+### SLO
+
+URL: /a/grafana-slo-app/home
+
+Grafana SLO lets you define SLIs, error-budget-based objectives, and burn-rate alerts while giving execs high-level performance reports. Think of it as reliability KPIs baked into Grafana, complete with Terraform/API support for GitOps.
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/introduction/
+
+#### Manage SLOs
+
+URL: /a/grafana-slo-app/manage-slos
+
+CRUD list of all SLOs with filters, tagging, enable/disable.	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/manage/
+
+#### SLO Performance
+
+URL: /a/grafana-slo-app/slo-performance
+
+Tag-driven dashboard showing error-budget burn by team/service.	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/overviewdashboards/
+
+#### Reports
+
+URL: /a/grafana-slo-app/reports
+
+Auto-generated weekly/monthly PDFs summarizing multiple SLOs.	
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/reports/
+
+## AI & Machine Learning
+
+URL: /a/grafana-ml-app/home
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/
+
+### Metrics Forecast
+
+URL: /a/grafana-ml-app/metric-forecast
+
+Forecast learns seasonality in a time-series (like QPS) and projects it forward, generating dynamic alert thresholds that adjust to traffic patterns—handy for predicting when you’ll breach 75% CPU next week. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/dynamic-alerting/forecasting/
+
+### Outlier Detection
+
+URL: /a/grafana-ml-app/outlier-detector
+
+Outlier Detection watches a group of series (Kubernetes pods, EC2 instances) and flags any member that deviates from its peers, so you can catch a noisy-neighbor pod burning twice the CPU before customers notice. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/dynamic-alerting/outlier-detection/
+
+### Sift Investigations
+
+URL: /a/grafana-ml-app/investigations
+
+Sift is an ML-powered diagnostic assistant: click “Run investigation” during an incident and it auto-executes checks across metrics, logs, and deployments, surfacing suspicious spikes or recent rollouts in a tidy report—cutting minutes off mean-time-to-root-cause. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/sift/
+
+## Testing & Synthetics
+
+URL: /testing-and-synthetics
+
+This top-level menu groups active checks that simulate user behavior. You can script browser journeys or simple HTTP pings to verify uptime from multiple regions, ensuring “login flow is < 2 s” long before real users complain. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/testing/
+
+## Performance Testing
+
+URL: /a/k6-app
+
+The k6 app runs load tests straight from the cloud, scaling to a million virtual users and correlating the results with Grafana dashboards—ideal for hammering a new API release and watching latency vs. VU in real time. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/testing/k6/
+
+### Projects
+
+URL: /a/k6-app/projects
+
+Projects are folders that collect related tests and enforce RBAC—ideal for separating “Checkout” vs. “Search” suites or giving a contractor access to only one project. Usage reports and quota limits roll up at the project level, which keeps large orgs from blowing past VU budgets. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/testing/k6/projects-and-users/projects/ 
+
+### Settings
+
+URL: /a/k6-app/settings/api-token
+
+The Settings screen is where you mint and revoke API tokens, configure static IPs, and toggle private-network test runners. Tokens are required for CLI-driven k6 cloud jobs and for CI pipelines that push results back to the app. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/testing/k6/author-run/tokens-and-cli-authentication/ 
+
+### Learn
+
+URL: /a/k6-app/learn
+
+Learn is a curated library of k6 tutorials, sample scripts, and “test-design” playbooks that open in an in-app viewer—great for onboarding teammates who’ve never written a load test before. Topics range from basic HTTP tests to TypeScript scripting and GraphQL load patterns. 
+
+Best doc: https://grafana.com/docs/k6/latest/examples/tutorials/ 
+
+### Synthetic Monitoring
+
+URL: /a/grafana-synthetic-monitoring-app/
+
+Synthetic Monitoring is Grafana Cloud’s black-box uptime suite: you define browser journeys, HTTP pings, or gRPC calls, run them from public or private probes, and chart latency and availability like any other metrics in Grafana. Pre-built alert rules fire when SLAs slip, and every check stores logs and metrics for root-cause digs. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/ 
+
+### Checks
+
+URL: /a/grafana-synthetic-monitoring-app/checks
+
+A “check” is the executable test object—HTTP, DNS, TCP, browser, or scripted k6—that runs on a schedule and exports Prometheus metrics plus Loki logs. You pick locations, thresholds, and probe types, then watch pass/fail counts accumulate in real time. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/create-checks/checks/ 
+
+### Probes
+
+URL: /a/grafana-synthetic-monitoring-app/probes
+
+Probes are the agents that execute checks. Grafana supplies >20 managed public probes worldwide, or you can deploy private probes inside a VPC to monitor internal services; both stream results back over encrypted gRPC. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/create-checks/public-probes/ 
+
+### Alerts
+
+URL: /a/grafana-synthetic-monitoring-app/alerts
+
+This tab maps check results to Grafana Alerting: toggle built-in latency/availability rules or craft custom policies that route failures to Slack, PagerDuty, or OnCall. Alert states sync back to each check card so you can see which monitors are paging right now. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/configure-alerts/ 
+
+### Config
+
+URL: /a/grafana-synthetic-monitoring-app/config
+
+The Config page houses global settings such as private-probe tokens, default alert labels, and RBAC for who can create or edit checks. It’s also where you register new private probes—copy the token, deploy the Docker container, and the probe shows up ready for scheduling. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/set-up/
+
+## Observability
+
+URL: /observability
+
+The Observability menu gathers turnkey solutions—Application, Frontend, Kubernetes, Infrastructure monitoring—all powered by the LGTM+ stack (Mimir, Loki, Tempo, Pyroscope). It gives SREs a one-stop shop for correlated metrics, logs, traces, and profiles. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/monitor-applications/
+
+### Asserts
+
+URL: /a/grafana-asserts-app/get-started
+
+Grafana Asserts auto-analyzes Prometheus metrics to surface anomalies and dependency issues, then maps them onto a live topology so engineers can zero-in on failing components without combing through dashboards. Typical flow: after a new release, open Asserts to see red “SAAFE” signals (Spike, Abnormal rate, etc.) on the checkout service and drill straight into the suspect pod’s logs.
+
+Best doc: https://grafana.com/docs/grafana-cloud/monitor-applications/asserts/get-started/ 
+
+### Application
+
+URL: /a/grafana-app-observability-app
+
+An OpenTelemetry-based APM suite that ingests traces, metrics, and logs, then renders RED-metric dashboards, service maps, and trace waterfalls for every microservice. With a few lines of OTEL SDK plus Grafana Alloy, teams can watch p95 latency for “orders-api”, follow a slow trace into downstream DB calls, and raise error-budget alerts—all inside Grafana Cloud.
+
+Best doc: https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/ 
+
+### Cloud Provider
+
+URL: /a/grafana-csp-app
+
+This app connects to AWS, Azure, and GCP with minimal credentials, auto-discovers resources, and ships cloud-native metrics to Grafana Cloud; it then overlays cost, health, and usage views across multiple accounts. An SRE might filter to “us-east-1 RDS” to spot a CPU surge and jump directly into the instance’s logs or traces.
+
+Best doc: https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/
+
+### Kubernetes
+
+URL: /a/grafana-k8s-app/
+
+A turnkey Helm or Alloy-based installer that collects cluster metrics, events, and traces, bundling rich dashboards for nodes, workloads, and golden signals. Clicking a high-restart Deployment opens pod-level logs and events, while built-in advisors flag cost-saving opportunities like under-utilized nodes.
+
+Best doc: https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/ 
+
+### Frontend
+
+URL: /a/grafana-kowalski-app
+
+Powered by the Faro SDK, Frontend Observability captures real-user monitoring (RUM) data—page loads, Core Web Vitals, JS errors—and correlates it with backend traces for full-stack visibility. Product teams instrument a React or Next.js app, then watch a UX scorecard and session replays to chase down a slow checkout flow or a spike in 404s.
+
+Best doc: https://grafana.com/docs/grafana-cloud/monitor-applications/frontend-observability/
+
+## Connections
+
+URL: /connections
+
+Connections is the catalog of one-click integrations and Private Data-Source Connect (PDC). Pick “Postgres,” (or many other types), follow the wizard, and Grafana Cloud ships an agent, scrapes metrics, and installs dashboards. 
+
+Best doc: https://grafana.com/docs/grafana-cloud/connect-externally-hosted/data-sources/
+
+### Add a New Connection
+
+URL: /connections/add-new-connection
+
+The “Add new connection” wizard is the front door to everything Grafana Cloud can ingest: type “Postgres,” “Loki,” or any of 40-plus tiles, and the flow spins up the right data-source object, ships (or re-uses) a Grafana Alloy collector, and autoinstalls starter dashboards and alerts. It means a junior SRE can wire a new database or log source in under two minutes, no YAML or CLI required.
+
+Best doc: https://grafana.com/docs/grafana/latest/datasources/#add-a-data-source 
+
+### Collector
+
+URL: /a/grafana-collector-app
+
+The Collector app (powered by Grafana Alloy/OpenTelemetry Collector) is fleet management for your ingest agents: dashboards show health, version, and throughput, while one-click actions restart or upgrade out-of-date nodes. Ops teams use it to spot an unhealthy edge collector before it drops metrics or to roll out a new scrape job to every host from one screen.
+
+Best doc: https://grafana.com/docs/grafana-cloud/send-data/fleet-management/manage-fleet/collectors/
+
+### Data Sources
+
+URL: /connections/datasources
+
+“Data sources” lists every configured backend—Prometheus, CloudWatch, BigQuery, and more—plus connection status, quotas, and edit links. From here you can tweak auth keys, set custom headers, or turn on traces for a single source without touching other connections.
+
+Best doc: https://grafana.com/docs/grafana-cloud/connect-externally-hosted/data-sources/
+
+### Integrations
+
+URL: /connections/infrastructure
+
+The Integrations catalog bundles exporters, dashboards, and alerts for popular services (Linux node, NGINX, Redis, etc.) behind point-and-click cards. Choose an integration and Grafana Cloud renders install commands, ships dashboards, and wires default alert rules—giving you observability best practices in about five minutes.
+
+Best doc: https://grafana.com/docs/grafana-cloud/monitor-infrastructure/integrations/
+
+### Private Datasource Connect
+
+URL: /connections/private-data-source-connections
+
+PDC creates an outbound-only, encrypted tunnel from your private network to Grafana Cloud, so on-prem SQL servers or self-hosted Prometheus can be queried without opening inbound firewall holes. You manage multiple tunnels per stack, assign them to specific data sources, and monitor connection health in real time.
+
+Best doc: https://grafana.com/docs/grafana-cloud/connect-externally-hosted/private-data-source-connect/
+
+## More Apps
+
+URL: /apps
+
+Any installed app plugin that doesn’t fit the core navigation lands under “More Apps.” Admins can later reposition pages, but by default this keeps niche tools (e.g., a custom billing app) tidy yet discoverable. 
+
+Best doc: https://grafana.com/docs/grafana/latest/administration/plugin-management/
+
+### Demo Data Dashboards
+
+URL: /a/grafana-demodashboards-app
+
+Best doc: https://grafana.com/docs/grafana-cloud/get-started/#install-demo-data-sources-and-dashboards
+
+## Administration
+
+URL: /admin
+
+The Administration section handles org-level housekeeping: user and team management, roles & permissions, billing, plugin toggles, and feature flags. An org-admin might head here to grant an intern “Viewer” rights or enable a new plugin across the stack. 
+
+Best doc: https://grafana.com/docs/grafana/latest/administration/
+
+### General
+
+URL: /admin/general
+
+This page centralizes stack-wide preferences such as home dashboard, time zone, default theme, and the brand assets (logo + fav icon) that appear in the UI. Changing a value here rewrites the org’s config file on the fly, so an admin could, for example, switch the home screen to a “Friday-on-call” dashboard without restarting Grafana.
+
+Best doc: https://grafana.com/docs/grafana/latest/administration/organization-management/
+
+### Plugins and Data
+
+URL: /admin/plugins
+
+The Plugins panel lists every data source, panel, and app extension that’s installed (or available in the catalog) and lets admins enable, disable, update, or pin versions. Typical use: a team trials the Kubernetes-Monitoring app in a dev stack and, once satisfied, promotes the plugin to prod with one toggle.
+
+Best doc: https://grafana.com/docs/grafana/latest/administration/plugin-management/
+
+### Users and Access
+
+URL: /admin/access
+
+Here you add users, place them into teams, and fine-tune permissions down to folder or dashboard level. A site-reliability lead might create a “DB-Ops” team with Editor rights on the “Database” folder while leaving broader org access at Viewer.
+
+Best doc: https://grafana.com/docs/grafana/latest/administration/user-management/
+
+### Authentication
+
+URL: /admin/authentication
+
+This tab wires Grafana to auth providers—LDAP, SAML, OAuth (GitHub, Google, Okta, etc.)—and exposes toggles for sign-up modes, auto-invite, and session hardening. For example, you could flip on GitHub OAuth and require membership in the “infra-team” org before anyone can log in.
+
+Best doc: https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-authentication/
+
+### Advisor
+
+URL: /a/grafana-advisor-app
+
+Advisor is a health-check dashboard that scans your instance for red flags—outdated plugins, high cardinality metrics, or missing TLS—and scores overall hygiene. Running the check after an upgrade quickly shows whether new settings broke alerting or data-source auth.
+
+Best doc: https://grafana.com/docs/grafana/latest/administration/grafana-advisor/
+
+### Cost Management
+
+URL: /a/grafana-costmanagementui-app/overview
+
+The hub aggregates spend across metrics, logs, traces, and profiles, pairing usage dashboards with optimization tools like Adaptive Metrics and Log Volume Explorer. Admins drop in here to set usage alerts, allocate costs to teams, or preview next month’s bill curve.
+
+Best doc: https://grafana.com/docs/grafana-cloud/cost-management-and-billing/
+
+#### Metrics
+
+URL: /a/grafana-costmanagementui-app/metrics
+
+Shows active-series counts, DPM trends, and the Adaptive Metrics recommender that can auto-aggregate low-value labels, slashing ingestion by up to 40%. A performance engineer might run the recommender, accept the plan, and immediately see forecast savings in the usage panel.
+
+Best doc: https://grafana.com/docs/grafana-cloud/cost-management-and-billing/analyze-costs/metrics-costs/
+
+#### Logs
+
+URL: /a/grafana-costmanagementui-app/logs
+
+Pivots to Log Volume Explorer where you slice ingestion by label to find the namespace or app exploding your bill. Teams often start here to craft drop rules or retention tiers after spotting a chatty sidecar that doubles log volume overnight.
+
+Best doc: https://grafana.com/docs/grafana-cloud/cost-management-and-billing/analyze-costs/logs-costs/
+
+#### Traces
+
+URL: /a/grafana-costmanagementui-app/traces
+
+Highlights GB ingested vs retained and surfaces high-fan-out span attributes; guidance panels link to sampling knobs that trim unnecessary spans before export. Observability owners use it to adjust instrumentation and keep trace costs flat as traffic grows.
+
+Best doc: https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/traces-costs/
+
+#### Profiles
+
+URL: /a/grafana-costmanagementui-app/profiles
+
+Highlights GB ingested vs retained and surfaces high-fan-out span attributes; guidance panels link to sampling knobs that trim unnecessary spans before export. Observability owners use it to adjust instrumentation and keep trace costs flat as traffic grows.
+
+Best doc: https://grafana.com/docs/grafana-cloud/cost-management-and-billing/understand-your-invoice/profiles-invoice/

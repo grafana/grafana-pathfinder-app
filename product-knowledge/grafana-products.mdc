@@ -1,0 +1,424 @@
+---
+alwaysApply: false
+---
+
+Here is a list of Grafana Labs products with their descriptions and common use cases.
+
+### Grafana
+Grafana is an open-source platform for monitoring and observability. It allows you to query, visualize, alert on, and understand your metrics no matter where they are stored.
+
+**Common Use Cases:**
+*   Creating and sharing dynamic and interactive dashboards.
+*   Visualizing data from a wide variety of data sources.
+*   Setting up alerts based on metrics and logs.
+*   Fostering a data-driven culture by enabling teams to explore and share data.
+
+### Grafana Loki
+Grafana Loki is a horizontally scalable, multi-tenant log aggregation system inspired by Prometheus. It is designed to be very cost-effective and easy to operate.
+
+**Common Use Cases:**
+*   Aggregating logs from all your applications and infrastructure.
+*   Querying and filtering logs using LogQL, a query language similar to PromQL.
+*   Correlating logs with metrics and traces to get a complete picture of your system.
+
+### Grafana Tempo
+Grafana Tempo is a high-scale, minimal-dependency distributed tracing backend. It is designed to be a simple and cost-effective way to store and query traces.
+
+**Common Use Cases:**
+*   Storing and retrieving traces from applications instrumented with OpenTelemetry, Jaeger, or Zipkin.
+*   Debugging and understanding the flow of requests through a distributed system.
+*   Integrating with Grafana for seamless correlation between metrics, logs, and traces.
+
+### Grafana Mimir
+Grafana Mimir is a scalable, long-term storage solution for Prometheus metrics. It allows you to aggregate metrics from multiple Prometheus instances into a single, globally-viewable dashboard.
+
+**Common Use Cases:**
+*   Centralized, long-term storage for Prometheus metrics.
+*   High-performance querying of large volumes of time-series data.
+*   Creating a single-pane-of-glass view of metrics from across your entire infrastructure.
+
+### Grafana Pyroscope
+Grafana Pyroscope is a continuous profiling platform that helps you find performance issues in your code. It allows you to understand which parts of your code are consuming the most resources.
+
+**Common Use Cases:**
+*   Identifying and debugging performance bottlenecks in applications.
+*   Optimizing resource utilization and reducing infrastructure costs.
+*   Analyzing CPU and memory usage over time to improve application performance.
+
+### Grafana K6
+Grafana k6 is a modern, open-source load testing tool for engineering teams. It allows you to write tests in JavaScript and run them from the command line or the cloud.
+
+**Common Use Cases:**
+*   Performance and load testing of APIs, microservices, and websites.
+*   Ensuring the reliability and scalability of your systems.
+*   Integrating performance testing into your CI/CD pipelines.
+
+### Grafana IRM (Incident Response Management)
+Grafana IRM is a suite of tools designed to help you manage incidents from detection to resolution. It includes Grafana OnCall and Grafana Incident.
+
+**Common Use Cases:**
+*   **Grafana OnCall:** Managing on-call schedules, escalations, and notifications to ensure that the right people are alerted when an incident occurs.
+*   **Grafana Incident:** Automating incident response workflows, from creating a dedicated Slack channel to tracking action items and generating post-mortems.
+
+### Grafana Cloud
+Grafana Cloud is a fully managed, composable observability platform that brings together all of Grafana's open-source and enterprise products into a single, easy-to-use solution.
+
+**Common Use Cases:**
+*   Organizations that want to use the Grafana stack without the overhead of managing the infrastructure themselves.
+*   Getting started quickly with a complete observability solution.
+*   Scaling observability as your organization grows.
+
+### Grafana Enterprise
+Grafana Enterprise is a self-managed, commercial edition of Grafana that includes additional features and support for enterprise use cases.
+
+**Common Use Cases:**
+*   Organizations with strict security and compliance requirements that need to run Grafana on their own infrastructure.
+*   Accessing enterprise-grade features such as enhanced security, reporting, and data source integrations.
+*   Receiving dedicated support from Grafana Labs.
+
+### Grafana Beyla
+Grafana Beyla is an eBPF-based application auto-instrumentation tool. It allows you to capture telemetry data from your applications without modifying their code.
+
+**Common Use Cases:**
+*   Gaining visibility into the performance of applications without manual instrumentation.
+*   Reducing the time and effort required to instrument a large number of services.
+*   Monitoring applications written in languages that are difficult to instrument.
+
+### Grafana Faro
+Grafana Faro is a frontend application observability SDK. It allows you to collect real-user monitoring (RUM) data from your web applications.
+
+**Common Use Cases:**
+*   Understanding the end-user experience of your web applications.
+*   Identifying and debugging frontend performance issues.
+*   Collecting data on page load times, JavaScript errors, and other frontend events.
+
+### Grafana Alloy
+Grafana Alloy is a distribution of the OpenTelemetry Collector with added support for Prometheus pipelines.
+
+**Common Use Cases:**
+*   Collecting and processing telemetry data from a variety of sources.
+*   Sending data to multiple observability backends.
+*   Building custom telemetry pipelines.
+
+### Grafana Helm Charts 
+
+Grafana Helm Charts are official Kubernetes deployment packages that simplify the installation, configuration, and management of Grafana on Kubernetes clusters. These charts provide a standardized way to deploy both Grafana OSS and Enterprise editions with customizable configurations, persistent storage, and integrated security features.
+
+**Common Use Cases:**
+*   Deploying Grafana on Kubernetes clusters with consistent, repeatable configurations.
+*   Managing Grafana installations across multiple environments (development, staging, production).
+*   Automating Grafana deployments as part of CI/CD pipelines and GitOps workflows.
+*   Simplifying upgrades, rollbacks, and configuration changes for Grafana instances.
+*   Integrating Grafana with other Kubernetes-native tools and monitoring stacks.
+
+### Grafana Asserts
+
+Grafana Asserts is an intelligent observability platform that provides automated root cause analysis and correlation intelligence for distributed applications. It leverages telemetry data to create visual representations of application and infrastructure relationships, automatically correlates issues using the SAAFE model (Saturations, Amends, Anomalies, Failures, Errors), and eliminates the need for manual dashboard maintenance through intelligent workbench capabilities.
+
+**Common Use Cases:**
+*   Performing automated root cause analysis for complex distributed system issues.
+*   Tracking SLO violations and understanding why error budgets are depleting.
+*   Correlating metrics, logs, and traces to identify the true source of problems.
+*   Reducing observability costs through intelligent data distillation and retention.
+*   Eliminating the need to maintain hundreds of manually created dashboards.
+
+### Grafana AI Observability
+
+Grafana AI Observability is a comprehensive solution designed to monitor and optimize generative AI applications. It captures observability signals and visualizes real-time performance of your GenAI stack from LLMs to vector databases, correlating usage data for full-stack AI observability.
+
+**Common Use Cases:**
+*   Monitoring Large Language Model (LLM) performance, token usage, and costs in production environments.
+*   Tracking user interactions with AI applications to understand usage patterns and model behavior.
+*   Analyzing vector database query response times and throughput for efficient data retrieval.
+
+### Machine Learning
+
+Grafana Machine Learning is an AI/ML toolkit integrated into Grafana Cloud that provides intelligent anomaly detection, forecasting, and automated insights for observability data. It includes dynamic alerting with metric forecasting, outlier detection for groups of similar resources, and AI-powered root cause analysis capabilities through Sift investigations.
+
+**Common Use Cases:**
+*   Detecting anomalous behavior in groups of similar Kubernetes pods or services using outlier detection algorithms.
+*   Creating predictive alerts for capacity planning and resource management through metric forecasting and anomaly detection.
+*   Automating root cause analysis during incidents with AI-powered investigations and contextual insights.
+
+### Fleet Management
+
+Grafana Fleet Management is a centralized service for managing fleets of telemetry collectors and configuration pipelines across distributed infrastructure. It provides remote configuration management, pipeline creation, and monitoring capabilities for Grafana Alloy collectors, enabling streamlined observability data collection at scale.
+
+**Common Use Cases:**
+*   Centrally managing and configuring multiple Grafana Alloy collectors deployed across different environments and locations.
+*   Creating and deploying standardized telemetry collection pipelines to ensure consistent data gathering across infrastructure.
+*   Monitoring collector health and performance while troubleshooting data collection issues from a unified interface.
+
+### Cloud Provider Observability
+
+Cloud Provider Observability is a comprehensive multi-cloud monitoring solution that provides unified observability across AWS, Azure, and Google Cloud Platform infrastructure. It offers out-of-the-box integration with cloud services like CloudWatch, Azure Monitor, and Google Cloud Monitoring, enabling teams to visualize and alert on cloud resources without deploying local agents or exporters.
+
+**Common Use Cases:**
+*   Monitoring AWS services like EC2, RDS, Lambda, and S3 with pre-built dashboards and cost tracking across multiple accounts and regions.
+*   Centralizing multi-cloud observability by correlating metrics and logs from AWS, Azure, and GCP in a single Grafana Cloud instance.
+*   Implementing cloud cost management and optimization by tracking resource utilization, billing metrics, and identifying underused infrastructure across cloud providers.
+
+### SLO
+
+Grafana SLO is a comprehensive Service Level Objective management solution that enables organizations to define, track, and manage reliability targets for their services. It provides automated SLO calculation, error budget tracking, and burn rate alerting to help teams maintain service reliability and make data-driven decisions about service improvements.
+
+**Common Use Cases:**
+*   Defining and monitoring service reliability targets with automated error budget tracking and burn rate calculations.
+*   Creating SLO-based alerting policies that notify teams when error budgets are being consumed too quickly or reliability targets are at risk.
+*   Establishing data-driven reliability practices by correlating SLO performance with business metrics and customer satisfaction.
+
+### Synthetic Monitoring
+
+Grafana Synthetic Monitoring is a proactive monitoring solution that tests applications and services by creating checks that continuously run against remote targets from global probe locations. It leverages k6 technology to provide comprehensive monitoring capabilities including HTTP/API endpoint testing, DNS resolution validation, browser-based user flow testing, and multi-step transaction monitoring.
+
+**Common Use Cases:**
+*   Monitoring website and API availability from multiple global locations to detect outages before users do.
+*   Testing critical user journeys and workflows with browser-based checks to ensure core functionality works correctly.
+*   Validating DNS resolution, SSL certificate health, and network connectivity for proactive infrastructure monitoring.
+
+### Application Observability 
+
+Grafana Application Observability is a comprehensive solution for monitoring application performance using OpenTelemetry-based instrumentation. It provides automatic discovery and correlation of metrics, logs, and traces to deliver service-level insights including service maps, service inventory, and automated root cause analysis capabilities.
+
+**Common Use Cases:**
+*   Monitoring distributed application performance with automatic service discovery and RED (Rate, Errors, Duration) metrics visualization.
+*   Performing root cause analysis during incidents by correlating metrics, logs, and traces across service boundaries and dependencies.
+*   Tracking application health and SLI/SLO compliance with pre-built dashboards and alerting for service-level objectives.
+
+### Kubernetes Monitoring
+
+Grafana Kubernetes Monitoring provides comprehensive observability for Kubernetes clusters and workloads, offering both reactive troubleshooting and proactive management capabilities. It includes pre-built dashboards, alerting rules, cost monitoring, and resource efficiency tracking with easy deployment via Helm chart and correlation between metrics and logs for faster issue resolution.
+
+**Common Use Cases:**
+*   Monitoring cluster health and resource utilization with drill-down capabilities from cluster-level overview to individual pod and container performance metrics.
+*   Tracking infrastructure costs and resource efficiency to optimize spending and identify underutilized or over-provisioned resources across nodes and workloads.
+*   Proactively detecting performance issues and bottlenecks using built-in alerting rules, machine learning-powered resource forecasting, and real-time notifications for critical events.
+
+### Alerting
+
+Grafana Alerting is a unified alerting system that allows you to define alert rules across multiple data sources and manage notifications with flexible routing via contact points and notification policies. Built on the Prometheus alerting model, it supports both Grafana-managed and data source-managed alert rules with templating, grouping, and scheduling capabilities for comprehensive alerting workflows.
+
+**Common Use Cases:**
+*   Creating multi-dimensional alert rules that can query data from multiple data sources simultaneously and generate separate alert instances for each series or dimension.
+*   Managing complex notification routing using notification policies that route alerts to different contact points (email, Slack, PagerDuty, etc.) based on label matching and timing configurations.
+*   Building sophisticated alert conditions using expressions and transformations to reduce, resample, or apply mathematical operations on query results before triggering alerts.
+
+### Drilldown
+
+Grafana Drilldown refers to a collection of simplified exploration applications that provide queryless interfaces for navigating observability data including logs, traces, profiles, and metrics. These apps enable users to explore and analyze data through interactive visualizations and filtering without requiring knowledge of query languages like LogQL, TraceQL, or PromQL.
+
+**Common Use Cases:**
+*   Exploring log data from Loki services by drilling down through volumes, patterns, labels, and fields without writing LogQL queries.
+*   Navigating distributed tracing data to investigate performance bottlenecks and error patterns across service dependencies.
+*   Analyzing profiling data to identify CPU and memory usage patterns by drilling down from high-level metrics to line-specific details.
+
+Here is a list of Grafana Labs products with their descriptions and common use cases.
+
+### Grafana
+Grafana is an open-source platform for monitoring and observability. It allows you to query, visualize, alert on, and understand your metrics no matter where they are stored.
+
+**Common Use Cases:**
+*   Creating and sharing dynamic and interactive dashboards.
+*   Visualizing data from a wide variety of data sources.
+*   Setting up alerts based on metrics and logs.
+*   Fostering a data-driven culture by enabling teams to explore and share data.
+
+### Grafana Loki
+Grafana Loki is a horizontally scalable, multi-tenant log aggregation system inspired by Prometheus. It is designed to be very cost-effective and easy to operate.
+
+**Common Use Cases:**
+*   Aggregating logs from all your applications and infrastructure.
+*   Querying and filtering logs using LogQL, a query language similar to PromQL.
+*   Correlating logs with metrics and traces to get a complete picture of your system.
+
+### Grafana Tempo
+Grafana Tempo is a high-scale, minimal-dependency distributed tracing backend. It is designed to be a simple and cost-effective way to store and query traces.
+
+**Common Use Cases:**
+*   Storing and retrieving traces from applications instrumented with OpenTelemetry, Jaeger, or Zipkin.
+*   Debugging and understanding the flow of requests through a distributed system.
+*   Integrating with Grafana for seamless correlation between metrics, logs, and traces.
+
+### Grafana Mimir
+Grafana Mimir is a scalable, long-term storage solution for Prometheus metrics. It allows you to aggregate metrics from multiple Prometheus instances into a single, globally-viewable dashboard.
+
+**Common Use Cases:**
+*   Centralized, long-term storage for Prometheus metrics.
+*   High-performance querying of large volumes of time-series data.
+*   Creating a single-pane-of-glass view of metrics from across your entire infrastructure.
+
+### Grafana Pyroscope
+Grafana Pyroscope is a continuous profiling platform that helps you find performance issues in your code. It allows you to understand which parts of your code are consuming the most resources.
+
+**Common Use Cases:**
+*   Identifying and debugging performance bottlenecks in applications.
+*   Optimizing resource utilization and reducing infrastructure costs.
+*   Analyzing CPU and memory usage over time to improve application performance.
+
+### Grafana K6
+Grafana k6 is a modern, open-source load testing tool for engineering teams. It allows you to write tests in JavaScript and run them from the command line or the cloud.
+
+**Common Use Cases:**
+*   Performance and load testing of APIs, microservices, and websites.
+*   Ensuring the reliability and scalability of your systems.
+*   Integrating performance testing into your CI/CD pipelines.
+
+### Grafana IRM (Incident Response Management)
+Grafana IRM is a suite of tools designed to help you manage incidents from detection to resolution. It includes Grafana OnCall and Grafana Incident.
+
+**Common Use Cases:**
+*   **Grafana OnCall:** Managing on-call schedules, escalations, and notifications to ensure that the right people are alerted when an incident occurs.
+*   **Grafana Incident:** Automating incident response workflows, from creating a dedicated Slack channel to tracking action items and generating post-mortems.
+
+### Grafana Cloud
+Grafana Cloud is a fully managed, composable observability platform that brings together all of Grafana's open-source and enterprise products into a single, easy-to-use solution.
+
+**Common Use Cases:**
+*   Organizations that want to use the Grafana stack without the overhead of managing the infrastructure themselves.
+*   Getting started quickly with a complete observability solution.
+*   Scaling observability as your organization grows.
+
+### Grafana Enterprise
+Grafana Enterprise is a self-managed, commercial edition of Grafana that includes additional features and support for enterprise use cases.
+
+**Common Use Cases:**
+*   Organizations with strict security and compliance requirements that need to run Grafana on their own infrastructure.
+*   Accessing enterprise-grade features such as enhanced security, reporting, and data source integrations.
+*   Receiving dedicated support from Grafana Labs.
+
+### Grafana Beyla
+Grafana Beyla is an eBPF-based application auto-instrumentation tool. It allows you to capture telemetry data from your applications without modifying their code.
+
+**Common Use Cases:**
+*   Gaining visibility into the performance of applications without manual instrumentation.
+*   Reducing the time and effort required to instrument a large number of services.
+*   Monitoring applications written in languages that are difficult to instrument.
+
+### Grafana Faro
+Grafana Faro is a frontend application observability SDK. It allows you to collect real-user monitoring (RUM) data from your web applications.
+
+**Common Use Cases:**
+*   Understanding the end-user experience of your web applications.
+*   Identifying and debugging frontend performance issues.
+*   Collecting data on page load times, JavaScript errors, and other frontend events.
+
+### Grafana Alloy
+Grafana Alloy is a distribution of the OpenTelemetry Collector with added support for Prometheus pipelines.
+
+**Common Use Cases:**
+*   Collecting and processing telemetry data from a variety of sources.
+*   Sending data to multiple observability backends.
+*   Building custom telemetry pipelines.
+
+### Grafana Helm Charts 
+
+Grafana Helm Charts are official Kubernetes deployment packages that simplify the installation, configuration, and management of Grafana on Kubernetes clusters. These charts provide a standardized way to deploy both Grafana OSS and Enterprise editions with customizable configurations, persistent storage, and integrated security features.
+
+**Common Use Cases:**
+*   Deploying Grafana on Kubernetes clusters with consistent, repeatable configurations.
+*   Managing Grafana installations across multiple environments (development, staging, production).
+*   Automating Grafana deployments as part of CI/CD pipelines and GitOps workflows.
+*   Simplifying upgrades, rollbacks, and configuration changes for Grafana instances.
+*   Integrating Grafana with other Kubernetes-native tools and monitoring stacks.
+
+### Grafana Asserts
+
+Grafana Asserts is an intelligent observability platform that provides automated root cause analysis and correlation intelligence for distributed applications. It leverages telemetry data to create visual representations of application and infrastructure relationships, automatically correlates issues using the SAAFE model (Saturations, Amends, Anomalies, Failures, Errors), and eliminates the need for manual dashboard maintenance through intelligent workbench capabilities.
+
+**Common Use Cases:**
+*   Performing automated root cause analysis for complex distributed system issues.
+*   Tracking SLO violations and understanding why error budgets are depleting.
+*   Correlating metrics, logs, and traces to identify the true source of problems.
+*   Reducing observability costs through intelligent data distillation and retention.
+*   Eliminating the need to maintain hundreds of manually created dashboards.
+
+### Grafana AI Observability
+
+Grafana AI Observability is a comprehensive solution designed to monitor and optimize generative AI applications. It captures observability signals and visualizes real-time performance of your GenAI stack from LLMs to vector databases, correlating usage data for full-stack AI observability.
+
+**Common Use Cases:**
+*   Monitoring Large Language Model (LLM) performance, token usage, and costs in production environments.
+*   Tracking user interactions with AI applications to understand usage patterns and model behavior.
+*   Analyzing vector database query response times and throughput for efficient data retrieval.
+
+### Machine Learning
+
+Grafana Machine Learning is an AI/ML toolkit integrated into Grafana Cloud that provides intelligent anomaly detection, forecasting, and automated insights for observability data. It includes dynamic alerting with metric forecasting, outlier detection for groups of similar resources, and AI-powered root cause analysis capabilities through Sift investigations.
+
+**Common Use Cases:**
+*   Detecting anomalous behavior in groups of similar Kubernetes pods or services using outlier detection algorithms.
+*   Creating predictive alerts for capacity planning and resource management through metric forecasting and anomaly detection.
+*   Automating root cause analysis during incidents with AI-powered investigations and contextual insights.
+
+### Fleet Management
+
+Grafana Fleet Management is a centralized service for managing fleets of telemetry collectors and configuration pipelines across distributed infrastructure. It provides remote configuration management, pipeline creation, and monitoring capabilities for Grafana Alloy collectors, enabling streamlined observability data collection at scale.
+
+**Common Use Cases:**
+*   Centrally managing and configuring multiple Grafana Alloy collectors deployed across different environments and locations.
+*   Creating and deploying standardized telemetry collection pipelines to ensure consistent data gathering across infrastructure.
+*   Monitoring collector health and performance while troubleshooting data collection issues from a unified interface.
+
+### Cloud Provider Observability
+
+Cloud Provider Observability is a comprehensive multi-cloud monitoring solution that provides unified observability across AWS, Azure, and Google Cloud Platform infrastructure. It offers out-of-the-box integration with cloud services like CloudWatch, Azure Monitor, and Google Cloud Monitoring, enabling teams to visualize and alert on cloud resources without deploying local agents or exporters.
+
+**Common Use Cases:**
+*   Monitoring AWS services like EC2, RDS, Lambda, and S3 with pre-built dashboards and cost tracking across multiple accounts and regions.
+*   Centralizing multi-cloud observability by correlating metrics and logs from AWS, Azure, and GCP in a single Grafana Cloud instance.
+*   Implementing cloud cost management and optimization by tracking resource utilization, billing metrics, and identifying underused infrastructure across cloud providers.
+
+### SLO
+
+Grafana SLO is a comprehensive Service Level Objective management solution that enables organizations to define, track, and manage reliability targets for their services. It provides automated SLO calculation, error budget tracking, and burn rate alerting to help teams maintain service reliability and make data-driven decisions about service improvements.
+
+**Common Use Cases:**
+*   Defining and monitoring service reliability targets with automated error budget tracking and burn rate calculations.
+*   Creating SLO-based alerting policies that notify teams when error budgets are being consumed too quickly or reliability targets are at risk.
+*   Establishing data-driven reliability practices by correlating SLO performance with business metrics and customer satisfaction.
+
+### Synthetic Monitoring
+
+Grafana Synthetic Monitoring is a proactive monitoring solution that tests applications and services by creating checks that continuously run against remote targets from global probe locations. It leverages k6 technology to provide comprehensive monitoring capabilities including HTTP/API endpoint testing, DNS resolution validation, browser-based user flow testing, and multi-step transaction monitoring.
+
+**Common Use Cases:**
+*   Monitoring website and API availability from multiple global locations to detect outages before users do.
+*   Testing critical user journeys and workflows with browser-based checks to ensure core functionality works correctly.
+*   Validating DNS resolution, SSL certificate health, and network connectivity for proactive infrastructure monitoring.
+
+### Application Observability 
+
+Grafana Application Observability is a comprehensive solution for monitoring application performance using OpenTelemetry-based instrumentation. It provides automatic discovery and correlation of metrics, logs, and traces to deliver service-level insights including service maps, service inventory, and automated root cause analysis capabilities.
+
+**Common Use Cases:**
+*   Monitoring distributed application performance with automatic service discovery and RED (Rate, Errors, Duration) metrics visualization.
+*   Performing root cause analysis during incidents by correlating metrics, logs, and traces across service boundaries and dependencies.
+*   Tracking application health and SLI/SLO compliance with pre-built dashboards and alerting for service-level objectives.
+
+### Kubernetes Monitoring
+
+Grafana Kubernetes Monitoring provides comprehensive observability for Kubernetes clusters and workloads, offering both reactive troubleshooting and proactive management capabilities. It includes pre-built dashboards, alerting rules, cost monitoring, and resource efficiency tracking with easy deployment via Helm chart and correlation between metrics and logs for faster issue resolution.
+
+**Common Use Cases:**
+*   Monitoring cluster health and resource utilization with drill-down capabilities from cluster-level overview to individual pod and container performance metrics.
+*   Tracking infrastructure costs and resource efficiency to optimize spending and identify underutilized or over-provisioned resources across nodes and workloads.
+*   Proactively detecting performance issues and bottlenecks using built-in alerting rules, machine learning-powered resource forecasting, and real-time notifications for critical events.
+
+### Alerting
+
+Grafana Alerting is a unified alerting system that allows you to define alert rules across multiple data sources and manage notifications with flexible routing via contact points and notification policies. Built on the Prometheus alerting model, it supports both Grafana-managed and data source-managed alert rules with templating, grouping, and scheduling capabilities for comprehensive alerting workflows.
+
+**Common Use Cases:**
+*   Creating multi-dimensional alert rules that can query data from multiple data sources simultaneously and generate separate alert instances for each series or dimension.
+*   Managing complex notification routing using notification policies that route alerts to different contact points (email, Slack, PagerDuty, etc.) based on label matching and timing configurations.
+*   Building sophisticated alert conditions using expressions and transformations to reduce, resample, or apply mathematical operations on query results before triggering alerts.
+
+### Drilldown
+
+Grafana Drilldown refers to a collection of simplified exploration applications that provide queryless interfaces for navigating observability data including logs, traces, profiles, and metrics. These apps enable users to explore and analyze data through interactive visualizations and filtering without requiring knowledge of query languages like LogQL, TraceQL, or PromQL.
+
+**Common Use Cases:**
+*   Exploring log data from Loki services by drilling down through volumes, patterns, labels, and fields without writing LogQL queries.
+*   Navigating distributed tracing data to investigate performance bottlenecks and error patterns across service dependencies.
+*   Analyzing profiling data to identify CPU and memory usage patterns by drilling down from high-level metrics to line-specific details.
+

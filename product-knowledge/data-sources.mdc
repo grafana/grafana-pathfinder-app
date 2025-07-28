@@ -1,0 +1,228 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Grafana Data Source Research Report
+
+This report details a selection of significant, signed Grafana data source plugins. The focus is on plugins available in Grafana Cloud and popular, well-documented open-source offerings. Each section outlines the plugin's purpose, environment, use cases, and technical requirements.
+
+## Prometheus
+
+Prometheus is a leading open-source monitoring and alerting toolkit, and its data source is a cornerstone of modern observability stacks. It is designed for reliability and scalability, pulling time-series data via HTTP endpoints on monitored targets.
+
+*   **Key Use Cases**: Infrastructure monitoring (Kubernetes, servers), application performance monitoring (APM), service monitoring, and alerting on multi-dimensional time-series data.
+
+#### Plugin Environment
+
+*   **Availability**: Built-in to Grafana OSS and Grafana Cloud.
+*   **Publisher**: Grafana Labs.
+*   **Version**: Core plugin, version-tied to the Grafana instance.
+*   **Documentation URL**: `https://grafana.com/docs/grafana/latest/datasources/prometheus/`
+
+#### Use Cases & Application Scenarios
+
+*   **Kubernetes Monitoring**: The primary use case is visualizing metrics scraped from a Kubernetes cluster, often in tandem with the `kube-state-metrics` and `node-exporter` services.
+*   **Service-Level Objective (SLO) Tracking**: Using PromQL (Prometheus Query Language) to define and visualize SLOs for service availability and performance.
+*   **Application Metrics**: Instrumenting custom applications (e.g., in Go, Java, Python) with Prometheus client libraries to expose metrics like request latency, error rates, and queue depths.
+
+#### Technical Requirements
+
+*   A running Prometheus server instance or a compatible endpoint (e.g., Grafana Mimir, Cortex, Thanos).
+*   Network accessibility from the Grafana instance/agent to the Prometheus server's HTTP API (default port 9090).
+
+#### Security Considerations
+
+*   Communication is typically over HTTP. For production, it is strongly recommended to place Prometheus behind a reverse proxy that provides TLS/SSL encryption and authentication.
+*   If using Grafana Agent to ship data to Grafana Cloud Metrics (which uses a Prometheus-compatible backend), authentication is handled via API keys.
+
+#### Grafana Ecosystem Integration
+
+*   **Grafana Mimir**: The Prometheus data source is the primary way to query Grafana's horizontally scalable, multi-tenant TSDB.
+*   **Grafana Alerting**: The standard data source for defining metric-based alert rules.
+*   **Correlations**: Tightly integrated with Loki and Tempo to automatically link metrics to relevant logs and traces.
+
+## Loki
+
+Loki is Grafana's log aggregation system, inspired by Prometheus. It is designed to be highly cost-effective and easy to operate by indexing only metadata (labels) for logs, not the full text content.
+
+*   **Key Use Cases**: Centralized log aggregation, live log streaming, infrastructure and application log analysis, and correlating logs with metrics and traces.
+
+#### Plugin Environment
+
+*   **Availability**: Built-in to Grafana OSS and Grafana Cloud.
+*   **Publisher**: Grafana Labs.
+*   **Version**: Core plugin, version-tied to the Grafana instance.
+*   **Documentation URL**: `https://grafana.com/docs/grafana/latest/datasources/loki/`
+
+#### Use Cases & Application Scenarios
+
+*   **Log Exploration**: Using LogQL (Loki Query Language) to interactively query and filter logs from multiple sources in the Explore view.
+*   **Kubernetes Pod Logs**: Aggregating logs from all pods in a Kubernetes cluster, with automatic metadata like `pod`, `namespace`, and `container`.
+*   **Application Debugging**: Finding specific error messages or log patterns across distributed services without the overhead of full-text indexing.
+
+#### Technical Requirements
+
+*   A running Loki instance or a Grafana Cloud Logs subscription.
+*   Log collection agents (e.g., Grafana Agent, Promtail, Fluentd) configured to push logs to the Loki endpoint.
+
+#### Security Considerations
+
+*   Authentication to a self-hosted Loki instance is typically handled via a reverse proxy.
+*   When pushing logs to Grafana Cloud, authentication is managed via the User ID and an API Key.
+
+#### Grafana Ecosystem Integration
+
+*   **Grafana Logs**: The Loki data source is the native backend for Grafana's log visualization panels and the Explore view.
+*   **Correlations**: Automatically links logs to related traces (via TraceID) from Tempo and metrics from Prometheus by matching labels (e.g., `pod`, `service`). This is a key feature of the Grafana observability stack.
+*   **Grafana Alerting**: Supports defining log-based alert rules.
+
+## AWS CloudWatch
+
+The AWS CloudWatch data source allows Grafana to query metrics and logs directly from Amazon's native monitoring service for AWS cloud resources and applications.
+
+*   **Key Use Cases**: Monitoring the performance and health of AWS services like EC2, RDS, Lambda, and S3; analyzing application logs stored in CloudWatch Logs.
+
+#### Plugin Environment
+
+*   **Availability**: Core plugin for Grafana OSS and Grafana Cloud.
+*   **Publisher**: Grafana Labs.
+*   **Version**: Core plugin, version-tied to the Grafana instance.
+*   **Documentation URL**: `https://grafana.com/docs/grafana/latest/datasources/aws-cloudwatch/`
+
+#### Use Cases & Application Scenarios
+
+*   **Infrastructure Dashboards**: Visualizing core metrics like EC2 CPU Utilization, RDS Database Connections, or ELB Request Counts.
+*   **Log Analysis**: Querying and visualizing logs from services, Lambda functions, and other resources that write to CloudWatch Logs.
+*   **Cost Management**: Visualizing AWS billing and cost data, which can be published as a metric to CloudWatch.
+
+#### Technical Requirements
+
+*   An active AWS account.
+*   Configured AWS credentials with appropriate IAM permissions (e.g., `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, `logs:StartQuery`, `logs:GetQueryResults`).
+
+#### Security Considerations
+
+*   The recommended authentication method is to use IAM roles (e.g., an IAM role for an EC2 instance running Grafana, or IRSA for EKS).
+*   Alternatively, temporary security credentials or long-lived access key/secret pairs can be used, but this is less secure. Grafana's data source provisioning can use AWS Secrets Manager for secure key storage.
+
+#### Grafana Ecosystem Integration
+
+*   **Grafana Alerting**: Can be used to create alerts based on CloudWatch metrics.
+*   **Cross-Service Dashboards**: Enables building unified dashboards that combine AWS metrics with data from other sources like Prometheus or on-premise databases.
+
+## PostgreSQL
+
+This data source allows Grafana to connect directly to PostgreSQL databases to visualize data from relational tables as time-series or tables.
+
+*   **Key Use Cases**: Visualizing business intelligence (BI) data, monitoring application-specific data, and tracking business KPIs stored in a relational database.
+
+#### Plugin Environment
+
+*   **Availability**: Core plugin for Grafana OSS and Grafana Cloud.
+*   **Publisher**: Grafana Labs.
+*   **Version**: Core plugin, version-tied to the Grafana instance.
+*   **Documentation URL**: `https://grafana.com/docs/grafana/latest/datasources/postgres/`
+
+#### Use Cases & Application Scenarios
+
+*   **Business Dashboards**: Plotting user signups, sales trends, or inventory levels over time by querying application database tables.
+*   **Time-Series Analysis**: Leveraging PostgreSQL time functions to format data for Grafana's time-series panels. The plugin includes macros like `$__timeFilter()` to simplify time-based queries.
+*   **Table Visualization**: Displaying the raw results of a SQL query in a table format, useful for reports and non-time-series data.
+
+#### Technical Requirements
+
+*   A running PostgreSQL server (or compatible databases like TimescaleDB or CockroachDB).
+*   Network accessibility from the Grafana instance to the PostgreSQL server. For Grafana Cloud, this often requires using a tool like the Grafana Cloud Agent for secure tunneling.
+*   A database user with `CONNECT` and `SELECT` privileges on the required schemas and tables.
+
+#### Security Considerations
+
+*   Connection requires a database user and password, which should be stored securely.
+*   TLS/SSL encryption for the connection is highly recommended and configurable in the data source settings.
+*   It is best practice to create a read-only database user for Grafana with access to only the necessary tables.
+
+#### Grafana Ecosystem Integration
+
+*   **Business Observability**: Complements traditional observability by bringing business metrics into the same dashboards as operational metrics.
+*   **Transformations**: Data returned from SQL queries can be further manipulated using Grafana's built-in transformations.
+
+## Infinity
+
+The Infinity data source is a generic plugin that can visualize data from any backend that returns JSON, CSV, XML, or HTML, including REST APIs. It acts as a powerful bridge to data sources that do not have a dedicated Grafana plugin.
+
+*   **Key Use Cases**: Connecting to internal or public REST APIs, visualizing data from static files (CSV/JSON), and creating dashboards from unsupported data sources.
+
+#### Plugin Environment
+
+*   **Availability**: Signed plugin, installable in Grafana OSS and Grafana Cloud.
+*   **Publisher**: Grafana Labs.
+*   **Version**: 1.2.1 (as of research date).
+*   **Documentation URL**: `https://grafana.com/grafana/plugins/yesoreyeram-infinity-datasource/`
+
+#### Use Cases & Application Scenarios
+
+*   **Public API Dashboards**: Visualizing data from public APIs like GitHub (e.g., number of stars on a repo) or weather services.
+*   **Internal Microservice Data**: Querying custom JSON endpoints on internal microservices to display application-specific status or data.
+*   **Static Data Prototyping**: Using inline JSON/CSV data to quickly prototype a dashboard without needing a live backend.
+
+#### Technical Requirements
+
+*   Depends entirely on the target API or file. It may require an API endpoint URL, a file path, or inline data.
+*   Network access from the Grafana instance to the target API endpoint.
+
+#### Security Considerations
+
+*   Supports API Key, Basic, and Bearer Token authentication, which can be configured in the data source settings.
+*   Secrets (like API keys) should be handled using Grafana's secure provisioning mechanisms.
+*   Care should be taken when connecting to public, unauthenticated APIs.
+
+#### Grafana Ecosystem Integration
+
+*   **Flexibility**: Fills gaps where a dedicated data source does not exist, allowing almost any data to be brought into a Grafana dashboard.
+*   **Grafana Scenes**: The flexibility of this plugin makes it a powerful tool when building interactive web applications with Grafana Scenes.
+
+## Splunk
+
+The Splunk Enterprise data source plugin allows Grafana to run Splunk Search Processing Language (SPL) queries and visualize the results. This enables organizations with existing Splunk investments to leverage Grafana's visualization capabilities.
+
+*   **Key Use Cases**: Migrating or augmenting Splunk dashboards with Grafana, creating unified dashboards with data from Splunk and other sources, and using Grafana's alerting engine with Splunk data.
+
+#### Plugin Environment
+
+*   **Availability**: Enterprise plugin, requires a Grafana Enterprise license. Available by default in Grafana Cloud (with a Pro/Advanced plan).
+*   **Publisher**: Grafana Labs.
+*   **Version**: Core Enterprise plugin, version-tied to the Grafana instance.
+*   **Documentation URL**: `https://grafana.com/docs/grafana/latest/datasources/splunk/`
+
+#### Use Cases & Application Scenarios
+
+*   **Unified Observability**: Combining security and event data from Splunk with operational metrics from Prometheus in a single dashboard.
+*   **Data Visualization**: Using Splunk's powerful search capabilities as a backend and Grafana's superior and more flexible visualization engine as the frontend.
+*   **Alerting**: Leveraging Grafana Alerting on top of Splunk search results, which can be more intuitive and better integrated with notification channels like Grafana OnCall.
+
+#### Technical Requirements
+
+*   A running Splunk Enterprise instance (version 6.3 or higher).
+*   The Splunk HTTP Event Collector (HEC) must be enabled.
+*   A Splunk user account with appropriate permissions to run searches.
+
+#### Security Considerations
+
+*   Authentication is handled via Splunk credentials (username/password or token).
+*   Communication with the Splunk API should be secured with TLS/SSL.
+
+#### Grafana Ecosystem Integration
+
+*   **Grafana Enterprise**: This is a key value proposition for Grafana Enterprise, appealing to customers with existing Splunk deployments.
+*   **Grafana Alerting/OnCall**: Provides a modern alerting and incident response workflow for events and data residing in Splunk.
+
+***
+
+## Notes & Indications
+
+*   **Plugin Versioning**: For core/built-in plugins (Prometheus, Loki, etc.), the version is directly tied to the main Grafana release. For installable plugins like Infinity, the version is independent and updated separately. The versions listed are a snapshot in time and may change.
+*   **Core vs. Installable Plugins**: A key distinction is between data sources that are built-in or available by default (like Prometheus) and those that must be explicitly installed from the Grafana plugin catalog (like Infinity), even if they are published by Grafana Labs.
+*   **Enterprise vs. OSS**: The availability of a plugin can be a major deciding factor for users. Some high-value plugins connecting to commercial products (like Splunk, ServiceNow, Dynatrace) are reserved for Grafana Enterprise customers, forming a significant part of the enterprise value proposition.
+*   **The Rise of Generic Plugins**: The Infinity data source represents an important trend. Its flexibility allows users to connect to a near-limitless number of sources, significantly expanding Grafana's reach beyond its dedicated plugins.
+*   **Security is Paramount**: Across all data sources, a consistent theme is the need for secure credential management and encrypted communication (TLS/SSL). Best practices favor temporary credentials or role-based access control over static username/password or token configurations.
