@@ -1,86 +1,8 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
-// Export this for component-level, theme-aware styles if needed
-export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
-  // Interactive sequence container
-  '.interactive[data-targetaction="sequence"]': {
-    display: 'block',
-    padding: theme.spacing(2),
-    margin: `${theme.spacing(2)} 0`,
-    backgroundColor: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
-    position: 'relative',
-
-    // List items inside sequences
-    'li.interactive': {
-      paddingLeft: theme.spacing(2),
-      paddingRight: theme.spacing(2),
-      margin: `${theme.spacing(1)} 0`,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      minHeight: '40px',
-      position: 'relative',
-      '&::before': {
-        content: '"•"',
-        position: 'absolute',
-        left: `-${theme.spacing(2)}`,
-        top: '50%',
-        transform: 'translateY(-50%)',
-        color: theme.colors.text.secondary,
-        fontSize: '14px',
-        width: '16px',
-        height: '16px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-      },
-    },
-
-    // Non-interactive list items
-    'li:not(.interactive)': {
-      margin: `${theme.spacing(1)} 0`,
-      color: theme.colors.text.primary,
-      paddingLeft: theme.spacing(2),
-      paddingRight: theme.spacing(2),
-      display: 'flex',
-      alignItems: 'center',
-      minHeight: '40px',
-      position: 'relative',
-      '&::before': {
-        content: '"•"',
-        position: 'absolute',
-        left: `-${theme.spacing(2)}`,
-        top: '50%',
-        transform: 'translateY(-50%)',
-        color: theme.colors.text.secondary,
-        fontSize: '14px',
-        width: '16px',
-        height: '16px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      },
-    },
-
-    // Button in section
-    '> button[onclick*="interactive-sequence"]': {
-      marginTop: theme.spacing(2),
-      display: 'block',
-      width: 'fit-content',
-    },
-
-    // Button container inside sequence
-    '.interactive-button-container': {
-      marginTop: theme.spacing(2),
-      marginLeft: 0,
-      justifyContent: 'flex-start',
-    },
-  },
-
+// Base interactive element styles
+const getBaseInteractiveStyles = (theme: GrafanaTheme2) => ({
   // Base interactive element
   '.interactive': {
     position: 'relative',
@@ -119,8 +41,11 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
     alignItems: 'center',
     flexShrink: 0,
   },
+});
 
-  // General interactive button
+// Button styles (shared across different interactive elements)
+const getInteractiveButtonStyles = (theme: GrafanaTheme2) => ({
+  // General interactive button base
   '.interactive-button': {
     display: 'inline-flex',
     alignItems: 'center',
@@ -205,7 +130,91 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
       boxShadow: `0 0 0 2px ${theme.colors.text.primary}33`,
     },
   },
+});
 
+// Interactive sequence specific styles
+const getInteractiveSequenceStyles = (theme: GrafanaTheme2) => ({
+  // Interactive sequence container
+  '.interactive[data-targetaction="sequence"]': {
+    display: 'block',
+    padding: theme.spacing(2),
+    margin: `${theme.spacing(2)} 0`,
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    position: 'relative',
+
+    // List items inside sequences
+    'li.interactive': {
+      paddingLeft: theme.spacing(2),
+      paddingRight: theme.spacing(2),
+      margin: `${theme.spacing(1)} 0`,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      minHeight: '40px',
+      position: 'relative',
+      '&::before': {
+        content: '"•"',
+        position: 'absolute',
+        left: `-${theme.spacing(2)}`,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        color: theme.colors.text.secondary,
+        fontSize: '14px',
+        width: '16px',
+        height: '16px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      },
+    },
+
+    // Non-interactive list items
+    'li:not(.interactive)': {
+      margin: `${theme.spacing(1)} 0`,
+      color: theme.colors.text.primary,
+      paddingLeft: theme.spacing(2),
+      paddingRight: theme.spacing(2),
+      display: 'flex',
+      alignItems: 'center',
+      minHeight: '40px',
+      position: 'relative',
+      '&::before': {
+        content: '"•"',
+        position: 'absolute',
+        left: `-${theme.spacing(2)}`,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        color: theme.colors.text.secondary,
+        fontSize: '14px',
+        width: '16px',
+        height: '16px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+    },
+
+    // Button in section
+    '> button[onclick*="interactive-sequence"]': {
+      marginTop: theme.spacing(2),
+      display: 'block',
+      width: 'fit-content',
+    },
+
+    // Button container inside sequence
+    '.interactive-button-container': {
+      marginTop: theme.spacing(2),
+      marginLeft: 0,
+      justifyContent: 'flex-start',
+    },
+  },
+});
+
+// Code block styles (can be shared with content styles)
+const getCodeBlockStyles = (theme: GrafanaTheme2) => ({
   // Code block styles
   '.code-block': {
     margin: `${theme.spacing(2)} 0`,
@@ -234,8 +243,6 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
   },
 
   '.code-block-copy-btn': {
-    // IconButton from Grafana already has good base styles
-    // Just ensure it's visible and positioned correctly
     opacity: 0.7,
     '&:hover': {
       opacity: 1,
@@ -281,15 +288,17 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
     },
   },
 
-'.inline-copy-btn': {
-  // Let Grafana IconButton handle all the styling
-  '& button': {
-    minWidth: '20px !important',
-    minHeight: '20px !important',
-    padding: '2px !important',
-  }
-},
+  '.inline-copy-btn': {
+    '& button': {
+      minWidth: '20px !important',
+      minHeight: '20px !important',
+      padding: '2px !important',
+    }
+  },
+});
 
+// Interactive component styles (sections and steps)
+const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // Interactive Section styles
   '.interactive-section': {
     margin: `${theme.spacing(3)} 0`,
@@ -467,13 +476,11 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
   },
 
   '.interactive-step-show-btn': {
-    // Secondary button styling for "Show me"
     minWidth: '80px',
     fontSize: theme.typography.bodySmall.fontSize,
   },
 
   '.interactive-step-do-btn': {
-    // Primary button styling for "Do it"
     minWidth: '80px',
     fontSize: theme.typography.bodySmall.fontSize,
   },
@@ -487,7 +494,6 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
   },
 
   '.interactive-step-action-btn': {
-    // Button from Grafana UI already has good base styles
     minWidth: '120px',
   },
 
@@ -496,7 +502,10 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
     fontSize: '16px',
     fontWeight: 'bold',
   },
+});
 
+// Expandable components styles
+const getExpandableStyles = (theme: GrafanaTheme2) => ({
   // Expandable Table styles
   '.expandable-table': {
     margin: `${theme.spacing(2)} 0`,
@@ -541,6 +550,15 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
   },
 });
 
+// Export this for component-level, theme-aware styles if needed
+export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
+  ...getBaseInteractiveStyles(theme),
+  ...getInteractiveButtonStyles(theme),
+  ...getInteractiveSequenceStyles(theme),
+  ...getCodeBlockStyles(theme),
+  ...getInteractiveComponentStyles(theme),
+  ...getExpandableStyles(theme),
+} as any);
 
 // Pure global (vanilla) CSS for overlays/highlights—run once at app startup
 export const addGlobalInteractiveStyles = () => {
