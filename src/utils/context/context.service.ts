@@ -92,14 +92,12 @@ export class ContextService {
 
       const data: RecommenderResponse = await response.json();
       
+      // Add bundled interactive recommendations (contextual based on current URL)
+      const bundledRecommendations: Recommendation[] = this.getBundledInteractiveRecommendations(contextData);
+      
       // Add default recommendations for testing
       const defaultRecommendations: Recommendation[] = [
-        {
-          title: 'Build Your First Dashboard',
-          url: 'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/r-grafana',
-          type: 'docs-page',
-          summary: 'Dynamic walk-through of building a dashboard.',
-        },
+
         {
           title: 'Product Interactive Tutorial Demo',
           url: 'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/prometheus-datasource',
@@ -114,7 +112,7 @@ export class ContextService {
         },
       ];
 
-      const allRecommendations = [...(data.recommendations || []), ...defaultRecommendations];
+      const allRecommendations = [...(data.recommendations || []), ...bundledRecommendations, ...defaultRecommendations];
 
       console.warn('allRecommendations', allRecommendations);
       
@@ -423,5 +421,41 @@ export class ContextService {
       const accuracyB = b.matchAccuracy ?? 0;
       return accuracyB - accuracyA;
     });
+  }
+
+  /**
+   * Get bundled interactive recommendations from index.json file
+   * Filters based on current URL to show contextually relevant interactives
+   */
+  private static getBundledInteractiveRecommendations(contextData: ContextData): Recommendation[] {
+    const bundledRecommendations: Recommendation[] = [];
+    
+    try {
+      // Load the index.json file that contains metadata for all bundled interactives
+      const indexData = require('../../bundled-interactives/index.json');
+      
+      if (indexData && indexData.interactives && Array.isArray(indexData.interactives)) {
+        // Filter interactives that match the current URL/path
+        const relevantInteractives = indexData.interactives.filter((interactive: any) => {
+          // Check if the interactive's target URL matches current path
+          return interactive.url === contextData.currentPath;
+        });
+        
+        relevantInteractives.forEach((interactive: any) => {
+          bundledRecommendations.push({
+            title: interactive.title,
+            url: `bundled:${interactive.id}`,
+            type: 'docs-page',
+            summary: interactive.summary,
+            matchAccuracy: 0.8, // Higher accuracy since it's contextually relevant
+          });
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to load bundled interactives index.json:', error);
+      // Fallback to empty array - no bundled interactives will be shown
+    }
+    
+    return bundledRecommendations;
   }
 } 
