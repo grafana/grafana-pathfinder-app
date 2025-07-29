@@ -480,6 +480,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   
   const styles = useStyles2(getStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
+  const journeyStyles = useStyles2(journeyContentHtml);
+  const docsStyles = useStyles2(docsContentHtml);
 
   // Tab overflow management - SIMPLIFIED!
   const tabListRef = useRef<HTMLDivElement>(null);
@@ -933,8 +935,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                       content={activeTab.content}
                       containerRef={contentRef}
                       className={`${activeTab.content.type === 'learning-journey' 
-                        ? journeyContentHtml(theme) 
-                        : docsContentHtml(theme)
+                        ? journeyStyles 
+                        : docsStyles
                       } ${interactiveStyles}`}
                       onContentReady={() => {
                         // Content is ready - any additional setup can go here
