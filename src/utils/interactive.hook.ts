@@ -152,7 +152,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       // Get all text content from the button and its descendants
       const allText = getAllTextContent(button).toLowerCase().trim();
       
-      if (!allText) {return;}
+
+      if (!allText) { return; }
       
       if (allText === searchText) {
         // Exact match

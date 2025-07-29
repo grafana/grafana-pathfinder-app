@@ -5,9 +5,8 @@ import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 
 // Allowed GitHub URLs that can open in app tabs (from context.service.ts defaultRecommendations)
 const ALLOWED_GITHUB_URLS = [
-  'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/r-grafana',
-  'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/prometheus-datasource',
-  'https://raw.githubusercontent.com/Jayclifford345/tutorial-environment/refs/heads/master/',
+  'https://raw.githubusercontent.com/moxious/',
+  'https://raw.githubusercontent.com/Jayclifford345/',
 ];
 
 interface LearningJourneyTab {
