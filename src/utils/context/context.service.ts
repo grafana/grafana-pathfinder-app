@@ -73,7 +73,7 @@ export class ContextService {
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
-        datasources: contextData.dataSources.map(ds => ds.name),
+        datasources: contextData.dataSources.map(ds => ds.type.toLowerCase()),
         tags: contextData.tags,
         user_id: config.bootData.user.analytics.identifier,
         user_role: config.bootData.user.orgRole || 'Viewer',
@@ -270,12 +270,12 @@ export class ContextService {
     // Add specific context tags
     if (entity === 'dashboard' && dashboardInfo) {
       if (dashboardInfo.tags) {
-        dashboardInfo.tags.forEach(tag => tags.push(`dashboard-tag:${tag}`));
+        dashboardInfo.tags.forEach(tag => tags.push(`dashboard-tag:${tag.toLowerCase().replace(/\s+/g, '_')}`));
       }
     }
 
     if (entity === 'datasource' && dataSources.length > 0) {
-      dataSources.forEach(ds => tags.push(`datasource-type:${ds.type}`));
+      dataSources.forEach(ds => tags.push(`datasource-type:${ds.type.toLowerCase()}`));
     }
 
     if (entity === 'explore') {
@@ -333,7 +333,7 @@ export class ContextService {
         // Try to get the viz type from the text content
         const textContent = vizPickerButton.textContent?.trim();
         if (textContent) {
-          return textContent.toLowerCase();
+          return textContent.toLowerCase().replace(/\s+/g, '_');
         }
         
         // Fallback: try to get from image src
@@ -342,7 +342,7 @@ export class ContextService {
           // Handle paths like: public/plugins/state-timeline/img/timeline.svg
           const match = img.src.match(/public\/plugins\/([^\/]+)\//);
           if (match) {
-            return match[1];
+            return match[1].replace(/\s+/g, '_');
           }
         }
       }
@@ -355,23 +355,29 @@ export class ContextService {
   }
 
   /**
-   * Detect selected datasource from datasource picker
+   * Detect selected datasource type from datasource picker
    */
   static detectSelectedDatasource(): string | null {
     try {
-      // Look for the datasource picker input
+      // Look for the datasource picker container
       const datasourcePicker = document.querySelector('input[aria-label="Select a data source"]');
       if (datasourcePicker) {
-        const input = datasourcePicker as HTMLInputElement;
+        // Find the datasource logo image in the same container
+        const container = datasourcePicker.closest('[data-testid*="Data source picker"]') || 
+                         datasourcePicker.closest('.css-15ro776') ||
+                         datasourcePicker.parentElement;
         
-        // Try to get from the value first
-        if (input.value && input.value.trim()) {
-          return input.value.trim();
-        }
-        
-        // Fallback: try to get from placeholder (shows current selection)
-        if (input.placeholder && input.placeholder.trim()) {
-          return input.placeholder.trim();
+        if (container) {
+          const logoImg = container.querySelector('img[src*="/plugins/"]') as HTMLImageElement;
+          if (logoImg && logoImg.src) {
+            // Extract plugin ID from path like: public/plugins/grafana-testdata-datasource/img/testdata.svg
+            const match = logoImg.src.match(/public\/plugins\/([^\/]+)\//);
+            if (match) {
+              const pluginId = match[1];
+              // Just return the extracted plugin ID with basic normalization
+              return pluginId.toLowerCase().replace(/\s+/g, '_');
+            }
+          }
         }
       }
 
