@@ -18,15 +18,17 @@ export class ContextService {
    */
   static async getContextData(): Promise<ContextData> {
     const location = locationService.getLocation();
-    const currentPath = location.pathname || window.location.pathname || '';
-    const currentUrl = window.location.href;
+    const currentPath = location.pathname;
+    const currentUrl = `${location.pathname}${location.search}${location.hash}`;
     const pathSegments = currentPath.split('/').filter(Boolean);
     
-    // Parse search parameters
+    // Parse search parameters using LocationService
+    const urlQueryMap = locationService.getSearchObject();
     const searchParams: Record<string, string> = {};
-    const urlParams = new URLSearchParams(window.location.search);
-    urlParams.forEach((value, key) => {
-      searchParams[key] = value;
+    Object.entries(urlQueryMap).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        searchParams[key] = String(value);
+      }
     });
 
     // Fetch data in parallel
@@ -274,8 +276,74 @@ export class ContextService {
       }
     }
 
-    if (entity === 'datasource' && dataSources.length > 0) {
-      dataSources.forEach(ds => tags.push(`datasource-type:${ds.type.toLowerCase()}`));
+    // Handle connection-related pages
+    if (entity === 'connection') {
+      if (pathSegments[1] === 'add-new-connection' && pathSegments[2]) {
+        // Extract connection type from URL: /connections/add-new-connection/clickhouse
+        const connectionType = pathSegments[2].toLowerCase();
+        tags.push(`connection-type:${connectionType}`);
+      } else if (pathSegments[1] === 'datasources' && pathSegments[2]) {
+        // Handle /connections/datasources/grafana-clickhouse-datasource/ 
+        // This is actually a datasource within connections UI
+        const datasourceName = pathSegments[2].toLowerCase();
+        // Try to find the actual datasource to get its type
+        const selectedDs = dataSources.find(ds => 
+          ds.name.toLowerCase().includes(datasourceName) ||
+          datasourceName.includes(ds.type.toLowerCase())
+        );
+        if (selectedDs) {
+          tags.push(`datasource-type:${selectedDs.type.toLowerCase()}`);
+        } else {
+          // Fallback: use the name from URL
+          tags.push(`datasource-type:${datasourceName}`);
+        }
+      }
+    }
+
+    // Handle direct datasource pages
+    if (entity === 'datasource') {
+      let datasourceTypeFound = false;
+      
+      if (pathSegments[1] === 'edit' && searchParams.id) {
+        // Standard datasource edit: /datasources/edit?id=123
+        const selectedDs = dataSources.find(ds => String(ds.id) === String(searchParams.id));
+        if (selectedDs) {
+          tags.push(`datasource-type:${selectedDs.type.toLowerCase()}`);
+          datasourceTypeFound = true;
+        }
+      } else if (pathSegments[0] === 'connections' && pathSegments[2] === 'edit' && pathSegments[3]) {
+        // Special case: /connections/datasources/edit/uid
+        const datasourceUid = pathSegments[3];
+        
+        // Try to find datasource by UID or fallback methods
+        const selectedDs = dataSources.find(ds => 
+          String(ds.id) === datasourceUid ||
+          ds.name?.toLowerCase().includes(datasourceUid.toLowerCase())
+        );
+        
+        if (selectedDs) {
+          tags.push(`datasource-type:${selectedDs.type.toLowerCase()}`);
+          datasourceTypeFound = true;
+        }
+      } else if (pathSegments[1] && pathSegments[1] !== 'new') {
+        // Handle other specific datasource pages where we can identify the type
+        const selectedDs = dataSources.find(ds => 
+          String(ds.id) === pathSegments[1] || 
+          ds.name.toLowerCase() === pathSegments[1].toLowerCase()
+        );
+        if (selectedDs) {
+          tags.push(`datasource-type:${selectedDs.type.toLowerCase()}`);
+          datasourceTypeFound = true;
+        }
+      }
+      
+      // Fallback: try to detect datasource type from DOM if we couldn't find it via API
+      if (!datasourceTypeFound) {
+        const domDetectedType = this.detectDatasourceTypeFromDOM();
+        if (domDetectedType) {
+          tags.push(`datasource-type:${domDetectedType}`);
+        }
+      }
     }
 
     if (entity === 'explore') {
@@ -296,11 +364,18 @@ export class ContextService {
   private static extractEntity(pathSegments: string[]): string | null {
     if (pathSegments.length === 0) {return null;}
     
+    // Special case: /connections/datasources/edit/ is actually a datasource operation
+    if (pathSegments[0] === 'connections' && 
+        pathSegments[1] === 'datasources' && 
+        pathSegments[2] === 'edit') {
+      return 'datasource';
+    }
+    
     const entityMap: Record<string, string> = {
       'd': 'dashboard',
       'dashboard': 'dashboard',
       'datasources': 'datasource',
-      'connections': 'datasource',
+      'connections': 'connection',
       'explore': 'explore',
       'alerting': 'alert',
       'admin': 'admin',
@@ -333,7 +408,7 @@ export class ContextService {
         // Try to get the viz type from the text content
         const textContent = vizPickerButton.textContent?.trim();
         if (textContent) {
-          return textContent.toLowerCase().replace(/\s+/g, '_');
+          return textContent.toLowerCase().replace(/\s+/g, '-');
         }
         
         // Fallback: try to get from image src
@@ -342,7 +417,7 @@ export class ContextService {
           // Handle paths like: public/plugins/state-timeline/img/timeline.svg
           const match = img.src.match(/public\/plugins\/([^\/]+)\//);
           if (match) {
-            return match[1].replace(/\s+/g, '_');
+            return match[1].replace(/\s+/g, '-');
           }
         }
       }
@@ -350,6 +425,36 @@ export class ContextService {
       return null;
     } catch (error) {
       console.warn('Error detecting visualization type:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Detect datasource type from DOM on edit pages
+   */
+  static detectDatasourceTypeFromDOM(): string | null {
+    try {
+      // Look for "Type: ClickHouse" pattern
+      const typeElements = document.querySelectorAll('div');
+      for (const element of typeElements) {
+        const text = element.textContent?.trim();
+        if (text?.startsWith('Type: ')) {
+          return text.replace('Type: ', '').toLowerCase().replace(/\s+/g, '-');
+        }
+        
+        // Look for nested structure: <div><div>Type</div>ClickHouse</div>
+        const typeLabel = element.querySelector('div');
+        if (typeLabel?.textContent?.trim() === 'Type') {
+          const typeValue = element.textContent?.replace('Type', '').trim();
+          if (typeValue) {
+            return typeValue.toLowerCase().replace(/\s+/g, '-');
+          }
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn('Error detecting datasource type from DOM:', error);
       return null;
     }
   }
