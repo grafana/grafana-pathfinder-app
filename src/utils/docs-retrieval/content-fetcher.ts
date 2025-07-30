@@ -24,6 +24,11 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       return { content: null, error: 'Invalid URL provided' };
     }
 
+    // Handle bundled interactive content
+    if (url.startsWith('bundled:')) {
+      return await fetchBundledInteractive(url);
+    }
+
     // Determine content type based on URL patterns
     const contentType = determineContentType(url);
     
@@ -59,6 +64,69 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     return { 
       content: null, 
       error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+}
+
+/**
+ * Fetch bundled interactive content from local files
+ */
+async function fetchBundledInteractive(url: string): Promise<ContentFetchResult> {
+  const contentId = url.replace('bundled:', '');
+  
+  try {
+    let html = '';
+    
+    // Load the index.json to find the correct filename for this interactive
+    const indexData = require('../../bundled-interactives/index.json');
+    const interactive = indexData?.interactives?.find((item: any) => item.id === contentId);
+    
+    if (!interactive) {
+      return {
+        content: null,
+        error: `Bundled interactive not found in index.json: ${contentId}`
+      };
+    }
+    
+    // Load the TypeScript file using the filename from index.json
+    const filename = interactive.filename || `${contentId}.ts`;
+    const exportName = interactive.exportName || `${contentId}Html`;
+    
+    // Import the TypeScript module (webpack handles this properly)
+    const importedModule = require(`../../bundled-interactives/${filename}`) as any;
+    
+    // Get the HTML content from the exported constant
+    if (importedModule && typeof importedModule[exportName] === 'string') {
+      html = importedModule[exportName];
+    } else {
+      throw new Error(`Could not find export '${exportName}' in ${filename} or it's not a string`);
+    }
+    
+    if (!html || html.trim() === '') {
+      return {
+        content: null,
+        error: `Bundled interactive content is empty: ${contentId}`
+      };
+    }
+    
+    // Extract metadata and treat as single-doc content
+    const metadata = await extractMetadata(html, url, 'single-doc');
+    
+    const content: RawContent = {
+      html,
+      metadata,
+      type: 'single-doc', // Bundled content is treated as single-doc
+      url,
+      lastFetched: new Date().toISOString(),
+      // No hash fragment support for bundled content for now
+    };
+    
+    return { content };
+  } catch (error) {
+    console.error(`Failed to load bundled interactive ${contentId}:`, error);
+    return {
+      content: null,
+      error: `Failed to load bundled interactive: ${contentId}. Error: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
 }
