@@ -3,10 +3,10 @@ import { ContextPanel } from '../components/docs-panel/context-panel';
 import { CombinedLearningJourneyPanel } from '../components/docs-panel/docs-panel';
 
 /**
- * Hook to create and memoize a ContextPanel instance
+ * Hook to create and memoize a ContextPanel Scene instance
  * Prevents recreation on every render and ensures proper cleanup
  */
-export function useContextPanel() {
+export function useContextPanelScene() {
   return useMemo(() => new ContextPanel(), []);
 }
 
