@@ -465,22 +465,53 @@ export class ContextService {
   static detectSelectedDatasource(): string | null {
     try {
       // Look for the datasource picker container
-      const datasourcePicker = document.querySelector('input[aria-label="Select a data source"]');
+      const datasourcePicker = document.querySelector('input[aria-label="Select a data source"]') as HTMLInputElement;
       if (datasourcePicker) {
-        // Find the datasource logo image in the same container
+        // Strategy 1: Extract from placeholder (most reliable for cloud)
+        if (datasourcePicker.placeholder) {
+          const placeholder = datasourcePicker.placeholder.trim();
+          if (placeholder && placeholder !== 'Select a data source') {
+            // Clean up the placeholder to extract datasource type
+            const cleanedName = placeholder.toLowerCase()
+              .replace(/^grafanacloud-[^-]+-/, '') // Remove cloud prefix like "grafanacloud-docsplugin-"
+              .replace(/[_-]/g, '') // Remove underscores and hyphens
+              .trim();
+            if (cleanedName) {
+              return cleanedName;
+            }
+          }
+        }
+
+        // Strategy 2: Find the datasource logo image and extract from src
         const container = datasourcePicker.closest('[data-testid*="Data source picker"]') || 
                          datasourcePicker.closest('.css-15ro776') ||
                          datasourcePicker.parentElement;
         
         if (container) {
-          const logoImg = container.querySelector('img[src*="/plugins/"]') as HTMLImageElement;
+          const logoImg = container.querySelector('img') as HTMLImageElement;
           if (logoImg && logoImg.src) {
-            // Extract plugin ID from path like: public/plugins/grafana-testdata-datasource/img/testdata.svg
-            const match = logoImg.src.match(/public\/plugins\/([^\/]+)\//);
+            // Handle cloud asset URLs
+            let match = logoImg.src.match(/\/plugins\/datasource\/([^\/]+)\//);
+            if (match) {
+              return match[1].toLowerCase().replace(/\s+/g, '_');
+            }
+            
+            // Handle traditional plugin URLs
+            match = logoImg.src.match(/public\/plugins\/([^\/]+)\//);
             if (match) {
               const pluginId = match[1];
-              // Just return the extracted plugin ID with basic normalization
               return pluginId.toLowerCase().replace(/\s+/g, '_');
+            }
+
+            // Strategy 3: Extract from alt attribute as fallback
+            if (logoImg.alt) {
+              const altText = logoImg.alt.toLowerCase()
+                .replace(' logo', '')
+                .replace(/\s+/g, '_')
+                .trim();
+              if (altText && altText !== 'logo') {
+                return altText;
+              }
             }
           }
         }

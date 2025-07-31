@@ -169,6 +169,12 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
               target.matches('input[aria-label="Select a data source"]')) {
             shouldCheck = true;
           }
+          
+          // Special handling for datasource picker placeholder changes
+          if (target.matches('input[aria-label="Select a data source"]') && 
+              mutation.attributeName === 'placeholder') {
+            shouldCheck = true;
+          }
         }
       });
 
@@ -182,7 +188,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['aria-label', 'aria-expanded', 'src', 'data-testid', 'value', 'placeholder']
+      attributeFilter: ['aria-label', 'aria-expanded', 'src', 'data-testid', 'value', 'placeholder', 'alt']
     });
 
     // Listen for browser navigation
