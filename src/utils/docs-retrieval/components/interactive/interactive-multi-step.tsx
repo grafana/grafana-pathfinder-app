@@ -20,6 +20,7 @@ interface InteractiveMultiStepProps {
   isCompleted?: boolean;
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
+  onStepReset?: (stepId: string) => void; // Signal to parent that step should be reset
   
   // Content and styling
   title?: string; // Add title prop like InteractiveStep
@@ -102,6 +103,7 @@ export const InteractiveMultiStep = forwardRef<
   isCompleted: parentCompleted = false,
   isCurrentlyExecuting = false,
   onStepComplete,
+  onStepReset, // New callback for individual step reset
   title, // Add title prop
   children,
   className,
@@ -148,7 +150,9 @@ export const InteractiveMultiStep = forwardRef<
   
   // Main execution logic (similar to InteractiveSection's sequence execution)
   const executeStep = useCallback(async (): Promise<boolean> => {
-    if (!checker.isEnabled || isCompletedWithObjectives || disabled || isExecuting) {
+    // When called via ref (section execution), ignore disabled prop to avoid race conditions
+    // Only check if not enabled, completed, or already executing
+    if (!checker.isEnabled || isCompletedWithObjectives || isExecuting) {
       console.warn(`⚠️ Multi-step execution blocked: ${stepId}`, {
         enabled: checker.isEnabled,
         completed: isCompletedWithObjectives,
@@ -274,6 +278,29 @@ export const InteractiveMultiStep = forwardRef<
     
     await executeStep();
   }, [disabled, isExecuting, isCompletedWithObjectives, checker.isEnabled, executeStep]);
+
+  // Handle individual step reset (redo functionality)
+  const handleStepRedo = useCallback(async () => {
+    if (disabled || isExecuting) {
+      return;
+    }
+
+    console.log(`🔄 Resetting individual multi-step: ${stepId}`);
+    
+    // Reset local completion state
+    setIsLocallyCompleted(false);
+    
+    // Clear any execution errors
+    setExecutionError(null);
+    
+    // Trigger requirements recheck to reset the step checker state
+    checker.checkStep();
+    
+    // Notify parent section to remove from completed steps
+    if (onStepReset && stepId) {
+      onStepReset(stepId);
+    }
+  }, [disabled, isExecuting, stepId, onStepReset, checker]);
   
   const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
   
@@ -349,37 +376,33 @@ export const InteractiveMultiStep = forwardRef<
           )}
         </div>
         
-        {isCompletedWithObjectives && <span className="interactive-step-completed-indicator">✓</span>}
+        {isCompletedWithObjectives && (
+          <div className="interactive-step-completion-group">
+            <span className="interactive-step-completed-indicator">✓</span>
+            <button
+              className="interactive-step-redo-btn"
+              onClick={handleStepRedo}
+              disabled={disabled || isAnyActionRunning}
+              title="Redo this multi-step (execute again)"
+            >
+              ↻
+            </button>
+          </div>
+        )}
       </div>
       
       {/* Show explanation text when requirements aren't met, but objectives always win (clarification 2) */}
       {checker.completionReason !== 'objectives' && !checker.isEnabled && !isCompletedWithObjectives && !checker.isChecking && checker.explanation && (
-        <div className="interactive-step-requirement-explanation" style={{ 
-          color: '#ff8c00', 
-          fontSize: '0.875rem', 
-          marginTop: '8px',
-          fontStyle: 'italic',
-          lineHeight: '1.4',
-          paddingLeft: '12px'
-        }}>
+        <div className="interactive-step-requirement-explanation">
           {checker.explanation}
           <button
+            className="interactive-requirement-retry-btn"
             onClick={async () => {
               if (checker.canFixRequirement && checker.fixRequirement) {
                 await checker.fixRequirement();
               } else {
                 checker.checkStep();
               }
-            }}
-            style={{
-              marginLeft: '8px',
-              padding: '2px 8px',
-              fontSize: '0.75rem',
-              border: '1px solid #ff8c00',
-              background: 'transparent',
-              color: '#ff8c00',
-              borderRadius: '4px',
-              cursor: 'pointer'
             }}
           >
             {checker.canFixRequirement ? 'Fix this' : 'Retry'}
@@ -389,16 +412,10 @@ export const InteractiveMultiStep = forwardRef<
       
       {/* Show execution error when available */}
       {executionError && !checker.isChecking && (
-        <div className="interactive-step-requirement-explanation" style={{ 
-          color: '#dc3545', 
-          fontSize: '0.875rem', 
-          marginTop: '8px',
-          fontStyle: 'italic',
-          lineHeight: '1.4',
-          paddingLeft: '12px'
-        }}>
+        <div className="interactive-step-execution-error">
           {executionError}
           <button
+            className="interactive-error-retry-btn"
             onClick={async () => {
               setExecutionError(null);
               if (checker.canFixRequirement && checker.fixRequirement) {
@@ -406,16 +423,6 @@ export const InteractiveMultiStep = forwardRef<
               } else {
                 checker.checkStep();
               }
-            }}
-            style={{
-              marginLeft: '8px',
-              padding: '2px 8px',
-              fontSize: '0.75rem',
-              border: '1px solid #dc3545',
-              background: 'transparent',
-              color: '#dc3545',
-              borderRadius: '4px',
-              cursor: 'pointer'
             }}
           >
             {checker.canFixRequirement ? 'Fix this' : 'Retry'}

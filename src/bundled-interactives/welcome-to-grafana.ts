@@ -128,7 +128,7 @@ export const welcomeToGrafanaHtml = `<html>
 
               <li class="interactive" data-targetaction="multistep">
                 <span class="interactive" data-targetaction="button" data-reftarget="New"></span>
-                <span class="interactive" data-targetaction="button" data-reftarget="a[href='/dashboard/new']"></span>
+                <span class="interactive" data-targetaction="highlight" data-reftarget="a[href='/dashboard/new']"></span>
                 Click the <strong>New</strong> button, then select <strong>New dashboard</strong>.
               </li>
 

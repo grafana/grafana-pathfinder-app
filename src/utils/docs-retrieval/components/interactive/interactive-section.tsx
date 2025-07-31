@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Button } from '@grafana/ui';
 
 import { useInteractiveElements } from '../../../interactive.hook';
@@ -30,6 +30,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   isCompleted?: boolean;
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
+  onStepReset?: (stepId: string) => void; // Signal to parent that step should be reset
   resetTrigger?: number; // Signal from parent to reset local completion state
 }
 
@@ -83,6 +84,9 @@ export function InteractiveSection({
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
+  
+  // Store refs to multistep components for section-level execution
+  const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
 
   // Get the interactive functions from the hook
   const { executeInteractiveAction } = useInteractiveElements();
@@ -186,12 +190,39 @@ export function InteractiveSection({
     }
   }, [completedSteps.size, stepComponents.length, sectionId, onComplete]);
 
+  // Handle individual step reset (redo functionality)
+  const handleStepReset = useCallback((stepId: string) => {
+    console.log(`🔄 Step reset requested: ${stepId}`);
+    setCompletedSteps(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(stepId);
+      return newSet;
+    });
+    
+    // Also clear currently executing step if it matches
+    if (currentlyExecutingStep === stepId) {
+      setCurrentlyExecutingStep(null);
+    }
+  }, [currentlyExecutingStep]);
+
   // Execute a single step (shared between individual and sequence execution)
   const executeStep = useCallback(async (stepInfo: StepInfo): Promise<boolean> => {
-    // For multi-step components, skip execution here - they handle their own execution
+    // For multi-step components, call their executeStep method via stored ref
     if (stepInfo.isMultiStep) {
-      console.log(`🔄 Skipping section-level execution for multi-step: ${stepInfo.stepId} (handled internally)`);
-      return true; // Multi-step components handle their own execution
+      console.log(`🔄 Executing multi-step via stored ref: ${stepInfo.stepId}`);
+      const multiStepRef = multiStepRefs.current.get(stepInfo.stepId);
+      
+      if (multiStepRef?.executeStep) {
+        try {
+          return await multiStepRef.executeStep();
+        } catch (error) {
+          console.error(`❌ Multi-step execution failed: ${stepInfo.stepId}`, error);
+          return false;
+        }
+      } else {
+        console.error(`❌ Multi-step ref not found for: ${stepInfo.stepId}`);
+        return false;
+      }
     }
     
     console.log(`🚀 Executing step: ${stepInfo.stepId} (${stepInfo.targetAction}: ${stepInfo.refTarget})`);
@@ -299,7 +330,8 @@ export function InteractiveSection({
           isCompleted,
           isCurrentlyExecuting,
           onStepComplete: handleStepComplete,
-          disabled: disabled || isRunning,
+          onStepReset: handleStepReset, // Add step reset callback
+          disabled: disabled || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
           resetTrigger, // Pass reset signal to child steps
           key: stepInfo.stepId,
         });
@@ -319,14 +351,22 @@ export function InteractiveSection({
           isCompleted,
           isCurrentlyExecuting,
           onStepComplete: handleStepComplete,
-          disabled: disabled || isRunning,
+          onStepReset: handleStepReset, // Add step reset callback
+          disabled: disabled || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
           resetTrigger, // Pass reset signal to child multi-steps
           key: stepInfo.stepId,
+          ref: (ref: { executeStep: () => Promise<boolean> } | null) => {
+            if (ref) {
+              multiStepRefs.current.set(stepInfo.stepId, ref);
+            } else {
+              multiStepRefs.current.delete(stepInfo.stepId);
+            }
+          },
         });
       }
       return child;
     });
-  }, [children, stepComponents, getStepEligibility, completedSteps, currentlyExecutingStep, handleStepComplete, disabled, isRunning, resetTrigger]);
+  }, [children, stepComponents, getStepEligibility, completedSteps, currentlyExecutingStep, handleStepComplete, handleStepReset, disabled, isRunning, resetTrigger]);
 
   return (
     <div className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}`}>
