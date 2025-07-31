@@ -9,7 +9,9 @@ import {
   DashboardInfo, 
   Recommendation, 
   ContextPayload, 
-  RecommenderResponse 
+  RecommenderResponse,
+  BundledInteractive,
+  BundledInteractivesIndex
 } from './context.types';
 
 export class ContextService {
@@ -574,16 +576,23 @@ export class ContextService {
     
     try {
       // Load the index.json file that contains metadata for all bundled interactives
-      const indexData = require('../../bundled-interactives/index.json');
+      const indexData: BundledInteractivesIndex = require('../../bundled-interactives/index.json');
       
       if (indexData && indexData.interactives && Array.isArray(indexData.interactives)) {
         // Filter interactives that match the current URL/path
-        const relevantInteractives = indexData.interactives.filter((interactive: any) => {
-          // Check if the interactive's target URL matches current path
-          return interactive.url === contextData.currentPath;
+        const relevantInteractives = indexData.interactives.filter((interactive: BundledInteractive) => {
+          // Handle both single URL (string) and multiple URLs (array)
+          if (Array.isArray(interactive.url)) {
+            // Check if any URL in the array matches current path
+            return interactive.url.some((url: string) => url === contextData.currentPath);
+          } else if (typeof interactive.url === 'string') {
+            // Backward compatibility: single URL as string
+            return interactive.url === contextData.currentPath;
+          }
+          return false;
         });
         
-        relevantInteractives.forEach((interactive: any) => {
+        relevantInteractives.forEach((interactive: BundledInteractive) => {
           bundledRecommendations.push({
             title: interactive.title,
             url: `bundled:${interactive.id}`,

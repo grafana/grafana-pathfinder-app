@@ -28,6 +28,7 @@ export const InteractiveStep = forwardRef<
   isCurrentlyExecuting = false,
   onStepComplete,
   resetTrigger,
+  onStepReset, // New callback for individual step reset
 }, ref) => {
   // Local UI state
   const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
@@ -144,6 +145,26 @@ export const InteractiveStep = forwardRef<
       setIsDoRunning(false);
     }
   }, [disabled, isDoRunning, isCompletedWithObjectives, checker.isEnabled, executeStep]);
+
+  // Handle individual step reset (redo functionality)
+  const handleStepRedo = useCallback(async () => {
+    if (disabled || isDoRunning || isShowRunning) {
+      return;
+    }
+
+    console.log(`🔄 Resetting individual step: ${stepId}`);
+    
+    // Reset local completion state
+    setIsLocallyCompleted(false);
+    
+    // Trigger requirements recheck to reset the step checker state
+    checker.checkStep();
+    
+    // Notify parent section to remove from completed steps
+    if (onStepReset && stepId) {
+      onStepReset(stepId);
+    }
+  }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset, checker]);
   
   const getActionDescription = () => {
     switch (targetAction) {
@@ -212,37 +233,33 @@ export const InteractiveStep = forwardRef<
           )}
         </div>
         
-        {isCompletedWithObjectives && <span className="interactive-step-completed-indicator">✓</span>}
+        {isCompletedWithObjectives && (
+          <div className="interactive-step-completion-group">
+            <span className="interactive-step-completed-indicator">✓</span>
+            <button
+              className="interactive-step-redo-btn"
+              onClick={handleStepRedo}
+              disabled={disabled || isAnyActionRunning}
+              title="Redo this step (execute again)"
+            >
+              ↻
+            </button>
+          </div>
+        )}
       </div>
       
       {/* Show explanation text when requirements aren't met, but objectives always win (clarification 2) */}
       {checker.completionReason !== 'objectives' && !checker.isEnabled && !isCompletedWithObjectives && !checker.isChecking && checker.explanation && (
-        <div className="interactive-step-requirement-explanation" style={{ 
-          color: '#ff8c00', 
-          fontSize: '0.875rem', 
-          marginTop: '8px',
-          fontStyle: 'italic',
-          lineHeight: '1.4',
-          paddingLeft: '12px'
-        }}>
+        <div className="interactive-step-requirement-explanation">
           {checker.explanation}
           <button
+            className="interactive-requirement-retry-btn"
             onClick={async () => {
               if (checker.canFixRequirement && checker.fixRequirement) {
                 await checker.fixRequirement();
               } else {
                 checker.checkStep();
               }
-            }}
-            style={{
-              marginLeft: '8px',
-              padding: '2px 8px',
-              fontSize: '0.75rem',
-              border: '1px solid #ff8c00',
-              background: 'transparent',
-              color: '#ff8c00',
-              borderRadius: '4px',
-              cursor: 'pointer'
             }}
           >
             {checker.canFixRequirement ? 'Fix this' : 'Retry'}

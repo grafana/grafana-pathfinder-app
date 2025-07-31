@@ -502,6 +502,84 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     fontSize: '16px',
     fontWeight: 'bold',
   },
+
+  '.interactive-step-completion-group': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+  },
+
+  '.interactive-step-redo-btn': {
+    padding: '2px 6px',
+    fontSize: '0.75rem',
+    border: `1px solid ${theme.colors.border.medium}`,
+    background: 'transparent',
+    color: theme.colors.text.secondary,
+    borderRadius: theme.shape.radius.default,
+    cursor: 'pointer',
+    minHeight: '20px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.strong,
+      color: theme.colors.text.primary,
+    },
+    '&:active': {
+      transform: 'scale(0.95)',
+    },
+  },
+
+  // Requirement explanation styles
+  '.interactive-step-requirement-explanation': {
+    color: theme.colors.text.secondary,
+    fontSize: '0.875rem',
+    marginTop: '8px',
+    fontStyle: 'italic',
+    lineHeight: '1.4',
+    paddingLeft: '12px',
+  },
+
+  '.interactive-requirement-retry-btn': {
+    marginLeft: '8px',
+    padding: '2px 8px',
+    fontSize: '0.75rem',
+    border: `1px solid ${theme.colors.border.medium}`,
+    background: 'transparent',
+    color: theme.colors.text.secondary,
+    borderRadius: '4px',
+    cursor: 'pointer',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.strong,
+      color: theme.colors.text.primary,
+    },
+  },
+
+  // Execution error styles
+  '.interactive-step-execution-error': {
+    color: '#dc3545',
+    fontSize: '0.875rem',
+    marginTop: '8px',
+    fontStyle: 'italic',
+    lineHeight: '1.4',
+    paddingLeft: '12px',
+  },
+
+  '.interactive-error-retry-btn': {
+    marginLeft: '8px',
+    padding: '2px 8px',
+    fontSize: '0.75rem',
+    border: '1px solid #dc3545',
+    background: 'transparent',
+    color: '#dc3545',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    '&:hover': {
+      backgroundColor: 'rgba(220, 53, 69, 0.1)',
+    },
+  },
 });
 
 // Expandable components styles

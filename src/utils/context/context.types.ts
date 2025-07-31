@@ -107,4 +107,17 @@ export interface UseContextPanelReturn {
   toggleSummaryExpansion: (recommendationUrl: string) => void;
   navigateToPath: (path: string) => void;
   toggleOtherDocsExpansion: () => void;
+}
+
+export interface BundledInteractive {
+  id: string;
+  title: string;
+  summary: string;
+  filename: string;
+  exportName: string;
+  url: string | string[]; // Can be single URL or array of URLs
+}
+
+export interface BundledInteractivesIndex {
+  interactives: BundledInteractive[];
 } 
