@@ -26,28 +26,32 @@ describe('useKeyboardShortcuts', () => {
 
   it('should close active tab on Ctrl+W except recommendations', () => {
     // Test regular tab
-    const { unmount } = renderHook(() => useKeyboardShortcuts({
-      tabs: mockTabs,
-      activeTabId: 'tab1',
-      activeTab: mockTabs[0],
-      isRecommendationsTab: false,
-      model: mockModel,
-    }));
+    const { unmount } = renderHook(() =>
+      useKeyboardShortcuts({
+        tabs: mockTabs,
+        activeTabId: 'tab1',
+        activeTab: mockTabs[0],
+        isRecommendationsTab: false,
+        model: mockModel,
+      })
+    );
 
     fireEvent.keyDown(document, { key: 'w', ctrlKey: true });
     expect(mockModel.closeTab).toHaveBeenCalledWith('tab1');
-    
+
     // Clean up first render
     unmount();
 
     // Test recommendations tab
-    renderHook(() => useKeyboardShortcuts({
-      tabs: mockTabs,
-      activeTabId: 'recommendations',
-      activeTab: mockTabs[2],
-      isRecommendationsTab: true,
-      model: mockModel,
-    }));
+    renderHook(() =>
+      useKeyboardShortcuts({
+        tabs: mockTabs,
+        activeTabId: 'recommendations',
+        activeTab: mockTabs[2],
+        isRecommendationsTab: true,
+        model: mockModel,
+      })
+    );
 
     mockModel.closeTab.mockClear();
     fireEvent.keyDown(document, { key: 'w', ctrlKey: true });
@@ -55,13 +59,15 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('should switch tabs with Ctrl+Tab', () => {
-    renderHook(() => useKeyboardShortcuts({
-      tabs: mockTabs,
-      activeTabId: 'tab1',
-      activeTab: mockTabs[0],
-      isRecommendationsTab: false,
-      model: mockModel,
-    }));
+    renderHook(() =>
+      useKeyboardShortcuts({
+        tabs: mockTabs,
+        activeTabId: 'tab1',
+        activeTab: mockTabs[0],
+        isRecommendationsTab: false,
+        model: mockModel,
+      })
+    );
 
     // Forward tab
     fireEvent.keyDown(document, { key: 'Tab', ctrlKey: true });
@@ -74,13 +80,15 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('should navigate milestones with Alt+Arrow keys when not in recommendations', () => {
-    renderHook(() => useKeyboardShortcuts({
-      tabs: mockTabs,
-      activeTabId: 'tab1',
-      activeTab: mockTabs[0],
-      isRecommendationsTab: false,
-      model: mockModel,
-    }));
+    renderHook(() =>
+      useKeyboardShortcuts({
+        tabs: mockTabs,
+        activeTabId: 'tab1',
+        activeTab: mockTabs[0],
+        isRecommendationsTab: false,
+        model: mockModel,
+      })
+    );
 
     // Next milestone
     fireEvent.keyDown(document, { key: 'ArrowRight', altKey: true });
@@ -92,13 +100,15 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('should not navigate milestones when in recommendations tab', () => {
-    renderHook(() => useKeyboardShortcuts({
-      tabs: mockTabs,
-      activeTabId: 'recommendations',
-      activeTab: mockTabs[2],
-      isRecommendationsTab: true,
-      model: mockModel,
-    }));
+    renderHook(() =>
+      useKeyboardShortcuts({
+        tabs: mockTabs,
+        activeTabId: 'recommendations',
+        activeTab: mockTabs[2],
+        isRecommendationsTab: true,
+        model: mockModel,
+      })
+    );
 
     fireEvent.keyDown(document, { key: 'ArrowRight', altKey: true });
     expect(mockModel.navigateToNextMilestone).not.toHaveBeenCalled();

@@ -7,14 +7,14 @@ jest.mock('../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: {
     StartLearningJourneyClick: 'start_learning_journey_click',
-    'docs_link_click': 'docs_link_click'
-  }
+    docs_link_click: 'docs_link_click',
+  },
 }));
 
 describe('useLinkClickHandler', () => {
   // Mock theme object (minimal required properties)
   const mockTheme = {
-    colors: { background: { primary: '#000000' } }
+    colors: { background: { primary: '#000000' } },
   } as any;
 
   // Mock model with all required functions
@@ -36,11 +36,11 @@ describe('useLinkClickHandler', () => {
   beforeEach(() => {
     // Reset all mocks
     jest.clearAllMocks();
-    
+
     // Create fresh content div for each test
     contentDiv = document.createElement('div');
     contentRef = { current: contentDiv };
-    
+
     // Mock active tab data
     mockModel.getActiveTab.mockReturnValue({
       id: 'tab1',
@@ -50,24 +50,26 @@ describe('useLinkClickHandler', () => {
         url: 'https://grafana.com/docs/test-journey/milestone1',
         metadata: {
           learningJourney: {
-            totalMilestones: 5
-          }
-        }
+            totalMilestones: 5,
+          },
+        },
       },
       isLoading: false,
-      error: null
+      error: null,
     });
   });
 
   describe('Journey Start Button', () => {
     it('should handle journey start button clicks', () => {
       // Render the hook
-      renderHook(() => useLinkClickHandler({
-        contentRef,
-        activeTab: mockModel.getActiveTab(),
-        theme: mockTheme,
-        model: mockModel
-      }));
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
 
       // Create and add journey start button
       const startButton = document.createElement('button');
@@ -79,22 +81,21 @@ describe('useLinkClickHandler', () => {
       fireEvent.click(startButton);
 
       // Verify expected behavior
-      expect(mockModel.loadTabContent).toHaveBeenCalledWith(
-        'tab1',
-        'https://grafana.com/docs/test-journey/milestone1'
-      );
+      expect(mockModel.loadTabContent).toHaveBeenCalledWith('tab1', 'https://grafana.com/docs/test-journey/milestone1');
     });
   });
 
   describe('Grafana Documentation Links', () => {
     it('should handle Grafana docs links', () => {
       // Render the hook
-      renderHook(() => useLinkClickHandler({
-        contentRef,
-        activeTab: mockModel.getActiveTab(),
-        theme: mockTheme,
-        model: mockModel
-      }));
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
 
       // Create and add docs link
       const docsLink = document.createElement('a');
@@ -113,12 +114,14 @@ describe('useLinkClickHandler', () => {
     });
 
     it('should handle relative docs links', () => {
-      renderHook(() => useLinkClickHandler({
-        contentRef,
-        activeTab: mockModel.getActiveTab(),
-        theme: mockTheme,
-        model: mockModel
-      }));
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
 
       const relativeLink = document.createElement('a');
       relativeLink.href = '../relative/path';
@@ -128,27 +131,26 @@ describe('useLinkClickHandler', () => {
       fireEvent.click(relativeLink);
 
       // Should resolve against current page URL
-      expect(mockModel.openDocsPage).toHaveBeenCalledWith(
-        expect.stringContaining('/relative/path'),
-        'Relative Link'
-      );
+      expect(mockModel.openDocsPage).toHaveBeenCalledWith(expect.stringContaining('/relative/path'), 'Relative Link');
     });
   });
 
   describe('Navigation Buttons', () => {
     it('should handle next/previous milestone navigation', () => {
-      renderHook(() => useLinkClickHandler({
-        contentRef,
-        activeTab: mockModel.getActiveTab(),
-        theme: mockTheme,
-        model: mockModel
-      }));
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
 
       // Create and add navigation buttons
       const nextButton = document.createElement('button');
       nextButton.className = 'journey-bottom-nav-button';
       nextButton.textContent = 'Next';
-      
+
       const prevButton = document.createElement('button');
       prevButton.className = 'journey-bottom-nav-button';
       prevButton.textContent = 'Previous';
@@ -171,12 +173,14 @@ describe('useLinkClickHandler', () => {
       // Mock window.open
       const windowOpen = jest.spyOn(window, 'open').mockImplementation();
 
-      renderHook(() => useLinkClickHandler({
-        contentRef,
-        activeTab: mockModel.getActiveTab(),
-        theme: mockTheme,
-        model: mockModel
-      }));
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
 
       const externalLink = document.createElement('a');
       externalLink.href = 'https://example.com';
@@ -185,11 +189,7 @@ describe('useLinkClickHandler', () => {
 
       fireEvent.click(externalLink);
 
-      expect(windowOpen).toHaveBeenCalledWith(
-        'https://example.com',
-        '_blank',
-        'noopener,noreferrer'
-      );
+      expect(windowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer');
 
       windowOpen.mockRestore();
     });
@@ -197,12 +197,14 @@ describe('useLinkClickHandler', () => {
 
   describe('Side Journey Links', () => {
     it('should handle side journey links', () => {
-      renderHook(() => useLinkClickHandler({
-        contentRef,
-        activeTab: mockModel.getActiveTab(),
-        theme: mockTheme,
-        model: mockModel
-      }));
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
 
       const sideJourneyLink = document.createElement('a');
       sideJourneyLink.setAttribute('data-side-journey-link', 'true');
@@ -212,10 +214,7 @@ describe('useLinkClickHandler', () => {
 
       fireEvent.click(sideJourneyLink);
 
-      expect(mockModel.openDocsPage).toHaveBeenCalledWith(
-        'https://grafana.com/docs/side-journey',
-        'Side Journey'
-      );
+      expect(mockModel.openDocsPage).toHaveBeenCalledWith('https://grafana.com/docs/side-journey', 'Side Journey');
     });
   });
 
@@ -223,12 +222,14 @@ describe('useLinkClickHandler', () => {
     it('should report journey start interactions', () => {
       const { reportAppInteraction } = require('../lib/analytics');
 
-      renderHook(() => useLinkClickHandler({
-        contentRef,
-        activeTab: mockModel.getActiveTab(),
-        theme: mockTheme,
-        model: mockModel
-      }));
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
 
       const startButton = document.createElement('button');
       startButton.setAttribute('data-journey-start', 'true');
@@ -242,7 +243,7 @@ describe('useLinkClickHandler', () => {
         expect.objectContaining({
           journey_title: 'Test Journey',
           journey_url: 'https://grafana.com/docs/test-journey',
-          total_milestones: 5
+          total_milestones: 5,
         })
       );
     });

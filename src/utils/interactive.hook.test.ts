@@ -5,7 +5,7 @@ import { useInteractiveElements } from './interactive.hook';
 jest.mock('@grafana/runtime', () => ({
   locationService: {
     push: jest.fn(),
-  }
+  },
 }));
 
 // Mock requirements checker
@@ -101,7 +101,7 @@ describe('useInteractiveElements', () => {
     checkRequirements.mockResolvedValue({
       pass: true,
       requirements: '',
-      error: []
+      error: [],
     });
 
     // Set up test environment
@@ -112,14 +112,14 @@ describe('useInteractiveElements', () => {
     // Cleanup DOM
     document.body.removeChild(container);
     // Remove any added styles
-    document.querySelectorAll('.interactive-highlight-outline').forEach(el => el.remove());
+    document.querySelectorAll('.interactive-highlight-outline').forEach((el) => el.remove());
     jest.restoreAllMocks();
   });
 
   describe('Interactive Highlighting', () => {
     it('should highlight the Connections menu item in show mode', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-      
+
       const menuItem = document.querySelector('a[data-testid="data-testid Nav menu item"]');
       const interactiveElement = document.querySelector('li.interactive[data-targetaction="highlight"]');
 
@@ -128,7 +128,7 @@ describe('useInteractiveElements', () => {
           {
             reftarget: 'a[data-testid="data-testid Nav menu item"][href="/connections"]',
             targetaction: 'highlight',
-            tagName: 'li'
+            tagName: 'li',
           },
           false, // show mode
           interactiveElement as HTMLElement
@@ -140,7 +140,7 @@ describe('useInteractiveElements', () => {
 
     it('should click the Connections menu item in do mode', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-      
+
       const menuItem = document.querySelector('a[data-testid="data-testid Nav menu item"]') as HTMLElement;
       const interactiveElement = document.querySelector('li.interactive[data-targetaction="highlight"]');
       const clickSpy = jest.spyOn(menuItem, 'click');
@@ -150,7 +150,7 @@ describe('useInteractiveElements', () => {
           {
             reftarget: 'a[data-testid="data-testid Nav menu item"][href="/connections"]',
             targetaction: 'highlight',
-            tagName: 'li'
+            tagName: 'li',
           },
           true, // do mode
           interactiveElement as HTMLElement
@@ -164,7 +164,7 @@ describe('useInteractiveElements', () => {
   describe('Interactive Form Fill', () => {
     it('should fill the search input with "Prometheus"', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-      
+
       const input = document.querySelector('input[type="text"]') as HTMLInputElement;
       const interactiveElement = document.querySelector('li.interactive[data-targetaction="formfill"]');
 
@@ -174,7 +174,7 @@ describe('useInteractiveElements', () => {
             reftarget: 'input[type="text"]',
             targetaction: 'formfill',
             targetvalue: 'Prometheus',
-            tagName: 'li'
+            tagName: 'li',
           },
           true, // do mode
           interactiveElement as HTMLElement
@@ -188,7 +188,7 @@ describe('useInteractiveElements', () => {
   describe('Interactive Button', () => {
     it('should find and click the "Add new data source" button by text', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-      
+
       const button = document.querySelector('button') as HTMLButtonElement;
       const interactiveElement = document.querySelector('li.interactive[data-targetaction="button"]');
       const clickSpy = jest.spyOn(button, 'click');
@@ -198,7 +198,7 @@ describe('useInteractiveElements', () => {
           {
             reftarget: 'Add new data source',
             targetaction: 'button',
-            tagName: 'li'
+            tagName: 'li',
           },
           true, // do mode
           interactiveElement as HTMLElement
@@ -215,17 +215,19 @@ describe('useInteractiveElements', () => {
       checkRequirements.mockResolvedValueOnce({
         pass: true,
         requirements: 'exists-reftarget',
-        error: [{
-          requirement: 'exists-reftarget',
-          pass: true
-        }]
+        error: [
+          {
+            requirement: 'exists-reftarget',
+            pass: true,
+          },
+        ],
       });
 
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-      
+
       // Wait for hook initialization
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       });
 
       const interactiveElement = document.querySelector('li.interactive[data-targetaction="highlight"]');
@@ -233,12 +235,14 @@ describe('useInteractiveElements', () => {
       const check = await result.current.checkElementRequirements(interactiveElement as HTMLElement);
 
       expect(check.pass).toBeTruthy();
-      expect(check.error).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          requirement: 'exists-reftarget',
-          pass: true
-        })
-      ]));
+      expect(check.error).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            requirement: 'exists-reftarget',
+            pass: true,
+          }),
+        ])
+      );
     });
 
     it('should handle failed requirements', async () => {
@@ -246,18 +250,20 @@ describe('useInteractiveElements', () => {
       checkRequirements.mockResolvedValueOnce({
         pass: false,
         requirements: 'exists-reftarget',
-        error: [{
-          requirement: 'exists-reftarget',
-          pass: false,
-          error: 'Element not found'
-        }]
+        error: [
+          {
+            requirement: 'exists-reftarget',
+            pass: false,
+            error: 'Element not found',
+          },
+        ],
       });
 
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-      
+
       // Wait for hook initialization
       await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       });
 
       // Create an element with a non-existent target
@@ -270,12 +276,14 @@ describe('useInteractiveElements', () => {
       const check = await result.current.checkElementRequirements(element);
 
       expect(check.pass).toBeFalsy();
-      expect(check.error).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          requirement: 'exists-reftarget',
-          pass: false
-        })
-      ]));
+      expect(check.error).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            requirement: 'exists-reftarget',
+            pass: false,
+          }),
+        ])
+      );
     });
   });
 });
