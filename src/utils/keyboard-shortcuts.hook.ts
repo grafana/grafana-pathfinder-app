@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { safeEventHandler } from './safe-event-handler.util';
 
-interface LearningJourneyTab {
+export interface LearningJourneyTab {
   id: string;
   title: string;
   baseUrl: string;
