@@ -1,0 +1,201 @@
+# Testing Strategy
+
+## Overview
+
+This document outlines our testing strategy for the Grafana Docs Plugin project, focusing on incrementally building test coverage while maintaining development velocity. Our strategy specifically accounts for code quality and potential refactoring needs, especially in our AI-assisted development environment.
+
+## Current Testing Infrastructure
+
+- **Framework**: Jest + React Testing Library (RTL)
+- **CI Integration**: Tests run via GitHub Actions using `npm run test:ci`
+- **Development Mode**: Watch mode available via `npm test`
+- **File Convention**: `.test.ts` or `.test.tsx` extensions
+- **Performance**: Uses SWC for faster compilation
+
+# E2E Testing
+
+We will use playwright tested against common versions of Grafana in the build chain. 
+
+# Unit Testing
+
+## Testing Priorities
+
+### 1. Core Business Logic (High Priority)
+Priority is now determined by both criticality AND code quality:
+
+a. **Well-Designed, Stable Code**
+- React hooks in `src/utils/*.hook.ts`
+- Service layer code
+- Full unit test coverage
+- Implementation-specific tests acceptable
+
+b. **Code Needing Refactoring**
+- Focus on behavioral/integration tests
+- Test inputs/outputs, not implementation
+- Document known issues
+- Use AI to help maintain test/code alignment
+
+### 2. Shared Components (Medium Priority)
+- Reusable UI components
+- Error boundaries and handlers
+- Configuration modules
+- Test at integration level if refactoring likely
+
+### 3. UI Layer (Lower Priority)
+- One-off components
+- Layout components
+- Simple display elements
+- Defer testing if refactoring planned
+
+## Implementation Strategy
+
+### Phase 1: Assessment and Planning
+1. **Code Quality Evaluation**
+   - Identify stable vs refactoring-needed code
+   - Document technical debt
+   - Plan refactoring needs
+   - Consider AI-assisted refactoring potential
+
+2. **Test Strategy Selection**
+   - Choose appropriate test level (unit vs integration)
+   - Define test boundaries
+   - Document assumptions
+   - Plan for AI assistance
+
+### Phase 2: Core Logic Testing
+1. **Stable Core Logic**
+   - Comprehensive unit tests
+   - High coverage targets
+   - Implementation-specific tests acceptable
+
+2. **Core Logic Needing Refactoring**
+   - Behavioral tests
+   - Integration tests
+   - Focus on inputs/outputs
+   - Use AI to maintain test/code alignment
+
+### Phase 3: Component Testing
+1. **Interactive Components**
+   - Test user interactions
+   - Verify accessibility
+   - Focus on critical user flows
+
+2. **Shared Components**
+   - Test reusable components
+   - Verify prop contracts
+   - Test error states
+
+### Phase 3: Integration Testing
+1. **Feature Flows**
+   - Test end-to-end user journeys
+   - Verify component integration
+   - Test state management
+
+## Testing Guidelines
+
+### Best Practices
+1. **Test Organization**
+   - Keep tests close to implementation
+   - Use descriptive test names
+   - Group related tests with `describe`
+
+2. **Coverage Goals**
+   - Stable Core Logic: 80%+
+   - Refactoring-Needed Code: Focus on critical paths
+   - UI Components: 60-70%
+   - Overall: 70%+
+
+3. **Testing Approach**
+   - Consider code quality in test design
+   - Use behavioral tests for unstable code
+   - Leverage AI for test maintenance
+   - Document assumptions and constraints
+
+### Code Example: Custom Render Setup
+```typescript
+// src/test-utils/test-utils.ts
+import { render } from '@testing-library/react'
+import { ThemeProvider } from '@grafana/ui'
+
+const customRender = (ui, options = {}) => {
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <ThemeProvider>{children}</ThemeProvider>
+    ),
+    ...options,
+  })
+}
+
+export * from '@testing-library/react'
+export { customRender as render }
+```
+
+## AI-Assisted Testing Strategy
+
+### Leveraging AI in Testing
+1. **Test Design**
+   - AI helps identify test cases
+   - AI suggests test coverage improvements
+   - AI assists in test maintenance
+
+2. **Refactoring Support**
+   - Tests serve as behavior documentation for AI
+   - AI helps validate behavior preservation
+   - AI assists in updating affected tests
+
+3. **Test Evolution**
+   - AI helps identify test smell
+   - AI suggests test improvements
+   - AI maintains test/code alignment
+
+## CI/CD Integration
+
+### Pull Request Requirements
+- All tests must pass
+- Coverage thresholds met
+- No TypeScript errors
+- Linting passes
+
+### Automated Checks
+- Unit tests run on every PR
+- E2E tests run on main branch
+- Coverage reports generated
+- Performance benchmarks tracked
+
+## Rationale
+
+### Why This Approach?
+1. **Incremental Adoption**
+   - Allows continuous feature development
+   - Builds confidence gradually
+   - Focuses on critical paths first
+
+2. **Focus on Code Quality**
+   - Tests appropriate to code stability
+   - Behavioral tests for refactoring targets
+   - AI-assisted test maintenance
+   - Balance coverage with maintainability
+
+3. **Practical Considerations**
+   - Balances coverage with velocity
+   - Prioritizes user-facing reliability
+   - Supports refactoring efforts
+   - Leverages AI capabilities
+
+## Maintenance
+
+### Regular Activities
+1. **Coverage Monitoring**
+   - Track coverage trends
+   - Identify testing gaps
+   - Update priorities
+
+2. **Documentation**
+   - Keep testing docs current
+   - Document patterns and examples
+   - Maintain testing checklist
+
+3. **Review and Adjust**
+   - Quarterly strategy review
+   - Adjust priorities as needed
+   - Update tooling as required
