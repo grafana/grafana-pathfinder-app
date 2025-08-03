@@ -1,4 +1,4 @@
-import { safeEventHandler, createSafeEventHandler, SafeEventOptions } from './safe-event-handler.util';
+import { safeEventHandler, createSafeEventHandler } from './safe-event-handler.util';
 
 describe('safeEventHandler', () => {
   let mockEvent: Event;
@@ -18,7 +18,12 @@ describe('safeEventHandler', () => {
   });
 
   it('should not call preventDefault when event is not cancelable', () => {
-    mockEvent.cancelable = false;
+    mockEvent = {
+      preventDefault: jest.fn(),
+      stopPropagation: jest.fn(),
+      stopImmediatePropagation: jest.fn(),
+      cancelable: false,
+    } as unknown as Event;
     safeEventHandler(mockEvent, { preventDefault: true });
     expect(mockEvent.preventDefault).not.toHaveBeenCalled();
   });
