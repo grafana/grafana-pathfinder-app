@@ -1,5 +1,4 @@
-import { renderHook } from '@testing-library/react';
-import { fireEvent } from '@testing-library/react';
+import { renderHook, fireEvent } from '@testing-library/react';
 import { useLinkClickHandler } from './link-handler.hook';
 import { UserInteraction } from '../lib/analytics';
 

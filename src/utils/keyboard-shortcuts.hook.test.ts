@@ -1,7 +1,5 @@
-import { renderHook, cleanup } from '@testing-library/react';
-import { fireEvent } from '@testing-library/react';
-import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
-import type { LearningJourneyTab } from './keyboard-shortcuts.hook';
+import { renderHook, cleanup, fireEvent } from '@testing-library/react';
+import { useKeyboardShortcuts, LearningJourneyTab } from './keyboard-shortcuts.hook';
 
 describe('useKeyboardShortcuts', () => {
   const mockModel = {
