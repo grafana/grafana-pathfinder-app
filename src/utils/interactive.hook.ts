@@ -17,6 +17,7 @@ import {
   resetValueTracker 
 } from './dom-utils';
 import { InteractiveElementData } from '../types/interactive.types';
+import { InteractiveStateManager } from './interactive-state-manager';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -48,6 +49,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   
   // Initialize DOM settling detection
   const { waitForScrollComplete } = useDOMSettling();
+  
+  // Initialize state manager
+  const stateManager = useMemo(() => new InteractiveStateManager(), []);
   
   // Initialize global interactive styles
   useEffect(() => {
@@ -251,32 +255,12 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    * @returns void
    */
   const setInteractiveState = useCallback((data: InteractiveElementData, state: 'idle' | 'running' | 'completed' | 'error') => {
-    if (state === 'completed') {
-      console.log('✅ Interactive action completed:', data);
-      
-      // Dispatch event for any listeners
-      waitForReactUpdates().then(() => {
-        const event = new CustomEvent('interactive-action-completed', {
-          detail: { data, state }
-        });
-        document.dispatchEvent(event);
-      });
-    }
-  }, []);
-
-  const logInteractiveError = useCallback((context: string, error: Error | string, data: InteractiveElementData) => {
-    const errorMessage = typeof error === 'string' ? error : error.message;
-    console.error(`❌ ${context}: ${errorMessage}`, data);
-  }, []);
+    stateManager.setState(data, state);
+  }, [stateManager]);
   
   const handleInteractiveError = useCallback((error: Error | string, context: string, data: InteractiveElementData, shouldThrow = true) => {
-    logInteractiveError(context, error, data);
-    setInteractiveState(data, 'error');
-    
-    if (shouldThrow) {
-      throw typeof error === 'string' ? new Error(error) : error;
-    }
-  }, [logInteractiveError, setInteractiveState]);  
+    stateManager.handleError(error, context, data, shouldThrow);
+  }, [stateManager]);  
 
   const interactiveFocus = useCallback(async (data: InteractiveElementData, click: boolean) => {
     setInteractiveState(data, 'running');
@@ -661,7 +645,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           await waitForReactUpdates();
           
         } catch (error) {
-          logInteractiveError('Error processing interactive element', error as Error, data);
+          stateManager.logError('Error processing interactive element', error as Error, data);
           retryCount++;
           
           if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
@@ -749,7 +733,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           }
           
         } catch (error) {
-          logInteractiveError('Error in interactive step', error as Error, data);
+          stateManager.logError('Error in interactive step', error as Error, data);
           retryCount++;
           
           if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
