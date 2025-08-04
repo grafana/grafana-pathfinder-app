@@ -339,26 +339,21 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }, [ensureNavigationOpen, ensureElementVisible]);
 
   /**
-   * Bridge elements don't need complex state management since React components
-   * handle their own state. This simplified version just logs completion.
+   * This is a guard function to track progress through the lifecycle events of an interactive action.
+   * This allows us to fire lifecycle events as needed or perform other checks we may implement in the
+   * future. 
+   * @param data - The interactive element data
+   * @param state - The currentstate of the interactive action
+   * @returns void
    */
-  const setInteractiveState = useCallback((element: HTMLElement | undefined, state: 'idle' | 'running' | 'completed' | 'error') => {
-    if (!element) {
-      console.error('🚨 setInteractiveState called with no element');
-      return;
-    }
+  const setInteractiveState = useCallback((data: InteractiveElementData, state: 'idle' | 'running' | 'completed' | 'error') => {
     if (state === 'completed') {
-      console.log('✅ Interactive action completed:', {
-        element: element.tagName,
-        reftarget: element.getAttribute('data-reftarget'),
-        targetaction: element.getAttribute('data-targetaction'),
-        buttonType: element.getAttribute('data-button-type'),
-      });
+      console.log('✅ Interactive action completed:', data);
       
       // Dispatch event for any listeners
       waitForReactUpdates().then(() => {
         const event = new CustomEvent('interactive-action-completed', {
-          detail: { element, state }
+          detail: { data, state }
         });
         document.dispatchEvent(event);
       });
@@ -366,7 +361,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }, []);
 
   const interactiveFocus = useCallback(async (data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => {
-    setInteractiveState(clickedElement, 'running');
+    setInteractiveState(data, 'running');
     
     // Search entire document for the target, which is outside of docs plugin frame.
     const targetElements = document.querySelectorAll(data.reftarget);
@@ -393,16 +388,16 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       
       // Mark as completed after successful execution (only in Do mode)
       waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
+        setInteractiveState(data, 'completed');
       });
     } catch (error) {
       console.error("Error in interactiveFocus:", error);
-      setInteractiveState(clickedElement, 'error');
+      setInteractiveState(data, 'error');
     }
   }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState]);
 
   const interactiveButton = useCallback(async (data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => {
-    setInteractiveState(clickedElement, 'running');
+    setInteractiveState(data, 'running');
 
     try {
       const buttons = findButtonByText(data.reftarget);
@@ -426,11 +421,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       
       // Mark as completed after successful execution (only in Do mode)
       waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
+        setInteractiveState(data, 'completed');
       });
     } catch (error) {
       console.error("Error in interactiveButton:", error);
-      setInteractiveState(clickedElement, 'error');
+      setInteractiveState(data, 'error');
     }
   }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, findButtonByText]);
 
@@ -445,7 +440,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       return data.reftarget;
     }
     
-    setInteractiveState(clickedElement, 'running');
+    setInteractiveState(data, 'running');
     
     try {
       const searchContainer = containerRef?.current || document;
@@ -482,13 +477,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       }
       
       // Mark as completed after successful execution
-      setInteractiveState(clickedElement, 'completed');
+      setInteractiveState(data, 'completed');
       
       activeRefsRef.current.delete(data.reftarget);
       return data.reftarget;
     } catch (error) {
       console.error(`Error in interactiveSequence for ${data.reftarget}:`, error);
-      setInteractiveState(clickedElement, 'error');
+      setInteractiveState(data, 'error');
       activeRefsRef.current.delete(data.reftarget);
       throw error;
     }
@@ -497,7 +492,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   const interactiveFormFill = useCallback(async (data: InteractiveElementData, fillForm: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
     
-    setInteractiveState(clickedElement, 'running');
+    setInteractiveState(data, 'running');
     
     try {
       // Search entire document for the target, which is outside of docs plugin frame.
@@ -642,16 +637,16 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       
       // Mark as completed after successful execution
       waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
+        setInteractiveState(data, 'completed');
       });      
     } catch (error) {
       console.error('Error applying interactive action for selector ' + data.reftarget);
-      setInteractiveState(clickedElement, 'error');
+      setInteractiveState(data, 'error');
     }
   }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, resetValueTracker]);
 
   const interactiveNavigate = useCallback((data: InteractiveElementData, navigate: boolean, clickedElement?: HTMLElement) => {
-    setInteractiveState(clickedElement, 'running');
+    setInteractiveState(data, 'running');
     
     try {
       if (!navigate) {
@@ -663,7 +658,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         // Provide visual feedback by briefly highlighting the browser location bar concept
         // or show a toast/notification (for now, just log and complete)
         waitForReactUpdates().then(() => {
-          setInteractiveState(clickedElement, 'completed');
+          setInteractiveState(data, 'completed');
         });
         return;
       }
@@ -683,11 +678,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       
       // Mark as completed after successful navigation
       waitForReactUpdates().then(() => {
-        setInteractiveState(clickedElement, 'completed');
+        setInteractiveState(data, 'completed');
       });
     } catch (error) {
       console.error('Error in interactiveNavigate:', error);
-      setInteractiveState(clickedElement, 'error');
+      setInteractiveState(data, 'error');
     }
   }, [setInteractiveState]);
 
