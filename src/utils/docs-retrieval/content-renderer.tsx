@@ -275,7 +275,13 @@ function renderParsedElement(
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           title={element.props.title}
-        />
+        >
+          {element.children.map((child: ParsedElement | string, childIndex: number) =>
+            typeof child === 'string'
+              ? child
+              : renderParsedElement(child, `${key}-child-${childIndex}`)
+          )}
+        </InteractiveStep>
       );
     case 'interactive-multi-step':
       return (
@@ -286,7 +292,13 @@ function renderParsedElement(
           objectives={element.props.objectives}
           hints={element.props.hints}
           title={element.props.title}
-        />
+        >
+          {element.children.map((child: ParsedElement | string, childIndex: number) =>
+            typeof child === 'string'
+              ? child
+              : renderParsedElement(child, `${key}-child-${childIndex}`)
+          )}
+        </InteractiveMultiStep>
       );
     case 'image-renderer':
       return (

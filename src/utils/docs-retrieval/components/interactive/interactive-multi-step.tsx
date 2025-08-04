@@ -33,7 +33,7 @@ interface InteractiveMultiStepProps {
   onComplete?: () => void;
   
   // Timing configuration
-  stepDelay?: number; // Delay between steps in milliseconds (default: 1200ms)
+  stepDelay?: number; // Delay between steps in milliseconds (default: 1800ms)
   resetTrigger?: number; // Signal from parent to reset local completion state
 }
 
@@ -112,7 +112,7 @@ export const InteractiveMultiStep = forwardRef<
   requirements,
   objectives,
   onComplete,
-  stepDelay = 1200, // Default 1200ms delay between steps
+  stepDelay = 1800, // Default 1800ms delay between steps
   resetTrigger,
 }, ref) => {
   // Local UI state (similar to InteractiveStep)
@@ -206,8 +206,8 @@ export const InteractiveMultiStep = forwardRef<
           // Show mode (highlight what will be acted upon)
           await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'show');
           
-          // Small delay between show and do for better UX and animation visibility
-          await new Promise(resolve => setTimeout(resolve, 600));
+          // Delay between show and do (slightly faster than section pacing)
+          await new Promise(resolve => setTimeout(resolve, 1000));
           
           // Do mode (actually perform the action)
           await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'do');
@@ -349,7 +349,7 @@ export const InteractiveMultiStep = forwardRef<
     if (!checker.isEnabled && !isCompletedWithObjectives) {
       return 'Requirements not met for multi-step execution';
     }
-    return hints || `Execute ${internalActions.length} steps in sequence`;
+    return hints || `Execute ${internalActions.length} steps in sequence with section-like timing`;
   };
   
   return (

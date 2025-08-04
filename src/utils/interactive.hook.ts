@@ -474,16 +474,24 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     
     try {
       // Search entire document for the target, which is outside of docs plugin frame.
+      console.warn(`🔍 FormFill: Searching for selector: ${data.reftarget}`);
       const targetElements = document.querySelectorAll(data.reftarget);
       
+      console.warn(`🔍 FormFill: Found ${targetElements.length} elements matching selector`);
       if (targetElements.length === 0) {
-        console.warn(`No elements found matching selector: ${data.reftarget}`);
+        console.warn(`❌ No elements found matching selector: ${data.reftarget}`);
         return;
       } else if(targetElements.length > 1) {
-        console.warn(`Multiple elements found matching selector: ${data.reftarget}`);
+        console.warn(`⚠️ Multiple elements found matching selector: ${data.reftarget}`);
       }
 
       const targetElement = targetElements[0] as HTMLElement;
+      console.warn(`🎯 FormFill: Target element found:`, {
+        tagName: targetElement.tagName,
+        className: targetElement.className,
+        ariaLabel: targetElement.getAttribute('aria-label'),
+        value: (targetElement as any).value
+      });
       
       // Always ensure navigation is open and element is visible first
       await ensureNavigationOpen(targetElement);
@@ -498,6 +506,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       // Do mode: don't highlight, just fill the form
       const tagName = targetElement.tagName.toLowerCase();
       const inputType = (targetElement as HTMLInputElement).type ? (targetElement as HTMLInputElement).type.toLowerCase() : '';
+      
+      // Check if this is a Monaco editor textarea (special handling required)
+      const isMonacoEditor = targetElement.classList.contains('inputarea') && 
+                            targetElement.classList.contains('monaco-mouse-cursor-text');
         
       // CONSOLIDATED APPROACH: Set value once using the most compatible method
       if (tagName === 'input') {
@@ -520,18 +532,74 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           }
         }
       } else if (tagName === 'textarea') {
-        // Use React-compatible native setter approach for textareas
-        const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-        if (nativeTextareaSetter) {
-          nativeTextareaSetter.call(targetElement, value);
+        if (isMonacoEditor) {
+          // Special handling for Monaco editors
+          console.warn('🎯 Detected Monaco editor, using enhanced approach for value setting');
+          
+          // Focus the editor first to make it active
+          targetElement.focus();
+          
+          // Clear any existing content using Ctrl+A and Delete
+          targetElement.dispatchEvent(new KeyboardEvent('keydown', { 
+            key: 'a', 
+            code: 'KeyA', 
+            ctrlKey: true, 
+            bubbles: true 
+          }));
+          
+          targetElement.dispatchEvent(new KeyboardEvent('keydown', { 
+            key: 'Delete', 
+            code: 'Delete', 
+            bubbles: true 
+          }));
+          
+          // Wait a moment for the clear to process
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Now set the value and trigger comprehensive events
+          const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+          if (nativeTextareaSetter) {
+            nativeTextareaSetter.call(targetElement, value);
+          } else {
+            (targetElement as HTMLTextAreaElement).value = value;
+          }
           
           // Reset React's value tracker if present
           if ((targetElement as any)._valueTracker) {
             (targetElement as any)._valueTracker.setValue('');
           }
+          
+          // Dispatch comprehensive input events to trigger Monaco's change detection
+          targetElement.dispatchEvent(new Event('input', { bubbles: true }));
+          targetElement.dispatchEvent(new Event('change', { bubbles: true }));
+          
+          // Simulate typing the last character to trigger Monaco's update
+          const lastChar = value.slice(-1);
+          if (lastChar) {
+            targetElement.dispatchEvent(new KeyboardEvent('keydown', { 
+              key: lastChar, 
+              bubbles: true 
+            }));
+            targetElement.dispatchEvent(new KeyboardEvent('keyup', { 
+              key: lastChar, 
+              bubbles: true 
+            }));
+          }
+          
         } else {
-          // Fallback for edge cases
-          (targetElement as HTMLTextAreaElement).value = value;
+          // Standard textarea handling
+          const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+          if (nativeTextareaSetter) {
+            nativeTextareaSetter.call(targetElement, value);
+            
+            // Reset React's value tracker if present
+            if ((targetElement as any)._valueTracker) {
+              (targetElement as any)._valueTracker.setValue('');
+            }
+          } else {
+            // Fallback for edge cases
+            (targetElement as HTMLTextAreaElement).value = value;
+          }
         }
       } else if (tagName === 'select') {
         // Select elements don't have the same React issues, use direct assignment
@@ -546,8 +614,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       targetElement.focus();
       targetElement.dispatchEvent(new Event('focus', { bubbles: true }));
       
-      // Only dispatch input/change events for form controls that support them
-      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+      // Only dispatch input/change events for form controls that support them (skip for Monaco as already handled)
+      if ((tagName === 'input' || tagName === 'textarea' || tagName === 'select') && !isMonacoEditor) {
         targetElement.dispatchEvent(new Event('input', { bubbles: true }));
         targetElement.dispatchEvent(new Event('change', { bubbles: true }));
       }
