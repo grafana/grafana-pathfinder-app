@@ -39,8 +39,38 @@ export class NavigationManager {
       });
       
       // Wait for scroll animation to complete using DOM settling detection
-      await waitForReactUpdates();
+      // await waitForReactUpdates();
+      // await new Promise(resolve => setTimeout(resolve, 1000));
+      await this.waitForScrollComplete(element);
     }      
+  }
+
+  private waitForScrollComplete(element: HTMLElement, fallbackTimeout = 500): Promise<void> {
+    return new Promise((resolve) => {
+      let scrollTimeout: NodeJS.Timeout;
+      let fallbackTimeoutId: NodeJS.Timeout;
+      
+      const handleScroll = () => {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          // Clean up event listener
+          element.removeEventListener('scroll', handleScroll);
+          clearTimeout(fallbackTimeoutId);
+          resolve();
+        }, 200);
+      };
+      
+      // Add event listener
+      element.addEventListener('scroll', handleScroll);
+      
+      // Fallback timeout with cleanup
+      fallbackTimeoutId = setTimeout(() => {
+        // Clean up event listener
+        element.removeEventListener('scroll', handleScroll);
+        clearTimeout(scrollTimeout);
+        resolve();
+      }, fallbackTimeout);
+    });
   }
 
   /**

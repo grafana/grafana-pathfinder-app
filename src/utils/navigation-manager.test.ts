@@ -15,7 +15,9 @@ const mockElement = {
     add: jest.fn(),
     remove: jest.fn()
   },
-  closest: jest.fn(() => null)
+  closest: jest.fn(() => null),
+  addEventListener: jest.fn(),
+  removeEventListener: jest.fn()
 } as unknown as HTMLElement;
 
 const mockMegaMenuToggle = {
@@ -92,6 +94,33 @@ describe('NavigationManager', () => {
 
       expect(mockElement.scrollIntoView).not.toHaveBeenCalled();
     });
+
+    it('should wait for scroll completion when scrolling element into view', async () => {
+      // Mock element that is not visible
+      const element = {
+        ...mockElement,
+        getBoundingClientRect: jest.fn(() => ({
+          top: -100,
+          left: -100,
+          bottom: 0,
+          right: 0,
+          width: 100,
+          height: 100
+        }))
+      } as unknown as HTMLElement;
+
+      await navigationManager.ensureElementVisible(element);
+
+      // Verify scrollIntoView was called
+      expect(element.scrollIntoView).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'center'
+      });
+
+      // Verify that addEventListener was called for scroll events
+      expect(element.addEventListener).toHaveBeenCalledWith('scroll', expect.any(Function));
+    });
   });
 
   describe('highlight', () => {
@@ -101,6 +130,80 @@ describe('NavigationManager', () => {
       expect(mockElement.classList.add).toHaveBeenCalledWith('interactive-highlighted');
       expect(document.createElement).toHaveBeenCalledWith('div');
       expect(document.body.appendChild).toHaveBeenCalled();
+    });
+  });
+
+  describe('waitForScrollComplete', () => {
+    it('should handle scroll events and cleanup properly', async () => {
+      // Mock element with scroll event handling
+      const element = {
+        ...mockElement,
+        getBoundingClientRect: jest.fn(() => ({
+          top: -100,
+          left: -100,
+          bottom: 0,
+          right: 0,
+          width: 100,
+          height: 100
+        }))
+      } as unknown as HTMLElement;
+
+      // Mock setTimeout to control timing
+      const originalSetTimeout = global.setTimeout;
+      const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+
+      await navigationManager.ensureElementVisible(element);
+
+      // Verify scrollIntoView was called
+      expect(element.scrollIntoView).toHaveBeenCalled();
+
+      // Verify addEventListener was called for scroll events
+      expect(element.addEventListener).toHaveBeenCalledWith('scroll', expect.any(Function));
+
+      // Simulate a scroll event
+      const scrollHandler = element.addEventListener.mock.calls.find(
+        call => call[0] === 'scroll'
+      )?.[1] as Function;
+
+      if (scrollHandler) {
+        // Simulate scroll event
+        scrollHandler();
+        
+        // Wait for the scroll timeout to complete
+        await new Promise(resolve => setTimeout(resolve, 250)); // Wait longer than the 200ms timeout
+      }
+
+      // Verify removeEventListener was called for cleanup
+      expect(element.removeEventListener).toHaveBeenCalledWith('scroll', expect.any(Function));
+
+      // Restore original setTimeout
+      setTimeoutSpy.mockRestore();
+    });
+
+    it('should use fallback timeout when no scroll events occur', async () => {
+      // Mock element that needs scrolling
+      const element = {
+        ...mockElement,
+        getBoundingClientRect: jest.fn(() => ({
+          top: -100,
+          left: -100,
+          bottom: 0,
+          right: 0,
+          width: 100,
+          height: 100
+        }))
+      } as unknown as HTMLElement;
+
+      // Mock setTimeout to control timing
+      const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+
+      await navigationManager.ensureElementVisible(element);
+
+      // Verify that setTimeout was called for fallback timeout (500ms default)
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 500);
+
+      // Restore original setTimeout
+      setTimeoutSpy.mockRestore();
     });
   });
 
