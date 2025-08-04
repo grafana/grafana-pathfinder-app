@@ -1,5 +1,4 @@
 import { useEffect, useCallback, useRef, useMemo } from 'react';
-import { locationService } from '@grafana/runtime';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 import { waitForReactUpdates } from './requirements-checker.hook';
 import { 
@@ -8,11 +7,9 @@ import {
   CheckResultError,
   DOMCheckFunctions 
 } from './requirements-checker.utils';
-import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { 
   extractInteractiveDataFromElement, 
   findButtonByText, 
-  resetValueTracker 
 } from './dom-utils';
 import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
@@ -82,96 +79,6 @@ function isValidInteractiveElement(data: InteractiveElementData): boolean {
  * ```
  */
 
-
-/**
- * Interactive steps that use the nav require that it be open.  This function will ensure
- * that it's open so that other steps can be executed.
- * @param element - The element that may require navigation to be open
- * @param options - The options for the navigation
- * @param options.checkContext - Whether to check if the element is within navigation (default false)
- * @param options.logWarnings - Whether to log warnings (default true)
- * @param options.ensureDocked - Whether to ensure the navigation is docked when we're done. (default true)
- * @returns 
- */
-const openAndDockNavigation = async (
-  element?: HTMLElement,
-  options: {
-    checkContext?: boolean;
-    logWarnings?: boolean;
-    ensureDocked?: boolean;
-  } = {}
-): Promise<void> => {
-  const {
-    checkContext = false,
-    logWarnings = true,
-    ensureDocked = true
-  } = options;
-
-  // Check if element is within navigation (only if checkContext is true)
-  if (checkContext && element) {
-    const isInNavigation = element.closest('nav, [class*="nav"], [class*="menu"], [class*="sidebar"]') !== null;
-    if (!isInNavigation) {
-      return;
-    }
-  }
-  
-  // Look for the mega menu toggle button
-  const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
-  if (!megaMenuToggle) {
-    if (logWarnings) {
-      console.warn('⚠️ Mega menu toggle button not found');
-    }
-    return;
-  }
-  
-  // Check if navigation appears to be closed
-  const ariaExpanded = megaMenuToggle.getAttribute('aria-expanded');
-  const isNavClosed = ariaExpanded === 'false' || ariaExpanded === null;
-  
-  if (isNavClosed) {
-    if (logWarnings) {
-      console.warn('�� Opening navigation menu for interactive element access');
-    }
-    megaMenuToggle.click();
-    
-    await waitForReactUpdates();
-    
-    const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
-    if (dockMenuButton) {
-      if (logWarnings) {
-        console.warn('�� Docking navigation menu to keep it in place');
-      }
-      dockMenuButton.click();
-      
-      await waitForReactUpdates();
-      return;
-    } else {
-      if (logWarnings) {
-        console.warn('⚠️ Dock menu button not found, navigation will remain in modal mode');
-      }
-      return;
-    }
-  } else if (ensureDocked) {
-    // Navigation is already open, just try to dock it if needed
-    const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
-    if (dockMenuButton) {
-      if (logWarnings) {
-        console.warn('�� Navigation already open, ensuring it is docked');
-      }
-      dockMenuButton.click();
-      await waitForReactUpdates();
-      return;
-    } else {
-      if (logWarnings) {
-        console.warn('✅ Navigation already open and accessible');
-      }
-      return;
-    }
-  } 
-
-  return;
-};
-
 export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
   const { containerRef } = options;
   
@@ -186,40 +93,30 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     stateManager,
     navigationManager,
     waitForReactUpdates
-  ), [stateManager, navigationManager, waitForReactUpdates]);
+  ), [stateManager, navigationManager]);
 
   const buttonHandler = useMemo(() => new ButtonHandler(
     stateManager,
     navigationManager,
     waitForReactUpdates
-  ), [stateManager, navigationManager, waitForReactUpdates]);
+  ), [stateManager, navigationManager]);
 
   const navigateHandler = useMemo(() => new NavigateHandler(
     stateManager,
     waitForReactUpdates
-  ), [stateManager, waitForReactUpdates]);
+  ), [stateManager]);
 
   const formFillHandler = useMemo(() => new FormFillHandler(
     stateManager,
     navigationManager,
     waitForReactUpdates
-  ), [stateManager, navigationManager, waitForReactUpdates]);
+  ), [stateManager, navigationManager]);
   
   // Initialize global interactive styles
   useEffect(() => {
     addGlobalInteractiveStyles();
   }, []);
   
-  /**
-   * This is a guard function to track progress through the lifecycle events of an interactive action.
-   * This allows us to fire lifecycle events as needed or perform other checks we may implement in the
-   * future. 
-   * @param data - The interactive element data
-   * @param state - The currentstate of the interactive action
-   * @returns void
-   */
-  
-
   const interactiveFocus = useCallback(async (data: InteractiveElementData, click: boolean) => {
     await focusHandler.execute(data, click);
   }, [focusHandler]);
