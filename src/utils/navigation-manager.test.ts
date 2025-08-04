@@ -149,7 +149,6 @@ describe('NavigationManager', () => {
       } as unknown as HTMLElement;
 
       // Mock setTimeout to control timing
-      const originalSetTimeout = global.setTimeout;
       const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
 
       await navigationManager.ensureElementVisible(element);
@@ -161,8 +160,8 @@ describe('NavigationManager', () => {
       expect(element.addEventListener).toHaveBeenCalledWith('scroll', expect.any(Function));
 
       // Simulate a scroll event
-      const scrollHandler = element.addEventListener.mock.calls.find(
-        call => call[0] === 'scroll'
+      const scrollHandler = (element.addEventListener as jest.Mock).mock.calls.find(
+        (call: any) => call[0] === 'scroll'
       )?.[1] as Function;
 
       if (scrollHandler) {

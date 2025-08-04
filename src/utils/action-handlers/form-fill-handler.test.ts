@@ -21,8 +21,14 @@ const mockNavigationManager = {
   ensureElementVisible: jest.fn().mockResolvedValue(undefined),
   highlight: jest.fn().mockResolvedValue(undefined),
   fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
-  openAndDockNavigation: jest.fn().mockResolvedValue(undefined)
-} as jest.Mocked<NavigationManager>;
+  openAndDockNavigation: jest.fn().mockResolvedValue(undefined),
+} as unknown as NavigationManager & {
+  ensureNavigationOpen: jest.Mock;
+  ensureElementVisible: jest.Mock;
+  highlight: jest.Mock;
+  fixNavigationRequirements: jest.Mock;
+  openAndDockNavigation: jest.Mock;
+};
 
 const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
 
