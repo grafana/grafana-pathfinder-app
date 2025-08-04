@@ -124,23 +124,6 @@ export class ContextService {
           // No-op for logging backend
         },
         addEvent: (event) => {
-          // Log all supported events with @context/ prefix to analyze Cloud differences
-          console.warn(`@context/ EchoSrv Event:`, {
-            type: event.type,
-            payload: event.payload,
-            meta: {
-              // Log key meta info without flooding
-              path: event.meta.path,
-              url: event.meta.url,
-              userId: event.meta.userId,
-              userLogin: event.meta.userLogin,
-              sessionId: event.meta.sessionId,
-              timestamp: event.meta.ts,
-              // Include full meta for reference but collapsed
-              fullMeta: event.meta
-            }
-          });
-
           // Phase 2: Capture datasource configuration events
           if (event.type === 'interaction') {
             // Primary: New datasource selection
@@ -245,7 +228,7 @@ export class ContextService {
       tags,
       isLoading: false,
       recommendationsError: null,
-      visualizationType: this.getDetectedVisualizationType(),
+      visualizationType: this.getVisualizationTypeForContext(pathSegments, searchParams),
       grafanaVersion: this.getGrafanaVersion(),
       theme: config.theme2.isDark ? 'dark' : 'light',
       timestamp: new Date().toISOString(),
@@ -453,9 +436,12 @@ export class ContextService {
     }
 
     // Add visualization type from EchoSrv events (Phase 4: Echo-based detection)
-    const echoDetectedVizType = this.getDetectedVisualizationType();
-    if (echoDetectedVizType) {
-      tags.push(`panel-type:${echoDetectedVizType}`);
+    // Only include viz type when user is creating or editing visualizations
+    const isCreatingOrEditingViz = this.isCreatingOrEditingVisualization(pathSegments, searchParams);
+    if (isCreatingOrEditingViz) {
+      const echoDetectedVizType = this.getDetectedVisualizationType();
+      const vizType = echoDetectedVizType || 'timeseries'; // Default to timeseries if no event detected
+      tags.push(`panel-type:${vizType}`);
     }
 
     // Add selected datasource from EchoSrv events (Phase 2: Echo-based detection)  
@@ -586,6 +572,60 @@ export class ContextService {
    */
   static getDetectedVisualizationType(): string | null {
     return this.currentVisualizationType;
+  }
+
+  /**
+   * Get visualization type for current context
+   * Only returns viz type when creating/editing, defaults to 'timeseries' if no event detected
+   */
+  private static getVisualizationTypeForContext(
+    pathSegments: string[], 
+    searchParams: Record<string, string>
+  ): string | null {
+    const isCreatingOrEditingViz = this.isCreatingOrEditingVisualization(pathSegments, searchParams);
+    if (isCreatingOrEditingViz) {
+      const echoDetectedVizType = this.getDetectedVisualizationType();
+      return echoDetectedVizType || 'timeseries'; // Default to timeseries if no event detected
+    }
+    
+    // Return null when not in create/edit context
+    return null;
+  }
+
+  /**
+   * Determine if user is currently creating or editing a visualization
+   * Based on URL patterns and search parameters
+   */
+  private static isCreatingOrEditingVisualization(
+    pathSegments: string[], 
+    searchParams: Record<string, string>
+  ): boolean {
+    // Editing existing panel
+    if (searchParams.editPanel) {
+      return true;
+    }
+    
+    // Creating first panel on new dashboard
+    if (searchParams.firstPanel) {
+      return true;
+    }
+    
+    // New dashboard creation
+    if (pathSegments.includes('new') && pathSegments.includes('dashboard')) {
+      return true;
+    }
+    
+    // Dashboard new path
+    if (pathSegments[0] === 'dashboard' && pathSegments[1] === 'new') {
+      return true;
+    }
+    
+    // Panel edit view
+    if (searchParams.editview === 'panel') {
+      return true;
+    }
+    
+    return false;
   }
 
   /**
