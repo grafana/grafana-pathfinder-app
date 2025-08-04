@@ -17,6 +17,7 @@ import {
 import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { SequenceManager } from './sequence-manager';
+import { NavigationManager } from './navigation-manager';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -47,76 +48,9 @@ interface UseInteractiveElementsOptions {
  * // Element is now visible and centered in viewport
  * ```
  */
-const ensureElementVisible = async (element: HTMLElement): Promise<void> => {
-  // Check if element is visible in viewport
-  const rect = element.getBoundingClientRect();
-  const isVisible = (
-    rect.top >= 0 &&
-    rect.left >= 0 &&
-    rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-    rect.right <= (window.innerWidth || document.documentElement.clientWidth)
-  );
-  
-  if (!isVisible) {
-    console.warn('📜 Scrolling element into view for better visibility');
-    element.scrollIntoView({ 
-      behavior: 'smooth', 
-      block: 'center', 
-      inline: 'center' 
-    });
-    
-    // Wait for scroll animation to complete using DOM settling detection
-    await waitForReactUpdates();
-  }      
-}
 
-const highlight = async (element: HTMLElement) => {
-  // First, ensure navigation is open and element is visible
-  await ensureNavigationOpen(element);
-  await ensureElementVisible(element);
-  
-  // Add highlight class for better styling
-  element.classList.add('interactive-highlighted');
-  
-  // Create a highlight outline element
-  const highlightOutline = document.createElement('div');
-  highlightOutline.className = 'interactive-highlight-outline';
-  
-  // Position the outline around the target element using CSS custom properties
-  const rect = element.getBoundingClientRect();
-  const scrollTop = window.scrollY || document.documentElement.scrollTop;
-  const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
-  
-  // Use CSS custom properties instead of inline styles to avoid CSP violations
-  highlightOutline.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
-  highlightOutline.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
-  highlightOutline.style.setProperty('--highlight-width', `${rect.width + 8}px`);
-  highlightOutline.style.setProperty('--highlight-height', `${rect.height + 8}px`);
-  
-  document.body.appendChild(highlightOutline);
-  
-  // Remove highlight after animation completes using DOM settling detection
-  setTimeout(() => {
-    element.classList.remove('interactive-highlighted');
-    if (highlightOutline.parentNode) {
-      highlightOutline.parentNode.removeChild(highlightOutline);
-    }
-  }, INTERACTIVE_CONFIG.delays.technical.highlight); // Use configuration instead of magic number
-  
-  return element;
-};
 
-/**
- * Fix navigation requirements by opening and docking the navigation menu
- * This function can be called by the "Fix this" button for navigation requirements
- */
-function fixNavigationRequirements(): Promise<void> {
-  return openAndDockNavigation(undefined, {
-    checkContext: false,   // Always run regardless of element
-    logWarnings: true,     // Verbose logging
-    ensureDocked: true     // Always dock if open
-  });    
-}
+
 
 /**
  * This function is a guard to ensure that the interactive element data is valid.  It can encapsulte
@@ -141,13 +75,7 @@ function isValidInteractiveElement(data: InteractiveElementData): boolean {
  * // Navigation menu is now open and docked if needed
  * ```
  */
-const ensureNavigationOpen = (element: HTMLElement): Promise<void> => {
-  return openAndDockNavigation(element, {
-    checkContext: true,    // Only run if element is in navigation
-    logWarnings: false,    // Silent operation
-    ensureDocked: true     // Always dock if open
-  });
-}
+
 
 /**
  * Interactive steps that use the nav require that it be open.  This function will ensure
@@ -244,6 +172,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   // Initialize state manager
   const stateManager = useMemo(() => new InteractiveStateManager(), []);
   
+  // Initialize navigation manager
+  const navigationManager = useMemo(() => new NavigationManager(), []);
+  
   // Initialize global interactive styles
   useEffect(() => {
     addGlobalInteractiveStyles();
@@ -270,9 +201,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         // Show mode: ensure visibility and highlight, don't click - NO step completion
         for (const element of targetElements) {
           const htmlElement = element as HTMLElement;
-          await ensureNavigationOpen(htmlElement);
-          await ensureElementVisible(htmlElement);
-          await highlight(htmlElement);
+          await navigationManager.ensureNavigationOpen(htmlElement);
+          await navigationManager.ensureElementVisible(htmlElement);
+          await navigationManager.highlight(htmlElement);
         }
         return; // Early return - don't mark as completed in show mode
       }
@@ -280,8 +211,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       // Do mode: ensure visibility then click, don't highlight
       for (const element of targetElements) {
         const htmlElement = element as HTMLElement;
-        await ensureNavigationOpen(htmlElement);
-        await ensureElementVisible(htmlElement);
+        await navigationManager.ensureNavigationOpen(htmlElement);
+        await navigationManager.ensureElementVisible(htmlElement);
         htmlElement.click();
       }
       
@@ -292,8 +223,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     } catch (error) {
       stateManager.handleError(error as Error, 'interactiveFocus', data, false);
     }
-  }, [stateManager]);
-
+    }, [stateManager, navigationManager]);
+  
   const interactiveButton = useCallback(async (data: InteractiveElementData, click: boolean) => {
     stateManager.setState(data, 'running');
 
@@ -303,17 +234,17 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       if (!click) {
         // Show mode: ensure visibility and highlight, don't click - NO step completion
         for (const button of buttons) {
-          await ensureNavigationOpen(button);
-          await ensureElementVisible(button);
-          await highlight(button);
+          await navigationManager.ensureNavigationOpen(button);
+          await navigationManager.ensureElementVisible(button);
+          await navigationManager.highlight(button);
         }
         return; // Early return - don't mark as completed in show mode
       }
 
       // Do mode: ensure visibility then click, don't highlight
       for (const button of buttons) {
-        await ensureNavigationOpen(button);
-        await ensureElementVisible(button);
+        await navigationManager.ensureNavigationOpen(button);
+        await navigationManager.ensureElementVisible(button);
         button.click();
       }
       
@@ -324,7 +255,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     } catch (error) {
       stateManager.handleError(error as Error, 'interactiveButton', data, false);
     }
-  }, [stateManager]);
+  }, [stateManager, navigationManager]);
 
   // Create stable refs for helper functions to avoid circular dependencies
   const activeRefsRef = useRef(new Set<string>());
@@ -353,12 +284,12 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       console.warn(`🎯 FormFill: Target element found:`, targetElement);
       
       // Always ensure navigation is open and element is visible first
-      await ensureNavigationOpen(targetElement);
-      await ensureElementVisible(targetElement);
+      await navigationManager.ensureNavigationOpen(targetElement);
+      await navigationManager.ensureElementVisible(targetElement);
       
       if (!fillForm) {
         // Show mode: only highlight, don't fill the form
-        await highlight(targetElement);
+        await navigationManager.highlight(targetElement);
         return;
       }
 
@@ -480,7 +411,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       stateManager.handleError(error as Error, 'interactiveFormFill', data, false);
     }
     return data;
-  }, [stateManager]);
+  }, [stateManager, navigationManager]);
 
   const interactiveNavigate = useCallback(async (data: InteractiveElementData, navigate: boolean) => {
     stateManager.setState(data, 'running');
@@ -792,6 +723,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     checkRequirementsFromData,
     checkRequirementsWithData,
     executeInteractiveAction, // New direct interface for React components
-    fixNavigationRequirements, // Add the new function to the return object
+    fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(), // Add the new function to the return object
   };
 } 
