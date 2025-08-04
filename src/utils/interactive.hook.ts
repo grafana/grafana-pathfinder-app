@@ -10,6 +10,13 @@ import {
 } from './requirements-checker.utils';
 import { useDOMSettling } from './dom-settling.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { 
+  extractInteractiveDataFromElement, 
+  getAllTextContent, 
+  findButtonByText, 
+  resetValueTracker 
+} from './dom-utils';
+import { InteractiveElementData } from '../types/interactive.types';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -24,111 +31,13 @@ export interface CheckResult {
   context?: any;
 }
 
-export interface InteractiveElementData {
-  // Core interactive attributes
-  reftarget: string;
-  targetaction: string;
-  targetvalue?: string;
-  requirements?: string;
-  objectives?: string;
-  
-  // Element context
-  tagName: string;
-  className?: string;
-  id?: string;
-  textContent?: string;
-  
-  // Position/hierarchy context
-  elementPath?: string; // CSS selector path to element
-  parentTagName?: string;
-  
-  // Timing context
-  timestamp?: number;
-  
-  // Custom data attributes (extensible)
-  customData?: Record<string, string>;
-}
-
-
-
-  /**
-   * Extract interactive data from a DOM element
-   * 
-   * @param element - The DOM element to extract data from
-   * @returns InteractiveElementData object containing all interactive attributes and context
-   * 
-   * @example
-   * ```typescript
-   * const data = extractInteractiveDataFromElement(buttonElement);
-   * console.log(data.reftarget); // "Click me"
-   * console.log(data.targetaction); // "button"
-   * ```
-   */
-  export function extractInteractiveDataFromElement(element: HTMLElement): InteractiveElementData {
-  const customData: Record<string, string> = {};
-  
-  // Extract all data-* attributes except the core ones
-  Array.from(element.attributes).forEach(attr => {
-    if (attr.name.startsWith('data-') && 
-        !['data-reftarget', 'data-targetaction', 'data-targetvalue', 'data-requirements', 'data-objectives'].includes(attr.name)) {
-      const key = attr.name.substring(5); // Remove 'data-' prefix
-      customData[key] = attr.value;
-    }
-  });
-
-  // Extract core attributes with validation
-  const reftarget = element.getAttribute('data-reftarget') || '';
-  const targetaction = element.getAttribute('data-targetaction') || '';
-  const targetvalue = element.getAttribute('data-targetvalue') || undefined;
-  const requirements = element.getAttribute('data-requirements') || undefined;
-  const objectives = element.getAttribute('data-objectives') || undefined;
-  const textContent = element.textContent?.trim() || undefined;
-
-  // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
-  if (reftarget && textContent && reftarget === textContent && reftarget.length > 5) {
-    console.warn(`⚠️ reftarget "${reftarget}" matches element text - check data-reftarget attribute`);
-  }
-
-  return {
-    reftarget: reftarget,
-    targetaction: targetaction,
-    targetvalue: targetvalue,
-    requirements: requirements,
-    objectives: objectives,
-    tagName: element.tagName.toLowerCase(),
-    className: element.className || undefined,
-    id: element.id || undefined,
-    textContent: textContent,
-
-    parentTagName: element.parentElement?.tagName.toLowerCase() || undefined,
-    timestamp: Date.now(),
-    customData: Object.keys(customData).length > 0 ? customData : undefined,
-  };
-}
 
 
 
 
 
-/**
- * Recursively get all text content from an element and its descendants
- */
-function getAllTextContent(element: Element): string {
-  let text = '';
-  
-  // Process all child nodes
-  for (const node of element.childNodes) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      // Add text node content
-      text += (node.textContent || '').trim() + ' ';
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      // Recursively get text from child elements
-      text += getAllTextContent(node as Element) + ' ';
-    }
-  }
-  
-  return text.trim();
-}
+
+
 
 interface UseInteractiveElementsOptions {
   containerRef?: React.RefObject<HTMLElement>;
@@ -145,59 +54,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     addGlobalInteractiveStyles();
   }, []);
 
-  /**
-   * Find button elements that contain the specified text (case-insensitive)
-   * Prioritizes exact matches over partial matches
-   * 
-   * @param targetText - The text to search for in button elements
-   * @returns Array of HTMLButtonElement that match the search criteria
-   * 
-   * @example
-   * ```typescript
-   * const buttons = findButtonByText("Save");
-   * // Returns all buttons containing "Save" text
-   * ```
-   */
-  const findButtonByText = useCallback((targetText: string): HTMLButtonElement[] => {
-    if (!targetText || typeof targetText !== 'string') {
-      return [];
-    }
 
-    // In this special case we want to look through the entire document, since for finding
-    // buttons we want to click, we have to look outside the docs plugin frame.
-    const buttons = document.querySelectorAll('button');
-    const searchText = targetText.toLowerCase().trim();
-    
-    const exactMatches: HTMLButtonElement[] = [];
-    const partialMatches: HTMLButtonElement[] = [];
-    
-    Array.from(buttons).forEach((button) => {
-      // Get all text content from the button and its descendants
-      const allText = getAllTextContent(button).toLowerCase().trim();
-      
-
-      if (!allText) { return; }
-      
-      if (allText === searchText) {
-        // Exact match
-        exactMatches.push(button as HTMLButtonElement);
-      } else if (allText.includes(searchText)) {
-        // Partial match
-        partialMatches.push(button as HTMLButtonElement);
-      }
-    });
-    
-    // Return exact matches if any exist, otherwise return partial matches
-    if (exactMatches.length > 0) {
-      console.warn(`🎯 Found ${exactMatches.length} exact matches for "${targetText}"`);
-      return exactMatches;
-    } else if (partialMatches.length > 0) {
-      console.warn(`🔍 Found ${partialMatches.length} partial matches for "${targetText}"`);
-      return partialMatches;
-    }
-    
-    return [];
-  }, []);
 
   /**
    * Interactive steps that use the nav require that it be open.  This function will ensure
@@ -347,12 +204,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     });
   }, [waitForScrollComplete]);
 
-  const resetValueTracker = useCallback((targetElement: HTMLElement) => {
-    // Reset React's value tracker if present (must be done after setting value)
-    if ((targetElement as any)._valueTracker) {
-      (targetElement as any)._valueTracker.setValue('');
-    }
-  }, []);
+
 
   const highlight = useCallback(async (element: HTMLElement) => {
     // First, ensure navigation is open and element is visible
@@ -491,7 +343,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     } catch (error) {
       handleInteractiveError(error as Error, 'interactiveButton', data, false);
     }
-  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, findButtonByText, handleInteractiveError]);
+  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, handleInteractiveError]);
 
   // Create stable refs for helper functions to avoid circular dependencies
   const activeRefsRef = useRef(new Set<string>());
@@ -702,7 +554,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       handleInteractiveError(error as Error, 'interactiveFormFill', data, false);
     }
     return data;
-  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, resetValueTracker, handleInteractiveError]);
+  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, handleInteractiveError]);
 
   const interactiveNavigate = useCallback(async (data: InteractiveElementData, navigate: boolean) => {
     setInteractiveState(data, 'running');
@@ -981,7 +833,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         error: "Navigation menu not detected - menu may be closed or selector mismatch",
       };
     }
-  }), [findButtonByText]);
+  }), []);
 
   /**
    * Core requirement checking logic using the new pure requirements utility
