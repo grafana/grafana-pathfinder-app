@@ -1,5 +1,4 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { locationService } from '@grafana/runtime';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 import { waitForReactUpdates } from './requirements-checker.hook';
@@ -50,10 +49,20 @@ export interface InteractiveElementData {
 
 
 
-/**
- * Extract interactive data from a DOM element
- */
-export function extractInteractiveDataFromElement(element: HTMLElement): InteractiveElementData {
+  /**
+   * Extract interactive data from a DOM element
+   * 
+   * @param element - The DOM element to extract data from
+   * @returns InteractiveElementData object containing all interactive attributes and context
+   * 
+   * @example
+   * ```typescript
+   * const data = extractInteractiveDataFromElement(buttonElement);
+   * console.log(data.reftarget); // "Click me"
+   * console.log(data.targetaction); // "button"
+   * ```
+   */
+  export function extractInteractiveDataFromElement(element: HTMLElement): InteractiveElementData {
   const customData: Record<string, string> = {};
   
   // Extract all data-* attributes except the core ones
@@ -134,8 +143,17 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   /**
    * Find button elements that contain the specified text (case-insensitive)
    * Prioritizes exact matches over partial matches
+   * 
+   * @param targetText - The text to search for in button elements
+   * @returns Array of HTMLButtonElement that match the search criteria
+   * 
+   * @example
+   * ```typescript
+   * const buttons = findButtonByText("Save");
+   * // Returns all buttons containing "Save" text
+   * ```
    */
-  function findButtonByText(targetText: string): HTMLButtonElement[] {
+  const findButtonByText = useCallback((targetText: string): HTMLButtonElement[] => {
     if (!targetText || typeof targetText !== 'string') {
       return [];
     }
@@ -174,12 +192,21 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
     
     return [];
-  }
+  }, []);
 
   /**
    * Ensure navigation is open if the target element is in the navigation area
+   * 
+   * @param element - The target element that may require navigation to be open
+   * @returns Promise that resolves when navigation is open and accessible
+   * 
+   * @example
+   * ```typescript
+   * await ensureNavigationOpen(targetElement);
+   * // Navigation menu is now open and docked if needed
+   * ```
    */
-  function ensureNavigationOpen(element: HTMLElement): Promise<void> {
+  const ensureNavigationOpen = useCallback((element: HTMLElement): Promise<void> => {
     return new Promise((resolve) => {
       // Check if element is within navigation (common nav selectors)
       const isInNavigation = element.closest('nav, [class*="nav"], [class*="menu"], [class*="sidebar"]') !== null;
@@ -225,12 +252,21 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         resolve();
       }
     });
-  }
+  }, []);
   
   /**
    * Ensure element is visible in the viewport by scrolling it into view
+   * 
+   * @param element - The element to make visible
+   * @returns Promise that resolves when element is visible in viewport
+   * 
+   * @example
+   * ```typescript
+   * await ensureElementVisible(hiddenElement);
+   * // Element is now visible and centered in viewport
+   * ```
    */
-  function ensureElementVisible(element: HTMLElement): Promise<void> {
+  const ensureElementVisible = useCallback((element: HTMLElement): Promise<void> => {
     return new Promise((resolve) => {
       // Check if element is visible in viewport
       const rect = element.getBoundingClientRect();
@@ -257,16 +293,16 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         resolve();
       }
     });
-  }
+  }, []);
 
-  function resetValueTracker(targetElement: HTMLElement) {
+  const resetValueTracker = useCallback((targetElement: HTMLElement) => {
     // Reset React's value tracker if present (must be done after setting value)
     if ((targetElement as any)._valueTracker) {
       (targetElement as any)._valueTracker.setValue('');
     }
-  }
+  }, []);
 
-  async function highlight(element: HTMLElement) {
+  const highlight = useCallback(async (element: HTMLElement) => {
     // First, ensure navigation is open and element is visible
     await ensureNavigationOpen(element);
     await ensureElementVisible(element);
@@ -300,13 +336,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }, 2000); // Match animation duration
     
     return element;
-  }
+  }, [ensureNavigationOpen, ensureElementVisible]);
 
   /**
    * Bridge elements don't need complex state management since React components
    * handle their own state. This simplified version just logs completion.
    */
-  function setInteractiveState(element: HTMLElement | undefined, state: 'idle' | 'running' | 'completed' | 'error') {
+  const setInteractiveState = useCallback((element: HTMLElement | undefined, state: 'idle' | 'running' | 'completed' | 'error') => {
     if (!element) {
       console.error('🚨 setInteractiveState called with no element');
       return;
@@ -327,7 +363,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         document.dispatchEvent(event);
       });
     }
-  }
+  }, []);
 
   const interactiveFocus = useCallback(async (data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => {
     setInteractiveState(clickedElement, 'running');
@@ -363,9 +399,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       console.error("Error in interactiveFocus:", error);
       setInteractiveState(clickedElement, 'error');
     }
-  }, []);
+  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState]);
 
-  const interactiveButton = useCallback(async (data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveButton = useCallback(async (data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => {
     setInteractiveState(clickedElement, 'running');
 
     try {
@@ -396,14 +432,14 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       console.error("Error in interactiveButton:", error);
       setInteractiveState(clickedElement, 'error');
     }
-  }, []);
+  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, findButtonByText]);
 
   // Create stable refs for helper functions to avoid circular dependencies
   const activeRefsRef = useRef(new Set<string>());
   const runInteractiveSequenceRef = useRef<(elements: Element[], showMode: boolean) => Promise<void>>();
   const runStepByStepSequenceRef = useRef<(elements: Element[]) => Promise<void>>();
 
-  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly: boolean, clickedElement?: HTMLElement): Promise<string> => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly: boolean, clickedElement?: HTMLElement): Promise<string> => {
     // This is here so recursion cannot happen
     if(activeRefsRef.current.has(data.reftarget)) {
       return data.reftarget;
@@ -456,7 +492,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       activeRefsRef.current.delete(data.reftarget);
       throw error;
     }
-  }, []);
+  }, [containerRef, setInteractiveState, activeRefsRef, runStepByStepSequenceRef, runInteractiveSequenceRef]);
 
   const interactiveFormFill = useCallback(async (data: InteractiveElementData, fillForm: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
@@ -612,7 +648,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       console.error('Error applying interactive action for selector ' + data.reftarget);
       setInteractiveState(clickedElement, 'error');
     }
-  }, []);
+  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, resetValueTracker]);
 
   const interactiveNavigate = useCallback((data: InteractiveElementData, navigate: boolean, clickedElement?: HTMLElement) => {
     setInteractiveState(clickedElement, 'running');
@@ -653,7 +689,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       console.error('Error in interactiveNavigate:', error);
       setInteractiveState(clickedElement, 'error');
     }
-  }, []);
+  }, [setInteractiveState]);
 
   /**
    * Fix navigation requirements by opening and docking the navigation menu
@@ -876,7 +912,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   /**
    * Create DOM check functions for requirements that need DOM access
    */
-  const domCheckFunctions: DOMCheckFunctions = {
+  const domCheckFunctions = useMemo((): DOMCheckFunctions => ({
     reftargetExistsCHECK: async (reftarget: string, targetAction: string): Promise<CheckResultError> => {
       // For button actions, check if buttons with matching text exist
       if (targetAction === 'button') {
@@ -941,7 +977,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         error: "Navigation menu not detected - menu may be closed or selector mismatch",
       };
     }
-  };
+  }), [findButtonByText]);
 
   /**
    * Core requirement checking logic using the new pure requirements utility
@@ -970,7 +1006,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         context: e.context,
       }))
     };
-  }, []);
+  }, [domCheckFunctions]);
 
   /**
    * Check requirements directly from a DOM element
