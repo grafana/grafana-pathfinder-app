@@ -12,6 +12,7 @@ import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 
 // Import new unified content system
 import { 
@@ -630,7 +631,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   // ContentRenderer renders the content with styling applied via CSS classes
 
   return (
-    <div className={styles.container}>
+    <div id='CombinedLearningJourney' className={styles.container}>
       <div className={styles.topBar}>
         <div className={styles.tabBar}>
           <div className={styles.tabList} ref={tabListRef}>
@@ -951,6 +952,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           return null;
         })()}
       </div>
+      {/* Feedback Button - Inline at the bottom */}
+      <FeedbackButton />
     </div>
   );
 }
