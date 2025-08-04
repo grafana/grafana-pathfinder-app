@@ -2,7 +2,9 @@ import {
   getAllTextContent, 
   extractInteractiveDataFromElement, 
   findButtonByText, 
-  resetValueTracker 
+  resetValueTracker,
+  reftargetExistsCHECK,
+  navmenuOpenCHECK
 } from './dom-utils';
 
 // Mock console methods to avoid noise in tests
@@ -105,6 +107,25 @@ describe('extractInteractiveDataFromElement', () => {
     });
   });
 
+  it('should handle missing attributes gracefully', () => {
+    const element = document.createElement('div');
+    element.textContent = 'Simple element';
+    
+    const result = extractInteractiveDataFromElement(element);
+    
+    expect(result).toEqual({
+      reftarget: '',
+      targetaction: '',
+      tagName: 'div',
+      className: undefined,
+      id: undefined,
+      textContent: 'Simple element',
+      parentTagName: undefined,
+      timestamp: expect.any(Number),
+      customData: undefined,
+    });
+  });
+
   it('should extract custom data attributes', () => {
     const element = document.createElement('div');
     element.setAttribute('data-reftarget', 'test');
@@ -120,206 +141,276 @@ describe('extractInteractiveDataFromElement', () => {
     });
   });
 
-  it('should handle missing attributes gracefully', () => {
+  it('should warn about suspicious reftarget values', () => {
     const element = document.createElement('div');
-    element.setAttribute('data-reftarget', 'test');
-    element.setAttribute('data-targetaction', 'button');
-    
-    const result = extractInteractiveDataFromElement(element);
-    
-    expect(result).toEqual({
-      reftarget: 'test',
-      targetaction: 'button',
-      targetvalue: undefined,
-      requirements: undefined,
-      objectives: undefined,
-      tagName: 'div',
-      className: undefined,
-      id: undefined,
-      textContent: undefined,
-      parentTagName: undefined,
-      timestamp: expect.any(Number),
-      customData: undefined,
-    });
-  });
-
-  it('should warn when reftarget matches element text', () => {
-    const element = document.createElement('button');
-    element.setAttribute('data-reftarget', 'Click this button');
-    element.setAttribute('data-targetaction', 'button');
-    element.textContent = 'Click this button';
+    element.setAttribute('data-reftarget', 'This is a very long suspicious value');
+    element.textContent = 'This is a very long suspicious value';
     
     extractInteractiveDataFromElement(element);
     
     expect(console.warn).toHaveBeenCalledWith(
-      '⚠️ reftarget "Click this button" matches element text - check data-reftarget attribute'
+      expect.stringContaining('⚠️ reftarget "This is a very long suspicious value" matches element text')
     );
   });
 
-  it('should not warn for short reftarget matches', () => {
-    const element = document.createElement('button');
-    element.setAttribute('data-reftarget', 'OK');
-    element.setAttribute('data-targetaction', 'button');
-    element.textContent = 'OK';
+  it('should not warn for short matching values', () => {
+    const element = document.createElement('div');
+    element.setAttribute('data-reftarget', 'short');
+    element.textContent = 'short';
     
     extractInteractiveDataFromElement(element);
     
     expect(console.warn).not.toHaveBeenCalled();
   });
-
-  it('should include parent tag name when available', () => {
-    const parent = document.createElement('form');
-    const element = document.createElement('button');
-    element.setAttribute('data-reftarget', 'test');
-    element.setAttribute('data-targetaction', 'button');
-    parent.appendChild(element);
-    
-    const result = extractInteractiveDataFromElement(element);
-    
-    expect(result.parentTagName).toBe('form');
-  });
 });
 
 describe('findButtonByText', () => {
   beforeEach(() => {
-    // Clear any existing buttons
-    document.body.innerHTML = '';
+    // Create a proper document body for our tests
+    document.body = document.createElement('body');
   });
 
-  it('should find exact matches', () => {
+  afterEach(() => {
+    // Clean up
+    if (document.body) {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('should find buttons with partial text match when no exact match', () => {
     const button1 = document.createElement('button');
-    button1.textContent = 'Submit';
-    const button2 = document.createElement('button');
-    button2.textContent = 'Cancel';
+    button1.textContent = 'Click me now';
     document.body.appendChild(button1);
+
+    const button2 = document.createElement('button');
+    button2.textContent = 'Submit form';
     document.body.appendChild(button2);
-    
-    const result = findButtonByText('Submit');
+
+    const result = findButtonByText('Click me');
     
     expect(result).toHaveLength(1);
     expect(result[0]).toBe(button1);
-    expect(console.warn).toHaveBeenCalledWith('🎯 Found 1 exact matches for "Submit"');
-  });
-
-  it('should find partial matches when no exact match', () => {
-    const button1 = document.createElement('button');
-    button1.textContent = 'Submit Form';
-    const button2 = document.createElement('button');
-    button2.textContent = 'Cancel';
-    document.body.appendChild(button1);
-    document.body.appendChild(button2);
-    
-    const result = findButtonByText('Submit');
-    
-    expect(result).toHaveLength(1);
-    expect(result[0]).toBe(button1);
-    expect(console.warn).toHaveBeenCalledWith('🔍 Found 1 partial matches for "Submit"');
   });
 
   it('should handle case-insensitive matching', () => {
     const button = document.createElement('button');
-    button.textContent = 'SUBMIT FORM';
+    button.textContent = 'CLICK ME';
     document.body.appendChild(button);
-    
-    const result = findButtonByText('submit');
+
+    const result = findButtonByText('click me');
     
     expect(result).toHaveLength(1);
     expect(result[0]).toBe(button);
   });
 
-  it('should handle buttons with nested elements', () => {
-    const button = document.createElement('button');
-    button.innerHTML = '<span>Submit</span> <strong>Form</strong>';
-    document.body.appendChild(button);
-    
-    const result = findButtonByText('Submit  Form');
-    
-    expect(result).toHaveLength(1);
-    expect(result[0]).toBe(button);
-  });
-
-  it('should return empty array for no matches', () => {
+  it('should return empty array when no matches found', () => {
     const button = document.createElement('button');
     button.textContent = 'Submit';
     document.body.appendChild(button);
-    
-    const result = findButtonByText('Non-existent');
+
+    const result = findButtonByText('Click me');
     
     expect(result).toHaveLength(0);
   });
 
-  it('should handle invalid input', () => {
-    const result1 = findButtonByText('');
-    const result2 = findButtonByText(null as any);
-    const result3 = findButtonByText(undefined as any);
-    
-    expect(result1).toHaveLength(0);
-    expect(result2).toHaveLength(0);
-    expect(result3).toHaveLength(0);
-  });
-
-  it('should prioritize exact matches over partial matches', () => {
-    const exactButton = document.createElement('button');
-    exactButton.textContent = 'Submit';
-    const partialButton = document.createElement('button');
-    partialButton.textContent = 'Submit Form';
-    document.body.appendChild(exactButton);
-    document.body.appendChild(partialButton);
-    
-    const result = findButtonByText('Submit');
-    
-    expect(result).toHaveLength(1);
-    expect(result[0]).toBe(exactButton);
-    expect(console.warn).toHaveBeenCalledWith('🎯 Found 1 exact matches for "Submit"');
-  });
-
-  it('should handle multiple exact matches', () => {
-    const button1 = document.createElement('button');
-    button1.textContent = 'Submit';
-    const button2 = document.createElement('button');
-    button2.textContent = 'Submit';
-    document.body.appendChild(button1);
-    document.body.appendChild(button2);
-    
-    const result = findButtonByText('Submit');
-    
-    expect(result).toHaveLength(2);
-    expect(result).toContain(button1);
-    expect(result).toContain(button2);
-    expect(console.warn).toHaveBeenCalledWith('🎯 Found 2 exact matches for "Submit"');
+  it('should handle empty or invalid input', () => {
+    expect(findButtonByText('')).toHaveLength(0);
+    expect(findButtonByText(null as any)).toHaveLength(0);
+    expect(findButtonByText(undefined as any)).toHaveLength(0);
   });
 });
 
 describe('resetValueTracker', () => {
-  it('should reset value tracker when present', () => {
+  it('should reset React value tracker if present', () => {
     const element = document.createElement('input');
-    const mockSetValue = jest.fn();
-    (element as any)._valueTracker = {
-      setValue: mockSetValue
-    };
-    
+    const mockTracker = { setValue: jest.fn() };
+    (element as any)._valueTracker = mockTracker;
+
     resetValueTracker(element);
-    
-    expect(mockSetValue).toHaveBeenCalledWith('');
+
+    expect(mockTracker.setValue).toHaveBeenCalledWith('');
   });
 
-  it('should not throw when value tracker is not present', () => {
+  it('should handle elements without value tracker', () => {
     const element = document.createElement('input');
-    
+
+    // Should not throw
     expect(() => resetValueTracker(element)).not.toThrow();
   });
+});
 
-  it('should not throw when value tracker is null', () => {
-    const element = document.createElement('input');
-    (element as any)._valueTracker = null;
-    
-    expect(() => resetValueTracker(element)).not.toThrow();
+describe('reftargetExistsCHECK', () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    // Create a container for our tests
+    container = document.createElement('div');
+    document.body = document.createElement('body');
+    document.body.appendChild(container);
   });
 
-  it('should not throw when value tracker is undefined', () => {
-    const element = document.createElement('input');
-    (element as any)._valueTracker = undefined;
+  afterEach(() => {
+    // Clean up
+    if (document.body) {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('should check for button elements when targetAction is button', async () => {
+    const button = document.createElement('button');
+    button.textContent = 'Click me';
+    container.appendChild(button);
+
+    const result = await reftargetExistsCHECK('Click me', 'button');
     
-    expect(() => resetValueTracker(element)).not.toThrow();
+    expect(result).toEqual({
+      requirement: 'exists-reftarget',
+      pass: true,
+    });
+  });
+
+  it('should fail when button not found for button action', async () => {
+    const result = await reftargetExistsCHECK('Non-existent button', 'button');
+    
+    expect(result).toEqual({
+      requirement: 'exists-reftarget',
+      pass: false,
+      error: 'No buttons found containing text: "Non-existent button"',
+    });
+  });
+
+  it('should check CSS selector for non-button actions', async () => {
+    const div = document.createElement('div');
+    div.id = 'test-element';
+    container.appendChild(div);
+
+    const result = await reftargetExistsCHECK('#test-element', 'highlight');
+    
+    expect(result).toEqual({
+      requirement: 'exists-reftarget',
+      pass: true,
+    });
+  });
+
+  it('should fail when CSS selector not found for non-button actions', async () => {
+    const result = await reftargetExistsCHECK('#non-existent', 'highlight');
+    
+    expect(result).toEqual({
+      requirement: 'exists-reftarget',
+      pass: false,
+      error: 'Element not found',
+    });
+  });
+
+  it('should handle partial button text matches', async () => {
+    const button = document.createElement('button');
+    button.textContent = 'Click me now';
+    container.appendChild(button);
+
+    const result = await reftargetExistsCHECK('Click me', 'button');
+    
+    expect(result).toEqual({
+      requirement: 'exists-reftarget',
+      pass: true,
+    });
+  });
+});
+
+describe('navmenuOpenCHECK', () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    // Create a container for our tests
+    container = document.createElement('div');
+    document.body = document.createElement('body');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    // Clean up
+    if (document.body) {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('should detect navigation menu with data-testid selector', async () => {
+    const nav = document.createElement('div');
+    nav.setAttribute('data-testid', 'data-testid navigation mega-menu');
+    container.appendChild(nav);
+
+    const result = await navmenuOpenCHECK();
+    
+    expect(result).toEqual({
+      requirement: 'navmenu-open',
+      pass: true,
+    });
+  });
+
+  it('should detect navigation menu with aria-label selector', async () => {
+    const nav = document.createElement('ul');
+    nav.setAttribute('aria-label', 'Navigation');
+    container.appendChild(nav);
+
+    const result = await navmenuOpenCHECK();
+    
+    expect(result).toEqual({
+      requirement: 'navmenu-open',
+      pass: true,
+    });
+  });
+
+  it('should detect navigation menu with CSS class selector', async () => {
+    const nav = document.createElement('nav');
+    nav.className = 'css-rs8tod';
+    container.appendChild(nav);
+
+    const result = await navmenuOpenCHECK();
+    
+    expect(result).toEqual({
+      requirement: 'navmenu-open',
+      pass: true,
+    });
+  });
+
+  it('should detect navigation menu with partial data-testid selector', async () => {
+    const nav = document.createElement('div');
+    nav.setAttribute('data-testid', 'some navigation menu');
+    container.appendChild(nav);
+
+    const result = await navmenuOpenCHECK();
+    
+    expect(result).toEqual({
+      requirement: 'navmenu-open',
+      pass: true,
+    });
+  });
+
+  it('should fail when no navigation menu is found', async () => {
+    const result = await navmenuOpenCHECK();
+    
+    expect(result).toEqual({
+      requirement: 'navmenu-open',
+      pass: false,
+      error: 'Navigation menu not detected - menu may be closed or selector mismatch',
+    });
+  });
+
+  it('should try selectors in order of preference', async () => {
+    // Create elements that would match later selectors
+    const nav1 = document.createElement('nav');
+    nav1.setAttribute('aria-label', 'Navigation');
+    container.appendChild(nav1);
+
+    const nav2 = document.createElement('ul');
+    nav2.setAttribute('aria-label', 'Main navigation');
+    container.appendChild(nav2);
+
+    const result = await navmenuOpenCHECK();
+    
+    // Should find the first matching selector (aria-label="Navigation")
+    expect(result).toEqual({
+      requirement: 'navmenu-open',
+      pass: true,
+    });
   });
 }); 

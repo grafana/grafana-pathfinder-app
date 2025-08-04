@@ -4,12 +4,9 @@ import { waitForReactUpdates } from './requirements-checker.hook';
 import { 
   checkRequirements, 
   RequirementsCheckOptions, 
-  CheckResultError,
-  DOMCheckFunctions 
 } from './requirements-checker.utils';
 import { 
   extractInteractiveDataFromElement, 
-  findButtonByText, 
 } from './dom-utils';
 import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
@@ -150,76 +147,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate]);
 
   /**
-   * Create DOM check functions for requirements that need DOM access
-   */
-    const domCheckFunctions = useMemo((): DOMCheckFunctions => ({
-      reftargetExistsCHECK: async (reftarget: string, targetAction: string): Promise<CheckResultError> => {
-        // For button actions, check if buttons with matching text exist
-        if (targetAction === 'button') {
-          const buttons = findButtonByText(reftarget);
-          
-          if (buttons.length > 0) {
-            return {
-              requirement: 'exists-reftarget',
-              pass: true,
-            };
-          } else {
-            return {
-              requirement: 'exists-reftarget',
-              pass: false,
-              error: `No buttons found containing text: "${reftarget}"`,
-            };
-          }
-        }
-        
-        // For other actions, check if the CSS selector matches an element
-        const targetElement = document.querySelector(reftarget);
-        if (targetElement) {
-          return {
-            requirement: 'exists-reftarget',
-            pass: true,
-          };
-        } 
-          
-        return {
-          requirement: 'exists-reftarget',
-          pass: false,
-          error: "Element not found",
-        };
-      },
-  
-      navmenuOpenCHECK: async (): Promise<CheckResultError> => {
-        // Based on your HTML structure, try these selectors in order of preference
-        const selectorsToTry = [
-          // Most specific to your Grafana version
-          'div[data-testid="data-testid navigation mega-menu"]',
-          'ul[aria-label="Navigation"]',
-          'nav.css-rs8tod',
-          // Fallbacks for other versions
-          'div[data-testid*="navigation"]',
-          'nav[aria-label="Navigation"]',
-          'ul[aria-label="Main navigation"]'
-        ];
-        
-        for (const selector of selectorsToTry) {
-          const element = document.querySelector(selector);
-          if (element) {
-            return {
-              requirement: 'navmenu-open',
-              pass: true,
-            };
-          }
-        }
-  
-        return {
-          requirement: 'navmenu-open',
-          pass: false,
-          error: "Navigation menu not detected - menu may be closed or selector mismatch",
-        };
-      }
-    }), []);
-
-  /**
    * Core requirement checking logic using the new pure requirements utility
    * Replaces the mock element anti-pattern with direct requirements checking
    */
@@ -233,7 +160,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     };
 
     // Use the new pure requirements checker
-    const result = await checkRequirements(options, domCheckFunctions);
+    const result = await checkRequirements(options);
     
     // Convert to the expected format for backward compatibility
     return {
@@ -246,7 +173,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         context: e.context,
       }))
     };
-  }, [domCheckFunctions]);
+  }, []);
 
   // SequenceManager instance - moved here to be available for interactiveSequence
   const sequenceManager = useMemo(() => new SequenceManager(

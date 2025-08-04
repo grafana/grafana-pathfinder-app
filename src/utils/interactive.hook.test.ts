@@ -13,7 +13,6 @@ jest.mock('./requirements-checker.utils', () => ({
   checkRequirements: jest.fn(),
   RequirementsCheckOptions: jest.fn(),
   CheckResultError: jest.fn(),
-  DOMCheckFunctions: jest.fn(),
 }));
 
 describe('useInteractiveElements', () => {
