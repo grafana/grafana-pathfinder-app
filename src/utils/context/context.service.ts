@@ -124,6 +124,23 @@ export class ContextService {
           // No-op for logging backend
         },
         addEvent: (event) => {
+          // Log all supported events with @context/ prefix to analyze Cloud differences
+          console.warn(`@context/ EchoSrv Event:`, {
+            type: event.type,
+            payload: event.payload,
+            meta: {
+              // Log key meta info without flooding
+              path: event.meta.path,
+              url: event.meta.url,
+              userId: event.meta.userId,
+              userLogin: event.meta.userLogin,
+              sessionId: event.meta.sessionId,
+              timestamp: event.meta.ts,
+              // Include full meta for reference but collapsed
+              fullMeta: event.meta
+            }
+          });
+
           // Phase 2: Capture datasource configuration events
           if (event.type === 'interaction') {
             // Primary: New datasource selection
