@@ -186,4 +186,4 @@ export class FormFillHandler {
     await this.waitForReactUpdates();
     this.stateManager.setState(data, 'completed');
   }
-} 
+}

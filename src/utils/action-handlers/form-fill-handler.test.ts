@@ -19,8 +19,10 @@ const mockStateManager = {
 const mockNavigationManager = {
   ensureNavigationOpen: jest.fn().mockResolvedValue(undefined),
   ensureElementVisible: jest.fn().mockResolvedValue(undefined),
-  highlight: jest.fn().mockResolvedValue(undefined)
-} as unknown as NavigationManager;
+  highlight: jest.fn().mockResolvedValue(undefined),
+  fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
+  openAndDockNavigation: jest.fn().mockResolvedValue(undefined)
+} as jest.Mocked<NavigationManager>;
 
 const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
 
@@ -163,7 +165,7 @@ describe('FormFillHandler', () => {
         ...mockElement,
         type: 'checkbox',
         checked: false
-      } as unknown as HTMLElement;
+      } as unknown as HTMLInputElement;
       mockQuerySelectorAll.mockReturnValue([checkboxElement]);
 
       await formFillHandler.execute(mockData, true);
@@ -176,7 +178,7 @@ describe('FormFillHandler', () => {
         ...mockElement,
         type: 'checkbox',
         checked: true
-      } as unknown as HTMLElement;
+      } as unknown as HTMLInputElement;
       const uncheckedData = { ...mockData, targetvalue: 'false' };
       mockQuerySelectorAll.mockReturnValue([checkboxElement]);
 
@@ -190,7 +192,7 @@ describe('FormFillHandler', () => {
         ...mockElement,
         type: 'radio',
         checked: false
-      } as unknown as HTMLElement;
+      } as unknown as HTMLInputElement;
       mockQuerySelectorAll.mockReturnValue([radioElement]);
 
       await formFillHandler.execute(mockData, true);
@@ -385,4 +387,4 @@ describe('FormFillHandler', () => {
       );
     });
   });
-}); 
+});

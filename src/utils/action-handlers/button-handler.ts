@@ -50,4 +50,4 @@ export class ButtonHandler {
     await this.waitForReactUpdates();
     this.stateManager.setState(data, 'completed');
   }
-} 
+}

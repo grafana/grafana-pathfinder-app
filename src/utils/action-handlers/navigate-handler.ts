@@ -55,4 +55,4 @@ export class NavigateHandler {
     await this.waitForReactUpdates();
     this.stateManager.setState(data, 'completed');
   }
-} 
+}

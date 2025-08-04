@@ -51,4 +51,4 @@ export class FocusHandler {
     await this.waitForReactUpdates();
     this.stateManager.setState(data, 'completed');
   }
-} 
+}

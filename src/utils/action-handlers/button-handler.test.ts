@@ -25,15 +25,15 @@ const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
 
 describe('ButtonHandler', () => {
   let buttonHandler: ButtonHandler;
-  let mockButtons: HTMLElement[];
+  let mockButtons: HTMLButtonElement[];
 
   beforeEach(() => {
     jest.clearAllMocks();
     
     // Create mock buttons
     mockButtons = [
-      { click: jest.fn() } as unknown as HTMLElement,
-      { click: jest.fn() } as unknown as HTMLElement
+      { click: jest.fn() } as unknown as HTMLButtonElement,
+      { click: jest.fn() } as unknown as HTMLButtonElement
     ];
     
     mockFindButtonByText.mockReturnValue(mockButtons);
@@ -93,4 +93,4 @@ describe('ButtonHandler', () => {
       );
     });
   });
-}); 
+});

@@ -130,4 +130,4 @@ describe('FocusHandler', () => {
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });
   });
-}); 
+});

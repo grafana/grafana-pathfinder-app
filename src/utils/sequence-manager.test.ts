@@ -39,7 +39,6 @@ const createMockInteractiveData = (overrides: Partial<InteractiveElementData> = 
 describe('SequenceManager', () => {
   let sequenceManager: SequenceManager;
   let mockElements: Element[];
-  let mockInteractiveData: InteractiveElementData;
   let setTimeoutSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -64,7 +63,6 @@ describe('SequenceManager', () => {
       createMockElement(),
       createMockElement()
     ];
-    mockInteractiveData = createMockInteractiveData();
     
     // Create sequence manager instance
     sequenceManager = new SequenceManager(
@@ -359,4 +357,4 @@ describe('SequenceManager', () => {
       );
     });
   });
-}); 
+});

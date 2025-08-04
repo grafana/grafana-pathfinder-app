@@ -177,4 +177,4 @@ describe('NavigateHandler', () => {
       );
     });
   });
-}); 
+});
