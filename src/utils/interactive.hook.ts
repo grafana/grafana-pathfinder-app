@@ -194,6 +194,92 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     return [];
   }, []);
 
+  const openAndDockNavigation = async (
+    element?: HTMLElement,
+    options: {
+      checkContext?: boolean;
+      logWarnings?: boolean;
+      ensureDocked?: boolean;
+    } = {}
+  ): Promise<void> => {
+    const {
+      checkContext = false,
+      logWarnings = true,
+      ensureDocked = true
+    } = options;
+  
+    return new Promise((resolve) => {
+      // Check if element is within navigation (only if checkContext is true)
+      if (checkContext && element) {
+        const isInNavigation = element.closest('nav, [class*="nav"], [class*="menu"], [class*="sidebar"]') !== null;
+        if (!isInNavigation) {
+          resolve();
+          return;
+        }
+      }
+      
+      // Look for the mega menu toggle button
+      const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
+      if (!megaMenuToggle) {
+        if (logWarnings) {
+          console.warn('⚠️ Mega menu toggle button not found');
+        }
+        resolve();
+        return;
+      }
+      
+      // Check if navigation appears to be closed
+      const ariaExpanded = megaMenuToggle.getAttribute('aria-expanded');
+      const isNavClosed = ariaExpanded === 'false' || ariaExpanded === null;
+      
+      if (isNavClosed) {
+        if (logWarnings) {
+          console.warn('�� Opening navigation menu for interactive element access');
+        }
+        megaMenuToggle.click();
+        
+        setTimeout(() => {
+          const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
+          if (dockMenuButton) {
+            if (logWarnings) {
+              console.warn('�� Docking navigation menu to keep it in place');
+            }
+            dockMenuButton.click();
+            
+            // Give the dock animation time to complete
+            setTimeout(() => {
+              resolve();
+            }, 200);
+          } else {
+            if (logWarnings) {
+              console.warn('⚠️ Dock menu button not found, navigation will remain in modal mode');
+            }
+            resolve();
+          }
+        }, 300);
+      } else if (ensureDocked) {
+        // Navigation is already open, just try to dock it if needed
+        const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
+        if (dockMenuButton) {
+          if (logWarnings) {
+            console.warn('�� Navigation already open, ensuring it is docked');
+          }
+          dockMenuButton.click();
+          setTimeout(() => {
+            resolve();
+          }, 200);
+        } else {
+          if (logWarnings) {
+            console.warn('✅ Navigation already open and accessible');
+          }
+          resolve();
+        }
+      } else {
+        resolve();
+      }
+    });
+  };
+
   /**
    * Ensure navigation is open if the target element is in the navigation area
    * 
@@ -207,50 +293,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    * ```
    */
   const ensureNavigationOpen = useCallback((element: HTMLElement): Promise<void> => {
-    return new Promise((resolve) => {
-      // Check if element is within navigation (common nav selectors)
-      const isInNavigation = element.closest('nav, [class*="nav"], [class*="menu"], [class*="sidebar"]') !== null;
-      
-      if (!isInNavigation) {
-        resolve();
-        return;
-      }
-      
-      // Look for the mega menu toggle button
-      const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
-      if (!megaMenuToggle) {
-        resolve();
-        return;
-      }
-      
-      // Check if navigation appears to be closed (button has certain attributes/classes that indicate closed state)
-      const ariaExpanded = megaMenuToggle.getAttribute('aria-expanded');
-      const isNavClosed = ariaExpanded === 'false' || ariaExpanded === null;
-      
-      if (isNavClosed) {
-        console.warn('🚪 Opening navigation menu for interactive element access');
-        megaMenuToggle.click();
-        
-        // Give the navigation time to open, then dock it
-        setTimeout(() => {
-          // Look for the dock menu button and click it to keep the menu docked
-          const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
-          if (dockMenuButton) {
-            console.warn('📌 Docking navigation menu to keep it in place');
-            dockMenuButton.click();
-            
-            // Give the dock animation time to complete
-            setTimeout(() => {
-              resolve();
-            }, 200);
-          } else {
-            console.warn('⚠️ Dock menu button not found, navigation will remain in modal mode');
-            resolve();
-          }
-        }, 300);
-      } else {
-        resolve();
-      }
+    return openAndDockNavigation(element, {
+      checkContext: true,    // Only run if element is in navigation
+      logWarnings: false,    // Silent operation
+      ensureDocked: true     // Always dock if open
     });
   }, []);
   
@@ -697,54 +743,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    * This function can be called by the "Fix this" button for navigation requirements
    */
   function fixNavigationRequirements(): Promise<void> {
-    return new Promise((resolve) => {
-      // Look for the mega menu toggle button
-      const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
-      if (!megaMenuToggle) {
-        console.warn('⚠️ Mega menu toggle button not found');
-        resolve();
-        return;
-      }
-      
-      // Check if navigation is already open
-      const ariaExpanded = megaMenuToggle.getAttribute('aria-expanded');
-      const isNavClosed = ariaExpanded === 'false' || ariaExpanded === null;
-      
-      if (isNavClosed) {
-        console.warn('🔧 Fixing navigation: Opening and docking menu');
-        megaMenuToggle.click();
-        
-        // Give the navigation time to open, then dock it
-        setTimeout(() => {
-          const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
-          if (dockMenuButton) {
-            console.warn('📌 Docking navigation menu to keep it in place');
-            dockMenuButton.click();
-            
-            // Give the dock animation time to complete
-            setTimeout(() => {
-              resolve();
-            }, 200);
-          } else {
-            console.warn('⚠️ Dock menu button not found, navigation opened but not docked');
-            resolve();
-          }
-        }, 300);
-      } else {
-        // Navigation is already open, just try to dock it if needed
-        const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
-        if (dockMenuButton) {
-          console.warn('📌 Navigation already open, ensuring it is docked');
-          dockMenuButton.click();
-          setTimeout(() => {
-            resolve();
-          }, 200);
-        } else {
-          console.warn('✅ Navigation already open and accessible');
-          resolve();
-        }
-      }
-    });
+    return openAndDockNavigation(undefined, {
+      checkContext: false,   // Always run regardless of element
+      logWarnings: true,     // Verbose logging
+      ensureDocked: true     // Always dock if open
+    });    
   }
 
   /**
