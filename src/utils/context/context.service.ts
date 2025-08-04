@@ -1,4 +1,4 @@
-import { getBackendSrv, config, locationService } from '@grafana/runtime';
+import { getBackendSrv, config, locationService, getEchoSrv, EchoEventType } from '@grafana/runtime';
 import { getRecommenderServiceUrl } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import { 
@@ -15,10 +15,186 @@ import {
 } from './context.types';
 
 export class ContextService {
+  private static echoLoggingInitialized = false;
+  private static currentDatasourceType: string | null = null;
+  private static currentVisualizationType: string | null = null;
+  
+  // Event buffer to handle missed events when plugin is closed/reopened
+  private static eventBuffer: Array<{
+    datasourceType?: string;
+    visualizationType?: string;
+    timestamp: number;
+    source: string;
+  }> = [];
+  private static readonly BUFFER_SIZE = 10;
+  private static readonly BUFFER_TTL = 300000; // 5 minutes
+  
+  // Simple event system for context changes
+  private static changeListeners: Set<() => void> = new Set();
+
+  /**
+   * Subscribe to context changes (for hooks to refresh when EchoSrv events occur)
+   */
+  public static onContextChange(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    return () => {
+      this.changeListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Notify all listeners that context has changed
+   */
+  private static notifyContextChange(): void {
+    this.changeListeners.forEach(listener => {
+      try {
+        listener();
+      } catch (error) {
+        console.error('@context/ Error in context change listener:', error);
+      }
+    });
+  }
+
+  /**
+   * Add event to buffer for handling missed events when plugin is closed/reopened
+   */
+  private static addToEventBuffer(event: {
+    datasourceType?: string;
+    visualizationType?: string;
+    timestamp: number;
+    source: string;
+  }): void {
+    // Clean expired events
+    const now = Date.now();
+    this.eventBuffer = this.eventBuffer.filter(e => now - e.timestamp < this.BUFFER_TTL);
+    
+    // Add new event
+    this.eventBuffer.push(event);
+    
+    // Keep buffer size manageable
+    if (this.eventBuffer.length > this.BUFFER_SIZE) {
+      this.eventBuffer = this.eventBuffer.slice(-this.BUFFER_SIZE);
+    }
+    
+    // Notify listeners of context change
+    this.notifyContextChange();
+  }
+
+  /**
+   * Initialize context from recent events (called when plugin reopens)
+   */
+  public static initializeFromRecentEvents(): void {
+    const now = Date.now();
+    
+    // Find most recent datasource and visualization events
+    const recentDatasourceEvent = this.eventBuffer
+      .filter(e => e.datasourceType && now - e.timestamp < this.BUFFER_TTL)
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
+      
+    const recentVizEvent = this.eventBuffer
+      .filter(e => e.visualizationType && now - e.timestamp < this.BUFFER_TTL)
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
+    
+    if (recentDatasourceEvent) {
+      this.currentDatasourceType = recentDatasourceEvent.datasourceType!;
+    }
+    
+    if (recentVizEvent) {
+      this.currentVisualizationType = recentVizEvent.visualizationType!;
+    }
+  }
+
+  /**
+   * Initialize EchoSrv event logging (Phase 1: Understanding what events we get)
+   * Now designed to be called at plugin startup
+   */
+  public static initializeEchoLogging(): void {
+    if (this.echoLoggingInitialized) {
+      return;
+    }
+
+    try {
+      const echoSrv = getEchoSrv();
+      
+      // Add our logging backend
+      echoSrv.addBackend({
+        supportedEvents: [EchoEventType.Interaction, EchoEventType.Pageview, EchoEventType.MetaAnalytics],
+        options: { name: 'context-service-logger' },
+        flush: () => {
+          // No-op for logging backend
+        },
+        addEvent: (event) => {
+          // Phase 2: Capture datasource configuration events
+          if (event.type === 'interaction') {
+            // Primary: New datasource selection
+            if (event.payload?.interactionName === 'grafana_ds_add_datasource_clicked') {
+              const pluginId = event.payload?.properties?.plugin_id;
+              if (pluginId) {
+                this.currentDatasourceType = pluginId;
+                this.addToEventBuffer({ datasourceType: pluginId, timestamp: Date.now(), source: 'add' });
+              }
+            }
+            
+            // Workaround: Existing datasource edit detection via "Save & Test"
+            // TODO: Find a better event for datasource edit page loads instead of relying on Save & Test
+            // This approach only works after user clicks Save & Test, not on initial page load
+            if (event.payload?.interactionName === 'grafana_ds_test_datasource_clicked') {
+              const pluginId = event.payload?.properties?.plugin_id;
+              if (pluginId) {
+                this.currentDatasourceType = pluginId;
+                this.addToEventBuffer({ datasourceType: pluginId, timestamp: Date.now(), source: 'test' });
+              }
+            }
+            
+            // Phase 3: Dashboard datasource picker - when user selects datasource for querying
+            if (event.payload?.interactionName === 'dashboards_dspicker_clicked') {
+              const dsType = event.payload?.properties?.ds_type;
+              if (dsType) {
+                this.currentDatasourceType = dsType;
+                this.addToEventBuffer({ datasourceType: dsType, timestamp: Date.now(), source: 'dashboard-picker' });
+              }
+            }
+            
+            // Phase 4: Dashboard panel/visualization type picker
+            if (event.payload?.interactionName === 'dashboards_panel_plugin_picker_clicked') {
+              const pluginId = event.payload?.properties?.plugin_id;
+              if (pluginId && event.payload?.properties?.item === 'select_panel_plugin') {
+                this.currentVisualizationType = pluginId;
+                this.addToEventBuffer({ visualizationType: pluginId, timestamp: Date.now(), source: 'panel-picker' });
+              }
+            }
+          }
+          
+          // Phase 3: Explore query execution - detect active datasource usage
+          if (event.type === 'meta-analytics' && event.payload?.eventName === 'data-request') {
+            const datasourceType = event.payload?.datasourceType;
+            const source = event.payload?.source;
+            if (datasourceType && source) {
+              this.currentDatasourceType = datasourceType;
+              this.addToEventBuffer({ datasourceType, timestamp: Date.now(), source: `${source}-query` });
+            }
+          }
+        }
+      });
+
+      this.echoLoggingInitialized = true;
+      
+    } catch (error) {
+      console.error('@context/ Failed to initialize EchoSrv logging:', error);
+    }
+  }
+
   /**
    * Main method to get all context data
    */
   static async getContextData(): Promise<ContextData> {
+    // Ensure EchoSrv is initialized (fallback if onPluginStart wasn't called)
+    this.initializeEchoLogging();
+    
+    // Initialize from recent events if plugin was reopened
+    if (!this.currentDatasourceType && !this.currentVisualizationType) {
+      this.initializeFromRecentEvents();
+    }
     const location = locationService.getLocation();
     const currentPath = location.pathname;
     const currentUrl = `${location.pathname}${location.search}${location.hash}`;
@@ -52,7 +228,7 @@ export class ContextService {
       tags,
       isLoading: false,
       recommendationsError: null,
-      visualizationType: this.detectVisualizationType(),
+      visualizationType: this.getVisualizationTypeForContext(pathSegments, searchParams),
       grafanaVersion: this.getGrafanaVersion(),
       theme: config.theme2.isDark ? 'dark' : 'light',
       timestamp: new Date().toISOString(),
@@ -259,16 +435,19 @@ export class ContextService {
       tags.push(`${entity}:${action}`);
     }
 
-    // Add visualization type if detected
-    const vizType = this.detectVisualizationType();
-    if (vizType) {
+    // Add visualization type from EchoSrv events (Phase 4: Echo-based detection)
+    // Only include viz type when user is creating or editing visualizations
+    const isCreatingOrEditingViz = this.isCreatingOrEditingVisualization(pathSegments, searchParams);
+    if (isCreatingOrEditingViz) {
+      const echoDetectedVizType = this.getDetectedVisualizationType();
+      const vizType = echoDetectedVizType || 'timeseries'; // Default to timeseries if no event detected
       tags.push(`panel-type:${vizType}`);
     }
 
-    // Add selected datasource if detected
-    const selectedDatasource = this.detectSelectedDatasource();
-    if (selectedDatasource) {
-      tags.push(`selected-datasource:${selectedDatasource}`);
+    // Add selected datasource from EchoSrv events (Phase 2: Echo-based detection)  
+    const echoDetectedDatasource = this.getDetectedDatasourceType();
+    if (echoDetectedDatasource) {
+      tags.push(`selected-datasource:${echoDetectedDatasource}`);
     }
 
     // Add specific context tags
@@ -302,48 +481,16 @@ export class ContextService {
       }
     }
 
-    // Handle direct datasource pages
+    // Handle direct datasource pages using EchoSrv detection (Phase 2: Simplified approach)
     if (entity === 'datasource') {
-      let datasourceTypeFound = false;
-      
-      if (pathSegments[1] === 'edit' && searchParams.id) {
-        // Standard datasource edit: /datasources/edit?id=123
+      // Use EchoSrv-detected datasource type first
+      if (echoDetectedDatasource) {
+        tags.push(`datasource-type:${echoDetectedDatasource.toLowerCase()}`);
+      } else if (pathSegments[1] === 'edit' && searchParams.id) {
+        // Fallback to API lookup only for existing datasource edit pages
         const selectedDs = dataSources.find(ds => String(ds.id) === String(searchParams.id));
         if (selectedDs) {
           tags.push(`datasource-type:${selectedDs.type.toLowerCase()}`);
-          datasourceTypeFound = true;
-        }
-      } else if (pathSegments[0] === 'connections' && pathSegments[2] === 'edit' && pathSegments[3]) {
-        // Special case: /connections/datasources/edit/uid
-        const datasourceUid = pathSegments[3];
-        
-        // Try to find datasource by UID or fallback methods
-        const selectedDs = dataSources.find(ds => 
-          String(ds.id) === datasourceUid ||
-          ds.name?.toLowerCase().includes(datasourceUid.toLowerCase())
-        );
-        
-        if (selectedDs) {
-          tags.push(`datasource-type:${selectedDs.type.toLowerCase()}`);
-          datasourceTypeFound = true;
-        }
-      } else if (pathSegments[1] && pathSegments[1] !== 'new') {
-        // Handle other specific datasource pages where we can identify the type
-        const selectedDs = dataSources.find(ds => 
-          String(ds.id) === pathSegments[1] || 
-          ds.name.toLowerCase() === pathSegments[1].toLowerCase()
-        );
-        if (selectedDs) {
-          tags.push(`datasource-type:${selectedDs.type.toLowerCase()}`);
-          datasourceTypeFound = true;
-        }
-      }
-      
-      // Fallback: try to detect datasource type from DOM if we couldn't find it via API
-      if (!datasourceTypeFound) {
-        const domDetectedType = this.detectDatasourceTypeFromDOM();
-        if (domDetectedType) {
-          tags.push(`datasource-type:${domDetectedType}`);
         }
       }
     }
@@ -400,130 +547,85 @@ export class ContextService {
   }
 
   /**
-   * Detect visualization type from viz picker button
+   * Get datasource type detected from EchoSrv events (Phase 2 & 3: Echo-based detection)
+   * 
+   * Supported event sources:
+   * - grafana_ds_add_datasource_clicked: New datasource configuration
+   * - grafana_ds_test_datasource_clicked: Existing datasource configuration (workaround)
+   * - dashboards_dspicker_clicked: Dashboard datasource selection for querying
+   * - data-request (meta-analytics): Active query execution in explore/dashboard
+   * 
+   * TODO: Potential improvements for datasource edit detection:
+   * - Listen for pageview events to detect edit page loads
+   * - Add fallback to API lookup on edit pages using datasource_uid from URL
+   * - Consider listening for additional interaction events that fire earlier
    */
-  static detectVisualizationType(): string | null {
-    try {
-      // Look for the viz picker button
-      const vizPickerButton = document.querySelector('button[aria-label="Change visualization"]');
-      if (vizPickerButton) {
-        // Try to get the viz type from the text content
-        const textContent = vizPickerButton.textContent?.trim();
-        if (textContent) {
-          return textContent.toLowerCase().replace(/\s+/g, '-');
-        }
-        
-        // Fallback: try to get from image src
-        const img = vizPickerButton.querySelector('img');
-        if (img?.src) {
-          // Handle paths like: public/plugins/state-timeline/img/timeline.svg
-          const match = img.src.match(/public\/plugins\/([^\/]+)\//);
-          if (match) {
-            return match[1].replace(/\s+/g, '-');
-          }
-        }
-      }
-
-      return null;
-    } catch (error) {
-      console.warn('Error detecting visualization type:', error);
-      return null;
-    }
+  static getDetectedDatasourceType(): string | null {
+    return this.currentDatasourceType;
   }
 
   /**
-   * Detect datasource type from DOM on edit pages
+   * Get visualization type detected from EchoSrv events (Phase 4: Echo-based detection)
+   * 
+   * Supported event sources:
+   * - dashboards_panel_plugin_picker_clicked: Panel/visualization type selection in dashboards
    */
-  static detectDatasourceTypeFromDOM(): string | null {
-    try {
-      // Look for "Type: ClickHouse" pattern
-      const typeElements = document.querySelectorAll('div');
-      for (const element of typeElements) {
-        const text = element.textContent?.trim();
-        if (text?.startsWith('Type: ')) {
-          return text.replace('Type: ', '').toLowerCase().replace(/\s+/g, '-');
-        }
-        
-        // Look for nested structure: <div><div>Type</div>ClickHouse</div>
-        const typeLabel = element.querySelector('div');
-        if (typeLabel?.textContent?.trim() === 'Type') {
-          const typeValue = element.textContent?.replace('Type', '').trim();
-          if (typeValue) {
-            return typeValue.toLowerCase().replace(/\s+/g, '-');
-          }
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      console.warn('Error detecting datasource type from DOM:', error);
-      return null;
-    }
+  static getDetectedVisualizationType(): string | null {
+    return this.currentVisualizationType;
   }
 
   /**
-   * Detect selected datasource type from datasource picker
+   * Get visualization type for current context
+   * Only returns viz type when creating/editing, defaults to 'timeseries' if no event detected
    */
-  static detectSelectedDatasource(): string | null {
-    try {
-      // Look for the datasource picker container
-      const datasourcePicker = document.querySelector('input[aria-label="Select a data source"]') as HTMLInputElement;
-      if (datasourcePicker) {
-        // Strategy 1: Extract from placeholder (most reliable for cloud)
-        if (datasourcePicker.placeholder) {
-          const placeholder = datasourcePicker.placeholder.trim();
-          if (placeholder && placeholder !== 'Select a data source') {
-            // Clean up the placeholder to extract datasource type
-            const cleanedName = placeholder.toLowerCase()
-              .replace(/^grafanacloud-[^-]+-/, '') // Remove cloud prefix like "grafanacloud-docsplugin-"
-              .replace(/[_-]/g, '') // Remove underscores and hyphens
-              .trim();
-            if (cleanedName) {
-              return cleanedName;
-            }
-          }
-        }
-
-        // Strategy 2: Find the datasource logo image and extract from src
-        const container = datasourcePicker.closest('[data-testid*="Data source picker"]') || 
-                         datasourcePicker.closest('.css-15ro776') ||
-                         datasourcePicker.parentElement;
-        
-        if (container) {
-          const logoImg = container.querySelector('img') as HTMLImageElement;
-          if (logoImg && logoImg.src) {
-            // Handle cloud asset URLs
-            let match = logoImg.src.match(/\/plugins\/datasource\/([^\/]+)\//);
-            if (match) {
-              return match[1].toLowerCase().replace(/\s+/g, '_');
-            }
-            
-            // Handle traditional plugin URLs
-            match = logoImg.src.match(/public\/plugins\/([^\/]+)\//);
-            if (match) {
-              const pluginId = match[1];
-              return pluginId.toLowerCase().replace(/\s+/g, '_');
-            }
-
-            // Strategy 3: Extract from alt attribute as fallback
-            if (logoImg.alt) {
-              const altText = logoImg.alt.toLowerCase()
-                .replace(' logo', '')
-                .replace(/\s+/g, '_')
-                .trim();
-              if (altText && altText !== 'logo') {
-                return altText;
-              }
-            }
-          }
-        }
-      }
-
-      return null;
-    } catch (error) {
-      console.warn('Error detecting selected datasource:', error);
-      return null;
+  private static getVisualizationTypeForContext(
+    pathSegments: string[], 
+    searchParams: Record<string, string>
+  ): string | null {
+    const isCreatingOrEditingViz = this.isCreatingOrEditingVisualization(pathSegments, searchParams);
+    if (isCreatingOrEditingViz) {
+      const echoDetectedVizType = this.getDetectedVisualizationType();
+      return echoDetectedVizType || 'timeseries'; // Default to timeseries if no event detected
     }
+    
+    // Return null when not in create/edit context
+    return null;
+  }
+
+  /**
+   * Determine if user is currently creating or editing a visualization
+   * Based on URL patterns and search parameters
+   */
+  private static isCreatingOrEditingVisualization(
+    pathSegments: string[], 
+    searchParams: Record<string, string>
+  ): boolean {
+    // Editing existing panel
+    if (searchParams.editPanel) {
+      return true;
+    }
+    
+    // Creating first panel on new dashboard
+    if (searchParams.firstPanel) {
+      return true;
+    }
+    
+    // New dashboard creation
+    if (pathSegments.includes('new') && pathSegments.includes('dashboard')) {
+      return true;
+    }
+    
+    // Dashboard new path
+    if (pathSegments[0] === 'dashboard' && pathSegments[1] === 'new') {
+      return true;
+    }
+    
+    // Panel edit view
+    if (searchParams.editview === 'panel') {
+      return true;
+    }
+    
+    return false;
   }
 
   /**

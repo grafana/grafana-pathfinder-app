@@ -94,24 +94,24 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     }
   }, []); // Empty dependency array - setContextData and setIsLoadingRecommendations are stable
 
-  // Enhanced location and context change detection
+  // Simplified location-based change detection (EchoSrv handles datasource/viz changes)
   useEffect(() => {
     const checkForChanges = () => {
       const location = locationService.getLocation();
       const currentPath = location.pathname || window.location.pathname || '';
       const currentUrl = window.location.href;
-      const currentVizType = ContextService.detectVisualizationType();
-      const currentSelectedDatasource = ContextService.detectSelectedDatasource();
       const currentSearchParams = window.location.search;
       
-      // Check if anything significant changed
+      // Only check location/URL changes - EchoSrv handles datasource/viz detection
       const hasLocationChanged = lastLocationRef.current.path !== currentPath;
       const hasUrlChanged = lastLocationRef.current.url !== currentUrl;
-      const hasVizTypeChanged = lastLocationRef.current.vizType !== currentVizType;
-      const hasDatasourceChanged = lastLocationRef.current.selectedDatasource !== currentSelectedDatasource;
       const hasSearchParamsChanged = lastLocationRef.current.searchParams !== currentSearchParams;
       
-      if (hasLocationChanged || hasUrlChanged || hasVizTypeChanged || hasDatasourceChanged || hasSearchParamsChanged) {
+      if (hasLocationChanged || hasUrlChanged || hasSearchParamsChanged) {
+        // Get current EchoSrv state for tracking (but don't trigger on changes)
+        const currentVizType = ContextService.getDetectedVisualizationType();
+        const currentSelectedDatasource = ContextService.getDetectedDatasourceType();
+        
         lastLocationRef.current = { 
           path: currentPath, 
           url: currentUrl, 
@@ -138,59 +138,6 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       setTimeout(checkForChanges, 100);
     };
 
-    // Set up DOM observation for viz picker changes
-    const observer = new MutationObserver((mutations) => {
-      let shouldCheck = false;
-      
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'childList') {
-          const addedNodes = Array.from(mutation.addedNodes);
-          const removedNodes = Array.from(mutation.removedNodes);
-          
-          const hasVizPickerChanges = [...addedNodes, ...removedNodes].some(node => {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              const element = node as Element;
-              return element.matches('button[aria-label="Change visualization"]') ||
-                     element.querySelector('button[aria-label="Change visualization"]') ||
-                     element.matches('input[aria-label="Select a data source"]') ||
-                     element.querySelector('input[aria-label="Select a data source"]');
-            }
-            return false;
-          });
-          
-          if (hasVizPickerChanges) {
-            shouldCheck = true;
-          }
-        } else if (mutation.type === 'attributes') {
-          const target = mutation.target as Element;
-          
-          if (target.matches('button[aria-label="Change visualization"]') ||
-              target.matches('button[data-testid*="toggle-viz-picker"]') ||
-              target.matches('input[aria-label="Select a data source"]')) {
-            shouldCheck = true;
-          }
-          
-          // Special handling for datasource picker placeholder changes
-          if (target.matches('input[aria-label="Select a data source"]') && 
-              mutation.attributeName === 'placeholder') {
-            shouldCheck = true;
-          }
-        }
-      });
-
-      if (shouldCheck) {
-        setTimeout(checkForChanges, 500);
-      }
-    });
-
-    // Start observing the document for changes
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['aria-label', 'aria-expanded', 'src', 'data-testid', 'value', 'placeholder', 'alt']
-    });
-
     // Listen for browser navigation
     window.addEventListener('popstate', handlePopState);
     
@@ -200,7 +147,6 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       const unlisten = history.listen(handleLocationChange);
       
       return () => {
-        observer.disconnect();
         window.removeEventListener('popstate', handlePopState);
         unlisten();
         if (refreshTimeoutRef.current) {
@@ -210,13 +156,29 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     }
 
     return () => {
-      observer.disconnect();
       window.removeEventListener('popstate', handlePopState);
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
       }
     };
   }, [debouncedRefresh]); // debouncedRefresh is stable due to useCallback
+
+  // Listen for EchoSrv-triggered context changes (datasource/viz changes)
+  useEffect(() => {
+    const unsubscribe = ContextService.onContextChange(() => {
+      // Force immediate context refresh when EchoSrv events occur
+      debouncedRefresh(50); // Quick refresh when EchoSrv detects changes
+      
+      // Also force recommendations refresh after a short delay to ensure new context is available
+      setTimeout(() => {
+        if (!contextData.isLoading && contextData.currentPath) {
+          fetchRecommendations(contextData);
+        }
+      }, 200); // Small delay to let context update first
+    });
+
+    return unsubscribe;
+  }, [debouncedRefresh, fetchRecommendations, contextData]);
 
   // Fetch recommendations when context data changes (but not when loading)
   const tagsString = contextData.tags?.join(',') || '';
@@ -228,8 +190,8 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [
     contextData.isLoading, 
     contextData.currentPath, 
-    tagsString, // Extracted to separate variable
-    contextData.visualizationType,
+    tagsString, // Extracted to separate variable - includes datasource tags
+    contextData.visualizationType, // Direct viz type tracking
     fetchRecommendations
   ]); // fetchRecommendations is stable due to useCallback with empty deps
 
