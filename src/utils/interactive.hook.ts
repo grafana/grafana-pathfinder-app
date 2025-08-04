@@ -360,19 +360,19 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, []);
 
-  const logInteractiveError = (context: string, error: Error | string, data: InteractiveElementData) => {
+  const logInteractiveError = useCallback((context: string, error: Error | string, data: InteractiveElementData) => {
     const errorMessage = typeof error === 'string' ? error : error.message;
     console.error(`❌ ${context}: ${errorMessage}`, data);
-  };
+  }, []);
   
-  const handleInteractiveError = (error: Error | string, context: string, data: InteractiveElementData, shouldThrow: boolean = true) => {
+  const handleInteractiveError = useCallback((error: Error | string, context: string, data: InteractiveElementData, shouldThrow = true) => {
     logInteractiveError(context, error, data);
     setInteractiveState(data, 'error');
     
     if (shouldThrow) {
       throw typeof error === 'string' ? new Error(error) : error;
     }
-  };  
+  }, [logInteractiveError, setInteractiveState]);  
 
   const interactiveFocus = useCallback(async (data: InteractiveElementData, click: boolean) => {
     setInteractiveState(data, 'running');
@@ -407,7 +407,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     } catch (error) {
       handleInteractiveError(error as Error, 'interactiveFocus', data, false);
     }
-  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState]);
+  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, handleInteractiveError]);
 
   const interactiveButton = useCallback(async (data: InteractiveElementData, click: boolean) => {
     setInteractiveState(data, 'running');
@@ -439,7 +439,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     } catch (error) {
       handleInteractiveError(error as Error, 'interactiveButton', data, false);
     }
-  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, findButtonByText]);
+  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, findButtonByText, handleInteractiveError]);
 
   // Create stable refs for helper functions to avoid circular dependencies
   const activeRefsRef = useRef(new Set<string>());
@@ -497,7 +497,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
 
     return data.reftarget;
-  }, [containerRef, setInteractiveState, activeRefsRef, runStepByStepSequenceRef, runInteractiveSequenceRef]);
+  }, [containerRef, setInteractiveState, activeRefsRef, runStepByStepSequenceRef, runInteractiveSequenceRef, handleInteractiveError]);
 
   const interactiveFormFill = useCallback(async (data: InteractiveElementData, fillForm: boolean) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
@@ -650,7 +650,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       handleInteractiveError(error as Error, 'interactiveFormFill', data, false);
     }
     return data;
-  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, resetValueTracker]);
+  }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, resetValueTracker, handleInteractiveError]);
 
   const interactiveNavigate = useCallback(async (data: InteractiveElementData, navigate: boolean) => {
     setInteractiveState(data, 'running');
@@ -690,7 +690,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     } catch (error) {
       handleInteractiveError(error as Error, 'interactiveNavigate', data);
     }
-  }, [setInteractiveState]);
+  }, [setInteractiveState, handleInteractiveError]);
 
   /**
    * Fix navigation requirements by opening and docking the navigation menu
@@ -797,11 +797,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           // Mark element as completed
           elementCompleted = true;
 
-          // Wait for animation to complete between each action
-          await new Promise(resolve => setTimeout(resolve, 1300));
+          // Wait for React updates to complete between each action
+          await waitForReactUpdates();
           
         } catch (error) {
-          logInteractiveError('Error processing interactive element', error, data);
+          logInteractiveError('Error processing interactive element', error as Error, data);
           retryCount++;
           
           if (retryCount < MAX_RETRIES) {
@@ -863,8 +863,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           // Step 1: Show what we're about to do
           dispatchInteractiveAction(data, false);
 
-          // Wait for highlight animation to complete before doing the action
-          await new Promise(resolve => setTimeout(resolve, 1300));
+          // Wait for React updates to complete before doing the action
+          await waitForReactUpdates();
 
           // Check requirements again before performing the action
           const secondCheck = await checkRequirementsFromData(data);
@@ -884,12 +884,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           // Mark step as completed
           stepCompleted = true;
 
-          // Wait after actions that might cause state changes
-          const baseDelay = 800;
-          const actionDelay = data.targetaction === 'button' ? 1500 : baseDelay;
-          
+          // Wait for React updates after actions that might cause state changes
           if (i < elements.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, actionDelay));
+            await waitForReactUpdates();
           }
           
         } catch (error) {
@@ -1083,7 +1080,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     } catch (error) {
       handleInteractiveError(error as Error, 'executeInteractiveAction', elementData, true);
     }
-  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence]);
+  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence, handleInteractiveError]);
 
   /**
    * ============================================================================
