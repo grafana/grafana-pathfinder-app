@@ -741,6 +741,17 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     });
   }
 
+  /**
+   * This function is a guard to ensure that the interactive element data is valid.  It can encapsulte
+   * new rules and checks as we go.
+   * @param data - The interactive element data
+   * @returns boolean - true if the interactive element data is valid, false otherwise
+   */
+  function isValidInteractiveElement(data: InteractiveElementData): boolean {
+    // Double negative coerces string into boolean
+    return !!data.targetaction && !!data.reftarget;
+  }
+
   // Define helper functions using refs to avoid circular dependencies
   runInteractiveSequenceRef.current = async (elements: Element[], showMode: boolean): Promise<void> => {
     const MAX_RETRIES = 3;
@@ -750,7 +761,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       const element = elements[i];
       const data = extractInteractiveDataFromElement(element as HTMLElement);
 
-      if (!data.targetaction || !data.reftarget) {
+      if (!isValidInteractiveElement(data)) {
         continue;
       }
 
@@ -775,15 +786,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             }
           }
 
-          if (data.targetaction === 'highlight') {
-            await interactiveFocus(data, !showMode); // Show mode = don't click, Do mode = click
-          } else if (data.targetaction === 'button') {
-            await interactiveButton(data, !showMode); // Show mode = don't click, Do mode = click
-          } else if (data.targetaction === 'formfill') {
-            await interactiveFormFill(data, !showMode); // Show mode = don't fill, Do mode = fill
-          } else if (data.targetaction === 'navigate') {
-            interactiveNavigate(data, !showMode); // Show mode = show target, Do mode = navigate
-          }
+          dispatchInteractiveAction(data, !showMode);
 
           // Mark element as completed
           elementCompleted = true;
@@ -806,6 +809,18 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   };
 
+  async function dispatchInteractiveAction(data: InteractiveElementData, click: boolean) {
+    if (data.targetaction === 'highlight') {
+      await interactiveFocus(data, click);
+    } else if (data.targetaction === 'button') {
+      await interactiveButton(data, click);
+    } else if (data.targetaction === 'formfill') {
+      await interactiveFormFill(data, click);
+    } else if (data.targetaction === 'navigate') {
+      interactiveNavigate(data, click);
+    }
+  }
+
   runStepByStepSequenceRef.current = async (elements: Element[]): Promise<void> => {
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 2000; // 2 seconds between retries
@@ -814,7 +829,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       const element = elements[i];
       const data = extractInteractiveDataFromElement(element as HTMLElement);
 
-      if (!data.targetaction || !data.reftarget) {
+      if (!isValidInteractiveElement(data)) {
         continue;
       }
 
@@ -840,15 +855,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           }
 
           // Step 1: Show what we're about to do
-          if (data.targetaction === 'highlight') {
-            await interactiveFocus(data, false); // Show mode - highlight only
-          } else if (data.targetaction === 'button') {
-            await interactiveButton(data, false); // Show mode - highlight only
-          } else if (data.targetaction === 'formfill') {
-            await interactiveFormFill(data, false); // Show mode - highlight only
-          } else if (data.targetaction === 'navigate') {
-            interactiveNavigate(data, false); // Show mode - show target only
-          }
+          dispatchInteractiveAction(data, false);
 
           // Wait for highlight animation to complete before doing the action
           await new Promise(resolve => setTimeout(resolve, 1300));
@@ -866,15 +873,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           }
 
           // Step 2: Actually do the action
-          if (data.targetaction === 'highlight') {
-            await interactiveFocus(data, true); // Do mode - click
-          } else if (data.targetaction === 'button') {
-            await interactiveButton(data, true); // Do mode - click
-          } else if (data.targetaction === 'formfill') {
-            await interactiveFormFill(data, true); // Do mode - fill form
-          } else if (data.targetaction === 'navigate') {
-            interactiveNavigate(data, true); // Do mode - navigate
-          }
+          dispatchInteractiveAction(data, true);
 
           // Mark step as completed
           stepCompleted = true;
