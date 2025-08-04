@@ -18,6 +18,12 @@ import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { SequenceManager } from './sequence-manager';
 import { NavigationManager } from './navigation-manager';
+import { 
+  FocusHandler, 
+  ButtonHandler, 
+  NavigateHandler, 
+  FormFillHandler 
+} from './action-handlers';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -175,6 +181,30 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   // Initialize navigation manager
   const navigationManager = useMemo(() => new NavigationManager(), []);
   
+  // Initialize action handlers
+  const focusHandler = useMemo(() => new FocusHandler(
+    stateManager,
+    navigationManager,
+    waitForReactUpdates
+  ), [stateManager, navigationManager, waitForReactUpdates]);
+
+  const buttonHandler = useMemo(() => new ButtonHandler(
+    stateManager,
+    navigationManager,
+    waitForReactUpdates
+  ), [stateManager, navigationManager, waitForReactUpdates]);
+
+  const navigateHandler = useMemo(() => new NavigateHandler(
+    stateManager,
+    waitForReactUpdates
+  ), [stateManager, waitForReactUpdates]);
+
+  const formFillHandler = useMemo(() => new FormFillHandler(
+    stateManager,
+    navigationManager,
+    waitForReactUpdates
+  ), [stateManager, navigationManager, waitForReactUpdates]);
+  
   // Initialize global interactive styles
   useEffect(() => {
     addGlobalInteractiveStyles();
@@ -191,267 +221,23 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   
 
   const interactiveFocus = useCallback(async (data: InteractiveElementData, click: boolean) => {
-    stateManager.setState(data, 'running');
-    
-    // Search entire document for the target, which is outside of docs plugin frame.
-    const targetElements = document.querySelectorAll(data.reftarget);
-    
-    try {
-      if (!click) {
-        // Show mode: ensure visibility and highlight, don't click - NO step completion
-        for (const element of targetElements) {
-          const htmlElement = element as HTMLElement;
-          await navigationManager.ensureNavigationOpen(htmlElement);
-          await navigationManager.ensureElementVisible(htmlElement);
-          await navigationManager.highlight(htmlElement);
-        }
-        return; // Early return - don't mark as completed in show mode
-      }
-
-      // Do mode: ensure visibility then click, don't highlight
-      for (const element of targetElements) {
-        const htmlElement = element as HTMLElement;
-        await navigationManager.ensureNavigationOpen(htmlElement);
-        await navigationManager.ensureElementVisible(htmlElement);
-        htmlElement.click();
-      }
-      
-      // Mark as completed after successful execution (only in Do mode)
-      waitForReactUpdates().then(() => {
-        stateManager.setState(data, 'completed');
-      });
-    } catch (error) {
-      stateManager.handleError(error as Error, 'interactiveFocus', data, false);
-    }
-    }, [stateManager, navigationManager]);
+    await focusHandler.execute(data, click);
+  }, [focusHandler]);
   
   const interactiveButton = useCallback(async (data: InteractiveElementData, click: boolean) => {
-    stateManager.setState(data, 'running');
-
-    try {
-      const buttons = findButtonByText(data.reftarget);
-      
-      if (!click) {
-        // Show mode: ensure visibility and highlight, don't click - NO step completion
-        for (const button of buttons) {
-          await navigationManager.ensureNavigationOpen(button);
-          await navigationManager.ensureElementVisible(button);
-          await navigationManager.highlight(button);
-        }
-        return; // Early return - don't mark as completed in show mode
-      }
-
-      // Do mode: ensure visibility then click, don't highlight
-      for (const button of buttons) {
-        await navigationManager.ensureNavigationOpen(button);
-        await navigationManager.ensureElementVisible(button);
-        button.click();
-      }
-      
-      // Mark as completed after successful execution (only in Do mode)
-      waitForReactUpdates().then(() => {
-        stateManager.setState(data, 'completed');
-      });
-    } catch (error) {
-      stateManager.handleError(error as Error, 'interactiveButton', data, false);
-    }
-  }, [stateManager, navigationManager]);
+    await buttonHandler.execute(data, click);
+  }, [buttonHandler]);
 
   // Create stable refs for helper functions to avoid circular dependencies
   const activeRefsRef = useRef(new Set<string>());
 
-  const interactiveFormFill = useCallback(async (data: InteractiveElementData, fillForm: boolean) => { // eslint-disable-line react-hooks/exhaustive-deps
-    const value = data.targetvalue || '';
-    
-    stateManager.setState(data, 'running');
-    
-    try {
-      // Search entire document for the target, which is outside of docs plugin frame.
-      console.warn(`🔍 FormFill: Searching for selector: ${data.reftarget}`);
-      const targetElements = document.querySelectorAll(data.reftarget);
-      
-      console.warn(`🔍 FormFill: Found ${targetElements.length} elements matching selector`);
-      if (targetElements.length === 0) {
-        stateManager.handleError(
-          `❌ No elements found matching selector: ${data.reftarget}`, 
-          'interactiveFormFill', data, false);
-        return;
-      } else if(targetElements.length > 1) {
-        console.warn(`⚠️ Multiple elements found matching selector: ${data.reftarget}`);
-      }
-
-      const targetElement = targetElements[0] as HTMLElement;
-      console.warn(`🎯 FormFill: Target element found:`, targetElement);
-      
-      // Always ensure navigation is open and element is visible first
-      await navigationManager.ensureNavigationOpen(targetElement);
-      await navigationManager.ensureElementVisible(targetElement);
-      
-      if (!fillForm) {
-        // Show mode: only highlight, don't fill the form
-        await navigationManager.highlight(targetElement);
-        return;
-      }
-
-      // Do mode: don't highlight, just fill the form
-      const tagName = targetElement.tagName.toLowerCase();
-      const inputType = (targetElement as HTMLInputElement).type ? (targetElement as HTMLInputElement).type.toLowerCase() : '';
-      
-      // Check if this is a Monaco editor textarea (special handling required)
-      const isMonacoEditor = targetElement.classList.contains('inputarea') && 
-                            targetElement.classList.contains('monaco-mouse-cursor-text');
-        
-      // CONSOLIDATED APPROACH: Set value once using the most compatible method
-      if (tagName === 'input') {
-        if (inputType === 'checkbox' || inputType === 'radio') {
-          // Handle checkbox/radio inputs - no duplicate events issue here
-          (targetElement as HTMLInputElement).checked = value !== 'false' && value !== '0' && value !== '';
-        } else {
-          // Use React-compatible native setter approach for text inputs
-          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-          if (nativeInputValueSetter) {
-            nativeInputValueSetter.call(targetElement, value);
-            
-            resetValueTracker(targetElement);
-          } else {
-            // Fallback for edge cases where native setter isn't available
-            (targetElement as HTMLInputElement).value = value;
-          }
-        }
-      } else if (tagName === 'textarea') {
-        if (isMonacoEditor) {
-          // Special handling for Monaco editors
-          console.warn('🎯 Detected Monaco editor, using enhanced approach for value setting');
-          
-          // Focus the editor first to make it active
-          targetElement.focus();
-          
-          // Clear any existing content using Ctrl+A and Delete
-          targetElement.dispatchEvent(new KeyboardEvent('keydown', { 
-            key: 'a', 
-            code: 'KeyA', 
-            ctrlKey: true, 
-            bubbles: true 
-          }));
-          
-          targetElement.dispatchEvent(new KeyboardEvent('keydown', { 
-            key: 'Delete', 
-            code: 'Delete', 
-            bubbles: true 
-          }));
-          
-          // Wait a moment for the clear to process
-          await new Promise(resolve => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.monacoClear));
-          
-          // Now set the value and trigger comprehensive events
-          const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-          if (nativeTextareaSetter) {
-            nativeTextareaSetter.call(targetElement, value);
-          } else {
-            (targetElement as HTMLTextAreaElement).value = value;
-          }
-          
-          resetValueTracker(targetElement);
-          
-          // Dispatch comprehensive input events to trigger Monaco's change detection
-          targetElement.dispatchEvent(new Event('input', { bubbles: true }));
-          targetElement.dispatchEvent(new Event('change', { bubbles: true }));
-          
-          // Simulate typing the last character to trigger Monaco's update
-          const lastChar = value.slice(-1);
-          if (lastChar) {
-            targetElement.dispatchEvent(new KeyboardEvent('keydown', { 
-              key: lastChar, 
-              bubbles: true 
-            }));
-            targetElement.dispatchEvent(new KeyboardEvent('keyup', { 
-              key: lastChar, 
-              bubbles: true 
-            }));
-          }
-          
-        } else {
-          // Standard textarea handling
-          const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-          if (nativeTextareaSetter) {
-            nativeTextareaSetter.call(targetElement, value);
-            resetValueTracker(targetElement);            
-          } else {
-            // Fallback for edge cases
-            (targetElement as HTMLTextAreaElement).value = value;
-          }
-        }
-      } else if (tagName === 'select') {
-        // Select elements don't have the same React issues, use direct assignment
-        (targetElement as HTMLSelectElement).value = value;
-      } else {
-        // For other elements, set text content
-        targetElement.textContent = value;
-      }
-      
-      // Dispatch events ONCE in proper sequence to notify all listeners
-      // This mimics natural user interaction: focus -> input -> change -> blur
-      targetElement.focus();
-      targetElement.dispatchEvent(new Event('focus', { bubbles: true }));
-      
-      // Only dispatch input/change events for form controls that support them (skip for Monaco as already handled)
-      if ((tagName === 'input' || tagName === 'textarea' || tagName === 'select') && !isMonacoEditor) {
-        targetElement.dispatchEvent(new Event('input', { bubbles: true }));
-        targetElement.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-      
-      targetElement.blur();
-      targetElement.dispatchEvent(new Event('blur', { bubbles: true }));
-      
-      // Mark as completed after successful execution
-      waitForReactUpdates().then(() => {
-        stateManager.setState(data, 'completed');
-      });      
-    } catch (error) {
-      stateManager.handleError(error as Error, 'interactiveFormFill', data, false);
-    }
-    return data;
-  }, [stateManager, navigationManager]);
+  const interactiveFormFill = useCallback(async (data: InteractiveElementData, fillForm: boolean) => {
+    await formFillHandler.execute(data, fillForm);
+  }, [formFillHandler]);
 
   const interactiveNavigate = useCallback(async (data: InteractiveElementData, navigate: boolean) => {
-    stateManager.setState(data, 'running');
-    
-    try {
-      if (!navigate) {
-        // Show mode: highlight the current location or show where we would navigate
-        // For navigation, we can highlight the current URL or show a visual indicator
-        // Since there's no specific element to highlight, we'll just show a brief visual feedback
-        console.log(`🔍 Show mode: Would navigate to ${data.reftarget}`);
-        
-        // Provide visual feedback by briefly highlighting the browser location bar concept
-        // or show a toast/notification (for now, just log and complete)
-        waitForReactUpdates().then(() => {
-          stateManager.setState(data, 'completed');
-        });
-        return;
-      }
-
-      // Do mode: actually navigate to the target URL
-      console.log(`🧭 Navigating to: ${data.reftarget}`);
-      
-      // Use Grafana's idiomatic navigation pattern via locationService
-      // This handles both internal Grafana routes and external URLs appropriately
-      if (data.reftarget.startsWith('http://') || data.reftarget.startsWith('https://')) {
-        // External URL - open in new tab to preserve current Grafana session
-        window.open(data.reftarget, '_blank', 'noopener,noreferrer');
-      } else {
-        // Internal Grafana route - use locationService for proper routing
-        locationService.push(data.reftarget);
-      }
-      
-      // Mark as completed after successful navigation
-      waitForReactUpdates().then(() => {
-        stateManager.setState(data, 'completed');
-      });
-    } catch (error) {
-      stateManager.handleError(error as Error, 'interactiveNavigate', data);
-    }
-  }, [stateManager]);
+    await navigateHandler.execute(data, navigate);
+  }, [navigateHandler]);
 
   // Define helper functions using refs to avoid circular dependencies
   const dispatchInteractiveAction = useCallback(async (data: InteractiveElementData, click: boolean) => {
