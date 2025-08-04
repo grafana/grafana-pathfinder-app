@@ -8,7 +8,6 @@ import {
   CheckResultError,
   DOMCheckFunctions 
 } from './requirements-checker.utils';
-import { useDOMSettling } from './dom-settling.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { 
   extractInteractiveDataFromElement, 
@@ -17,6 +16,7 @@ import {
 } from './dom-utils';
 import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
+import { SequenceManager } from './sequence-manager';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -31,23 +31,215 @@ export interface CheckResult {
   context?: any;
 }
 
-
-
-
-
-
-
-
-
 interface UseInteractiveElementsOptions {
   containerRef?: React.RefObject<HTMLElement>;
 }
 
+/**
+ * Ensure element is visible in the viewport by scrolling it into view
+ * 
+ * @param element - The element to make visible
+ * @returns Promise that resolves when element is visible in viewport
+ * 
+ * @example
+ * ```typescript
+ * await ensureElementVisible(hiddenElement);
+ * // Element is now visible and centered in viewport
+ * ```
+ */
+const ensureElementVisible = async (element: HTMLElement): Promise<void> => {
+  // Check if element is visible in viewport
+  const rect = element.getBoundingClientRect();
+  const isVisible = (
+    rect.top >= 0 &&
+    rect.left >= 0 &&
+    rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+    rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+  );
+  
+  if (!isVisible) {
+    console.warn('📜 Scrolling element into view for better visibility');
+    element.scrollIntoView({ 
+      behavior: 'smooth', 
+      block: 'center', 
+      inline: 'center' 
+    });
+    
+    // Wait for scroll animation to complete using DOM settling detection
+    await waitForReactUpdates();
+  }      
+}
+
+const highlight = async (element: HTMLElement) => {
+  // First, ensure navigation is open and element is visible
+  await ensureNavigationOpen(element);
+  await ensureElementVisible(element);
+  
+  // Add highlight class for better styling
+  element.classList.add('interactive-highlighted');
+  
+  // Create a highlight outline element
+  const highlightOutline = document.createElement('div');
+  highlightOutline.className = 'interactive-highlight-outline';
+  
+  // Position the outline around the target element using CSS custom properties
+  const rect = element.getBoundingClientRect();
+  const scrollTop = window.scrollY || document.documentElement.scrollTop;
+  const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
+  
+  // Use CSS custom properties instead of inline styles to avoid CSP violations
+  highlightOutline.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
+  highlightOutline.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
+  highlightOutline.style.setProperty('--highlight-width', `${rect.width + 8}px`);
+  highlightOutline.style.setProperty('--highlight-height', `${rect.height + 8}px`);
+  
+  document.body.appendChild(highlightOutline);
+  
+  // Remove highlight after animation completes using DOM settling detection
+  setTimeout(() => {
+    element.classList.remove('interactive-highlighted');
+    if (highlightOutline.parentNode) {
+      highlightOutline.parentNode.removeChild(highlightOutline);
+    }
+  }, INTERACTIVE_CONFIG.delays.technical.highlight); // Use configuration instead of magic number
+  
+  return element;
+};
+
+/**
+ * Fix navigation requirements by opening and docking the navigation menu
+ * This function can be called by the "Fix this" button for navigation requirements
+ */
+function fixNavigationRequirements(): Promise<void> {
+  return openAndDockNavigation(undefined, {
+    checkContext: false,   // Always run regardless of element
+    logWarnings: true,     // Verbose logging
+    ensureDocked: true     // Always dock if open
+  });    
+}
+
+/**
+ * This function is a guard to ensure that the interactive element data is valid.  It can encapsulte
+ * new rules and checks as we go.
+ * @param data - The interactive element data
+ * @returns boolean - true if the interactive element data is valid, false otherwise
+ */
+function isValidInteractiveElement(data: InteractiveElementData): boolean {
+  // Double negative coerces string into boolean
+  return !!data.targetaction && !!data.reftarget;
+}
+
+/**
+ * Ensure navigation is open if the target element is in the navigation area
+ * 
+ * @param element - The target element that may require navigation to be open
+ * @returns Promise that resolves when navigation is open and accessible
+ * 
+ * @example
+ * ```typescript
+ * await ensureNavigationOpen(targetElement);
+ * // Navigation menu is now open and docked if needed
+ * ```
+ */
+const ensureNavigationOpen = (element: HTMLElement): Promise<void> => {
+  return openAndDockNavigation(element, {
+    checkContext: true,    // Only run if element is in navigation
+    logWarnings: false,    // Silent operation
+    ensureDocked: true     // Always dock if open
+  });
+}
+
+/**
+ * Interactive steps that use the nav require that it be open.  This function will ensure
+ * that it's open so that other steps can be executed.
+ * @param element - The element that may require navigation to be open
+ * @param options - The options for the navigation
+ * @param options.checkContext - Whether to check if the element is within navigation (default false)
+ * @param options.logWarnings - Whether to log warnings (default true)
+ * @param options.ensureDocked - Whether to ensure the navigation is docked when we're done. (default true)
+ * @returns 
+ */
+const openAndDockNavigation = async (
+  element?: HTMLElement,
+  options: {
+    checkContext?: boolean;
+    logWarnings?: boolean;
+    ensureDocked?: boolean;
+  } = {}
+): Promise<void> => {
+  const {
+    checkContext = false,
+    logWarnings = true,
+    ensureDocked = true
+  } = options;
+
+  // Check if element is within navigation (only if checkContext is true)
+  if (checkContext && element) {
+    const isInNavigation = element.closest('nav, [class*="nav"], [class*="menu"], [class*="sidebar"]') !== null;
+    if (!isInNavigation) {
+      return;
+    }
+  }
+  
+  // Look for the mega menu toggle button
+  const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
+  if (!megaMenuToggle) {
+    if (logWarnings) {
+      console.warn('⚠️ Mega menu toggle button not found');
+    }
+    return;
+  }
+  
+  // Check if navigation appears to be closed
+  const ariaExpanded = megaMenuToggle.getAttribute('aria-expanded');
+  const isNavClosed = ariaExpanded === 'false' || ariaExpanded === null;
+  
+  if (isNavClosed) {
+    if (logWarnings) {
+      console.warn('�� Opening navigation menu for interactive element access');
+    }
+    megaMenuToggle.click();
+    
+    await waitForReactUpdates();
+    
+    const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
+    if (dockMenuButton) {
+      if (logWarnings) {
+        console.warn('�� Docking navigation menu to keep it in place');
+      }
+      dockMenuButton.click();
+      
+      await waitForReactUpdates();
+      return;
+    } else {
+      if (logWarnings) {
+        console.warn('⚠️ Dock menu button not found, navigation will remain in modal mode');
+      }
+      return;
+    }
+  } else if (ensureDocked) {
+    // Navigation is already open, just try to dock it if needed
+    const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
+    if (dockMenuButton) {
+      if (logWarnings) {
+        console.warn('�� Navigation already open, ensuring it is docked');
+      }
+      dockMenuButton.click();
+      await waitForReactUpdates();
+      return;
+    } else {
+      if (logWarnings) {
+        console.warn('✅ Navigation already open and accessible');
+      }
+      return;
+    }
+  } 
+
+  return;
+};
+
 export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
   const { containerRef } = options;
-  
-  // Initialize DOM settling detection
-  const { waitForScrollComplete } = useDOMSettling();
   
   // Initialize state manager
   const stateManager = useMemo(() => new InteractiveStateManager(), []);
@@ -56,195 +248,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   useEffect(() => {
     addGlobalInteractiveStyles();
   }, []);
-
-
-
-  /**
-   * Interactive steps that use the nav require that it be open.  This function will ensure
-   * that it's open so that other steps can be executed.
-   * @param element - The element that may require navigation to be open
-   * @param options - The options for the navigation
-   * @param options.checkContext - Whether to check if the element is within navigation (default false)
-   * @param options.logWarnings - Whether to log warnings (default true)
-   * @param options.ensureDocked - Whether to ensure the navigation is docked when we're done. (default true)
-   * @returns 
-   */
-  const openAndDockNavigation = async (
-    element?: HTMLElement,
-    options: {
-      checkContext?: boolean;
-      logWarnings?: boolean;
-      ensureDocked?: boolean;
-    } = {}
-  ): Promise<void> => {
-    const {
-      checkContext = false,
-      logWarnings = true,
-      ensureDocked = true
-    } = options;
   
-    // Check if element is within navigation (only if checkContext is true)
-    if (checkContext && element) {
-      const isInNavigation = element.closest('nav, [class*="nav"], [class*="menu"], [class*="sidebar"]') !== null;
-      if (!isInNavigation) {
-        return;
-      }
-    }
-    
-    // Look for the mega menu toggle button
-    const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
-    if (!megaMenuToggle) {
-      if (logWarnings) {
-        console.warn('⚠️ Mega menu toggle button not found');
-      }
-      return;
-    }
-    
-    // Check if navigation appears to be closed
-    const ariaExpanded = megaMenuToggle.getAttribute('aria-expanded');
-    const isNavClosed = ariaExpanded === 'false' || ariaExpanded === null;
-    
-    if (isNavClosed) {
-      if (logWarnings) {
-        console.warn('�� Opening navigation menu for interactive element access');
-      }
-      megaMenuToggle.click();
-      
-      await waitForReactUpdates();
-      
-      const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
-      if (dockMenuButton) {
-        if (logWarnings) {
-          console.warn('�� Docking navigation menu to keep it in place');
-        }
-        dockMenuButton.click();
-        
-        await waitForReactUpdates();
-        return;
-      } else {
-        if (logWarnings) {
-          console.warn('⚠️ Dock menu button not found, navigation will remain in modal mode');
-        }
-        return;
-      }
-    } else if (ensureDocked) {
-      // Navigation is already open, just try to dock it if needed
-      const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
-      if (dockMenuButton) {
-        if (logWarnings) {
-          console.warn('�� Navigation already open, ensuring it is docked');
-        }
-        dockMenuButton.click();
-        await waitForReactUpdates();
-        return;
-      } else {
-        if (logWarnings) {
-          console.warn('✅ Navigation already open and accessible');
-        }
-        return;
-      }
-    } 
-
-    return;
-  };
-
-  /**
-   * Ensure navigation is open if the target element is in the navigation area
-   * 
-   * @param element - The target element that may require navigation to be open
-   * @returns Promise that resolves when navigation is open and accessible
-   * 
-   * @example
-   * ```typescript
-   * await ensureNavigationOpen(targetElement);
-   * // Navigation menu is now open and docked if needed
-   * ```
-   */
-  const ensureNavigationOpen = useCallback((element: HTMLElement): Promise<void> => {
-    return openAndDockNavigation(element, {
-      checkContext: true,    // Only run if element is in navigation
-      logWarnings: false,    // Silent operation
-      ensureDocked: true     // Always dock if open
-    });
-  }, []);
-  
-  /**
-   * Ensure element is visible in the viewport by scrolling it into view
-   * 
-   * @param element - The element to make visible
-   * @returns Promise that resolves when element is visible in viewport
-   * 
-   * @example
-   * ```typescript
-   * await ensureElementVisible(hiddenElement);
-   * // Element is now visible and centered in viewport
-   * ```
-   */
-  const ensureElementVisible = useCallback((element: HTMLElement): Promise<void> => {
-    return new Promise(async (resolve) => {
-      // Check if element is visible in viewport
-      const rect = element.getBoundingClientRect();
-      const isVisible = (
-        rect.top >= 0 &&
-        rect.left >= 0 &&
-        rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-        rect.right <= (window.innerWidth || document.documentElement.clientWidth)
-      );
-      
-      if (!isVisible) {
-        console.warn('📜 Scrolling element into view for better visibility');
-        element.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'center', 
-          inline: 'center' 
-        });
-        
-        // Wait for scroll animation to complete using DOM settling detection
-        await waitForScrollComplete(element);
-      }
-      
-      resolve();
-    });
-  }, [waitForScrollComplete]);
-
-
-
-  const highlight = useCallback(async (element: HTMLElement) => {
-    // First, ensure navigation is open and element is visible
-    await ensureNavigationOpen(element);
-    await ensureElementVisible(element);
-    
-    // Add highlight class for better styling
-    element.classList.add('interactive-highlighted');
-    
-    // Create a highlight outline element
-    const highlightOutline = document.createElement('div');
-    highlightOutline.className = 'interactive-highlight-outline';
-    
-    // Position the outline around the target element using CSS custom properties
-    const rect = element.getBoundingClientRect();
-    const scrollTop = window.scrollY || document.documentElement.scrollTop;
-    const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
-    
-    // Use CSS custom properties instead of inline styles to avoid CSP violations
-    highlightOutline.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
-    highlightOutline.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
-    highlightOutline.style.setProperty('--highlight-width', `${rect.width + 8}px`);
-    highlightOutline.style.setProperty('--highlight-height', `${rect.height + 8}px`);
-    
-    document.body.appendChild(highlightOutline);
-    
-    // Remove highlight after animation completes using DOM settling detection
-    setTimeout(() => {
-      element.classList.remove('interactive-highlighted');
-      if (highlightOutline.parentNode) {
-        highlightOutline.parentNode.removeChild(highlightOutline);
-      }
-    }, INTERACTIVE_CONFIG.delays.technical.highlight); // Use configuration instead of magic number
-    
-    return element;
-  }, [ensureNavigationOpen, ensureElementVisible]);
-
   /**
    * This is a guard function to track progress through the lifecycle events of an interactive action.
    * This allows us to fire lifecycle events as needed or perform other checks we may implement in the
@@ -288,7 +292,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     } catch (error) {
       stateManager.handleError(error as Error, 'interactiveFocus', data, false);
     }
-  }, [highlight, ensureNavigationOpen, ensureElementVisible, stateManager]);
+  }, [stateManager]);
 
   const interactiveButton = useCallback(async (data: InteractiveElementData, click: boolean) => {
     stateManager.setState(data, 'running');
@@ -320,65 +324,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     } catch (error) {
       stateManager.handleError(error as Error, 'interactiveButton', data, false);
     }
-  }, [highlight, ensureNavigationOpen, ensureElementVisible, stateManager]);
+  }, [stateManager]);
 
   // Create stable refs for helper functions to avoid circular dependencies
   const activeRefsRef = useRef(new Set<string>());
-  const runInteractiveSequenceRef = useRef<(elements: Element[], showMode: boolean) => Promise<void>>();
-  const runStepByStepSequenceRef = useRef<(elements: Element[]) => Promise<void>>();
-
-  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly: boolean): Promise<string> => {
-    // This is here so recursion cannot happen
-    if(activeRefsRef.current.has(data.reftarget)) {
-      return data.reftarget;
-    }
-    
-    stateManager.setState(data, 'running');
-    
-    try {
-      const searchContainer = containerRef?.current || document;
-      const targetElements = searchContainer.querySelectorAll(data.reftarget);
-
-      if(targetElements.length === 0) {
-        const msg = `No interactive sequence container found matching selector: ${data.reftarget}`;
-        stateManager.handleError(msg, 'interactiveSequence', data, true);
-      }
-      
-      if(targetElements.length > 1) {
-        const msg = `${targetElements.length} interactive sequence containers found matching selector: ${data.reftarget} - this is not supported (must be exactly 1)`;
-        stateManager.handleError(msg, 'interactiveSequence', data, true);
-      } 
-
-      activeRefsRef.current.add(data.reftarget);
-
-      // Find all interactive elements within the sequence container
-      const interactiveElements = Array.from(targetElements[0].querySelectorAll('.interactive[data-targetaction]:not([data-targetaction="sequence"])'));
-      
-      if (interactiveElements.length === 0) {
-        const msg = `No interactive elements found within sequence container: ${data.reftarget}`;
-        stateManager.handleError(msg, 'interactiveSequence', data, true);
-      }
-      
-      if (!showOnly) {
-        // Full sequence: Show each step, then do each step, one by one
-        await runStepByStepSequenceRef.current!(interactiveElements);
-      } else {
-        // Show only mode
-        await runInteractiveSequenceRef.current!(interactiveElements, true);
-      }
-      
-      // Mark as completed after successful execution
-      stateManager.setState(data, 'completed');
-      
-      activeRefsRef.current.delete(data.reftarget);
-      return data.reftarget;
-    } catch (error) {
-      stateManager.handleError(error as Error, 'interactiveSequence', data, false);
-      activeRefsRef.current.delete(data.reftarget);
-    }
-
-    return data.reftarget;
-  }, [containerRef, activeRefsRef, runStepByStepSequenceRef, runInteractiveSequenceRef, stateManager]);
 
   const interactiveFormFill = useCallback(async (data: InteractiveElementData, fillForm: boolean) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
@@ -531,7 +480,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       stateManager.handleError(error as Error, 'interactiveFormFill', data, false);
     }
     return data;
-  }, [highlight, ensureNavigationOpen, ensureElementVisible, stateManager]);
+  }, [stateManager]);
 
   const interactiveNavigate = useCallback(async (data: InteractiveElementData, navigate: boolean) => {
     stateManager.setState(data, 'running');
@@ -573,86 +522,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, [stateManager]);
 
-  /**
-   * Fix navigation requirements by opening and docking the navigation menu
-   * This function can be called by the "Fix this" button for navigation requirements
-   */
-  function fixNavigationRequirements(): Promise<void> {
-    return openAndDockNavigation(undefined, {
-      checkContext: false,   // Always run regardless of element
-      logWarnings: true,     // Verbose logging
-      ensureDocked: true     // Always dock if open
-    });    
-  }
-
-  /**
-   * This function is a guard to ensure that the interactive element data is valid.  It can encapsulte
-   * new rules and checks as we go.
-   * @param data - The interactive element data
-   * @returns boolean - true if the interactive element data is valid, false otherwise
-   */
-  function isValidInteractiveElement(data: InteractiveElementData): boolean {
-    // Double negative coerces string into boolean
-    return !!data.targetaction && !!data.reftarget;
-  }
-
   // Define helper functions using refs to avoid circular dependencies
-  runInteractiveSequenceRef.current = async (elements: Element[], showMode: boolean): Promise<void> => {
-    const RETRY_DELAY = INTERACTIVE_CONFIG.delays.perceptual.retry; // Use configuration instead of magic number
-    
-    for (let i = 0; i < elements.length; i++) {
-      const element = elements[i];
-      const data = extractInteractiveDataFromElement(element as HTMLElement);
-
-      if (!isValidInteractiveElement(data)) {
-        continue;
-      }
-
-      // Retry logic for each element
-      let retryCount = 0;
-      let elementCompleted = false;
-      
-      while (!elementCompleted && retryCount < INTERACTIVE_CONFIG.maxRetries) {
-        try {
-          // Check requirements using the existing system
-          const requirementsCheck = await checkRequirementsFromData(data);
-          
-          if (!requirementsCheck.pass) {
-            retryCount++;
-            if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
-              // Wait and retry
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-              continue;
-            } else {
-              // Max retries reached, skip this element
-              break;
-            }
-          }
-
-          dispatchInteractiveAction(data, !showMode);
-
-          // Mark element as completed
-          elementCompleted = true;
-
-          // Wait for React updates to complete between each action
-          await waitForReactUpdates();
-          
-        } catch (error) {
-          stateManager.logError('Error processing interactive element', error as Error, data);
-          retryCount++;
-          
-          if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-          } else {
-            // Max retries reached, skip this element
-            break;
-          }
-        }
-      }
-    }
-  };
-
-  async function dispatchInteractiveAction(data: InteractiveElementData, click: boolean) {
+  const dispatchInteractiveAction = useCallback(async (data: InteractiveElementData, click: boolean) => {
     if (data.targetaction === 'highlight') {
       await interactiveFocus(data, click);
     } else if (data.targetaction === 'button') {
@@ -662,155 +533,77 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     } else if (data.targetaction === 'navigate') {
       interactiveNavigate(data, click);
     }
-  }
-
-  runStepByStepSequenceRef.current = async (elements: Element[]): Promise<void> => {
-    const RETRY_DELAY = INTERACTIVE_CONFIG.delays.perceptual.retry; // Use configuration instead of magic number
-    
-    for (let i = 0; i < elements.length; i++) {
-      const element = elements[i];
-      const data = extractInteractiveDataFromElement(element as HTMLElement);
-
-      if (!isValidInteractiveElement(data)) {
-        continue;
-      }
-
-      // Retry logic for each step
-      let retryCount = 0;
-      let stepCompleted = false;
-      
-      while (!stepCompleted && retryCount < INTERACTIVE_CONFIG.maxRetries) {
-        try {
-          // Check requirements using the existing system
-          const requirementsCheck = await checkRequirementsFromData(data);
-          
-          if (!requirementsCheck.pass) {
-            retryCount++;
-            if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
-              // Wait and retry
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-              continue;
-            } else {
-              // Max retries reached, skip this step
-              break;
-            }
-          }
-
-          // Step 1: Show what we're about to do
-          dispatchInteractiveAction(data, false);
-
-          // Wait for React updates to complete before doing the action
-          await waitForReactUpdates();
-
-          // Check requirements again before performing the action
-          const secondCheck = await checkRequirementsFromData(data);
-          if (!secondCheck.pass) {
-            retryCount++;
-            if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-              continue;
-            } else {
-              break;
-            }
-          }
-
-          // Step 2: Actually do the action
-          dispatchInteractiveAction(data, true);
-
-          // Mark step as completed
-          stepCompleted = true;
-
-          // Wait for React updates after actions that might cause state changes
-          if (i < elements.length - 1) {
-            await waitForReactUpdates();
-          }
-          
-        } catch (error) {
-          stateManager.logError('Error in interactive step', error as Error, data);
-          retryCount++;
-          
-          if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-          } else {
-            // Max retries reached, skip this step
-            break;
-          }
-        }
-      }
-    }
-  };
-
-
+  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate]);
 
   /**
    * Create DOM check functions for requirements that need DOM access
    */
-  const domCheckFunctions = useMemo((): DOMCheckFunctions => ({
-    reftargetExistsCHECK: async (reftarget: string, targetAction: string): Promise<CheckResultError> => {
-      // For button actions, check if buttons with matching text exist
-      if (targetAction === 'button') {
-        const buttons = findButtonByText(reftarget);
+    const domCheckFunctions = useMemo((): DOMCheckFunctions => ({
+      reftargetExistsCHECK: async (reftarget: string, targetAction: string): Promise<CheckResultError> => {
+        // For button actions, check if buttons with matching text exist
+        if (targetAction === 'button') {
+          const buttons = findButtonByText(reftarget);
+          
+          if (buttons.length > 0) {
+            return {
+              requirement: 'exists-reftarget',
+              pass: true,
+            };
+          } else {
+            return {
+              requirement: 'exists-reftarget',
+              pass: false,
+              error: `No buttons found containing text: "${reftarget}"`,
+            };
+          }
+        }
         
-        if (buttons.length > 0) {
+        // For other actions, check if the CSS selector matches an element
+        const targetElement = document.querySelector(reftarget);
+        if (targetElement) {
           return {
             requirement: 'exists-reftarget',
             pass: true,
           };
-        } else {
-          return {
-            requirement: 'exists-reftarget',
-            pass: false,
-            error: `No buttons found containing text: "${reftarget}"`,
-          };
-        }
-      }
-      
-      // For other actions, check if the CSS selector matches an element
-      const targetElement = document.querySelector(reftarget);
-      if (targetElement) {
+        } 
+          
         return {
           requirement: 'exists-reftarget',
-          pass: true,
+          pass: false,
+          error: "Element not found",
         };
-      } 
+      },
+  
+      navmenuOpenCHECK: async (): Promise<CheckResultError> => {
+        // Based on your HTML structure, try these selectors in order of preference
+        const selectorsToTry = [
+          // Most specific to your Grafana version
+          'div[data-testid="data-testid navigation mega-menu"]',
+          'ul[aria-label="Navigation"]',
+          'nav.css-rs8tod',
+          // Fallbacks for other versions
+          'div[data-testid*="navigation"]',
+          'nav[aria-label="Navigation"]',
+          'ul[aria-label="Main navigation"]'
+        ];
         
-      return {
-        requirement: 'exists-reftarget',
-        pass: false,
-        error: "Element not found",
-      };
-    },
-
-    navmenuOpenCHECK: async (): Promise<CheckResultError> => {
-      // Based on your HTML structure, try these selectors in order of preference
-      const selectorsToTry = [
-        // Most specific to your Grafana version
-        'div[data-testid="data-testid navigation mega-menu"]',
-        'ul[aria-label="Navigation"]',
-        'nav.css-rs8tod',
-        // Fallbacks for other versions
-        'div[data-testid*="navigation"]',
-        'nav[aria-label="Navigation"]',
-        'ul[aria-label="Main navigation"]'
-      ];
-      
-      for (const selector of selectorsToTry) {
-        const element = document.querySelector(selector);
-        if (element) {
-          return {
-            requirement: 'navmenu-open',
-            pass: true,
-          };
+        for (const selector of selectorsToTry) {
+          const element = document.querySelector(selector);
+          if (element) {
+            return {
+              requirement: 'navmenu-open',
+              pass: true,
+            };
+          }
         }
+  
+        return {
+          requirement: 'navmenu-open',
+          pass: false,
+          error: "Navigation menu not detected - menu may be closed or selector mismatch",
+        };
       }
-
-      return {
-        requirement: 'navmenu-open',
-        pass: false,
-        error: "Navigation menu not detected - menu may be closed or selector mismatch",
-      };
-    }
-  }), []);
+    }), []);
 
   /**
    * Core requirement checking logic using the new pure requirements utility
@@ -840,6 +633,69 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       }))
     };
   }, [domCheckFunctions]);
+
+  // SequenceManager instance - moved here to be available for interactiveSequence
+  const sequenceManager = useMemo(() => new SequenceManager(
+    stateManager,
+    checkRequirementsFromData,
+    dispatchInteractiveAction,
+    waitForReactUpdates,
+    isValidInteractiveElement,
+    extractInteractiveDataFromElement
+  ), [stateManager, checkRequirementsFromData, dispatchInteractiveAction]);
+
+  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly: boolean): Promise<string> => {
+    // This is here so recursion cannot happen
+    if(activeRefsRef.current.has(data.reftarget)) {
+      return data.reftarget;
+    }
+    
+    stateManager.setState(data, 'running');
+    
+    try {
+      const searchContainer = containerRef?.current || document;
+      const targetElements = searchContainer.querySelectorAll(data.reftarget);
+
+      if(targetElements.length === 0) {
+        const msg = `No interactive sequence container found matching selector: ${data.reftarget}`;
+        stateManager.handleError(msg, 'interactiveSequence', data, true);
+      }
+      
+      if(targetElements.length > 1) {
+        const msg = `${targetElements.length} interactive sequence containers found matching selector: ${data.reftarget} - this is not supported (must be exactly 1)`;
+        stateManager.handleError(msg, 'interactiveSequence', data, true);
+      } 
+
+      activeRefsRef.current.add(data.reftarget);
+
+      // Find all interactive elements within the sequence container
+      const interactiveElements = Array.from(targetElements[0].querySelectorAll('.interactive[data-targetaction]:not([data-targetaction="sequence"])'));
+      
+      if (interactiveElements.length === 0) {
+        const msg = `No interactive elements found within sequence container: ${data.reftarget}`;
+        stateManager.handleError(msg, 'interactiveSequence', data, true);
+      }
+      
+      if (!showOnly) {
+        // Full sequence: Show each step, then do each step, one by one
+        await sequenceManager.runStepByStepSequence(interactiveElements);
+      } else {
+        // Show only mode
+        await sequenceManager.runInteractiveSequence(interactiveElements, true);
+      }
+      
+      // Mark as completed after successful execution
+      stateManager.setState(data, 'completed');
+      
+      activeRefsRef.current.delete(data.reftarget);
+      return data.reftarget;
+    } catch (error) {
+      stateManager.handleError(error as Error, 'interactiveSequence', data, false);
+      activeRefsRef.current.delete(data.reftarget);
+    }
+
+    return data.reftarget;
+  }, [containerRef, activeRefsRef, sequenceManager, stateManager]);
 
   /**
    * Check requirements directly from a DOM element
