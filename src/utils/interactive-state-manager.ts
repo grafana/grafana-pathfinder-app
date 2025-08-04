@@ -22,7 +22,7 @@ export class InteractiveStateManager {
   /**
    * Set the interactive state and dispatch events if needed
    */
-  setState(data: InteractiveElementData, state: InteractiveState): void {
+  async setState(data: InteractiveElementData, state: InteractiveState): Promise<void> {
     if (state === 'completed') {
       if (this.options.enableLogging) {
         console.log('✅ Interactive action completed:', data);
@@ -30,12 +30,11 @@ export class InteractiveStateManager {
       
       if (this.options.enableEvents) {
         // Dispatch event for any listeners
-        waitForReactUpdates().then(() => {
-          const event = new CustomEvent('interactive-action-completed', {
+        await waitForReactUpdates();
+        const event = new CustomEvent('interactive-action-completed', {
             detail: { data, state }
-          });
-          document.dispatchEvent(event);
         });
+        document.dispatchEvent(event);
       }
     }
   }
