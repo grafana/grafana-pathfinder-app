@@ -405,7 +405,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         setInteractiveState(data, 'completed');
       });
     } catch (error) {
-      handleInteractiveError(error as Error, 'interactiveFocus', false);
+      handleInteractiveError(error as Error, 'interactiveFocus', data, false);
     }
   }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState]);
 
@@ -495,6 +495,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       handleInteractiveError(error as Error, 'interactiveSequence', data, false);
       activeRefsRef.current.delete(data.reftarget);
     }
+
+    return data.reftarget;
   }, [containerRef, setInteractiveState, activeRefsRef, runStepByStepSequenceRef, runInteractiveSequenceRef]);
 
   const interactiveFormFill = useCallback(async (data: InteractiveElementData, fillForm: boolean) => { // eslint-disable-line react-hooks/exhaustive-deps
@@ -509,19 +511,16 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       
       console.warn(`🔍 FormFill: Found ${targetElements.length} elements matching selector`);
       if (targetElements.length === 0) {
-        console.warn(`❌ No elements found matching selector: ${data.reftarget}`);
+        handleInteractiveError(
+          `❌ No elements found matching selector: ${data.reftarget}`, 
+          'interactiveFormFill', data, false);
         return;
       } else if(targetElements.length > 1) {
         console.warn(`⚠️ Multiple elements found matching selector: ${data.reftarget}`);
       }
 
       const targetElement = targetElements[0] as HTMLElement;
-      console.warn(`🎯 FormFill: Target element found:`, {
-        tagName: targetElement.tagName,
-        className: targetElement.className,
-        ariaLabel: targetElement.getAttribute('aria-label'),
-        value: (targetElement as any).value
-      });
+      console.warn(`🎯 FormFill: Target element found:`, targetElement);
       
       // Always ensure navigation is open and element is visible first
       await ensureNavigationOpen(targetElement);
@@ -650,9 +649,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     } catch (error) {
       handleInteractiveError(error as Error, 'interactiveFormFill', data, false);
     }
+    return data;
   }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, resetValueTracker]);
 
-  const interactiveNavigate = useCallback((data: InteractiveElementData, navigate: boolean) => {
+  const interactiveNavigate = useCallback(async (data: InteractiveElementData, navigate: boolean) => {
     setInteractiveState(data, 'running');
     
     try {
