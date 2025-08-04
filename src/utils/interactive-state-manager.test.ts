@@ -1,4 +1,4 @@
-import { InteractiveStateManager, InteractiveState } from './interactive-state-manager';
+import { InteractiveStateManager } from './interactive-state-manager';
 import { InteractiveElementData } from '../types/interactive.types';
 
 describe('InteractiveStateManager', () => {
@@ -46,7 +46,7 @@ describe('InteractiveStateManager', () => {
 
   it('should call setState and throw on handleError with shouldThrow', () => {
     const setStateSpy = jest.spyOn(manager, 'setState');
-    expect(() => manager.handleError('err', 'ctx', data, true)).toThrowError('err');
+    expect(() => manager.handleError('err', 'ctx', data, true)).toThrow('err');
     expect(setStateSpy).toHaveBeenCalledWith(data, 'error');
     setStateSpy.mockRestore();
   });

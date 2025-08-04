@@ -121,7 +121,6 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       const menuItem = document.querySelector('a[data-testid="data-testid Nav menu item"]');
-      const interactiveElement = document.querySelector('li.interactive[data-targetaction="highlight"]');
 
       await act(async () => {
         await result.current.interactiveFocus(
@@ -141,7 +140,6 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       const menuItem = document.querySelector('a[data-testid="data-testid Nav menu item"]') as HTMLElement;
-      const interactiveElement = document.querySelector('li.interactive[data-targetaction="highlight"]');
       const clickSpy = jest.spyOn(menuItem, 'click');
 
       await act(async () => {
@@ -164,7 +162,6 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       const input = document.querySelector('input[type="text"]') as HTMLInputElement;
-      const interactiveElement = document.querySelector('li.interactive[data-targetaction="formfill"]');
 
       await act(async () => {
         await result.current.interactiveFormFill(
@@ -187,7 +184,6 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       const button = document.querySelector('button') as HTMLButtonElement;
-      const interactiveElement = document.querySelector('li.interactive[data-targetaction="button"]');
       const clickSpy = jest.spyOn(button, 'click');
 
       await act(async () => {
