@@ -360,7 +360,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, []);
 
-  const interactiveFocus = useCallback(async (data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => {
+  const interactiveFocus = useCallback(async (data: InteractiveElementData, click: boolean) => {
     setInteractiveState(data, 'running');
     
     // Search entire document for the target, which is outside of docs plugin frame.
@@ -396,7 +396,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState]);
 
-  const interactiveButton = useCallback(async (data: InteractiveElementData, click: boolean, clickedElement?: HTMLElement) => {
+  const interactiveButton = useCallback(async (data: InteractiveElementData, click: boolean) => {
     setInteractiveState(data, 'running');
 
     try {
@@ -434,7 +434,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   const runInteractiveSequenceRef = useRef<(elements: Element[], showMode: boolean) => Promise<void>>();
   const runStepByStepSequenceRef = useRef<(elements: Element[]) => Promise<void>>();
 
-  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly: boolean, clickedElement?: HTMLElement): Promise<string> => {
+  const interactiveSequence = useCallback(async (data: InteractiveElementData, showOnly: boolean): Promise<string> => {
     // This is here so recursion cannot happen
     if(activeRefsRef.current.has(data.reftarget)) {
       return data.reftarget;
@@ -489,7 +489,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, [containerRef, setInteractiveState, activeRefsRef, runStepByStepSequenceRef, runInteractiveSequenceRef]);
 
-  const interactiveFormFill = useCallback(async (data: InteractiveElementData, fillForm: boolean, clickedElement?: HTMLElement) => { // eslint-disable-line react-hooks/exhaustive-deps
+  const interactiveFormFill = useCallback(async (data: InteractiveElementData, fillForm: boolean) => { // eslint-disable-line react-hooks/exhaustive-deps
     const value = data.targetvalue || '';
     
     setInteractiveState(data, 'running');
@@ -645,7 +645,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, resetValueTracker]);
 
-  const interactiveNavigate = useCallback((data: InteractiveElementData, navigate: boolean, clickedElement?: HTMLElement) => {
+  const interactiveNavigate = useCallback((data: InteractiveElementData, navigate: boolean) => {
     setInteractiveState(data, 'running');
     
     try {
@@ -776,13 +776,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           }
 
           if (data.targetaction === 'highlight') {
-            await interactiveFocus(data, !showMode, element as HTMLElement); // Show mode = don't click, Do mode = click
+            await interactiveFocus(data, !showMode); // Show mode = don't click, Do mode = click
           } else if (data.targetaction === 'button') {
-            await interactiveButton(data, !showMode, element as HTMLElement); // Show mode = don't click, Do mode = click
+            await interactiveButton(data, !showMode); // Show mode = don't click, Do mode = click
           } else if (data.targetaction === 'formfill') {
-            await interactiveFormFill(data, !showMode, element as HTMLElement); // Show mode = don't fill, Do mode = fill
+            await interactiveFormFill(data, !showMode); // Show mode = don't fill, Do mode = fill
           } else if (data.targetaction === 'navigate') {
-            interactiveNavigate(data, !showMode, element as HTMLElement); // Show mode = show target, Do mode = navigate
+            interactiveNavigate(data, !showMode); // Show mode = show target, Do mode = navigate
           }
 
           // Mark element as completed
@@ -841,13 +841,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
           // Step 1: Show what we're about to do
           if (data.targetaction === 'highlight') {
-            await interactiveFocus(data, false, element as HTMLElement); // Show mode - highlight only
+            await interactiveFocus(data, false); // Show mode - highlight only
           } else if (data.targetaction === 'button') {
-            await interactiveButton(data, false, element as HTMLElement); // Show mode - highlight only
+            await interactiveButton(data, false); // Show mode - highlight only
           } else if (data.targetaction === 'formfill') {
-            await interactiveFormFill(data, false, element as HTMLElement); // Show mode - highlight only
+            await interactiveFormFill(data, false); // Show mode - highlight only
           } else if (data.targetaction === 'navigate') {
-            interactiveNavigate(data, false, element as HTMLElement); // Show mode - show target only
+            interactiveNavigate(data, false); // Show mode - show target only
           }
 
           // Wait for highlight animation to complete before doing the action
@@ -867,13 +867,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
           // Step 2: Actually do the action
           if (data.targetaction === 'highlight') {
-            await interactiveFocus(data, true, element as HTMLElement); // Do mode - click
+            await interactiveFocus(data, true); // Do mode - click
           } else if (data.targetaction === 'button') {
-            await interactiveButton(data, true, element as HTMLElement); // Do mode - click
+            await interactiveButton(data, true); // Do mode - click
           } else if (data.targetaction === 'formfill') {
-            await interactiveFormFill(data, true, element as HTMLElement); // Do mode - fill form
+            await interactiveFormFill(data, true); // Do mode - fill form
           } else if (data.targetaction === 'navigate') {
-            interactiveNavigate(data, true, element as HTMLElement); // Do mode - navigate
+            interactiveNavigate(data, true); // Do mode - navigate
           }
 
           // Mark step as completed
@@ -1053,23 +1053,23 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       // Route to appropriate function based on action type
       switch (targetAction) {
         case 'highlight':
-          await interactiveFocus(elementData, !isShowMode, undefined);
+          await interactiveFocus(elementData, !isShowMode);
           break;
 
         case 'button':
-          await interactiveButton(elementData, !isShowMode, undefined);
+          await interactiveButton(elementData, !isShowMode);
           break;
 
         case 'formfill':
-          await interactiveFormFill(elementData, !isShowMode, undefined);
+          await interactiveFormFill(elementData, !isShowMode);
           break;
 
         case 'navigate':
-          interactiveNavigate(elementData, !isShowMode, undefined);
+          interactiveNavigate(elementData, !isShowMode);
           break;
 
         case 'sequence':
-          await interactiveSequence(elementData, isShowMode, undefined);
+          await interactiveSequence(elementData, isShowMode);
           break;
 
         default:

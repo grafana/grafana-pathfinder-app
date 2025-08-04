@@ -130,8 +130,7 @@ describe('useInteractiveElements', () => {
             targetaction: 'highlight',
             tagName: 'li',
           },
-          false, // show mode
-          interactiveElement as HTMLElement
+          false // show mode
         );
       });
 
@@ -152,8 +151,7 @@ describe('useInteractiveElements', () => {
             targetaction: 'highlight',
             tagName: 'li',
           },
-          true, // do mode
-          interactiveElement as HTMLElement
+          true // do mode
         );
       });
 
@@ -176,8 +174,7 @@ describe('useInteractiveElements', () => {
             targetvalue: 'Prometheus',
             tagName: 'li',
           },
-          true, // do mode
-          interactiveElement as HTMLElement
+          true // do mode
         );
       });
 
@@ -200,8 +197,7 @@ describe('useInteractiveElements', () => {
             targetaction: 'button',
             tagName: 'li',
           },
-          true, // do mode
-          interactiveElement as HTMLElement
+          true // do mode
         );
       });
 
