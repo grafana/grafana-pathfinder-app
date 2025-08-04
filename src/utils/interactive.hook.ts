@@ -37,22 +37,6 @@ interface UseInteractiveElementsOptions {
 }
 
 /**
- * Ensure element is visible in the viewport by scrolling it into view
- * 
- * @param element - The element to make visible
- * @returns Promise that resolves when element is visible in viewport
- * 
- * @example
- * ```typescript
- * await ensureElementVisible(hiddenElement);
- * // Element is now visible and centered in viewport
- * ```
- */
-
-
-
-
-/**
  * This function is a guard to ensure that the interactive element data is valid.  It can encapsulte
  * new rules and checks as we go.
  * @param data - The interactive element data
@@ -62,19 +46,6 @@ function isValidInteractiveElement(data: InteractiveElementData): boolean {
   // Double negative coerces string into boolean
   return !!data.targetaction && !!data.reftarget;
 }
-
-/**
- * Ensure navigation is open if the target element is in the navigation area
- * 
- * @param element - The target element that may require navigation to be open
- * @returns Promise that resolves when navigation is open and accessible
- * 
- * @example
- * ```typescript
- * await ensureNavigationOpen(targetElement);
- * // Navigation menu is now open and docked if needed
- * ```
- */
 
 export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
   const { containerRef } = options;
@@ -148,7 +119,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
   /**
    * Core requirement checking logic using the new pure requirements utility
-   * Replaces the mock element anti-pattern with direct requirements checking
    */
   const checkRequirementsFromData = useCallback(async (data: InteractiveElementData): Promise<InteractiveRequirementsCheck> => {
     const options: RequirementsCheckOptions = {
@@ -285,7 +255,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     const isShowMode = buttonType === 'show';
 
     try {
-      // Route to appropriate function based on action type
       switch (targetAction) {
         case 'highlight':
           await interactiveFocus(elementData, !isShowMode);
@@ -314,14 +283,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);
     }
   }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence, stateManager]);
-
-  /**
-   * ============================================================================
-   * DOM-DEPENDENT CHECK FUNCTIONS
-   * These functions require DOM access and stay in the interactive hook
-   * Pure requirement checks have been moved to requirements-checker.utils.ts
-   * ============================================================================
-   */
 
   return {
     interactiveFocus,
