@@ -8,6 +8,8 @@ import {
   CheckResultError,
   DOMCheckFunctions 
 } from './requirements-checker.utils';
+import { useDOMSettling } from './dom-settling.hook';
+import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -134,6 +136,9 @@ interface UseInteractiveElementsOptions {
 
 export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
   const { containerRef } = options;
+  
+  // Initialize DOM settling detection
+  const { waitForScrollComplete } = useDOMSettling();
   
   // Initialize global interactive styles
   useEffect(() => {
@@ -316,7 +321,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    * ```
    */
   const ensureElementVisible = useCallback((element: HTMLElement): Promise<void> => {
-    return new Promise((resolve) => {
+    return new Promise(async (resolve) => {
       // Check if element is visible in viewport
       const rect = element.getBoundingClientRect();
       const isVisible = (
@@ -334,15 +339,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           inline: 'center' 
         });
         
-        // Give scroll animation time to complete
-        setTimeout(() => {
-          resolve();
-        }, 500);
-      } else {
-        resolve();
+        // Wait for scroll animation to complete using DOM settling detection
+        await waitForScrollComplete(element);
       }
+      
+      resolve();
     });
-  }, []);
+  }, [waitForScrollComplete]);
 
   const resetValueTracker = useCallback((targetElement: HTMLElement) => {
     // Reset React's value tracker if present (must be done after setting value)
@@ -376,13 +379,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     
     document.body.appendChild(highlightOutline);
     
-    // Remove highlight after animation completes
+    // Remove highlight after animation completes using DOM settling detection
     setTimeout(() => {
       element.classList.remove('interactive-highlighted');
       if (highlightOutline.parentNode) {
         highlightOutline.parentNode.removeChild(highlightOutline);
       }
-    }, 2000); // Match animation duration
+    }, INTERACTIVE_CONFIG.delays.technical.highlight); // Use configuration instead of magic number
     
     return element;
   }, [ensureNavigationOpen, ensureElementVisible]);
@@ -629,7 +632,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           }));
           
           // Wait a moment for the clear to process
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.monacoClear));
           
           // Now set the value and trigger comprehensive events
           const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
@@ -766,8 +769,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
   // Define helper functions using refs to avoid circular dependencies
   runInteractiveSequenceRef.current = async (elements: Element[], showMode: boolean): Promise<void> => {
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY = 2000; // 2 seconds between retries
+    const RETRY_DELAY = INTERACTIVE_CONFIG.delays.perceptual.retry; // Use configuration instead of magic number
     
     for (let i = 0; i < elements.length; i++) {
       const element = elements[i];
@@ -781,14 +783,14 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       let retryCount = 0;
       let elementCompleted = false;
       
-      while (!elementCompleted && retryCount < MAX_RETRIES) {
+      while (!elementCompleted && retryCount < INTERACTIVE_CONFIG.maxRetries) {
         try {
           // Check requirements using the existing system
           const requirementsCheck = await checkRequirementsFromData(data);
           
           if (!requirementsCheck.pass) {
             retryCount++;
-            if (retryCount < MAX_RETRIES) {
+            if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
               // Wait and retry
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
               continue;
@@ -810,7 +812,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           logInteractiveError('Error processing interactive element', error as Error, data);
           retryCount++;
           
-          if (retryCount < MAX_RETRIES) {
+          if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
           } else {
             // Max retries reached, skip this element
@@ -834,8 +836,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }
 
   runStepByStepSequenceRef.current = async (elements: Element[]): Promise<void> => {
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY = 2000; // 2 seconds between retries
+    const RETRY_DELAY = INTERACTIVE_CONFIG.delays.perceptual.retry; // Use configuration instead of magic number
     
     for (let i = 0; i < elements.length; i++) {
       const element = elements[i];
@@ -849,14 +850,14 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       let retryCount = 0;
       let stepCompleted = false;
       
-      while (!stepCompleted && retryCount < MAX_RETRIES) {
+      while (!stepCompleted && retryCount < INTERACTIVE_CONFIG.maxRetries) {
         try {
           // Check requirements using the existing system
           const requirementsCheck = await checkRequirementsFromData(data);
           
           if (!requirementsCheck.pass) {
             retryCount++;
-            if (retryCount < MAX_RETRIES) {
+            if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
               // Wait and retry
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
               continue;
@@ -876,7 +877,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           const secondCheck = await checkRequirementsFromData(data);
           if (!secondCheck.pass) {
             retryCount++;
-            if (retryCount < MAX_RETRIES) {
+            if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
               continue;
             } else {
@@ -899,7 +900,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           logInteractiveError('Error in interactive step', error as Error, data);
           retryCount++;
           
-          if (retryCount < MAX_RETRIES) {
+          if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
           } else {
             // Max retries reached, skip this step
