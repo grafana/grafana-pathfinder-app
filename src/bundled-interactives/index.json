@@ -6,7 +6,7 @@
       "summary": "Take a guided tour of Grafana's key areas and set up your first data source. Perfect for getting started and understanding where everything is located.",
       "filename": "welcome-to-grafana.ts",
       "exportName": "welcomeToGrafanaHtml",
-      "url": ["/", "/a/grafana-setupguide-app/home"]
+      "url": ["/"]
     },
     {
       "id": "first-dashboard",
@@ -15,6 +15,22 @@
       "filename": "first-dashboard.ts",
       "exportName": "firstDashboardHtml",
       "url": ["/", "/dashboards"]
+    },
+    {
+      "id": "welcome-to-grafana-cloud",
+      "title": "Welcome to Grafana Cloud",
+      "summary": "Take a guided tour of Grafana Cloud's key areas and set up your first data source. Perfect for getting started and understanding where everything is located.",
+      "filename": "welcome-to-grafana-cloud.ts",
+      "exportName": "welcomeToGrafanaCloudHtml",
+      "url": ["/a/grafana-setupguide-app/home"]
+    },
+    {
+      "id": "prometheus-grafana-101",
+      "title": "Prometheus & Grafana 101",
+      "summary": "Learn to use Prometheus and Grafana to monitor your infrastructure. Perfect for getting started and understanding where everything is located.",
+      "filename": "prometheus-grafana-101.ts",
+      "exportName": "prometheusGrafana101Html",
+      "url": ["/"]
     }
   ]
 }

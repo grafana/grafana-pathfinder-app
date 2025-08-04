@@ -390,6 +390,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
           
           stepNodes.forEach((stepEl, index) => {
             try {
+              // Process each step element with children support
               const step = walk(stepEl, `${currentPath}.step[${index}]`);
               if (step && typeof step !== 'string') {stepElements.push(step);}
             } catch (error) {
@@ -419,7 +420,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               // Include ALL other attributes (including future data-* attributes)
               ...allProps,
             },
-            children: stepElements,
+            children: stepElements, // Pass processed interactive steps
             originalHTML: el.outerHTML,
           };
         }
@@ -431,10 +432,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
         ) {
           hasInteractiveElements = true;
           
-          // Extract text content - use all text content from the multistep element as title
-          const elementTextContent = el.textContent?.trim() || '';
-          
-          // Extract internal action spans (from original element)
+          // Extract internal action spans (from original element) before processing children
           const internalSpans = el.querySelectorAll('span.interactive');
           const internalActions: Array<{
             requirements?: string;
@@ -487,6 +485,23 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
             );
           }
           
+          // Process remaining children as React components (after removing internal spans)
+          const children: Array<ParsedElement | string> = [];
+          el.childNodes.forEach((child, index) => {
+            try {
+              const walked = walk(child, `${currentPath}.interactive-multistep[${index}]`);
+              if (walked) {children.push(walked);}
+            } catch (error) {
+              errorCollector.addError(
+                'children_processing',
+                `Failed to process interactive multistep child ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                child.nodeType === Node.ELEMENT_NODE ? (child as Element).outerHTML : child.textContent?.substring(0, 100),
+                `${currentPath}.interactive-multistep[${index}]`,
+                error instanceof Error ? error : undefined
+              );
+            }
+          });
+          
           // Use general attribute mapping to capture ALL data attributes
           const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
           
@@ -495,7 +510,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
             props: {
               // Core multi-step props
               internalActions,
-              title: elementTextContent,
+              title: undefined, // Remove title - content will be in children
               // Specific data attribute mappings for React prop names
               requirements: el.getAttribute('data-requirements'),
               objectives: el.getAttribute('data-objectives'),
@@ -503,7 +518,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               // Include ALL other attributes (including future data-* attributes)
               ...allProps,
             },
-            children: [], // Children are captured in title above
+            children, // Pass processed children instead of empty array
             originalHTML: el.outerHTML,
           };
         }
@@ -530,6 +545,23 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
             );
           }
           
+          // Process children as React components (same approach as expandable tables)
+          const children: Array<ParsedElement | string> = [];
+          el.childNodes.forEach((child, index) => {
+            try {
+              const walked = walk(child, `${currentPath}.interactive-step[${index}]`);
+              if (walked) {children.push(walked);}
+            } catch (error) {
+              errorCollector.addError(
+                'children_processing',
+                `Failed to process interactive step child ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                child.nodeType === Node.ELEMENT_NODE ? (child as Element).outerHTML : child.textContent?.substring(0, 100),
+                `${currentPath}.interactive-step[${index}]`,
+                error instanceof Error ? error : undefined
+              );
+            }
+          });
+          
           // Use general attribute mapping to capture ALL data attributes
           const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
           
@@ -540,7 +572,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               targetAction,
               refTarget,
               targetValue: el.getAttribute('data-targetvalue'),
-              title: el.textContent?.trim(),
+              title: undefined, // Remove title - content will be in children
               // Specific data attribute mappings for React prop names
               requirements: el.getAttribute('data-requirements'),
               objectives: el.getAttribute('data-objectives'),
@@ -548,7 +580,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               // Include ALL other attributes (including future data-* attributes)
               ...allProps,
             },
-            children: [],
+            children, // Pass processed children instead of empty array
             originalHTML: el.outerHTML,
           };
         }
