@@ -360,6 +360,20 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     }
   }, []);
 
+  const logInteractiveError = (context: string, error: Error | string, data: InteractiveElementData) => {
+    const errorMessage = typeof error === 'string' ? error : error.message;
+    console.error(`❌ ${context}: ${errorMessage}`, data);
+  };
+  
+  const handleInteractiveError = (error: Error | string, context: string, data: InteractiveElementData, shouldThrow: boolean = true) => {
+    logInteractiveError(context, error, data);
+    setInteractiveState(data, 'error');
+    
+    if (shouldThrow) {
+      throw typeof error === 'string' ? new Error(error) : error;
+    }
+  };  
+
   const interactiveFocus = useCallback(async (data: InteractiveElementData, click: boolean) => {
     setInteractiveState(data, 'running');
     
@@ -391,8 +405,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         setInteractiveState(data, 'completed');
       });
     } catch (error) {
-      console.error("Error in interactiveFocus:", error);
-      setInteractiveState(data, 'error');
+      handleInteractiveError(error as Error, 'interactiveFocus', false);
     }
   }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState]);
 
@@ -424,8 +437,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         setInteractiveState(data, 'completed');
       });
     } catch (error) {
-      console.error("Error in interactiveButton:", error);
-      setInteractiveState(data, 'error');
+      handleInteractiveError(error as Error, 'interactiveButton', data, false);
     }
   }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, findButtonByText]);
 
@@ -448,14 +460,12 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
       if(targetElements.length === 0) {
         const msg = `No interactive sequence container found matching selector: ${data.reftarget}`;
-        console.error(msg);
-        throw new Error(msg);
+        handleInteractiveError(msg, 'interactiveSequence', data, true);
       }
       
       if(targetElements.length > 1) {
         const msg = `${targetElements.length} interactive sequence containers found matching selector: ${data.reftarget} - this is not supported (must be exactly 1)`;
-        console.error(msg);
-        throw new Error(msg);
+        handleInteractiveError(msg, 'interactiveSequence', data, true);
       } 
 
       activeRefsRef.current.add(data.reftarget);
@@ -465,7 +475,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       
       if (interactiveElements.length === 0) {
         const msg = `No interactive elements found within sequence container: ${data.reftarget}`;
-        throw new Error(msg);
+        handleInteractiveError(msg, 'interactiveSequence', data, true);
       }
       
       if (!showOnly) {
@@ -482,10 +492,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       activeRefsRef.current.delete(data.reftarget);
       return data.reftarget;
     } catch (error) {
-      console.error(`Error in interactiveSequence for ${data.reftarget}:`, error);
-      setInteractiveState(data, 'error');
+      handleInteractiveError(error as Error, 'interactiveSequence', data, false);
       activeRefsRef.current.delete(data.reftarget);
-      throw error;
     }
   }, [containerRef, setInteractiveState, activeRefsRef, runStepByStepSequenceRef, runInteractiveSequenceRef]);
 
@@ -640,8 +648,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         setInteractiveState(data, 'completed');
       });      
     } catch (error) {
-      console.error('Error applying interactive action for selector ' + data.reftarget);
-      setInteractiveState(data, 'error');
+      handleInteractiveError(error as Error, 'interactiveFormFill', data, false);
     }
   }, [highlight, ensureNavigationOpen, ensureElementVisible, setInteractiveState, resetValueTracker]);
 
@@ -681,8 +688,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         setInteractiveState(data, 'completed');
       });
     } catch (error) {
-      console.error('Error in interactiveNavigate:', error);
-      setInteractiveState(data, 'error');
+      handleInteractiveError(error as Error, 'interactiveNavigate', data);
     }
   }, [setInteractiveState]);
 
@@ -795,7 +801,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           await new Promise(resolve => setTimeout(resolve, 1300));
           
         } catch (error) {
-          console.error(`Error processing interactive element ${data.targetaction} ${data.reftarget}:`, error);
+          logInteractiveError('Error processing interactive element', error, data);
           retryCount++;
           
           if (retryCount < MAX_RETRIES) {
@@ -887,7 +893,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           }
           
         } catch (error) {
-          console.error(`Error in interactive step for ${data.targetaction} ${data.reftarget}:`, error);
+          logInteractiveError('Error in interactive step', error as Error, data);
           retryCount++;
           
           if (retryCount < MAX_RETRIES) {
@@ -1075,8 +1081,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           console.warn(`Unknown interactive action: ${targetAction}`);
       }
     } catch (error) {
-      console.error(`Error executing interactive action ${targetAction}:`, error);
-      throw error;
+      handleInteractiveError(error as Error, 'executeInteractiveAction', elementData, true);
     }
   }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence]);
 
