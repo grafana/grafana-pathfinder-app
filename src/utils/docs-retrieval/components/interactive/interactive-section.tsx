@@ -132,9 +132,9 @@ export function InteractiveSection({
     return steps;
   }, [children, sectionId]);
 
-  if (objectives) {
-    console.log("🔍 [DEBUG] InteractiveSection: " + sectionId + " objectives", objectives);
-  }
+  // if (objectives) {
+  //   console.log("🔍 [DEBUG] InteractiveSection: " + sectionId + " objectives", objectives);
+  // }
   
   // Calculate base completion (steps completed) - needed for completion logic
   const stepsCompleted = stepComponents.length > 0 && completedSteps.size >= stepComponents.length;

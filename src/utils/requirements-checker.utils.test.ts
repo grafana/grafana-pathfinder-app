@@ -1,6 +1,12 @@
-import { checkRequirements, RequirementsCheckOptions, DOMCheckFunctions } from './requirements-checker.utils';
+import { checkRequirements, RequirementsCheckOptions } from './requirements-checker.utils';
 import { locationService, config, hasPermission, getDataSourceSrv } from '@grafana/runtime';
 import { ContextService } from './context';
+
+// Mock dom-utils functions
+jest.mock('./dom-utils', () => ({
+  reftargetExistsCHECK: jest.fn(),
+  navmenuOpenCHECK: jest.fn(),
+}));
 
 // Mock Grafana runtime dependencies
 jest.mock('@grafana/runtime', () => ({
@@ -31,16 +37,20 @@ jest.mock('./context', () => ({
 }));
 
 describe('requirements-checker.utils', () => {
-  let mockDOMCheckFunctions: DOMCheckFunctions;
+  let mockReftargetExistsCHECK: jest.MockedFunction<any>;
+  let mockNavmenuOpenCHECK: jest.MockedFunction<any>;
 
   beforeEach(() => {
     jest.clearAllMocks();
 
+    // Get the mocked functions
+    const domUtils = require('./dom-utils');
+    mockReftargetExistsCHECK = domUtils.reftargetExistsCHECK;
+    mockNavmenuOpenCHECK = domUtils.navmenuOpenCHECK;
+
     // Setup default mock DOM check functions
-    mockDOMCheckFunctions = {
-      reftargetExistsCHECK: jest.fn().mockResolvedValue({ requirement: 'exists-reftarget', pass: true }),
-      navmenuOpenCHECK: jest.fn().mockResolvedValue({ requirement: 'navmenu-open', pass: true }),
-    };
+    mockReftargetExistsCHECK.mockResolvedValue({ requirement: 'exists-reftarget', pass: true });
+    mockNavmenuOpenCHECK.mockResolvedValue({ requirement: 'navmenu-open', pass: true });
 
     // Reset Grafana config mock
     (config as any).bootData = { user: null };
@@ -63,20 +73,22 @@ describe('requirements-checker.utils', () => {
         requirements: 'exists-reftarget,navmenu-open',
       };
 
-      const result = await checkRequirements(options, mockDOMCheckFunctions);
+      const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
-      expect(mockDOMCheckFunctions.reftargetExistsCHECK).toHaveBeenCalled();
-      expect(mockDOMCheckFunctions.navmenuOpenCHECK).toHaveBeenCalled();
+      expect(mockReftargetExistsCHECK).toHaveBeenCalled();
+      expect(mockNavmenuOpenCHECK).toHaveBeenCalled();
     });
 
-    it('should fail if DOM check functions are not provided', async () => {
+    it('should handle DOM-dependent requirements', async () => {
       const options: RequirementsCheckOptions = {
         requirements: 'exists-reftarget',
+        refTarget: 'button[data-testid="test-button"]',
+        targetAction: 'button',
       };
 
       const result = await checkRequirements(options);
-      expect(result.pass).toBe(false);
-      expect(result.error[0].error).toBe('DOM check function not available');
+      expect(result.pass).toBe(true);
+      expect(mockReftargetExistsCHECK).toHaveBeenCalledWith('button[data-testid="test-button"]', 'button');
     });
   });
 

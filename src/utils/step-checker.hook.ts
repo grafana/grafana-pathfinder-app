@@ -203,7 +203,6 @@ export function useStepChecker({
       }
 
       // STEP 4: No conditions - always enabled
-      console.log(`✅ [DEBUG] No conditions for ${stepId}, always enabled`);
       const enabledState = {
         isEnabled: true,
         isCompleted: false,

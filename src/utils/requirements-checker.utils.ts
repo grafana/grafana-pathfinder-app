@@ -8,6 +8,7 @@
 
 import { locationService, config, hasPermission, getDataSourceSrv } from '@grafana/runtime';
 import { ContextService } from './context';
+import { reftargetExistsCHECK, navmenuOpenCHECK } from './dom-utils';
 
 // Re-export types for convenience
 export interface RequirementsCheckResult {
@@ -32,22 +33,11 @@ export interface RequirementsCheckOptions {
 }
 
 /**
- * DOM-dependent check functions interface
- * These functions need to be passed in from the interactive hook
- * since they require DOM access and interactive logic
- */
-export interface DOMCheckFunctions {
-  reftargetExistsCHECK: (reftarget: string, targetAction: string) => Promise<CheckResultError>;
-  navmenuOpenCHECK: () => Promise<CheckResultError>;
-}
-
-/**
  * Core requirements checking function (pure implementation)
  * Replaces the mock element anti-pattern with direct string-based checking
  */
 export async function checkRequirements(
-  options: RequirementsCheckOptions,
-  domCheckFunctions?: DOMCheckFunctions
+  options: RequirementsCheckOptions
 ): Promise<RequirementsCheckResult> {
   const { requirements, targetAction = 'button', refTarget = '' } = options;
   
@@ -66,27 +56,13 @@ export async function checkRequirements(
    * Routes to appropriate check function based on requirement type
    */
   async function performCheck(check: string): Promise<CheckResultError> {
-    // DOM-dependent checks (delegate to provided functions)
+    // DOM-dependent checks (imported from dom-utils)
     if (check === 'exists-reftarget') {
-      if (!domCheckFunctions?.reftargetExistsCHECK) {
-        return {
-          requirement: check,
-          pass: false,
-          error: 'DOM check function not available'
-        };
-      }
-      return domCheckFunctions.reftargetExistsCHECK(refTarget, targetAction);
+      return reftargetExistsCHECK(refTarget, targetAction);
     }
     
     if (check === 'navmenu-open') {
-      if (!domCheckFunctions?.navmenuOpenCHECK) {
-        return {
-          requirement: check,
-          pass: false,
-          error: 'DOM check function not available'
-        };
-      }
-      return domCheckFunctions.navmenuOpenCHECK();
+      return navmenuOpenCHECK();
     }
 
     // Pure requirement checks (no DOM access needed)
