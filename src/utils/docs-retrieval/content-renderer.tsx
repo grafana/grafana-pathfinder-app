@@ -4,7 +4,17 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 import { parseHTMLToComponents, ParsedElement } from './html-parser';
-import { InteractiveSection, InteractiveStep, InteractiveMultiStep, CodeBlock, ExpandableTable, ImageRenderer, ContentParsingError, resetInteractiveCounters } from './components/interactive-components';
+import {
+  InteractiveSection,
+  InteractiveStep,
+  InteractiveMultiStep,
+  CodeBlock,
+  ExpandableTable,
+  ImageRenderer,
+  ContentParsingError,
+  resetInteractiveCounters,
+  VideoRenderer,
+} from './components/interactive-components';
 import { SequentialRequirementsManager } from '../requirements-checker.hook';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
@@ -19,9 +29,9 @@ function resolveRelativeUrls(html: string, baseUrl: string): string {
     // List of attributes that can contain URLs (excluding img attributes)
     const urlAttributes = ['href', 'action', 'poster', 'background'];
 
-    urlAttributes.forEach(attr => {
+    urlAttributes.forEach((attr) => {
       const elements = doc.querySelectorAll(`[${attr}]:not(img)`);
-      elements.forEach(element => {
+      elements.forEach((element) => {
         const attrValue = element.getAttribute(attr);
         if (attrValue && attrValue.startsWith('/') && !attrValue.startsWith('//')) {
           const resolvedUrl = new URL(attrValue, baseUrlObj).href;
@@ -47,12 +57,7 @@ function resolveRelativeUrls(html: string, baseUrl: string): string {
 function scrollToFragment(fragment: string, container: HTMLElement): void {
   try {
     // Try multiple selectors to find the target element
-    const selectors = [
-      `#${fragment}`,
-      `[id="${fragment}"]`,
-      `[name="${fragment}"]`,
-      `a[name="${fragment}"]`,
-    ];
+    const selectors = [`#${fragment}`, `[id="${fragment}"]`, `[name="${fragment}"]`, `a[name="${fragment}"]`];
 
     let targetElement: HTMLElement | null = null;
 
@@ -68,12 +73,12 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
       targetElement.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
-        inline: 'nearest'
+        inline: 'nearest',
       });
 
       // Add highlight effect
       targetElement.classList.add('fragment-highlight');
-      
+
       // Remove highlight after animation
       setTimeout(() => {
         targetElement!.classList.remove('fragment-highlight');
@@ -95,12 +100,7 @@ interface ContentRendererProps {
   containerRef?: React.RefObject<HTMLDivElement>;
 }
 
-export function ContentRenderer({ 
-  content, 
-  onContentReady, 
-  className,
-  containerRef 
-}: ContentRendererProps) {
+export function ContentRenderer({ content, onContentReady, className, containerRef }: ContentRendererProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
 
@@ -135,10 +135,10 @@ export function ContentRenderer({
   }, [processedContent, onContentReady]);
 
   return (
-    <div 
+    <div
       ref={activeRef}
       className={className}
-      style={{ 
+      style={{
         display: 'flex',
         flexDirection: 'column',
         minHeight: 0,
@@ -165,24 +165,24 @@ interface ContentProcessorProps {
 
 function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
-  
+
   // Reset interactive counters to ensure consistent sequential IDs for each new content
   resetInteractiveCounters();
-  
+
   // Parse HTML with fail-fast error handling
   const parseResult: ContentParseResult = parseHTMLToComponents(html, baseUrl);
 
   // Start DOM monitoring if interactive elements are present
   useEffect(() => {
     if (parseResult.isValid && parseResult.data) {
-      const hasInteractiveElements = parseResult.data.elements.some(el => 
-        el.type === 'interactive-section' || el.type === 'interactive-step'
+      const hasInteractiveElements = parseResult.data.elements.some(
+        (el) => el.type === 'interactive-section' || el.type === 'interactive-step'
       );
-      
+
       if (hasInteractiveElements) {
         const manager = SequentialRequirementsManager.getInstance();
         manager.startDOMMonitoring();
-        
+
         return () => {
           manager.stopDOMMonitoring();
         };
@@ -190,7 +190,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
     }
     return undefined;
   }, [parseResult]);
-  
+
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
     console.error('[DocsPlugin] Content parsing failed:', parseResult.errors);
@@ -212,17 +212,19 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
 
   // Success case: render parsed content
   const { data: parsedContent } = parseResult;
-  
+
   if (!parsedContent) {
     console.error('[DocsPlugin] Parsing succeeded but no data returned');
     return (
       <div ref={ref}>
         <ContentParsingError
-          errors={[{
-            type: 'html_parsing',
-            message: 'Parsing succeeded but no content data was returned',
-            location: 'ContentProcessor'
-          }]}
+          errors={[
+            {
+              type: 'html_parsing',
+              message: 'Parsing succeeded but no content data was returned',
+              location: 'ContentProcessor',
+            },
+          ]}
           warnings={parseResult.warnings}
           fallbackHtml={html}
         />
@@ -232,21 +234,16 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
 
   return (
     <div ref={ref}>
-      {parsedContent.elements.map((element, index) => 
-        renderParsedElement(element, `element-${index}`)
-      )}
+      {parsedContent.elements.map((element, index) => renderParsedElement(element, `element-${index}`))}
     </div>
   );
 }
 
-function renderParsedElement(
-  element: ParsedElement | ParsedElement[],
-  key: string | number
-): React.ReactNode {
+function renderParsedElement(element: ParsedElement | ParsedElement[], key: string | number): React.ReactNode {
   if (Array.isArray(element)) {
     return element.map((child, i) => renderParsedElement(child, `${key}-${i}`));
   }
-  
+
   // Handle special cases first
   switch (element.type) {
     case 'interactive-section':
@@ -259,9 +256,7 @@ function renderParsedElement(
           objectives={element.props.objectives}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string'
-              ? child
-              : renderParsedElement(child, `${key}-child-${childIndex}`)
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
           )}
         </InteractiveSection>
       );
@@ -277,9 +272,7 @@ function renderParsedElement(
           title={element.props.title}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string'
-              ? child
-              : renderParsedElement(child, `${key}-child-${childIndex}`)
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
           )}
         </InteractiveStep>
       );
@@ -294,11 +287,18 @@ function renderParsedElement(
           title={element.props.title}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string'
-              ? child
-              : renderParsedElement(child, `${key}-child-${childIndex}`)
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
           )}
         </InteractiveMultiStep>
+      );
+    case 'video':
+      return (
+        <VideoRenderer
+          key={key}
+          src={element.props.src}
+          baseUrl={element.props.baseUrl}
+          onClick={element.props.onClick}
+        />
       );
     case 'image-renderer':
       return (
@@ -333,50 +333,54 @@ function renderParsedElement(
           isCollapseSection={element.props.isCollapseSection}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string'
-              ? child
-              : renderParsedElement(child, `${key}-child-${childIndex}`)
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
           )}
         </ExpandableTable>
       );
     case 'raw-html':
       // This should only be used for specific known-safe content
       console.warn('[DocsPlugin] Rendering raw HTML - this should be rare in the new architecture');
-      return (
-        <div
-          key={key}
-          dangerouslySetInnerHTML={{ __html: element.props.html }}
-        />
-      );
+      return <div key={key} dangerouslySetInnerHTML={{ __html: element.props.html }} />;
     default:
       // Standard HTML elements - strict validation
       if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
         console.error('[DocsPlugin] Invalid element type for parsed element:', element);
         throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
       }
-      
+
       // Handle void/self-closing elements that shouldn't have children
       const voidElements = new Set([
-        'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
-        'link', 'meta', 'param', 'source', 'track', 'wbr'
+        'area',
+        'base',
+        'br',
+        'col',
+        'embed',
+        'hr',
+        'img',
+        'input',
+        'link',
+        'meta',
+        'param',
+        'source',
+        'track',
+        'wbr',
       ]);
-      
+
       if (typeof element.type === 'string' && voidElements.has(element.type)) {
         // Void elements should not have children
-        return React.createElement(
-          element.type,
-          { key, ...element.props }
-        );
+        return React.createElement(element.type, { key, ...element.props });
       } else {
         // Regular elements can have children
-        const children = element.children?.map((child: ParsedElement | string, childIndex: number) => {
-          if (typeof child === 'string') {
-            // Preserve whitespace in text content
-            return child.length > 0 ? child : null;
-          }
-          return renderParsedElement(child, `${key}-child-${childIndex}`);
-        }).filter((child: React.ReactNode) => child !== null);
-        
+        const children = element.children
+          ?.map((child: ParsedElement | string, childIndex: number) => {
+            if (typeof child === 'string') {
+              // Preserve whitespace in text content
+              return child.length > 0 ? child : null;
+            }
+            return renderParsedElement(child, `${key}-child-${childIndex}`);
+          })
+          .filter((child: React.ReactNode) => child !== null);
+
         return React.createElement(
           element.type,
           { key, ...element.props },
@@ -395,14 +399,10 @@ export function useContentRenderer(content: RawContent | null) {
   }, []);
 
   const renderer = React.useMemo(() => {
-    if (!content) { return null; }
-    return (
-      <ContentRenderer
-        content={content}
-        containerRef={containerRef}
-        onContentReady={handleContentReady}
-      />
-    );
+    if (!content) {
+      return null;
+    }
+    return <ContentRenderer content={content} containerRef={containerRef} onContentReady={handleContentReady} />;
   }, [content, handleContentReady]);
 
   return {

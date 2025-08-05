@@ -14,13 +14,19 @@ class ParsingErrorCollector {
   private errors: ParseError[] = [];
   private warnings: string[] = [];
 
-  addError(type: ParseError['type'], message: string, element?: string, location?: string, originalError?: Error): void {
+  addError(
+    type: ParseError['type'],
+    message: string,
+    element?: string,
+    location?: string,
+    originalError?: Error
+  ): void {
     this.errors.push({
       type,
       message,
       element: element?.substring(0, 200), // Limit element size for readability
       location,
-      originalError
+      originalError,
     });
   }
 
@@ -37,7 +43,7 @@ class ParsingErrorCollector {
       isValid: !this.hasErrors(),
       data,
       errors: this.errors,
-      warnings: this.warnings
+      warnings: this.warnings,
     };
   }
 }
@@ -48,23 +54,23 @@ class ParsingErrorCollector {
  */
 function mapHtmlAttributesToReactProps(element: Element, errorCollector: ParsingErrorCollector): Record<string, any> {
   const props: Record<string, any> = {};
-  
+
   try {
     // HTML to React attribute mapping
     const attributeMap: Record<string, string> = {
-      'class': 'className',
-      'for': 'htmlFor',
-      'tabindex': 'tabIndex',
-      'contenteditable': 'contentEditable',
-      'spellcheck': 'spellCheck',
-      'readonly': 'readOnly',
-      'maxlength': 'maxLength',
-      'cellpadding': 'cellPadding',
-      'cellspacing': 'cellSpacing',
-      'rowspan': 'rowSpan',
-      'colspan': 'colSpan',
-      'usemap': 'useMap',
-      'frameborder': 'frameBorder',
+      class: 'className',
+      for: 'htmlFor',
+      tabindex: 'tabIndex',
+      contenteditable: 'contentEditable',
+      spellcheck: 'spellCheck',
+      readonly: 'readOnly',
+      maxlength: 'maxLength',
+      cellpadding: 'cellPadding',
+      cellspacing: 'cellSpacing',
+      rowspan: 'rowSpan',
+      colspan: 'colSpan',
+      usemap: 'useMap',
+      frameborder: 'frameBorder',
     };
 
     // Attributes that should be skipped or handled specially
@@ -75,28 +81,111 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
 
     // Valid HTML attributes that React accepts
     const validAttributes = new Set([
-      'id', 'title', 'lang', 'dir', 'role', 'aria-label', 'aria-describedby', 
-      'aria-expanded', 'aria-hidden', 'aria-live', 'aria-atomic', 'aria-relevant',
-      'href', 'target', 'rel', 'download', 'src', 'alt', 'width', 'height',
-      'type', 'name', 'value', 'placeholder', 'disabled', 'checked', 'selected',
-      'multiple', 'size', 'accept', 'autoComplete', 'autoFocus', 'required',
-      'rows', 'cols', 'wrap', 'min', 'max', 'step', 'pattern',
+      'id',
+      'title',
+      'lang',
+      'dir',
+      'role',
+      'aria-label',
+      'aria-describedby',
+      'aria-expanded',
+      'aria-hidden',
+      'aria-live',
+      'aria-atomic',
+      'aria-relevant',
+      'href',
+      'target',
+      'rel',
+      'download',
+      'src',
+      'alt',
+      'width',
+      'height',
+      'type',
+      'name',
+      'value',
+      'placeholder',
+      'disabled',
+      'checked',
+      'selected',
+      'multiple',
+      'size',
+      'accept',
+      'autoComplete',
+      'autoFocus',
+      'required',
+      'rows',
+      'cols',
+      'wrap',
+      'min',
+      'max',
+      'step',
+      'pattern',
     ]);
 
     // SVG attributes that React accepts (React passes most SVG attributes through)
     const validSvgAttributes = new Set([
-      'viewBox', 'fill', 'stroke', 'strokeWidth', 'strokeLinecap', 'strokeLinejoin',
-      'd', 'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
-      'points', 'transform', 'opacity', 'fillOpacity', 'strokeOpacity',
-      'clipPath', 'mask', 'filter', 'gradientUnits', 'gradientTransform',
-      'patternUnits', 'patternTransform', 'preserveAspectRatio',
-      'xmlns', 'xmlnsXlink', 'version', 'baseProfile',
+      'viewBox',
+      'fill',
+      'stroke',
+      'strokeWidth',
+      'strokeLinecap',
+      'strokeLinejoin',
+      'd',
+      'cx',
+      'cy',
+      'r',
+      'rx',
+      'ry',
+      'x',
+      'y',
+      'x1',
+      'y1',
+      'x2',
+      'y2',
+      'points',
+      'transform',
+      'opacity',
+      'fillOpacity',
+      'strokeOpacity',
+      'clipPath',
+      'mask',
+      'filter',
+      'gradientUnits',
+      'gradientTransform',
+      'patternUnits',
+      'patternTransform',
+      'preserveAspectRatio',
+      'xmlns',
+      'xmlnsXlink',
+      'version',
+      'baseProfile',
     ]);
 
     // Check if element is SVG or inside SVG context
-    const isSvgElement = element.tagName.toLowerCase() === 'svg' || 
-                        element.closest('svg') !== null ||
-                        ['path', 'circle', 'rect', 'line', 'ellipse', 'polygon', 'polyline', 'g', 'defs', 'use', 'symbol', 'marker', 'clipPath', 'mask', 'pattern', 'image', 'text', 'foreignObject'].includes(element.tagName.toLowerCase());
+    const isSvgElement =
+      element.tagName.toLowerCase() === 'svg' ||
+      element.closest('svg') !== null ||
+      [
+        'path',
+        'circle',
+        'rect',
+        'line',
+        'ellipse',
+        'polygon',
+        'polyline',
+        'g',
+        'defs',
+        'use',
+        'symbol',
+        'marker',
+        'clipPath',
+        'mask',
+        'pattern',
+        'image',
+        'text',
+        'foreignObject',
+      ].includes(element.tagName.toLowerCase());
 
     for (const attr of element.attributes) {
       try {
@@ -118,9 +207,8 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
         const reactPropName = attributeMap[attrName] || attrName;
 
         // Check if attribute is valid for this element type
-        const isValidAttribute = validAttributes.has(attrName) || 
-                                attributeMap[attrName] ||
-                                (isSvgElement && validSvgAttributes.has(attrName));
+        const isValidAttribute =
+          validAttributes.has(attrName) || attributeMap[attrName] || (isSvgElement && validSvgAttributes.has(attrName));
 
         if (isValidAttribute) {
           // Convert boolean attributes
@@ -164,7 +252,7 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
  */
 export function parseHTMLToComponents(html: string, baseUrl?: string): ContentParseResult {
   const errorCollector = new ParsingErrorCollector();
-  
+
   // Validate input
   if (!html || typeof html !== 'string') {
     errorCollector.addError('html_parsing', 'Invalid HTML input: must be a non-empty string', html);
@@ -178,7 +266,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
     const parser = new DOMParser();
     // Always parse as a fragment (prevents html/body wrapping)
     doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
-    
+
     // Check for parsing errors
     const parserErrors = doc.querySelectorAll('parsererror');
     if (parserErrors.length > 0) {
@@ -212,6 +300,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
   let hasCodeBlocks = false;
   let hasExpandableTables = false;
   let hasImages = false;
+  let hasVideos = false;
 
   function walk(node: Element | ChildNode, path = 'root'): ParsedElement | string | null {
     try {
@@ -238,7 +327,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
           hasImages = true;
           // Get all attributes using the safe mapping function
           const imgProps = mapHtmlAttributesToReactProps(el, errorCollector);
-          
+
           return {
             type: 'image-renderer',
             props: {
@@ -258,20 +347,39 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
           };
         }
 
+        // VIDEO: <video>
+        if (tag === 'video') {
+          hasVideos = true;
+          // Get all attributes using the safe mapping function
+          const videoProps = mapHtmlAttributesToReactProps(el, errorCollector);
+
+          return {
+            type: 'video',
+            props: {
+              src: el.getAttribute('src') ?? undefined,
+              baseUrl,
+              // Include all other attributes (including data-* attributes)
+              ...videoProps,
+            },
+            children: [],
+            originalHTML: el.outerHTML,
+          };
+        }
+
         // CODE BLOCK: <pre>
         if (tag === 'pre') {
           hasCodeBlocks = true;
           const codeEl = el.querySelector('code');
           const code = codeEl ? codeEl.textContent : el.textContent;
-          
+
           if (!code) {
             errorCollector.addWarning(`Empty code block found at ${currentPath}`);
           }
-          
+
           // Try to detect language from class names
-          const languageMatch = (el.className || '').match(/language-([^\s"]+)/) || 
-                                (codeEl?.className || '').match(/language-([^\s"]+)/);
-          
+          const languageMatch =
+            (el.className || '').match(/language-([^\s"]+)/) || (codeEl?.className || '').match(/language-([^\s"]+)/);
+
           return {
             type: 'code-block',
             props: {
@@ -289,10 +397,10 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
         if (tag === 'code' && el.parentElement?.tagName.toLowerCase() !== 'pre') {
           hasCodeBlocks = true;
           const code = el.textContent;
-          
+
           // Try to detect language from class names
           const languageMatch = (el.className || '').match(/language-([^\s"]+)/);
-          
+
           return {
             type: 'code-block',
             props: {
@@ -307,10 +415,7 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
         }
 
         // EXPANDABLE TABLE: <div class="expand-table-wrapper">
-        if (
-          tag === 'div' &&
-          /\bexpand-table-wrapper\b/.test(el.className || '')
-        ) {
+        if (tag === 'div' && /\bexpand-table-wrapper\b/.test(el.className || '')) {
           hasExpandableTables = true;
           const table = el.querySelector('table');
           return {
@@ -330,40 +435,46 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
           tag === 'div' &&
           el.classList.contains('collapse') && // More specific than regex
           !el.classList.contains('collapse-content') && // Don't match collapse-content
-          !el.classList.contains('collapse-trigger') && // Don't match collapse-trigger  
+          !el.classList.contains('collapse-trigger') && // Don't match collapse-trigger
           !el.classList.contains('collapse-section') && // Don't match our own generated class
           !/\binteractive\b/.test(el.className || '') // Don't interfere with interactive elements
         ) {
           hasExpandableTables = true;
           const triggerEl = el.querySelector('.collapse-trigger');
           const contentEl = el.querySelector('.collapse-content');
-          
+
           let toggleText = 'Toggle section';
           if (triggerEl) {
             // Extract text from trigger, excluding icon text
             const triggerTextEl = triggerEl.querySelector('span:first-child') || triggerEl;
             toggleText = triggerTextEl.textContent?.trim() || 'Toggle section';
           }
-          
+
           // Parse the content as React components instead of raw HTML
           const children: Array<ParsedElement | string> = [];
           if (contentEl) {
             contentEl.childNodes.forEach((child, index) => {
               try {
                 const walked = walk(child, `${currentPath}.collapse-content[${index}]`);
-                if (walked) {children.push(walked);}
+                if (walked) {
+                  children.push(walked);
+                }
               } catch (error) {
                 errorCollector.addError(
                   'children_processing',
-                  `Failed to process collapse content child ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                  child.nodeType === Node.ELEMENT_NODE ? (child as Element).outerHTML : child.textContent?.substring(0, 100),
+                  `Failed to process collapse content child ${index}: ${
+                    error instanceof Error ? error.message : 'Unknown error'
+                  }`,
+                  child.nodeType === Node.ELEMENT_NODE
+                    ? (child as Element).outerHTML
+                    : child.textContent?.substring(0, 100),
                   `${currentPath}.collapse-content[${index}]`,
                   error instanceof Error ? error : undefined
                 );
               }
             });
           }
-          
+
           return {
             type: 'expandable-table',
             props: {
@@ -378,35 +489,36 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
         }
 
         // INTERACTIVE SECTION
-        if (
-          /\binteractive\b/.test(el.className || '') &&
-          el.getAttribute('data-targetaction') === 'sequence'
-        ) {
+        if (/\binteractive\b/.test(el.className || '') && el.getAttribute('data-targetaction') === 'sequence') {
           hasInteractiveElements = true;
           const titleEl = el.querySelector('h1,h2,h3,h4,h5,h6');
           const title = titleEl ? titleEl.textContent?.trim() : 'Interactive Section';
           const stepNodes = el.querySelectorAll('li.interactive[data-targetaction]');
           const stepElements: ParsedElement[] = [];
-          
+
           stepNodes.forEach((stepEl, index) => {
             try {
               // Process each step element with children support
               const step = walk(stepEl, `${currentPath}.step[${index}]`);
-              if (step && typeof step !== 'string') {stepElements.push(step);}
+              if (step && typeof step !== 'string') {
+                stepElements.push(step);
+              }
             } catch (error) {
               errorCollector.addError(
                 'children_processing',
-                `Failed to process interactive step ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                `Failed to process interactive step ${index}: ${
+                  error instanceof Error ? error.message : 'Unknown error'
+                }`,
                 stepEl.outerHTML,
                 `${currentPath}.step[${index}]`,
                 error instanceof Error ? error : undefined
               );
             }
           });
-          
+
           // Use general attribute mapping to capture ALL data attributes
           const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
-          
+
           return {
             type: 'interactive-section',
             props: {
@@ -426,12 +538,9 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
         }
 
         // INTERACTIVE MULTI-STEP
-        if (
-          /\binteractive\b/.test(el.className || '') &&
-          el.getAttribute('data-targetaction') === 'multistep'
-        ) {
+        if (/\binteractive\b/.test(el.className || '') && el.getAttribute('data-targetaction') === 'multistep') {
           hasInteractiveElements = true;
-          
+
           // Extract internal action spans (from original element) before processing children
           const internalSpans = el.querySelectorAll('span.interactive');
           const internalActions: Array<{
@@ -440,42 +549,46 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
             refTarget: string;
             targetValue?: string;
           }> = [];
-          
+
           internalSpans.forEach((span, index) => {
             try {
               const targetAction = span.getAttribute('data-targetaction');
               const refTarget = span.getAttribute('data-reftarget');
-              
+
               if (!targetAction || !refTarget) {
                 errorCollector.addError(
                   'element_creation',
-                  `Multi-step internal action ${index + 1} missing required attributes (data-targetaction and data-reftarget)`,
+                  `Multi-step internal action ${
+                    index + 1
+                  } missing required attributes (data-targetaction and data-reftarget)`,
                   span.outerHTML,
                   `${currentPath}.multistep.action[${index}]`
                 );
                 return;
               }
-              
+
               internalActions.push({
                 requirements: span.getAttribute('data-requirements') || undefined,
                 targetAction,
                 refTarget,
                 targetValue: span.getAttribute('data-targetvalue') || undefined,
               });
-              
+
               // Remove the internal span since it's just metadata
               span.remove();
             } catch (error) {
               errorCollector.addError(
                 'element_creation',
-                `Failed to process multi-step internal action ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                `Failed to process multi-step internal action ${index + 1}: ${
+                  error instanceof Error ? error.message : 'Unknown error'
+                }`,
                 span.outerHTML,
                 `${currentPath}.multistep.action[${index}]`,
                 error instanceof Error ? error : undefined
               );
             }
           });
-          
+
           if (internalActions.length === 0) {
             errorCollector.addError(
               'element_creation',
@@ -484,27 +597,33 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               currentPath
             );
           }
-          
+
           // Process remaining children as React components (after removing internal spans)
           const children: Array<ParsedElement | string> = [];
           el.childNodes.forEach((child, index) => {
             try {
               const walked = walk(child, `${currentPath}.interactive-multistep[${index}]`);
-              if (walked) {children.push(walked);}
+              if (walked) {
+                children.push(walked);
+              }
             } catch (error) {
               errorCollector.addError(
                 'children_processing',
-                `Failed to process interactive multistep child ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                child.nodeType === Node.ELEMENT_NODE ? (child as Element).outerHTML : child.textContent?.substring(0, 100),
+                `Failed to process interactive multistep child ${index}: ${
+                  error instanceof Error ? error.message : 'Unknown error'
+                }`,
+                child.nodeType === Node.ELEMENT_NODE
+                  ? (child as Element).outerHTML
+                  : child.textContent?.substring(0, 100),
                 `${currentPath}.interactive-multistep[${index}]`,
                 error instanceof Error ? error : undefined
               );
             }
           });
-          
+
           // Use general attribute mapping to capture ALL data attributes
           const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
-          
+
           return {
             type: 'interactive-multi-step',
             props: {
@@ -531,11 +650,11 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
           el.getAttribute('data-targetaction') !== 'multistep'
         ) {
           hasInteractiveElements = true;
-          
+
           // Validate required attributes for interactive elements
           const targetAction = el.getAttribute('data-targetaction');
           const refTarget = el.getAttribute('data-reftarget');
-          
+
           if (!refTarget) {
             errorCollector.addError(
               'element_creation',
@@ -544,27 +663,33 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               currentPath
             );
           }
-          
+
           // Process children as React components (same approach as expandable tables)
           const children: Array<ParsedElement | string> = [];
           el.childNodes.forEach((child, index) => {
             try {
               const walked = walk(child, `${currentPath}.interactive-step[${index}]`);
-              if (walked) {children.push(walked);}
+              if (walked) {
+                children.push(walked);
+              }
             } catch (error) {
               errorCollector.addError(
                 'children_processing',
-                `Failed to process interactive step child ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                child.nodeType === Node.ELEMENT_NODE ? (child as Element).outerHTML : child.textContent?.substring(0, 100),
+                `Failed to process interactive step child ${index}: ${
+                  error instanceof Error ? error.message : 'Unknown error'
+                }`,
+                child.nodeType === Node.ELEMENT_NODE
+                  ? (child as Element).outerHTML
+                  : child.textContent?.substring(0, 100),
                 `${currentPath}.interactive-step[${index}]`,
                 error instanceof Error ? error : undefined
               );
             }
           });
-          
+
           // Use general attribute mapping to capture ALL data attributes
           const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
-          
+
           return {
             type: 'interactive-step',
             props: {
@@ -590,12 +715,16 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
         el.childNodes.forEach((child, index) => {
           try {
             const walked = walk(child, `${currentPath}[${index}]`);
-            if (walked) {children.push(walked);}
+            if (walked) {
+              children.push(walked);
+            }
           } catch (error) {
             errorCollector.addError(
               'children_processing',
               `Failed to process child ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-              child.nodeType === Node.ELEMENT_NODE ? (child as Element).outerHTML : child.textContent?.substring(0, 100),
+              child.nodeType === Node.ELEMENT_NODE
+                ? (child as Element).outerHTML
+                : child.textContent?.substring(0, 100),
               `${currentPath}[${index}]`,
               error instanceof Error ? error : undefined
             );
@@ -632,7 +761,9 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
     root.childNodes.forEach((child, index) => {
       try {
         const res = walk(child, `root[${index}]`);
-        if (res && typeof res !== "string") {elements.push(res);}
+        if (res && typeof res !== 'string') {
+          elements.push(res);
+        }
       } catch (error) {
         errorCollector.addError(
           'element_creation',
@@ -665,8 +796,8 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
     hasCodeBlocks,
     hasExpandableTables,
     hasImages,
+    hasVideos,
   };
 
   return errorCollector.getResult(parsedContent);
 }
-  
