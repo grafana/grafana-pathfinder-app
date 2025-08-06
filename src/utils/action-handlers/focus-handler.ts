@@ -17,8 +17,6 @@ export class FocusHandler {
       
       if (!click) {
         await this.handleShowMode(targetElements);
-        // Mark show actions as completed too for proper state cleanup
-        await this.markAsCompleted(data);
         return;
       }
 
