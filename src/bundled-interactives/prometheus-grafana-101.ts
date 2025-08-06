@@ -86,6 +86,7 @@ export const prometheusGrafana101Html = `<html>
               data-requirements="has-datasource:prometheus">
             <ul>
               <li class="interactive" 
+                  data-requirements="section-completed:section-setup-datasource"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/dashboards']"
                   data-targetaction='highlight'>
                 Click <strong>Dashboards</strong> in the left-side menu.

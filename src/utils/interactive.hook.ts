@@ -295,5 +295,14 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     checkRequirementsWithData,
     executeInteractiveAction, // New direct interface for React components
     fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(), // Add the new function to the return object
+    
+    // Emergency method for safety
+    forceUnblock: () => stateManager.forceUnblock(),
+    
+    // Section-level blocking methods
+    startSectionBlocking: (sectionId: string, data: InteractiveElementData, cancelCallback?: () => void) => stateManager.startSectionBlocking(sectionId, data, cancelCallback),
+    stopSectionBlocking: (sectionId: string) => stateManager.stopSectionBlocking(sectionId),
+    isSectionBlocking: () => stateManager.isSectionBlocking(),
+    cancelSection: () => stateManager.cancelSection()
   };
 } 

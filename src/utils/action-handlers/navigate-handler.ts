@@ -14,6 +14,8 @@ export class NavigateHandler {
     try {
       if (!navigate) {
         await this.handleShowMode(data);
+        // Mark show actions as completed too for proper state cleanup
+        await this.markAsCompleted(data);
         return;
       }
 

@@ -85,6 +85,10 @@ export function mapRequirementToUserFriendlyMessage(requirement: string): string
     {
       pattern: /^min-version:(.+)$/,
       message: (version) => `This feature requires Grafana version ${version} or higher.`
+    },
+    {
+      pattern: /^section-completed:(.+)$/,
+      message: (sectionId) => `Complete the '${sectionId}' section before continuing to this section.`
     }
   ];
   

@@ -114,6 +114,11 @@ export async function checkRequirements(
       return minVersionCHECK(check);
     }
 
+    // Section dependency checks
+    if (check.startsWith('section-completed:')) {
+      return sectionCompletedCHECK(check);
+    }
+
     // Unknown requirement
     console.warn("Unknown requirement:", check);
     return {
@@ -403,4 +408,30 @@ async function hasDatasourcesCHECK(check: string): Promise<CheckResultError> {
     error: dataSources.length > 0 ? undefined : "No data sources found",
     context: dataSources
   };
+}
+
+// Section completion checking - simple DOM-based approach
+async function sectionCompletedCHECK(check: string): Promise<CheckResultError> {
+  try {
+    const sectionId = check.replace('section-completed:', '');
+    
+    // Check if the section exists in DOM and has completed class
+    const sectionElement = document.getElementById(sectionId);
+    const isCompleted = sectionElement?.classList.contains('completed') || false;
+    
+    return {
+      requirement: check,
+      pass: isCompleted,
+      error: isCompleted ? undefined : `Section '${sectionId}' must be completed first`,
+      context: { sectionId, found: !!sectionElement, hasCompletedClass: isCompleted }
+    };
+  } catch (error) {
+    console.error('Section completion check error:', error);
+    return {
+      requirement: check,
+      pass: false,
+      error: `Section completion check failed: ${error}`,
+      context: { error }
+    };
+  }
 }

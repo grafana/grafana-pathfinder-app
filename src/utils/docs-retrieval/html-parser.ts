@@ -518,6 +518,8 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
 
           // Use general attribute mapping to capture ALL data attributes
           const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
+          
+
 
           return {
             type: 'interactive-section',

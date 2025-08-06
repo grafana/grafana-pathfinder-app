@@ -19,6 +19,8 @@ export interface InteractiveElementData {
   // Timing context
   timestamp?: number;
   
+
+  
   // Custom data attributes (extensible)
   customData?: Record<string, string>;
 } 

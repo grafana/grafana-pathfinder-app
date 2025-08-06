@@ -182,9 +182,15 @@ export function useStepChecker({
 
       // STEP 3: Check requirements (only if objectives not met and eligible)
       if (requirements && requirements.trim() !== '') {
-        console.log(`🔍 [DEBUG] Checking requirements for ${stepId}: ${requirements}`);
+        console.warn(`🔍 [DEBUG] Checking requirements for ${stepId}: ${requirements}`);
         
         const requirementsResult = await checkConditions(requirements, 'requirements');
+        console.warn(`📋 [DEBUG] Requirements result for ${stepId}:`, {
+          pass: requirementsResult.pass,
+          error: requirementsResult.error,
+          requirements
+        });
+        
         const explanation = requirementsResult.pass 
           ? undefined 
           : getRequirementExplanation(requirements, hints, requirementsResult.error);
@@ -197,6 +203,8 @@ export function useStepChecker({
           explanation,
           error: requirementsResult.pass ? undefined : requirementsResult.error,
         };
+        
+        console.warn(`🎯 [DEBUG] Setting requirements state for ${stepId}:`, requirementsState);
         setState(requirementsState);
         updateManager(requirementsState);
         return;
@@ -299,6 +307,20 @@ export function useStepChecker({
     }
     return undefined;
   }, [stepId, checkStep, state.isCompleted]);
+
+  // Listen for section completion events (for section dependencies)
+  useEffect(() => {
+    const handleSectionCompletion = () => {
+      if (!state.isCompleted && requirements?.includes('section-completed:')) {
+        checkStep();
+      }
+    };
+
+    document.addEventListener('section-completed', handleSectionCompletion);
+    return () => {
+      document.removeEventListener('section-completed', handleSectionCompletion);
+    };
+  }, [checkStep, state.isCompleted, requirements]);
 
   return {
     ...state,
