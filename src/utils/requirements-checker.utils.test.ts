@@ -287,4 +287,20 @@ describe('requirements-checker.utils', () => {
       expect(result.error[0].error).toBe('No data sources found');
     });
   });
+
+  describe('section-completed requirement', () => {
+    it('should recognize section-completed requirement format', async () => {
+      // Test that the requirement is recognized and processed
+      // The actual implementation will be tested in integration tests
+      const options: RequirementsCheckOptions = {
+        requirements: 'section-completed:setup-datasource',
+      };
+
+      const result = await checkRequirements(options);
+      // Should not throw an error and should have processed the requirement
+      expect(result.requirements).toBe('section-completed:setup-datasource');
+      expect(result.error).toHaveLength(1);
+      expect(result.error[0].requirement).toBe('section-completed:setup-datasource');
+    });
+  });
 });

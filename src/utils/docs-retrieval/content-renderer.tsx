@@ -254,6 +254,8 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           isSequence={element.props.isSequence}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
+          hints={element.props.hints}
+          id={element.props.id} // Pass the HTML id attribute
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
             typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)

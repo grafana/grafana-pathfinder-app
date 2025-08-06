@@ -204,6 +204,17 @@ export function useRequirementsChecker({
     // Directly notify the manager with the new state to avoid timing issues
     if (managerRef.current) {
       managerRef.current.updateStep(uniqueId, newState);
+      
+      // If this is a section completion, trigger reactive check to unlock dependent sections
+      if (uniqueId.startsWith('section-')) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(`🔓 Section ${uniqueId} completed - triggering reactive check for dependent steps`);
+        }
+        // Delayed reactive check to allow state to settle
+        setTimeout(() => {
+          managerRef.current?.triggerReactiveCheck();
+        }, 100);
+      }
     }
     
     // Debug logging for completion tracking
@@ -304,6 +315,15 @@ export class SequentialRequirementsManager {
 
   // Trigger reactive checking of all steps (e.g., after completing a step or DOM changes)
   triggerReactiveCheck(): void {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`🔄 Triggering reactive check for all steps`, {
+        totalSteps: this.steps.size,
+        totalCheckers: this.stepCheckers.size,
+        totalCheckersById: this.stepCheckersByID.size,
+        stepIds: Array.from(this.steps.keys())
+      });
+    }
+    
     // Trigger actual requirements re-checking for all registered steps
     this.recheckAllSteps();
     // Also notify listeners for UI updates
@@ -603,7 +623,14 @@ export function useSequentialRequirements({
   const markCompleted = useCallback(() => {
     // Just delegate to the basic checker - it will update the manager directly
     basicChecker.markCompleted();
-  }, [basicChecker]);
+    
+    // Additional reactive check for section dependencies
+    // The basic checker handles section-level reactive checks, but we ensure
+    // all dependent steps get re-evaluated
+    setTimeout(() => {
+      manager.triggerReactiveCheck();
+    }, 150); // Slightly longer delay to ensure basic checker's timeout completes first
+  }, [basicChecker, manager]);
   
   // Get current state from manager (which includes sequential logic)
   const managerState = manager.getStepState(uniqueId);
