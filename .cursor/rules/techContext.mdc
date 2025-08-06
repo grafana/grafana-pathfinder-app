@@ -1,7 +1,7 @@
 ---
-alwaysApply: true
+alwaysApply: false
+description: Describes technologies, frameworks, and other tools used in this repository.
 ---
-
 # Tech Context
 
 ## Technologies Used

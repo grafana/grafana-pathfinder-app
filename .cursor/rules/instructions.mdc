@@ -1,5 +1,6 @@
 ---
 alwaysApply: true
+description: This file contains the core set of instructions the agent should always be familiar with, when working in this repository.
 ---
 
 # Memory

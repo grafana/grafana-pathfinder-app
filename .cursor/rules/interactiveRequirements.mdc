@@ -1,3 +1,8 @@
+---
+alwaysApply: false
+description: This document describes the requirements and design constraints of interactive tutorials found in this repository.
+---
+
 # Interactive Elements Requirements System
 
 This document describes the requirements and objectives system for interactive elements in the Grafana Documentation Plugin.

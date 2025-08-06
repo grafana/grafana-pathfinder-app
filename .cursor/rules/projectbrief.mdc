@@ -1,3 +1,8 @@
+---
+alwaysApply: false
+description: Describes why this code repository exists, its core requirements and goals at a high level.
+---
+
 # Project Brief
 
 This file serves as:
