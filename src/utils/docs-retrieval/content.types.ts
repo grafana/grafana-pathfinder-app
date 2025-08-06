@@ -6,19 +6,19 @@ export type ContentType = 'learning-journey' | 'single-doc';
 export interface RawContent {
   /** Raw HTML content from the source */
   html: string;
-  
+
   /** Metadata extracted during fetching */
   metadata: ContentMetadata;
-  
+
   /** Content type determines how it should be processed */
   type: ContentType;
-  
+
   /** Original URL that was fetched */
   url: string;
-  
+
   /** When this content was fetched */
   lastFetched: string;
-  
+
   /** Hash fragment from URL for anchor scrolling */
   hashFragment?: string;
 }
@@ -26,10 +26,10 @@ export interface RawContent {
 export interface ContentMetadata {
   /** Extracted title from the content */
   title: string;
-  
+
   /** Learning journey specific metadata (only present for learning journeys) */
   learningJourney?: LearningJourneyMetadata;
-  
+
   /** Single doc specific metadata (only present for single docs) */
   singleDoc?: SingleDocMetadata;
 }
@@ -37,16 +37,16 @@ export interface ContentMetadata {
 export interface LearningJourneyMetadata {
   /** Current milestone number (0 for cover pages) */
   currentMilestone: number;
-  
+
   /** Total number of milestones */
   totalMilestones: number;
-  
+
   /** All milestones for this journey */
   milestones: Milestone[];
-  
+
   /** Journey summary from first few paragraphs */
   summary?: string;
-  
+
   /** Base URL for the journey (without milestone paths) */
   baseUrl: string;
 }
@@ -54,10 +54,10 @@ export interface LearningJourneyMetadata {
 export interface SingleDocMetadata {
   /** Any extracted summary or description */
   summary?: string;
-  
+
   /** Whether this doc contains interactive elements */
   hasInteractiveElements?: boolean;
-  
+
   /** Extracted breadcrumb information */
   breadcrumbs?: string[];
 }
@@ -104,13 +104,13 @@ export interface ConclusionImage {
 export interface ContentFetchOptions {
   /** Whether to use authentication headers */
   useAuth?: boolean;
-  
+
   /** Custom headers to include */
   headers?: Record<string, string>;
-  
+
   /** Timeout in milliseconds */
   timeout?: number;
-  
+
   /** Whether to follow redirects */
   followRedirects?: boolean;
 }
@@ -118,7 +118,7 @@ export interface ContentFetchOptions {
 export interface ContentFetchResult {
   /** The raw content, or null if fetch failed */
   content: RawContent | null;
-  
+
   /** Error message if fetch failed */
   error?: string;
 }
@@ -153,6 +153,7 @@ export interface ParsedContent {
   hasCodeBlocks: boolean;
   hasExpandableTables: boolean;
   hasImages: boolean;
+  hasVideos: boolean;
 }
 
 // Extend existing interfaces with the new result pattern
