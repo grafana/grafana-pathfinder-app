@@ -29,6 +29,7 @@ export const prometheusGrafana101Html = `<html>
             data-objectives="has-datasource:prometheus"> 
             <ul>
               <li class="interactive" 
+                  data-requirements="navmenu-open"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections']"
                   data-targetaction='highlight'>
                 Click on <strong>Connections</strong> in the left menu to manage data sources.
