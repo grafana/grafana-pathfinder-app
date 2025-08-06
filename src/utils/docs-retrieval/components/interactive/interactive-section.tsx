@@ -83,13 +83,31 @@ export function InteractiveSection({
   const [completedSteps, setCompletedSteps] = useState(new Set<string>());
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0); // Track next uncompleted step
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
+  
+  // Use ref for cancellation to avoid closure issues
+  const isCancelledRef = useRef(false);
   
   // Store refs to multistep components for section-level execution
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
 
   // Get the interactive functions from the hook
-  const { executeInteractiveAction } = useInteractiveElements();
+  const { 
+    executeInteractiveAction, 
+    startSectionBlocking, 
+    stopSectionBlocking 
+  } = useInteractiveElements();
+  
+  // Create cancellation handler
+  const handleSectionCancel = useCallback(() => {
+    console.warn(`🛑 Section cancelled by user: ${sectionId}`);
+    isCancelledRef.current = true; // Set ref for immediate access
+    // The running loop will detect this and break
+  }, [sectionId]);
+  
+  // Use executeInteractiveAction directly (no wrapper needed)
+  // Section-level blocking is managed separately at the section level
 
   // Extract step information from children first (needed for completion calculation)
   const stepComponents = useMemo((): StepInfo[] => {
@@ -157,6 +175,7 @@ export function InteractiveSection({
 
       if (completedSteps && completedSteps.size !== allStepIds.size) {
         setCompletedSteps(allStepIds);
+        setCurrentStepIndex(stepComponents.length); // Mark as all completed
         console.log(`✅ Section objectives met for ${sectionId}, marking all ${allStepIds.size} child steps as complete`);
       }
     }
@@ -177,18 +196,40 @@ export function InteractiveSection({
     return true;
   }, [completedSteps, stepComponents]);
 
+  // Calculate resume information for button display
+  const getResumeInfo = useCallback(() => {
+    if (stepComponents.length === 0) return { nextStepIndex: 0, remainingSteps: 0, isResume: false };
+    
+    // Use currentStepIndex directly - no iteration needed!
+    const nextStepIndex = currentStepIndex;
+    
+    // If currentStepIndex is beyond the end, it means all steps are completed
+    const allCompleted = nextStepIndex >= stepComponents.length;
+    const remainingSteps = allCompleted ? stepComponents.length : stepComponents.length - nextStepIndex;
+    const isResume = !allCompleted && nextStepIndex > 0;
+    
+    return { nextStepIndex, remainingSteps, isResume };
+  }, [stepComponents.length, currentStepIndex]);
+
   // Handle individual step completion
   const handleStepComplete = useCallback((stepId: string) => {
     console.log(`🎯 Step completed: ${stepId}`);
     setCompletedSteps(prev => new Set([...prev, stepId]));
     setCurrentlyExecutingStep(null);
     
+    // Advance currentStepIndex to the next uncompleted step
+    const currentIndex = stepComponents.findIndex(step => step.stepId === stepId);
+    if (currentIndex >= 0) {
+      setCurrentStepIndex(currentIndex + 1);
+      console.log(`📍 Next step index advanced to: ${currentIndex + 1}/${stepComponents.length}`);
+    }
+    
     // Check if all steps are completed
     if (completedSteps.size + 1 >= stepComponents.length) {
       console.log(`🏁 Section completed: ${sectionId}`);
       onComplete?.();
     }
-  }, [completedSteps.size, stepComponents.length, sectionId, onComplete]);
+  }, [completedSteps.size, stepComponents, sectionId, onComplete]);
 
   // Handle individual step reset (redo functionality)
   const handleStepReset = useCallback((stepId: string) => {
@@ -199,11 +240,18 @@ export function InteractiveSection({
       return newSet;
     });
     
+    // Move currentStepIndex back if we're resetting an earlier step
+    const resetIndex = stepComponents.findIndex(step => step.stepId === stepId);
+    if (resetIndex >= 0 && resetIndex < currentStepIndex) {
+      setCurrentStepIndex(resetIndex);
+      console.log(`📍 Step index moved back to: ${resetIndex}/${stepComponents.length}`);
+    }
+    
     // Also clear currently executing step if it matches
     if (currentlyExecutingStep === stepId) {
       setCurrentlyExecutingStep(null);
     }
-  }, [currentlyExecutingStep]);
+  }, [currentlyExecutingStep, stepComponents, currentStepIndex]);
 
   // Execute a single step (shared between individual and sequence execution)
   const executeStep = useCallback(async (stepInfo: StepInfo): Promise<boolean> => {
@@ -251,12 +299,44 @@ export function InteractiveSection({
 
     console.log(`🚀 Starting section sequence: ${sectionId} (${stepComponents.length} steps)`);
     setIsRunning(true);
+
+    isCancelledRef.current = false; // Reset ref as well
     
-    // Reset completion state for re-runs
-    setCompletedSteps(new Set());
+    // Use currentStepIndex as the starting point - much more efficient!
+    let startIndex = currentStepIndex;
+    
+    // If currentStepIndex is beyond the end, it means all steps are completed - reset for full re-run
+    if (startIndex >= stepComponents.length) {
+      console.log(`🔄 All steps completed, resetting for full re-run: ${sectionId}`);
+      setCompletedSteps(new Set());
+      setCurrentStepIndex(0);
+      startIndex = 0;
+    } else if (startIndex > 0) {
+      console.log(`▶️ Resuming section from step ${startIndex + 1}/${stepComponents.length}: ${stepComponents[startIndex].stepId}`);
+    }
+    
+    // Start section-level blocking (persists for entire section)
+    const dummyData = {
+      reftarget: `section-${sectionId}`,
+      targetaction: 'section',
+      targetvalue: undefined,
+      requirements: undefined,
+      tagName: 'section',
+      textContent: title || 'Interactive Section',
+      timestamp: Date.now(),
+      isPartOfSection: true
+    };
+    startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
     try {
-      for (let i = 0; i < stepComponents.length; i++) {
+      for (let i = startIndex; i < stepComponents.length; i++) {
+        // Check for cancellation before each step
+        if (isCancelledRef.current) {
+          console.warn(`🛑 Section execution cancelled at step ${i + 1}/${stepComponents.length}`);
+          console.warn(`📝 Current step "${stepComponents[i].stepId}" left incomplete`);
+          break;
+        }
+        
         const stepInfo = stepComponents[i];
         setCurrentlyExecutingStep(stepInfo.stepId);
 
@@ -271,7 +351,12 @@ export function InteractiveSection({
           );
 
           // Wait for highlight to be visible and animation to complete
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Check cancellation during wait
+          for (let j = 0; j < 20; j++) { // 20 * 100ms = 2000ms
+            if (isCancelledRef.current) break;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          if (isCancelledRef.current) continue; // Skip to cancellation check at loop start
         }
 
         // Then, execute the step
@@ -282,8 +367,12 @@ export function InteractiveSection({
           handleStepComplete(stepInfo.stepId);
           
           // Wait between steps for visual feedback
+          // Check cancellation during wait
           if (i < stepComponents.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1200));
+            for (let j = 0; j < 12; j++) { // 12 * 100ms = 1200ms
+              if (isCancelledRef.current) break;
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
           }
         } else {
           console.warn(`⚠️ Breaking section sequence at step ${i + 1} due to execution failure`);
@@ -291,14 +380,23 @@ export function InteractiveSection({
         }
       }
 
+      // Section sequence completed or cancelled
+      if (isCancelledRef.current) {
+        console.log(`🛑 Section sequence cancelled: ${sectionId}`);
+      } else {
+        console.log(`🏁 Section sequence completed: ${sectionId}`);
+      }
 
     } catch (error) {
       console.error('Error running section sequence:', error);
     } finally {
+      // Stop section-level blocking
+      stopSectionBlocking(sectionId);
       setIsRunning(false);
       setCurrentlyExecutingStep(null);
+      // Keep isCancelled state for UI feedback, will be reset on next run
     }
-  }, [disabled, isRunning, stepComponents, sectionId, executeStep, executeInteractiveAction, handleStepComplete]);
+  }, [disabled, isRunning, stepComponents, sectionId, executeStep, executeInteractiveAction, handleStepComplete, startSectionBlocking, stopSectionBlocking, title, handleSectionCancel]);
 
   // Handle section reset (clear completed steps and reset individual step states)
   const handleResetSection = useCallback(() => {
@@ -308,8 +406,10 @@ export function InteractiveSection({
 
     setCompletedSteps(new Set());
     setCurrentlyExecutingStep(null);
+    setCurrentStepIndex(0); // Reset to start from beginning
     setResetTrigger(prev => prev + 1); // Signal child steps to reset their local state
-  }, [disabled, isRunning]);
+    console.log(`🔄 Section reset: ${sectionId} - starting from step index 0`);
+  }, [disabled, isRunning, sectionId]);
 
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {
@@ -398,17 +498,23 @@ export function InteractiveSection({
           size="md"
           variant={isCompleted ? "secondary" : "primary"}
           className="interactive-section-do-button"
-          title={
-            isCompletedByObjectives ? 'Already done!' :
-            stepsCompleted && !isCompletedByObjectives ? 'Reset section and clear all step completion to allow manual re-interaction' :
-            isRunning ? `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...` :
-            hints || `Run through all ${stepComponents.length} steps in sequence`
-          }
+          title={(() => {
+            const resumeInfo = getResumeInfo();
+            if (isCompletedByObjectives) return 'Already done!';
+            if (stepsCompleted && !isCompletedByObjectives) return 'Reset section and clear all step completion to allow manual re-interaction';
+            if (isRunning) return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;
+            if (resumeInfo.isResume) return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
+            return hints || `Run through all ${stepComponents.length} steps in sequence`;
+          })()}
         >
-          {isCompletedByObjectives ? 'Already done!' :
-           stepsCompleted && !isCompletedByObjectives ? 'Reset Section' :
-           isRunning ? `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...` : 
-           `Do Section (${stepComponents.length} steps)`}
+          {(() => {
+            const resumeInfo = getResumeInfo();
+            if (isCompletedByObjectives) return 'Already done!';
+            if (stepsCompleted && !isCompletedByObjectives) return 'Reset Section';
+            if (isRunning) return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;
+            if (resumeInfo.isResume) return `Resume (${resumeInfo.remainingSteps} steps)`;
+            return `Do Section (${stepComponents.length} steps)`;
+          })()}
         </Button>
       </div>
     </div>

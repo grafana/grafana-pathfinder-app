@@ -120,6 +120,10 @@ export const InteractiveMultiStep = forwardRef<
   const [isExecuting, setIsExecuting] = useState(false);
   const [currentActionIndex, setCurrentActionIndex] = useState(-1);
   const [executionError, setExecutionError] = useState<string | null>(null);
+
+  
+  // Use ref for cancellation to avoid closure issues
+  const isCancelledRef = React.useRef(false);
   
   // Handle reset trigger from parent section
   useEffect(() => {
@@ -127,6 +131,7 @@ export const InteractiveMultiStep = forwardRef<
       console.log(`🔄 Resetting multi-step local completion: ${stepId}`);
       setIsLocallyCompleted(false);
       setExecutionError(null); // Also clear any execution errors
+      isCancelledRef.current = false; // Reset cancellation state
     }
   }, [resetTrigger, stepId]);
   
@@ -134,7 +139,13 @@ export const InteractiveMultiStep = forwardRef<
   const isCompleted = parentCompleted || isLocallyCompleted;
   
   // Get the interactive functions from the hook
-  const { executeInteractiveAction, checkRequirementsFromData } = useInteractiveElements();
+  const { 
+    executeInteractiveAction, 
+    checkRequirementsFromData,
+    startSectionBlocking,
+    stopSectionBlocking,
+    isSectionBlocking
+  } = useInteractiveElements();
   
   // Use step checker hook for overall multi-step requirements and objectives
   const checker = useStepChecker({
@@ -147,6 +158,13 @@ export const InteractiveMultiStep = forwardRef<
   
   // Combined completion state: objectives always win (clarification 1, 2, 18)
   const isCompletedWithObjectives = parentCompleted || isLocallyCompleted || (checker.completionReason === 'objectives');
+  
+  // Create cancellation handler
+  const handleMultiStepCancel = useCallback(() => {
+    console.warn(`🛑 Multi-step cancelled by user: ${stepId}`);
+    isCancelledRef.current = true; // Set ref for immediate access
+    // The running loop will detect this and break
+  }, [stepId]);
   
   // Main execution logic (similar to InteractiveSection's sequence execution)
   const executeStep = useCallback(async (): Promise<boolean> => {
@@ -182,11 +200,42 @@ export const InteractiveMultiStep = forwardRef<
     
     setIsExecuting(true);
     setExecutionError(null);
+
+    isCancelledRef.current = false; // Reset ref as well
+    
+    // Check if we're already in a section blocking state (nested in a section)
+    const isNestedInSection = isSectionBlocking();
+    const multiStepId = stepId || `multistep-${Date.now()}`;
+    
+    // Only start blocking if we're not already in a blocking state (avoid double-blocking)
+    if (!isNestedInSection) {
+      console.log(`🚫 Starting multi-step blocking for: ${multiStepId}`);
+      // Create dummy data for blocking overlay
+      const dummyData = {
+        reftarget: `multistep-${multiStepId}`,
+        targetaction: 'multistep',
+        targetvalue: undefined,
+        requirements: undefined,
+        tagName: 'div',
+        textContent: title || 'Interactive Multi-Step',
+        timestamp: Date.now(),
+      };
+      startSectionBlocking(multiStepId, dummyData, handleMultiStepCancel);
+    } else {
+      console.log(`🔍 Multi-step ${multiStepId} is nested in section, skipping blocking overlay`);
+    }
     
     try {
       // Execute each internal action in sequence
       for (let i = 0; i < internalActions.length; i++) {
         const action = internalActions[i];
+        
+        // Check for cancellation before each action
+        if (isCancelledRef.current) {
+          console.warn(`🛑 Multi-step execution cancelled at action ${i + 1}/${internalActions.length}`);
+          console.warn(`📝 Current action "${action.targetAction}" left incomplete`);
+          break;
+        }
         setCurrentActionIndex(i);
         
         console.log(`🔄 Multi-step ${stepId}: Executing internal action ${i + 1}/${internalActions.length}`, action);
@@ -206,17 +255,23 @@ export const InteractiveMultiStep = forwardRef<
           // Show mode (highlight what will be acted upon)
           await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'show');
           
-          // Delay between show and do (slightly faster than section pacing)
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Delay between show and do with cancellation check
+          for (let j = 0; j < 10; j++) { // 10 * 100ms = 1000ms
+            if (isCancelledRef.current) break;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          if (isCancelledRef.current) continue; // Skip to cancellation check at loop start
           
           // Do mode (actually perform the action)
           await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'do');
           
-
-          
-          // Add delay between steps (but not after the last step)
+          // Add delay between steps with cancellation check (but not after the last step)
           if (i < internalActions.length - 1 && stepDelay > 0) {
-            await new Promise(resolve => setTimeout(resolve, stepDelay));
+            const delaySteps = Math.ceil(stepDelay / 100); // Convert delay to 100ms steps
+            for (let j = 0; j < delaySteps; j++) {
+              if (isCancelledRef.current) break;
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
           }
         } catch (actionError) {
           console.error(`❌ Multi-step ${stepId}: Internal action ${i + 1} execution failed`, actionError);
@@ -226,8 +281,14 @@ export const InteractiveMultiStep = forwardRef<
         }
       }
       
+      // Check if execution was cancelled
+      if (isCancelledRef.current) {
+        console.log(`🛑 Multi-step sequence cancelled: ${stepId}`);
+        return false;
+      }
+      
       // All internal actions completed successfully
-
+      console.log(`🏁 Multi-step sequence completed: ${stepId}`);
       setIsLocallyCompleted(true);
       
       // Notify parent if we have the callback (section coordination)
@@ -247,6 +308,11 @@ export const InteractiveMultiStep = forwardRef<
       setExecutionError(errorMessage);
       return false;
     } finally {
+      // Stop blocking overlay if we started it (not nested in section)
+      if (!isNestedInSection) {
+        stopSectionBlocking(multiStepId);
+      }
+      
       setIsExecuting(false);
       setCurrentActionIndex(-1);
     }
@@ -262,7 +328,12 @@ export const InteractiveMultiStep = forwardRef<
     onStepComplete,
     onComplete,
     checker.completionReason,
-    stepDelay
+    stepDelay,
+    startSectionBlocking,
+    stopSectionBlocking,
+    isSectionBlocking,
+    handleMultiStepCancel,
+    title
   ]);
   
   // Expose execute method for parent (sequence execution)
@@ -292,6 +363,9 @@ export const InteractiveMultiStep = forwardRef<
     
     // Clear any execution errors
     setExecutionError(null);
+    
+    // Reset cancellation state
+    isCancelledRef.current = false;
     
     // Trigger requirements recheck to reset the step checker state
     checker.checkStep();

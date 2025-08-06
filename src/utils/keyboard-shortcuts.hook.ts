@@ -64,6 +64,8 @@ export function useKeyboardShortcuts({
           model.navigateToPreviousMilestone();
         }
       }
+      
+      // Note: Ctrl+C cancellation is now handled globally by GlobalInteractionBlocker
     };
 
     document.addEventListener('keydown', handleKeyDown);

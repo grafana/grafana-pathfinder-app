@@ -18,6 +18,8 @@ export class ButtonHandler {
       
       if (!click) {
         await this.handleShowMode(buttons);
+        // Mark show actions as completed too for proper state cleanup
+        await this.markAsCompleted(data);
         return;
       }
 
