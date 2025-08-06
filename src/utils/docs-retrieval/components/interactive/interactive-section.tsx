@@ -251,7 +251,7 @@ export function InteractiveSection({
 
   // Calculate resume information for button display
   const getResumeInfo = useCallback(() => {
-    if (stepComponents.length === 0) return { nextStepIndex: 0, remainingSteps: 0, isResume: false };
+    if (stepComponents.length === 0) {return { nextStepIndex: 0, remainingSteps: 0, isResume: false };}
     
     // Use currentStepIndex directly - no iteration needed!
     const nextStepIndex = currentStepIndex;
@@ -422,10 +422,10 @@ export function InteractiveSection({
           // Wait for highlight to be visible and animation to complete
           // Check cancellation during wait
           for (let j = 0; j < 20; j++) { // 20 * 100ms = 2000ms
-            if (isCancelledRef.current) break;
+            if (isCancelledRef.current) {break;}
             await new Promise(resolve => setTimeout(resolve, 100));
           }
-          if (isCancelledRef.current) continue; // Skip to cancellation check at loop start
+          if (isCancelledRef.current) {continue;} // Skip to cancellation check at loop start
         }
 
         // Then, execute the step
@@ -448,7 +448,7 @@ export function InteractiveSection({
           // Check cancellation during wait
           if (i < stepComponents.length - 1) {
             for (let j = 0; j < 12; j++) { // 12 * 100ms = 1200ms
-              if (isCancelledRef.current) break;
+              if (isCancelledRef.current) {break;}
               await new Promise(resolve => setTimeout(resolve, 100));
             }
           }
@@ -491,7 +491,7 @@ export function InteractiveSection({
       setCurrentlyExecutingStep(null);
       // Keep isCancelled state for UI feedback, will be reset on next run
     }
-  }, [disabled, isRunning, stepComponents, sectionId, executeStep, executeInteractiveAction, handleStepComplete, startSectionBlocking, stopSectionBlocking, title, handleSectionCancel]);
+  }, [disabled, isRunning, stepComponents, sectionId, executeStep, executeInteractiveAction, handleStepComplete, startSectionBlocking, stopSectionBlocking, title, handleSectionCancel, currentStepIndex]);
 
   // Handle section reset (clear completed steps and reset individual step states)
   const handleResetSection = useCallback(() => {
@@ -597,19 +597,19 @@ export function InteractiveSection({
           className="interactive-section-do-button"
           title={(() => {
             const resumeInfo = getResumeInfo();
-            if (isCompletedByObjectives) return 'Already done!';
-            if (stepsCompleted && !isCompletedByObjectives) return 'Reset section and clear all step completion to allow manual re-interaction';
-            if (isRunning) return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;
-            if (resumeInfo.isResume) return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
+            if (isCompletedByObjectives) {return 'Already done!';}
+            if (stepsCompleted && !isCompletedByObjectives) {return 'Reset section and clear all step completion to allow manual re-interaction';}
+            if (isRunning) {return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;}
+            if (resumeInfo.isResume) {return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;}
             return hints || `Run through all ${stepComponents.length} steps in sequence`;
           })()}
         >
           {(() => {
             const resumeInfo = getResumeInfo();
-            if (isCompletedByObjectives) return 'Already done!';
-            if (stepsCompleted && !isCompletedByObjectives) return 'Reset Section';
-            if (isRunning) return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;
-            if (resumeInfo.isResume) return `Resume (${resumeInfo.remainingSteps} steps)`;
+            if (isCompletedByObjectives) {return 'Already done!';}
+            if (stepsCompleted && !isCompletedByObjectives) {return 'Reset Section';}
+            if (isRunning) {return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;}
+            if (resumeInfo.isResume) {return `Resume (${resumeInfo.remainingSteps} steps)`;}
             return `Do Section (${stepComponents.length} steps)`;
           })()}
         </Button>

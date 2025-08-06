@@ -257,10 +257,10 @@ export const InteractiveMultiStep = forwardRef<
           
           // Delay between show and do with cancellation check
           for (let j = 0; j < 10; j++) { // 10 * 100ms = 1000ms
-            if (isCancelledRef.current) break;
+            if (isCancelledRef.current) {break;}
             await new Promise(resolve => setTimeout(resolve, 100));
           }
-          if (isCancelledRef.current) continue; // Skip to cancellation check at loop start
+          if (isCancelledRef.current) {continue;} // Skip to cancellation check at loop start
           
           // Do mode (actually perform the action)
           await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'do');
@@ -269,7 +269,7 @@ export const InteractiveMultiStep = forwardRef<
           if (i < internalActions.length - 1 && stepDelay > 0) {
             const delaySteps = Math.ceil(stepDelay / 100); // Convert delay to 100ms steps
             for (let j = 0; j < delaySteps; j++) {
-              if (isCancelledRef.current) break;
+              if (isCancelledRef.current) {break;}
               await new Promise(resolve => setTimeout(resolve, 100));
             }
           }
