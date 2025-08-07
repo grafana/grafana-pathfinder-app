@@ -2,6 +2,7 @@ import React from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, useStyles2, Card } from '@grafana/ui';
+import { SkeletonLoader } from '../SkeletonLoader';
 import { locationService } from '@grafana/runtime';
 
 // Import refactored context system
@@ -81,10 +82,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     <div className={styles.container}>
       <div className={styles.content}>
         {isLoading && (
-          <div className={styles.loadingContainer}>
-            <Icon name="sync" />
-            <span>Loading context...</span>
-          </div>
+          <SkeletonLoader type="recommendations" />
         )}
 
         {!isLoading && (
@@ -98,9 +96,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             </div>
 
             {isLoadingRecommendations && (
-              <div className={styles.loadingContainer}>
-                <Icon name="sync" />
-                <span>Loading recommendations...</span>
+              <div className={styles.recommendationsContainer}>
+                <SkeletonLoader type="recommendations" />
               </div>
             )}
             

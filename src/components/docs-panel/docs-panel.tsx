@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Spinner, Icon, useStyles2 } from '@grafana/ui';
+import { IconButton, Alert, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 
 
@@ -13,6 +13,7 @@ import { useLinkClickHandler } from '../../utils/link-handler.hook';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
+import { SkeletonLoader } from '../SkeletonLoader';
 
 // Import new unified content system
 import { 
@@ -781,12 +782,11 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
             return <contextPanel.Component model={contextPanel} />;
           }
           
-          // Show loading state
+          // Show loading state with skeleton
           if (!isRecommendationsTab && activeTab?.isLoading) {
             return (
-              <div className={styles.loadingContainer}>
-                <Spinner size="lg" />
-                <span>Loading {activeTab.type === 'docs' ? 'documentation' : 'learning journey'}...</span>
+              <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
+                <SkeletonLoader type={activeTab.type === 'docs' ? 'documentation' : 'learning-journey'} />
               </div>
             );
           }
