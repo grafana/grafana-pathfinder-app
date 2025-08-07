@@ -275,26 +275,25 @@ export class ContextService {
       // Add bundled interactive recommendations (contextual based on current URL)
       const bundledRecommendations: Recommendation[] = this.getBundledInteractiveRecommendations(contextData);
       
-      // Add default recommendations for testing
+      // Add default recommendations for testing (with proper confidence scores)
       const defaultRecommendations: Recommendation[] = [
-
         {
           title: 'Product Interactive Tutorial Demo',
           url: 'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/prometheus-datasource',
           type: 'docs-page',
           summary: 'A test of interactive elements.',
+          matchAccuracy: 0.6, // Above 0.5 threshold
         },
         {
           title: 'Tutorial Environment Demo',
           url: 'https://raw.githubusercontent.com/Jayclifford345/tutorial-environment/refs/heads/master/',
           type: 'docs-page',
           summary: 'Additional tutorial environment for testing interactive elements.',
+          matchAccuracy: 0.6, // Above 0.5 threshold
         },
       ];
 
       const allRecommendations = [...(data.recommendations || []), ...bundledRecommendations, ...defaultRecommendations];
-
-      console.warn('allRecommendations', allRecommendations);
       
       // Process recommendations
       const processedRecommendations = await Promise.all(
@@ -641,28 +640,34 @@ export class ContextService {
 
   /**
    * Filter useful recommendations
+   * Drops recommendations with confidence <= 0.5
    */
   private static filterUsefulRecommendations(recommendations: Recommendation[]): Recommendation[] {
     return recommendations.filter(rec => {
       const url = rec.url;
+      
+      // Filter out generic learning journeys index pages
       if (url === 'https://grafana.com/docs/learning-journeys' || 
           url === 'https://grafana.com/docs/learning-journeys/') {
         return false;
       }
+      
+      // Drop recommendations with confidence <= 0.5
+      const confidence = rec.matchAccuracy ?? 0;
+      if (confidence <= 0.5) {
+        return false;
+      }
+      
       return true;
     });
   }
 
   /**
-   * Sort recommendations by accuracy
+   * Sort recommendations by accuracy only
+   * No longer prioritizes learning journeys over docs - all sorted by confidence descending
    */
   private static sortRecommendationsByAccuracy(recommendations: Recommendation[]): Recommendation[] {
     return recommendations.sort((a, b) => {
-      const typeA = a.type === 'learning-journey' || !a.type ? 0 : 1;
-      const typeB = b.type === 'learning-journey' || !b.type ? 0 : 1;
-      
-      if (typeA !== typeB) {return typeA - typeB;}
-      
       const accuracyA = a.matchAccuracy ?? 0;
       const accuracyB = b.matchAccuracy ?? 0;
       return accuracyB - accuracyA;
