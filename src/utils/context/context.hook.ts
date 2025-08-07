@@ -165,20 +165,25 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
   // Listen for EchoSrv-triggered context changes (datasource/viz changes)
   useEffect(() => {
-    const unsubscribe = ContextService.onContextChange(() => {
+    const unsubscribe = ContextService.onContextChange(async () => {
       // Force immediate context refresh when EchoSrv events occur
-      debouncedRefresh(50); // Quick refresh when EchoSrv detects changes
-      
-      // Also force recommendations refresh after a short delay to ensure new context is available
-      setTimeout(() => {
-        if (!contextData.isLoading && contextData.currentPath) {
-          fetchRecommendations(contextData);
+      try {
+        setContextData(prev => ({ ...prev, isLoading: true }));
+        const newContextData = await ContextService.getContextData();
+        setContextData(newContextData);
+        
+        // Now fetch recommendations with the fresh context data
+        if (newContextData.currentPath) {
+          fetchRecommendations(newContextData);
         }
-      }, 200); // Small delay to let context update first
+      } catch (error) {
+        console.error('Failed to refresh context after EchoSrv change:', error);
+        setContextData(prev => ({ ...prev, isLoading: false }));
+      }
     });
 
     return unsubscribe;
-  }, [debouncedRefresh, fetchRecommendations, contextData]);
+  }, [fetchRecommendations]); // Removed contextData dependency to avoid stale closures
 
   // Fetch recommendations when context data changes (but not when loading)
   const tagsString = contextData.tags?.join(',') || '';

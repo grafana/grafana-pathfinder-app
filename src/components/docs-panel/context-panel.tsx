@@ -6,7 +6,7 @@ import { locationService } from '@grafana/runtime';
 
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
-import { useContextPanel, Recommendation } from '../../utils/context';
+import { useContextPanel } from '../../utils/context';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
 interface ContextPanelState extends SceneObjectState {
@@ -70,30 +70,12 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   
   const styles = useStyles2(getStyles);
 
-  // Group recommendations by match accuracy, regardless of content type
-  const learningJourneys = recommendations.filter((rec: Recommendation) => rec.type === 'learning-journey' || !rec.type);
-  const allDocs = recommendations.filter((rec: Recommendation) => rec.type === 'docs-page');
+  // All recommendations are now >= 0.5 confidence and pre-sorted by service
+  // Primary recommendations: maximum of 4 items with highest confidence
+  const finalPrimaryRecommendations = recommendations.slice(0, 4);
   
-  // Primary recommendations: high-confidence items get prominent display
-  const highConfidenceLearningJourneys = learningJourneys.filter((rec: Recommendation) => (rec.matchAccuracy ?? 0) >= 0.5);
-  const perfectMatchDocs = allDocs.filter((rec: Recommendation) => rec.matchAccuracy === 1);
-  
-  // Secondary recommendations: low-confidence learning journeys + imperfect docs
-  const lowConfidenceLearningJourneys = learningJourneys.filter((rec: Recommendation) => (rec.matchAccuracy ?? 0) < 0.5);
-  const imperfectDocs = allDocs.filter((rec: Recommendation) => rec.matchAccuracy !== 1);
-  
-  // Primary section: sort by match accuracy descending (best matches first, regardless of type)
-  const primaryRecommendations = [...highConfidenceLearningJourneys, ...perfectMatchDocs]
-    .sort((a, b) => (b.matchAccuracy ?? 0) - (a.matchAccuracy ?? 0));
-  
-  // Secondary section: sort by match accuracy descending
-  const secondaryRecommendations = [...lowConfidenceLearningJourneys, ...imperfectDocs]
-    .sort((a, b) => (b.matchAccuracy ?? 0) - (a.matchAccuracy ?? 0));
-  
-  // Fallback: if we have no primary recommendations but have secondary items, promote all to primary
-  const shouldPromoteAllAsPrimary = primaryRecommendations.length === 0 && secondaryRecommendations.length > 0;
-  const finalPrimaryRecommendations = shouldPromoteAllAsPrimary ? secondaryRecommendations : primaryRecommendations;
-  const secondaryDocs = shouldPromoteAllAsPrimary ? [] : secondaryRecommendations;
+  // Secondary recommendations: all remaining items go to "Other Documentation"
+  const secondaryDocs = recommendations.slice(4);
 
   return (
     <div className={styles.container}>
@@ -301,7 +283,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                   </div>
                 )}
 
-                {/* Other Relevant Docs Section - low-confidence items */}
+                {/* Other Documentation Section - all items beyond top 4, including learning journeys */}
                 {secondaryDocs.length > 0 && (
                   <div className={styles.otherDocsSection}>
                     <div className={styles.otherDocsHeader}>
@@ -310,10 +292,10 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                         className={styles.otherDocsToggle}
                       >
                         <Icon name="file-alt" size="sm" />
-                        <span>Other Relevant Docs</span>
+                        <span>Other Documentation</span>
                         <span className={styles.otherDocsCount}>
                           <Icon name="list-ul" size="xs" />
-                          {secondaryDocs.length} doc{secondaryDocs.length !== 1 ? 's' : ''}
+                          {secondaryDocs.length} item{secondaryDocs.length !== 1 ? 's' : ''}
                         </span>
                         <Icon name={otherDocsExpanded ? "angle-up" : "angle-down"} size="sm" />
                       </button>
@@ -322,29 +304,39 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                     {otherDocsExpanded && (
                       <div className={styles.otherDocsExpansion}>
                         <div className={styles.otherDocsList}>
-                          {secondaryDocs.map((doc, index) => (
+                          {secondaryDocs.map((item, index) => (
                             <div key={index} className={styles.otherDocItem}>
                               <div className={styles.docIcon}>
-                                <Icon name="file-alt" size="sm" />
+                                <Icon name={item.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
                               </div>
                               <div className={styles.docContent}>
                                 <button
                                   onClick={() => {
-                                    // Track analytics for other docs links
-                                    reportAppInteraction(UserInteraction.ViewDocumentationClick, {
-                                      content_title: doc.title,
-                                      content_url: doc.url,
-                                      interaction_location: 'other_docs_list',
-                                      match_accuracy: doc.matchAccuracy || 0
-                                    });
-                                    openDocsPage(doc.url, doc.title);
+                                    // Track analytics based on content type
+                                    if (item.type === 'docs-page') {
+                                      reportAppInteraction(UserInteraction.ViewDocumentationClick, {
+                                        content_title: item.title,
+                                        content_url: item.url,
+                                        interaction_location: 'other_docs_list',
+                                        match_accuracy: item.matchAccuracy || 0
+                                      });
+                                      openDocsPage(item.url, item.title);
+                                    } else {
+                                      reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
+                                        journey_title: item.title,
+                                        journey_url: item.url,
+                                        interaction_location: 'other_docs_list',
+                                        total_milestones: item.totalSteps || 0,
+                                        match_accuracy: item.matchAccuracy || 0
+                                      });
+                                      openLearningJourney(item.url, item.title);
+                                    }
                                   }}
                                   className={styles.docLink}
                                 >
-                                  {doc.title}
+                                  {item.title}
                                 </button>
                               </div>
-                              {/* No external icon needed - these docs open in app tabs */}
                             </div>
                           ))}
                         </div>
