@@ -16,7 +16,8 @@ export const getFeedbackButtonStyles = (theme: GrafanaTheme2) => ({
     cursor: 'pointer',
     transition: 'all 0.2s ease',
     boxShadow: theme.shadows.z1,
-    margin: `${theme.spacing(0.5)} 0`,
+    // Balanced vertical spacing around the button (footer padding feel)
+    margin: `${theme.spacing(1)} 0`,
     alignSelf: 'flex-start', // Left align instead of center
     
     '&:hover': {

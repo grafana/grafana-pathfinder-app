@@ -10,6 +10,10 @@ class GlobalInteractionBlocker {
   private sectionBlockingActive = false; // Track section-level blocking
   private cancelCallback: (() => void) | null = null; // Callback to cancel running section
   private keyboardHandler: ((e: KeyboardEvent) => void) | null = null; // Global keyboard handler
+  private resizeObserver: ResizeObserver | null = null;
+  private windowResizeHandler: (() => void) | null = null;
+  private windowScrollHandler: (() => void) | null = null;
+  private modalObserver: MutationObserver | null = null;
   
   static getInstance(): GlobalInteractionBlocker {
     if (!GlobalInteractionBlocker.instance) {
@@ -36,18 +40,35 @@ class GlobalInteractionBlocker {
     this.blockingOverlay.id = 'interactive-blocking-overlay';
     
     if (pageContent) {
-      // Position overlay to match the pageContent container exactly
-      const rect = pageContent.getBoundingClientRect();
-      this.blockingOverlay.style.cssText = `
-        position: fixed;
-        top: ${rect.top}px;
-        left: ${rect.left}px;
-        width: ${rect.width}px;
-        height: ${rect.height}px;
-        background: transparent;
-        z-index: 9999;
-        pointer-events: auto;
-      `;
+      // Position overlay to match the pageContent container exactly and keep it in sync
+      const applyRect = () => {
+        const rect = pageContent.getBoundingClientRect();
+        this.blockingOverlay!.style.position = 'fixed';
+        this.blockingOverlay!.style.top = `${rect.top}px`;
+        this.blockingOverlay!.style.left = `${rect.left}px`;
+        this.blockingOverlay!.style.width = `${rect.width}px`;
+        this.blockingOverlay!.style.height = `${rect.height}px`;
+        this.blockingOverlay!.style.background = 'transparent';
+        // zIndex may be adjusted if a modal is present
+        if (!this.isModalActive()) {
+          this.blockingOverlay!.style.zIndex = '9999';
+        }
+        this.blockingOverlay!.style.pointerEvents = 'auto';
+        this.updateOverlayModalState();
+      };
+      applyRect();
+      // Observe size/position changes
+      if ('ResizeObserver' in window) {
+        this.resizeObserver = new ResizeObserver(() => applyRect());
+        this.resizeObserver.observe(pageContent);
+      }
+      this.windowResizeHandler = () => applyRect();
+      this.windowScrollHandler = () => applyRect();
+      window.addEventListener('resize', this.windowResizeHandler, { passive: true });
+      window.addEventListener('scroll', this.windowScrollHandler, { passive: true });
+      // Watch for modal/drawer presence to adjust visuals
+      this.modalObserver = new MutationObserver(() => this.updateOverlayModalState());
+      this.modalObserver.observe(document.body, { childList: true, subtree: true });
     } else {
       // Fallback to full screen if pageContent not found
       this.blockingOverlay.style.cssText = `
@@ -91,7 +112,7 @@ class GlobalInteractionBlocker {
         border: 2px solid var(--grafana-text-secondary, #8e8e8e);
         border-top: 2px solid var(--grafana-text-primary, #ffffff);
         border-radius: 50%;
-        animation: interactive-spin 1s linear infinite;
+        animation: spin 1s linear infinite;
       "></div>
       Interactive step running...
       <button id="cancel-section-btn" style="
@@ -157,37 +178,7 @@ class GlobalInteractionBlocker {
     // Add global keyboard shortcut handler for Ctrl+C
     this.addGlobalKeyboardHandler();
     
-    // Add CSS animation if not already present
-    if (!document.getElementById('interactive-blocker-styles')) {
-      const style = document.createElement('style');
-      style.id = 'interactive-blocker-styles';
-      style.textContent = `
-        @keyframes interactive-spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-
-        /* Subtle breathing border for blocked (non-clickable) area */
-        #interactive-blocking-overlay {
-          background: rgba(160, 160, 160, 0.04) !important;
-          box-shadow: inset 0 0 0 0 rgba(180, 180, 180, 0.22);
-          animation: blocker-breathe 1.6s ease-in-out infinite;
-        }
-
-        @keyframes blocker-breathe {
-          0% {
-            box-shadow: inset 0 0 0 0 rgba(180, 180, 180, 0.18);
-          }
-          50% {
-            box-shadow: inset 0 0 0 6px rgba(180, 180, 180, 0.25);
-          }
-          100% {
-            box-shadow: inset 0 0 0 0 rgba(180, 180, 180, 0.18);
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
+    // All overlay styling and animations are provided by addGlobalInteractiveStyles() in interactive.styles.ts
     
     document.body.appendChild(this.blockingOverlay);
   }
@@ -241,6 +232,23 @@ class GlobalInteractionBlocker {
     
     // Remove global keyboard handler when overlay is removed
     this.removeGlobalKeyboardHandler();
+    // Remove position sync listeners/observers
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    if (this.windowResizeHandler) {
+      window.removeEventListener('resize', this.windowResizeHandler);
+      this.windowResizeHandler = null;
+    }
+    if (this.windowScrollHandler) {
+      window.removeEventListener('scroll', this.windowScrollHandler);
+      this.windowScrollHandler = null;
+    }
+    if (this.modalObserver) {
+      this.modalObserver.disconnect();
+      this.modalObserver = null;
+    }
   }
   
   /**
@@ -297,6 +305,38 @@ class GlobalInteractionBlocker {
     this.cancelCallback = null;
     this.removeGlobalKeyboardHandler();
     this.removeBlockingOverlay();
+  }
+
+  // Detect if a modal/drawer is currently active in Grafana UI
+  private isModalActive(): boolean {
+    // Look for elements commonly used by Grafana for drawers/modals
+    const modalSelectors = [
+      '[role="dialog"]',
+      '.journey-image-modal',
+      '.gf-modal',
+      '.css-yt5niv', // overlay role=presentation (Grafana drawer backdrop)
+    ];
+    return modalSelectors.some((sel) => document.querySelector(sel) !== null);
+  }
+
+  // Adjust overlay visuals when modal is present
+  private updateOverlayModalState(): void {
+    if (!this.blockingOverlay) {
+      return;
+    }
+    const modalActive = this.isModalActive();
+    if (modalActive) {
+      // While a modal is present, hide overlay visuals and interactions entirely
+      this.blockingOverlay.style.zIndex = '0';
+      this.blockingOverlay.style.pointerEvents = 'none';
+      this.blockingOverlay.classList.add('no-breathe');
+      this.blockingOverlay.style.visibility = 'hidden';
+    } else {
+      this.blockingOverlay.style.zIndex = '9999';
+      this.blockingOverlay.style.pointerEvents = 'auto';
+      this.blockingOverlay.classList.remove('no-breathe');
+      this.blockingOverlay.style.visibility = 'visible';
+    }
   }
 }
 

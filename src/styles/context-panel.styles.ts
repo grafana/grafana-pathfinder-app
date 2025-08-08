@@ -111,7 +111,8 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     maxWidth: '100%',
   }),
   recommendationCard: css({
-    padding: theme.spacing(1.5),
+    // Balanced tile padding on all sides
+    padding: theme.spacing(1.25),
     width: '100%',
     maxWidth: '100%',
     boxSizing: 'border-box',
@@ -120,6 +121,7 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     minHeight: '100px',
   }),
   compactCard: css({
+    // Keep compact but balanced
     padding: theme.spacing(1),
     minHeight: '70px', // Much smaller for docs pages
   }),
@@ -193,6 +195,29 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     minWidth: '80px',
     '&:hover': {
       backgroundColor: theme.colors.primary.shade,
+      boxShadow: theme.shadows.z1,
+    },
+  }),
+  // Secondary button style for "View" actions
+  secondaryButton: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(0.5),
+    padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
+    backgroundColor: theme.colors.background.primary,
+    color: theme.colors.text.primary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: theme.shape.radius.default,
+    cursor: 'pointer',
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    transition: 'background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
+    whiteSpace: 'nowrap',
+    minWidth: '80px',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.strong,
       boxShadow: theme.shadows.z1,
     },
   }),
