@@ -5,9 +5,10 @@ import { useTheme2 } from '@grafana/ui';
 
 interface FeedbackButtonProps {
   className?: string;
+  variant?: 'primary' | 'secondary';
 }
 
-export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ className }) => {
+export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ className, variant = 'primary' }) => {
   const theme = useTheme2();
   const styles = getFeedbackButtonStyles(theme);
 
@@ -21,7 +22,7 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ className }) => 
 
   return (
     <button
-      className={`${styles.feedbackButton} ${className || ''}`}
+      className={`${variant === 'secondary' ? styles.feedbackButtonSecondary : styles.feedbackButtonPrimary} ${className || ''}`}
       onClick={handleClick}
       aria-label="Give feedback about this plugin"
       title="Give feedback about this plugin"

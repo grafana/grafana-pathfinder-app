@@ -189,47 +189,42 @@ export const InteractiveStep = forwardRef<
       
       <div className="interactive-step-actions">
         <div className="interactive-step-action-buttons">
-          <Button
-            onClick={handleShowAction}
-            disabled={disabled || isCompletedWithObjectives || isAnyActionRunning || (!checker.isEnabled && checker.completionReason !== 'objectives')}
-            size="sm"
-            variant="secondary"
-            className="interactive-step-show-btn"
-            title={
-              checker.completionReason === 'objectives' ? 'Already done!' :
-              checker.isChecking ? 'Checking requirements...' :
-              hints || `Show me: ${getActionDescription()}`
-            }
-          >
-            {checker.completionReason === 'objectives' ? 'Already done!' :
-             checker.isChecking ? 'Checking...' :
-             isShowRunning ? 'Showing...' : 
-             !checker.isEnabled && !isCompletedWithObjectives ? 'Requirements not met' :
-             'Show me'}
-          </Button>
-          
-          { 
-            // Only show the do it button if the step is eligible or already completed.
-            // Objectives always win over requirements (clarification 2)
-            (checker.isEnabled || isCompletedWithObjectives || checker.completionReason === 'objectives') && (
-              <Button
-              onClick={handleDoAction}
-              disabled={disabled || isCompletedWithObjectives || isAnyActionRunning || (!checker.isEnabled && checker.completionReason !== 'objectives')}
+          {!isCompletedWithObjectives && (
+            <Button
+              onClick={handleShowAction}
+              disabled={disabled || isAnyActionRunning || (!checker.isEnabled && checker.completionReason !== 'objectives')}
               size="sm"
-              variant="primary"
-              className="interactive-step-do-btn"
+              variant="secondary"
+              className="interactive-step-show-btn"
               title={
-                checker.completionReason === 'objectives' ? 'Already done!' :
                 checker.isChecking ? 'Checking requirements...' :
-                hints || `Do it: ${getActionDescription()}`
+                hints || `Show me: ${getActionDescription()}`
               }
             >
-              {checker.completionReason === 'objectives' ? 'Already done!' :
-              checker.isChecking ? 'Checking...' :
-              isCompletedWithObjectives ? '✓ Completed' : 
-              isDoRunning || isCurrentlyExecuting ? 'Executing...' : 
-              'Do it'}
+              {checker.isChecking ? 'Checking...' :
+               isShowRunning ? 'Showing...' : 
+               !checker.isEnabled ? 'Requirements not met' :
+               'Show me'}
             </Button>
+          )}
+          
+          {!isCompletedWithObjectives && (
+            (checker.isEnabled || checker.completionReason === 'objectives') && (
+              <Button
+                onClick={handleDoAction}
+                disabled={disabled || isAnyActionRunning || (!checker.isEnabled && checker.completionReason !== 'objectives')}
+                size="sm"
+                variant="primary"
+                className="interactive-step-do-btn"
+                title={
+                  checker.isChecking ? 'Checking requirements...' :
+                  hints || `Do it: ${getActionDescription()}`
+                }
+              >
+                {checker.isChecking ? 'Checking...' : 
+                 isDoRunning || isCurrentlyExecuting ? 'Executing...' : 'Do it'}
+              </Button>
+            )
           )}
         </div>
         
@@ -242,7 +237,8 @@ export const InteractiveStep = forwardRef<
               disabled={disabled || isAnyActionRunning}
               title="Redo this step (execute again)"
             >
-              ↻
+              <span className="interactive-step-redo-icon">↻</span>
+              <span className="interactive-step-redo-text">Redo</span>
             </button>
           </div>
         )}

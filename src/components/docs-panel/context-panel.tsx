@@ -4,6 +4,7 @@ import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana
 import { Icon, useStyles2, Card } from '@grafana/ui';
 import logoSvg from '../../img/logo.svg';
 import { SkeletonLoader } from '../SkeletonLoader';
+import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { locationService } from '@grafana/runtime';
 
 // Import refactored context system
@@ -94,6 +95,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
               <p className={styles.sectionSubtitle}>
                 Based on your current context, here are some learning journeys and documentation that may be beneficial.
               </p>
+              <div>
+                <FeedbackButton variant="secondary" />
+              </div>
             </div>
 
             {isLoadingRecommendations && (

@@ -2,7 +2,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
 export const getFeedbackButtonStyles = (theme: GrafanaTheme2) => ({
-  feedbackButton: css({
+  feedbackButtonPrimary: css({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
@@ -33,6 +33,36 @@ export const getFeedbackButtonStyles = (theme: GrafanaTheme2) => ({
     
     '&:focus': {
       outline: `2px solid ${theme.colors.primary.main}`,
+      outlineOffset: '2px',
+    },
+  }),
+  feedbackButtonSecondary: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    backgroundColor: 'transparent',
+    color: theme.colors.text.primary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    boxShadow: 'none',
+    margin: 0,
+    alignSelf: 'auto',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.strong,
+      boxShadow: theme.shadows.z1,
+    },
+    '&:active': {
+      transform: 'translateY(0)',
+      boxShadow: 'none',
+    },
+    '&:focus': {
+      outline: `2px solid ${theme.colors.primary.transparent}`,
       outlineOffset: '2px',
     },
   }),

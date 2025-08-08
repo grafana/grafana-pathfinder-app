@@ -472,9 +472,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
   React.useEffect(() => { addGlobalModalStyles(); }, []);
   const { tabs, activeTabId, contextPanel } = model.useState();
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const dropdownOpenTimeRef = useRef<number>(0);
+  // removed — using restored custom overflow state below
 
   const activeTab = tabs.find(t => t.id === activeTabId) || null;
   const isRecommendationsTab = activeTabId === 'recommendations';
@@ -485,36 +483,31 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
 
-  // Tab overflow management - SIMPLIFIED!
+  // Tab overflow management - restored simplified approach
   const tabListRef = useRef<HTMLDivElement>(null);
   const [visibleTabs, setVisibleTabs] = useState<LearningJourneyTab[]>(tabs);
   const [overflowedTabs, setOverflowedTabs] = useState<LearningJourneyTab[]>([]);
   const chevronButtonRef = useRef<HTMLButtonElement>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownOpenTimeRef = useRef<number>(0);
 
-  // TODO: Replace with dynamic tab width calculation later
-  // For now, hard-code to show Recommendations + 1 tab, chevron the rest
   const calculateTabVisibility = useCallback(() => {
     if (tabs.length === 0) {
       setVisibleTabs([]);
       setOverflowedTabs([]);
       return;
     }
-
-    // Simple logic: show first 2 tabs (Recommendations + 1), chevron the rest
-    const maxVisibleTabs = 2;
-    
+    const maxVisibleTabs = 2; // Recommendations + 1
     if (tabs.length <= maxVisibleTabs) {
-      // All tabs fit, no chevron needed
       setVisibleTabs(tabs);
       setOverflowedTabs([]);
     } else {
-      // Show first 2 tabs, chevron the rest
       setVisibleTabs(tabs.slice(0, maxVisibleTabs));
       setOverflowedTabs(tabs.slice(maxVisibleTabs));
     }
   }, [tabs]);
 
-  // Recalculate when tabs change
   useEffect(() => {
     calculateTabVisibility();
   }, [calculateTabVisibility]);
@@ -636,7 +629,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       <div className={styles.topBar}>
         <div className={styles.tabBar}>
           <div className={styles.tabList} ref={tabListRef}>
-            {/* Render visible tabs */}
             {visibleTabs.map((tab) => (
               <button
                 key={tab.id}
@@ -670,14 +662,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                       aria-label={`Close ${tab.title}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        
                         reportAppInteraction(UserInteraction.CloseTabClick, {
                           tab_type: tab.type || 'learning-journey',
                           tab_title: tab.title,
                           tab_url: tab.currentUrl || tab.baseUrl,
                           close_location: 'tab_button'
                         });
-                        
                         model.closeTab(tab.id);
                       }}
                       className={styles.closeButton}
@@ -686,10 +676,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                 </div>
               </button>
             ))}
-            
           </div>
-          
-          {/* Render chevron button for overflowed tabs - OUTSIDE tabList */}
+
           {overflowedTabs.length > 0 && (
             <div className={styles.tabOverflow}>
               <button
@@ -714,8 +702,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
               </button>
             </div>
           )}
-          
-          {/* Render dropdown outside of tabList but inside tabBar */}
+
           {isDropdownOpen && overflowedTabs.length > 0 && (
             <div ref={dropdownRef} className={styles.tabDropdown} role="menu" aria-label="More tabs">
               {overflowedTabs.map((tab) => (
@@ -754,14 +741,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         aria-label={`Close ${tab.title}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          
                           reportAppInteraction(UserInteraction.CloseTabClick, {
                             tab_type: tab.type || 'learning-journey',
                             tab_title: tab.title,
                             tab_url: tab.currentUrl || tab.baseUrl,
                             close_location: 'dropdown'
                           });
-                          
                           model.closeTab(tab.id);
                         }}
                         className={styles.dropdownItemClose}
@@ -824,11 +809,48 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                   </div>
                 )}
 
-                {/* Content Meta for docs */}
+                {/* Content Meta for docs - now includes secondary open-in-new button */}
                 {activeTab.type === 'docs' && (
                   <div className={styles.contentMeta}>
                     <div className={styles.metaInfo}>
                       <span>Documentation</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {(() => {
+                        const url = activeTab.content?.url || activeTab.baseUrl;
+                        const isBundled = typeof url === 'string' && url.startsWith('bundled:');
+                        let isGrafanaDomain = false;
+                        try {
+                          if (url && typeof url === 'string') {
+                            const parsed = new URL(url);
+                            isGrafanaDomain = parsed.hostname === 'grafana.com' || parsed.hostname.endsWith('.grafana.com');
+                          }
+                        } catch {
+                          isGrafanaDomain = false;
+                        }
+                        if (url && !isBundled && isGrafanaDomain) {
+                          return (
+                            <button
+                              className={styles.secondaryActionButton}
+                              aria-label="Open this page in new tab"
+                              onClick={() => {
+                                reportAppInteraction(UserInteraction.OpenDocumentationButton, {
+                                  content_type: activeTab.type || 'docs',
+                                  content_title: activeTab.title,
+                                  content_url: url,
+                                  interaction_location: 'docs_content_meta_right',
+                                });
+                                window.open(url, '_blank', 'noopener,noreferrer');
+                              }}
+                            >
+                              <Icon name="external-link-alt" size="sm" />
+                              <span>Open</span>
+                            </button>
+                          );
+                        }
+                        return null;
+                      })()}
+                      <FeedbackButton variant="secondary" />
                     </div>
                   </div>
                 )}
@@ -896,34 +918,35 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                   </div>
                 )}
                 
-                {/* Content Action Bar */}
-                <div className={styles.contentActionBar}>
-                  <IconButton
-                    name="external-link-alt"
-                    size="xs"
-                    aria-label={`Open this ${activeTab.type === 'docs' ? 'page' : 'journey'} in new tab`}
-                    onClick={() => {
-                      const url = activeTab.content?.url || activeTab.baseUrl;
-                      if (url) {
-                        reportAppInteraction(UserInteraction.OpenDocumentationButton, {
-                          content_type: activeTab.type || 'learning-journey',
-                          content_title: activeTab.title,
-                          content_url: url,
-                          interaction_location: `${activeTab.type === 'docs' ? 'docs' : 'journey'}_content_action_bar`,
-                          ...(activeTab.type !== 'docs' && activeTab.content?.metadata.learningJourney && {
-                            current_milestone: activeTab.content.metadata.learningJourney.currentMilestone,
-                            total_milestones: activeTab.content.metadata.learningJourney.totalMilestones
-                          })
-                        });
-                        
-                        window.open(url, '_blank', 'noopener,noreferrer');
-                      }
-                    }}
-                    tooltip={`Open this ${activeTab.type === 'docs' ? 'page' : 'journey'} in new tab`}
-                    tooltipPlacement="top"
-                    className={styles.actionButton}
-                  />
-                </div>
+                {/* Content Action Bar removed for docs to reclaim vertical space */}
+                {activeTab.type !== 'docs' && (
+                  <div className={styles.contentActionBar}>
+                    <IconButton
+                      name="external-link-alt"
+                      size="xs"
+                      aria-label={`Open this journey in new tab`}
+                      onClick={() => {
+                        const url = activeTab.content?.url || activeTab.baseUrl;
+                        if (url) {
+                          reportAppInteraction(UserInteraction.OpenDocumentationButton, {
+                            content_type: activeTab.type || 'learning-journey',
+                            content_title: activeTab.title,
+                            content_url: url,
+                            interaction_location: 'journey_content_action_bar',
+                            ...(activeTab.type !== 'docs' && activeTab.content?.metadata.learningJourney && {
+                              current_milestone: activeTab.content.metadata.learningJourney.currentMilestone,
+                              total_milestones: activeTab.content.metadata.learningJourney.totalMilestones
+                            })
+                          });
+                          window.open(url, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                      tooltip={`Open this journey in new tab`}
+                      tooltipPlacement="top"
+                      className={styles.actionButton}
+                    />
+                  </div>
+                )}
                 
                 {/* Unified Content Renderer - works for both learning journeys and docs! */}
                 <div id='inner-docs-content' style={{ 
@@ -952,8 +975,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           return null;
         })()}
       </div>
-      {/* Feedback Button - Inline at the bottom */}
-      <FeedbackButton />
+      {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement */}
+      {!isRecommendationsTab && activeTab?.type !== 'docs' && <FeedbackButton />}
     </div>
   );
 }
