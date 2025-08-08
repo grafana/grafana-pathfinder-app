@@ -666,6 +666,13 @@ export const addGlobalInteractiveStyles = () => {
       box-shadow: 0 0 0 4px var(--grafana-warning-transparent-medium, rgba(255, 136, 0, 0.2));
       animation: highlight-pulse 2s ease-in-out forwards;
     }
+    /* Subtle variant to reuse animation cadence for blocked areas */
+    .interactive-highlight-outline--subtle {
+      border-color: rgba(180, 180, 180, 0.4);
+      background-color: rgba(180, 180, 180, 0.08);
+      box-shadow: 0 0 0 4px rgba(180, 180, 180, 0.12);
+      animation: subtle-highlight-pulse 1.6s ease-in-out infinite;
+    }
     @keyframes highlight-pulse {
       0% {
         opacity: 0;
@@ -691,6 +698,24 @@ export const addGlobalInteractiveStyles = () => {
         opacity: 0;
         transform: scale(0.95);
         box-shadow: 0 0 0 0 transparent;
+      }
+    }
+
+    @keyframes subtle-highlight-pulse {
+      0% {
+        opacity: 0.55;
+        transform: scale(0.995);
+        box-shadow: 0 0 0 0 rgba(180, 180, 180, 0.12);
+      }
+      50% {
+        opacity: 0.8;
+        transform: scale(1);
+        box-shadow: 0 0 0 6px rgba(180, 180, 180, 0.16);
+      }
+      100% {
+        opacity: 0.55;
+        transform: scale(0.995);
+        box-shadow: 0 0 0 0 rgba(180, 180, 180, 0.12);
       }
     }
     

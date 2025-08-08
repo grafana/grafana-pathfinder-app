@@ -166,6 +166,25 @@ class GlobalInteractionBlocker {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
+
+        /* Subtle breathing border for blocked (non-clickable) area */
+        #interactive-blocking-overlay {
+          background: rgba(160, 160, 160, 0.04) !important;
+          box-shadow: inset 0 0 0 0 rgba(180, 180, 180, 0.22);
+          animation: blocker-breathe 1.6s ease-in-out infinite;
+        }
+
+        @keyframes blocker-breathe {
+          0% {
+            box-shadow: inset 0 0 0 0 rgba(180, 180, 180, 0.18);
+          }
+          50% {
+            box-shadow: inset 0 0 0 6px rgba(180, 180, 180, 0.25);
+          }
+          100% {
+            box-shadow: inset 0 0 0 0 rgba(180, 180, 180, 0.18);
+          }
+        }
       `;
       document.head.appendChild(style);
     }
