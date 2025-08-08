@@ -20,7 +20,7 @@ export { plugin };
 
 plugin.addComponent({
   targets: `grafana/extension-sidebar/v0-alpha`,
-  title: 'Documentation-Panel',
+  title: 'Grafana Pathfinder',
   description: 'Opens Documentation App',
   component: function ContextSidebar() {
     // Track when the sidebar component is mounted and unmounted
@@ -60,7 +60,7 @@ plugin.addLink({
     return {
       icon: 'question-circle',
       description: 'Opens Documentation App',
-      title: 'Documentation-Panel',
+      title: 'Grafana Pathfinder',
     };
   },
   onClick: () => {

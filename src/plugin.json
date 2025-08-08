@@ -1,13 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "app",
-  "name": "Grafana Docs Plugin",
+  "name": "Grafana Pathfinder",
   "id": "grafana-grafanadocsplugin-app",
   "backend": false,
   "autoEnabled": true,
   "info": {
     "keywords": ["app"],
-    "description": "A documentation plugin that provides contextual help and quick access to Grafana resources",
+    "description": "A learning journey plugin that provides contextual help and interactive learning experiences",
     "screenshots": [
       { "name": "Recommended reading", "path": "img/screenshot_1.png" },
       { "name": "Progress through reading", "path": "img/screenshot_2.png" }
@@ -28,7 +28,7 @@
       {
         "targets": ["grafana/extension-sidebar/v0-alpha"],
         "description": "Opens Documentation",
-        "title": "Documentation-Panel"
+          "title": "Grafana Pathfinder"
       }
     ],
     "addedLinks": [

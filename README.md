@@ -1,5 +1,7 @@
 # Grafana Pathfinder
 
+![Grafana Pathfinder](./src/img/logo.svg)
+
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 Grafana Pathfinder brings contextual help and interactive learning directly into Grafana. Open the sidebar, get tailored recommendations, and follow guided learning journeys without leaving your workflow.
@@ -11,6 +13,7 @@ Grafana Pathfinder brings contextual help and interactive learning directly into
 - Open multiple docs/journeys in tabs; navigate with keyboard shortcuts
 - Quick “View” or “Start” actions from recommendations
 - Optional auto-launch of a tutorial on startup (for demos)
+- Show me and do it wizard experience for new users
 
 ## How to use
 
@@ -45,6 +48,7 @@ Developer and architecture docs have moved to the docs/ folder:
 - Pages & Routing: `docs/pages/README.md`
 
 For project architecture, see `ARCHITECTURE.md`.
+For local development, see `docs/LOCAL_DEV.md`.
 
 ## Contributing
 
@@ -52,4 +56,4 @@ We welcome issues and PRs. Please follow TypeScript + React best practices and o
 
 ## License
 
-Apache-2.0. See `LICENSE`.
+ GNU AFFERO GENERAL PUBLIC LICENSE
