@@ -96,7 +96,7 @@ This component underwent major refactoring to improve maintainability:
 
 ### Extracted Modules (Post-Refactor)
 - `src/utils/interactive.hook.ts` - Interactive elements (~200 lines)
-- `src/utils/content-processing.hook.ts` - Content processing (~300 lines)
+- `src/utils/docs-retrieval/content-renderer.tsx` - Unified renderer
 - `src/utils/keyboard-shortcuts.hook.ts` - Keyboard navigation
 - `src/utils/link-handler.hook.ts` - Link handling (~200 lines)
 - `src/styles/docs-panel.styles.ts` - Component styling

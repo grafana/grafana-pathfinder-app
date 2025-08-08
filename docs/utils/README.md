@@ -13,7 +13,7 @@ Business logic, data fetching, and utility functions organized by functionality.
 - `link-handler.hook.ts` - Link click handling and lightbox
 
 ### ⚙️ **Requirements System**
-- `requirements.util.ts` - Unified requirements checking with implicit requirements
+- `requirements-checker.hook.ts` and `requirements-checker.utils.ts` - Requirements checking and helpers
 
 ### 🛠️ **Utilities & Configuration**
 - `docs.utils.ts` - Component utilities and factories
@@ -39,10 +39,9 @@ Business logic, data fetching, and utility functions organized by functionality.
 - **Performance**: Smart HTML parsing only when needed, React virtual DOM optimization
 - **Testable Architecture**: Each component easily unit tested
 
-**Core Functions**:
+**Core Functions/Components**:
 - `fetchContent()` - Main unified content fetching
 - `ContentRenderer` - React component for rendering content
-- `InteractiveBridge` - Connects React components to existing interactive logic
 
 **Used By**:
 - `src/components/docs-panel/docs-panel.tsx` - All content rendering

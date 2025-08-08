@@ -2,9 +2,9 @@
 
 Remove any remaining comments before publishing as these may be displayed on Grafana.com -->
 
-# Grafana Docs Plugin - Source Code
+# Grafana Pathfinder - Source Code
 
-This directory contains the complete source code for the Grafana Docs Plugin, which provides contextual documentation recommendations and interactive learning journeys within Grafana.
+This directory contains the complete source code for Grafana Pathfinder, which provides contextual documentation recommendations and interactive learning journeys within Grafana.
 
 ## Architecture Overview
 
@@ -45,7 +45,7 @@ Theme-aware CSS-in-JS styling organized by functionality:
 Organized by functionality after major refactoring:
 - **Data Fetching**: `docs-retrieval/` (unified system), `context/context.service.ts`
 - **React Hooks**: `*.hook.ts` files for separated concerns
-- **Context Analysis**: `context-analysis.ts`, `context-panel.hook.ts`
+- **Context System**: `context/context.service.ts`, `context/context.hook.ts`
 - **Utilities**: Configuration, routing, and component helpers
 
 ## Key Files

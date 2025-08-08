@@ -19,7 +19,7 @@ Contains Grafana Scenes page definitions that handle app routing and scene compo
 
 **Scene Hierarchy**:
 ```typescript
-SceneAppPage ('Learning Journeys')
+SceneAppPage ('Documentation')
 └── EmbeddedScene
     └── SceneFlexLayout
         └── SceneFlexItem (100% width, 600px height)
@@ -27,14 +27,14 @@ SceneAppPage ('Learning Journeys')
 ```
 
 **Configuration**:
-- **Title**: "Learning Journeys" - displayed in Grafana's navigation
+- **Title**: "Documentation" - displayed in Grafana's navigation
 - **URL Pattern**: Uses `prefixRoute(ROUTES.Context)` for consistent routing
 - **Dimensions**: Full width, 600px height for optimal content display
 
 **Routing Integration**:
 ```typescript
 export const docsPage = new SceneAppPage({
-  title: 'Learning Journeys',
+  title: 'Documentation',
   url: prefixRoute(ROUTES.Context),
   routePath: prefixRoute(ROUTES.Context),
   getScene: contextScene,
