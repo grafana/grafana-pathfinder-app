@@ -26,7 +26,7 @@ export const ConfigService = {
   setConfig: (config: DocsPluginConfig) => {
     pluginConfig = config;
   },
-  
+
   getConfig: (): DocsPluginConfig => ({
     recommenderServiceUrl: pluginConfig.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
     docsBaseUrl: pluginConfig.docsBaseUrl || DEFAULT_DOCS_BASE_URL,
