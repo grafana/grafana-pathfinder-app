@@ -225,38 +225,44 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     label: 'combined-journey-tab',
     display: 'flex',
     alignItems: 'center',
-    padding: theme.spacing(0.75, 1.5),
+    padding: theme.spacing(0.75, 1.25),
     cursor: 'pointer',
     backgroundColor: 'transparent',
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderBottom: 'none',
-    borderRadius: `${theme.shape.radius.default}px ${theme.shape.radius.default}px 0 0`,
+    border: 'none',
+    borderRadius: 0,
     minWidth: '140px',
     maxWidth: '220px',
     position: 'relative',
     transition: 'all 0.2s ease',
     color: theme.colors.text.secondary,
     '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-      borderColor: theme.colors.border.medium,
+      backgroundColor: 'transparent',
       color: theme.colors.text.primary,
     },
     '&:not(:first-child)': {
-      marginLeft: '-1px',
+      marginLeft: theme.spacing(0.25),
+    },
+    // Underline (hidden by default, shown on active)
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      left: theme.spacing(0.5),
+      right: theme.spacing(0.5),
+      bottom: '-1px',
+      height: '2px',
+      backgroundColor: 'transparent',
+      borderRadius: '1px',
+      transition: 'background-color 0.2s ease',
     },
   }),
   activeTab: css({
     label: 'combined-journey-active-tab',
-    backgroundColor: theme.colors.primary.main,
-    borderColor: theme.colors.primary.main,
-    borderBottomColor: theme.colors.primary.main,
-    color: theme.colors.primary.contrastText,
-    zIndex: 1,
+    backgroundColor: 'transparent',
+    color: theme.colors.text.primary,
     fontWeight: theme.typography.fontWeightMedium,
-    '&:hover': {
-      backgroundColor: theme.colors.primary.main,
-      borderColor: theme.colors.primary.main,
-      color: theme.colors.primary.contrastText,
+    // Primary blue underline like Grafana UI Tabs
+    '&::after': {
+      backgroundColor: theme.colors.warning.main,
     },
   }),
   tabContent: css({
@@ -296,9 +302,7 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     height: '16px',
     borderRadius: '50%',
     flexShrink: 0,
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-    },
+    backgroundColor: 'transparent',
   }),
   // Tab overflow dropdown styles
   tabOverflow: css({
@@ -423,11 +427,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     height: '16px',
     borderRadius: '50%',
     flexShrink: 0,
-    opacity: 0.7,
-    '&:hover': {
-      backgroundColor: theme.colors.action.hover,
-      opacity: 1,
-    },
+    opacity: 0.8,
+    backgroundColor: 'transparent',
   }),
 });
 
@@ -499,6 +500,30 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
       boxShadow: 'none',
     },
     
+    '& svg': {
+      width: '12px',
+      height: '12px',
+      flexShrink: 0,
+    },
+  }),
+  secondaryActionButton: css({
+    backgroundColor: 'transparent',
+    color: theme.colors.text.primary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: theme.shape.radius.default,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.strong,
+      boxShadow: theme.shadows.z1,
+    },
     '& svg': {
       width: '12px',
       height: '12px',

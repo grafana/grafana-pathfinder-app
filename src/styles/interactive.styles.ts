@@ -1,5 +1,6 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
+import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 
 // Base interactive element styles
 const getBaseInteractiveStyles = (theme: GrafanaTheme2) => ({
@@ -646,7 +647,42 @@ export const addGlobalInteractiveStyles = () => {
   }
   const style = document.createElement('style');
   style.id = interactiveStyleId;
+  // Align highlight animation timing with configured technical highlight delay
+  const highlightMs = INTERACTIVE_CONFIG.delays.technical.highlight;
+  // Slower, more readable draw; short hold; erase the remainder
+  const drawMs = Math.max(500, Math.round(highlightMs * 0.65));
+  const holdMs = Math.max(120, Math.round(highlightMs * 0.20));
+  const eraseMs = Math.max(250, Math.max(0, highlightMs - drawMs - holdMs));
+  const fadeDelay = drawMs + holdMs; // ensure fade starts after draw completes + hold
   style.textContent = `
+    /* Blocker overlay visuals (used by GlobalInteractionBlocker) */
+    #interactive-blocking-overlay {
+      background: transparent !important;
+      /* Always-visible subtle border */
+      border: 1px solid rgba(170, 170, 170, 0.35);
+      /* Breathing pulse layered on top */
+      box-shadow: inset 0 0 0 0 rgba(170, 170, 170, 0.22);
+      animation: blocker-breathe 3.2s ease-in-out infinite;
+    }
+
+    /* When a modal is active, remove breathing pulse to avoid visual clash and keep overlay subtle */
+    #interactive-blocking-overlay.no-breathe {
+      animation: none !important;
+      box-shadow: none !important;
+      border: none !important;
+    }
+
+    @keyframes blocker-breathe {
+      0% {
+        box-shadow: inset 0 0 0 0 rgba(170, 170, 170, 0.18);
+      }
+      50% {
+        box-shadow: inset 0 0 0 6px rgba(170, 170, 170, 0.20);
+      }
+      100% {
+        box-shadow: inset 0 0 0 0 rgba(170, 170, 170, 0.18);
+      }
+    }
     /* Global interactive highlight styles */
     .interactive-highlighted {
       position: relative;
@@ -658,39 +694,71 @@ export const addGlobalInteractiveStyles = () => {
       left: var(--highlight-left);
       width: var(--highlight-width);
       height: var(--highlight-height);
-      border: 2px solid var(--grafana-warning-main, #FF8800);
-      border-radius: 4px;
       pointer-events: none;
       z-index: 9999;
-      background-color: var(--grafana-warning-transparent, rgba(255, 136, 0, 0.1));
-      box-shadow: 0 0 0 4px var(--grafana-warning-transparent-medium, rgba(255, 136, 0, 0.2));
-      animation: highlight-pulse 2s ease-in-out forwards;
+      border-radius: 4px;
+      /* Draw border clockwise using four gradient strokes (no fill) */
+      --hl-color: rgba(255, 136, 0, 0.85);
+      --hl-thickness: 2px;
+      background:
+        linear-gradient(var(--hl-color) 0 0) top left / 0 var(--hl-thickness) no-repeat,
+        linear-gradient(var(--hl-color) 0 0) top right / var(--hl-thickness) 0 no-repeat,
+        linear-gradient(var(--hl-color) 0 0) bottom right / 0 var(--hl-thickness) no-repeat,
+        linear-gradient(var(--hl-color) 0 0) bottom left / var(--hl-thickness) 0 no-repeat;
+      opacity: 0.95;
+      /* Draw, brief hold, graceful fade — aligned to config highlight delay */
+      animation-name: interactive-draw-border, interactive-fade-out;
+      animation-duration: ${drawMs}ms, ${eraseMs}ms;
+      animation-timing-function: cubic-bezier(0.18, 0.6, 0.2, 1), cubic-bezier(0.4, 0.0, 0.2, 1);
+      animation-delay: 0ms, ${fadeDelay}ms; /* start fade only after draw + hold */
+      animation-fill-mode: forwards, forwards;
     }
-    @keyframes highlight-pulse {
+    /* Subtle variant to reuse animation cadence for blocked areas */
+    .interactive-highlight-outline--subtle {
+      border-color: rgba(180, 180, 180, 0.4);
+      background-color: rgba(180, 180, 180, 0.08);
+      box-shadow: 0 0 0 4px rgba(180, 180, 180, 0.12);
+      animation: subtle-highlight-pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes interactive-draw-border {
       0% {
-        opacity: 0;
-        transform: scale(0.95);
-        box-shadow: 0 0 0 0 var(--grafana-warning-transparent-strong, rgba(255, 136, 0, 0.4));
+        background-size: 0 var(--hl-thickness), var(--hl-thickness) 0, 0 var(--hl-thickness), var(--hl-thickness) 0;
       }
       25% {
-        opacity: 1;
-        transform: scale(1);
-        box-shadow: 0 0 0 8px var(--grafana-warning-transparent-medium, rgba(255, 136, 0, 0.3));
+        background-size: 100% var(--hl-thickness), var(--hl-thickness) 0, 0 var(--hl-thickness), var(--hl-thickness) 0;
       }
       50% {
-        opacity: 1;
-        transform: scale(1);
-        box-shadow: 0 0 0 12px var(--grafana-warning-transparent, rgba(255, 136, 0, 0.2));
+        background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 0 var(--hl-thickness), var(--hl-thickness) 0;
       }
       75% {
-        opacity: 1;
-        transform: scale(1);
-        box-shadow: 0 0 0 8px var(--grafana-warning-transparent-weak, rgba(255, 136, 0, 0.1));
+        background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 0;
       }
       100% {
-        opacity: 0;
-        transform: scale(0.95);
-        box-shadow: 0 0 0 0 transparent;
+        background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100%;
+      }
+    }
+
+    /* Graceful fade out without undrawing the stroke */
+    @keyframes interactive-fade-out {
+      0% { opacity: 0.95; }
+      100% { opacity: 0; }
+    }
+
+    @keyframes subtle-highlight-pulse {
+      0% {
+        opacity: 0.55;
+        transform: scale(0.995);
+        box-shadow: 0 0 0 0 rgba(180, 180, 180, 0.12);
+      }
+      50% {
+        opacity: 0.8;
+        transform: scale(1);
+        box-shadow: 0 0 0 6px rgba(180, 180, 180, 0.16);
+      }
+      100% {
+        opacity: 0.55;
+        transform: scale(0.995);
+        box-shadow: 0 0 0 0 rgba(180, 180, 180, 0.12);
       }
     }
     

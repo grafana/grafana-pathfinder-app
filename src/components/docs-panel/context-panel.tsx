@@ -2,6 +2,9 @@ import React from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, useStyles2, Card } from '@grafana/ui';
+import logoSvg from '../../img/logo.svg';
+import { SkeletonLoader } from '../SkeletonLoader';
+import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { locationService } from '@grafana/runtime';
 
 // Import refactored context system
@@ -81,26 +84,25 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     <div className={styles.container}>
       <div className={styles.content}>
         {isLoading && (
-          <div className={styles.loadingContainer}>
-            <Icon name="sync" />
-            <span>Loading context...</span>
-          </div>
+          <SkeletonLoader type="recommendations" />
         )}
 
         {!isLoading && (
           <div className={styles.contextSections}>
             <div className={styles.sectionHeader}>
-              <Icon name="question-circle" size="lg" className={styles.headerIcon} />
+              <img src={logoSvg} alt="Grafana Pathfinder" className={styles.headerIcon} width={24} height={24} />
               <h2 className={styles.sectionTitle}>Recommended Documentation</h2>
               <p className={styles.sectionSubtitle}>
                 Based on your current context, here are some learning journeys and documentation that may be beneficial.
               </p>
+              <div>
+                <FeedbackButton variant="secondary" />
+              </div>
             </div>
 
             {isLoadingRecommendations && (
-              <div className={styles.loadingContainer}>
-                <Icon name="sync" />
-                <span>Loading recommendations...</span>
+              <div className={styles.recommendationsContainer}>
+                <SkeletonLoader type="recommendations" />
               </div>
             )}
             
@@ -151,7 +153,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                     openLearningJourney(recommendation.url, recommendation.title);
                                   }
                                 }}
-                                className={styles.startButton}
+                                className={recommendation.type === 'docs-page' ? styles.secondaryButton : styles.startButton}
                               >
                                 <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
                                 {recommendation.type === 'docs-page' ? 'View' : 'Start'}

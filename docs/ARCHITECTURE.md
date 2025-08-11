@@ -1,4 +1,4 @@
-# Grafana Learning Journeys Plugin - Architecture
+# Grafana Pathfinder - Architecture
 
 This document provides a comprehensive overview of the plugin's architecture, design patterns, and system organization.
 
@@ -16,7 +16,7 @@ This document provides a comprehensive overview of the plugin's architecture, de
             │                               │
             ▼                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Learning Journeys Plugin                    │
+│                         Grafana Pathfinder                     │
 │                                                                 │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────┐ │
 │  │  Context Panel  │    │  Journey Panel  │    │   App Core  │ │

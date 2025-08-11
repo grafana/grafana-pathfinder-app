@@ -435,11 +435,11 @@ export const InteractiveMultiStep = forwardRef<
       
       <div className="interactive-step-actions">
         <div className="interactive-step-action-buttons">
-          {/* Only show "Do it" button when requirements are met OR step is completed */}
-          {(checker.isEnabled || isCompletedWithObjectives) && (
+          {/* Only show "Do it" when not completed */}
+          {!isCompletedWithObjectives && checker.isEnabled && (
             <Button
               onClick={handleDoAction}
-              disabled={disabled || isCompletedWithObjectives || isAnyActionRunning || (!checker.isEnabled && !isCompletedWithObjectives)}
+              disabled={disabled || isAnyActionRunning || !checker.isEnabled}
               size="sm"
               variant="primary"
               className="interactive-step-do-btn"
@@ -459,7 +459,8 @@ export const InteractiveMultiStep = forwardRef<
               disabled={disabled || isAnyActionRunning}
               title="Redo this multi-step (execute again)"
             >
-              ↻
+              <span className="interactive-step-redo-icon">↻</span>
+              <span className="interactive-step-redo-text">Redo</span>
             </button>
           </div>
         )}
