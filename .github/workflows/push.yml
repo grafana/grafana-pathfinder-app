@@ -1,4 +1,10 @@
-name: Plugins - CI
+# Example for using the shared workflows for plugins provided by plugin-ci-workflows in a provisioned plugin, CD-style.
+# All inputs are documented in the workflow files themselves:
+# https://github.com/grafana/plugin-ci-workflows/tree/main/.github/workflows
+# Additional documentation is also available on EngHub, here:
+# https://enghub.grafana-ops.net/docs/default/component/grafana-plugins-platform/plugins-ci-github-actions/010-plugins-ci-github-actions/#customizing-the-workflows-with-inputs
+
+name: Plugins - CI / CD
 
 on:
   push:
@@ -8,15 +14,47 @@ on:
 
 permissions: {}
 
-jobs:
-  ci:
-    name: CI
-    uses: grafana/plugin-ci-workflows/.github/workflows/ci.yml@main # zizmor: ignore[unpinned-uses]
-    permissions:
-      contents: read
-      id-token: write
-    with:
-      plugin-version-suffix: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}
+env:
+  # Scope for the plugin when publishing it to the catalog.
+  # Choose between:
+  # - 'universal': on-prem + cloud (default)
+  # - 'grafana_cloud': cloud only, hidden for on-prem users
+  SCOPES: universal # TODO: Choose the appropriate scope for your plugin.
+  ARGO_WORKFLOW_SLACK_CHANNEL: "#grafana-plugins-platform-ci" # TODO: Change with your own Slack channel
 
-      # TODO: add here any other CI custom inputs you may need:
+  # Grafana Cloud environment to deploy the provisioned plugin to.
+  # - 'dev': dev
+  # - 'ops': ops
+  # - 'prod': dev + ops + prod
+  # Can also be a comma-separated list of environments, e.g. 'dev,ops'.
+  # Change to 'dev,ops' to deploy each push to main to both dev and ops environments.
+  CD_ENVIRONMENT: dev
+
+jobs:
+  cd:
+    name: CI / CD
+    uses: grafana/plugin-ci-workflows/.github/workflows/cd.yml@main # zizmor: ignore[unpinned-uses]
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      # Checkout/build PR or main branch, depending on event
+      branch: ${{ github.event_name == 'push' && github.ref_name || github.ref }}
+
+      # When pushing to "main", publish and deploy to Grafana Cloud (CD).
+      # For PRs, skip publishing and deploying (run CI only).
+      environment: ${{ (github.event_name == 'push' && github.ref_name == 'main') && env.CD_ENVIRONMENT || 'none' }}
+      scopes: ${{ env.SCOPES }}
+
+      # This will trigger the Argo Workflow to update your plugin version in Grafana Cloud via deployment_tools
+      grafana-cloud-deployment-type: provisioned
+      argo-workflow-slack-channel: ${{ env.ARGO_WORKFLOW_SLACK_CHANNEL }}
+      # Auto-merge all PRs in deployment_tools
+      auto-merge-environments: ${{ env.CD_ENVIRONMENT }}
+
+      # Add the git head ref sha to the plugin version as suffix (`+abcdef`). This is required for CD builds.
+      plugin-version-suffix: ${{ github.event_name == 'push' && github.sha || github.event.pull_request.head.sha }}
+
+      # TODO: add here any other CI custom inputs you may need. You most likely also have to add the same options to publish.yaml:
       #   https://enghub.grafana-ops.net/docs/default/component/grafana-plugins-platform/plugins-ci-github-actions/010-plugins-ci-github-actions/#customizing-the-workflows-with-inputs

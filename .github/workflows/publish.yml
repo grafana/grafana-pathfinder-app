@@ -27,7 +27,7 @@ env:
   # Choose between:
   # - 'universal': on-prem + cloud (default)
   # - 'grafana_cloud': cloud only, hidden for on-prem users
-  SCOPES: grafana_cloud # TODO: Choose the appropriate scope for your plugin.
+  SCOPES: universal # TODO: Choose the appropriate scope for your plugin.
 
 jobs:
   cd:
@@ -41,7 +41,10 @@ jobs:
       branch: ${{ github.event.inputs.branch }}
       environment: ${{ github.event.inputs.environment }}
       docs-only: ${{ fromJSON(github.event.inputs.docs-only) }}
-      scopes: grafana_cloud
+      scopes: universal
+      grafana-cloud-deployment-type: provisioned
+      argo-workflow-slack-channel: "#grafana-plugins-platform-ci"
+
 
       # TODO: add here any other CI custom inputs you may need:
       #   https://enghub.grafana-ops.net/docs/default/component/grafana-plugins-platform/plugins-ci-github-actions/010-plugins-ci-github-actions/#customizing-the-workflows-with-inputs
