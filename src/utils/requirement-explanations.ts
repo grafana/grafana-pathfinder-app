@@ -67,6 +67,10 @@ export function mapRequirementToUserFriendlyMessage(requirement: string): string
       message: (name) => `The '${name}' data source needs to be configured first.`
     },
     {
+      pattern: /^has-dashboard-named:(.+)$/,
+      message: (dashboard) => `The dashboard '${dashboard}' needs to exist first. Complete the previous tutorial or create it manually.`
+    },
+    {
       pattern: /^has-plugin:(.+)$/,
       message: (plugin) => `The '${plugin}' plugin needs to be installed and enabled.`
     },
