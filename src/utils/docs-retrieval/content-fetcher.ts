@@ -1,6 +1,7 @@
 // Unified content fetcher - replaces docs-fetcher.ts and single-docs-fetcher.ts
 // This version ONLY fetches content and extracts basic metadata
 // All DOM processing is moved to React components
+import { getDocsBaseUrl } from '../../constants';
 import {
   RawContent,
   ContentFetchResult,
@@ -207,7 +208,14 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
   let redirectInfo: string | null = null;
 
   try {
+    // ensure url always ends with /unstyled.html
+    // handle trailing slashes and add unstyled.html
+    if (!url.endsWith('/unstyled.html')) {
+      url = url.replace(/\/$/, '') + '/unstyled.html';
+    }
+
     console.log('fetching first response', url);
+
     const response = await fetch(url, fetchOptions);
 
     // Log redirect information if the final URL is different
@@ -220,7 +228,10 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
       const html = await response.text();
       if (html && html.trim()) {
         // If this is a Grafana docs or tutorial URL, we MUST get the unstyled version
-        if (response.url.includes('grafana.com/docs/') || response.url.includes('grafana.com/tutorials/')) {
+        if (
+          response.url.includes(getDocsBaseUrl() + '/docs/') ||
+          response.url.includes(getDocsBaseUrl() + '/tutorials/')
+        ) {
           const finalUnstyledUrl = getUnstyledContentUrl(response.url);
           if (finalUnstyledUrl !== response.url) {
             try {
@@ -248,7 +259,10 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         // For non-Grafana docs/tutorials or when unstyled URL is same as regular URL
         if (redirectInfo) {
           console.warn(`Successfully fetched content after redirect: ${redirectInfo}`);
-        } else if (response.url.includes('grafana.com/docs/') || response.url.includes('grafana.com/tutorials/')) {
+        } else if (
+          response.url.includes(getDocsBaseUrl() + '/docs/') ||
+          response.url.includes(getDocsBaseUrl() + '/tutorials/')
+        ) {
           console.warn(`Successfully fetched Grafana content: ${response.url}`);
         }
         return html;
@@ -553,7 +567,7 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
             number: index + 1,
             title: item.params?.title || item.params?.menutitle || `Step ${index + 1}`,
             duration: '5-10 min', // Default duration as it's not in the data
-            url: `https://grafana.com${item.permalink || item.params?.permalink || ''}`,
+            url: `${getDocsBaseUrl()}${item.permalink || item.params?.permalink || ''}`,
             isActive: false,
           };
 
@@ -568,7 +582,7 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
 
           if (item.params?.cta?.image) {
             milestone.conclusionImage = {
-              src: `https://grafana.com${item.params.cta.image.src}`,
+              src: `${getDocsBaseUrl()}${item.params.cta.image.src}`,
               width: item.params.cta.image.width,
               height: item.params.cta.image.height,
             };

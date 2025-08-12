@@ -1,24 +1,24 @@
 import { getBackendSrv, config, locationService, getEchoSrv, EchoEventType } from '@grafana/runtime';
-import { getRecommenderServiceUrl } from '../../constants';
+import { getRecommenderServiceUrl, getDocsBaseUrl } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
-import { 
-  ContextData, 
-  DataSource, 
+import {
+  ContextData,
+  DataSource,
   Plugin,
   DashboardSearchResult,
-  DashboardInfo, 
-  Recommendation, 
-  ContextPayload, 
+  DashboardInfo,
+  Recommendation,
+  ContextPayload,
   RecommenderResponse,
   BundledInteractive,
-  BundledInteractivesIndex
+  BundledInteractivesIndex,
 } from './context.types';
 
 export class ContextService {
   private static echoLoggingInitialized = false;
   private static currentDatasourceType: string | null = null;
   private static currentVisualizationType: string | null = null;
-  
+
   // Event buffer to handle missed events when plugin is closed/reopened
   private static eventBuffer: Array<{
     datasourceType?: string;
@@ -28,7 +28,7 @@ export class ContextService {
   }> = [];
   private static readonly BUFFER_SIZE = 10;
   private static readonly BUFFER_TTL = 300000; // 5 minutes
-  
+
   // Simple event system for context changes
   private static changeListeners: Set<() => void> = new Set();
 
@@ -46,7 +46,7 @@ export class ContextService {
    * Notify all listeners that context has changed
    */
   private static notifyContextChange(): void {
-    this.changeListeners.forEach(listener => {
+    this.changeListeners.forEach((listener) => {
       try {
         listener();
       } catch (error) {
@@ -66,16 +66,16 @@ export class ContextService {
   }): void {
     // Clean expired events
     const now = Date.now();
-    this.eventBuffer = this.eventBuffer.filter(e => now - e.timestamp < this.BUFFER_TTL);
-    
+    this.eventBuffer = this.eventBuffer.filter((e) => now - e.timestamp < this.BUFFER_TTL);
+
     // Add new event
     this.eventBuffer.push(event);
-    
+
     // Keep buffer size manageable
     if (this.eventBuffer.length > this.BUFFER_SIZE) {
       this.eventBuffer = this.eventBuffer.slice(-this.BUFFER_SIZE);
     }
-    
+
     // Notify listeners of context change
     this.notifyContextChange();
   }
@@ -85,20 +85,20 @@ export class ContextService {
    */
   public static initializeFromRecentEvents(): void {
     const now = Date.now();
-    
+
     // Find most recent datasource and visualization events
     const recentDatasourceEvent = this.eventBuffer
-      .filter(e => e.datasourceType && now - e.timestamp < this.BUFFER_TTL)
+      .filter((e) => e.datasourceType && now - e.timestamp < this.BUFFER_TTL)
       .sort((a, b) => b.timestamp - a.timestamp)[0];
-      
+
     const recentVizEvent = this.eventBuffer
-      .filter(e => e.visualizationType && now - e.timestamp < this.BUFFER_TTL)
+      .filter((e) => e.visualizationType && now - e.timestamp < this.BUFFER_TTL)
       .sort((a, b) => b.timestamp - a.timestamp)[0];
-    
+
     if (recentDatasourceEvent) {
       this.currentDatasourceType = recentDatasourceEvent.datasourceType!;
     }
-    
+
     if (recentVizEvent) {
       this.currentVisualizationType = recentVizEvent.visualizationType!;
     }
@@ -115,7 +115,7 @@ export class ContextService {
 
     try {
       const echoSrv = getEchoSrv();
-      
+
       // Add our logging backend
       echoSrv.addBackend({
         supportedEvents: [EchoEventType.Interaction, EchoEventType.Pageview, EchoEventType.MetaAnalytics],
@@ -134,7 +134,7 @@ export class ContextService {
                 this.addToEventBuffer({ datasourceType: pluginId, timestamp: Date.now(), source: 'add' });
               }
             }
-            
+
             // Workaround: Existing datasource edit detection via "Save & Test"
             // TODO: Find a better event for datasource edit page loads instead of relying on Save & Test
             // This approach only works after user clicks Save & Test, not on initial page load
@@ -145,7 +145,7 @@ export class ContextService {
                 this.addToEventBuffer({ datasourceType: pluginId, timestamp: Date.now(), source: 'test' });
               }
             }
-            
+
             // Phase 3: Dashboard datasource picker - when user selects datasource for querying
             if (event.payload?.interactionName === 'dashboards_dspicker_clicked') {
               const dsType = event.payload?.properties?.ds_type;
@@ -154,7 +154,7 @@ export class ContextService {
                 this.addToEventBuffer({ datasourceType: dsType, timestamp: Date.now(), source: 'dashboard-picker' });
               }
             }
-            
+
             // Phase 4: Dashboard panel/visualization type picker
             if (event.payload?.interactionName === 'dashboards_panel_plugin_picker_clicked') {
               const pluginId = event.payload?.properties?.plugin_id;
@@ -164,7 +164,7 @@ export class ContextService {
               }
             }
           }
-          
+
           // Phase 3: Explore query execution - detect active datasource usage
           if (event.type === 'meta-analytics' && event.payload?.eventName === 'data-request') {
             const datasourceType = event.payload?.datasourceType;
@@ -174,11 +174,10 @@ export class ContextService {
               this.addToEventBuffer({ datasourceType, timestamp: Date.now(), source: `${source}-query` });
             }
           }
-        }
+        },
       });
 
       this.echoLoggingInitialized = true;
-      
     } catch (error) {
       console.error('@context/ Failed to initialize EchoSrv logging:', error);
     }
@@ -190,7 +189,7 @@ export class ContextService {
   static async getContextData(): Promise<ContextData> {
     // Ensure EchoSrv is initialized (fallback if onPluginStart wasn't called)
     this.initializeEchoLogging();
-    
+
     // Initialize from recent events if plugin was reopened
     if (!this.currentDatasourceType && !this.currentVisualizationType) {
       this.initializeFromRecentEvents();
@@ -199,7 +198,7 @@ export class ContextService {
     const currentPath = location.pathname;
     const currentUrl = `${location.pathname}${location.search}${location.hash}`;
     const pathSegments = currentPath.split('/').filter(Boolean);
-    
+
     // Parse search parameters using LocationService
     const urlQueryMap = locationService.getSearchObject();
     const searchParams: Record<string, string> = {};
@@ -212,7 +211,7 @@ export class ContextService {
     // Fetch data in parallel
     const [dataSources, dashboardInfo] = await Promise.all([
       this.fetchDataSources(),
-      this.fetchDashboardInfo(currentPath)
+      this.fetchDashboardInfo(currentPath),
     ]);
 
     // Generate context tags
@@ -253,7 +252,7 @@ export class ContextService {
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
-        datasources: contextData.dataSources.map(ds => ds.type.toLowerCase()),
+        datasources: contextData.dataSources.map((ds) => ds.type.toLowerCase()),
         tags: contextData.tags,
         user_id: config.bootData.user.analytics.identifier,
         user_role: config.bootData.user.orgRole || 'Viewer',
@@ -271,10 +270,19 @@ export class ContextService {
       }
 
       const data: RecommenderResponse = await response.json();
-      
+
+      // testRecommendations
+      const testRecommendations: Recommendation[] = [
+        {
+          title: 'Components',
+          url: 'https://grafana.com/components/',
+          matchAccuracy: 1,
+        },
+      ];
+
       // Add bundled interactive recommendations (contextual based on current URL)
       const bundledRecommendations: Recommendation[] = this.getBundledInteractiveRecommendations(contextData);
-      
+
       // Add default recommendations for testing (with proper confidence scores)
       const defaultRecommendations: Recommendation[] = [
         {
@@ -293,8 +301,15 @@ export class ContextService {
         },
       ];
 
-      const allRecommendations = [...(data.recommendations || []), ...bundledRecommendations, ...defaultRecommendations];
-      
+      const allRecommendations = [
+        ...this.replaceRecommendationBaseUrl(testRecommendations),
+        ...(this.replaceRecommendationBaseUrl(data.recommendations) || []),
+        ...bundledRecommendations,
+        ...defaultRecommendations,
+      ];
+
+      console.log(allRecommendations);
+
       // Process recommendations
       const processedRecommendations = await Promise.all(
         allRecommendations.map(async (rec) => {
@@ -302,11 +317,11 @@ export class ContextService {
             try {
               const result = await fetchContent(rec.url);
               const completionPercentage = getJourneyCompletionPercentage(rec.url);
-              
+
               // Extract learning journey data from the unified content
               const milestones = result.content?.metadata.learningJourney?.milestones || [];
               const summary = result.content?.metadata.learningJourney?.summary || rec.summary || '';
-              
+
               return {
                 ...rec,
                 totalSteps: milestones.length,
@@ -381,7 +396,7 @@ export class ContextService {
         type: 'dash-db',
         limit: 100,
         deleted: false,
-        query: name
+        query: name,
       });
       return dashboards || [];
     } catch (error) {
@@ -425,11 +440,11 @@ export class ContextService {
     dashboardInfo: DashboardInfo | null
   ): string[] {
     const tags: string[] = [];
-    
+
     // Extract primary entity and action
     const entity = this.extractEntity(pathSegments);
     const action = this.detectAction(pathSegments, searchParams);
-    
+
     if (entity) {
       tags.push(`${entity}:${action}`);
     }
@@ -443,7 +458,7 @@ export class ContextService {
       tags.push(`panel-type:${vizType}`);
     }
 
-    // Add selected datasource from EchoSrv events (Phase 2: Echo-based detection)  
+    // Add selected datasource from EchoSrv events (Phase 2: Echo-based detection)
     const echoDetectedDatasource = this.getDetectedDatasourceType();
     if (echoDetectedDatasource) {
       tags.push(`selected-datasource:${echoDetectedDatasource}`);
@@ -452,7 +467,7 @@ export class ContextService {
     // Add specific context tags
     if (entity === 'dashboard' && dashboardInfo) {
       if (dashboardInfo.tags) {
-        dashboardInfo.tags.forEach(tag => tags.push(`dashboard-tag:${tag.toLowerCase().replace(/\s+/g, '_')}`));
+        dashboardInfo.tags.forEach((tag) => tags.push(`dashboard-tag:${tag.toLowerCase().replace(/\s+/g, '_')}`));
       }
     }
 
@@ -463,13 +478,12 @@ export class ContextService {
         const connectionType = pathSegments[2].toLowerCase();
         tags.push(`connection-type:${connectionType}`);
       } else if (pathSegments[1] === 'datasources' && pathSegments[2]) {
-        // Handle /connections/datasources/grafana-clickhouse-datasource/ 
+        // Handle /connections/datasources/grafana-clickhouse-datasource/
         // This is actually a datasource within connections UI
         const datasourceName = pathSegments[2].toLowerCase();
         // Try to find the actual datasource to get its type
-        const selectedDs = dataSources.find(ds => 
-          ds.name.toLowerCase().includes(datasourceName) ||
-          datasourceName.includes(ds.type.toLowerCase())
+        const selectedDs = dataSources.find(
+          (ds) => ds.name.toLowerCase().includes(datasourceName) || datasourceName.includes(ds.type.toLowerCase())
         );
         if (selectedDs) {
           tags.push(`datasource-type:${selectedDs.type.toLowerCase()}`);
@@ -487,7 +501,7 @@ export class ContextService {
         tags.push(`datasource-type:${echoDetectedDatasource.toLowerCase()}`);
       } else if (pathSegments[1] === 'edit' && searchParams.id) {
         // Fallback to API lookup only for existing datasource edit pages
-        const selectedDs = dataSources.find(ds => String(ds.id) === String(searchParams.id));
+        const selectedDs = dataSources.find((ds) => String(ds.id) === String(searchParams.id));
         if (selectedDs) {
           tags.push(`datasource-type:${selectedDs.type.toLowerCase()}`);
         }
@@ -499,9 +513,15 @@ export class ContextService {
     }
 
     // UI context
-    if (searchParams.tab) {tags.push('ui:tabbed');}
-    if (searchParams.fullscreen) {tags.push('ui:fullscreen');}
-    if (searchParams.kiosk) {tags.push('ui:kiosk');}
+    if (searchParams.tab) {
+      tags.push('ui:tabbed');
+    }
+    if (searchParams.fullscreen) {
+      tags.push('ui:fullscreen');
+    }
+    if (searchParams.kiosk) {
+      tags.push('ui:kiosk');
+    }
 
     return [...new Set(tags)];
   }
@@ -510,25 +530,25 @@ export class ContextService {
    * Extract entity from path segments
    */
   private static extractEntity(pathSegments: string[]): string | null {
-    if (pathSegments.length === 0) {return null;}
-    
+    if (pathSegments.length === 0) {
+      return null;
+    }
+
     // Special case: /connections/datasources/edit/ is actually a datasource operation
-    if (pathSegments[0] === 'connections' && 
-        pathSegments[1] === 'datasources' && 
-        pathSegments[2] === 'edit') {
+    if (pathSegments[0] === 'connections' && pathSegments[1] === 'datasources' && pathSegments[2] === 'edit') {
       return 'datasource';
     }
-    
+
     const entityMap: Record<string, string> = {
-      'd': 'dashboard',
-      'dashboard': 'dashboard',
-      'datasources': 'datasource',
-      'connections': 'connection',
-      'explore': 'explore',
-      'alerting': 'alert',
-      'admin': 'admin',
-      'plugins': 'plugin',
-      'a': 'app',
+      d: 'dashboard',
+      dashboard: 'dashboard',
+      datasources: 'datasource',
+      connections: 'connection',
+      explore: 'explore',
+      alerting: 'alert',
+      admin: 'admin',
+      plugins: 'plugin',
+      a: 'app',
     };
 
     return entityMap[pathSegments[0]] || null;
@@ -538,22 +558,30 @@ export class ContextService {
    * Detect action from path and search params
    */
   private static detectAction(pathSegments: string[], searchParams: Record<string, string>): string {
-    if (searchParams.editPanel || searchParams.editview) {return 'edit';}
-    if (pathSegments.includes('new')) {return 'create';}
-    if (pathSegments.includes('edit')) {return 'edit';}
-    if (pathSegments.includes('settings')) {return 'configure';}
+    if (searchParams.editPanel || searchParams.editview) {
+      return 'edit';
+    }
+    if (pathSegments.includes('new')) {
+      return 'create';
+    }
+    if (pathSegments.includes('edit')) {
+      return 'edit';
+    }
+    if (pathSegments.includes('settings')) {
+      return 'configure';
+    }
     return 'view';
   }
 
   /**
    * Get datasource type detected from EchoSrv events (Phase 2 & 3: Echo-based detection)
-   * 
+   *
    * Supported event sources:
    * - grafana_ds_add_datasource_clicked: New datasource configuration
    * - grafana_ds_test_datasource_clicked: Existing datasource configuration (workaround)
    * - dashboards_dspicker_clicked: Dashboard datasource selection for querying
    * - data-request (meta-analytics): Active query execution in explore/dashboard
-   * 
+   *
    * TODO: Potential improvements for datasource edit detection:
    * - Listen for pageview events to detect edit page loads
    * - Add fallback to API lookup on edit pages using datasource_uid from URL
@@ -565,7 +593,7 @@ export class ContextService {
 
   /**
    * Get visualization type detected from EchoSrv events (Phase 4: Echo-based detection)
-   * 
+   *
    * Supported event sources:
    * - dashboards_panel_plugin_picker_clicked: Panel/visualization type selection in dashboards
    */
@@ -578,7 +606,7 @@ export class ContextService {
    * Only returns viz type when creating/editing, defaults to 'timeseries' if no event detected
    */
   private static getVisualizationTypeForContext(
-    pathSegments: string[], 
+    pathSegments: string[],
     searchParams: Record<string, string>
   ): string | null {
     const isCreatingOrEditingViz = this.isCreatingOrEditingVisualization(pathSegments, searchParams);
@@ -586,7 +614,7 @@ export class ContextService {
       const echoDetectedVizType = this.getDetectedVisualizationType();
       return echoDetectedVizType || 'timeseries'; // Default to timeseries if no event detected
     }
-    
+
     // Return null when not in create/edit context
     return null;
   }
@@ -596,34 +624,34 @@ export class ContextService {
    * Based on URL patterns and search parameters
    */
   private static isCreatingOrEditingVisualization(
-    pathSegments: string[], 
+    pathSegments: string[],
     searchParams: Record<string, string>
   ): boolean {
     // Editing existing panel
     if (searchParams.editPanel) {
       return true;
     }
-    
+
     // Creating first panel on new dashboard
     if (searchParams.firstPanel) {
       return true;
     }
-    
+
     // New dashboard creation
     if (pathSegments.includes('new') && pathSegments.includes('dashboard')) {
       return true;
     }
-    
+
     // Dashboard new path
     if (pathSegments[0] === 'dashboard' && pathSegments[1] === 'new') {
       return true;
     }
-    
+
     // Panel edit view
     if (searchParams.editview === 'panel') {
       return true;
     }
-    
+
     return false;
   }
 
@@ -643,21 +671,23 @@ export class ContextService {
    * Drops recommendations with confidence <= 0.5
    */
   private static filterUsefulRecommendations(recommendations: Recommendation[]): Recommendation[] {
-    return recommendations.filter(rec => {
+    return recommendations.filter((rec) => {
       const url = rec.url;
-      
+
       // Filter out generic learning journeys index pages
-      if (url === 'https://grafana.com/docs/learning-journeys' || 
-          url === 'https://grafana.com/docs/learning-journeys/') {
+      if (
+        url === 'https://grafana.com/docs/learning-journeys' ||
+        url === 'https://grafana.com/docs/learning-journeys/'
+      ) {
         return false;
       }
-      
+
       // Drop recommendations with confidence <= 0.5
       const confidence = rec.matchAccuracy ?? 0;
       if (confidence <= 0.5) {
         return false;
       }
-      
+
       return true;
     });
   }
@@ -680,11 +710,10 @@ export class ContextService {
    */
   private static getBundledInteractiveRecommendations(contextData: ContextData): Recommendation[] {
     const bundledRecommendations: Recommendation[] = [];
-    
     try {
       // Load the index.json file that contains metadata for all bundled interactives
       const indexData: BundledInteractivesIndex = require('../../bundled-interactives/index.json');
-      
+
       if (indexData && indexData.interactives && Array.isArray(indexData.interactives)) {
         // Filter interactives that match the current URL/path
         const relevantInteractives = indexData.interactives.filter((interactive: BundledInteractive) => {
@@ -698,7 +727,7 @@ export class ContextService {
           }
           return false;
         });
-        
+
         relevantInteractives.forEach((interactive: BundledInteractive) => {
           bundledRecommendations.push({
             title: interactive.title,
@@ -713,7 +742,18 @@ export class ContextService {
       console.warn('Failed to load bundled interactives index.json:', error);
       // Fallback to empty array - no bundled interactives will be shown
     }
-    
+
     return bundledRecommendations;
   }
-} 
+
+  /**
+   * replace recommendation base url with the base url from the config
+   * ensures trailing slash and unstyled.html is added to the url
+   */
+  private static replaceRecommendationBaseUrl(recommendations: Recommendation[]): Recommendation[] {
+    return recommendations.map((rec) => ({
+      ...rec,
+      url: rec.url.replace('https://grafana.com', getDocsBaseUrl()) + 'unstyled.html',
+    }));
+  }
+}
