@@ -106,6 +106,15 @@ export function ContentRenderer({ content, onContentReady, className, containerR
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
 
+  // Expose current content key globally for interactive persistence
+  useEffect(() => {
+    try {
+      (window as any).__DocsPluginContentKey = content?.url || '';
+    } catch {
+      // no-op
+    }
+  }, [content?.url]);
+
   const processedContent = React.useMemo(() => {
     let html = content.html;
     html = resolveRelativeUrls(html, content.url);

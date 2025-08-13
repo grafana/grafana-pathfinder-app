@@ -32,5 +32,23 @@
       "exportName": "prometheusGrafana101Html",
       "url": ["/"]
     }
+    ,
+    {
+      "id": "loki-grafana-101",
+      "title": "Loki & Grafana 101 (Continuation)",
+      "summary": "Continue from the Prometheus tutorial: configure Loki and add a logs panel to your existing dashboard.",
+      "filename": "loki-grafana-101.ts",
+      "exportName": "lokiGrafana101Html",
+      "url": ["/"]
+    }
+    ,
+    {
+      "id": "explore-drilldowns-101",
+      "title": "Explore Drilldowns 101 (Continuation)",
+      "summary": "Navigate to Drilldowns, filter by container label, select a metric, and view related metrics and logs.",
+      "filename": "explore-drilldowns-101.ts",
+      "exportName": "exploreDrilldowns101Html",
+      "url": ["/drilldown"]
+    }
   ]
 }

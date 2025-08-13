@@ -327,6 +327,25 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
     // Save tabs to storage after closing
     this.saveTabsToStorage();
+
+    // Clear any persisted interactive completion state for this tab
+    try {
+      const tab = currentTabs.find(t => t.id === tabId);
+      if (tab) {
+        // Remove all keys matching this content key prefix
+        const prefix = `docsPlugin:completedSteps:${tab.baseUrl}`;
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(prefix)) {
+            localStorage.removeItem(key);
+            // Adjust index due to removal
+            i--;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
 
   public setActiveTab(tabId: string) {
@@ -454,6 +473,16 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   // Content styles are applied at the component level via CSS classes
 
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Expose current active tab id/url globally for interactive persistence keys
+  useEffect(() => {
+    try {
+      (window as any).__DocsPluginActiveTabId = activeTab?.id || '';
+      (window as any).__DocsPluginActiveTabUrl = activeTab?.currentUrl || activeTab?.baseUrl || '';
+    } catch {
+      // no-op
+    }
+  }, [activeTab?.id, activeTab?.currentUrl, activeTab?.baseUrl]);
 
   // Initialize interactive elements for the content container (side effects only)
   useInteractiveElements({ containerRef: contentRef });
