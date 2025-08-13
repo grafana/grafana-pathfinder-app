@@ -25,7 +25,7 @@ function App(props: AppRootProps) {
     if (props.meta.jsonData) {
       ConfigService.setConfig(props.meta.jsonData);
     } else {
-      console.warn('⚠️ No jsonData found in props.meta');
+      	console.warn('⚠️ No jsonData found in props.meta');
     }
 
     // Check if a tutorial URL is configured for auto-launch
