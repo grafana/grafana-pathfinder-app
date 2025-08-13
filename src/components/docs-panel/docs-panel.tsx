@@ -836,7 +836,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                     <div className={styles.metaInfo}>
                       <span>Documentation</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                      }}
+                    >
                       {(() => {
                         const url = activeTab.content?.url || activeTab.baseUrl;
                         const isBundled = typeof url === 'string' && url.startsWith('bundled:');

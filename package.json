@@ -14,8 +14,8 @@
     "e2e": "playwright test",
     "server": "docker compose up --build",
     "sign": "npx --yes @grafana/sign-plugin@latest",
-    "prettier": "prettier --config .prettierrc --check './**/*.{tsx,js,json,yaml}' --write",
-    "prettier-test": "prettier --config .prettierrc --check './**/*.{tsx,js,json,yaml}'"
+    "prettier": "prettier --config .prettierrc.js --check './**/*.{tsx,js,json,yaml}' --write",
+    "prettier-test": "prettier --config .prettierrc.js --check './**/*.{tsx,js,json,yaml}'"
   },
   "author": "Grafanalabs",
   "license": "Apache-2.0",

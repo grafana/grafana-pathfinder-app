@@ -660,7 +660,11 @@ export function InteractiveSection({
           disabled: disabled || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
           resetTrigger, // Pass reset signal to child multi-steps
           key: stepInfo.stepId,
-          ref: (ref: { executeStep: () => Promise<boolean> } | null) => {
+          ref: (
+            ref: {
+              executeStep: () => Promise<boolean>;
+            } | null
+          ) => {
             if (ref) {
               multiStepRefs.current.set(stepInfo.stepId, ref);
             } else {

@@ -15,7 +15,7 @@ export const getSkeletonStyles = (theme: GrafanaTheme2) => {
   return {
     skeleton: css({
       padding: theme.spacing(2),
-      
+
       // Loading Animation for Skeleton
       // Use :empty selector to make sure that no wrapper containers use loading animations
       '*:empty': {
@@ -77,7 +77,7 @@ export const getSkeletonStyles = (theme: GrafanaTheme2) => {
       height: '16px',
       width: '100%',
       marginBottom: theme.spacing(1),
-      
+
       '&:last-child': {
         width: '45%',
       },
@@ -173,7 +173,7 @@ export const getSkeletonStyles = (theme: GrafanaTheme2) => {
       height: '16px',
       width: '100%',
       marginBottom: theme.spacing(0.5),
-      
+
       '&:nth-child(2)': {
         width: '80%',
       },
@@ -200,7 +200,7 @@ export const getSkeletonStyles = (theme: GrafanaTheme2) => {
       display: 'flex',
       gap: theme.spacing(1.5),
       marginBottom: theme.spacing(0.5),
-      
+
       '&:first-child': {
         marginBottom: theme.spacing(1.5),
       },
@@ -209,7 +209,7 @@ export const getSkeletonStyles = (theme: GrafanaTheme2) => {
     tableHeader: css({
       flex: 1,
       height: '24px',
-      
+
       '&:nth-child(1)': {
         flexBasis: '20%',
       },
@@ -227,7 +227,7 @@ export const getSkeletonStyles = (theme: GrafanaTheme2) => {
     tableCell: css({
       flex: 1,
       height: '16px',
-      
+
       '&:nth-child(1)': {
         flexBasis: '20%',
       },

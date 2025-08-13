@@ -315,7 +315,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                         <span>Other Documentation</span>
                         <span className={styles.otherDocsCount}>
                           <Icon name="list-ul" size="xs" />
-                          {secondaryDocs.length} item{secondaryDocs.length !== 1 ? 's' : ''}
+                          {secondaryDocs.length} item
+                          {secondaryDocs.length !== 1 ? 's' : ''}
                         </span>
                         <Icon name={otherDocsExpanded ? 'angle-up' : 'angle-down'} size="sm" />
                       </button>

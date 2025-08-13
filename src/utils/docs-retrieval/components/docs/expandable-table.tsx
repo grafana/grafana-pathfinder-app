@@ -30,7 +30,15 @@ export function ExpandableTable({
         </button>
         {!isCollapsed && (
           <div className="journey-collapse-content">
-            {children ? children : content ? <div dangerouslySetInnerHTML={{ __html: content }} /> : null}
+            {children ? (
+              children
+            ) : content ? (
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: content,
+                }}
+              />
+            ) : null}
           </div>
         )}
       </div>
