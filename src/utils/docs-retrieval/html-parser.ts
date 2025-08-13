@@ -704,6 +704,8 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               requirements: el.getAttribute('data-requirements'),
               objectives: el.getAttribute('data-objectives'),
               hints: el.getAttribute('data-hint'), // Fixed: now captures data-hint
+              // Post-action verification (author-provided)
+              postVerify: el.getAttribute('data-verify') || undefined,
               // Include ALL other attributes (including future data-* attributes)
               ...allProps,
             },

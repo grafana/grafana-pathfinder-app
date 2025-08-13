@@ -278,8 +278,10 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           targetAction={element.props.targetAction}
           refTarget={element.props.refTarget}
           targetValue={element.props.targetValue}
+          hints={element.props.hints}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
+          postVerify={element.props.postVerify}
           title={element.props.title}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>

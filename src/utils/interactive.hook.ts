@@ -3,12 +3,14 @@ import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 import { waitForReactUpdates } from './requirements-checker.hook';
 import { 
   checkRequirements, 
+  checkPostconditions,
   RequirementsCheckOptions, 
 } from './requirements-checker.utils';
 import { 
   extractInteractiveDataFromElement, 
 } from './dom-utils';
 import { InteractiveElementData } from '../types/interactive.types';
+import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { SequenceManager } from './sequence-manager';
 import { NavigationManager } from './navigation-manager';
@@ -118,6 +120,22 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate]);
 
   /**
+   * Utility to wait for async effects triggered by actions (network, UI updates)
+   */
+  const waitForActionToSettle = useCallback(async (targetAction?: string) => {
+    // Heuristic delays by action type plus double RAF
+    await waitForReactUpdates();
+    if (targetAction === 'button' || targetAction === 'formfill') {
+      await new Promise(resolve => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.button));
+    } else if (targetAction === 'navigate') {
+      await new Promise(resolve => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.navigation));
+    } else {
+      await new Promise(resolve => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.base));
+    }
+    await waitForReactUpdates();
+  }, []);
+
+  /**
    * Core requirement checking logic using the new pure requirements utility
    */
   const checkRequirementsFromData = useCallback(async (data: InteractiveElementData): Promise<InteractiveRequirementsCheck> => {
@@ -144,6 +162,38 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       }))
     };
   }, []);
+
+  /**
+   * Postconditions checker using the new verification path
+   */
+  const checkPostconditionsFromString = useCallback(async (
+    verifyString: string,
+    targetAction?: string,
+    refTarget?: string,
+    targetValue?: string,
+    stepId?: string,
+  ): Promise<InteractiveRequirementsCheck> => {
+    const options: RequirementsCheckOptions = {
+      requirements: verifyString || '',
+      targetAction,
+      refTarget,
+      targetValue,
+      stepId,
+    };
+    // Ensure any action-triggered async operations have time to settle
+    await waitForActionToSettle(targetAction);
+    const result = await checkPostconditions(options);
+    return {
+      requirements: result.requirements,
+      pass: result.pass,
+      error: result.error.map(e => ({
+        requirement: e.requirement,
+        pass: e.pass,
+        error: e.error,
+        context: e.context,
+      }))
+    };
+  }, [waitForActionToSettle]);
 
   // SequenceManager instance - moved here to be available for interactiveSequence
   const sequenceManager = useMemo(() => new SequenceManager(
@@ -292,6 +342,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     interactiveNavigate,
     checkElementRequirements,
     checkRequirementsFromData,
+    checkPostconditionsFromString,
     checkRequirementsWithData,
     executeInteractiveAction, // New direct interface for React components
     fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(), // Add the new function to the return object

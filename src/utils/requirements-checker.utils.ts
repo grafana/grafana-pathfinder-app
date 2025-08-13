@@ -138,6 +138,74 @@ export async function checkRequirements(
 }
 
 /**
+ * Post-action verification checker
+ * Similar to checkRequirements, but semantically intended for verifying outcomes AFTER an action.
+ * Uses the same underlying pure checks where applicable (e.g., has-plugin, has-datasource, has-dashboard-named, on-page).
+ * Excludes pre-action gating like navmenu-open and existence checks that are about enabling interactions.
+ */
+export async function checkPostconditions(
+  options: RequirementsCheckOptions
+): Promise<RequirementsCheckResult> {
+  const { requirements: verifyString, targetAction = 'button', refTarget = '' } = options;
+
+  if (!verifyString) {
+    return {
+      requirements: verifyString || '',
+      pass: true,
+      error: []
+    };
+  }
+
+  const checks: string[] = verifyString.split(',').map(check => check.trim());
+
+  async function performVerify(check: string): Promise<CheckResultError> {
+    // Allow outcome-centric checks that indicate real-world success of the step
+    if (check.startsWith('has-plugin:')) {
+      return hasPluginCHECK(check);
+    }
+    if (check.startsWith('has-datasource:')) {
+      return hasDataSourceCHECK(check);
+    }
+    if (check.startsWith('has-dashboard-named:')) {
+      return hasDashboardNamedCHECK(check);
+    }
+    if (check.startsWith('on-page:')) {
+      return onPageCHECK(check);
+    }
+    // For role/permission post-verification, we reuse the same checks, but note they may be boot-cached
+    if (check === 'is-admin') {
+      return isAdminCHECK(check);
+    }
+    if (check.startsWith('has-permission:')) {
+      return hasPermissionCHECK(check);
+    }
+    if (check.startsWith('has-role:')) {
+      return hasRoleCHECK(check);
+    }
+
+    // DOM-oriented post-verifications (optional): element still exists or value persisted
+    if (check === 'exists-reftarget') {
+      return reftargetExistsCHECK(refTarget, targetAction);
+    }
+
+    // Unknown verification token – treat as non-fatal pass with warning context
+    return {
+      requirement: check,
+      pass: true,
+      error: 'Unknown postcondition token'
+    };
+  }
+
+  const results = await Promise.all(checks.map(check => performVerify(check)));
+
+  return {
+    requirements: verifyString,
+    pass: results.every(r => r.pass),
+    error: results
+  };
+}
+
+/**
  * ============================================================================
  * PURE REQUIREMENTS CHECKING FUNCTIONS
  * These functions only use APIs, configuration, and Grafana state - no DOM

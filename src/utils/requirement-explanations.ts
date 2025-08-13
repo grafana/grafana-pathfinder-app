@@ -153,3 +153,22 @@ export function getRequirementExplanation(requirements?: string, hints?: string,
   // Fallback
   return 'Requirements not met. Please check the page state and try again.';
 } 
+
+/**
+ * Get user-friendly explanation for why a post-verify (data-verify) failed
+ * Uses the same mapping as requirements, but prioritizes any concrete error details
+ */
+export function getPostVerifyExplanation(verify?: string, error?: string): string {
+  // Priority 1: Use error details if provided (e.g., network/permission message)
+  if (error && error.trim()) {
+    return error.trim();
+  }
+
+  // Priority 2: Map verification token(s) to friendly messages
+  if (verify && verify.trim()) {
+    return mapRequirementToUserFriendlyMessage(verify.trim());
+  }
+
+  // Fallback
+  return 'Verification failed. The expected result was not achieved. Please review the step and try again.';
+}

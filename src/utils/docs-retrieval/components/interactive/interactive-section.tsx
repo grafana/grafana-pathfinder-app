@@ -20,6 +20,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence';
   refTarget: string;
   targetValue?: string;
+  postVerify?: string;
   title?: string;
   description?: string;
   children?: React.ReactNode;
@@ -51,6 +52,7 @@ export interface StepInfo {
   refTarget?: string; // Optional for multi-step
   targetValue?: string;
   requirements?: string;
+  postVerify?: string;
   isMultiStep: boolean; // Flag to identify component type
 }
 
@@ -146,7 +148,8 @@ export function InteractiveSection({
   const { 
     executeInteractiveAction, 
     startSectionBlocking, 
-    stopSectionBlocking 
+    stopSectionBlocking,
+    checkPostconditionsFromString,
   } = useInteractiveElements();
   
   // Create cancellation handler
@@ -177,6 +180,7 @@ export function InteractiveSection({
           refTarget: props.refTarget,
           targetValue: props.targetValue,
           requirements: props.requirements,
+          postVerify: props.postVerify,
           isMultiStep: false,
         });
       } else if (React.isValidElement(child) && 
@@ -418,6 +422,24 @@ export function InteractiveSection({
         stepInfo.targetValue,
         'do'
       );
+      
+      // Prefer explicit postVerify over generic requirements for post-checking
+      const postConditions = (stepInfo.postVerify && stepInfo.postVerify.trim() !== '')
+        ? stepInfo.postVerify
+        : stepInfo.requirements;
+      if (postConditions && postConditions.trim() !== '') {
+        const result = await checkPostconditionsFromString(
+          postConditions,
+          stepInfo.targetAction || 'button',
+          stepInfo.refTarget || '',
+          stepInfo.targetValue,
+          stepInfo.stepId
+        );
+        if (!result.pass) {
+          console.warn(`⛔ Post-verify failed for ${stepInfo.stepId}:`, result.error);
+          return false;
+        }
+      }
       
       return true;
     } catch (error) {
