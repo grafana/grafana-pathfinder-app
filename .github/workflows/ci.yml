@@ -17,7 +17,7 @@ jobs:
     name: Build, lint and unit tests
     runs-on: ubuntu-latest
     permissions:
-      contents: read  # Read repository contents
+      contents: read # Read repository contents
     outputs:
       plugin-id: ${{ steps.metadata.outputs.plugin-id }}
       plugin-version: ${{ steps.metadata.outputs.plugin-version }}
@@ -43,9 +43,11 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
+      - name: Prettier
+        run: npm run prettier-test
       - name: Unit tests with coverage
         run: npm run test:ci
-      
+
       - name: Upload coverage reports
         uses: actions/upload-artifact@v4
         with:
@@ -154,8 +156,8 @@ jobs:
     name: e2e test ${{ matrix.GRAFANA_IMAGE.name }}@${{ matrix.GRAFANA_IMAGE.VERSION }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read        # Read repository contents
-      pull-requests: write  # Upload test report artifacts to PRs
+      contents: read # Read repository contents
+      pull-requests: write # Upload test report artifacts to PRs
     steps:
       - uses: actions/checkout@v4
         with:
@@ -227,8 +229,8 @@ jobs:
     needs: [playwright-tests]
     runs-on: ubuntu-latest
     permissions:
-      contents: write       # Deploy to GitHub Pages
-      pull-requests: write  # Comment on PRs with report links
+      contents: write # Deploy to GitHub Pages
+      pull-requests: write # Comment on PRs with report links
     steps:
       - uses: actions/checkout@v4
         with:
