@@ -135,18 +135,14 @@ jobs:
     timeout-minutes: 3
     needs: build
     if: ${{ needs.build.outputs.has-e2e == 'true' }}
-    permissions:
-      contents: read  # Read repository contents
     outputs:
       matrix: ${{ steps.resolve-versions.outputs.matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Resolve Grafana E2E versions
         id: resolve-versions
-        uses: grafana/plugin-actions/e2e-version@ff169fa386880e34ca85a49414e5a0ff84c3f7ad
+        uses: grafana/plugin-actions/e2e-version@main
 
   playwright-tests:
     needs: [resolve-versions, build]
