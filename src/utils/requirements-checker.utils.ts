@@ -36,11 +36,102 @@ export interface RequirementsCheckOptions {
  * Core requirements checking function (pure implementation)
  * Replaces the mock element anti-pattern with direct string-based checking
  */
+type CheckMode = 'pre' | 'post';
+
+interface CheckContext {
+  targetAction?: string;
+  refTarget?: string;
+}
+
+function shouldIncludeInMode(_check: string, _mode: CheckMode): boolean {
+  // Allow all checks in both modes. Authors can choose appropriate tokens for pre vs post.
+  return true;
+}
+
+async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<CheckResultError> {
+  const { targetAction = 'button', refTarget = '' } = ctx;
+
+  // DOM-dependent checks
+  if (check === 'exists-reftarget') {
+    return reftargetExistsCHECK(refTarget, targetAction);
+  }
+  if (check === 'navmenu-open') {
+    return navmenuOpenCHECK();
+  }
+
+  // Pure requirement checks
+  if (check === 'has-datasources') {
+    return hasDatasourcesCHECK(check);
+  }
+  if (check === 'is-admin') {
+    return isAdminCHECK(check);
+  }
+  if (check.startsWith('has-permission:')) {
+    return hasPermissionCHECK(check);
+  }
+  if (check.startsWith('has-role:')) {
+    return hasRoleCHECK(check);
+  }
+
+  // Data source and plugin checks
+  if (check.startsWith('has-datasource:')) {
+    return hasDataSourceCHECK(check);
+  }
+  if (check.startsWith('has-plugin:')) {
+    return hasPluginCHECK(check);
+  }
+  if (check.startsWith('has-dashboard-named:')) {
+    return hasDashboardNamedCHECK(check);
+  }
+
+  // Location and navigation checks
+  if (check.startsWith('on-page:')) {
+    return onPageCHECK(check);
+  }
+
+  // Feature and environment checks
+  if (check.startsWith('has-feature:')) {
+    return hasFeatureCHECK(check);
+  }
+  if (check.startsWith('in-environment:')) {
+    return inEnvironmentCHECK(check);
+  }
+  if (check.startsWith('min-version:')) {
+    return minVersionCHECK(check);
+  }
+
+  // Section dependency checks
+  if (check.startsWith('section-completed:')) {
+    return sectionCompletedCHECK(check);
+  }
+
+  // Unknown token
+  return {
+    requirement: check,
+    pass: true,
+    error: 'Unknown requirement'
+  };
+}
+
+async function runUnifiedChecks(
+  checksString: string,
+  mode: CheckMode,
+  ctx: CheckContext
+): Promise<RequirementsCheckResult> {
+  const checks: string[] = checksString.split(',').map(c => c.trim()).filter(Boolean);
+  const filtered = checks.filter(check => shouldIncludeInMode(check, mode));
+  const results = await Promise.all(filtered.map(check => routeUnifiedCheck(check, ctx)));
+  return {
+    requirements: checksString,
+    pass: results.every(r => r.pass),
+    error: results
+  };
+}
+
 export async function checkRequirements(
   options: RequirementsCheckOptions
 ): Promise<RequirementsCheckResult> {
   const { requirements, targetAction = 'button', refTarget = '' } = options;
-  
   if (!requirements) {
     return {
       requirements: requirements || '',
@@ -48,93 +139,7 @@ export async function checkRequirements(
       error: []
     };
   }
-
-  const checks: string[] = requirements.split(',').map(check => check.trim());
-
-  /**
-   * Perform individual requirement check
-   * Routes to appropriate check function based on requirement type
-   */
-  async function performCheck(check: string): Promise<CheckResultError> {
-    // DOM-dependent checks (imported from dom-utils)
-    if (check === 'exists-reftarget') {
-      return reftargetExistsCHECK(refTarget, targetAction);
-    }
-    
-    if (check === 'navmenu-open') {
-      return navmenuOpenCHECK();
-    }
-
-    // Pure requirement checks (no DOM access needed)
-    if (check === 'has-datasources') {
-      return hasDatasourcesCHECK(check);
-    }
-    
-    if (check === 'is-admin') {
-      return isAdminCHECK(check);
-    }
-
-    // Enhanced permission-based checks
-    if (check.startsWith('has-permission:')) {
-      return hasPermissionCHECK(check);
-    }
-    
-    if (check.startsWith('has-role:')) {
-      return hasRoleCHECK(check);
-    }
-
-    // Data source and plugin checks
-    if (check.startsWith('has-datasource:')) {
-      return hasDataSourceCHECK(check);
-    }
-    
-    if (check.startsWith('has-plugin:')) {
-      return hasPluginCHECK(check);
-    }
-    
-    if (check.startsWith('has-dashboard-named:')) {
-      return hasDashboardNamedCHECK(check);
-    }
-
-    // Location and navigation checks
-    if (check.startsWith('on-page:')) {
-      return onPageCHECK(check);
-    }
-
-    // Feature and environment checks
-    if (check.startsWith('has-feature:')) {
-      return hasFeatureCHECK(check);
-    }
-    
-    if (check.startsWith('in-environment:')) {
-      return inEnvironmentCHECK(check);
-    }
-    
-    if (check.startsWith('min-version:')) {
-      return minVersionCHECK(check);
-    }
-
-    // Section dependency checks
-    if (check.startsWith('section-completed:')) {
-      return sectionCompletedCHECK(check);
-    }
-
-    // Unknown requirement
-    console.warn("Unknown requirement:", check);
-    return {
-      requirement: check,
-      pass: true,
-      error: "Unknown requirement"
-    };
-  }
-
-  const results = await Promise.all(checks.map(check => performCheck(check)));
-
-  return {
-    requirements,
-    pass: results.every(result => result.pass),
-    error: results
-  };
+  return runUnifiedChecks(requirements, 'pre', { targetAction, refTarget });
 }
 
 /**
@@ -147,7 +152,6 @@ export async function checkPostconditions(
   options: RequirementsCheckOptions
 ): Promise<RequirementsCheckResult> {
   const { requirements: verifyString, targetAction = 'button', refTarget = '' } = options;
-
   if (!verifyString) {
     return {
       requirements: verifyString || '',
@@ -155,54 +159,7 @@ export async function checkPostconditions(
       error: []
     };
   }
-
-  const checks: string[] = verifyString.split(',').map(check => check.trim());
-
-  async function performVerify(check: string): Promise<CheckResultError> {
-    // Allow outcome-centric checks that indicate real-world success of the step
-    if (check.startsWith('has-plugin:')) {
-      return hasPluginCHECK(check);
-    }
-    if (check.startsWith('has-datasource:')) {
-      return hasDataSourceCHECK(check);
-    }
-    if (check.startsWith('has-dashboard-named:')) {
-      return hasDashboardNamedCHECK(check);
-    }
-    if (check.startsWith('on-page:')) {
-      return onPageCHECK(check);
-    }
-    // For role/permission post-verification, we reuse the same checks, but note they may be boot-cached
-    if (check === 'is-admin') {
-      return isAdminCHECK(check);
-    }
-    if (check.startsWith('has-permission:')) {
-      return hasPermissionCHECK(check);
-    }
-    if (check.startsWith('has-role:')) {
-      return hasRoleCHECK(check);
-    }
-
-    // DOM-oriented post-verifications (optional): element still exists or value persisted
-    if (check === 'exists-reftarget') {
-      return reftargetExistsCHECK(refTarget, targetAction);
-    }
-
-    // Unknown verification token – treat as non-fatal pass with warning context
-    return {
-      requirement: check,
-      pass: true,
-      error: 'Unknown postcondition token'
-    };
-  }
-
-  const results = await Promise.all(checks.map(check => performVerify(check)));
-
-  return {
-    requirements: verifyString,
-    pass: results.every(r => r.pass),
-    error: results
-  };
+  return runUnifiedChecks(verifyString, 'post', { targetAction, refTarget });
 }
 
 /**
