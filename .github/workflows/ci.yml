@@ -12,6 +12,10 @@ on:
 
 # Permissions are granted per job to follow principle of least privilege
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build, lint and unit tests
