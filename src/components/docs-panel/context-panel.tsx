@@ -24,7 +24,10 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     return true;
   }
 
-  public constructor(onOpenLearningJourney?: (url: string, title: string) => void, onOpenDocsPage?: (url: string, title: string) => void) {
+  public constructor(
+    onOpenLearningJourney?: (url: string, title: string) => void,
+    onOpenDocsPage?: (url: string, title: string) => void
+  ) {
     super({
       onOpenLearningJourney,
       onOpenDocsPage,
@@ -64,28 +67,22 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     onOpenLearningJourney: model.state.onOpenLearningJourney,
     onOpenDocsPage: model.state.onOpenDocsPage,
   });
-  
-  const {
-    recommendations,
-    isLoading,
-    recommendationsError,
-  } = contextData;
-  
+
+  const { recommendations, isLoading, recommendationsError } = contextData;
+
   const styles = useStyles2(getStyles);
 
   // All recommendations are now >= 0.5 confidence and pre-sorted by service
   // Primary recommendations: maximum of 4 items with highest confidence
   const finalPrimaryRecommendations = recommendations.slice(0, 4);
-  
+
   // Secondary recommendations: all remaining items go to "Other Documentation"
   const secondaryDocs = recommendations.slice(4);
 
   return (
     <div className={styles.container}>
       <div className={styles.content}>
-        {isLoading && (
-          <SkeletonLoader type="recommendations" />
-        )}
+        {isLoading && <SkeletonLoader type="recommendations" />}
 
         {!isLoading && (
           <div className={styles.contextSections}>
@@ -105,33 +102,42 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                 <SkeletonLoader type="recommendations" />
               </div>
             )}
-            
+
             {recommendationsError && !isLoadingRecommendations && (
               <div className={styles.errorContainer}>
                 <Icon name="exclamation-triangle" />
                 <span>Failed to load recommendations: {recommendationsError}</span>
               </div>
             )}
-            
+
             {!isLoadingRecommendations && !recommendationsError && recommendations.length === 0 && (
               <div className={styles.emptyContainer}>
                 <Icon name="info-circle" />
                 <span>No recommendations available for your current context</span>
               </div>
             )}
-            
+
             {!isLoadingRecommendations && recommendations.length > 0 && (
               <div className={styles.recommendationsContainer}>
                 {/* Primary Recommendations Section (High-Confidence Items, sorted by accuracy) */}
                 {finalPrimaryRecommendations.length > 0 && (
                   <div className={styles.recommendationsGrid}>
                     {finalPrimaryRecommendations.map((recommendation, index) => (
-                      <Card key={index} className={`${styles.recommendationCard} ${recommendation.type === 'docs-page' ? styles.compactCard : ''}`}>
-                        <div className={`${styles.recommendationCardContent} ${recommendation.type === 'docs-page' ? styles.compactCardContent : ''}`}>
-                          <div className={`${styles.cardHeader} ${recommendation.type === 'docs-page' ? styles.compactHeader : ''}`}>
+                      <Card
+                        key={index}
+                        className={`${styles.recommendationCard} ${recommendation.type === 'docs-page' ? styles.compactCard : ''}`}
+                      >
+                        <div
+                          className={`${styles.recommendationCardContent} ${recommendation.type === 'docs-page' ? styles.compactCardContent : ''}`}
+                        >
+                          <div
+                            className={`${styles.cardHeader} ${recommendation.type === 'docs-page' ? styles.compactHeader : ''}`}
+                          >
                             <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
-                            <div className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}>
-                              <button 
+                            <div
+                              className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}
+                            >
+                              <button
                                 onClick={() => {
                                   // Track analytics based on content type
                                   if (recommendation.type === 'docs-page') {
@@ -139,7 +145,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                       content_title: recommendation.title,
                                       content_url: recommendation.url,
                                       interaction_location: 'main_card_button',
-                                      match_accuracy: recommendation.matchAccuracy || 0
+                                      match_accuracy: recommendation.matchAccuracy || 0,
                                     });
                                     openDocsPage(recommendation.url, recommendation.title);
                                   } else {
@@ -148,19 +154,21 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                       journey_url: recommendation.url,
                                       interaction_location: 'main_card_button',
                                       total_milestones: recommendation.totalSteps || 0,
-                                      match_accuracy: recommendation.matchAccuracy || 0
+                                      match_accuracy: recommendation.matchAccuracy || 0,
                                     });
                                     openLearningJourney(recommendation.url, recommendation.title);
                                   }
                                 }}
-                                className={recommendation.type === 'docs-page' ? styles.secondaryButton : styles.startButton}
+                                className={
+                                  recommendation.type === 'docs-page' ? styles.secondaryButton : styles.startButton
+                                }
                               >
                                 <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
                                 {recommendation.type === 'docs-page' ? 'View' : 'Start'}
                               </button>
                             </div>
                           </div>
-                          
+
                           {/* Only show summary/milestones for learning journeys or docs with summaries */}
                           {(recommendation.type !== 'docs-page' || recommendation.summary) && (
                             <>
@@ -175,31 +183,32 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                         content_type: recommendation.type || 'learning-journey',
                                         action: recommendation.summaryExpanded ? 'collapse' : 'expand',
                                         match_accuracy: recommendation.matchAccuracy || 0,
-                                        total_milestones: recommendation.totalSteps || 0
+                                        total_milestones: recommendation.totalSteps || 0,
                                       });
-                                      
+
                                       toggleSummaryExpansion(recommendation.url);
                                     }}
                                     className={styles.summaryButton}
                                   >
                                     <Icon name="info-circle" size="sm" />
                                     <span>Summary</span>
-                                    <Icon name={recommendation.summaryExpanded ? "angle-up" : "angle-down"} size="sm" />
+                                    <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
                                   </button>
                                   {/* Show completion percentage for learning journeys */}
-                                  {(recommendation.type !== 'docs-page') && typeof recommendation.completionPercentage === 'number' && (
-                                    <div className={styles.completionInfo}>
-                                      <div 
-                                        className={styles.completionPercentage}
-                                        data-completion={recommendation.completionPercentage}
-                                      >
-                                        {recommendation.completionPercentage}% complete
+                                  {recommendation.type !== 'docs-page' &&
+                                    typeof recommendation.completionPercentage === 'number' && (
+                                      <div className={styles.completionInfo}>
+                                        <div
+                                          className={styles.completionPercentage}
+                                          data-completion={recommendation.completionPercentage}
+                                        >
+                                          {recommendation.completionPercentage}% complete
+                                        </div>
                                       </div>
-                                    </div>
-                                  )}
+                                    )}
                                 </div>
                               </div>
-                              
+
                               {recommendation.summaryExpanded && (
                                 <div className={styles.summaryExpansion}>
                                   {recommendation.summary && (
@@ -207,47 +216,54 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                       <p className={styles.summaryText}>{recommendation.summary}</p>
                                     </div>
                                   )}
-                                  
+
                                   {/* Only show milestones for learning journeys */}
-                                  {recommendation.type !== 'docs-page' && (recommendation.totalSteps ?? 0) > 0 && recommendation.milestones && (
-                                    <div className={styles.milestonesSection}>
-                                      <div className={styles.milestonesHeader}>
-                                        <h4 className={styles.milestonesTitle}>Milestones:</h4>
+                                  {recommendation.type !== 'docs-page' &&
+                                    (recommendation.totalSteps ?? 0) > 0 &&
+                                    recommendation.milestones && (
+                                      <div className={styles.milestonesSection}>
+                                        <div className={styles.milestonesHeader}>
+                                          <h4 className={styles.milestonesTitle}>Milestones:</h4>
+                                        </div>
+                                        <div className={styles.milestonesList}>
+                                          {recommendation.milestones.map((milestone, stepIndex) => (
+                                            <button
+                                              key={stepIndex}
+                                              onClick={() => {
+                                                // Track milestone click analytics
+                                                reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
+                                                  journey_title: recommendation.title,
+                                                  milestone_title: milestone.title,
+                                                  milestone_number: milestone.number,
+                                                  milestone_url: milestone.url,
+                                                  journey_url: recommendation.url,
+                                                  interaction_location: 'milestone_list',
+                                                });
+                                                openLearningJourney(
+                                                  milestone.url,
+                                                  `${recommendation.title} - ${milestone.title}`
+                                                );
+                                              }}
+                                              className={styles.milestoneItem}
+                                            >
+                                              <div className={styles.milestoneNumber}>{milestone.number}</div>
+                                              <div className={styles.milestoneContent}>
+                                                <div className={styles.milestoneTitle}>
+                                                  {milestone.title}
+                                                  <span className={styles.milestoneDuration}>
+                                                    ({milestone.duration})
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            </button>
+                                          ))}
+                                        </div>
                                       </div>
-                                      <div className={styles.milestonesList}>
-                                        {recommendation.milestones.map((milestone, stepIndex) => (
-                                                                      <button
-                              key={stepIndex}
-                              onClick={() => {
-                                // Track milestone click analytics
-                                reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
-                                  journey_title: recommendation.title,
-                                  milestone_title: milestone.title,
-                                  milestone_number: milestone.number,
-                                  milestone_url: milestone.url,
-                                  journey_url: recommendation.url,
-                                  interaction_location: 'milestone_list'
-                                });
-                                openLearningJourney(milestone.url, `${recommendation.title} - ${milestone.title}`);
-                              }}
-                              className={styles.milestoneItem}
-                            >
-                                            <div className={styles.milestoneNumber}>{milestone.number}</div>
-                                            <div className={styles.milestoneContent}>
-                                               <div className={styles.milestoneTitle}>
-                                                 {milestone.title}
-                                                 <span className={styles.milestoneDuration}>({milestone.duration})</span>
-                                               </div>
-                                             </div>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                  
+                                    )}
+
                                   {/* Sticky CTA button at bottom of summary */}
                                   <div className={styles.summaryCta}>
-                                    <button 
+                                    <button
                                       onClick={() => {
                                         // Track analytics for summary CTA buttons
                                         if (recommendation.type === 'docs-page') {
@@ -255,7 +271,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                             content_title: recommendation.title,
                                             content_url: recommendation.url,
                                             interaction_location: 'summary_cta_button',
-                                            match_accuracy: recommendation.matchAccuracy || 0
+                                            match_accuracy: recommendation.matchAccuracy || 0,
                                           });
                                           openDocsPage(recommendation.url, recommendation.title);
                                         } else {
@@ -264,15 +280,20 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                             journey_url: recommendation.url,
                                             interaction_location: 'summary_cta_button',
                                             total_milestones: recommendation.totalSteps || 0,
-                                            match_accuracy: recommendation.matchAccuracy || 0
+                                            match_accuracy: recommendation.matchAccuracy || 0,
                                           });
                                           openLearningJourney(recommendation.url, recommendation.title);
                                         }
                                       }}
                                       className={styles.summaryCtaButton}
                                     >
-                                      <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
-                                      {recommendation.type === 'docs-page' ? 'View Documentation' : 'Start Learning Journey'}
+                                      <Icon
+                                        name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'}
+                                        size="sm"
+                                      />
+                                      {recommendation.type === 'docs-page'
+                                        ? 'View Documentation'
+                                        : 'Start Learning Journey'}
                                     </button>
                                   </div>
                                 </div>
@@ -289,20 +310,17 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                 {secondaryDocs.length > 0 && (
                   <div className={styles.otherDocsSection}>
                     <div className={styles.otherDocsHeader}>
-                      <button
-                        onClick={() => toggleOtherDocsExpansion()}
-                        className={styles.otherDocsToggle}
-                      >
+                      <button onClick={() => toggleOtherDocsExpansion()} className={styles.otherDocsToggle}>
                         <Icon name="file-alt" size="sm" />
                         <span>Other Documentation</span>
                         <span className={styles.otherDocsCount}>
                           <Icon name="list-ul" size="xs" />
                           {secondaryDocs.length} item{secondaryDocs.length !== 1 ? 's' : ''}
                         </span>
-                        <Icon name={otherDocsExpanded ? "angle-up" : "angle-down"} size="sm" />
+                        <Icon name={otherDocsExpanded ? 'angle-up' : 'angle-down'} size="sm" />
                       </button>
                     </div>
-                    
+
                     {otherDocsExpanded && (
                       <div className={styles.otherDocsExpansion}>
                         <div className={styles.otherDocsList}>
@@ -320,7 +338,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                         content_title: item.title,
                                         content_url: item.url,
                                         interaction_location: 'other_docs_list',
-                                        match_accuracy: item.matchAccuracy || 0
+                                        match_accuracy: item.matchAccuracy || 0,
                                       });
                                       openDocsPage(item.url, item.title);
                                     } else {
@@ -329,7 +347,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                         journey_url: item.url,
                                         interaction_location: 'other_docs_list',
                                         total_milestones: item.totalSteps || 0,
-                                        match_accuracy: item.matchAccuracy || 0
+                                        match_accuracy: item.matchAccuracy || 0,
                                       });
                                       openLearningJourney(item.url, item.title);
                                     }
@@ -355,4 +373,4 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   );
 }
 
-// Styles now imported from context-panel.styles.ts 
+// Styles now imported from context-panel.styles.ts

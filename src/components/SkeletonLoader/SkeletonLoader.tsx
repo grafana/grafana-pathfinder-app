@@ -57,7 +57,7 @@ export function SkeletonLoader({ type = 'documentation', className }: SkeletonLo
           <div className={styles.header}></div>
           <div className={styles.progressBar}></div>
         </div>
-        
+
         {/* Journey Content */}
         <div className={styles.section}>
           <div className={styles.subHeader}></div>

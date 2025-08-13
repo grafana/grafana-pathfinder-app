@@ -28,7 +28,7 @@
       {
         "targets": ["grafana/extension-sidebar/v0-alpha"],
         "description": "Opens Documentation",
-          "title": "Grafana Pathfinder"
+        "title": "Grafana Pathfinder"
       }
     ],
     "addedLinks": [

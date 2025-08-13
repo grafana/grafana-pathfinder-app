@@ -11,25 +11,17 @@ export interface ContentParsingErrorProps {
   className?: string;
 }
 
-export function ContentParsingError({
-  errors,
-  warnings,
-  fallbackHtml,
-  onRetry,
-  className,
-}: ContentParsingErrorProps) {
+export function ContentParsingError({ errors, warnings, fallbackHtml, onRetry, className }: ContentParsingErrorProps) {
   const [showDetails, setShowDetails] = useState(false);
-  
+
   return (
     <div className={`content-parsing-error ${className || ''}`}>
-      <Alert
-        severity="error"
-        title="Content Parsing Failed"
-      >
+      <Alert severity="error" title="Content Parsing Failed">
         <p>
-          The content could not be parsed into React components. This prevents interactive features from working properly.
+          The content could not be parsed into React components. This prevents interactive features from working
+          properly.
         </p>
-        
+
         <div className="error-summary">
           <strong>{errors.length} error(s) found:</strong>
           <ul>
@@ -40,7 +32,9 @@ export function ContentParsingError({
               </li>
             ))}
             {errors.length > 3 && (
-              <li><em>... and {errors.length - 3} more errors</em></li>
+              <li>
+                <em>... and {errors.length - 3} more errors</em>
+              </li>
             )}
           </ul>
         </div>
@@ -53,18 +47,16 @@ export function ContentParsingError({
                 <li key={index}>{warning}</li>
               ))}
               {warnings.length > 2 && (
-                <li><em>... and {warnings.length - 2} more warnings</em></li>
+                <li>
+                  <em>... and {warnings.length - 2} more warnings</em>
+                </li>
               )}
             </ul>
           </div>
         )}
 
         <div className="error-actions">
-          <Button 
-            onClick={() => setShowDetails(!showDetails)} 
-            variant="secondary" 
-            size="sm"
-          >
+          <Button onClick={() => setShowDetails(!showDetails)} variant="secondary" size="sm">
             {showDetails ? 'Hide Details' : 'Show Details'}
           </Button>
           {onRetry && (
@@ -79,26 +71,44 @@ export function ContentParsingError({
             <summary>Detailed Error Information</summary>
             {errors.map((error, index) => (
               <div key={index} className="error-detail">
-                <h4>Error #{index + 1}: {error.type}</h4>
-                <p><strong>Message:</strong> {error.message}</p>
-                {error.location && <p><strong>Location:</strong> {error.location}</p>}
+                <h4>
+                  Error #{index + 1}: {error.type}
+                </h4>
+                <p>
+                  <strong>Message:</strong> {error.message}
+                </p>
+                {error.location && (
+                  <p>
+                    <strong>Location:</strong> {error.location}
+                  </p>
+                )}
                 {error.element && (
                   <details>
                     <summary>Problem Element</summary>
-                    <pre><code>{error.element}</code></pre>
+                    <pre>
+                      <code>{error.element}</code>
+                    </pre>
                   </details>
                 )}
                 {error.originalError && (
-                  <p><strong>Original Error:</strong> {error.originalError.message}</p>
+                  <p>
+                    <strong>Original Error:</strong> {error.originalError.message}
+                  </p>
                 )}
               </div>
             ))}
-            
+
             {fallbackHtml && (
               <details>
                 <summary>Original HTML Content</summary>
-                <pre><code>{fallbackHtml.substring(0, 1000)}</code></pre>
-                {fallbackHtml.length > 1000 && <p><em>... truncated</em></p>}
+                <pre>
+                  <code>{fallbackHtml.substring(0, 1000)}</code>
+                </pre>
+                {fallbackHtml.length > 1000 && (
+                  <p>
+                    <em>... truncated</em>
+                  </p>
+                )}
               </details>
             )}
           </details>
@@ -106,4 +116,4 @@ export function ContentParsingError({
       </Alert>
     </div>
   );
-} 
+}

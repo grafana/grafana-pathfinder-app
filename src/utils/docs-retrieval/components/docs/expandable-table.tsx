@@ -24,23 +24,13 @@ export function ExpandableTable({
   if (isCollapseSection) {
     return (
       <div className={`journey-collapse${className ? ` ${className}` : ''}`}>
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="journey-collapse-trigger"
-          type="button"
-        >
+        <button onClick={() => setIsCollapsed(!isCollapsed)} className="journey-collapse-trigger" type="button">
           <span>{toggleText || 'Toggle section'}</span>
-          <span className={`journey-collapse-icon${isCollapsed ? ' collapsed' : ''}`}>
-            ▼
-          </span>
+          <span className={`journey-collapse-icon${isCollapsed ? ' collapsed' : ''}`}>▼</span>
         </button>
         {!isCollapsed && (
           <div className="journey-collapse-content">
-            {children ? (
-              children
-            ) : content ? (
-              <div dangerouslySetInnerHTML={{ __html: content }} />
-            ) : null}
+            {children ? children : content ? <div dangerouslySetInnerHTML={{ __html: content }} /> : null}
           </div>
         )}
       </div>
@@ -59,12 +49,8 @@ export function ExpandableTable({
         {toggleText || (isCollapsed ? 'Expand table' : 'Collapse table')}
       </Button>
       <div className={`expandable-table-content${isCollapsed ? ' collapsed' : ''}`}>
-        {children ? (
-          children
-        ) : content ? (
-          <div dangerouslySetInnerHTML={{ __html: content }} />
-        ) : null}
+        {children ? children : content ? <div dangerouslySetInnerHTML={{ __html: content }} /> : null}
       </div>
     </div>
   );
-} 
+}

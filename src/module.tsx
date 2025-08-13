@@ -31,7 +31,7 @@ plugin.addComponent({
         source: 'sidebar_mount',
         timestamp: Date.now(),
       });
-      
+
       // Return cleanup function that runs when component unmounts (sidebar closed)
       return () => {
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
