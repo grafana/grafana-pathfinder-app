@@ -25,4 +25,39 @@ Object.defineProperty(global, 'matchMedia', {
   }),
 });
 
+// Mock browser APIs that are not available in Node.js test environment
+global.IntersectionObserver = jest.fn().mockImplementation(() => ({
+  observe: jest.fn(),
+  unobserve: jest.fn(),
+  disconnect: jest.fn(),
+}));
+
+global.ResizeObserver = jest.fn().mockImplementation(() => ({
+  observe: jest.fn(),
+  unobserve: jest.fn(),
+  disconnect: jest.fn(),
+}));
+
+global.MutationObserver = jest.fn().mockImplementation(() => ({
+  observe: jest.fn(),
+  disconnect: jest.fn(),
+}));
+
+// Mock requestAnimationFrame
+global.requestAnimationFrame = jest.fn((callback) => {
+  return setTimeout(callback, 0);
+});
+
+global.cancelAnimationFrame = jest.fn((id) => {
+  clearTimeout(id);
+});
+
+// Mock window.getComputedStyle
+Object.defineProperty(window, 'getComputedStyle', {
+  writable: true,
+  value: jest.fn().mockImplementation(() => ({
+    getPropertyValue: jest.fn(() => ''),
+  })),
+});
+
 HTMLCanvasElement.prototype.getContext = () => {};

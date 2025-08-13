@@ -8,25 +8,25 @@ const mockElement = {
     bottom: 100,
     right: 100,
     width: 100,
-    height: 100
+    height: 100,
   })),
   scrollIntoView: jest.fn(),
   classList: {
     add: jest.fn(),
-    remove: jest.fn()
+    remove: jest.fn(),
   },
   closest: jest.fn(() => null),
   addEventListener: jest.fn(),
-  removeEventListener: jest.fn()
+  removeEventListener: jest.fn(),
 } as unknown as HTMLElement;
 
 const mockMegaMenuToggle = {
   getAttribute: jest.fn(() => 'false'),
-  click: jest.fn()
+  click: jest.fn(),
 } as unknown as HTMLButtonElement;
 
 const mockDockMenuButton = {
-  click: jest.fn()
+  click: jest.fn(),
 } as unknown as HTMLButtonElement;
 
 // Mock document methods
@@ -47,12 +47,15 @@ document.querySelector = jest.fn((selector: string) => {
 });
 
 // Mock document.createElement
-document.createElement = jest.fn(() => ({
-  className: '',
-  style: {
-    setProperty: jest.fn()
-  }
-} as unknown as HTMLElement));
+document.createElement = jest.fn(
+  () =>
+    ({
+      className: '',
+      style: {
+        setProperty: jest.fn(),
+      },
+    } as unknown as HTMLElement)
+);
 
 // Mock document.body.appendChild
 document.body.appendChild = jest.fn();
@@ -76,8 +79,8 @@ describe('NavigationManager', () => {
           bottom: 0,
           right: 0,
           width: 100,
-          height: 100
-        }))
+          height: 100,
+        })),
       } as unknown as HTMLElement;
 
       await navigationManager.ensureElementVisible(element);
@@ -85,7 +88,7 @@ describe('NavigationManager', () => {
       expect(element.scrollIntoView).toHaveBeenCalledWith({
         behavior: 'smooth',
         block: 'center',
-        inline: 'center'
+        inline: 'center',
       });
     });
 
@@ -105,8 +108,8 @@ describe('NavigationManager', () => {
           bottom: 0,
           right: 0,
           width: 100,
-          height: 100
-        }))
+          height: 100,
+        })),
       } as unknown as HTMLElement;
 
       await navigationManager.ensureElementVisible(element);
@@ -115,7 +118,7 @@ describe('NavigationManager', () => {
       expect(element.scrollIntoView).toHaveBeenCalledWith({
         behavior: 'smooth',
         block: 'center',
-        inline: 'center'
+        inline: 'center',
       });
 
       // Verify that addEventListener was called for scroll events
@@ -144,8 +147,8 @@ describe('NavigationManager', () => {
           bottom: 0,
           right: 0,
           width: 100,
-          height: 100
-        }))
+          height: 100,
+        })),
       } as unknown as HTMLElement;
 
       // Mock setTimeout to control timing
@@ -167,9 +170,9 @@ describe('NavigationManager', () => {
       if (scrollHandler) {
         // Simulate scroll event
         scrollHandler();
-        
+
         // Wait for the scroll timeout to complete
-        await new Promise(resolve => setTimeout(resolve, 250)); // Wait longer than the 200ms timeout
+        await new Promise((resolve) => setTimeout(resolve, 250)); // Wait longer than the 200ms timeout
       }
 
       // Verify removeEventListener was called for cleanup
@@ -189,8 +192,8 @@ describe('NavigationManager', () => {
           bottom: 0,
           right: 0,
           width: 100,
-          height: 100
-        }))
+          height: 100,
+        })),
       } as unknown as HTMLElement;
 
       // Mock setTimeout to control timing
@@ -215,7 +218,7 @@ describe('NavigationManager', () => {
       expect(spy).toHaveBeenCalledWith(mockElement, {
         checkContext: true,
         logWarnings: false,
-        ensureDocked: true
+        ensureDocked: true,
       });
     });
   });
@@ -229,7 +232,7 @@ describe('NavigationManager', () => {
       expect(spy).toHaveBeenCalledWith(undefined, {
         checkContext: false,
         logWarnings: true,
-        ensureDocked: true
+        ensureDocked: true,
       });
     });
   });
@@ -239,7 +242,7 @@ describe('NavigationManager', () => {
       await navigationManager.openAndDockNavigation(mockElement, {
         checkContext: false,
         logWarnings: true,
-        ensureDocked: true
+        ensureDocked: true,
       });
 
       expect(mockMegaMenuToggle.click).toHaveBeenCalled();
@@ -253,7 +256,7 @@ describe('NavigationManager', () => {
       await navigationManager.openAndDockNavigation(mockElement, {
         checkContext: false,
         logWarnings: true,
-        ensureDocked: true
+        ensureDocked: true,
       });
 
       expect(mockMegaMenuToggle.click).not.toHaveBeenCalled();
@@ -266,10 +269,10 @@ describe('NavigationManager', () => {
       await navigationManager.openAndDockNavigation(mockElement, {
         checkContext: false,
         logWarnings: true,
-        ensureDocked: true
+        ensureDocked: true,
       });
 
       expect(mockMegaMenuToggle.click).not.toHaveBeenCalled();
     });
   });
-}); 
+});
