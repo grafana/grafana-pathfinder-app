@@ -96,6 +96,45 @@ export function InteractiveSection({
   const [isRunning, setIsRunning] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0); // Track next uncompleted step
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
+
+  // --- Persistence helpers (restore across refresh) ---
+  const getContentKey = useCallback((): string => {
+    try {
+      const tabId = (window as any).__DocsPluginActiveTabId as string | undefined;
+      const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
+      const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
+      // Prefer tabId for uniqueness across multiple open tutorials
+      if (tabId && tabId.length > 0) {
+        return `tab:${tabId}`;
+      }
+      if (tabUrl && tabUrl.length > 0) {
+        return tabUrl;
+      }
+      if (contentKey && contentKey.length > 0) {
+        return contentKey;
+      }
+    } catch {
+      // no-op
+    }
+    // Fallback: use current location
+    return typeof window !== 'undefined' ? window.location.pathname : 'unknown';
+  }, []);
+
+  const getStorageKey = useCallback(() => {
+    const contentKey = getContentKey();
+    return `docsPlugin:completedSteps:${contentKey}:${sectionId}`;
+  }, [getContentKey, sectionId]);
+
+  // Load persisted completed steps on mount/section change (declared after stepComponents)
+
+  const persistCompletedSteps = useCallback((ids: Set<string>) => {
+    try {
+      const key = getStorageKey();
+      localStorage.setItem(key, JSON.stringify(Array.from(ids)));
+    } catch {
+      // ignore persistence errors
+    }
+  }, [getStorageKey]);
   
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
@@ -160,6 +199,29 @@ export function InteractiveSection({
     
     return steps;
   }, [children, sectionId]);
+
+  // Load persisted completed steps on mount/section change (declared after stepComponents)
+  useEffect(() => {
+    try {
+      const key = getStorageKey();
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed: string[] = JSON.parse(raw);
+        // Only keep steps that exist in current content
+        const validIds = new Set(stepComponents.map(s => s.stepId));
+        const filtered = parsed.filter(id => validIds.has(id));
+        if (filtered.length > 0) {
+          const restored = new Set(filtered);
+          setCompletedSteps(restored);
+          // Move index to next uncompleted
+          const nextIdx = stepComponents.findIndex(s => !restored.has(s.stepId));
+          setCurrentStepIndex(nextIdx === -1 ? stepComponents.length : nextIdx);
+        }
+      }
+    } catch {
+      // ignore persistence errors
+    }
+  }, [getStorageKey, stepComponents]);
 
   // if (objectives) {
   //   console.log("🔍 [DEBUG] InteractiveSection: " + sectionId + " objectives", objectives);
@@ -284,6 +346,8 @@ export function InteractiveSection({
     // Check if all steps are completed (only when we actually updated the state)
     if (!skipStateUpdate) {
       const newCompletedSteps = new Set([...completedSteps, stepId]);
+      // Persist
+      persistCompletedSteps(newCompletedSteps);
       const allStepsCompleted = newCompletedSteps.size >= stepComponents.length;
       console.warn(`📊 Section completion check for ${sectionId}:`, {
         newCompletedCount: newCompletedSteps.size,
@@ -298,7 +362,7 @@ export function InteractiveSection({
       }
     }
 
-  }, [completedSteps, stepComponents, sectionId, onComplete]);
+  }, [completedSteps, stepComponents, sectionId, onComplete, persistCompletedSteps]);
 
   // Handle individual step reset (redo functionality)
   const handleStepReset = useCallback((stepId: string) => {
@@ -306,6 +370,8 @@ export function InteractiveSection({
     setCompletedSteps(prev => {
       const newSet = new Set(prev);
       newSet.delete(stepId);
+      // Persist removal
+      persistCompletedSteps(newSet);
       return newSet;
     });
     
@@ -320,7 +386,7 @@ export function InteractiveSection({
     if (currentlyExecutingStep === stepId) {
       setCurrentlyExecutingStep(null);
     }
-  }, [currentlyExecutingStep, stepComponents, currentStepIndex]);
+  }, [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps]);
 
   // Execute a single step (shared between individual and sequence execution)
   const executeStep = useCallback(async (stepInfo: StepInfo): Promise<boolean> => {
@@ -504,7 +570,13 @@ export function InteractiveSection({
     setCurrentStepIndex(0); // Reset to start from beginning
     setResetTrigger(prev => prev + 1); // Signal child steps to reset their local state
     console.log(`🔄 Section reset: ${sectionId} - starting from step index 0`);
-  }, [disabled, isRunning, sectionId]);
+    // Clear persistence
+    try {
+      localStorage.removeItem(getStorageKey());
+    } catch {
+      // ignore
+    }
+  }, [disabled, isRunning, sectionId, getStorageKey]);
 
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {

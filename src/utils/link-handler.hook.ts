@@ -127,13 +127,33 @@ export function useLinkClickHandler({
         }
       }
 
-      // Handle regular anchor links for Grafana docs
+      // Handle regular anchor links for Grafana docs and bundled interactives
       const anchor = target.closest('a[href]') as HTMLAnchorElement;
       
       if (anchor && !startElement && !target.closest('[data-side-journey-link]') && !target.closest('[data-related-journey-link]') && !target.closest('img.content-image')) {
         const href = anchor.getAttribute('href');
         
         if (href) {
+          // Support bundled interactives: href like bundled:prometheus-grafana-101
+          if (href.startsWith('bundled:')) {
+            safeEventHandler(event, {
+              preventDefault: true,
+              stopPropagation: true,
+            });
+            const linkText = anchor.textContent?.trim() || 'Interactive Tutorial';
+            if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
+              (model as any).openDocsPage(href, linkText);
+            } else {
+              model.openLearningJourney(href, linkText);
+            }
+            reportAppInteraction('docs_link_click' as UserInteraction, {
+              link_url: href,
+              link_text: linkText,
+              source_page: activeTab?.content?.url || 'unknown',
+              link_type: 'bundled_interactive'
+            });
+            return;
+          }
           // Handle relative fragment links (like #section-name)
           if (href.startsWith('#')) {
             // Let the browser handle fragment navigation naturally

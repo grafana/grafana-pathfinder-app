@@ -64,6 +64,17 @@ export class FormFillHandler {
     const inputType = this.getInputType(targetElement);
     const isMonacoEditor = this.isMonacoEditor(targetElement);
 
+    // Special handling for Grafana's combobox label filter inputs
+    const isCombobox = this.isAriaCombobox(targetElement);
+    if (isCombobox) {
+      console.warn('🎛️ FormFill: Detected ARIA combobox, using staged entry sequence');
+      await this.fillComboboxStaged(targetElement, value);
+      // Combobox flow handles its own events/enters; still dispatch final blur/change to settle state
+      await this.dispatchEvents(targetElement, tagName, false);
+      await this.markAsCompleted(data);
+      return;
+    }
+
     await this.setElementValue(targetElement, value, tagName, inputType, isMonacoEditor);
     await this.dispatchEvents(targetElement, tagName, isMonacoEditor);
     await this.markAsCompleted(data);
@@ -76,6 +87,13 @@ export class FormFillHandler {
   private isMonacoEditor(element: HTMLElement): boolean {
     return element.classList.contains('inputarea') && 
            element.classList.contains('monaco-mouse-cursor-text');
+  }
+
+  private isAriaCombobox(element: HTMLElement): boolean {
+    const role = element.getAttribute('role');
+    const ariaAutocomplete = element.getAttribute('aria-autocomplete');
+    // Prefer ARIA role detection as it is stable across themes/classes
+    return role === 'combobox' && (ariaAutocomplete === 'list' || ariaAutocomplete === 'both');
   }
 
   private async setElementValue(
@@ -94,6 +112,97 @@ export class FormFillHandler {
     } else {
       await this.setTextContent(element, value);
     }
+  }
+
+  private async fillComboboxStaged(element: HTMLElement, fullValue: string): Promise<void> {
+    // Tokenization strategy:
+    // 1) If spaces exist, split on spaces but keep quoted substrings intact.
+    // 2) If no spaces, split by common operators (!=, =~, !~, =) into [key, op, value].
+    // 3) Otherwise, treat as a single token.
+
+    const stripQuotes = (s: string) =>
+      (s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))
+        ? s.substring(1, s.length - 1)
+        : s;
+
+    const hasWhitespace = /\s/.test(fullValue);
+
+    let tokens: string[] = [];
+
+    if (hasWhitespace) {
+      // Split by whitespace while preserving quoted strings
+      const regex = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\S+/g;
+      const matches = fullValue.match(regex) || [];
+      // Preserve quotes as typed by author to better match UI parsing
+      tokens = matches;
+    } else {
+      // Try to split by operator if present
+      const opMatch = fullValue.match(/^(.*?)(!=|=~|!~|=)(.*)$/);
+      if (opMatch) {
+        const key = opMatch[1].trim();
+        const op = opMatch[2].trim();
+        const val = stripQuotes(opMatch[3].trim());
+        tokens = [key, op, val].filter(Boolean);
+      } else {
+        tokens = [stripQuotes(fullValue.trim())];
+      }
+    }
+
+    // Helper to set value and fire input event
+    const setAndInput = (v: string) => {
+      this.setNativeInputValue(element, v);
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+
+    const pressEnter = () => {
+      element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+      element.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    // Ensure focused
+    element.focus();
+    element.dispatchEvent(new Event('focus', { bubbles: true }));
+
+    // Clear any existing text
+    this.setNativeInputValue(element, '');
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    const stageDelay = INTERACTIVE_CONFIG.delays.perceptual.base;
+
+    const isOperatorToken = (t: string) => ['!=', '=~', '!~', '='].includes(t);
+    const typeOperator = async (op: string) => {
+      for (const ch of op.split('')) {
+        element.dispatchEvent(new KeyboardEvent('keydown', { key: ch, code: ch === '=' ? 'Equal' : undefined, bubbles: true }));
+        element.dispatchEvent(new KeyboardEvent('keyup', { key: ch, code: ch === '=' ? 'Equal' : undefined, bubbles: true }));
+        await sleep(50);
+      }
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    // Stage through tokens: enter token/op -> delay -> Enter -> delay
+    for (const token of tokens) {
+      if (!token) { continue; }
+      const tokenToType = stripQuotes(token);
+      console.warn(`⌨️ Combobox stage token -> ${tokenToType}`);
+      if (isOperatorToken(tokenToType)) {
+        await typeOperator(tokenToType);
+      } else {
+        setAndInput(tokenToType);
+      }
+      await sleep(stageDelay);
+      pressEnter();
+      await sleep(stageDelay);
+    }
+
+    // Defocus: send Escape to close any menus, then blur
+    console.warn('🧹 Combobox finalize: ESC + blur');
+    element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+    element.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', bubbles: true }));
+    await sleep(stageDelay);
+    element.blur();
+    element.dispatchEvent(new Event('blur', { bubbles: true }));
   }
 
   private async setInputValue(element: HTMLElement, value: string, inputType: string): Promise<void> {
