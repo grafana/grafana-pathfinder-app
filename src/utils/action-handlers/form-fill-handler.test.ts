@@ -70,7 +70,8 @@ describe('FormFillHandler', () => {
       blur: mockBlur,
       dispatchEvent: mockDispatchEvent,
       textContent: '',
-      value: ''
+      value: '',
+      getAttribute: jest.fn().mockReturnValue(null), // Needed for isAriaCombobox detection
     } as unknown as HTMLElement;
     
     // Mock Object.getOwnPropertyDescriptor for native setters
@@ -214,7 +215,8 @@ describe('FormFillHandler', () => {
           contains: jest.fn().mockImplementation((className: string) => 
             className === 'inputarea' || className === 'monaco-mouse-cursor-text'
           )
-        }
+        },
+        getAttribute: jest.fn().mockReturnValue(null),
       } as unknown as HTMLElement;
       mockQuerySelectorAll.mockReturnValue([monacoElement]);
 
@@ -353,7 +355,8 @@ describe('FormFillHandler', () => {
           contains: jest.fn().mockImplementation((className: string) => 
             className === 'inputarea' || className === 'monaco-mouse-cursor-text'
           )
-        }
+        },
+        getAttribute: jest.fn().mockReturnValue(null),
       } as unknown as HTMLElement;
       const dataWithLastChar = { ...mockData, targetvalue: 'test-value-e' };
       mockQuerySelectorAll.mockReturnValue([monacoElement]);
