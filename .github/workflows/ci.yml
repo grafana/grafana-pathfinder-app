@@ -47,6 +47,8 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
+      - name: Prettier
+        run: npm run prettier-test
       - name: Unit tests with coverage
         run: npm run test:ci
 

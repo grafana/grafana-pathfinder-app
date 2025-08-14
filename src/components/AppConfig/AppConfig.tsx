@@ -5,13 +5,13 @@ import { getBackendSrv, locationService } from '@grafana/runtime';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
 import { lastValueFrom } from 'rxjs';
-import { 
-  DocsPluginConfig, 
-  DEFAULT_RECOMMENDER_SERVICE_URL, 
-  DEFAULT_DOCS_BASE_URL, 
+import {
+  DocsPluginConfig,
+  DEFAULT_RECOMMENDER_SERVICE_URL,
+  DEFAULT_DOCS_BASE_URL,
   DEFAULT_DOCS_USERNAME,
   DEFAULT_TUTORIAL_URL,
-  ConfigService 
+  ConfigService,
 } from '../../constants';
 
 type JsonData = DocsPluginConfig & {
@@ -61,9 +61,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
   }, [jsonData]);
 
   const isSubmitDisabled = Boolean(
-    !state.recommenderServiceUrl || 
-    !state.docsBaseUrl || 
-    (!state.isDocsPasswordSet && !state.docsPassword)
+    !state.recommenderServiceUrl || !state.docsBaseUrl || (!state.isDocsPasswordSet && !state.docsPassword)
   );
 
   const onResetDocsPassword = () =>
@@ -141,8 +139,8 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
     <form onSubmit={onSubmit}>
       <FieldSet label="Docs Plugin Configuration" className={s.marginTopXl}>
         {/* Recommender Service URL */}
-        <Field 
-          label="Recommender Service URL" 
+        <Field
+          label="Recommender Service URL"
           description="The URL of the service that provides documentation recommendations"
         >
           <Input
@@ -156,11 +154,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
         </Field>
 
         {/* Docs Base URL */}
-        <Field 
-          label="Docs Base URL" 
-          description="The base URL for the documentation service"
-          className={s.marginTop}
-        >
+        <Field label="Docs Base URL" description="The base URL for the documentation service" className={s.marginTop}>
           <Input
             width={60}
             id="docs-base-url"
@@ -172,8 +166,8 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
         </Field>
 
         {/* Docs Username */}
-        <Field 
-          label="Docs Username" 
+        <Field
+          label="Docs Username"
           description="Username for accessing the documentation service (if authentication is required)"
           className={s.marginTop}
         >
@@ -188,8 +182,8 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
         </Field>
 
         {/* Docs Password */}
-        <Field 
-          label="Docs Password" 
+        <Field
+          label="Docs Password"
           description="Password for accessing the documentation service (if authentication is required)"
           className={s.marginTop}
         >
@@ -206,8 +200,8 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
         </Field>
 
         {/* Tutorial URL */}
-        <Field 
-          label="Auto-Launch Tutorial URL" 
+        <Field
+          label="Auto-Launch Tutorial URL"
           description="Optional: URL of a learning journey or documentation page to automatically open when Grafana starts. Useful for demo scenarios. Can be set via environment variable GF_PLUGINS_GRAFANA_GRAFANADOCSPLUGIN_APP_TUTORIAL_URL"
           className={s.marginTop}
         >
@@ -220,8 +214,6 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
             onChange={onChangeTutorialUrl}
           />
         </Field>
-
-
 
         <div className={s.marginTop}>
           <Button type="submit" data-testid={testIds.appConfig.submit} disabled={isSubmitDisabled}>

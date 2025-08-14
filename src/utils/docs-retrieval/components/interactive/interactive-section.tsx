@@ -23,7 +23,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   title?: string;
   description?: string;
   children?: React.ReactNode;
-  
+
   // New unified state management props (added by parent)
   stepId?: string;
   isEligibleForChecking?: boolean;
@@ -127,48 +127,46 @@ export function InteractiveSection({
 
   // Load persisted completed steps on mount/section change (declared after stepComponents)
 
-  const persistCompletedSteps = useCallback((ids: Set<string>) => {
-    try {
-      const key = getStorageKey();
-      localStorage.setItem(key, JSON.stringify(Array.from(ids)));
-    } catch {
-      // ignore persistence errors
-    }
-  }, [getStorageKey]);
-  
+  const persistCompletedSteps = useCallback(
+    (ids: Set<string>) => {
+      try {
+        const key = getStorageKey();
+        localStorage.setItem(key, JSON.stringify(Array.from(ids)));
+      } catch {
+        // ignore persistence errors
+      }
+    },
+    [getStorageKey]
+  );
+
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
-  
+
   // Store refs to multistep components for section-level execution
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
 
   // Get the interactive functions from the hook
-  const { 
-    executeInteractiveAction, 
-    startSectionBlocking, 
-    stopSectionBlocking 
-  } = useInteractiveElements();
-  
+  const { executeInteractiveAction, startSectionBlocking, stopSectionBlocking } = useInteractiveElements();
+
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {
     console.warn(`🛑 Section cancelled by user: ${sectionId}`);
     isCancelledRef.current = true; // Set ref for immediate access
     // The running loop will detect this and break
   }, [sectionId]);
-  
+
   // Use executeInteractiveAction directly (no wrapper needed)
   // Section-level blocking is managed separately at the section level
 
   // Extract step information from children first (needed for completion calculation)
   const stepComponents = useMemo((): StepInfo[] => {
     const steps: StepInfo[] = [];
-    
+
     React.Children.forEach(children, (child, index) => {
-      if (React.isValidElement(child) && 
-          (child as any).type === InteractiveStep) {
+      if (React.isValidElement(child) && (child as any).type === InteractiveStep) {
         const props = child.props as InteractiveStepProps;
         const stepId = `${sectionId}-step-${index + 1}`;
-        
+
         steps.push({
           stepId,
           element: child as React.ReactElement<InteractiveStepProps>,
@@ -179,11 +177,10 @@ export function InteractiveSection({
           requirements: props.requirements,
           isMultiStep: false,
         });
-      } else if (React.isValidElement(child) && 
-                 (child as any).type === InteractiveMultiStep) {
+      } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
         const props = child.props as any; // InteractiveMultiStepProps
         const stepId = `${sectionId}-multistep-${index + 1}`;
-        
+
         steps.push({
           stepId,
           element: child as React.ReactElement<any>,
@@ -196,7 +193,7 @@ export function InteractiveSection({
         });
       }
     });
-    
+
     return steps;
   }, [children, sectionId]);
 
@@ -208,13 +205,13 @@ export function InteractiveSection({
       if (raw) {
         const parsed: string[] = JSON.parse(raw);
         // Only keep steps that exist in current content
-        const validIds = new Set(stepComponents.map(s => s.stepId));
-        const filtered = parsed.filter(id => validIds.has(id));
+        const validIds = new Set(stepComponents.map((s) => s.stepId));
+        const filtered = parsed.filter((id) => validIds.has(id));
         if (filtered.length > 0) {
           const restored = new Set(filtered);
           setCompletedSteps(restored);
           // Move index to next uncompleted
-          const nextIdx = stepComponents.findIndex(s => !restored.has(s.stepId));
+          const nextIdx = stepComponents.findIndex((s) => !restored.has(s.stepId));
           setCurrentStepIndex(nextIdx === -1 ? stepComponents.length : nextIdx);
         }
       }
@@ -226,23 +223,21 @@ export function InteractiveSection({
   // if (objectives) {
   //   console.log("🔍 [DEBUG] InteractiveSection: " + sectionId + " objectives", objectives);
   // }
-  
+
   // Calculate base completion (steps completed) - needed for completion logic
   const stepsCompleted = stepComponents.length > 0 && completedSteps.size >= stepComponents.length;
-  
 
-  
   // Add objectives checking for section - disable if steps are already completed
   const objectivesChecker = useStepChecker({
     objectives,
     stepId: sectionId,
-    isEligibleForChecking: !stepsCompleted // Stop checking once steps are done
+    isEligibleForChecking: !stepsCompleted, // Stop checking once steps are done
   });
-  
+
   // UNIFIED completion calculation - objectives always win (clarification 1, 2)
   const isCompletedByObjectives = objectivesChecker.completionReason === 'objectives';
   const isCompleted = isCompletedByObjectives || stepsCompleted;
-  
+
   // Debug logging for section completion tracking
   useEffect(() => {
     console.warn(`📊 Section completion status for ${sectionId}:`, {
@@ -251,19 +246,29 @@ export function InteractiveSection({
       stepsCompleted,
       completedStepsCount: completedSteps.size,
       totalSteps: stepComponents.length,
-      completedStepIds: Array.from(completedSteps)
+      completedStepIds: Array.from(completedSteps),
     });
-  }, [isCompleted, isCompletedByObjectives, stepsCompleted, completedSteps.size, stepComponents.length, sectionId, completedSteps]);
+  }, [
+    isCompleted,
+    isCompletedByObjectives,
+    stepsCompleted,
+    completedSteps.size,
+    stepComponents.length,
+    sectionId,
+    completedSteps,
+  ]);
 
   // When section objectives are met, mark all child steps as complete (clarification 2, 16)
   useEffect(() => {
     if (isCompletedByObjectives && stepComponents.length > 0) {
-      const allStepIds = new Set(stepComponents.map(step => step.stepId));
+      const allStepIds = new Set(stepComponents.map((step) => step.stepId));
 
       if (completedSteps && completedSteps.size !== allStepIds.size) {
         setCompletedSteps(allStepIds);
         setCurrentStepIndex(stepComponents.length); // Mark as all completed
-        console.log(`✅ Section objectives met for ${sectionId}, marking all ${allStepIds.size} child steps as complete`);
+        console.log(
+          `✅ Section objectives met for ${sectionId}, marking all ${allStepIds.size} child steps as complete`
+        );
       }
     }
   }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
@@ -274,16 +279,16 @@ export function InteractiveSection({
       // Import and use the SequentialRequirementsManager to trigger reactive checks
       import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
         const manager = SequentialRequirementsManager.getInstance();
-        
+
         // Trigger reactive check for all steps that might depend on this section
         manager.triggerReactiveCheck();
-        
+
         // Also trigger DOM event for any steps listening for section completion
         const completionEvent = new CustomEvent('section-completed', {
-          detail: { sectionId }
+          detail: { sectionId },
         });
         document.dispatchEvent(completionEvent);
-        
+
         // Multiple delayed triggers to ensure dependent steps get unlocked
         setTimeout(() => {
           manager.triggerReactiveCheck();
@@ -297,134 +302,144 @@ export function InteractiveSection({
   }, [isCompleted, sectionId, stepComponents.length]);
 
   // Calculate which step is eligible for checking (sequential logic)
-  const getStepEligibility = useCallback((stepIndex: number) => {
-    // First step is always eligible (Trust but Verify)
-    if (stepIndex === 0) {return true;}
-    
-    // Subsequent steps are eligible if all previous steps are completed
-    for (let i = 0; i < stepIndex; i++) {
-      const prevStepId = stepComponents[i].stepId;
-      if (!completedSteps.has(prevStepId)) {
-        return false;
+  const getStepEligibility = useCallback(
+    (stepIndex: number) => {
+      // First step is always eligible (Trust but Verify)
+      if (stepIndex === 0) {
+        return true;
       }
-    }
-    return true;
-  }, [completedSteps, stepComponents]);
+
+      // Subsequent steps are eligible if all previous steps are completed
+      for (let i = 0; i < stepIndex; i++) {
+        const prevStepId = stepComponents[i].stepId;
+        if (!completedSteps.has(prevStepId)) {
+          return false;
+        }
+      }
+      return true;
+    },
+    [completedSteps, stepComponents]
+  );
 
   // Calculate resume information for button display
   const getResumeInfo = useCallback(() => {
-    if (stepComponents.length === 0) {return { nextStepIndex: 0, remainingSteps: 0, isResume: false };}
-    
+    if (stepComponents.length === 0) {
+      return { nextStepIndex: 0, remainingSteps: 0, isResume: false };
+    }
+
     // Use currentStepIndex directly - no iteration needed!
     const nextStepIndex = currentStepIndex;
-    
+
     // If currentStepIndex is beyond the end, it means all steps are completed
     const allCompleted = nextStepIndex >= stepComponents.length;
     const remainingSteps = allCompleted ? stepComponents.length : stepComponents.length - nextStepIndex;
     const isResume = !allCompleted && nextStepIndex > 0;
-    
+
     return { nextStepIndex, remainingSteps, isResume };
   }, [stepComponents.length, currentStepIndex]);
 
   // Handle individual step completion
-  const handleStepComplete = useCallback((stepId: string, skipStateUpdate = false) => {
-    console.warn(`🎯 Step completed in section ${sectionId}: ${stepId}`);
-    
-    if (!skipStateUpdate) {
-      const newCompletedSteps = new Set([...completedSteps, stepId]);
-      setCompletedSteps(newCompletedSteps);
-    }
-    setCurrentlyExecutingStep(null);
-    
-    // Advance currentStepIndex to the next uncompleted step
-    const currentIndex = stepComponents.findIndex(step => step.stepId === stepId);
-    if (currentIndex >= 0) {
-      setCurrentStepIndex(currentIndex + 1);
-      console.warn(`📍 Next step index advanced to: ${currentIndex + 1}/${stepComponents.length}`);
-    }
-    
-    // Check if all steps are completed (only when we actually updated the state)
-    if (!skipStateUpdate) {
-      const newCompletedSteps = new Set([...completedSteps, stepId]);
-      // Persist
-      persistCompletedSteps(newCompletedSteps);
-      const allStepsCompleted = newCompletedSteps.size >= stepComponents.length;
-      console.warn(`📊 Section completion check for ${sectionId}:`, {
-        newCompletedCount: newCompletedSteps.size,
-        totalSteps: stepComponents.length,
-        allStepsCompleted,
-        completedStepIds: Array.from(newCompletedSteps)
-      });
-      
-      if (allStepsCompleted) {
-        console.warn(`🏁 All steps completed in section: ${sectionId}`);
-        onComplete?.();
-      }
-    }
+  const handleStepComplete = useCallback(
+    (stepId: string, skipStateUpdate = false) => {
+      console.warn(`🎯 Step completed in section ${sectionId}: ${stepId}`);
 
-  }, [completedSteps, stepComponents, sectionId, onComplete, persistCompletedSteps]);
+      if (!skipStateUpdate) {
+        const newCompletedSteps = new Set([...completedSteps, stepId]);
+        setCompletedSteps(newCompletedSteps);
+      }
+      setCurrentlyExecutingStep(null);
+
+      // Advance currentStepIndex to the next uncompleted step
+      const currentIndex = stepComponents.findIndex((step) => step.stepId === stepId);
+      if (currentIndex >= 0) {
+        setCurrentStepIndex(currentIndex + 1);
+        console.warn(`📍 Next step index advanced to: ${currentIndex + 1}/${stepComponents.length}`);
+      }
+
+      // Check if all steps are completed (only when we actually updated the state)
+      if (!skipStateUpdate) {
+        const newCompletedSteps = new Set([...completedSteps, stepId]);
+        // Persist
+        persistCompletedSteps(newCompletedSteps);
+        const allStepsCompleted = newCompletedSteps.size >= stepComponents.length;
+        console.warn(`📊 Section completion check for ${sectionId}:`, {
+          newCompletedCount: newCompletedSteps.size,
+          totalSteps: stepComponents.length,
+          allStepsCompleted,
+          completedStepIds: Array.from(newCompletedSteps),
+        });
+
+        if (allStepsCompleted) {
+          console.warn(`🏁 All steps completed in section: ${sectionId}`);
+          onComplete?.();
+        }
+      }
+    },
+    [completedSteps, stepComponents, sectionId, onComplete, persistCompletedSteps]
+  );
 
   // Handle individual step reset (redo functionality)
-  const handleStepReset = useCallback((stepId: string) => {
-    console.log(`🔄 Step reset requested: ${stepId}`);
-    setCompletedSteps(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(stepId);
-      // Persist removal
-      persistCompletedSteps(newSet);
-      return newSet;
-    });
-    
-    // Move currentStepIndex back if we're resetting an earlier step
-    const resetIndex = stepComponents.findIndex(step => step.stepId === stepId);
-    if (resetIndex >= 0 && resetIndex < currentStepIndex) {
-      setCurrentStepIndex(resetIndex);
-      console.log(`📍 Step index moved back to: ${resetIndex}/${stepComponents.length}`);
-    }
-    
-    // Also clear currently executing step if it matches
-    if (currentlyExecutingStep === stepId) {
-      setCurrentlyExecutingStep(null);
-    }
-  }, [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps]);
+  const handleStepReset = useCallback(
+    (stepId: string) => {
+      console.log(`🔄 Step reset requested: ${stepId}`);
+      setCompletedSteps((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(stepId);
+        // Persist removal
+        persistCompletedSteps(newSet);
+        return newSet;
+      });
+
+      // Move currentStepIndex back if we're resetting an earlier step
+      const resetIndex = stepComponents.findIndex((step) => step.stepId === stepId);
+      if (resetIndex >= 0 && resetIndex < currentStepIndex) {
+        setCurrentStepIndex(resetIndex);
+        console.log(`📍 Step index moved back to: ${resetIndex}/${stepComponents.length}`);
+      }
+
+      // Also clear currently executing step if it matches
+      if (currentlyExecutingStep === stepId) {
+        setCurrentlyExecutingStep(null);
+      }
+    },
+    [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps]
+  );
 
   // Execute a single step (shared between individual and sequence execution)
-  const executeStep = useCallback(async (stepInfo: StepInfo): Promise<boolean> => {
-    // For multi-step components, call their executeStep method via stored ref
-    if (stepInfo.isMultiStep) {
-      console.log(`🔄 Executing multi-step via stored ref: ${stepInfo.stepId}`);
-      const multiStepRef = multiStepRefs.current.get(stepInfo.stepId);
-      
-      if (multiStepRef?.executeStep) {
-        try {
-          return await multiStepRef.executeStep();
-        } catch (error) {
-          console.error(`❌ Multi-step execution failed: ${stepInfo.stepId}`, error);
+  const executeStep = useCallback(
+    async (stepInfo: StepInfo): Promise<boolean> => {
+      // For multi-step components, call their executeStep method via stored ref
+      if (stepInfo.isMultiStep) {
+        console.log(`🔄 Executing multi-step via stored ref: ${stepInfo.stepId}`);
+        const multiStepRef = multiStepRefs.current.get(stepInfo.stepId);
+
+        if (multiStepRef?.executeStep) {
+          try {
+            return await multiStepRef.executeStep();
+          } catch (error) {
+            console.error(`❌ Multi-step execution failed: ${stepInfo.stepId}`, error);
+            return false;
+          }
+        } else {
+          console.error(`❌ Multi-step ref not found for: ${stepInfo.stepId}`);
           return false;
         }
-      } else {
-        console.error(`❌ Multi-step ref not found for: ${stepInfo.stepId}`);
+      }
+
+      console.log(`🚀 Executing step: ${stepInfo.stepId} (${stepInfo.targetAction}: ${stepInfo.refTarget})`);
+
+      try {
+        // Execute the action using existing interactive logic
+        await executeInteractiveAction(stepInfo.targetAction!, stepInfo.refTarget!, stepInfo.targetValue, 'do');
+
+        return true;
+      } catch (error) {
+        console.error(`❌ Step execution failed: ${stepInfo.stepId}`, error);
         return false;
       }
-    }
-    
-    console.log(`🚀 Executing step: ${stepInfo.stepId} (${stepInfo.targetAction}: ${stepInfo.refTarget})`);
-    
-    try {
-      // Execute the action using existing interactive logic
-      await executeInteractiveAction(
-        stepInfo.targetAction!,
-        stepInfo.refTarget!,
-        stepInfo.targetValue,
-        'do'
-      );
-      
-      return true;
-    } catch (error) {
-      console.error(`❌ Step execution failed: ${stepInfo.stepId}`, error);
-      return false;
-    }
-  }, [executeInteractiveAction]);
+    },
+    [executeInteractiveAction]
+  );
 
   // Handle sequence execution (do section)
   const handleDoSection = useCallback(async () => {
@@ -436,10 +451,10 @@ export function InteractiveSection({
     setIsRunning(true);
 
     isCancelledRef.current = false; // Reset ref as well
-    
+
     // Use currentStepIndex as the starting point - much more efficient!
     let startIndex = currentStepIndex;
-    
+
     // If currentStepIndex is beyond the end, it means all steps are completed - reset for full re-run
     if (startIndex >= stepComponents.length) {
       console.log(`🔄 All steps completed, resetting for full re-run: ${sectionId}`);
@@ -447,9 +462,11 @@ export function InteractiveSection({
       setCurrentStepIndex(0);
       startIndex = 0;
     } else if (startIndex > 0) {
-      console.log(`▶️ Resuming section from step ${startIndex + 1}/${stepComponents.length}: ${stepComponents[startIndex].stepId}`);
+      console.log(
+        `▶️ Resuming section from step ${startIndex + 1}/${stepComponents.length}: ${stepComponents[startIndex].stepId}`
+      );
     }
-    
+
     // Start section-level blocking (persists for entire section)
     const dummyData = {
       reftarget: `section-${sectionId}`,
@@ -459,7 +476,7 @@ export function InteractiveSection({
       tagName: 'section',
       textContent: title || 'Interactive Section',
       timestamp: Date.now(),
-      isPartOfSection: true
+      isPartOfSection: true,
     };
     startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
@@ -471,61 +488,68 @@ export function InteractiveSection({
           console.warn(`📝 Current step "${stepComponents[i].stepId}" left incomplete`);
           break;
         }
-        
+
         const stepInfo = stepComponents[i];
         setCurrentlyExecutingStep(stepInfo.stepId);
 
         // First, show the step (highlight it) - skip for multi-step components
         if (!stepInfo.isMultiStep) {
           console.log(`👁️ Showing step: ${stepInfo.stepId}`);
-          await executeInteractiveAction(
-            stepInfo.targetAction!,
-            stepInfo.refTarget!,
-            stepInfo.targetValue,
-            'show'
-          );
+          await executeInteractiveAction(stepInfo.targetAction!, stepInfo.refTarget!, stepInfo.targetValue, 'show');
 
           // Wait for highlight to be visible and animation to complete
           // Check cancellation during wait
-          for (let j = 0; j < 20; j++) { // 20 * 100ms = 2000ms
-            if (isCancelledRef.current) {break;}
-            await new Promise(resolve => setTimeout(resolve, 100));
+          for (let j = 0; j < 20; j++) {
+            // 20 * 100ms = 2000ms
+            if (isCancelledRef.current) {
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 100));
           }
-          if (isCancelledRef.current) {continue;} // Skip to cancellation check at loop start
+          if (isCancelledRef.current) {
+            continue;
+          } // Skip to cancellation check at loop start
         }
 
         // Then, execute the step
         console.warn(`🚀 Executing step ${i + 1}/${stepComponents.length}: ${stepInfo.stepId}`);
         const success = await executeStep(stepInfo);
         console.warn(`📊 Step execution result for ${stepInfo.stepId}: ${success ? 'SUCCESS' : 'FAILED'}`);
-        
+
         if (success) {
           // Mark step as completed immediately and persistently
-          setCompletedSteps(prev => {
+          setCompletedSteps((prev) => {
             const newSet = new Set([...prev, stepInfo.stepId]);
-            console.warn(`✅ Step ${stepInfo.stepId} marked as completed, total completed: ${newSet.size}/${stepComponents.length}`);
+            console.warn(
+              `✅ Step ${stepInfo.stepId} marked as completed, total completed: ${newSet.size}/${stepComponents.length}`
+            );
             return newSet;
           });
-          
+
           // Also call the standard completion handler for other side effects (skip state update to avoid double-setting)
           handleStepComplete(stepInfo.stepId, true);
-          
+
           // Wait between steps for visual feedback
           // Check cancellation during wait
           if (i < stepComponents.length - 1) {
-            for (let j = 0; j < 12; j++) { // 12 * 100ms = 1200ms
-              if (isCancelledRef.current) {break;}
-              await new Promise(resolve => setTimeout(resolve, 100));
+            for (let j = 0; j < 12; j++) {
+              // 12 * 100ms = 1200ms
+              if (isCancelledRef.current) {
+                break;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 100));
             }
           }
         } else {
-          console.warn(`⚠️ Breaking section sequence at step ${i + 1}/${stepComponents.length} due to execution failure: ${stepInfo.stepId}`);
+          console.warn(
+            `⚠️ Breaking section sequence at step ${i + 1}/${stepComponents.length} due to execution failure: ${stepInfo.stepId}`
+          );
           console.warn(`❌ Failed step details:`, {
             stepId: stepInfo.stepId,
             targetAction: stepInfo.targetAction,
             refTarget: stepInfo.refTarget,
             targetValue: stepInfo.targetValue,
-            isMultiStep: stepInfo.isMultiStep
+            isMultiStep: stepInfo.isMultiStep,
           });
           break;
         }
@@ -536,18 +560,17 @@ export function InteractiveSection({
         console.log(`🛑 Section sequence cancelled: ${sectionId}`);
       } else {
         console.log(`🏁 Section sequence completed: ${sectionId}`);
-        
+
         // Ensure all steps are marked as completed when section execution finishes
-        const allStepIds = new Set(stepComponents.map(step => step.stepId));
+        const allStepIds = new Set(stepComponents.map((step) => step.stepId));
         setCompletedSteps(allStepIds);
         setCurrentStepIndex(stepComponents.length);
-        
+
         // Force re-evaluation of section completion state
         setTimeout(() => {
           // This will trigger the completion effects now that all steps are marked complete
         }, 100);
       }
-
     } catch (error) {
       console.error('Error running section sequence:', error);
     } finally {
@@ -557,7 +580,20 @@ export function InteractiveSection({
       setCurrentlyExecutingStep(null);
       // Keep isCancelled state for UI feedback, will be reset on next run
     }
-  }, [disabled, isRunning, stepComponents, sectionId, executeStep, executeInteractiveAction, handleStepComplete, startSectionBlocking, stopSectionBlocking, title, handleSectionCancel, currentStepIndex]);
+  }, [
+    disabled,
+    isRunning,
+    stepComponents,
+    sectionId,
+    executeStep,
+    executeInteractiveAction,
+    handleStepComplete,
+    startSectionBlocking,
+    stopSectionBlocking,
+    title,
+    handleSectionCancel,
+    currentStepIndex,
+  ]);
 
   // Handle section reset (clear completed steps and reset individual step states)
   const handleResetSection = useCallback(() => {
@@ -568,7 +604,7 @@ export function InteractiveSection({
     setCompletedSteps(new Set());
     setCurrentlyExecutingStep(null);
     setCurrentStepIndex(0); // Reset to start from beginning
-    setResetTrigger(prev => prev + 1); // Signal child steps to reset their local state
+    setResetTrigger((prev) => prev + 1); // Signal child steps to reset their local state
     console.log(`🔄 Section reset: ${sectionId} - starting from step index 0`);
     // Clear persistence
     try {
@@ -581,15 +617,16 @@ export function InteractiveSection({
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {
     return React.Children.map(children, (child, index) => {
-      if (React.isValidElement(child) && 
-          (child as any).type === InteractiveStep) {
+      if (React.isValidElement(child) && (child as any).type === InteractiveStep) {
         const stepInfo = stepComponents[index];
-        if (!stepInfo) {return child;}
-        
+        if (!stepInfo) {
+          return child;
+        }
+
         const isEligibleForChecking = getStepEligibility(index);
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-        
+
         return React.cloneElement(child as React.ReactElement<InteractiveStepProps>, {
           ...child.props,
           stepId: stepInfo.stepId,
@@ -602,15 +639,16 @@ export function InteractiveSection({
           resetTrigger, // Pass reset signal to child steps
           key: stepInfo.stepId,
         });
-      } else if (React.isValidElement(child) && 
-                 (child as any).type === InteractiveMultiStep) {
+      } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
         const stepInfo = stepComponents[index];
-        if (!stepInfo) {return child;}
-        
+        if (!stepInfo) {
+          return child;
+        }
+
         const isEligibleForChecking = getStepEligibility(index);
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-        
+
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child.props as any),
           stepId: stepInfo.stepId,
@@ -622,7 +660,11 @@ export function InteractiveSection({
           disabled: disabled || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
           resetTrigger, // Pass reset signal to child multi-steps
           key: stepInfo.stepId,
-          ref: (ref: { executeStep: () => Promise<boolean> } | null) => {
+          ref: (
+            ref: {
+              executeStep: () => Promise<boolean>;
+            } | null
+          ) => {
             if (ref) {
               multiStepRefs.current.set(stepInfo.stepId, ref);
             } else {
@@ -633,12 +675,24 @@ export function InteractiveSection({
       }
       return child;
     });
-  }, [children, stepComponents, getStepEligibility, completedSteps, currentlyExecutingStep, handleStepComplete, handleStepReset, disabled, isRunning, resetTrigger]);
+  }, [
+    children,
+    stepComponents,
+    getStepEligibility,
+    completedSteps,
+    currentlyExecutingStep,
+    handleStepComplete,
+    handleStepReset,
+    disabled,
+    isRunning,
+    resetTrigger,
+  ]);
 
   return (
-    <div 
+    <div
       id={sectionId}
-      className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}`}>
+      className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}`}
+    >
       <div className="interactive-section-header">
         <div className="interactive-section-title-container">
           <span className="interactive-section-title">{title}</span>
@@ -651,42 +705,53 @@ export function InteractiveSection({
           </span>
         )}
       </div>
-      
-      {description && (
-        <div className="interactive-section-description">{description}</div>
-      )}
-      
-      <div className="interactive-section-content">
-        {enhancedChildren}
-      </div>
-      
+
+      {description && <div className="interactive-section-description">{description}</div>}
+
+      <div className="interactive-section-content">{enhancedChildren}</div>
+
       <div className="interactive-section-actions">
         <Button
           onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
           disabled={disabled || isRunning || stepComponents.length === 0 || isCompletedByObjectives}
           size="md"
-          variant={isCompleted ? "secondary" : "primary"}
+          variant={isCompleted ? 'secondary' : 'primary'}
           className="interactive-section-do-button"
           title={(() => {
             const resumeInfo = getResumeInfo();
-            if (isCompletedByObjectives) {return 'Already done!';}
-            if (stepsCompleted && !isCompletedByObjectives) {return 'Reset section and clear all step completion to allow manual re-interaction';}
-            if (isRunning) {return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;}
-            if (resumeInfo.isResume) {return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;}
+            if (isCompletedByObjectives) {
+              return 'Already done!';
+            }
+            if (stepsCompleted && !isCompletedByObjectives) {
+              return 'Reset section and clear all step completion to allow manual re-interaction';
+            }
+            if (isRunning) {
+              return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;
+            }
+            if (resumeInfo.isResume) {
+              return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
+            }
             return hints || `Run through all ${stepComponents.length} steps in sequence`;
           })()}
         >
           {(() => {
             const resumeInfo = getResumeInfo();
-            if (isCompletedByObjectives) {return 'Already done!';}
-            if (stepsCompleted && !isCompletedByObjectives) {return 'Reset Section';}
-            if (isRunning) {return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex(s => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;}
-            if (resumeInfo.isResume) {return `Resume (${resumeInfo.remainingSteps} steps)`;}
+            if (isCompletedByObjectives) {
+              return 'Already done!';
+            }
+            if (stepsCompleted && !isCompletedByObjectives) {
+              return 'Reset Section';
+            }
+            if (isRunning) {
+              return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;
+            }
+            if (resumeInfo.isResume) {
+              return `Resume (${resumeInfo.remainingSteps} steps)`;
+            }
             return `Do Section (${stepComponents.length} steps)`;
           })()}
         </Button>
-
       </div>
     </div>
   );
-} 
+}

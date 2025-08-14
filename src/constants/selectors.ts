@@ -1,10 +1,10 @@
 // Code block selectors for copy button functionality
 export const CODE_BLOCK_SELECTORS = [
-  'pre.journey-code-block',      // Learning journey code blocks
-  'pre.docs-code-snippet',       // Single docs code blocks  
-  'pre[class*="language-"]',      // Language-specific blocks
-  'pre:has(code)',                // Any pre with code inside
-  'pre'                           // Fallback to any pre element
+  'pre.journey-code-block', // Learning journey code blocks
+  'pre.docs-code-snippet', // Single docs code blocks
+  'pre[class*="language-"]', // Language-specific blocks
+  'pre:has(code)', // Any pre with code inside
+  'pre', // Fallback to any pre element
 ];
 
 // Interactive element selectors
@@ -23,7 +23,8 @@ export const INTERACTIVE_SELECTORS = {
 
 // Copy button selectors
 export const COPY_BUTTON_SELECTORS = {
-  EXISTING_BUTTONS: '.code-copy-button, button[title*="copy" i], button[aria-label*="copy" i], .copy-button, .copy-btn, .btn-copy',
+  EXISTING_BUTTONS:
+    '.code-copy-button, button[title*="copy" i], button[aria-label*="copy" i], .copy-button, .copy-btn, .btn-copy',
   CODE_COPY_BUTTON: '.code-copy-button',
   INLINE_CODE_COPY_BUTTON: '.inline-code-copy-button',
 } as const;
@@ -75,4 +76,4 @@ export const INTERACTIVE_CONFIG = {
 // URL patterns
 export const URL_PATTERNS = {
   GRAFANA_BASE: 'https://grafana.com',
-} as const; 
+} as const;

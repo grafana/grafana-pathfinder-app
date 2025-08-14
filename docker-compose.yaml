@@ -3,7 +3,7 @@ services:
     extends:
       file: .config/docker-compose-base.yaml
       service: grafana
-  
+
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION:-v3.5.0}
     command:
@@ -12,19 +12,19 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
     ports:
       - 9090:9090/tcp
-  
+
   loki:
     image: grafana/loki:${GRAFANA_LOKI_VERSION:-3.5.2}
     ports:
-      - "3100:3100"
+      - '3100:3100'
     volumes:
-     - ./demo/loki-config.yaml:/etc/loki/local-config.yaml
+      - ./demo/loki-config.yaml:/etc/loki/local-config.yaml
     command: -config.file=/etc/loki/local-config.yaml
 
   alloy:
     image: grafana/alloy:${GRAFANA_ALLOY_VERSION:-v1.10.0}
     ports:
-      - 12345:12345      # Alloy HTTP server
+      - 12345:12345 # Alloy HTTP server
     volumes:
       - ./demo/config.alloy:/etc/alloy/config.alloy
       - /var/run/docker.sock:/var/run/docker.sock
