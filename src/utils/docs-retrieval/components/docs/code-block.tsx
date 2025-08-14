@@ -9,13 +9,7 @@ export interface CodeBlockProps {
   className?: string;
 }
 
-export function CodeBlock({
-  code,
-  language,
-  showCopy = true,
-  inline = false,
-  className,
-}: CodeBlockProps) {
+export function CodeBlock({ code, language, showCopy = true, inline = false, className }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -50,7 +44,7 @@ export function CodeBlock({
       <div className="code-block-header">
         {language && <span className="code-block-language">{language}</span>}
         {showCopy && (
-         <IconButton
+          <IconButton
             name={copied ? 'check' : 'copy'}
             size="xs"
             onClick={handleCopy}
@@ -64,4 +58,4 @@ export function CodeBlock({
       </pre>
     </div>
   );
-} 
+}

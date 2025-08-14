@@ -1,4 +1,3 @@
-
 # This is a complete configuration to deploy Loki backed by the filesystem.
 # The index will be shipped to the storage via tsdb-shipper.
 
@@ -12,8 +11,10 @@ distributor:
   otlp_config:
     # List of default otlp resource attributes to be picked as index labels
     # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
-      default_resource_attributes_as_index_labels: [service.name service.namespace service.instance.id deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]
-
+    default_resource_attributes_as_index_labels:
+      [
+        service.name service.namespace service.instance.id deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name,
+      ]
 
 server:
   http_listen_port: 3100
@@ -28,13 +29,13 @@ common:
 
 schema_config:
   configs:
-  - from: 2020-05-15
-    store: tsdb
-    object_store: filesystem
-    schema: v13
-    index:
-      prefix: index_
-      period: 24h
+    - from: 2020-05-15
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
 
 storage_config:
   tsdb_shipper:

@@ -60,7 +60,9 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
     }
   }, [jsonData]);
 
-  const isSubmitDisabled = Boolean(!state.recommenderServiceUrl || !state.docsBaseUrl);
+  const isSubmitDisabled = Boolean(
+    !state.recommenderServiceUrl || !state.docsBaseUrl || (!state.isDocsPasswordSet && !state.docsPassword)
+  );
 
   const onResetDocsPassword = () =>
     setState({

@@ -10,7 +10,7 @@
     },
     {
       "id": "first-dashboard",
-      "title": "Create Your First Dashboard", 
+      "title": "Create Your First Dashboard",
       "summary": "In this tutorial, we'll make your first dashboard, of Grafana news. Learn to install plugins, create data sources, build dashboards, and set up basic alerting.",
       "filename": "first-dashboard.ts",
       "exportName": "firstDashboardHtml",
@@ -31,8 +31,7 @@
       "filename": "prometheus-grafana-101.ts",
       "exportName": "prometheusGrafana101Html",
       "url": ["/"]
-    }
-    ,
+    },
     {
       "id": "loki-grafana-101",
       "title": "Loki & Grafana 101 (Continuation)",
@@ -40,8 +39,7 @@
       "filename": "loki-grafana-101.ts",
       "exportName": "lokiGrafana101Html",
       "url": ["/"]
-    }
-    ,
+    },
     {
       "id": "explore-drilldowns-101",
       "title": "Explore Drilldowns 101 (Continuation)",

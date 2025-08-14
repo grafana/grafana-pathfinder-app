@@ -29,7 +29,11 @@ export function ImageRenderer({
     // Handle both camelCase dataSrc and kebab-case data-src
     const imgSrc = src || dataSrc || (props as any)['data-src'];
     if (!imgSrc) {
-      console.error('ImageRenderer: No image source found', { src, dataSrc, 'data-src': (props as any)['data-src'] });
+      console.error('ImageRenderer: No image source found', {
+        src,
+        dataSrc,
+        'data-src': (props as any)['data-src'],
+      });
       return undefined;
     }
     if (!baseUrl) {
@@ -55,4 +59,4 @@ export function ImageRenderer({
       {...props}
     />
   );
-} 
+}

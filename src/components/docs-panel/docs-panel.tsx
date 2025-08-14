@@ -330,7 +330,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
     // Clear any persisted interactive completion state for this tab
     try {
-      const tab = currentTabs.find(t => t.id === tabId);
+      const tab = currentTabs.find((t) => t.id === tabId);
       if (tab) {
         // Remove all keys matching this content key prefix
         const prefix = `docsPlugin:completedSteps:${tab.baseUrl}`;
@@ -778,7 +778,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                     <div className={styles.metaInfo}>
                       <span>Documentation</span>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                      }}
+                    >
                       {(() => {
                         const url = activeTab.content?.url || activeTab.baseUrl;
                         const isBundled = typeof url === 'string' && url.startsWith('bundled:');
