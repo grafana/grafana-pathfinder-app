@@ -42,7 +42,7 @@ export function CodeBlock({ code, language, showCopy = true, inline = false, cla
   return (
     <div className={`code-block${className ? ` ${className}` : ''}`}>
       <div className="code-block-header">
-        {language && <span className="code-block-language">{language}</span>}
+        <span className="code-block-language">{language}</span>
         {showCopy && (
           <IconButton
             name={copied ? 'check' : 'copy'}
