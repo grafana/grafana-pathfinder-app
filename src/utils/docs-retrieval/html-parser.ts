@@ -488,6 +488,44 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
           };
         }
 
+        // BADGE: <badge>
+        if (tag === 'badge') {
+          const text = el.getAttribute('text') || el.textContent?.trim() || '';
+          const color = el.getAttribute('color') || 'blue';
+          const icon = el.getAttribute('icon') || undefined;
+
+          return {
+            type: 'badge',
+            props: {
+              text,
+              color,
+              icon,
+            },
+            children: [],
+            originalHTML: el.outerHTML,
+          };
+        }
+
+        // BADGE-TOOLTIP: <badge-tooltip>
+        if (tag === 'badge-tooltip') {
+          const text = el.getAttribute('text') || el.textContent?.trim() || '';
+          const color = el.getAttribute('color') || 'blue';
+          const icon = el.getAttribute('icon') || undefined;
+          const tooltip = el.getAttribute('tooltip') || undefined;
+
+          return {
+            type: 'badge-tooltip',
+            props: {
+              text,
+              color,
+              icon,
+              tooltip,
+            },
+            children: [],
+            originalHTML: el.outerHTML,
+          };
+        }
+
         // INTERACTIVE SECTION
         if (/\binteractive\b/.test(el.className || '') && el.getAttribute('data-targetaction') === 'sequence') {
           hasInteractiveElements = true;
@@ -518,8 +556,6 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
 
           // Use general attribute mapping to capture ALL data attributes
           const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
-          
-
 
           return {
             type: 'interactive-section',

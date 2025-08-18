@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { EmbeddedScene, SceneFlexItem, SceneFlexLayout } from '@grafana/scenes';
-import { Card, TabsBar, Tab, TabContent } from '@grafana/ui';
+import { Card, TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
 
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
@@ -317,10 +317,12 @@ const allowedUiComponents: Record<string, React.ElementType> = {
   tab: Tab,
   tabsbar: TabsBar,
   tabcontent: TabContent,
+  badge: Badge,
+  tooltip: Tooltip,
 };
 
 // Special tabs state management
-function useTabsState(tabsData: Array<{ key: string; label: string }>) {
+function UseTabsState(tabsData: Array<{ key: string; label: string }>) {
   const [activeTab, setActiveTab] = React.useState(tabsData[0]?.key || '');
 
   React.useEffect(() => {
@@ -363,7 +365,7 @@ function renderTabsStructure(element: ParsedElement): React.ReactNode {
     label: tabEl.props?.['data-label'] || '',
   }));
 
-  const { activeTab, setActiveTab } = useTabsState(tabsData);
+  const { activeTab, setActiveTab } = UseTabsState(tabsData);
 
   // Extract content for each tab from tab-content children
   // The content items are direct children of tab-content (like <pre> elements), not div[data-element="tab-content-item"]
@@ -371,7 +373,6 @@ function renderTabsStructure(element: ParsedElement): React.ReactNode {
 
   console.log('[DocsPlugin] Tabs data:', tabsData);
   console.log('[DocsPlugin] Tab content items found:', tabContentItems.length);
-  console.log('[DocsPlugin] Active tab:', activeTab, 'Active index:', parseInt(activeTab) || 0);
   console.log(
     '[DocsPlugin] Tab content items:',
     tabContentItems.map((item, i) => {
@@ -440,6 +441,21 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
 
   // Handle special cases first
   switch (element.type) {
+    case 'badge':
+      console.log('badge:', element);
+      return <Badge key={key} text={element.props.text} color={element.props.color} />;
+    case 'badge-tooltip':
+      console.log('badge-tooltip:', element);
+      return (
+        <Badge
+          key={key}
+          text={element.props.text}
+          color={element.props.color}
+          icon={element.props.icon}
+          tooltip={element.props.tooltip}
+        />
+      );
+
     case 'interactive-section':
       return (
         <InteractiveSection
@@ -604,7 +620,6 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
             .filter((child: React.ReactNode) => child !== null);
 
           // Normalize boolean-like props that HTML parser might have dropped
-          console.log('comp', comp);
           const uiProps: Record<string, any> = { ...element.props };
           const originalHTML: string | undefined = (element as any).originalHTML;
           if (typeof originalHTML === 'string') {
