@@ -326,7 +326,7 @@ function generateGitHubVariations(url: string): string[] {
       // Handle tree URLs (directories) - convert to directory/unstyled.html
       const treeMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
       if (treeMatch) {
-        const [, owner, repo, branch, path] = treeMatch;
+        const [_fullMatch, owner, repo, branch, path] = treeMatch;
         const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/refs/heads/${branch}/${path}/unstyled.html`;
         variations.push(rawUrl);
       }
@@ -334,7 +334,7 @@ function generateGitHubVariations(url: string): string[] {
       // Handle blob URLs (specific files)
       const blobMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)/);
       if (blobMatch) {
-        const [, owner, repo, branch, path] = blobMatch;
+        const [_fullMatch, owner, repo, branch, path] = blobMatch;
         const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
         variations.push(rawUrl);
         
