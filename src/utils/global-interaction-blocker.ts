@@ -14,16 +14,16 @@ class GlobalInteractionBlocker {
   private windowResizeHandler: (() => void) | null = null;
   private windowScrollHandler: (() => void) | null = null;
   private modalObserver: MutationObserver | null = null;
-  
+
   static getInstance(): GlobalInteractionBlocker {
     if (!GlobalInteractionBlocker.instance) {
       GlobalInteractionBlocker.instance = new GlobalInteractionBlocker();
     }
     return GlobalInteractionBlocker.instance;
   }
-  
+
   private constructor() {}
-  
+
   /**
    * Create a targeted blocking overlay that covers only the main Grafana content area
    * This naturally allows all interactions within the docs plugin while blocking main UI
@@ -32,13 +32,13 @@ class GlobalInteractionBlocker {
     if (this.blockingOverlay) {
       return;
     }
-    
+
     // Find the main page content container
     const pageContent = document.getElementById('pageContent');
-    
+
     this.blockingOverlay = document.createElement('div');
     this.blockingOverlay.id = 'interactive-blocking-overlay';
-    
+
     if (pageContent) {
       // Position overlay to match the pageContent container exactly and keep it in sync
       const applyRect = () => {
@@ -82,7 +82,7 @@ class GlobalInteractionBlocker {
         pointer-events: auto;
       `;
     }
-    
+
     // Create a small, unobtrusive status indicator at the bottom of the screen
     const statusIndicator = document.createElement('div');
     statusIndicator.style.cssText = `
@@ -104,7 +104,7 @@ class GlobalInteractionBlocker {
       pointer-events: none;
       z-index: 10000;
     `;
-    
+
     statusIndicator.innerHTML = `
       <div style="
         width: 16px;
@@ -134,9 +134,9 @@ class GlobalInteractionBlocker {
         ✕ Cancel
       </button>
     `;
-    
+
     this.blockingOverlay.appendChild(statusIndicator);
-    
+
     // Add cancel button click handler
     const cancelButton = statusIndicator.querySelector('#cancel-section-btn');
     if (cancelButton) {
@@ -146,43 +146,43 @@ class GlobalInteractionBlocker {
         this.cancelSection();
       });
     }
-    
+
     // Set cursor to indicate blocking
     this.blockingOverlay.style.cursor = 'not-allowed';
-    
+
     // Add simple event handler to block all interactions within the covered area
     const handleBlockedInteraction = (e: Event) => {
       // Allow clicks on the cancel button
       const target = e.target as HTMLElement;
       const isCancelButton = target.id === 'cancel-section-btn' || target.closest('#cancel-section-btn');
-      
+
       if (isCancelButton) {
         // Let the cancel button handle its own click
         return;
       }
-      
+
       e.preventDefault();
       e.stopPropagation();
-      
+
       // Only show warning for click events to avoid spam
       if (e.type === 'click') {
         console.warn('🚫 Please wait for the current interactive step to complete before continuing');
       }
     };
-    
+
     // Add event listeners for various interaction types
-    ['click', 'wheel', 'scroll', 'touchstart', 'touchmove', 'keydown'].forEach(eventType => {
+    ['click', 'wheel', 'scroll', 'touchstart', 'touchmove', 'keydown'].forEach((eventType) => {
       this.blockingOverlay!.addEventListener(eventType, handleBlockedInteraction);
     });
-    
+
     // Add global keyboard shortcut handler for Ctrl+C
     this.addGlobalKeyboardHandler();
-    
+
     // All overlay styling and animations are provided by addGlobalInteractiveStyles() in interactive.styles.ts
-    
+
     document.body.appendChild(this.blockingOverlay);
   }
-  
+
   /**
    * Add global keyboard handler for section cancellation
    */
@@ -190,15 +190,18 @@ class GlobalInteractionBlocker {
     if (this.keyboardHandler) {
       return; // Already added
     }
-    
+
     this.keyboardHandler = (e: KeyboardEvent) => {
       // Ctrl/Cmd + C to cancel running section
       if ((e.ctrlKey || e.metaKey) && e.key === 'c' && this.sectionBlockingActive && this.cancelCallback) {
         // Only prevent default if not in an input field
         const target = e.target as HTMLElement;
-        const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || 
-                            target.contentEditable === 'true' || target.isContentEditable;
-        
+        const isInputField =
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.contentEditable === 'true' ||
+          target.isContentEditable;
+
         if (!isInputField) {
           e.preventDefault();
           e.stopPropagation();
@@ -207,10 +210,10 @@ class GlobalInteractionBlocker {
         }
       }
     };
-    
+
     document.addEventListener('keydown', this.keyboardHandler, true); // Use capture phase
   }
-  
+
   /**
    * Remove global keyboard handler
    */
@@ -220,7 +223,7 @@ class GlobalInteractionBlocker {
       this.keyboardHandler = null;
     }
   }
-  
+
   /**
    * Remove the blocking overlay
    */
@@ -229,7 +232,7 @@ class GlobalInteractionBlocker {
       this.blockingOverlay.remove();
       this.blockingOverlay = null;
     }
-    
+
     // Remove global keyboard handler when overlay is removed
     this.removeGlobalKeyboardHandler();
     // Remove position sync listeners/observers
@@ -250,7 +253,7 @@ class GlobalInteractionBlocker {
       this.modalObserver = null;
     }
   }
-  
+
   /**
    * Start blocking for an entire section (persists until section completes)
    */
@@ -258,12 +261,12 @@ class GlobalInteractionBlocker {
     if (this.sectionBlockingActive) {
       return;
     }
-    
+
     this.sectionBlockingActive = true;
     this.cancelCallback = cancelCallback || null;
     this.createBlockingOverlay(data);
   }
-  
+
   /**
    * Stop section blocking (removes overlay)
    */
@@ -271,12 +274,12 @@ class GlobalInteractionBlocker {
     if (!this.sectionBlockingActive) {
       return;
     }
-    
+
     this.sectionBlockingActive = false;
     this.cancelCallback = null;
     this.removeBlockingOverlay();
   }
-  
+
   /**
    * Cancel the currently running section
    */
@@ -284,12 +287,12 @@ class GlobalInteractionBlocker {
     if (!this.sectionBlockingActive || !this.cancelCallback) {
       return;
     }
-    
+
     console.warn(`🛑 Cancelling running section...`);
     this.cancelCallback();
     // Note: stopSectionBlocking will be called by the section handler after cleanup
   }
-  
+
   /**
    * Check if section blocking is active
    */

@@ -26,7 +26,9 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ className, varia
 
   return (
     <button
-      className={`${variant === 'secondary' ? styles.feedbackButtonSecondary : styles.feedbackButtonPrimary} ${className || ''}`}
+      className={`${variant === 'secondary' ? styles.feedbackButtonSecondary : styles.feedbackButtonPrimary} ${
+        className || ''
+      }`}
       onClick={handleClick}
       aria-label="Give feedback about this plugin"
       title="Give feedback about this plugin"

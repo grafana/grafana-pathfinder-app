@@ -11,20 +11,20 @@ export class FocusHandler {
 
   async execute(data: InteractiveElementData, click: boolean): Promise<void> {
     this.stateManager.setState(data, 'running');
-    
+
     try {
       // Check if selector should return only one element (contains pseudo-selectors like :first-child, :last-child, etc.)
       const shouldSelectSingle = this.shouldSelectSingleElement(data.reftarget);
-      
+
       let targetElements: NodeListOf<Element>;
       if (shouldSelectSingle) {
         // Use querySelector to get only the first match for single-element selectors
         const singleElement = document.querySelector(data.reftarget);
-        targetElements = singleElement ? [singleElement] as any : document.querySelectorAll('__no_match__');
+        targetElements = singleElement ? ([singleElement] as any) : document.querySelectorAll('__no_match__');
       } else {
         targetElements = document.querySelectorAll(data.reftarget);
       }
-      
+
       if (!click) {
         await this.handleShowMode(targetElements);
         return;
@@ -66,15 +66,15 @@ export class FocusHandler {
     // Pseudo-selectors that should only return a single element
     const singleElementPseudos = [
       ':first-child',
-      ':last-child', 
+      ':last-child',
       ':first-of-type',
       ':last-of-type',
       ':only-child',
       ':only-of-type',
       ':nth-child(1)',
-      ':nth-of-type(1)'
+      ':nth-of-type(1)',
     ];
 
-    return singleElementPseudos.some(pseudo => selector.includes(pseudo));
+    return singleElementPseudos.some((pseudo) => selector.includes(pseudo));
   }
 }

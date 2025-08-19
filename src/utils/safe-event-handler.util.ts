@@ -11,15 +11,8 @@ export interface SafeEventOptions {
 /**
  * Safely handle an event by checking if it's cancelable before calling preventDefault
  */
-export function safeEventHandler(
-  event: Event,
-  options: SafeEventOptions = {}
-): void {
-  const {
-    preventDefault = false,
-    stopPropagation = false,
-    stopImmediatePropagation = false,
-  } = options;
+export function safeEventHandler(event: Event, options: SafeEventOptions = {}): void {
+  const { preventDefault = false, stopPropagation = false, stopImmediatePropagation = false } = options;
 
   if (preventDefault && event.cancelable) {
     event.preventDefault();
@@ -61,4 +54,4 @@ export const safeEventListenerOptions: AddEventListenerOptions = {
 export const passiveEventListenerOptions: AddEventListenerOptions = {
   passive: true,
   capture: false,
-}; 
+};

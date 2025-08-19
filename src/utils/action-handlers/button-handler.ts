@@ -15,7 +15,7 @@ export class ButtonHandler {
 
     try {
       const buttons = findButtonByText(data.reftarget);
-      
+
       if (!click) {
         await this.handleShowMode(buttons);
         return;

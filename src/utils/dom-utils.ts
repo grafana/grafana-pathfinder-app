@@ -5,7 +5,7 @@ import { InteractiveElementData } from '../types/interactive.types';
  */
 export function getAllTextContent(element: Element): string {
   let text = '';
-  
+
   // Process all child nodes
   for (const node of element.childNodes) {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -16,7 +16,7 @@ export function getAllTextContent(element: Element): string {
       text += getAllTextContent(node as Element) + ' ';
     }
   }
-  
+
   return text.trim();
 }
 
@@ -25,11 +25,15 @@ export function getAllTextContent(element: Element): string {
  */
 export function extractInteractiveDataFromElement(element: HTMLElement): InteractiveElementData {
   const customData: Record<string, string> = {};
-  
+
   // Extract all data-* attributes except the core ones
-  Array.from(element.attributes).forEach(attr => {
-    if (attr.name.startsWith('data-') && 
-        !['data-reftarget', 'data-targetaction', 'data-targetvalue', 'data-requirements', 'data-objectives'].includes(attr.name)) {
+  Array.from(element.attributes).forEach((attr) => {
+    if (
+      attr.name.startsWith('data-') &&
+      !['data-reftarget', 'data-targetaction', 'data-targetvalue', 'data-requirements', 'data-objectives'].includes(
+        attr.name
+      )
+    ) {
       const key = attr.name.substring(5); // Remove 'data-' prefix
       customData[key] = attr.value;
     }
@@ -77,16 +81,18 @@ export function findButtonByText(targetText: string): HTMLButtonElement[] {
   // buttons we want to click, we have to look outside the docs plugin frame.
   const buttons = document.querySelectorAll('button');
   const searchText = targetText.toLowerCase().trim();
-  
+
   const exactMatches: HTMLButtonElement[] = [];
   const partialMatches: HTMLButtonElement[] = [];
-  
+
   Array.from(buttons).forEach((button) => {
     // Get all text content from the button and its descendants
     const allText = getAllTextContent(button).toLowerCase().trim();
-    
-    if (!allText) { return; }
-    
+
+    if (!allText) {
+      return;
+    }
+
     if (allText === searchText) {
       // Exact match
       exactMatches.push(button as HTMLButtonElement);
@@ -95,7 +101,7 @@ export function findButtonByText(targetText: string): HTMLButtonElement[] {
       partialMatches.push(button as HTMLButtonElement);
     }
   });
-  
+
   // Return exact matches if any exist, otherwise return partial matches
   if (exactMatches.length > 0) {
     console.warn(`🎯 Found ${exactMatches.length} exact matches for "${targetText}"`);
@@ -104,7 +110,7 @@ export function findButtonByText(targetText: string): HTMLButtonElement[] {
     console.warn(`🔍 Found ${partialMatches.length} partial matches for "${targetText}"`);
     return partialMatches;
   }
-  
+
   return [];
 }
 
@@ -122,11 +128,14 @@ export function resetValueTracker(targetElement: HTMLElement): void {
  * For button actions, checks if buttons with matching text exist
  * For other actions, checks if the CSS selector matches an element
  */
-export async function reftargetExistsCHECK(reftarget: string, targetAction: string): Promise<{ requirement: string; pass: boolean; error?: string }> {
+export async function reftargetExistsCHECK(
+  reftarget: string,
+  targetAction: string
+): Promise<{ requirement: string; pass: boolean; error?: string }> {
   // For button actions, check if buttons with matching text exist
   if (targetAction === 'button') {
     const buttons = findButtonByText(reftarget);
-    
+
     if (buttons.length > 0) {
       return {
         requirement: 'exists-reftarget',
@@ -140,7 +149,7 @@ export async function reftargetExistsCHECK(reftarget: string, targetAction: stri
       };
     }
   }
-  
+
   // For other actions, check if the CSS selector matches an element
   const targetElement = document.querySelector(reftarget);
   if (targetElement) {
@@ -148,12 +157,12 @@ export async function reftargetExistsCHECK(reftarget: string, targetAction: stri
       requirement: 'exists-reftarget',
       pass: true,
     };
-  } 
-    
+  }
+
   return {
     requirement: 'exists-reftarget',
     pass: false,
-    error: "Element not found",
+    error: 'Element not found',
   };
 }
 
@@ -171,9 +180,9 @@ export async function navmenuOpenCHECK(): Promise<{ requirement: string; pass: b
     // Fallbacks for other versions
     'div[data-testid*="navigation"]',
     'nav[aria-label="Navigation"]',
-    'ul[aria-label="Main navigation"]'
+    'ul[aria-label="Main navigation"]',
   ];
-  
+
   for (const selector of selectorsToTry) {
     const element = document.querySelector(selector);
     if (element) {
@@ -187,6 +196,6 @@ export async function navmenuOpenCHECK(): Promise<{ requirement: string; pass: b
   return {
     requirement: 'navmenu-open',
     pass: false,
-    error: "Navigation menu not detected - menu may be closed or selector mismatch",
+    error: 'Navigation menu not detected - menu may be closed or selector mismatch',
   };
-} 
+}

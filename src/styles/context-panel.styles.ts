@@ -256,7 +256,7 @@ export const getCardMetadataStyles = (theme: GrafanaTheme2) => ({
     padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
     borderRadius: theme.shape.radius.default,
     whiteSpace: 'nowrap',
-    
+
     // Special styling for 0% completion (not started)
     '&[data-completion="0"]': {
       color: theme.colors.text.secondary,
@@ -368,18 +368,18 @@ export const getSummaryStyles = (theme: GrafanaTheme2) => ({
     transition: 'all 0.2s ease',
     minWidth: '120px',
     boxShadow: theme.shadows.z1,
-    
+
     '&:hover': {
       backgroundColor: theme.colors.primary.shade,
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z2,
     },
-    
+
     '&:active': {
       transform: 'translateY(0)',
       boxShadow: theme.shadows.z1,
     },
-    
+
     '& svg': {
       flexShrink: 0,
     },
@@ -629,4 +629,4 @@ export const getStyles = (theme: GrafanaTheme2) => ({
   ...getMilestoneStyles(theme),
   ...getStepsStyles(theme),
   ...getOtherDocsStyles(theme),
-}); 
+});

@@ -51,6 +51,7 @@ export interface StepInfo {
   targetAction?: string; // Optional for multi-step
   refTarget?: string; // Optional for multi-step
   targetValue?: string;
+  targetComment?: string; // Optional comment to show during execution
   requirements?: string;
   isMultiStep: boolean; // Flag to identify component type
 }
@@ -175,6 +176,7 @@ export function InteractiveSection({
           targetAction: props.targetAction,
           refTarget: props.refTarget,
           targetValue: props.targetValue,
+          targetComment: props.targetComment,
           requirements: props.requirements,
           isMultiStep: false,
         });
@@ -431,7 +433,7 @@ export function InteractiveSection({
 
       try {
         // Execute the action using existing interactive logic
-        await executeInteractiveAction(stepInfo.targetAction!, stepInfo.refTarget!, stepInfo.targetValue, 'do');
+        await executeInteractiveAction(stepInfo.targetAction!, stepInfo.refTarget!, stepInfo.targetValue, 'do', stepInfo.targetComment);
 
         return true;
       } catch (error) {
@@ -496,7 +498,7 @@ export function InteractiveSection({
         // First, show the step (highlight it) - skip for multi-step components
         if (!stepInfo.isMultiStep) {
           console.log(`👁️ Showing step: ${stepInfo.stepId}`);
-          await executeInteractiveAction(stepInfo.targetAction!, stepInfo.refTarget!, stepInfo.targetValue, 'show');
+          await executeInteractiveAction(stepInfo.targetAction!, stepInfo.refTarget!, stepInfo.targetValue, 'show', stepInfo.targetComment);
 
           // Wait for highlight to be visible and animation to complete
           // Check cancellation during wait
@@ -543,7 +545,9 @@ export function InteractiveSection({
           }
         } else {
           console.warn(
-            `⚠️ Breaking section sequence at step ${i + 1}/${stepComponents.length} due to execution failure: ${stepInfo.stepId}`
+            `⚠️ Breaking section sequence at step ${i + 1}/${stepComponents.length} due to execution failure: ${
+              stepInfo.stepId
+            }`
           );
           console.warn(`❌ Failed step details:`, {
             stepId: stepInfo.stepId,
@@ -727,7 +731,9 @@ export function InteractiveSection({
               return 'Reset section and clear all step completion to allow manual re-interaction';
             }
             if (isRunning) {
-              return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;
+              return `Running Step ${
+                currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'
+              }/${stepComponents.length}...`;
             }
             if (resumeInfo.isResume) {
               return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
@@ -744,7 +750,9 @@ export function InteractiveSection({
               return 'Reset Section';
             }
             if (isRunning) {
-              return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;
+              return `Running Step ${
+                currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'
+              }/${stepComponents.length}...`;
             }
             if (resumeInfo.isResume) {
               return `Resume (${resumeInfo.remainingSteps} steps)`;

@@ -259,7 +259,7 @@ const getCodeBlockStyles = (theme: GrafanaTheme2) => ({
     lineHeight: theme.typography.bodySmall.lineHeight,
     fontFamily: theme.typography.fontFamilyMonospace,
 
-    'code': {
+    code: {
       backgroundColor: 'transparent',
       padding: 0,
       fontSize: 'inherit',
@@ -280,7 +280,7 @@ const getCodeBlockStyles = (theme: GrafanaTheme2) => ({
     fontFamily: theme.typography.fontFamilyMonospace,
     border: `1px solid ${theme.colors.border.weak}`,
 
-    'code': {
+    code: {
       backgroundColor: 'transparent',
       padding: 0,
       fontSize: 'inherit',
@@ -294,7 +294,7 @@ const getCodeBlockStyles = (theme: GrafanaTheme2) => ({
       minWidth: '20px !important',
       minHeight: '20px !important',
       padding: '2px !important',
-    }
+    },
   },
 });
 
@@ -399,19 +399,19 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   '.interactive-section-content': {
     padding: theme.spacing(2),
-    
+
     // Step status styles
     '& .step-status-pending': {
       opacity: 0.7,
     },
-    
+
     '& .step-status-running': {
       borderColor: theme.colors.warning.border,
       backgroundColor: theme.colors.warning.transparent,
       transform: 'scale(1.02)',
       transition: 'all 0.3s ease',
     },
-    
+
     '& .step-status-completed': {
       borderColor: theme.colors.success.border,
       backgroundColor: theme.colors.success.transparent,
@@ -430,7 +430,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   '.interactive-section-do-button': {
     minWidth: '200px',
     fontWeight: theme.typography.fontWeightMedium,
-    
+
     '&:disabled': {
       opacity: 0.6,
       cursor: 'not-allowed',
@@ -590,7 +590,7 @@ const getCommentBoxStyles = (theme: GrafanaTheme2) => ({
     border: `1px solid ${theme.colors.border.medium}`,
     color: theme.colors.text.primary,
   },
-  
+
   // Orange glow border for comment boxes (separate class for clarity)
   '.interactive-comment-glow': {
     border: `2px solid rgba(255, 136, 0, 0.5) !important`,
@@ -601,33 +601,33 @@ const getCommentBoxStyles = (theme: GrafanaTheme2) => ({
       0 0 25px rgba(255, 136, 0, 0.2)
     `,
   },
-  
+
   // Logo and text layout
   '.interactive-comment-wrapper': {
     display: 'flex',
     alignItems: 'flex-start',
     gap: '8px',
   },
-  
+
   '.interactive-comment-logo': {
     flexShrink: 0,
     marginTop: '1px', // Slight adjustment to align with text
   },
-  
+
   '.interactive-comment-text': {
     flex: 1,
     lineHeight: 1.4,
   },
-  
+
   // Arrow colors using theme
   '.interactive-comment-box[style*="--comment-arrow-position: left"] .interactive-comment-arrow': {
     borderRightColor: theme.colors.background.primary,
   },
-  
+
   '.interactive-comment-box[style*="--comment-arrow-position: right"] .interactive-comment-arrow': {
     borderLeftColor: theme.colors.background.primary,
   },
-  
+
   '.interactive-comment-box[style*="--comment-arrow-position: bottom"] .interactive-comment-arrow': {
     borderTopColor: theme.colors.background.primary,
   },
@@ -653,9 +653,9 @@ const getExpandableStyles = (theme: GrafanaTheme2) => ({
     '&:not(.collapsed)': {
       maxHeight: 'none',
     },
-    
+
     // Style tables inside expandable content
-    'table': {
+    table: {
       width: '100%',
       borderCollapse: 'collapse',
       fontSize: theme.typography.bodySmall.fontSize,
@@ -664,12 +664,12 @@ const getExpandableStyles = (theme: GrafanaTheme2) => ({
         textAlign: 'left',
         borderBottom: `1px solid ${theme.colors.border.weak}`,
       },
-      'th': {
+      th: {
         fontWeight: theme.typography.fontWeightMedium,
         backgroundColor: theme.colors.background.secondary,
         color: theme.colors.text.primary,
       },
-      'td': {
+      td: {
         color: theme.colors.text.primary,
       },
       'tr:hover': {
@@ -680,15 +680,16 @@ const getExpandableStyles = (theme: GrafanaTheme2) => ({
 });
 
 // Export this for component-level, theme-aware styles if needed
-export const getInteractiveStyles = (theme: GrafanaTheme2) => css({
-  ...getBaseInteractiveStyles(theme),
-  ...getInteractiveButtonStyles(theme),
-  ...getInteractiveSequenceStyles(theme),
-  ...getCodeBlockStyles(theme),
-  ...getInteractiveComponentStyles(theme),
-  ...getCommentBoxStyles(theme),
-  ...getExpandableStyles(theme),
-} as any);
+export const getInteractiveStyles = (theme: GrafanaTheme2) =>
+  css({
+    ...getBaseInteractiveStyles(theme),
+    ...getInteractiveButtonStyles(theme),
+    ...getInteractiveSequenceStyles(theme),
+    ...getCodeBlockStyles(theme),
+    ...getInteractiveComponentStyles(theme),
+    ...getCommentBoxStyles(theme),
+    ...getExpandableStyles(theme),
+  } as any);
 
 // Pure global (vanilla) CSS for overlays/highlights—run once at app startup
 export const addGlobalInteractiveStyles = () => {
@@ -702,7 +703,7 @@ export const addGlobalInteractiveStyles = () => {
   const highlightMs = INTERACTIVE_CONFIG.delays.technical.highlight;
   // Slower, more readable draw; short hold; erase the remainder
   const drawMs = Math.max(500, Math.round(highlightMs * 0.65));
-  const holdMs = Math.max(120, Math.round(highlightMs * 0.20));
+  const holdMs = Math.max(120, Math.round(highlightMs * 0.2));
   const eraseMs = Math.max(250, Math.max(0, highlightMs - drawMs - holdMs));
   const fadeDelay = drawMs + holdMs; // ensure fade starts after draw completes + hold
   style.textContent = `

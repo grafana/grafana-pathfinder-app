@@ -84,7 +84,9 @@ async function checkActionRequirements(
     console.error(`Requirements check failed for action ${actionIndex + 1}:`, error);
     return {
       pass: false,
-      explanation: `Step ${actionIndex + 1} requirements check failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      explanation: `Step ${actionIndex + 1} requirements check failed: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`,
     };
   }
 }
@@ -439,7 +441,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
     return (
       <div
-        className={`interactive-step${className ? ` ${className}` : ''}${isCompletedWithObjectives ? ' completed' : ''}${isCurrentlyExecuting ? ' executing' : ''}`}
+        className={`interactive-step${className ? ` ${className}` : ''}${
+          isCompletedWithObjectives ? ' completed' : ''
+        }${isCurrentlyExecuting ? ' executing' : ''}`}
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}

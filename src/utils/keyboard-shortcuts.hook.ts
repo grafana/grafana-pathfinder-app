@@ -41,12 +41,12 @@ export function useKeyboardShortcuts({
           model.closeTab(activeTab.id);
         }
       }
-      
+
       // Ctrl/Cmd + Tab to switch between tabs
       if ((event.ctrlKey || event.metaKey) && event.key === 'Tab') {
         safeEventHandler(event, { preventDefault: true });
-        const currentIndex = tabs.findIndex(tab => tab.id === activeTabId);
-        const nextIndex = event.shiftKey 
+        const currentIndex = tabs.findIndex((tab) => tab.id === activeTabId);
+        const nextIndex = event.shiftKey
           ? (currentIndex - 1 + tabs.length) % tabs.length
           : (currentIndex + 1) % tabs.length;
         model.setActiveTab(tabs[nextIndex].id);
@@ -58,13 +58,13 @@ export function useKeyboardShortcuts({
           safeEventHandler(event, { preventDefault: true });
           model.navigateToNextMilestone();
         }
-        
+
         if (event.altKey && event.key === 'ArrowLeft') {
           safeEventHandler(event, { preventDefault: true });
           model.navigateToPreviousMilestone();
         }
       }
-      
+
       // Note: Ctrl+C cancellation is now handled globally by GlobalInteractionBlocker
     };
 
@@ -73,4 +73,4 @@ export function useKeyboardShortcuts({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [model, tabs, activeTabId, activeTab, isRecommendationsTab]);
-} 
+}

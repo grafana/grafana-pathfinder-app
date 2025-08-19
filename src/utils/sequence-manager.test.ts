@@ -7,7 +7,7 @@ import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 const mockStateManager = {
   logError: jest.fn(),
   setState: jest.fn(),
-  handleError: jest.fn()
+  handleError: jest.fn(),
 } as unknown as InteractiveStateManager;
 
 const mockCheckRequirementsFromData = jest.fn();
@@ -17,13 +17,14 @@ const mockIsValidInteractiveElement = jest.fn();
 const mockExtractInteractiveDataFromElement = jest.fn();
 
 // Mock elements
-const createMockElement = (data: Partial<InteractiveElementData> = {}): Element => ({
-  tagName: 'DIV',
-  classList: { contains: jest.fn() },
-  getAttribute: jest.fn(),
-  querySelector: jest.fn(),
-  querySelectorAll: jest.fn()
-} as unknown as Element);
+const createMockElement = (data: Partial<InteractiveElementData> = {}): Element =>
+  ({
+    tagName: 'DIV',
+    classList: { contains: jest.fn() },
+    getAttribute: jest.fn(),
+    querySelector: jest.fn(),
+    querySelectorAll: jest.fn(),
+  } as unknown as Element);
 
 const createMockInteractiveData = (overrides: Partial<InteractiveElementData> = {}): InteractiveElementData => ({
   reftarget: 'test-selector',
@@ -33,7 +34,7 @@ const createMockInteractiveData = (overrides: Partial<InteractiveElementData> = 
   tagName: 'button',
   textContent: 'Test Button',
   timestamp: Date.now(),
-  ...overrides
+  ...overrides,
 });
 
 describe('SequenceManager', () => {
@@ -43,27 +44,23 @@ describe('SequenceManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Mock setTimeout to resolve immediately for faster tests
     setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation((callback: any) => {
       callback();
       return 0 as any;
     });
-    
+
     // Reset mocks to default behavior
     mockCheckRequirementsFromData.mockResolvedValue({ pass: true });
     mockDispatchInteractiveAction.mockResolvedValue(undefined);
     mockWaitForReactUpdates.mockResolvedValue(undefined);
     mockIsValidInteractiveElement.mockReturnValue(true);
     mockExtractInteractiveDataFromElement.mockReturnValue(createMockInteractiveData());
-    
+
     // Create test data
-    mockElements = [
-      createMockElement(),
-      createMockElement(),
-      createMockElement()
-    ];
-    
+    mockElements = [createMockElement(), createMockElement(), createMockElement()];
+
     // Create sequence manager instance
     sequenceManager = new SequenceManager(
       mockStateManager,
@@ -122,9 +119,7 @@ describe('SequenceManager', () => {
 
     it('should retry on requirements failure', async () => {
       // Mock requirements to fail first, then pass
-      mockCheckRequirementsFromData
-        .mockResolvedValueOnce({ pass: false })
-        .mockResolvedValueOnce({ pass: true });
+      mockCheckRequirementsFromData.mockResolvedValueOnce({ pass: false }).mockResolvedValueOnce({ pass: true });
 
       await sequenceManager.runInteractiveSequence([mockElements[0]], false);
 
@@ -155,9 +150,7 @@ describe('SequenceManager', () => {
 
     it('should retry on errors', async () => {
       // Mock action to fail first, then succeed
-      mockDispatchInteractiveAction
-        .mockRejectedValueOnce(new Error('Test error'))
-        .mockResolvedValueOnce(undefined);
+      mockDispatchInteractiveAction.mockRejectedValueOnce(new Error('Test error')).mockResolvedValueOnce(undefined);
 
       await sequenceManager.runInteractiveSequence([mockElements[0]], false);
 
@@ -170,10 +163,7 @@ describe('SequenceManager', () => {
 
       await sequenceManager.runInteractiveSequence([mockElements[0]], false);
 
-      expect(setTimeoutSpy).toHaveBeenCalledWith(
-        expect.any(Function),
-        INTERACTIVE_CONFIG.delays.perceptual.retry
-      );
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), INTERACTIVE_CONFIG.delays.perceptual.retry);
     });
   });
 
@@ -201,7 +191,7 @@ describe('SequenceManager', () => {
 
       expect(mockDispatchInteractiveAction).toHaveBeenCalledTimes(2);
       expect(mockDispatchInteractiveAction).toHaveBeenNthCalledWith(1, expect.any(Object), false); // show
-      expect(mockDispatchInteractiveAction).toHaveBeenNthCalledWith(2, expect.any(Object), true);  // do
+      expect(mockDispatchInteractiveAction).toHaveBeenNthCalledWith(2, expect.any(Object), true); // do
     });
 
     it('should check requirements before and after show', async () => {
@@ -287,10 +277,7 @@ describe('SequenceManager', () => {
 
       await sequenceManager.runStepByStepSequence([mockElements[0]]);
 
-      expect(setTimeoutSpy).toHaveBeenCalledWith(
-        expect.any(Function),
-        INTERACTIVE_CONFIG.delays.perceptual.retry
-      );
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), INTERACTIVE_CONFIG.delays.perceptual.retry);
     });
   });
 
@@ -351,10 +338,7 @@ describe('SequenceManager', () => {
 
       await sequenceManager.runInteractiveSequence([mockElements[0]], false);
 
-      expect(setTimeoutSpy).toHaveBeenCalledWith(
-        expect.any(Function),
-        INTERACTIVE_CONFIG.delays.perceptual.retry
-      );
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), INTERACTIVE_CONFIG.delays.perceptual.retry);
     });
   });
 });
