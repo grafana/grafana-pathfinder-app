@@ -5,7 +5,7 @@ export const lokiGrafana101Html = `<html>
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Loki + Grafana 101 (Continuation)</title>
+        <title>Loki + Grafana 101</title>
     </head>
     <body>
         <p><strong>Prerequisite:</strong> Complete <a href="bundled:prometheus-grafana-101">Prometheus + Grafana 101</a> first.</p>
@@ -172,7 +172,5 @@ export const lokiGrafana101Html = `<html>
             <li>✅ Configured the Loki data source (http://loki:3100)</li>
             <li>✅ Built a Logs visualization on the existing dashboard</li>
         </ul>
-        <p><strong>Continue:</strong> Head to <a href="bundled:explore-drilldowns-101">Explore Drilldowns (Part 3)</a> to pivot from your metric to related metrics and logs.</p>
-        
     </body>
 </html>`;
