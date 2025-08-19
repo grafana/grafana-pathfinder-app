@@ -163,7 +163,7 @@ export const prometheusGrafana101Html = `<html>
             <li>✅ You have a complete dashboard called "my first dashboard" with a Stat visualization showing Prometheus metrics</li>
         </ul>
         
-        <p><strong>Next:</strong> Continue with <a href="bundled:loki-grafana-101">Loki + Grafana 101</a> to add logs alongside your metrics using Loki. After that, proceed to <a href="bundled:explore-drilldowns">Explore Drilldowns (Part 3)</a> to pivot between metrics and related logs.</p>
+        <p><strong>Next:</strong> Continue with <a href="bundled:loki-grafana-101">Loki + Grafana 101</a> to add logs alongside your metrics using Loki.</p>
         
     </body>
 </html>`;
