@@ -16,7 +16,8 @@ import {
   FocusHandler, 
   ButtonHandler, 
   NavigateHandler, 
-  FormFillHandler 
+  FormFillHandler,
+  HighlightOnlyHandler 
 } from './action-handlers';
 
 export interface InteractiveRequirementsCheck {
@@ -79,6 +80,12 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     navigationManager,
     waitForReactUpdates
   ), [stateManager, navigationManager]);
+
+  const highlightOnlyHandler = useMemo(() => new HighlightOnlyHandler(
+    stateManager,
+    navigationManager,
+    waitForReactUpdates
+  ), [stateManager, navigationManager]);
   
   // Initialize global interactive styles
   useEffect(() => {
@@ -104,6 +111,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     await navigateHandler.execute(data, navigate);
   }, [navigateHandler]);
 
+  const interactiveHighlightOnly = useCallback(async (data: InteractiveElementData, show: boolean) => {
+    await highlightOnlyHandler.execute(data, show);
+  }, [highlightOnlyHandler]);
+
   // Define helper functions using refs to avoid circular dependencies
   const dispatchInteractiveAction = useCallback(async (data: InteractiveElementData, click: boolean) => {
     if (data.targetaction === 'highlight') {
@@ -114,8 +125,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       await interactiveFormFill(data, click);
     } else if (data.targetaction === 'navigate') {
       interactiveNavigate(data, click);
+    } else if (data.targetaction === 'highlight-only') {
+      await interactiveHighlightOnly(data, click);
     }
-  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate]);
+  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveHighlightOnly]);
 
   /**
    * Core requirement checking logic using the new pure requirements utility
@@ -238,13 +251,15 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     targetAction: string,
     refTarget: string,
     targetValue?: string,
-    buttonType: 'show' | 'do' = 'do'
+    buttonType: 'show' | 'do' = 'do',
+    targetComment?: string
   ): Promise<void> => {
     // Create InteractiveElementData directly from parameters
     const elementData: InteractiveElementData = {
       reftarget: refTarget,
       targetaction: targetAction,
       targetvalue: targetValue,
+      targetcomment: targetComment,
       requirements: undefined,
       tagName: 'button', // Simulated for React components
       textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,
@@ -254,35 +269,39 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     // No DOM element needed - React components manage their own state
     const isShowMode = buttonType === 'show';
 
-    try {
-      switch (targetAction) {
-        case 'highlight':
-          await interactiveFocus(elementData, !isShowMode);
-          break;
+          try {
+        switch (targetAction) {
+          case 'highlight':
+            await interactiveFocus(elementData, !isShowMode);
+            break;
 
-        case 'button':
-          await interactiveButton(elementData, !isShowMode);
-          break;
+          case 'button':
+            await interactiveButton(elementData, !isShowMode);
+            break;
 
-        case 'formfill':
-          await interactiveFormFill(elementData, !isShowMode);
-          break;
+          case 'formfill':
+            await interactiveFormFill(elementData, !isShowMode);
+            break;
 
-        case 'navigate':
-          interactiveNavigate(elementData, !isShowMode);
-          break;
+          case 'navigate':
+            interactiveNavigate(elementData, !isShowMode);
+            break;
 
-        case 'sequence':
-          await interactiveSequence(elementData, isShowMode);
-          break;
+          case 'sequence':
+            await interactiveSequence(elementData, isShowMode);
+            break;
 
-        default:
-          console.warn(`Unknown interactive action: ${targetAction}`);
-      }
+          case 'highlight-only':
+            await interactiveHighlightOnly(elementData, isShowMode);
+            break;
+
+          default:
+            console.warn(`Unknown interactive action: ${targetAction}`);
+        }
     } catch (error) {
       stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);
     }
-  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence, stateManager]);
+  }, [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence, interactiveHighlightOnly, stateManager]);
 
   return {
     interactiveFocus,
@@ -290,6 +309,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     interactiveSequence,
     interactiveFormFill,
     interactiveNavigate,
+    interactiveHighlightOnly,
     checkElementRequirements,
     checkRequirementsFromData,
     checkRequirementsWithData,

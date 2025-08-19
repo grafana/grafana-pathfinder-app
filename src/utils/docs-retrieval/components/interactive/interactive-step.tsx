@@ -11,6 +11,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       targetAction,
       refTarget,
       targetValue,
+      targetComment,
       title,
       description,
       children,
@@ -77,7 +78,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
         console.log(`🚀 Executing step: ${stepId} (${targetAction}: ${refTarget})`);
 
         // Execute the action using existing interactive logic
-        await executeInteractiveAction(targetAction, refTarget, targetValue, 'do');
+        await executeInteractiveAction(targetAction, refTarget, targetValue, 'do', targetComment);
 
         // Mark as completed locally and notify parent
         setIsLocallyCompleted(true);
@@ -128,7 +129,22 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
 
       setIsShowRunning(true);
       try {
-        await executeInteractiveAction(targetAction, refTarget, targetValue, 'show');
+        await executeInteractiveAction(targetAction, refTarget, targetValue, 'show', targetComment);
+        
+        // For highlight-only actions, mark as completed after showing
+        if (targetAction === 'highlight-only') {
+          setIsLocallyCompleted(true);
+          
+          // Notify parent if we have the callback (section coordination)
+          if (onStepComplete && stepId) {
+            onStepComplete(stepId);
+          }
+
+          // Call the original onComplete callback if provided
+          if (onComplete) {
+            onComplete();
+          }
+        }
       } catch (error) {
         console.error('Interactive show action failed:', error);
       } finally {
@@ -143,6 +159,9 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       isCompletedWithObjectives,
       checker.isEnabled,
       executeInteractiveAction,
+      onStepComplete,
+      onComplete,
+      stepId,
     ]);
 
     // Handle individual "Do it" action (delegates to executeStep)
@@ -212,6 +231,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
 
         <div className="interactive-step-actions">
           <div className="interactive-step-action-buttons">
+            {/* For highlight-only actions, hide "Show me" button when completed - only show when not completed */}
             {!isCompletedWithObjectives && (
               <Button
                 onClick={handleShowAction}
@@ -233,7 +253,8 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
               </Button>
             )}
 
-            {!isCompletedWithObjectives && (checker.isEnabled || checker.completionReason === 'objectives') && (
+            {/* Never show "Do it" button for highlight-only actions */}
+            {targetAction !== 'highlight-only' && !isCompletedWithObjectives && (checker.isEnabled || checker.completionReason === 'objectives') && (
               <Button
                 onClick={handleDoAction}
                 disabled={

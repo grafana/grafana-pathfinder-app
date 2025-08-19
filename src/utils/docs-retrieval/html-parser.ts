@@ -695,17 +695,18 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
           return {
             type: 'interactive-step',
             props: {
-              // Core interactive step props
+              // Include ALL other attributes (including future data-* attributes) FIRST
+              ...allProps,
+              // Core interactive step props (these override any conflicting data-* attributes)
               targetAction,
               refTarget,
               targetValue: el.getAttribute('data-targetvalue'),
+              targetComment: el.getAttribute('data-targetcomment'),
               title: undefined, // Remove title - content will be in children
               // Specific data attribute mappings for React prop names
               requirements: el.getAttribute('data-requirements'),
               objectives: el.getAttribute('data-objectives'),
               hints: el.getAttribute('data-hint'), // Fixed: now captures data-hint
-              // Include ALL other attributes (including future data-* attributes)
-              ...allProps,
             },
             children, // Pass processed children instead of empty array
             originalHTML: el.outerHTML,

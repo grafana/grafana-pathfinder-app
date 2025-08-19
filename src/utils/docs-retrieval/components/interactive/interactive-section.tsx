@@ -17,9 +17,10 @@ export interface BaseInteractiveProps {
 }
 
 export interface InteractiveStepProps extends BaseInteractiveProps {
-  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence';
+  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'highlight-only';
   refTarget: string;
   targetValue?: string;
+  targetComment?: string;
   title?: string;
   description?: string;
   children?: React.ReactNode;

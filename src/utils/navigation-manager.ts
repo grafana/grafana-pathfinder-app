@@ -1,5 +1,6 @@
 import { waitForReactUpdates } from './requirements-checker.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import logoSvg from '../img/logo.svg';
 
 export interface NavigationOptions {
   checkContext?: boolean;
@@ -80,6 +81,17 @@ export class NavigationManager {
    * @returns Promise that resolves when highlighting is complete
    */
   async highlight(element: HTMLElement): Promise<HTMLElement> {
+    return this.highlightWithComment(element);
+  }
+
+  /**
+   * Highlight an element with optional comment box
+   * 
+   * @param element - The element to highlight
+   * @param comment - Optional comment text to display in a comment box
+   * @returns Promise that resolves when highlighting is complete
+   */
+  async highlightWithComment(element: HTMLElement, comment?: string): Promise<HTMLElement> {
     // First, ensure navigation is open and element is visible
     await this.ensureNavigationOpen(element);
     await this.ensureElementVisible(element);
@@ -89,7 +101,7 @@ export class NavigationManager {
     
     // Create a highlight outline element
     const highlightOutline = document.createElement('div');
-    highlightOutline.className = 'interactive-highlight-outline';
+    highlightOutline.className = 'interactive-highlight-outline'; // Always use animated version
     
     // Position the outline around the target element using CSS custom properties
     const rect = element.getBoundingClientRect();
@@ -104,15 +116,125 @@ export class NavigationManager {
     
     document.body.appendChild(highlightOutline);
     
-    // Remove highlight after animation completes using DOM settling detection
-    setTimeout(() => {
-      element.classList.remove('interactive-highlighted');
-      if (highlightOutline.parentNode) {
-        highlightOutline.parentNode.removeChild(highlightOutline);
-      }
-    }, INTERACTIVE_CONFIG.delays.technical.highlight); // Use configuration instead of magic number
+    // Create comment box if comment is provided
+    let commentBox: HTMLElement | null = null;
+    if (comment && comment.trim()) {
+      commentBox = this.createCommentBox(comment, rect, scrollTop, scrollLeft);
+      document.body.appendChild(commentBox);
+    }
+
+    // Determine delay: longer for comments to allow reading time
+    const delay = comment && comment.trim() 
+      ? INTERACTIVE_CONFIG.delays.technical.highlight * 2.5  // 2.5x longer for comments
+      : INTERACTIVE_CONFIG.delays.technical.highlight;
+    
+    // For normal highlights, let CSS animation handle the highlight removal
+    // For comments, we need to manually remove both after extended duration
+    if (comment && comment.trim()) {
+      setTimeout(() => {
+        element.classList.remove('interactive-highlighted');
+        if (highlightOutline.parentNode) {
+          highlightOutline.parentNode.removeChild(highlightOutline);
+        }
+        // Add pop-out animation to comment box before removing
+        if (commentBox && commentBox.parentNode) {
+          commentBox.classList.add('comment-box-exit');
+          setTimeout(() => {
+            if (commentBox.parentNode) {
+              commentBox.parentNode.removeChild(commentBox);
+            }
+          }, 200); // Short delay for exit animation
+        }
+      }, delay);
+    } else {
+      // For highlights without comments, let CSS animation handle timing
+      // But still clean up the DOM element after animation completes
+      setTimeout(() => {
+        element.classList.remove('interactive-highlighted');
+        if (highlightOutline.parentNode) {
+          highlightOutline.parentNode.removeChild(highlightOutline);
+        }
+      }, INTERACTIVE_CONFIG.delays.technical.highlight);
+    }
     
     return element;
+  }
+
+  /**
+   * Create a themed comment box positioned near the highlighted element
+   */
+  private createCommentBox(comment: string, targetRect: DOMRect, scrollTop: number, scrollLeft: number): HTMLElement {
+    const commentBox = document.createElement('div');
+    commentBox.className = 'interactive-comment-box';
+    
+    // Create content structure with logo and text
+    const content = document.createElement('div');
+    content.className = 'interactive-comment-content interactive-comment-glow';
+    
+    // Create logo container
+    const logoContainer = document.createElement('div');
+    logoContainer.className = 'interactive-comment-logo';
+    
+    // Create img element to reference the logo.svg file (imported at top)
+    const logoImg = document.createElement('img');
+    logoImg.src = logoSvg;
+    logoImg.width = 20;
+    logoImg.height = 20;
+    logoImg.alt = 'Grafana';
+    logoImg.style.display = 'block';
+    
+    logoContainer.appendChild(logoImg);
+    
+    // Create text container
+    const textContainer = document.createElement('div');
+    textContainer.className = 'interactive-comment-text';
+    textContainer.textContent = comment;
+    
+    // Create content wrapper
+    const contentWrapper = document.createElement('div');
+    contentWrapper.className = 'interactive-comment-wrapper';
+    contentWrapper.appendChild(logoContainer);
+    contentWrapper.appendChild(textContainer);
+    
+    content.appendChild(contentWrapper);
+    
+    const arrow = document.createElement('div');
+    arrow.className = 'interactive-comment-arrow';
+    
+    commentBox.appendChild(content);
+    commentBox.appendChild(arrow);
+    
+    // Position comment box (to the right of the target, or left if no space)
+    const commentWidth = 250; // Fixed width for consistency
+    const commentHeight = 60; // Estimated height, will be auto-adjusted
+    const margin = 16; // Space between target and comment
+    
+    let left = targetRect.right + scrollLeft + margin;
+    let arrowPosition = 'left';
+    
+    // If comment box would go off-screen to the right, position it to the left
+    if (left + commentWidth > window.innerWidth) {
+      left = targetRect.left + scrollLeft - commentWidth - margin;
+      arrowPosition = 'right';
+    }
+    
+    // If still off-screen, center it above/below the target
+    if (left < 0) {
+      left = targetRect.left + scrollLeft + (targetRect.width - commentWidth) / 2;
+      arrowPosition = 'bottom';
+      // Position above the target
+      commentBox.style.setProperty('--comment-top', `${targetRect.top + scrollTop - commentHeight - margin}px`);
+    } else {
+      // Vertically center with the target
+      const top = targetRect.top + scrollTop + (targetRect.height - commentHeight) / 2;
+      commentBox.style.setProperty('--comment-top', `${top}px`);
+    }
+    
+    // Set position using CSS custom properties
+    commentBox.style.setProperty('--comment-left', `${Math.max(8, left)}px`);
+    commentBox.style.setProperty('--comment-arrow-position', arrowPosition);
+    
+    return commentBox;
   }
 
   /**

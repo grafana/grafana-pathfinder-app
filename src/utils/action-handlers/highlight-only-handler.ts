@@ -2,14 +2,14 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 
-export class FocusHandler {
+export class HighlightOnlyHandler {
   constructor(
     private stateManager: InteractiveStateManager,
     private navigationManager: NavigationManager,
     private waitForReactUpdates: () => Promise<void>
   ) {}
 
-  async execute(data: InteractiveElementData, click: boolean): Promise<void> {
+  async execute(data: InteractiveElementData, show: boolean): Promise<void> {
     this.stateManager.setState(data, 'running');
     
     try {
@@ -25,35 +25,28 @@ export class FocusHandler {
         targetElements = document.querySelectorAll(data.reftarget);
       }
       
-      if (!click) {
-        await this.handleShowMode(targetElements);
+      if (!show) {
+        // For highlight-only, there's no "do" mode - just complete immediately
+        await this.markAsCompleted(data);
         return;
       }
 
-      await this.handleDoMode(targetElements);
-      await this.markAsCompleted(data);
+      await this.handleShowMode(targetElements, data);
+      await this.markAsCompleted(data); // Mark as completed after showing
     } catch (error) {
-      this.stateManager.handleError(error as Error, 'FocusHandler', data, false);
+      this.stateManager.handleError(error as Error, 'HighlightOnlyHandler', data, false);
     }
   }
 
-  private async handleShowMode(targetElements: NodeListOf<Element>): Promise<void> {
-    // Show mode: ensure visibility and highlight, don't click - NO step completion
+  private async handleShowMode(targetElements: NodeListOf<Element>, data: InteractiveElementData): Promise<void> {
+    // Show mode: ensure visibility and highlight with optional comment - automatically marks as completed
     for (const element of targetElements) {
       const htmlElement = element as HTMLElement;
       await this.navigationManager.ensureNavigationOpen(htmlElement);
       await this.navigationManager.ensureElementVisible(htmlElement);
-      await this.navigationManager.highlight(htmlElement);
-    }
-  }
-
-  private async handleDoMode(targetElements: NodeListOf<Element>): Promise<void> {
-    // Do mode: ensure visibility then click, don't highlight
-    for (const element of targetElements) {
-      const htmlElement = element as HTMLElement;
-      await this.navigationManager.ensureNavigationOpen(htmlElement);
-      await this.navigationManager.ensureElementVisible(htmlElement);
-      htmlElement.click();
+      
+      // Use highlightWithComment to show comment box if targetcomment is provided
+      await this.navigationManager.highlightWithComment(htmlElement, data.targetcomment);
     }
   }
 

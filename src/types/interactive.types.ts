@@ -3,6 +3,7 @@ export interface InteractiveElementData {
   reftarget: string;
   targetaction: string;
   targetvalue?: string;
+  targetcomment?: string;
   requirements?: string;
   objectives?: string;
   
