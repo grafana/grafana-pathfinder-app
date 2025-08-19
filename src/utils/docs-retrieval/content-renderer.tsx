@@ -334,10 +334,25 @@ function UseTabsState(tabsData: Array<{ key: string; label: string }>) {
   return { activeTab, setActiveTab };
 }
 
+// Special renderer for tab content that converts <pre> elements to CodeBlock components
+// while keeping other content as raw HTML
+function TabContentRenderer({ html }: { html: string }) {
+  // Parse the HTML to find <pre> elements and convert them to CodeBlock components
+  const parseResult = parseHTMLToComponents(html);
+
+  if (!parseResult.isValid || !parseResult.data) {
+    // Fallback to raw HTML if parsing fails
+    return <div dangerouslySetInnerHTML={{ __html: html }} />;
+  }
+
+  // Render the parsed content using the existing component system
+  return (
+    <div>{parseResult.data.elements.map((element, index) => renderParsedElement(element, `tab-content-${index}`))}</div>
+  );
+}
+
 // Special renderer for tabs structure
 function renderTabsStructure(element: ParsedElement): React.ReactNode {
-  console.log('[DocsPlugin] renderTabsStructure called with element:', element);
-
   const tabsBarElement = element.children?.find(
     (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tabs-bar'
   ) as ParsedElement | undefined;
@@ -346,11 +361,8 @@ function renderTabsStructure(element: ParsedElement): React.ReactNode {
     (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tab-content'
   ) as ParsedElement | undefined;
 
-  console.log('[DocsPlugin] tabsBarElement found:', !!tabsBarElement);
-  console.log('[DocsPlugin] tabContentElement found:', !!tabContentElement);
-
   if (!tabsBarElement || !tabContentElement) {
-    console.log('[DocsPlugin] Missing required tabs elements');
+    console.warn('[DocsPlugin] Missing required tabs elements');
     return null;
   }
 
@@ -371,31 +383,6 @@ function renderTabsStructure(element: ParsedElement): React.ReactNode {
   // The content items are direct children of tab-content (like <pre> elements), not div[data-element="tab-content-item"]
   const tabContentItems = tabContentElement.children || [];
 
-  console.log('[DocsPlugin] Tabs data:', tabsData);
-  console.log('[DocsPlugin] Tab content items found:', tabContentItems.length);
-  console.log(
-    '[DocsPlugin] Tab content items:',
-    tabContentItems.map((item, i) => {
-      if (typeof item === 'string') {
-        return {
-          index: i,
-          type: 'string',
-          props: null,
-          hasOriginalHTML: false,
-          childrenCount: 0,
-        };
-      } else {
-        return {
-          index: i,
-          type: (item as any).type,
-          props: (item as any).props,
-          hasOriginalHTML: !!(item as any).originalHTML,
-          childrenCount: (item as any).children?.length || 0,
-        };
-      }
-    })
-  );
-
   return (
     <div>
       <TabsBar>
@@ -410,23 +397,20 @@ function renderTabsStructure(element: ParsedElement): React.ReactNode {
       </TabsBar>
       <TabContent>
         {(() => {
-          const contentIndex = parseInt(activeTab) || 0;
+          const contentIndex = parseInt(activeTab, 10) || 0;
           const content = tabContentItems[contentIndex];
-          console.log('[DocsPlugin] Rendering tab content index:', contentIndex, 'content:', content);
-          console.log('[DocsPlugin] Total tab content items:', tabContentItems.length);
 
           if (content && typeof content !== 'string') {
             // Render the content as raw HTML to avoid HTML parser interference
             const originalHTML = (content as any).originalHTML;
             if (originalHTML) {
-              console.log('[DocsPlugin] Rendering with originalHTML for tab', contentIndex);
-              return <div dangerouslySetInnerHTML={{ __html: originalHTML }} />;
+              // Special handling for tab content: parse <pre> elements to CodeBlock components
+              // while keeping other content as raw HTML
+              return <TabContentRenderer html={originalHTML} />;
             }
             // Fallback to normal rendering if no originalHTML
-            console.log('[DocsPlugin] Falling back to normal rendering for tab', contentIndex);
             return renderParsedElement(content, 'tab-content');
           }
-          console.log('[DocsPlugin] No content found for tab', contentIndex);
           return null;
         })()}
       </TabContent>
@@ -442,10 +426,8 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
   // Handle special cases first
   switch (element.type) {
     case 'badge':
-      console.log('badge:', element);
       return <Badge key={key} text={element.props.text} color={element.props.color} />;
     case 'badge-tooltip':
-      console.log('badge-tooltip:', element);
       return (
         <Badge
           key={key}
@@ -555,7 +537,6 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
     default:
       // Special handling for tabs root: <div data-element="tabs">...</div>
       if (typeof element.type === 'string' && element.type === 'div' && element.props?.['data-element'] === 'tabs') {
-        console.log('[DocsPlugin] Detected tabs root via data-element="tabs"');
         return <React.Fragment key={key}>{renderTabsStructure(element)}</React.Fragment>;
       }
 
@@ -569,7 +550,6 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
         );
 
         if (hasTabsBar && hasTabContent) {
-          console.log('[DocsPlugin] Detected tabs structure, rendering with TabsBar/TabContent');
           return <React.Fragment key={key}>{renderTabsStructure(element)}</React.Fragment>;
         }
       }
@@ -580,7 +560,6 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
         element.type === 'div' &&
         element.props?.['data-element'] === 'tab-content'
       ) {
-        console.log('[DocsPlugin] Skipping tab-content div - will be handled by tabs structure');
         return null; // Skip rendering this div, it's handled by the tabs structure
       }
 
@@ -590,14 +569,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
         element.type === 'div' &&
         element.props?.['data-element'] === 'tab-content-item'
       ) {
-        console.log('[DocsPlugin] Skipping tab-content-item div - will be handled by tabs structure only');
-        console.log('[DocsPlugin] Element type:', element.type, 'props:', element.props);
         return null; // Always skip, tabs structure handles rendering
-      }
-
-      // Add debugging for all div elements to see what we're processing
-      if (typeof element.type === 'string' && element.type === 'div') {
-        console.log('[DocsPlugin] Processing div element with props:', element.props);
       }
 
       // Before treating as HTML element, check for whitelisted @grafana/scenes tags and render the model's Component
