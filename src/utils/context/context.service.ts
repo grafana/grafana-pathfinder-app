@@ -274,26 +274,8 @@ export class ContextService {
       
       // Add bundled interactive recommendations (contextual based on current URL)
       const bundledRecommendations: Recommendation[] = this.getBundledInteractiveRecommendations(contextData);
-      
-      // Add default recommendations for testing (with proper confidence scores)
-      const defaultRecommendations: Recommendation[] = [
-        {
-          title: 'Product Interactive Tutorial Demo',
-          url: 'https://raw.githubusercontent.com/moxious/dynamics-test/refs/heads/main/prometheus-datasource',
-          type: 'docs-page',
-          summary: 'A test of interactive elements.',
-          matchAccuracy: 0.6, // Above 0.5 threshold
-        },
-        {
-          title: 'Tutorial Environment Demo',
-          url: 'https://raw.githubusercontent.com/Jayclifford345/tutorial-environment/refs/heads/master/',
-          type: 'docs-page',
-          summary: 'Additional tutorial environment for testing interactive elements.',
-          matchAccuracy: 0.6, // Above 0.5 threshold
-        },
-      ];
 
-      const allRecommendations = [...(data.recommendations || []), ...bundledRecommendations, ...defaultRecommendations];
+      const allRecommendations = [...(data.recommendations || []), ...bundledRecommendations];
       
       // Process recommendations
       const processedRecommendations = await Promise.all(
