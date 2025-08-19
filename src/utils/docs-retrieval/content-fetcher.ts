@@ -207,7 +207,6 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
   let redirectInfo: string | null = null;
 
   try {
-    console.log('fetching first response', url);
     const response = await fetch(url, fetchOptions);
 
     // Log redirect information if the final URL is different
@@ -224,8 +223,6 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           const finalUnstyledUrl = getUnstyledContentUrl(response.url);
           if (finalUnstyledUrl !== response.url) {
             try {
-              console.log('fetching unstyled response', finalUnstyledUrl);
-
               const unstyledResponse = await fetch(finalUnstyledUrl, fetchOptions);
               if (unstyledResponse.ok) {
                 const unstyledHtml = await unstyledResponse.text();
@@ -266,7 +263,6 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           if (baseUrlMatch) {
             const fullRedirectUrl = baseUrlMatch[1] + location;
             try {
-              console.log('fetching redirect response', fullRedirectUrl);
               const redirectResponse = await fetch(fullRedirectUrl, fetchOptions);
               if (redirectResponse.ok) {
                 const html = await redirectResponse.text();
@@ -301,7 +297,6 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
 
       for (const githubUrl of githubVariations) {
         try {
-          console.log('fetching github response', githubUrl);
           const githubResponse = await fetch(githubUrl, fetchOptions);
           if (githubResponse.ok) {
             const githubHtml = await githubResponse.text();
@@ -540,7 +535,6 @@ function getLearningJourneyBaseUrl(url: string): string {
 async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Milestone[]> {
   try {
     const indexJsonUrl = `${baseUrl}/index.json`;
-    console.log('fetching index.json', indexJsonUrl);
     const response = await fetch(indexJsonUrl);
 
     if (response.ok) {
