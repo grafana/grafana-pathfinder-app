@@ -91,6 +91,10 @@ export class NavigationManager {
    * @returns Promise that resolves when highlighting is complete
    */
   async highlightWithComment(element: HTMLElement, comment?: string): Promise<HTMLElement> {
+    if (comment) {
+      console.warn(`🎨 NavigationManager showing comment box:`, comment.substring(0, 50) + '...');
+    }
+
     // First, ensure navigation is open and element is visible
     await this.ensureNavigationOpen(element);
     await this.ensureElementVisible(element);
@@ -122,11 +126,8 @@ export class NavigationManager {
       document.body.appendChild(commentBox);
     }
 
-    // Determine delay: longer for comments to allow reading time
-    const delay =
-      comment && comment.trim()
-        ? INTERACTIVE_CONFIG.delays.technical.highlight * 2.0 // 2.0x longer for comments (reduced from 2.5x)
-        : INTERACTIVE_CONFIG.delays.technical.highlight;
+    // Determine delay: sync with highlight animation timing
+    const delay = INTERACTIVE_CONFIG.delays.technical.highlight;
 
     // For normal highlights, let CSS animation handle the highlight removal
     // For comments, we need to manually remove both after extended duration
@@ -185,10 +186,10 @@ export class NavigationManager {
 
     logoContainer.appendChild(logoImg);
 
-    // Create text container
+    // Create text container with HTML support
     const textContainer = document.createElement('div');
     textContainer.className = 'interactive-comment-text';
-    textContainer.textContent = comment;
+    textContainer.innerHTML = comment; // Use innerHTML to support rich HTML content
 
     // Create content wrapper
     const contentWrapper = document.createElement('div');

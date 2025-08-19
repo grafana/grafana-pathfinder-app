@@ -279,6 +279,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           refTarget={element.props.refTarget}
           targetValue={element.props.targetValue}
           targetComment={element.props.targetComment}
+          doIt={element.props.doIt}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           title={element.props.title}

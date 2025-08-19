@@ -583,55 +583,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 });
 
-// Comment box theme-aware styles
-const getCommentBoxStyles = (theme: GrafanaTheme2) => ({
-  '.interactive-comment-content': {
-    background: theme.colors.background.primary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    color: theme.colors.text.primary,
-  },
-
-  // Orange glow border for comment boxes (separate class for clarity)
-  '.interactive-comment-glow': {
-    border: `2px solid rgba(255, 136, 0, 0.5) !important`,
-    boxShadow: `
-      0 4px 12px rgba(0, 0, 0, 0.15),
-      0 0 0 3px rgba(255, 136, 0, 0.6),
-      0 0 15px rgba(255, 136, 0, 0.4),
-      0 0 25px rgba(255, 136, 0, 0.2)
-    `,
-  },
-
-  // Logo and text layout
-  '.interactive-comment-wrapper': {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: '8px',
-  },
-
-  '.interactive-comment-logo': {
-    flexShrink: 0,
-    marginTop: '1px', // Slight adjustment to align with text
-  },
-
-  '.interactive-comment-text': {
-    flex: 1,
-    lineHeight: 1.4,
-  },
-
-  // Arrow colors using theme
-  '.interactive-comment-box[style*="--comment-arrow-position: left"] .interactive-comment-arrow': {
-    borderRightColor: theme.colors.background.primary,
-  },
-
-  '.interactive-comment-box[style*="--comment-arrow-position: right"] .interactive-comment-arrow': {
-    borderLeftColor: theme.colors.background.primary,
-  },
-
-  '.interactive-comment-box[style*="--comment-arrow-position: bottom"] .interactive-comment-arrow': {
-    borderTopColor: theme.colors.background.primary,
-  },
-});
+// Comment box styles are now handled in global styles to avoid theme override conflicts
 
 // Expandable components styles
 const getExpandableStyles = (theme: GrafanaTheme2) => ({
@@ -687,7 +639,6 @@ export const getInteractiveStyles = (theme: GrafanaTheme2) =>
     ...getInteractiveSequenceStyles(theme),
     ...getCodeBlockStyles(theme),
     ...getInteractiveComponentStyles(theme),
-    ...getCommentBoxStyles(theme),
     ...getExpandableStyles(theme),
   } as any);
 
@@ -893,6 +844,85 @@ export const addGlobalInteractiveStyles = () => {
       line-height: 1.4;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
       position: relative;
+      /* Essential styling that needs to be global to avoid theme override conflicts */
+      background: var(--grafana-colors-background-primary, #1f1f23);
+      border: 1px solid var(--grafana-colors-border-medium, #404040);
+      color: var(--grafana-colors-text-primary, #d9d9d9);
+      /* Ensure content fits within container bounds */
+      overflow: hidden;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* Orange glow border for comment boxes */
+    .interactive-comment-glow {
+      border: 2px solid rgba(255, 136, 0, 0.5) !important;
+      box-shadow: 
+        0 4px 12px rgba(0, 0, 0, 0.15),
+        0 0 0 3px rgba(255, 136, 0, 0.6),
+        0 0 15px rgba(255, 136, 0, 0.4),
+        0 0 25px rgba(255, 136, 0, 0.2) !important;
+    }
+
+    /* Logo and text layout */
+    .interactive-comment-wrapper {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .interactive-comment-logo {
+      flex-shrink: 0;
+      margin-top: 1px; /* Slight adjustment to align with text */
+      width: 20px;
+      height: 20px;
+      overflow: hidden;
+      border-radius: 4px;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .interactive-comment-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: transparent;
+      border-radius: 4px;
+    }
+
+    .interactive-comment-text {
+      flex: 1;
+      line-height: 1.4;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      max-width: 100%;
+    }
+
+    /* Handle code elements within comments */
+    .interactive-comment-text code {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-size: 0.85em;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      word-break: break-all;
+      white-space: pre-wrap;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* Handle other inline elements to prevent overflow */
+    .interactive-comment-text strong,
+    .interactive-comment-text em,
+    .interactive-comment-text span {
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
 
     .interactive-comment-arrow {
@@ -901,13 +931,14 @@ export const addGlobalInteractiveStyles = () => {
       height: 0;
     }
 
-    /* Arrow positioning based on CSS custom property - borders set via theme-aware styles */
+    /* Arrow positioning and colors */
     .interactive-comment-box[style*="--comment-arrow-position: left"] .interactive-comment-arrow {
       top: 50%;
       left: -8px;
       transform: translateY(-50%);
       border-top: 8px solid transparent;
       border-bottom: 8px solid transparent;
+      border-right: 8px solid var(--grafana-colors-background-primary, #1f1f23);
     }
 
     .interactive-comment-box[style*="--comment-arrow-position: right"] .interactive-comment-arrow {
@@ -916,6 +947,7 @@ export const addGlobalInteractiveStyles = () => {
       transform: translateY(-50%);
       border-top: 8px solid transparent;
       border-bottom: 8px solid transparent;
+      border-left: 8px solid var(--grafana-colors-background-primary, #1f1f23);
     }
 
     .interactive-comment-box[style*="--comment-arrow-position: bottom"] .interactive-comment-arrow {
@@ -924,6 +956,7 @@ export const addGlobalInteractiveStyles = () => {
       transform: translateX(-50%);
       border-left: 8px solid transparent;
       border-right: 8px solid transparent;
+      border-top: 8px solid var(--grafana-colors-background-primary, #1f1f23);
     }
 
     /* Spinner animation for section running state */

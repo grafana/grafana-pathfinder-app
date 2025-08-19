@@ -26,7 +26,7 @@ export class FocusHandler {
       }
 
       if (!click) {
-        await this.handleShowMode(targetElements);
+        await this.handleShowMode(targetElements, data.targetcomment);
         return;
       }
 
@@ -37,13 +37,13 @@ export class FocusHandler {
     }
   }
 
-  private async handleShowMode(targetElements: NodeListOf<Element>): Promise<void> {
+  private async handleShowMode(targetElements: NodeListOf<Element>, comment?: string): Promise<void> {
     // Show mode: ensure visibility and highlight, don't click - NO step completion
     for (const element of targetElements) {
       const htmlElement = element as HTMLElement;
       await this.navigationManager.ensureNavigationOpen(htmlElement);
       await this.navigationManager.ensureElementVisible(htmlElement);
-      await this.navigationManager.highlight(htmlElement);
+      await this.navigationManager.highlightWithComment(htmlElement, comment);
     }
   }
 

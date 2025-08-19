@@ -19,7 +19,7 @@ export class FormFillHandler {
       await this.prepareElement(targetElement);
 
       if (!fillForm) {
-        await this.handleShowMode(targetElement);
+        await this.handleShowMode(targetElement, data.targetcomment);
         // Mark show actions as completed too for proper state cleanup
         await this.markAsCompleted(data);
         return;
@@ -54,8 +54,8 @@ export class FormFillHandler {
     await this.navigationManager.ensureElementVisible(targetElement);
   }
 
-  private async handleShowMode(targetElement: HTMLElement): Promise<void> {
-    await this.navigationManager.highlight(targetElement);
+  private async handleShowMode(targetElement: HTMLElement, comment?: string): Promise<void> {
+    await this.navigationManager.highlightWithComment(targetElement, comment);
   }
 
   private async handleDoMode(targetElement: HTMLElement, data: InteractiveElementData): Promise<void> {

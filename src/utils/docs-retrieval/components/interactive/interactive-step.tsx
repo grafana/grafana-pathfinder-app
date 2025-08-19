@@ -12,6 +12,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       refTarget,
       targetValue,
       targetComment,
+      doIt = true, // Default to true - show "Do it" button unless explicitly disabled
       title,
       description,
       children,
@@ -132,8 +133,8 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       try {
         await executeInteractiveAction(targetAction, refTarget, targetValue, 'show', targetComment);
 
-        // For highlight-only actions, mark as completed after showing
-        if (targetAction === 'highlight-only') {
+        // If doIt is false, mark as completed after showing (like the old highlight-only behavior)
+        if (!doIt) {
           setIsLocallyCompleted(true);
 
           // Notify parent if we have the callback (section coordination)
@@ -156,6 +157,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       refTarget,
       targetValue,
       targetComment,
+      doIt,
       disabled,
       isShowRunning,
       isCompletedWithObjectives,
@@ -257,23 +259,21 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
               </Button>
             )}
 
-            {/* Never show "Do it" button for highlight-only actions */}
-            {targetAction !== 'highlight-only' &&
-              !isCompletedWithObjectives &&
-              (checker.isEnabled || checker.completionReason === 'objectives') && (
-                <Button
-                  onClick={handleDoAction}
-                  disabled={
-                    disabled || isAnyActionRunning || (!checker.isEnabled && checker.completionReason !== 'objectives')
-                  }
-                  size="sm"
-                  variant="primary"
-                  className="interactive-step-do-btn"
-                  title={checker.isChecking ? 'Checking requirements...' : hints || `Do it: ${getActionDescription()}`}
-                >
-                  {checker.isChecking ? 'Checking...' : isDoRunning || isCurrentlyExecuting ? 'Executing...' : 'Do it'}
-                </Button>
-              )}
+            {/* Only show "Do it" button when doIt prop is true */}
+            {doIt && !isCompletedWithObjectives && (checker.isEnabled || checker.completionReason === 'objectives') && (
+              <Button
+                onClick={handleDoAction}
+                disabled={
+                  disabled || isAnyActionRunning || (!checker.isEnabled && checker.completionReason !== 'objectives')
+                }
+                size="sm"
+                variant="primary"
+                className="interactive-step-do-btn"
+                title={checker.isChecking ? 'Checking requirements...' : hints || `Do it: ${getActionDescription()}`}
+              >
+                {checker.isChecking ? 'Checking...' : isDoRunning || isCurrentlyExecuting ? 'Executing...' : 'Do it'}
+              </Button>
+            )}
           </div>
 
           {isCompletedWithObjectives && (

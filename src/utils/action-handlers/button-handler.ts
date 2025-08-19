@@ -17,7 +17,7 @@ export class ButtonHandler {
       const buttons = findButtonByText(data.reftarget);
 
       if (!click) {
-        await this.handleShowMode(buttons);
+        await this.handleShowMode(buttons, data.targetcomment);
         return;
       }
 
@@ -28,12 +28,12 @@ export class ButtonHandler {
     }
   }
 
-  private async handleShowMode(buttons: HTMLElement[]): Promise<void> {
+  private async handleShowMode(buttons: HTMLElement[], comment?: string): Promise<void> {
     // Show mode: ensure visibility and highlight, don't click - NO step completion
     for (const button of buttons) {
       await this.navigationManager.ensureNavigationOpen(button);
       await this.navigationManager.ensureElementVisible(button);
-      await this.navigationManager.highlight(button);
+      await this.navigationManager.highlightWithComment(button, comment);
     }
   }
 

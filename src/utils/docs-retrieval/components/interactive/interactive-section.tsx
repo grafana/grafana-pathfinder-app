@@ -17,10 +17,11 @@ export interface BaseInteractiveProps {
 }
 
 export interface InteractiveStepProps extends BaseInteractiveProps {
-  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'highlight-only';
+  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence';
   refTarget: string;
   targetValue?: string;
   targetComment?: string;
+  doIt?: boolean; // Control whether "Do it" button appears (defaults to true)
   title?: string;
   description?: string;
   children?: React.ReactNode;
@@ -433,7 +434,13 @@ export function InteractiveSection({
 
       try {
         // Execute the action using existing interactive logic
-        await executeInteractiveAction(stepInfo.targetAction!, stepInfo.refTarget!, stepInfo.targetValue, 'do', stepInfo.targetComment);
+        await executeInteractiveAction(
+          stepInfo.targetAction!,
+          stepInfo.refTarget!,
+          stepInfo.targetValue,
+          'do',
+          stepInfo.targetComment
+        );
 
         return true;
       } catch (error) {
@@ -498,7 +505,13 @@ export function InteractiveSection({
         // First, show the step (highlight it) - skip for multi-step components
         if (!stepInfo.isMultiStep) {
           console.log(`👁️ Showing step: ${stepInfo.stepId}`);
-          await executeInteractiveAction(stepInfo.targetAction!, stepInfo.refTarget!, stepInfo.targetValue, 'show', stepInfo.targetComment);
+          await executeInteractiveAction(
+            stepInfo.targetAction!,
+            stepInfo.refTarget!,
+            stepInfo.targetValue,
+            'show',
+            stepInfo.targetComment
+          );
 
           // Wait for highlight to be visible and animation to complete
           // Check cancellation during wait

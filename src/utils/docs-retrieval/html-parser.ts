@@ -664,6 +664,17 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
             );
           }
 
+          // Extract interactive-comment spans as metadata and hide from children
+          let interactiveComment: string | null = null;
+          const commentSpans = el.querySelectorAll('span.interactive-comment');
+
+          if (commentSpans.length > 0) {
+            // Use the first comment span found and capture its full HTML content
+            interactiveComment = commentSpans[0].innerHTML;
+            // Remove all comment spans from the element before processing children
+            commentSpans.forEach((span) => span.remove());
+          }
+
           // Process children as React components (same approach as expandable tables)
           const children: Array<ParsedElement | string> = [];
           el.childNodes.forEach((child, index) => {
@@ -699,7 +710,8 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               targetAction,
               refTarget,
               targetValue: el.getAttribute('data-targetvalue'),
-              targetComment: el.getAttribute('data-targetcomment'),
+              targetComment: interactiveComment || el.getAttribute('data-targetcomment'), // Prefer extracted comment
+              doIt: el.getAttribute('data-doit') !== 'false', // Default to true, only false if explicitly set to 'false'
               title: undefined, // Remove title - content will be in children
               // Specific data attribute mappings for React prop names
               requirements: el.getAttribute('data-requirements'),

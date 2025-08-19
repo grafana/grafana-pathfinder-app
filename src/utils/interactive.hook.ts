@@ -7,7 +7,7 @@ import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { SequenceManager } from './sequence-manager';
 import { NavigationManager } from './navigation-manager';
-import { FocusHandler, ButtonHandler, NavigateHandler, FormFillHandler, HighlightOnlyHandler } from './action-handlers';
+import { FocusHandler, ButtonHandler, NavigateHandler, FormFillHandler } from './action-handlers';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -64,11 +64,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [stateManager, navigationManager]
   );
 
-  const highlightOnlyHandler = useMemo(
-    () => new HighlightOnlyHandler(stateManager, navigationManager, waitForReactUpdates),
-    [stateManager, navigationManager]
-  );
-
   // Initialize global interactive styles
   useEffect(() => {
     addGlobalInteractiveStyles();
@@ -105,13 +100,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [navigateHandler]
   );
 
-  const interactiveHighlightOnly = useCallback(
-    async (data: InteractiveElementData, show: boolean) => {
-      await highlightOnlyHandler.execute(data, show);
-    },
-    [highlightOnlyHandler]
-  );
-
   // Define helper functions using refs to avoid circular dependencies
   const dispatchInteractiveAction = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
@@ -123,11 +111,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         await interactiveFormFill(data, click);
       } else if (data.targetaction === 'navigate') {
         interactiveNavigate(data, click);
-      } else if (data.targetaction === 'highlight-only') {
-        await interactiveHighlightOnly(data, click);
       }
     },
-    [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveHighlightOnly]
+    [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate]
   );
 
   /**
@@ -309,10 +295,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             await interactiveSequence(elementData, isShowMode);
             break;
 
-          case 'highlight-only':
-            await interactiveHighlightOnly(elementData, isShowMode);
-            break;
-
           default:
             console.warn(`Unknown interactive action: ${targetAction}`);
         }
@@ -320,15 +302,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);
       }
     },
-    [
-      interactiveFocus,
-      interactiveButton,
-      interactiveFormFill,
-      interactiveNavigate,
-      interactiveSequence,
-      interactiveHighlightOnly,
-      stateManager,
-    ]
+    [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence, stateManager]
   );
 
   return {
@@ -337,7 +311,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     interactiveSequence,
     interactiveFormFill,
     interactiveNavigate,
-    interactiveHighlightOnly,
     checkElementRequirements,
     checkRequirementsFromData,
     checkRequirementsWithData,
