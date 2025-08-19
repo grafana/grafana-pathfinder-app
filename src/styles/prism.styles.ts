@@ -5,7 +5,7 @@ import { css } from '@emotion/css';
  * Custom Prism.js theme that matches the existing SCSS color scheme
  * Based on the _prism.scss file colors
  */
-export const getPrismTheme = (theme: GrafanaTheme2) => css`
+export const getPrismStyles = (theme: GrafanaTheme2) => css`
   /* Generated with http://k88hudson.github.io/syntax-highlighting-theme-generator/www */
   /* http://k88hudson.github.io/react-markdocs */
   /**
@@ -46,8 +46,8 @@ export const getPrismTheme = (theme: GrafanaTheme2) => css`
 
   // inline code
   :not(pre) > code {
-    color: $gray-12;
-    background: $gray-2;
+    color: #e9ecef;
+    background: #f8f9fa;
     padding: 0.1rem 0.2rem;
     border-radius: 4px;
   }
@@ -59,7 +59,7 @@ export const getPrismTheme = (theme: GrafanaTheme2) => css`
   }
 
   a > code {
-    color: $blue;
+    color: #0066cc;
     text-decoration: underline;
     line-height: 1.5;
   }
@@ -71,7 +71,7 @@ export const getPrismTheme = (theme: GrafanaTheme2) => css`
   // code blocks (with or without language className)
   pre {
     color: #ffffff;
-    background: $gray-14;
+    background: #1e1e1e;
     position: relative;
     white-space: pre;
     word-spacing: normal;
@@ -84,7 +84,7 @@ export const getPrismTheme = (theme: GrafanaTheme2) => css`
     line-height: 1.8;
 
     code {
-      color: $gray12;
+      color: #e9ecef;
       background: none;
     }
   }
@@ -126,6 +126,7 @@ export const getPrismTheme = (theme: GrafanaTheme2) => css`
   .language-css .token.string,
   .style .token.string {
     color: #9292a5;
+    background: none;
   }
   .token.property,
   .token.function,
@@ -182,6 +183,7 @@ export const getPrismTheme = (theme: GrafanaTheme2) => css`
   pre[class*='language-'] > code[class*='language-'] {
     position: relative;
     z-index: 1;
+    text-shadow: 0 0;
   }
   .line-highlight {
     position: absolute;
@@ -189,8 +191,8 @@ export const getPrismTheme = (theme: GrafanaTheme2) => css`
     right: 0;
     padding: inherit 0;
     margin-top: 1em;
-    background: $bg-redesign2;
-    box-shadow: inset 5px 0 0 $blue;
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: inset 5px 0 0 #0066cc;
     z-index: 0;
     pointer-events: none;
     line-height: inherit;

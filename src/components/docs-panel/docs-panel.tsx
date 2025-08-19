@@ -34,6 +34,7 @@ import { ContextPanel } from './context-panel';
 import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../styles/docs-panel.styles';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
+import { getPrismStyles } from '../../styles/prism.styles';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -438,6 +439,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
   const styles = useStyles2(getStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
+  const prismStyles = useStyles2(getPrismStyles);
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
 
@@ -937,7 +939,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                       containerRef={contentRef}
                       className={`${
                         activeTab.content.type === 'learning-journey' ? journeyStyles : docsStyles
-                      } ${interactiveStyles}`}
+                      } ${interactiveStyles} ${prismStyles}`}
                       onContentReady={() => {
                         // Content is ready - any additional setup can go here
                       }}
