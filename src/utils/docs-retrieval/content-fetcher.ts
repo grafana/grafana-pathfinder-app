@@ -345,35 +345,22 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
 function generateGitHubVariations(url: string): string[] {
   const variations: string[] = [];
 
-  // Only try GitHub variations for GitHub URLs
-  if (url.includes('github.com') || url.includes('raw.githubusercontent.com')) {
-    // If it's a regular GitHub URL, try converting to raw.githubusercontent.com first (more targeted)
-    if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
-      // Handle tree URLs (directories) - convert to directory/unstyled.html
-      const treeMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
-      if (treeMatch) {
-        const [_fullMatch, owner, repo, branch, path] = treeMatch;
-        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/refs/heads/${branch}/${path}/unstyled.html`;
-        variations.push(rawUrl);
-      }
-
-      // Handle blob URLs (specific files)
-      const blobMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)/);
-      if (blobMatch) {
-        const [_fullMatch, owner, repo, branch, path] = blobMatch;
-        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
-        variations.push(rawUrl);
-
-        // Also try unstyled version of raw URL
-        if (!rawUrl.includes('/unstyled.html')) {
-          variations.push(`${rawUrl}/unstyled.html`);
-        }
-      }
+  // If it's a regular GitHub URL, try converting to raw.githubusercontent.com
+  if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
+    // Handle tree URLs (directories) - convert to directory/unstyled.html
+    const treeMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
+    if (treeMatch) {
+      const [_fullMatch, owner, repo, branch, path] = treeMatch;
+      const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/refs/heads/${branch}/${path}/unstyled.html`;
+      variations.push(rawUrl);
     }
 
-    // Generic fallback: try unstyled.html version (only if no specific conversion worked)
-    if (!url.includes('/unstyled.html') && variations.length === 0) {
-      variations.push(`${url.replace(/\/$/, '')}/unstyled.html`);
+    // Handle blob URLs (specific files)
+    const blobMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)/);
+    if (blobMatch) {
+      const [_fullMatch, owner, repo, branch, path] = blobMatch;
+      const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
+      variations.push(rawUrl);
     }
   }
 
