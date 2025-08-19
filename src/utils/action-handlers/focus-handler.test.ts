@@ -16,6 +16,7 @@ const mockNavigationManager = {
   ensureNavigationOpen: jest.fn(),
   ensureElementVisible: jest.fn(),
   highlight: jest.fn(),
+  highlightWithComment: jest.fn(),
 } as unknown as NavigationManager;
 
 const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
@@ -60,7 +61,7 @@ describe('FocusHandler', () => {
       expect(mockQuerySelectorAll).toHaveBeenCalledWith('test-selector');
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockElements[0]);
       expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockElements[0]);
-      expect(mockNavigationManager.highlight).toHaveBeenCalledWith(mockElements[0]);
+      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockElements[0], undefined);
       expect(mockWaitForReactUpdates).not.toHaveBeenCalled(); // No completion in show mode
     });
 

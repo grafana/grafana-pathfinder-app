@@ -19,6 +19,7 @@ const mockNavigationManager = {
   ensureNavigationOpen: jest.fn(),
   ensureElementVisible: jest.fn(),
   highlight: jest.fn(),
+  highlightWithComment: jest.fn(),
 } as unknown as NavigationManager;
 
 const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
@@ -59,7 +60,7 @@ describe('ButtonHandler', () => {
       expect(mockFindButtonByText).toHaveBeenCalledWith('test-button');
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]);
       expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]);
-      expect(mockNavigationManager.highlight).toHaveBeenCalledWith(mockButtons[0]);
+      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockButtons[0], undefined);
       expect(mockWaitForReactUpdates).not.toHaveBeenCalled(); // No completion in show mode
     });
 
