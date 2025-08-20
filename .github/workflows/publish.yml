@@ -43,7 +43,7 @@ jobs:
       docs-only: ${{ fromJSON(github.event.inputs.docs-only) }}
       scopes: universal
       grafana-cloud-deployment-type: provisioned
-      argo-workflow-slack-channel: "#grafana-plugins-platform-ci"
+      argo-workflow-slack-channel: "#pathfinder-app-release"
       publish-to-catalog-as-pending: true
 
 
