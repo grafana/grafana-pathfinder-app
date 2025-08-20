@@ -26,36 +26,42 @@ export const welcomeToGrafanaHtml = `<html>
                   data-requirements="navmenu-open"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/']"
                   data-targetaction='highlight'>
+                <span class="interactive-comment">The <strong>Home</strong> page is your Grafana dashboard. It shows recent dashboards, starred dashboards, and quick access to common tasks. Think of it as your <em>mission control center</em>!</span>
                 First, let's visit the <strong>Home</strong> page - your starting point in Grafana.
               </li>
 
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/dashboards']"
                   data-targetaction='highlight'>
+                <span class="interactive-comment"><strong>Dashboards</strong> are collections of panels that display your data visualizations. You can create <code>time series charts</code>, <code>bar graphs</code>, <code>tables</code>, and more. Each dashboard can pull data from multiple data sources!</span>
                 Next, <strong>Dashboards</strong> - where you'll create and manage your visualizations.
               </li>
 
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/explore']"
                   data-targetaction='highlight'>
+                <span class="interactive-comment"><strong>Explore</strong> is your data investigation tool! Write <code>PromQL</code> queries, search logs with <code>LogQL</code>, and analyze traces. Perfect for troubleshooting incidents and <em>exploring your data</em> without creating dashboards.</span>
                 Then <strong>Explore</strong> - perfect for ad-hoc queries and data exploration.
               </li>
 
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/alerting']"
                   data-targetaction='highlight'>
+                <span class="interactive-comment">Set up smart <strong>Alerting</strong> rules that monitor your metrics and logs continuously. Get notified via <code>email</code>, <code>Slack</code>, <code>PagerDuty</code>, or webhooks when thresholds are breached. <em>Be proactive, not reactive!</em></span>
                 <strong>Alerting</strong> - where you'll set up notifications when things go wrong.
               </li>
 
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections']"
                   data-targetaction='highlight'>
+                <span class="interactive-comment">This is where the magic happens! <strong>Connections</strong> lets you connect to databases like <code>PostgreSQL</code>, monitoring systems like <code>Prometheus</code>, log aggregators like <code>Loki</code>, cloud services like <code>AWS CloudWatch</code>, and <em>hundreds more</em>.</span>
                 <strong>Connections</strong> - the heart of Grafana where you connect to your data sources.
               </li>
 
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin']"
                   data-targetaction='highlight'>
+                <span class="interactive-comment">The <strong>Administration</strong> section is your control center. Manage user accounts, install <code>plugins</code>, configure <code>authentication</code>, monitor system health, and adjust global settings. <em>Admin power at your fingertips!</em></span>
                 Finally, <strong>Administration</strong> - for managing users, plugins, and system settings.
               </li>
             </ul>
