@@ -255,13 +255,15 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       targetAction: string,
       refTarget: string,
       targetValue?: string,
-      buttonType: 'show' | 'do' = 'do'
+      buttonType: 'show' | 'do' = 'do',
+      targetComment?: string
     ): Promise<void> => {
       // Create InteractiveElementData directly from parameters
       const elementData: InteractiveElementData = {
         reftarget: refTarget,
         targetaction: targetAction,
         targetvalue: targetValue,
+        targetcomment: targetComment,
         requirements: undefined,
         tagName: 'button', // Simulated for React components
         textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,

@@ -32,6 +32,7 @@ export const prometheusGrafana101Html = `<html>
                   data-requirements="navmenu-open"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections']"
                   data-targetaction='highlight'>
+                <span class="interactive-comment">The <strong>Connections</strong> section is where you manage all your data sources. This is your central hub for connecting Grafana to various data backends like <code>Prometheus</code>, <code>Loki</code>, <code>InfluxDB</code>, and more.</span>
                 Click on <strong>Connections</strong> in the left menu to manage data sources.
               </li>
 
@@ -65,6 +66,7 @@ export const prometheusGrafana101Html = `<html>
                   data-reftarget="input[id='connection-url']"
                   data-targetaction='formfill' 
                   data-targetvalue='http://prometheus:9090'>
+                <span class="interactive-comment">This URL <code>http://prometheus:9090</code> is the default endpoint for Prometheus servers. Port <strong>9090</strong> is the standard Prometheus port.</span>
                 Set the <strong>URL</strong> to <strong>http://prometheus:9090</strong> to connect to your Prometheus server.
               </li>
 
@@ -114,6 +116,7 @@ export const prometheusGrafana101Html = `<html>
                   data-reftarget='textarea.inputarea'
                   data-targetaction='formfill' 
                   data-targetvalue='avg(alloy_component_controller_running_components{})'>
+                <span class="interactive-comment">This is <strong>PromQL</strong> (Prometheus Query Language)! The <code>avg()</code> function calculates the average value, and <code>alloy_component_controller_running_components{}</code> is a metric that tracks running components. The empty <code>{}</code> means we're not filtering by labels.</span>
                 Enter this PromQL query:
                 <pre>avg(alloy_component_controller_running_components{})</pre>
               </li>
@@ -127,7 +130,9 @@ export const prometheusGrafana101Html = `<html>
               <li class="interactive" data-targetaction="multistep">
                 <span class="interactive"
                   data-reftarget='button[data-testid="data-testid toggle-viz-picker"]'
-                  data-targetaction="highlight"></span>
+                  data-targetaction="highlight">
+                  <span class="interactive-comment">Grafana offers <strong>many visualization types</strong>: <em>Time series</em> for trends, <em>Bar charts</em> for comparisons, <em>Heatmaps</em> for distributions, <em>Tables</em> for raw data, and <em>Stat</em> for single values. Choose based on your data story!</span>
+                </span>
                 <span class="interactive"
                   data-reftarget='div[aria-label="Plugin visualization item Stat"]'
                   data-targetaction="highlight"></span>

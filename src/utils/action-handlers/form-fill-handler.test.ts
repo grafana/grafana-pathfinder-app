@@ -20,12 +20,14 @@ const mockNavigationManager = {
   ensureNavigationOpen: jest.fn().mockResolvedValue(undefined),
   ensureElementVisible: jest.fn().mockResolvedValue(undefined),
   highlight: jest.fn().mockResolvedValue(undefined),
+  highlightWithComment: jest.fn().mockResolvedValue(undefined),
   fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
   openAndDockNavigation: jest.fn().mockResolvedValue(undefined),
 } as unknown as NavigationManager & {
   ensureNavigationOpen: jest.Mock;
   ensureElementVisible: jest.Mock;
   highlight: jest.Mock;
+  highlightWithComment: jest.Mock;
   fixNavigationRequirements: jest.Mock;
   openAndDockNavigation: jest.Mock;
 };
@@ -107,7 +109,7 @@ describe('FormFillHandler', () => {
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockElement);
       expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockElement);
-      expect(mockNavigationManager.highlight).toHaveBeenCalledWith(mockElement);
+      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockElement, undefined);
     });
 
     it('should handle do mode with input element correctly', async () => {

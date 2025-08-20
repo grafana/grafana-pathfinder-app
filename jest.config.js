@@ -6,6 +6,12 @@ module.exports = {
   // Jest configuration provided by Grafana scaffolding
   ...require('./.config/jest.config'),
 
+  // Add SVG file handling to base config
+  moduleNameMapper: {
+    ...require('./.config/jest.config').moduleNameMapper,
+    '\\.(svg)$': '<rootDir>/__mocks__/svgMock.js', // Mock SVG files
+  },
+
   // Coverage configuration
   collectCoverage: true,
   coverageReporters: ['text', 'html', 'lcov'],

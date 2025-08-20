@@ -938,7 +938,11 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         <div
                           className={styles.progressFill}
                           style={{
-                            width: `${((activeTab.content?.metadata.learningJourney?.currentMilestone || 0) / (activeTab.content?.metadata.learningJourney?.totalMilestones || 1)) * 100}%`,
+                            width: `${
+                              ((activeTab.content?.metadata.learningJourney?.currentMilestone || 0) /
+                                (activeTab.content?.metadata.learningJourney?.totalMilestones || 1)) *
+                              100
+                            }%`,
                           }}
                         />
                       </div>

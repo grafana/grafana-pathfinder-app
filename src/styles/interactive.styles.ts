@@ -583,6 +583,8 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 });
 
+// Comment box styles are now handled in global styles to avoid theme override conflicts
+
 // Expandable components styles
 const getExpandableStyles = (theme: GrafanaTheme2) => ({
   // Expandable Table styles
@@ -721,6 +723,10 @@ export const addGlobalInteractiveStyles = () => {
       box-shadow: 0 0 0 4px rgba(180, 180, 180, 0.12);
       animation: subtle-highlight-pulse 1.6s ease-in-out infinite;
     }
+
+
+
+
     @keyframes interactive-draw-border {
       0% {
         background-size: 0 var(--hl-thickness), var(--hl-thickness) 0, 0 var(--hl-thickness), var(--hl-thickness) 0;
@@ -743,6 +749,37 @@ export const addGlobalInteractiveStyles = () => {
     @keyframes interactive-fade-out {
       0% { opacity: 0.95; }
       100% { opacity: 0; }
+    }
+
+    /* Enhanced comment box animations */
+    @keyframes fadeInComment {
+      0% { 
+        opacity: 0; 
+        transform: scale(0.85) translateY(-8px); 
+      }
+      60% {
+        transform: scale(1.02) translateY(0);
+      }
+      100% { 
+        opacity: 1; 
+        transform: scale(1) translateY(0); 
+      }
+    }
+    
+    /* Comment box exit animation */
+    .comment-box-exit {
+      animation: fadeOutComment 0.2s ease-in forwards !important;
+    }
+    
+    @keyframes fadeOutComment {
+      0% { 
+        opacity: 1; 
+        transform: scale(1) translateY(0); 
+      }
+      100% { 
+        opacity: 0; 
+        transform: scale(0.9) translateY(-5px); 
+      }
     }
 
     @keyframes subtle-highlight-pulse {
@@ -788,6 +825,145 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
     
+    /* Interactive comment box - positioning only (no theme colors) */
+    .interactive-comment-box {
+      position: absolute;
+      top: var(--comment-top);
+      left: var(--comment-left);
+      max-width: 250px;
+      min-width: 200px;
+      pointer-events: none;
+      z-index: 10002;
+      animation: fadeInComment 0.3s ease-out;
+    }
+
+    .interactive-comment-content {
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.4;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      position: relative;
+      /* Essential styling that needs to be global to avoid theme override conflicts */
+      background: var(--grafana-colors-background-primary, #1f1f23);
+      border: 1px solid var(--grafana-colors-border-medium, #404040);
+      color: var(--grafana-colors-text-primary, #d9d9d9);
+      /* Ensure content fits within container bounds */
+      overflow: hidden;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* Orange glow border for comment boxes */
+    .interactive-comment-glow {
+      border: 2px solid rgba(255, 136, 0, 0.5) !important;
+      box-shadow: 
+        0 4px 12px rgba(0, 0, 0, 0.15),
+        0 0 0 3px rgba(255, 136, 0, 0.6),
+        0 0 15px rgba(255, 136, 0, 0.4),
+        0 0 25px rgba(255, 136, 0, 0.2) !important;
+    }
+
+    /* Logo and text layout */
+    .interactive-comment-wrapper {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .interactive-comment-logo {
+      flex-shrink: 0;
+      margin-top: 1px; /* Slight adjustment to align with text */
+      width: 20px;
+      height: 20px;
+      overflow: hidden;
+      border-radius: 4px;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .interactive-comment-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: transparent;
+      border-radius: 4px;
+    }
+
+    .interactive-comment-text {
+      flex: 1;
+      line-height: 1.4;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      max-width: 100%;
+    }
+
+    /* Handle code elements within comments */
+    .interactive-comment-text code {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-size: 0.85em;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      word-break: break-all;
+      white-space: pre-wrap;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* Handle other inline elements to prevent overflow */
+    .interactive-comment-text strong,
+    .interactive-comment-text em,
+    .interactive-comment-text span {
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .interactive-comment-arrow {
+      position: absolute;
+      width: 0;
+      height: 0;
+    }
+
+    /* Arrow positioning and colors */
+    .interactive-comment-box[style*="--comment-arrow-position: left"] .interactive-comment-arrow {
+      top: 50%;
+      left: -8px;
+      transform: translateY(-50%);
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+      border-right: 8px solid var(--grafana-colors-background-primary, #1f1f23);
+    }
+
+    .interactive-comment-box[style*="--comment-arrow-position: right"] .interactive-comment-arrow {
+      top: 50%;
+      right: -8px;
+      transform: translateY(-50%);
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+      border-left: 8px solid var(--grafana-colors-background-primary, #1f1f23);
+    }
+
+    .interactive-comment-box[style*="--comment-arrow-position: bottom"] .interactive-comment-arrow {
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid var(--grafana-colors-background-primary, #1f1f23);
+    }
+
+    /* Hide interactive comment spans - they're extracted as metadata */
+    span.interactive-comment {
+      display: none !important;
+    }
+
     /* Spinner animation for section running state */
     @keyframes spin {
       0% { transform: rotate(0deg); }

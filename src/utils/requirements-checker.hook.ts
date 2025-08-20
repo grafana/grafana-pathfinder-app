@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getRequirementExplanation } from './requirement-explanations';
 import { useInteractiveElements } from './interactive.hook';
 import { RequirementsCheckResult } from './requirements-checker.utils';
+import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 
 /**
  * Wait for React state updates to complete before proceeding
@@ -133,7 +134,10 @@ export function useRequirementsChecker({
 
       try {
         const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Requirements check timeout')), 5000);
+          setTimeout(
+            () => reject(new Error('Requirements check timeout')),
+            INTERACTIVE_CONFIG.delays.requirements.checkTimeout
+          );
         });
 
         // Create proper InteractiveElementData structure
