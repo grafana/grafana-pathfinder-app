@@ -10,12 +10,12 @@
     "test:coverage:watch": "jest --coverage --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --cache --ignore-path ./.gitignore --ext .js,.jsx,.ts,.tsx .",
-    "lint:fix": "npm run lint -- --fix && prettier --write --list-different .",
+    "lint:fix": "npm run lint -- --fix",
     "e2e": "playwright test",
     "server": "docker compose up --build",
     "sign": "npx --yes @grafana/sign-plugin@latest",
-    "prettier": "prettier --config .prettierrc.js --check './**/*.{tsx,js,json,yaml}' --write",
-    "prettier-test": "prettier --config .prettierrc.js --check './**/*.{tsx,js,json,yaml}'"
+    "prettier": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,json,yaml,md}' --write",
+    "prettier-test": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,json,yaml,md}'"
   },
   "author": "Grafanalabs",
   "license": "Apache-2.0",
