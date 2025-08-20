@@ -60,9 +60,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
     }
   }, [jsonData]);
 
-  const isSubmitDisabled = Boolean(
-    !state.recommenderServiceUrl || !state.docsBaseUrl || (!state.isDocsPasswordSet && !state.docsPassword)
-  );
+  const isSubmitDisabled = Boolean(!state.recommenderServiceUrl || !state.docsBaseUrl);
 
   const onResetDocsPassword = () =>
     setState({
@@ -106,7 +104,8 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
     });
   };
 
-  const onSubmit = () => {
+  const onSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
     const newConfig: DocsPluginConfig = {
       recommenderServiceUrl: state.recommenderServiceUrl,
       docsBaseUrl: state.docsBaseUrl,
@@ -123,7 +122,7 @@ const AppConfig = ({ plugin }: AppConfigProps) => {
       pinned,
       jsonData: {
         ...newConfig,
-        isDocsPasswordSet: true,
+        isDocsPasswordSet: state.isDocsPasswordSet || Boolean(state.docsPassword),
       },
       // This cannot be queried later by the frontend.
       // We don't want to override it in case it was set previously and left untouched now.
