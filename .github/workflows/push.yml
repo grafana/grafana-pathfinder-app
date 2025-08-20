@@ -20,7 +20,7 @@ env:
   # - 'universal': on-prem + cloud (default)
   # - 'grafana_cloud': cloud only, hidden for on-prem users
   SCOPES: universal # TODO: Choose the appropriate scope for your plugin.
-  ARGO_WORKFLOW_SLACK_CHANNEL: "#grafana-plugins-platform-ci" # TODO: Change with your own Slack channel
+  ARGO_WORKFLOW_SLACK_CHANNEL: "#pathfinder-app-release" # TODO: Change with your own Slack channel
 
   # Grafana Cloud environment to deploy the provisioned plugin to.
   # - 'dev': dev
