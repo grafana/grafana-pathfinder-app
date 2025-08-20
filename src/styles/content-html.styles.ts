@@ -9,19 +9,19 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
   flex: 1,
   lineHeight: 1.6,
   fontSize: theme.typography.body.fontSize,
-  
+
   // Ensure container can handle wide content
   minWidth: 0,
   maxWidth: '100%',
   wordWrap: 'break-word',
   overflowWrap: 'break-word',
-  
+
   // Reset word wrapping for code elements specifically
   '& pre, & pre code': {
     wordWrap: 'normal',
     overflowWrap: 'normal',
   },
-  
+
   // Basic HTML elements styling
   '& h1, & h2, & h3, & h4, & h5, & h6': {
     color: theme.colors.text.primary,
@@ -29,34 +29,34 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     marginBottom: theme.spacing(2),
     marginTop: theme.spacing(3),
     lineHeight: 1.3,
-    
+
     '&:first-child': {
       marginTop: 0,
     },
   },
-  
+
   '& h1': {
     fontSize: theme.typography.h2.fontSize,
     borderBottom: `2px solid ${theme.colors.border.medium}`,
     paddingBottom: theme.spacing(1),
     marginBottom: theme.spacing(3),
   },
-  
+
   '& h2': {
     fontSize: theme.typography.h3.fontSize,
     marginTop: theme.spacing(4),
   },
-  
+
   '& h3': {
     fontSize: theme.typography.h4.fontSize,
     marginTop: theme.spacing(3),
   },
-  
+
   '& h4': {
     fontSize: theme.typography.h5.fontSize,
     marginTop: theme.spacing(2),
   },
-  
+
   '& p': {
     marginBottom: theme.spacing(2),
     lineHeight: 1.7,
@@ -64,11 +64,11 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     wordWrap: 'break-word',
     overflowWrap: 'break-word',
   },
-  
+
   '& ul, & ol': {
     marginBottom: theme.spacing(2),
     paddingLeft: theme.spacing(3),
-    
+
     '& li': {
       marginBottom: theme.spacing(1),
       lineHeight: 1.6,
@@ -83,7 +83,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
       textDecoration: 'underline',
     },
   },
-  
+
   // Inline code styling
   '& code:not(pre code)': {
     position: 'relative',
@@ -97,7 +97,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.primary,
     fontWeight: theme.typography.fontWeightMedium,
   },
-  
+
   // Code blocks - shared styling
   '& pre': {
     position: 'relative',
@@ -114,7 +114,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.primary,
     whiteSpace: 'pre',
     maxWidth: '100%',
-    
+
     '& code': {
       backgroundColor: 'transparent',
       padding: 0,
@@ -128,72 +128,72 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
       wordBreak: 'normal',
       overflowWrap: 'normal',
     },
-    
+
     // Custom scrollbar styling
     '&::-webkit-scrollbar': {
       height: '8px',
       width: '8px',
     },
-    
+
     '&::-webkit-scrollbar-track': {
       backgroundColor: theme.colors.background.secondary,
       borderRadius: theme.shape.radius.default,
     },
-    
+
     '&::-webkit-scrollbar-thumb': {
       backgroundColor: theme.colors.border.medium,
       borderRadius: theme.shape.radius.default,
       border: `2px solid ${theme.colors.background.secondary}`,
-      
+
       '&:hover': {
         backgroundColor: theme.colors.border.strong,
       },
     },
-    
+
     '&::-webkit-scrollbar:horizontal': {
       height: '12px',
     },
-    
+
     '&::-webkit-scrollbar-thumb:horizontal': {
       backgroundColor: theme.colors.border.medium,
       borderRadius: theme.shape.radius.default,
       border: `2px solid ${theme.colors.background.canvas}`,
-      
+
       '&:hover': {
         backgroundColor: theme.colors.border.strong,
       },
     },
-    
+
     '&::-webkit-scrollbar-track:horizontal': {
       backgroundColor: theme.colors.background.secondary,
       borderRadius: theme.shape.radius.default,
       margin: `0 ${theme.spacing(1)}`,
     },
-    
+
     // Mobile responsive handling
     [theme.breakpoints.down('sm')]: {
       padding: `${theme.spacing(1.5)} ${theme.spacing(8)} ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
       fontSize: '12px',
       lineHeight: 1.4,
-      
+
       '&::-webkit-scrollbar': {
         height: '6px',
       },
-      
+
       '&::-webkit-scrollbar:horizontal': {
         height: '8px',
       },
     },
-    
+
     '@media (max-width: 480px)': {
       padding: `${theme.spacing(1)} ${theme.spacing(6)} ${theme.spacing(1)} ${theme.spacing(1)}`,
       fontSize: '11px',
-      
+
       '& .code-copy-button': {
         padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
         fontSize: '10px',
         minWidth: '50px',
-        
+
         '& .copy-text': {
           display: 'none',
         },
@@ -221,7 +221,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     zIndex: 2,
     minWidth: '70px',
     justifyContent: 'center',
-    
+
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
       borderColor: theme.colors.border.medium,
@@ -229,30 +229,30 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z1,
     },
-    
+
     '&:active': {
       transform: 'translateY(0)',
       boxShadow: 'none',
     },
-    
+
     '&.copied': {
       backgroundColor: theme.colors.success.main,
       borderColor: theme.colors.success.border,
       color: theme.colors.success.contrastText,
-      
+
       '&:hover': {
         backgroundColor: theme.colors.success.main,
         borderColor: theme.colors.success.border,
         color: theme.colors.success.contrastText,
       },
     },
-    
+
     '& svg': {
       flexShrink: 0,
       width: '16px',
       height: '16px',
     },
-    
+
     '& .copy-text': {
       whiteSpace: 'nowrap',
       fontSize: '12px',
@@ -280,7 +280,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     transition: 'all 0.2s ease',
     zIndex: 2,
     opacity: 0.7,
-    
+
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
       borderColor: theme.colors.border.medium,
@@ -288,24 +288,24 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
       opacity: 1,
       transform: 'translateY(-50%) scale(1.1)',
     },
-    
+
     '&:active': {
       transform: 'translateY(-50%) scale(1)',
     },
-    
+
     '&.copied': {
       backgroundColor: theme.colors.success.main,
       borderColor: theme.colors.success.border,
       color: theme.colors.success.contrastText,
       opacity: 1,
-      
+
       '&:hover': {
         backgroundColor: theme.colors.success.main,
         borderColor: theme.colors.success.border,
         color: theme.colors.success.contrastText,
       },
     },
-    
+
     '& svg': {
       flexShrink: 0,
       width: '12px',
@@ -361,18 +361,18 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     boxShadow: theme.shadows.z2,
     margin: `${theme.spacing(2)} 0`,
     backgroundColor: theme.colors.background.canvas,
-    
+
     [theme.breakpoints.down('sm')]: {
       minWidth: '280px',
       minHeight: '160px',
     },
-    
+
     [theme.breakpoints.up('lg')]: {
       maxWidth: '800px',
       margin: `${theme.spacing(3)} auto`,
       display: 'block',
     },
-    
+
     '&:hover': {
       boxShadow: theme.shadows.z3,
       borderColor: theme.colors.border.medium,
@@ -384,7 +384,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     width: '100%',
     maxWidth: '100%',
     margin: `${theme.spacing(2)} 0`,
-    
+
     '& video': {
       margin: 0,
     },
@@ -395,12 +395,12 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     minHeight: '180px',
     borderRadius: theme.shape.radius.default,
     boxShadow: theme.shadows.z2,
-    
+
     [theme.breakpoints.down('sm')]: {
       minWidth: '280px',
       minHeight: '160px',
     },
-    
+
     [theme.breakpoints.up('lg')]: {
       maxWidth: '900px',
       margin: `${theme.spacing(3)} auto`,
@@ -412,7 +412,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.background.secondary,
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
-    
+
     '&[data-video-enhanced]': {
       transition: 'opacity 0.3s ease',
     },
@@ -427,11 +427,11 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     boxShadow: theme.shadows.z1,
     minHeight: '315px',
-    
+
     [theme.breakpoints.down('md')]: {
       minHeight: '250px',
     },
-    
+
     [theme.breakpoints.down('sm')]: {
       minHeight: '200px',
     },
@@ -439,17 +439,17 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
 
   '& iframe': {
     maxWidth: '100%',
-    
+
     '&[width]': {
       width: '100% !important',
       height: 'auto !important',
       aspectRatio: '16 / 9',
       minHeight: '315px',
-      
+
       [theme.breakpoints.down('md')]: {
         minHeight: '250px',
       },
-      
+
       [theme.breakpoints.down('sm')]: {
         minHeight: '200px',
       },
@@ -470,7 +470,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     fontSize: theme.typography.bodySmall.fontSize,
     fontStyle: 'normal',
-    
+
     '& .title, & .admonition-title': {
       fontSize: theme.typography.bodySmall.fontSize,
       fontWeight: theme.typography.fontWeightBold,
@@ -481,14 +481,14 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
       color: theme.colors.text.primary,
       fontStyle: 'normal',
     },
-    
+
     '& p': {
       margin: `${theme.spacing(0.5)} 0`,
       fontSize: theme.typography.bodySmall.fontSize,
       lineHeight: 1.4,
       color: theme.colors.text.primary,
       fontStyle: 'normal',
-      
+
       '&:last-child': {
         marginBottom: 0,
       },
@@ -498,10 +498,10 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
   // Admonition types
   '& .admonition-note blockquote': {
     borderLeftColor: theme.colors.info.main,
-    
+
     '& .title, & .admonition-title': {
       color: theme.colors.info.main,
-      
+
       '&:before': {
         content: '"ℹ️ "',
       },
@@ -510,10 +510,10 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
 
   '& .admonition-warning blockquote, & .admonition-caution blockquote': {
     borderLeftColor: theme.colors.warning.main,
-    
+
     '& .title, & .admonition-title': {
       color: theme.colors.warning.main,
-      
+
       '&:before': {
         content: '"⚠️ "',
       },
@@ -522,10 +522,10 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
 
   '& .admonition-tip blockquote': {
     borderLeftColor: theme.colors.success.main,
-    
+
     '& .title, & .admonition-title': {
       color: theme.colors.success.main,
-      
+
       '&:before': {
         content: '"💡 "',
       },
@@ -542,11 +542,11 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
     overflow: 'hidden',
-    
+
     '& thead': {
       backgroundColor: theme.colors.background.canvas,
       borderBottom: `2px solid ${theme.colors.border.medium}`,
-      
+
       '& th': {
         padding: theme.spacing(1.5),
         textAlign: 'left',
@@ -554,33 +554,33 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
         color: theme.colors.text.primary,
         fontSize: theme.typography.body.fontSize,
         borderRight: `1px solid ${theme.colors.border.weak}`,
-        
+
         '&:last-child': {
           borderRight: 'none',
         },
       },
     },
-    
+
     '& tbody': {
       '& tr': {
         borderBottom: `1px solid ${theme.colors.border.weak}`,
         transition: 'background-color 0.2s ease',
-        
+
         '&:hover': {
           backgroundColor: theme.colors.action.hover,
         },
-        
+
         '&:last-child': {
           borderBottom: 'none',
         },
       },
-      
+
       '& td': {
         padding: theme.spacing(1.5),
         verticalAlign: 'top',
         borderRight: `1px solid ${theme.colors.border.weak}`,
         color: theme.colors.text.primary,
-        
+
         '&:last-child': {
           borderRight: 'none',
         },
@@ -609,7 +609,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.primary,
     transition: 'background-color 0.2s ease',
-    
+
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
     },
@@ -619,7 +619,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     transition: 'transform 0.2s ease',
     color: theme.colors.text.secondary,
     fontSize: '12px',
-    
+
     '&.collapsed': {
       transform: 'rotate(-90deg)',
     },
@@ -649,7 +649,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     padding: theme.spacing(2),
     backgroundColor: theme.colors.background.primary,
     borderTop: `1px solid ${theme.colors.border.weak}`,
-    
+
     '&.collapsed': {
       display: 'none',
     },
@@ -683,7 +683,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
-    
+
     '&:hover': {
       backgroundColor: theme.colors.primary.shade,
       transform: 'translateY(-1px)',
@@ -763,15 +763,15 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
     whiteSpace: 'pre',
     wordBreak: 'normal',
     overflowWrap: 'normal',
-    
+
     '&::-webkit-scrollbar': {
       height: '6px',
     },
-    
+
     '&::-webkit-scrollbar-track': {
       backgroundColor: theme.colors.background.canvas,
     },
-    
+
     '&::-webkit-scrollbar-thumb': {
       backgroundColor: theme.colors.border.medium,
       borderRadius: '3px',
@@ -803,7 +803,7 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
-    
+
     '&:hover': {
       backgroundColor: theme.colors.primary.shade,
       transform: 'translateY(-1px)',
@@ -855,7 +855,7 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
     transition: 'all 0.2s ease',
     width: '100%',
     boxSizing: 'border-box',
-    
+
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
       borderColor: theme.colors.border.medium,
@@ -948,7 +948,7 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
     transition: 'all 0.2s ease',
     width: '100%',
     boxSizing: 'border-box',
-    
+
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
       borderColor: theme.colors.border.medium,
@@ -997,13 +997,13 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
     paddingBottom: theme.spacing(1),
     backgroundColor: theme.colors.background.primary,
     margin: `${theme.spacing(2)} 0`,
-    
+
     '& .icon-heading': {
       display: 'flex',
       alignItems: 'flex-start',
       gap: theme.spacing(1.5),
       marginBottom: theme.spacing(1),
-      
+
       '& .icon-heading__container': {
         flexShrink: 0,
         display: 'flex',
@@ -1012,7 +1012,7 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
         width: '30px',
         height: '30px',
       },
-      
+
       '& h2': {
         margin: 0,
         fontSize: theme.typography.h4.fontSize,
@@ -1021,17 +1021,17 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
         lineHeight: 1.3,
       },
     },
-    
+
     '& p': {
       marginBottom: theme.spacing(1.5),
     },
-    
+
     '& ul': {
       marginBottom: 0,
-      
+
       '& li': {
         marginBottom: theme.spacing(0.5),
-        
+
         '&:last-child': {
           marginBottom: 0,
         },
@@ -1092,20 +1092,20 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
     cursor: 'pointer',
     transition: 'all 0.2s ease',
     minWidth: '100px',
-    
+
     '&:hover:not(:disabled)': {
       backgroundColor: theme.colors.primary.shade,
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z1,
     },
-    
+
     '&:disabled': {
       backgroundColor: theme.colors.action.disabledBackground,
       color: theme.colors.action.disabledText,
       cursor: 'not-allowed',
       opacity: 0.5,
     },
-    
+
     '& svg': {
       width: '16px',
       height: '16px',
@@ -1127,7 +1127,7 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
   },
 });
 
-// Docs-specific styles and overrides  
+// Docs-specific styles and overrides
 const getDocsSpecificStyles = (theme: GrafanaTheme2) => ({
   // Docs uses generic img selector instead of img.content-image
   '& img': {
@@ -1140,7 +1140,7 @@ const getDocsSpecificStyles = (theme: GrafanaTheme2) => ({
     boxShadow: theme.shadows.z1,
     transition: 'all 0.2s ease',
     cursor: 'zoom-in',
-    
+
     '&:hover': {
       boxShadow: theme.shadows.z2,
       transform: 'scale(1.02)',
@@ -1175,15 +1175,15 @@ const getDocsSpecificStyles = (theme: GrafanaTheme2) => ({
     whiteSpace: 'pre',
     wordBreak: 'normal',
     overflowWrap: 'normal',
-    
+
     '&::-webkit-scrollbar': {
       height: '6px',
     },
-    
+
     '&::-webkit-scrollbar-track': {
       backgroundColor: theme.colors.background.canvas,
     },
-    
+
     '&::-webkit-scrollbar-thumb': {
       backgroundColor: theme.colors.border.medium,
       borderRadius: '3px',
@@ -1200,14 +1200,14 @@ const getDocsSpecificStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.body.fontSize,
     fontStyle: 'italic',
     color: theme.colors.text.secondary,
-    
+
     '& p': {
       margin: `${theme.spacing(0.5)} 0`,
       fontSize: 'inherit',
       lineHeight: 1.6,
       color: 'inherit',
       fontStyle: 'inherit',
-      
+
       '&:last-child': {
         marginBottom: 0,
       },
@@ -1224,7 +1224,7 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(2),
     margin: `${theme.spacing(3)} 0`,
     width: '100%',
-    
+
     '@media (max-width: 768px)': {
       gridTemplateColumns: '1fr',
       gap: theme.spacing(1.5),
@@ -1241,7 +1241,7 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
     transition: 'all 0.2s ease',
     overflow: 'hidden',
     height: '100%',
-    
+
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
       borderColor: theme.colors.border.medium,
@@ -1250,7 +1250,7 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
       textDecoration: 'none',
       color: 'inherit',
     },
-    
+
     '&:active': {
       transform: 'translateY(-1px)',
     },
@@ -1308,7 +1308,7 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
   '& .mx-auto': { marginLeft: 'auto', marginRight: 'auto' },
   '& .d-flex': { display: 'flex' },
   '& .flex-direction-column': { flexDirection: 'column' },
-  '& .flex-direction-row-reverse': { 
+  '& .flex-direction-row-reverse': {
     flexDirection: 'row-reverse',
     '@media (max-width: 768px)': { flexDirection: 'column' },
   },
@@ -1331,7 +1331,7 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     gap: theme.spacing(1.5),
     alignItems: 'center',
-    
+
     '@media (max-width: 768px)': {
       flexDirection: 'column',
       textAlign: 'center',
@@ -1362,13 +1362,13 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
     cursor: 'pointer',
     transition: 'all 0.2s ease',
     whiteSpace: 'nowrap',
-    
+
     '&:hover': {
       textDecoration: 'none',
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z2,
     },
-    
+
     '&:active': {
       transform: 'translateY(0)',
     },
@@ -1377,7 +1377,7 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
   '& .btn--primary': {
     backgroundColor: theme.colors.primary.main,
     color: theme.colors.primary.contrastText,
-    
+
     '&:hover': {
       backgroundColor: theme.colors.primary.shade,
       color: theme.colors.primary.contrastText,
@@ -1392,14 +1392,14 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
 
   '& .btn.arrow': {
     position: 'relative',
-    
+
     '&:after': {
       content: '"→"',
       marginLeft: theme.spacing(0.75),
       fontSize: '1.1em',
       transition: 'transform 0.2s ease',
     },
-    
+
     '&:hover:after': {
       transform: 'translateX(2px)',
     },
@@ -1409,7 +1409,7 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
     maxWidth: '160px',
     height: 'auto',
     borderRadius: theme.shape.radius.default,
-    
+
     '@media (max-width: 768px)': {
       maxWidth: '120px',
       marginBottom: theme.spacing(1),

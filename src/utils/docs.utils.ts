@@ -43,4 +43,4 @@ export function useDocsPanel() {
 
 export function DocsPanelComponent() {
   return ContextPanelComponent();
-} 
+}

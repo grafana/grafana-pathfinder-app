@@ -32,18 +32,18 @@ describe('InteractiveStateManager - Section Blocking Integration', () => {
 
   test('should start section blocking', () => {
     expect(stateManager.isSectionBlocking()).toBe(false);
-    
+
     stateManager.startSectionBlocking('test-section', mockData);
-    
+
     expect(stateManager.isSectionBlocking()).toBe(true);
   });
 
   test('should stop section blocking', () => {
     stateManager.startSectionBlocking('test-section', mockData);
     expect(stateManager.isSectionBlocking()).toBe(true);
-    
+
     stateManager.stopSectionBlocking('test-section');
-    
+
     expect(stateManager.isSectionBlocking()).toBe(false);
   });
 
@@ -52,7 +52,7 @@ describe('InteractiveStateManager - Section Blocking Integration', () => {
     await stateManager.setState(mockData, 'running');
     await stateManager.setState(mockData, 'completed');
     await stateManager.setState(mockData, 'error');
-    
+
     // No exceptions should be thrown
     expect(true).toBe(true);
   });
@@ -62,11 +62,11 @@ describe('InteractiveStateManager - Section Blocking Integration', () => {
       enableGlobalBlocking: false,
       enableLogging: false,
     });
-    
+
     expect(stateManagerNoBlocking.isSectionBlocking()).toBe(false);
-    
+
     stateManagerNoBlocking.startSectionBlocking('test-section', mockData);
-    
+
     // Should still be false because global blocking is disabled
     expect(stateManagerNoBlocking.isSectionBlocking()).toBe(false);
   });
@@ -74,11 +74,11 @@ describe('InteractiveStateManager - Section Blocking Integration', () => {
   test('should handle error without affecting section blocking', () => {
     stateManager.startSectionBlocking('test-section', mockData);
     expect(stateManager.isSectionBlocking()).toBe(true);
-    
+
     expect(() => {
       stateManager.handleError('Test error', 'test context', mockData, false);
     }).not.toThrow();
-    
+
     // Section blocking should be unaffected by error handling
     expect(stateManager.isSectionBlocking()).toBe(true);
   });
@@ -86,9 +86,9 @@ describe('InteractiveStateManager - Section Blocking Integration', () => {
   test('should force unblock section blocking', () => {
     stateManager.startSectionBlocking('test-section', mockData);
     expect(stateManager.isSectionBlocking()).toBe(true);
-    
+
     stateManager.forceUnblock();
-    
+
     expect(stateManager.isSectionBlocking()).toBe(false);
   });
 });

@@ -37,10 +37,10 @@ describe('GlobalInteractionBlocker', () => {
 
   test('should start and stop section blocking correctly', () => {
     expect(blocker.isSectionBlocking()).toBe(false);
-    
+
     blocker.startSectionBlocking('test-section', mockData);
     expect(blocker.isSectionBlocking()).toBe(true);
-    
+
     blocker.stopSectionBlocking('test-section');
     expect(blocker.isSectionBlocking()).toBe(false);
   });
@@ -48,11 +48,11 @@ describe('GlobalInteractionBlocker', () => {
   test('should handle multiple section blocking requests (only one active at a time)', () => {
     blocker.startSectionBlocking('section1', mockData);
     expect(blocker.isSectionBlocking()).toBe(true);
-    
+
     // Second request should be ignored (logged but not change state)
     blocker.startSectionBlocking('section2', mockData);
     expect(blocker.isSectionBlocking()).toBe(true);
-    
+
     // Stopping first section should work
     blocker.stopSectionBlocking('section1');
     expect(blocker.isSectionBlocking()).toBe(false);
@@ -60,7 +60,7 @@ describe('GlobalInteractionBlocker', () => {
 
   test('should create blocking overlay when starting section', () => {
     blocker.startSectionBlocking('test-section', mockData);
-    
+
     const overlay = document.getElementById('interactive-blocking-overlay');
     expect(overlay).toBeTruthy();
     expect(overlay?.style.position).toBe('fixed');
@@ -70,7 +70,7 @@ describe('GlobalInteractionBlocker', () => {
     blocker.startSectionBlocking('test-section', mockData);
     let overlay = document.getElementById('interactive-blocking-overlay');
     expect(overlay).toBeTruthy();
-    
+
     blocker.stopSectionBlocking('test-section');
     overlay = document.getElementById('interactive-blocking-overlay');
     expect(overlay).toBeFalsy();
@@ -78,13 +78,13 @@ describe('GlobalInteractionBlocker', () => {
 
   test('should force unblock section', () => {
     blocker.startSectionBlocking('test-section', mockData);
-    
+
     expect(blocker.isSectionBlocking()).toBe(true);
-    
+
     blocker.forceUnblock();
-    
+
     expect(blocker.isSectionBlocking()).toBe(false);
-    
+
     const overlay = document.getElementById('interactive-blocking-overlay');
     expect(overlay).toBeFalsy();
   });

@@ -2,13 +2,13 @@
 // Extracted from docs-fetcher.ts but focused on metadata operations only
 // No DOM processing - just data manipulation and navigation logic
 
-import { 
-  RawContent, 
-  Milestone, 
+import {
+  RawContent,
+  Milestone,
   LearningJourneyMetadata,
   SideJourneys,
   RelatedJourneys,
-  ConclusionImage
+  ConclusionImage,
 } from './content.types';
 
 /**
@@ -20,9 +20,9 @@ export function getNextMilestoneUrl(content: RawContent): string | null {
   }
 
   const { currentMilestone, milestones } = content.metadata.learningJourney;
-  
+
   // Since milestones are now sequentially numbered from 1, we can use simple logic
-  const nextMilestone = milestones.find(m => m.number === currentMilestone + 1);
+  const nextMilestone = milestones.find((m) => m.number === currentMilestone + 1);
   return nextMilestone ? nextMilestone.url : null;
 }
 
@@ -32,16 +32,16 @@ export function getPreviousMilestoneUrl(content: RawContent): string | null {
   }
 
   const { currentMilestone, milestones, baseUrl } = content.metadata.learningJourney;
-  
+
   // Since milestones are now sequentially numbered from 1, we can use simple logic
   if (currentMilestone > 1) {
-    const prevMilestone = milestones.find(m => m.number === currentMilestone - 1);
+    const prevMilestone = milestones.find((m) => m.number === currentMilestone - 1);
     return prevMilestone ? prevMilestone.url : null;
   } else if (currentMilestone === 1) {
     // Go back to cover page (milestone 0)
     return baseUrl;
   }
-  
+
   return null;
 }
 
@@ -51,7 +51,7 @@ export function getCurrentMilestone(content: RawContent): Milestone | null {
   }
 
   const { currentMilestone, milestones } = content.metadata.learningJourney;
-  return milestones.find(m => m.number === currentMilestone) || null;
+  return milestones.find((m) => m.number === currentMilestone) || null;
 }
 
 export function getTotalMilestones(content: RawContent): number {
@@ -71,9 +71,11 @@ export function getJourneyProgress(content: RawContent): number {
   }
 
   const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
-  
-  if (totalMilestones === 0) {return 0;}
-  
+
+  if (totalMilestones === 0) {
+    return 0;
+  }
+
   return Math.round((currentMilestone / totalMilestones) * 100);
 }
 
@@ -91,7 +93,7 @@ export function isLastMilestone(content: RawContent): boolean {
   }
 
   const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
-  
+
   // Since milestones are now sequentially numbered from 1, this is simple
   return currentMilestone === totalMilestones;
 }
@@ -102,7 +104,7 @@ export function isFirstMilestone(content: RawContent): boolean {
   }
 
   const { currentMilestone } = content.metadata.learningJourney;
-  
+
   // Since milestones are now sequentially numbered from 1, this is simple
   return currentMilestone === 1;
 }
@@ -111,10 +113,7 @@ export function isFirstMilestone(content: RawContent): boolean {
  * Content enhancement helpers
  * These prepare content for rendering but don't manipulate DOM
  */
-export function generateJourneyContentWithExtras(
-  baseContent: string, 
-  metadata: LearningJourneyMetadata
-): string {
+export function generateJourneyContentWithExtras(baseContent: string, metadata: LearningJourneyMetadata): string {
   let enhancedContent = baseContent;
 
   // Add "Ready to Begin" button for cover pages (milestone 0)
@@ -123,7 +122,7 @@ export function generateJourneyContentWithExtras(
   }
 
   const currentMilestone = getCurrentMilestoneFromMetadata(metadata);
-  
+
   // Add side journeys if present
   if (currentMilestone?.sideJourneys) {
     enhancedContent = appendSideJourneysToContent(enhancedContent, currentMilestone.sideJourneys);
@@ -152,7 +151,7 @@ export function generateJourneyContentWithExtras(
 }
 
 function getCurrentMilestoneFromMetadata(metadata: LearningJourneyMetadata): Milestone | null {
-  return metadata.milestones.find(m => m.number === metadata.currentMilestone) || null;
+  return metadata.milestones.find((m) => m.number === metadata.currentMilestone) || null;
 }
 
 /**
@@ -160,10 +159,10 @@ function getCurrentMilestoneFromMetadata(metadata: LearningJourneyMetadata): Mil
  * These generate HTML strings to append to content
  */
 function addReadyToBeginButton(content: string, metadata: LearningJourneyMetadata): string {
-  // Since milestones are now sequentially numbered from 1, 
+  // Since milestones are now sequentially numbered from 1,
   // the first milestone is always the one with number === 1
-  const firstMilestone = metadata.milestones.find(m => m.number === 1);
-  
+  const firstMilestone = metadata.milestones.find((m) => m.number === 1);
+
   if (!firstMilestone) {
     return content;
   }
@@ -197,7 +196,9 @@ function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys
     <div class="journey-side-journeys">
       <h3 class="journey-side-journeys-title">${sideJourneys.heading}</h3>
       <ul class="journey-side-journeys-list">
-        ${sideJourneys.items.map(item => `
+        ${sideJourneys.items
+          .map(
+            (item) => `
           <li class="journey-side-journey-item">
             <a href="${item.link}" 
                target="_blank" 
@@ -207,7 +208,9 @@ function appendSideJourneysToContent(content: string, sideJourneys: SideJourneys
               ${item.title}
             </a>
           </li>
-        `).join('')}
+        `
+          )
+          .join('')}
       </ul>
     </div>
   `;
@@ -224,7 +227,9 @@ function appendRelatedJourneysToContent(content: string, relatedJourneys: Relate
     <div class="journey-related-journeys">
       <h3 class="journey-related-journeys-title">${relatedJourneys.heading}</h3>
       <ul class="journey-related-journeys-list">
-        ${relatedJourneys.items.map(item => `
+        ${relatedJourneys.items
+          .map(
+            (item) => `
           <li class="journey-related-journey-item">
             <a href="${item.link}"
                data-related-journey-link="true"
@@ -232,7 +237,9 @@ function appendRelatedJourneysToContent(content: string, relatedJourneys: Relate
               ${item.title}
             </a>
           </li>
-        `).join('')}
+        `
+          )
+          .join('')}
       </ul>
     </div>
   `;
@@ -254,11 +261,7 @@ function addConclusionImageToContent(content: string, conclusionImage: Conclusio
   return content + conclusionImageHtml;
 }
 
-function appendBottomNavigationToContent(
-  content: string, 
-  currentMilestone: number, 
-  totalMilestones: number
-): string {
+function appendBottomNavigationToContent(content: string, currentMilestone: number, totalMilestones: number): string {
   // Don't show navigation for cover pages (milestone 0)
   if (currentMilestone === 0) {
     return content;
@@ -266,7 +269,7 @@ function appendBottomNavigationToContent(
 
   // We'll still generate both buttons and let the link handler check navigation availability
   // This ensures consistent UI structure while the actual logic is handled by the navigation functions
-  
+
   const navigationHtml = `
     <div class="journey-bottom-navigation">
       <div class="journey-bottom-nav-container">
@@ -331,4 +334,4 @@ export function getAllJourneyCompletions(): Record<string, number> {
   } catch {
     return {};
   }
-} 
+}

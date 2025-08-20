@@ -19,9 +19,9 @@ export class InteractiveStateManager {
       enableLogging: true,
       enableEvents: true,
       enableGlobalBlocking: true, // Default to enabled for safety
-      ...options
+      ...options,
     };
-    
+
     this.globalBlocker = GlobalInteractionBlocker.getInstance();
   }
 
@@ -33,12 +33,12 @@ export class InteractiveStateManager {
       if (this.options.enableLogging) {
         console.log('✅ Interactive action completed:', data);
       }
-      
+
       if (this.options.enableEvents) {
         // Dispatch event for any listeners
         await waitForReactUpdates();
         const event = new CustomEvent('interactive-action-completed', {
-            detail: { data, state }
+          detail: { data, state },
         });
         document.dispatchEvent(event);
       }
@@ -52,7 +52,7 @@ export class InteractiveStateManager {
     if (!this.options.enableLogging) {
       return;
     }
-    
+
     const errorMessage = typeof error === 'string' ? error : error.message;
     console.error(`❌ ${context}: ${errorMessage}`, data);
   }
@@ -60,22 +60,15 @@ export class InteractiveStateManager {
   /**
    * Handle an interactive error with state management
    */
-  handleError(
-    error: Error | string, 
-    context: string, 
-    data: InteractiveElementData, 
-    shouldThrow = true
-  ): void {
+  handleError(error: Error | string, context: string, data: InteractiveElementData, shouldThrow = true): void {
     this.logError(context, error, data);
     this.setState(data, 'error');
-    
+
     if (shouldThrow) {
       throw typeof error === 'string' ? new Error(error) : error;
     }
   }
-  
 
-  
   /**
    * Start section-level blocking (persists until section completes)
    */
@@ -84,7 +77,7 @@ export class InteractiveStateManager {
       this.globalBlocker.startSectionBlocking(sectionId, data, cancelCallback);
     }
   }
-  
+
   /**
    * Stop section-level blocking
    */
@@ -93,14 +86,14 @@ export class InteractiveStateManager {
       this.globalBlocker.stopSectionBlocking(sectionId);
     }
   }
-  
+
   /**
    * Check if section blocking is active
    */
   isSectionBlocking(): boolean {
     return !!(this.options.enableGlobalBlocking && this.globalBlocker.isSectionBlocking());
   }
-  
+
   /**
    * Cancel the currently running section
    */
@@ -109,13 +102,11 @@ export class InteractiveStateManager {
       this.globalBlocker.cancelSection();
     }
   }
-  
+
   /**
    * Emergency method to unblock all interactions
    */
   forceUnblock(): void {
     this.globalBlocker.forceUnblock();
   }
-  
-
-} 
+}

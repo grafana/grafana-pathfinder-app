@@ -9,13 +9,13 @@ jest.mock('../navigation-manager');
 
 const mockStateManager = {
   setState: jest.fn(),
-  handleError: jest.fn()
+  handleError: jest.fn(),
 } as unknown as InteractiveStateManager;
 
 const mockNavigationManager = {
   ensureNavigationOpen: jest.fn(),
   ensureElementVisible: jest.fn(),
-  highlight: jest.fn()
+  highlight: jest.fn(),
 } as unknown as NavigationManager;
 
 const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
@@ -24,7 +24,7 @@ const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
 const mockQuerySelectorAll = jest.fn();
 Object.defineProperty(document, 'querySelectorAll', {
   value: mockQuerySelectorAll,
-  writable: true
+  writable: true,
 });
 
 describe('FocusHandler', () => {
@@ -33,20 +33,13 @@ describe('FocusHandler', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Create mock elements
-    mockElements = [
-      { click: jest.fn() } as unknown as HTMLElement,
-      { click: jest.fn() } as unknown as HTMLElement
-    ];
-    
+    mockElements = [{ click: jest.fn() } as unknown as HTMLElement, { click: jest.fn() } as unknown as HTMLElement];
+
     mockQuerySelectorAll.mockReturnValue(mockElements);
-    
-    focusHandler = new FocusHandler(
-      mockStateManager,
-      mockNavigationManager,
-      mockWaitForReactUpdates
-    );
+
+    focusHandler = new FocusHandler(mockStateManager, mockNavigationManager, mockWaitForReactUpdates);
   });
 
   describe('execute', () => {
@@ -57,7 +50,7 @@ describe('FocusHandler', () => {
       requirements: 'test-requirements',
       tagName: 'div',
       textContent: 'Test Element',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     it('should handle show mode correctly', async () => {
@@ -95,16 +88,13 @@ describe('FocusHandler', () => {
 
     it('should handle errors gracefully', async () => {
       const testError = new Error('Element not found');
-      mockQuerySelectorAll.mockImplementation(() => { throw testError; });
+      mockQuerySelectorAll.mockImplementation(() => {
+        throw testError;
+      });
 
       await focusHandler.execute(mockData, true);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(
-        testError,
-        'FocusHandler',
-        mockData,
-        false
-      );
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'FocusHandler', mockData, false);
     });
 
     it('should handle empty element list in show mode', async () => {

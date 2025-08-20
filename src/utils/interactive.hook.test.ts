@@ -172,7 +172,7 @@ describe('useInteractiveElements', () => {
   describe('Hook Initialization', () => {
     it('should initialize without errors', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-      
+
       expect(result.current).toBeDefined();
       expect(result.current.interactiveFocus).toBeDefined();
       expect(result.current.interactiveButton).toBeDefined();
@@ -188,7 +188,7 @@ describe('useInteractiveElements', () => {
 
     it('should work without containerRef', () => {
       const { result } = renderHook(() => useInteractiveElements());
-      
+
       expect(result.current).toBeDefined();
       expect(result.current.interactiveFocus).toBeDefined();
     });

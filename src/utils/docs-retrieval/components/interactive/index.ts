@@ -8,5 +8,5 @@ export type {
   BaseInteractiveProps,
   InteractiveStepProps,
   InteractiveSectionProps,
-  StepInfo
-} from './interactive-section'; 
+  StepInfo,
+} from './interactive-section';

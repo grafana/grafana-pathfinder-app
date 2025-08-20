@@ -11,10 +11,10 @@ export class FocusHandler {
 
   async execute(data: InteractiveElementData, click: boolean): Promise<void> {
     this.stateManager.setState(data, 'running');
-    
+
     try {
       const targetElements = document.querySelectorAll(data.reftarget);
-      
+
       if (!click) {
         await this.handleShowMode(targetElements);
         return;

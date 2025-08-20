@@ -64,48 +64,42 @@ function tryConstructUnstyledUrl(originalUrl: string): string | null {
         return newUrl.href;
       },
     ];
-    
+
     // Try the first pattern (most common)
     return unstyledPatterns[0]();
-    
   } catch (error) {
     console.warn('Failed to construct unstyled URL for:', originalUrl, error);
     return null;
   }
 }
 
-export function useLinkClickHandler({ 
-  contentRef, 
-  activeTab, 
-  theme, 
-  model 
-}: UseLinkClickHandlerProps) {
+export function useLinkClickHandler({ contentRef, activeTab, theme, model }: UseLinkClickHandlerProps) {
   useEffect(() => {
     const handleLinkClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      
+
       // Handle both button and anchor elements with data-journey-start
       const startElement = target.closest('[data-journey-start="true"]') as HTMLElement;
-      
+
       if (startElement) {
         safeEventHandler(event, {
           preventDefault: true,
           stopPropagation: true,
         });
-        
+
         // Get the milestone URL from the button's data attribute
         const milestoneUrl = startElement.getAttribute('data-milestone-url');
         const activeTab = model.getActiveTab();
-        
+
         if (milestoneUrl && activeTab) {
           // Track analytics for starting journey
           reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
             journey_title: activeTab.title,
             journey_url: activeTab.baseUrl,
             interaction_location: 'ready_to_begin_button',
-            total_milestones: activeTab.content?.metadata?.learningJourney?.totalMilestones || 0
+            total_milestones: activeTab.content?.metadata?.learningJourney?.totalMilestones || 0,
           });
-          
+
           // Navigate directly to the first milestone URL
           model.loadTabContent(activeTab.id, milestoneUrl);
         } else if (activeTab?.content?.milestones && activeTab.content.milestones.length > 0) {
@@ -117,9 +111,9 @@ export function useLinkClickHandler({
               journey_title: activeTab.title,
               journey_url: activeTab.baseUrl,
               interaction_location: 'ready_to_begin_button_fallback',
-              total_milestones: activeTab.content.milestones.length
+              total_milestones: activeTab.content.milestones.length,
             });
-            
+
             model.loadTabContent(activeTab.id, firstMilestone.url);
           }
         } else {
@@ -129,10 +123,16 @@ export function useLinkClickHandler({
 
       // Handle regular anchor links for Grafana docs and bundled interactives
       const anchor = target.closest('a[href]') as HTMLAnchorElement;
-      
-      if (anchor && !startElement && !target.closest('[data-side-journey-link]') && !target.closest('[data-related-journey-link]') && !target.closest('img.content-image')) {
+
+      if (
+        anchor &&
+        !startElement &&
+        !target.closest('[data-side-journey-link]') &&
+        !target.closest('[data-related-journey-link]') &&
+        !target.closest('img.content-image')
+      ) {
         const href = anchor.getAttribute('href');
-        
+
         if (href) {
           // Support bundled interactives: href like bundled:prometheus-grafana-101
           if (href.startsWith('bundled:')) {
@@ -150,7 +150,7 @@ export function useLinkClickHandler({
               link_url: href,
               link_text: linkText,
               source_page: activeTab?.content?.url || 'unknown',
-              link_type: 'bundled_interactive'
+              link_type: 'bundled_interactive',
             });
             return;
           }
@@ -159,7 +159,7 @@ export function useLinkClickHandler({
             // Let the browser handle fragment navigation naturally
             return;
           }
-          
+
           // Resolve relative URLs against current page base URL
           let resolvedUrl = href;
           if (!href.startsWith('http') && !href.startsWith('/')) {
@@ -179,18 +179,22 @@ export function useLinkClickHandler({
               resolvedUrl = `https://grafana.com/docs/${href}`;
             }
           }
-          
+
           // Handle Grafana docs and tutorials links (including resolved relative links)
-          if (resolvedUrl.includes('grafana.com/docs/') || resolvedUrl.includes('grafana.com/tutorials/') || 
-              href.startsWith('/docs/') || href.startsWith('/tutorials/')) {
+          if (
+            resolvedUrl.includes('grafana.com/docs/') ||
+            resolvedUrl.includes('grafana.com/tutorials/') ||
+            href.startsWith('/docs/') ||
+            href.startsWith('/tutorials/')
+          ) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,
             });
-            
+
             const fullUrl = resolvedUrl.startsWith('http') ? resolvedUrl : `https://grafana.com${resolvedUrl}`;
             const linkText = anchor.textContent?.trim() || 'Documentation';
-            
+
             // Determine if it's a learning journey or regular docs/tutorials
             if (fullUrl.includes('/learning-journeys/')) {
               model.openLearningJourney(fullUrl, linkText);
@@ -202,13 +206,13 @@ export function useLinkClickHandler({
                 model.openLearningJourney(fullUrl, linkText);
               }
             }
-            
+
             // Track analytics for docs/tutorials link clicks
             reportAppInteraction('docs_link_click' as UserInteraction, {
               link_url: fullUrl,
               link_text: linkText,
               source_page: activeTab?.content?.url || 'unknown',
-              link_type: fullUrl.includes('/tutorials/') ? 'tutorial' : 'docs'
+              link_type: fullUrl.includes('/tutorials/') ? 'tutorial' : 'docs',
             });
           }
           // Handle GitHub links - check if allowed to open in app
@@ -217,18 +221,18 @@ export function useLinkClickHandler({
               preventDefault: true,
               stopPropagation: true,
             });
-            
+
             const linkText = anchor.textContent?.trim() || 'GitHub Link';
-            
+
             // Check if this URL is in the allowed list for app tabs
-            const isAllowedUrl = ALLOWED_GITHUB_URLS.some(allowedUrl => 
-              resolvedUrl === allowedUrl || resolvedUrl.startsWith(allowedUrl)
+            const isAllowedUrl = ALLOWED_GITHUB_URLS.some(
+              (allowedUrl) => resolvedUrl === allowedUrl || resolvedUrl.startsWith(allowedUrl)
             );
-            
+
             if (isAllowedUrl) {
               // This is an allowed URL - try to open in app with unstyled.html fallback
               const unstyledUrl = tryConstructUnstyledUrl(resolvedUrl);
-              
+
               if (unstyledUrl) {
                 // Try to open in app first
                 if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
@@ -236,13 +240,13 @@ export function useLinkClickHandler({
                 } else {
                   model.openLearningJourney(unstyledUrl, linkText);
                 }
-                
+
                 // Track analytics for allowed GitHub link attempts
                 reportAppInteraction('docs_link_click' as UserInteraction, {
                   link_url: unstyledUrl,
                   link_text: linkText,
                   source_page: activeTab?.content?.url || 'unknown',
-                  link_type: 'github_allowed_unstyled'
+                  link_type: 'github_allowed_unstyled',
                 });
               } else {
                 // Even allowed URLs fallback to opening in app without unstyled
@@ -251,25 +255,25 @@ export function useLinkClickHandler({
                 } else {
                   model.openLearningJourney(resolvedUrl, linkText);
                 }
-                
+
                 // Track analytics for allowed GitHub direct attempts
                 reportAppInteraction('docs_link_click' as UserInteraction, {
                   link_url: resolvedUrl,
                   link_text: linkText,
                   source_page: activeTab?.content?.url || 'unknown',
-                  link_type: 'github_allowed_direct'
+                  link_type: 'github_allowed_direct',
                 });
               }
             } else {
               // Not in allowed list - open in new browser tab immediately
               window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
-              
+
               // Track analytics for GitHub browser opening
               reportAppInteraction('docs_link_click' as UserInteraction, {
                 link_url: resolvedUrl,
                 link_text: linkText,
                 source_page: activeTab?.content?.url || 'unknown',
-                link_type: 'github_browser_external'
+                link_type: 'github_browser_external',
               });
             }
           }
@@ -279,18 +283,18 @@ export function useLinkClickHandler({
               preventDefault: true,
               stopPropagation: true,
             });
-            
+
             // Open all other external links in new browser tab to keep user in Grafana
             window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
-            
+
             const linkText = anchor.textContent?.trim() || 'External Link';
-            
+
             // Track analytics for external link clicks
             reportAppInteraction('docs_link_click' as UserInteraction, {
               link_url: resolvedUrl,
               link_text: linkText,
               source_page: activeTab?.content?.url || 'unknown',
-              link_type: 'external_browser'
+              link_type: 'external_browser',
             });
           }
         }
@@ -298,37 +302,37 @@ export function useLinkClickHandler({
 
       // Handle image lightbox clicks
       const image = target.closest('img.content-image') as HTMLImageElement;
-      
-      if (image ) {
+
+      if (image) {
         safeEventHandler(event, {
           preventDefault: true,
           stopPropagation: true,
         });
-        
+
         const imageSrc = image.src;
         const imageAlt = image.alt || 'Image';
-        
+
         // Create image lightbox modal with theme awareness
         createImageLightbox(imageSrc, imageAlt, theme);
       }
 
       // Handle side journey links
       const sideJourneyLink = target.closest('[data-side-journey-link]') as HTMLAnchorElement;
-      
+
       if (sideJourneyLink) {
         safeEventHandler(event, {
           preventDefault: true,
           stopPropagation: true,
         });
-        
+
         // Get URL from href attribute instead of data attribute
         const linkUrl = sideJourneyLink.getAttribute('href');
         const linkTitle = sideJourneyLink.textContent?.trim() || 'Side Journey';
-        
+
         if (linkUrl) {
           // Convert relative URLs to full URLs
           const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
-          
+
           // Open side journey links in new app tabs (as docs pages)
           if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
             (model as any).openDocsPage(fullUrl, linkTitle);
@@ -336,56 +340,56 @@ export function useLinkClickHandler({
             // Fallback to learning journey handler
             model.openLearningJourney(fullUrl, linkTitle);
           }
-          
+
           // Track analytics for side journey clicks
           reportAppInteraction('docs_link_click' as UserInteraction, {
             link_url: fullUrl,
             link_text: linkTitle,
             source_page: activeTab?.content?.url || 'unknown',
-            link_type: 'side_journey'
+            link_type: 'side_journey',
           });
         }
       }
 
       // Handle related journey links (open in new app tabs)
       const relatedJourneyLink = target.closest('[data-related-journey-link]') as HTMLAnchorElement;
-      
+
       if (relatedJourneyLink) {
         safeEventHandler(event, {
           preventDefault: true,
           stopPropagation: true,
         });
-        
+
         // Get URL from href attribute and title from text content (like side journeys)
         const linkUrl = relatedJourneyLink.getAttribute('href');
         const linkTitle = relatedJourneyLink.textContent?.trim() || 'Related Journey';
-        
+
         if (linkUrl) {
           // Related journey links open in new app tabs (learning journeys)
           const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
           model.openLearningJourney(fullUrl, linkTitle);
-          
+
           // Track analytics for related journey clicks
           reportAppInteraction('docs_link_click' as UserInteraction, {
             link_url: fullUrl,
             link_text: linkTitle,
             source_page: activeTab?.content?.url || 'unknown',
-            link_type: 'related_journey'
+            link_type: 'related_journey',
           });
         }
       }
 
       // Handle bottom navigation buttons (Previous/Next)
       const bottomNavButton = target.closest('.journey-bottom-nav-button') as HTMLElement;
-      
+
       if (bottomNavButton) {
         safeEventHandler(event, {
           preventDefault: true,
           stopPropagation: true,
         });
-        
+
         const buttonText = bottomNavButton.textContent?.trim().toLowerCase();
-        
+
         if (buttonText?.includes('previous') || buttonText?.includes('prev')) {
           if (model.canNavigatePrevious()) {
             model.navigateToPreviousMilestone();
@@ -399,13 +403,15 @@ export function useLinkClickHandler({
 
       // Also handle buttons with specific text content as fallback
       const button = target.closest('button') as HTMLButtonElement;
-      
+
       if (button && !bottomNavButton) {
         const buttonText = button.textContent?.trim().toLowerCase();
-        
+
         // Check if this looks like a navigation button in the content area
-        if ((buttonText?.includes('previous') || buttonText?.includes('prev') || buttonText?.includes('←')) && 
-            button.closest('[class*="content"]')) {
+        if (
+          (buttonText?.includes('previous') || buttonText?.includes('prev') || buttonText?.includes('←')) &&
+          button.closest('[class*="content"]')
+        ) {
           safeEventHandler(event, {
             preventDefault: true,
             stopPropagation: true,
@@ -413,8 +419,10 @@ export function useLinkClickHandler({
           if (model.canNavigatePrevious()) {
             model.navigateToPreviousMilestone();
           }
-        } else if ((buttonText?.includes('next') || buttonText?.includes('→')) && 
-                   button.closest('[class*="content"]')) {
+        } else if (
+          (buttonText?.includes('next') || buttonText?.includes('→')) &&
+          button.closest('[class*="content"]')
+        ) {
           safeEventHandler(event, {
             preventDefault: true,
             stopPropagation: true,
@@ -439,7 +447,9 @@ export function useLinkClickHandler({
 
 function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaTheme2) {
   // Prevent multiple modals
-  if (document.querySelector('.journey-image-modal')) {return;}
+  if (document.querySelector('.journey-image-modal')) {
+    return;
+  }
   const imageModal = document.createElement('div');
   imageModal.className = 'journey-image-modal';
 
@@ -492,4 +502,3 @@ function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaT
   // Prevent background scroll
   document.body.style.overflow = 'hidden';
 }
-

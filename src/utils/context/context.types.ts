@@ -98,7 +98,7 @@ export interface UseContextPanelReturn {
   contextData: ContextData;
   isLoadingRecommendations: boolean;
   otherDocsExpanded: boolean;
-  
+
   // Actions
   refreshContext: () => void;
   refreshRecommendations: () => void;
@@ -120,4 +120,4 @@ export interface BundledInteractive {
 
 export interface BundledInteractivesIndex {
   interactives: BundledInteractive[];
-} 
+}
