@@ -8,24 +8,26 @@ import { resetValueTracker } from '../dom-utils';
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
 jest.mock('../dom-utils', () => ({
-  resetValueTracker: jest.fn()
+  resetValueTracker: jest.fn(),
 }));
 
 const mockStateManager = {
   setState: jest.fn(),
-  handleError: jest.fn()
+  handleError: jest.fn(),
 } as unknown as InteractiveStateManager;
 
 const mockNavigationManager = {
   ensureNavigationOpen: jest.fn().mockResolvedValue(undefined),
   ensureElementVisible: jest.fn().mockResolvedValue(undefined),
   highlight: jest.fn().mockResolvedValue(undefined),
+  highlightWithComment: jest.fn().mockResolvedValue(undefined),
   fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
   openAndDockNavigation: jest.fn().mockResolvedValue(undefined),
 } as unknown as NavigationManager & {
   ensureNavigationOpen: jest.Mock;
   ensureElementVisible: jest.Mock;
   highlight: jest.Mock;
+  highlightWithComment: jest.Mock;
   fixNavigationRequirements: jest.Mock;
   openAndDockNavigation: jest.Mock;
 };
@@ -53,18 +55,18 @@ describe('FormFillHandler', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Mock global setTimeout
     jest.spyOn(global, 'setTimeout').mockImplementation(mockSetTimeout);
-    
+
     // Mock document.querySelectorAll
     document.querySelectorAll = mockQuerySelectorAll;
-    
+
     // Create a mock element
     mockElement = {
       tagName: 'INPUT',
       classList: {
-        contains: jest.fn().mockReturnValue(false)
+        contains: jest.fn().mockReturnValue(false),
       },
       focus: mockFocus,
       blur: mockBlur,
@@ -73,18 +75,14 @@ describe('FormFillHandler', () => {
       value: '',
       getAttribute: jest.fn().mockReturnValue(null), // Needed for isAriaCombobox detection
     } as unknown as HTMLElement;
-    
+
     // Mock Object.getOwnPropertyDescriptor for native setters
     const mockNativeSetter = jest.fn();
     Object.getOwnPropertyDescriptor = jest.fn().mockReturnValue({
-      set: mockNativeSetter
+      set: mockNativeSetter,
     });
-    
-    formFillHandler = new FormFillHandler(
-      mockStateManager,
-      mockNavigationManager,
-      mockWaitForReactUpdates
-    );
+
+    formFillHandler = new FormFillHandler(mockStateManager, mockNavigationManager, mockWaitForReactUpdates);
   });
 
   afterAll(() => {
@@ -100,7 +98,7 @@ describe('FormFillHandler', () => {
       requirements: 'test-requirements',
       tagName: 'input',
       textContent: 'Test Input',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     it('should handle show mode correctly', async () => {
@@ -111,7 +109,7 @@ describe('FormFillHandler', () => {
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockElement);
       expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockElement);
-      expect(mockNavigationManager.highlight).toHaveBeenCalledWith(mockElement);
+      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockElement, undefined);
     });
 
     it('should handle do mode with input element correctly', async () => {
@@ -131,7 +129,7 @@ describe('FormFillHandler', () => {
     it('should handle textarea element correctly', async () => {
       const textareaElement = {
         ...mockElement,
-        tagName: 'TEXTAREA'
+        tagName: 'TEXTAREA',
       } as unknown as HTMLElement;
       mockQuerySelectorAll.mockReturnValue([textareaElement]);
 
@@ -144,7 +142,7 @@ describe('FormFillHandler', () => {
     it('should handle select element correctly', async () => {
       const selectElement = {
         ...mockElement,
-        tagName: 'SELECT'
+        tagName: 'SELECT',
       } as unknown as HTMLElement;
       mockQuerySelectorAll.mockReturnValue([selectElement]);
 
@@ -158,7 +156,7 @@ describe('FormFillHandler', () => {
       const divElement = {
         ...mockElement,
         tagName: 'DIV',
-        textContent: ''
+        textContent: '',
       } as unknown as HTMLElement;
       mockQuerySelectorAll.mockReturnValue([divElement]);
 
@@ -171,7 +169,7 @@ describe('FormFillHandler', () => {
       const checkboxElement = {
         ...mockElement,
         type: 'checkbox',
-        checked: false
+        checked: false,
       } as unknown as HTMLInputElement;
       mockQuerySelectorAll.mockReturnValue([checkboxElement]);
 
@@ -184,7 +182,7 @@ describe('FormFillHandler', () => {
       const checkboxElement = {
         ...mockElement,
         type: 'checkbox',
-        checked: true
+        checked: true,
       } as unknown as HTMLInputElement;
       const uncheckedData = { ...mockData, targetvalue: 'false' };
       mockQuerySelectorAll.mockReturnValue([checkboxElement]);
@@ -198,7 +196,7 @@ describe('FormFillHandler', () => {
       const radioElement = {
         ...mockElement,
         type: 'radio',
-        checked: false
+        checked: false,
       } as unknown as HTMLInputElement;
       mockQuerySelectorAll.mockReturnValue([radioElement]);
 
@@ -212,9 +210,11 @@ describe('FormFillHandler', () => {
         ...mockElement,
         tagName: 'TEXTAREA',
         classList: {
-          contains: jest.fn().mockImplementation((className: string) => 
-            className === 'inputarea' || className === 'monaco-mouse-cursor-text'
-          )
+          contains: jest
+            .fn()
+            .mockImplementation(
+              (className: string) => className === 'inputarea' || className === 'monaco-mouse-cursor-text'
+            ),
         },
         getAttribute: jest.fn().mockReturnValue(null),
       } as unknown as HTMLElement;
@@ -226,9 +226,7 @@ describe('FormFillHandler', () => {
       expect(mockDispatchEvent).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'keydown', key: 'a', ctrlKey: true })
       );
-      expect(mockDispatchEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'keydown', key: 'Delete' })
-      );
+      expect(mockDispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'keydown', key: 'Delete' }));
     });
 
     it('should handle empty target value correctly', async () => {
@@ -282,12 +280,7 @@ describe('FormFillHandler', () => {
 
       await formFillHandler.execute(mockData, true);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(
-        navigationError,
-        'FormFillHandler',
-        mockData,
-        false
-      );
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(navigationError, 'FormFillHandler', mockData, false);
     });
 
     it('should handle element preparation errors', async () => {
@@ -297,12 +290,7 @@ describe('FormFillHandler', () => {
 
       await formFillHandler.execute(mockData, true);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(
-        preparationError,
-        'FormFillHandler',
-        mockData,
-        false
-      );
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(preparationError, 'FormFillHandler', mockData, false);
     });
 
     it('should handle Monaco editor value setting errors', async () => {
@@ -310,11 +298,15 @@ describe('FormFillHandler', () => {
         ...mockElement,
         tagName: 'TEXTAREA',
         classList: {
-          contains: jest.fn().mockImplementation((className: string) => 
-            className === 'inputarea' || className === 'monaco-mouse-cursor-text'
-          )
+          contains: jest
+            .fn()
+            .mockImplementation(
+              (className: string) => className === 'inputarea' || className === 'monaco-mouse-cursor-text'
+            ),
         },
-        dispatchEvent: jest.fn().mockImplementation(() => { throw new Error('Monaco error'); })
+        dispatchEvent: jest.fn().mockImplementation(() => {
+          throw new Error('Monaco error');
+        }),
       } as unknown as HTMLElement;
       mockQuerySelectorAll.mockReturnValue([monacoElement]);
 
@@ -352,9 +344,11 @@ describe('FormFillHandler', () => {
         ...mockElement,
         tagName: 'TEXTAREA',
         classList: {
-          contains: jest.fn().mockImplementation((className: string) => 
-            className === 'inputarea' || className === 'monaco-mouse-cursor-text'
-          )
+          contains: jest
+            .fn()
+            .mockImplementation(
+              (className: string) => className === 'inputarea' || className === 'monaco-mouse-cursor-text'
+            ),
         },
         getAttribute: jest.fn().mockReturnValue(null),
       } as unknown as HTMLElement;
@@ -364,12 +358,8 @@ describe('FormFillHandler', () => {
       await formFillHandler.execute(dataWithLastChar, true);
 
       // Should trigger events for the last character 'e'
-      expect(mockDispatchEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'keydown', key: 'e' })
-      );
-      expect(mockDispatchEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'keyup', key: 'e' })
-      );
+      expect(mockDispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'keydown', key: 'e' }));
+      expect(mockDispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'keyup', key: 'e' }));
     });
 
     it('should handle Monaco editor with empty value', async () => {
@@ -377,10 +367,12 @@ describe('FormFillHandler', () => {
         ...mockElement,
         tagName: 'TEXTAREA',
         classList: {
-          contains: jest.fn().mockImplementation((className: string) => 
-            className === 'inputarea' || className === 'monaco-mouse-cursor-text'
-          )
-        }
+          contains: jest
+            .fn()
+            .mockImplementation(
+              (className: string) => className === 'inputarea' || className === 'monaco-mouse-cursor-text'
+            ),
+        },
       } as unknown as HTMLElement;
       const emptyData = { ...mockData, targetvalue: '' };
       mockQuerySelectorAll.mockReturnValue([monacoElement]);
@@ -388,12 +380,8 @@ describe('FormFillHandler', () => {
       await formFillHandler.execute(emptyData, true);
 
       // Should not trigger last character events for empty value
-      expect(mockDispatchEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'input', bubbles: true })
-      );
-      expect(mockDispatchEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'change', bubbles: true })
-      );
+      expect(mockDispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'input', bubbles: true }));
+      expect(mockDispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'change', bubbles: true }));
     });
   });
 });

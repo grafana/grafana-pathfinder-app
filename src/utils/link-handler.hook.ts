@@ -151,7 +151,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               link_url: href,
               link_text: linkText,
               source_page: activeTab?.content?.url || 'unknown',
-              link_type: 'bundled_interactive'
+              link_type: 'bundled_interactive',
             });
             return;
           }
@@ -183,8 +183,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
           // Handle Grafana docs and tutorials links (including resolved relative links)
           if (
-            resolvedUrl.includes(getDocsBaseUrl() + '/docs/') ||
-            resolvedUrl.includes(getDocsBaseUrl() + '/tutorials/') ||
+            resolvedUrl.includes('grafana.com/docs/') ||
+            resolvedUrl.includes('grafana.com/tutorials/') ||
             href.startsWith('/docs/') ||
             href.startsWith('/tutorials/')
           ) {
@@ -193,7 +193,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               stopPropagation: true,
             });
 
-            const fullUrl = resolvedUrl.startsWith('http') ? resolvedUrl : `${getDocsBaseUrl()}${resolvedUrl}`;
+            const fullUrl = resolvedUrl.startsWith('http') ? resolvedUrl : `https://grafana.com${resolvedUrl}`;
             const linkText = anchor.textContent?.trim() || 'Documentation';
 
             // Determine if it's a learning journey or regular docs/tutorials
@@ -332,7 +332,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
         if (linkUrl) {
           // Convert relative URLs to full URLs
-          const fullUrl = linkUrl.startsWith('http') ? linkUrl : `${getDocsBaseUrl()}${linkUrl}`;
+          const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
 
           // Open side journey links in new app tabs (as docs pages)
           if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {

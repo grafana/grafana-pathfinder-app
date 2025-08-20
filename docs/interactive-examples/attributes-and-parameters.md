@@ -1,8 +1,9 @@
 ### Attributes and parameters for interactive elements
 
-This guide documents the core data-* attributes used to define interactive actions and how to combine them.
+This guide documents the core data-\* attributes used to define interactive actions and how to combine them.
 
 ## Core attributes
+
 - **data-targetaction**: The action type to execute.
   - Supported: `highlight`, `button`, `formfill`, `navigate`, `sequence`, `multistep`.
 - **data-reftarget**: The target reference; meaning depends on `data-targetaction`.
@@ -16,7 +17,9 @@ This guide documents the core data-* attributes used to define interactive actio
 - Optional: **data-hint**: Tooltip or hint text for UI.
 
 ## Requirements reference (selection)
+
 Common checks supported by the system:
+
 - `exists-reftarget` — the referenced element must exist.
 - `navmenu-open` — navigation must be open/visible.
 - `has-datasources` — at least one data source exists.
@@ -35,50 +38,53 @@ Common checks supported by the system:
 ## Examples
 
 ### highlight with requirements
+
 ```html
-<li class="interactive"
-    data-targetaction="highlight"
-    data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections']"
-    data-requirements="navmenu-open">
+<li
+  class="interactive"
+  data-targetaction="highlight"
+  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections']"
+  data-requirements="navmenu-open"
+>
   Click Connections in the left-side menu.
 </li>
 ```
 
 ### button by text (no CSS required)
+
 ```html
-<li class="interactive"
-    data-targetaction="button"
-    data-reftarget="Save & test">
-  Save the data source
-</li>
+<li class="interactive" data-targetaction="button" data-reftarget="Save & test">Save the data source</li>
 ```
 
 ### formfill for ARIA combobox
+
 ```html
-<li class="interactive"
-    data-targetaction="formfill"
-    data-reftarget="input[role='combobox'][aria-autocomplete='list']"
-    data-targetvalue="container = 'alloy'">
+<li
+  class="interactive"
+  data-targetaction="formfill"
+  data-reftarget="input[role='combobox'][aria-autocomplete='list']"
+  data-targetvalue="container = 'alloy'"
+>
   Enter container label
 </li>
 ```
 
 ### navigate to internal route
+
 ```html
-<li class="interactive"
-    data-targetaction="navigate"
-    data-reftarget="/dashboard/new">
-  Create a new dashboard
-</li>
+<li class="interactive" data-targetaction="navigate" data-reftarget="/dashboard/new">Create a new dashboard</li>
 ```
 
 ### sequence (section) that groups steps
+
 ```html
-<span id="create-dashboard"
-      class="interactive"
-      data-targetaction="sequence"
-      data-reftarget="span#create-dashboard"
-      data-requirements="has-datasource:prometheus">
+<span
+  id="create-dashboard"
+  class="interactive"
+  data-targetaction="sequence"
+  data-reftarget="span#create-dashboard"
+  data-requirements="has-datasource:prometheus"
+>
   <ul>
     <li class="interactive" data-targetaction="button" data-reftarget="New"></li>
     <li class="interactive" data-targetaction="highlight" data-reftarget="a[href='/dashboard/new']"></li>
@@ -87,6 +93,7 @@ Common checks supported by the system:
 ```
 
 ### multistep (internal spans define the actions)
+
 ```html
 <li class="interactive" data-targetaction="multistep" data-hint="Runs 2 actions">
   <span class="interactive" data-targetaction="button" data-reftarget="Add visualization"></span>
@@ -96,6 +103,7 @@ Common checks supported by the system:
 ```
 
 ## Authoring tips
+
 - Prefer `data-testid`, `href`, `id`, and ARIA attributes over CSS classes in selectors.
 - For buttons, prefer the `button` action with text over CSS selectors.
 - Keep `data-requirements` minimal and specific; group with commas.

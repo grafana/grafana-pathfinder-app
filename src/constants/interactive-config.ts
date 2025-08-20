@@ -16,8 +16,34 @@ export const INTERACTIVE_CONFIG = {
       navigation: 300,
       navigationDock: 200,
       scroll: 500,
-      highlight: 1300,
+      highlight: 2500, // Increased from 1300ms to 2500ms for better readability
       monacoClear: 100,
+    },
+    // Section sequence timing
+    section: {
+      showPhaseIterations: 30, // 30 * 100ms = 3000ms wait for highlight/comment visibility
+      betweenStepsIterations: 18, // 18 * 100ms = 1800ms delay between "do it" actions
+      baseInterval: 100, // Base 100ms interval for all iteration-based delays
+    },
+    // Multi-step sequence timing
+    multiStep: {
+      defaultStepDelay: 1800, // Default delay between internal actions in multi-step
+      showToDoIterations: 18, // 18 * 100ms = 1800ms delay between show and do
+      baseInterval: 100, // Base 100ms interval for cancellation-safe delays
+    },
+    // Navigation manager timing
+    navigation: {
+      scrollTimeout: 200, // Scroll completion detection timeout
+      scrollFallbackTimeout: 500, // Fallback timeout for scroll operations
+      commentExitAnimation: 200, // Comment box exit animation duration
+    },
+    // Form filling timing (for typing simulation)
+    formFill: {
+      keystrokeDelay: 50, // Delay between individual keystrokes for realistic typing
+    },
+    // Requirements checking timing
+    requirements: {
+      checkTimeout: 5000, // Maximum time to wait for requirements check
     },
   },
   // Event-driven settling detection configuration

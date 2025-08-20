@@ -19,4 +19,4 @@ export { ContextService } from './context.service';
 export { useContextPanel } from './context.hook';
 
 // Re-export initialization functions
-export { initializeContextServices, onPluginStart, onPluginStop } from './context.init'; 
+export { initializeContextServices, onPluginStart, onPluginStop } from './context.init';

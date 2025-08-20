@@ -1,0 +1,25 @@
+# Build output
+dist/
+coverage/
+
+# Package manager files
+node_modules/
+package-lock.json
+
+# Generated files
+*.min.js
+*.min.css
+
+# Logs
+*.log
+
+# Test output
+test-results/
+playwright-report/
+
+# Dependencies
+pkg/
+
+# Other generated or temporary files
+.cache/
+.temp/

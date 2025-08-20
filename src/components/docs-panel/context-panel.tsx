@@ -125,17 +125,25 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                     {finalPrimaryRecommendations.map((recommendation, index) => (
                       <Card
                         key={index}
-                        className={`${styles.recommendationCard} ${recommendation.type === 'docs-page' ? styles.compactCard : ''}`}
+                        className={`${styles.recommendationCard} ${
+                          recommendation.type === 'docs-page' ? styles.compactCard : ''
+                        }`}
                       >
                         <div
-                          className={`${styles.recommendationCardContent} ${recommendation.type === 'docs-page' ? styles.compactCardContent : ''}`}
+                          className={`${styles.recommendationCardContent} ${
+                            recommendation.type === 'docs-page' ? styles.compactCardContent : ''
+                          }`}
                         >
                           <div
-                            className={`${styles.cardHeader} ${recommendation.type === 'docs-page' ? styles.compactHeader : ''}`}
+                            className={`${styles.cardHeader} ${
+                              recommendation.type === 'docs-page' ? styles.compactHeader : ''
+                            }`}
                           >
                             <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
                             <div
-                              className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}
+                              className={`${styles.cardActions} ${
+                                recommendation.summaryExpanded ? styles.hiddenActions : ''
+                              }`}
                             >
                               <button
                                 onClick={() => {

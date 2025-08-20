@@ -13,13 +13,13 @@ export class FormFillHandler {
 
   async execute(data: InteractiveElementData, fillForm: boolean): Promise<void> {
     this.stateManager.setState(data, 'running');
-    
+
     try {
       const targetElement = await this.findTargetElement(data.reftarget);
       await this.prepareElement(targetElement);
-      
+
       if (!fillForm) {
-        await this.handleShowMode(targetElement);
+        await this.handleShowMode(targetElement, data.targetcomment);
         // Mark show actions as completed too for proper state cleanup
         await this.markAsCompleted(data);
         return;
@@ -34,12 +34,12 @@ export class FormFillHandler {
   private async findTargetElement(selector: string): Promise<HTMLElement> {
     console.warn(`🔍 FormFill: Searching for selector: ${selector}`);
     const targetElements = document.querySelectorAll(selector);
-    
+
     console.warn(`🔍 FormFill: Found ${targetElements.length} elements matching selector`);
     if (targetElements.length === 0) {
       throw new Error(`No elements found matching selector: ${selector}`);
     }
-    
+
     if (targetElements.length > 1) {
       console.warn(`⚠️ Multiple elements found matching selector: ${selector}`);
     }
@@ -54,8 +54,8 @@ export class FormFillHandler {
     await this.navigationManager.ensureElementVisible(targetElement);
   }
 
-  private async handleShowMode(targetElement: HTMLElement): Promise<void> {
-    await this.navigationManager.highlight(targetElement);
+  private async handleShowMode(targetElement: HTMLElement, comment?: string): Promise<void> {
+    await this.navigationManager.highlightWithComment(targetElement, comment);
   }
 
   private async handleDoMode(targetElement: HTMLElement, data: InteractiveElementData): Promise<void> {
@@ -85,8 +85,7 @@ export class FormFillHandler {
   }
 
   private isMonacoEditor(element: HTMLElement): boolean {
-    return element.classList.contains('inputarea') && 
-           element.classList.contains('monaco-mouse-cursor-text');
+    return element.classList.contains('inputarea') && element.classList.contains('monaco-mouse-cursor-text');
   }
 
   private isAriaCombobox(element: HTMLElement): boolean {
@@ -97,10 +96,10 @@ export class FormFillHandler {
   }
 
   private async setElementValue(
-    element: HTMLElement, 
-    value: string, 
-    tagName: string, 
-    inputType: string, 
+    element: HTMLElement,
+    value: string,
+    tagName: string,
+    inputType: string,
     isMonacoEditor: boolean
   ): Promise<void> {
     if (tagName === 'input') {
@@ -168,22 +167,28 @@ export class FormFillHandler {
     this.setNativeInputValue(element, '');
     element.dispatchEvent(new Event('input', { bubbles: true }));
 
-    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     const stageDelay = INTERACTIVE_CONFIG.delays.perceptual.base;
 
     const isOperatorToken = (t: string) => ['!=', '=~', '!~', '='].includes(t);
     const typeOperator = async (op: string) => {
       for (const ch of op.split('')) {
-        element.dispatchEvent(new KeyboardEvent('keydown', { key: ch, code: ch === '=' ? 'Equal' : undefined, bubbles: true }));
-        element.dispatchEvent(new KeyboardEvent('keyup', { key: ch, code: ch === '=' ? 'Equal' : undefined, bubbles: true }));
-        await sleep(50);
+        element.dispatchEvent(
+          new KeyboardEvent('keydown', { key: ch, code: ch === '=' ? 'Equal' : undefined, bubbles: true })
+        );
+        element.dispatchEvent(
+          new KeyboardEvent('keyup', { key: ch, code: ch === '=' ? 'Equal' : undefined, bubbles: true })
+        );
+        await sleep(INTERACTIVE_CONFIG.delays.formFill.keystrokeDelay);
       }
       element.dispatchEvent(new Event('change', { bubbles: true }));
     };
 
     // Stage through tokens: enter token/op -> delay -> Enter -> delay
     for (const token of tokens) {
-      if (!token) { continue; }
+      if (!token) {
+        continue;
+      }
       const tokenToType = stripQuotes(token);
       console.warn(`⌨️ Combobox stage token -> ${tokenToType}`);
       if (isOperatorToken(tokenToType)) {
@@ -223,7 +228,7 @@ export class FormFillHandler {
 
   private async setMonacoEditorValue(element: HTMLElement, value: string): Promise<void> {
     console.warn('🎯 Detected Monaco editor, using enhanced approach for value setting');
-    
+
     element.focus();
     await this.clearMonacoEditor(element);
     this.setNativeTextareaValue(element, value);
@@ -231,20 +236,29 @@ export class FormFillHandler {
   }
 
   private async clearMonacoEditor(element: HTMLElement): Promise<void> {
-    element.dispatchEvent(new KeyboardEvent('keydown', { 
-      key: 'a', code: 'KeyA', ctrlKey: true, bubbles: true 
-    }));
-    element.dispatchEvent(new KeyboardEvent('keydown', { 
-      key: 'Delete', code: 'Delete', bubbles: true 
-    }));
-    
-    await new Promise(resolve => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.monacoClear));
+    element.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'a',
+        code: 'KeyA',
+        ctrlKey: true,
+        bubbles: true,
+      })
+    );
+    element.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Delete',
+        code: 'Delete',
+        bubbles: true,
+      })
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.monacoClear));
   }
 
   private async triggerMonacoEvents(element: HTMLElement, value: string): Promise<void> {
     element.dispatchEvent(new Event('input', { bubbles: true }));
     element.dispatchEvent(new Event('change', { bubbles: true }));
-    
+
     const lastChar = value.slice(-1);
     if (lastChar) {
       element.dispatchEvent(new KeyboardEvent('keydown', { key: lastChar, bubbles: true }));
@@ -283,12 +297,12 @@ export class FormFillHandler {
   private async dispatchEvents(element: HTMLElement, tagName: string, isMonacoEditor: boolean): Promise<void> {
     element.focus();
     element.dispatchEvent(new Event('focus', { bubbles: true }));
-    
+
     if ((tagName === 'input' || tagName === 'textarea' || tagName === 'select') && !isMonacoEditor) {
       element.dispatchEvent(new Event('input', { bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    
+
     element.blur();
     element.dispatchEvent(new Event('blur', { bubbles: true }));
   }

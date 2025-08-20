@@ -4,12 +4,12 @@ import { GrafanaTheme2 } from '@grafana/data';
 // Global modal styles for image lightbox functionality
 export const addGlobalModalStyles = () => {
   const modalStyleId = 'journey-modal-styles';
-  
+
   // Check if styles already exist
   if (document.getElementById(modalStyleId)) {
     return;
   }
-  
+
   const style = document.createElement('style');
   style.id = modalStyleId;
   style.textContent = `
@@ -108,7 +108,7 @@ export const addGlobalModalStyles = () => {
       transition: all 0.3s ease;
     }
   `;
-  
+
   document.head.appendChild(style);
 };
 
@@ -346,7 +346,7 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     marginTop: theme.spacing(0.25),
     maxHeight: '60vh',
     overflowY: 'auto',
-    
+
     // Prevent clipping on small screens
     '@media (max-width: 480px)': {
       right: 'auto',
@@ -354,10 +354,10 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
       minWidth: '200px',
       maxWidth: '280px',
     },
-    
+
     // Ensure dropdown doesn't extend beyond viewport
     transform: 'translateX(0)',
-    
+
     // Alternative positioning when there's not enough space on the right
     '&[data-position="left"]': {
       right: 'auto',
@@ -488,18 +488,18 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    
+
     '&:hover:not(:disabled)': {
       backgroundColor: theme.colors.primary.shade,
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z1,
     },
-    
+
     '&:active': {
       transform: 'translateY(0)',
       boxShadow: 'none',
     },
-    
+
     '& svg': {
       width: '12px',
       height: '12px',
@@ -574,18 +574,18 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     cursor: 'pointer',
     transition: 'all 0.2s ease',
     minWidth: '70px',
-    
+
     '&:hover:not(:disabled)': {
       backgroundColor: theme.colors.primary.shade,
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z1,
     },
-    
+
     '&:active': {
       transform: 'translateY(0)',
       boxShadow: 'none',
     },
-    
+
     '&:disabled': {
       backgroundColor: theme.colors.action.disabledBackground,
       color: theme.colors.action.disabledText,
@@ -594,7 +594,7 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
       transform: 'none',
       boxShadow: 'none',
     },
-    
+
     '& svg': {
       width: '14px',
       height: '14px',
@@ -622,4 +622,4 @@ export const getStyles = (theme: GrafanaTheme2) => ({
   ...getTabStyles(theme),
   ...getContentStyles(theme),
   ...getMilestoneStyles(theme),
-}); 
+});

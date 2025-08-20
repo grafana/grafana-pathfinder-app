@@ -12,13 +12,14 @@ jest.mock('../navigation-manager');
 const mockFindButtonByText = findButtonByText as jest.MockedFunction<typeof findButtonByText>;
 const mockStateManager = {
   setState: jest.fn(),
-  handleError: jest.fn()
+  handleError: jest.fn(),
 } as unknown as InteractiveStateManager;
 
 const mockNavigationManager = {
   ensureNavigationOpen: jest.fn(),
   ensureElementVisible: jest.fn(),
-  highlight: jest.fn()
+  highlight: jest.fn(),
+  highlightWithComment: jest.fn(),
 } as unknown as NavigationManager;
 
 const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
@@ -29,20 +30,16 @@ describe('ButtonHandler', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Create mock buttons
     mockButtons = [
       { click: jest.fn() } as unknown as HTMLButtonElement,
-      { click: jest.fn() } as unknown as HTMLButtonElement
+      { click: jest.fn() } as unknown as HTMLButtonElement,
     ];
-    
+
     mockFindButtonByText.mockReturnValue(mockButtons);
-    
-    buttonHandler = new ButtonHandler(
-      mockStateManager,
-      mockNavigationManager,
-      mockWaitForReactUpdates
-    );
+
+    buttonHandler = new ButtonHandler(mockStateManager, mockNavigationManager, mockWaitForReactUpdates);
   });
 
   describe('execute', () => {
@@ -53,7 +50,7 @@ describe('ButtonHandler', () => {
       requirements: 'test-requirements',
       tagName: 'button',
       textContent: 'Test Button',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     it('should handle show mode correctly', async () => {
@@ -63,7 +60,7 @@ describe('ButtonHandler', () => {
       expect(mockFindButtonByText).toHaveBeenCalledWith('test-button');
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(mockButtons[0]);
       expect(mockNavigationManager.ensureElementVisible).toHaveBeenCalledWith(mockButtons[0]);
-      expect(mockNavigationManager.highlight).toHaveBeenCalledWith(mockButtons[0]);
+      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(mockButtons[0], undefined);
       expect(mockWaitForReactUpdates).not.toHaveBeenCalled(); // No completion in show mode
     });
 
@@ -81,16 +78,13 @@ describe('ButtonHandler', () => {
 
     it('should handle errors gracefully', async () => {
       const testError = new Error('Button not found');
-      mockFindButtonByText.mockImplementation(() => { throw testError; });
+      mockFindButtonByText.mockImplementation(() => {
+        throw testError;
+      });
 
       await buttonHandler.execute(mockData, true);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(
-        testError,
-        'ButtonHandler',
-        mockData,
-        false
-      );
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'ButtonHandler', mockData, false);
     });
   });
 });

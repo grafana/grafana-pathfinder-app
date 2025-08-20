@@ -5,6 +5,7 @@ import { useInteractiveElements } from '../../../interactive.hook';
 import { useStepChecker } from '../../../step-checker.hook';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
+import { INTERACTIVE_CONFIG } from '../../../../constants/interactive-config';
 
 // Shared type definitions
 export interface BaseInteractiveProps {
@@ -20,6 +21,8 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence';
   refTarget: string;
   targetValue?: string;
+  targetComment?: string;
+  doIt?: boolean; // Control whether "Do it" button appears (defaults to true)
   title?: string;
   description?: string;
   children?: React.ReactNode;
@@ -50,6 +53,7 @@ export interface StepInfo {
   targetAction?: string; // Optional for multi-step
   refTarget?: string; // Optional for multi-step
   targetValue?: string;
+  targetComment?: string; // Optional comment to show during execution
   requirements?: string;
   isMultiStep: boolean; // Flag to identify component type
 }
@@ -174,6 +178,7 @@ export function InteractiveSection({
           targetAction: props.targetAction,
           refTarget: props.refTarget,
           targetValue: props.targetValue,
+          targetComment: props.targetComment,
           requirements: props.requirements,
           isMultiStep: false,
         });
@@ -430,7 +435,13 @@ export function InteractiveSection({
 
       try {
         // Execute the action using existing interactive logic
-        await executeInteractiveAction(stepInfo.targetAction!, stepInfo.refTarget!, stepInfo.targetValue, 'do');
+        await executeInteractiveAction(
+          stepInfo.targetAction!,
+          stepInfo.refTarget!,
+          stepInfo.targetValue,
+          'do',
+          stepInfo.targetComment
+        );
 
         return true;
       } catch (error) {
@@ -495,16 +506,21 @@ export function InteractiveSection({
         // First, show the step (highlight it) - skip for multi-step components
         if (!stepInfo.isMultiStep) {
           console.log(`👁️ Showing step: ${stepInfo.stepId}`);
-          await executeInteractiveAction(stepInfo.targetAction!, stepInfo.refTarget!, stepInfo.targetValue, 'show');
+          await executeInteractiveAction(
+            stepInfo.targetAction!,
+            stepInfo.refTarget!,
+            stepInfo.targetValue,
+            'show',
+            stepInfo.targetComment
+          );
 
           // Wait for highlight to be visible and animation to complete
           // Check cancellation during wait
-          for (let j = 0; j < 20; j++) {
-            // 20 * 100ms = 2000ms
+          for (let j = 0; j < INTERACTIVE_CONFIG.delays.section.showPhaseIterations; j++) {
             if (isCancelledRef.current) {
               break;
             }
-            await new Promise((resolve) => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.section.baseInterval));
           }
           if (isCancelledRef.current) {
             continue;
@@ -532,17 +548,18 @@ export function InteractiveSection({
           // Wait between steps for visual feedback
           // Check cancellation during wait
           if (i < stepComponents.length - 1) {
-            for (let j = 0; j < 12; j++) {
-              // 12 * 100ms = 1200ms
+            for (let j = 0; j < INTERACTIVE_CONFIG.delays.section.betweenStepsIterations; j++) {
               if (isCancelledRef.current) {
                 break;
               }
-              await new Promise((resolve) => setTimeout(resolve, 100));
+              await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.section.baseInterval));
             }
           }
         } else {
           console.warn(
-            `⚠️ Breaking section sequence at step ${i + 1}/${stepComponents.length} due to execution failure: ${stepInfo.stepId}`
+            `⚠️ Breaking section sequence at step ${i + 1}/${stepComponents.length} due to execution failure: ${
+              stepInfo.stepId
+            }`
           );
           console.warn(`❌ Failed step details:`, {
             stepId: stepInfo.stepId,
@@ -726,7 +743,9 @@ export function InteractiveSection({
               return 'Reset section and clear all step completion to allow manual re-interaction';
             }
             if (isRunning) {
-              return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;
+              return `Running Step ${
+                currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'
+              }/${stepComponents.length}...`;
             }
             if (resumeInfo.isResume) {
               return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
@@ -743,7 +762,9 @@ export function InteractiveSection({
               return 'Reset Section';
             }
             if (isRunning) {
-              return `Running Step ${currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'}/${stepComponents.length}...`;
+              return `Running Step ${
+                currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'
+              }/${stepComponents.length}...`;
             }
             if (resumeInfo.isResume) {
               return `Resume (${resumeInfo.remainingSteps} steps)`;
