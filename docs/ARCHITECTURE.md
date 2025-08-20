@@ -74,13 +74,13 @@ App (SceneApp Root)
 ```typescript
 // Main Components
 CombinedLearningJourneyPanel        // Main panel with tab management
-├── ContextPanel                    // Context-aware recommendations  
+├── ContextPanel                    // Context-aware recommendations
 ├── ContentRenderer                 // Unified content rendering
 ├── InteractiveSection              // Interactive tutorial sections
 ├── InteractiveStep                // Individual interactive steps
 └── InteractiveMultiStep           // Multi-step sequences
 
-// Supporting Components  
+// Supporting Components
 ├── CodeBlock                      // Syntax highlighted code
 ├── ExpandableTable               // Collapsible content sections
 ├── ImageRenderer                 // Lightbox image display
@@ -95,31 +95,34 @@ The architecture follows a clean separation pattern where business logic is extr
 
 ```typescript
 // Content Processing
-useInteractiveElements()     // Interactive tutorial functionality
-useKeyboardShortcuts()      // Navigation shortcuts  
-useLinkClickHandler()       // Link and interaction handling
-useRequirementsChecker()    // Requirements validation
-useStepChecker()           // Step completion checking
+useInteractiveElements(); // Interactive tutorial functionality
+useKeyboardShortcuts(); // Navigation shortcuts
+useLinkClickHandler(); // Link and interaction handling
+useRequirementsChecker(); // Requirements validation
+useStepChecker(); // Step completion checking
 
 // Context Management
-useContextPanel()          // Context analysis and recommendations
-useContentRenderer()       // Content rendering logic
+useContextPanel(); // Context analysis and recommendations
+useContentRenderer(); // Content rendering logic
 ```
 
 ### 2. Unified Content System
 
 **Content Flow Pipeline:**
+
 ```
 URL Request → Content Fetcher → HTML Parser → Content Renderer → React Components
 ```
 
 **Content Types:**
+
 - **Learning Journeys**: Multi-milestone interactive tutorials
 - **Documentation Pages**: Single standalone documentation
 
 **Processing Stages:**
+
 1. **Fetch**: Multi-strategy content retrieval with fallbacks
-2. **Parse**: HTML to React component tree conversion  
+2. **Parse**: HTML to React component tree conversion
 3. **Enhance**: Interactive elements and metadata extraction
 4. **Render**: Theme-aware React component output
 
@@ -129,20 +132,20 @@ Uses Grafana Scenes for complex application state:
 
 ```typescript
 interface CombinedPanelState {
-  tabs: LearningJourneyTab[];           // All open content tabs
-  activeTabId: string;                  // Currently active tab
-  contextPanel: ContextPanel;           // Recommendations panel
+  tabs: LearningJourneyTab[]; // All open content tabs
+  activeTabId: string; // Currently active tab
+  contextPanel: ContextPanel; // Recommendations panel
 }
 
 interface LearningJourneyTab {
-  id: string;                          // Unique tab identifier
-  title: string;                       // Display title
-  baseUrl: string;                     // Original URL
-  currentUrl: string;                  // Current milestone/page URL
-  content: RawContent | null;          // Parsed content
-  type: 'learning-journey' | 'docs';   // Content type
-  isLoading: boolean;                  // Loading state
-  error: string | null;                // Error state
+  id: string; // Unique tab identifier
+  title: string; // Display title
+  baseUrl: string; // Original URL
+  currentUrl: string; // Current milestone/page URL
+  content: RawContent | null; // Parsed content
+  type: 'learning-journey' | 'docs'; // Content type
+  isLoading: boolean; // Loading state
+  error: string | null; // Error state
 }
 ```
 
@@ -155,6 +158,7 @@ User Navigation → DOM Analysis → Context Tags → Recommendation API → UI 
 ```
 
 **Context Detection:**
+
 - **Page Analysis**: Current Grafana page and parameters
 - **UI State**: Active datasources, visualization types
 - **Real-time Updates**: DOM mutation observation for UI changes
@@ -167,6 +171,7 @@ Content Request → Strategy Selection → Fetch Execution → Metadata Extracti
 ```
 
 **Fetching Strategies:**
+
 1. **Direct Fetch**: Standard HTTP request to original URL
 2. **Unstyled Variant**: Grafana.com unstyled version for better parsing
 3. **GitHub Variations**: Repository-based fallbacks
@@ -179,6 +184,7 @@ HTML Elements → Parser → React Components → Requirements Checker → Actio
 ```
 
 **Interactive Elements:**
+
 - **Interactive Steps**: Individual actions with "Show Me"/"Do It" buttons
 - **Interactive Sections**: Grouped steps with sequential execution
 - **Requirements System**: Validation before step execution
@@ -187,33 +193,36 @@ HTML Elements → Parser → React Components → Requirements Checker → Actio
 ## Storage and Persistence
 
 ### Tab Persistence
+
 ```typescript
 // Stored in localStorage
 interface PersistedTabData {
-  id: string;                    // Tab identifier
-  title: string;                 // Display title
-  baseUrl: string;              // Original URL
-  currentUrl?: string;          // Current position (milestone/page)
+  id: string; // Tab identifier
+  title: string; // Display title
+  baseUrl: string; // Original URL
+  currentUrl?: string; // Current position (milestone/page)
   type?: 'learning-journey' | 'docs';
 }
 ```
 
 ### Journey Progress
+
 ```typescript
 // Learning journey completion tracking
 interface JourneyProgress {
-  [journeyBaseUrl: string]: number;  // Completion percentage (0-100)
+  [journeyBaseUrl: string]: number; // Completion percentage (0-100)
 }
 ```
 
 ### Configuration Management
+
 ```typescript
 interface DocsPluginConfig {
-  recommenderServiceUrl?: string;    // AI recommendation service
-  docsBaseUrl?: string;             // Documentation base URL
-  docsUsername?: string;            // Authentication username
-  docsPassword?: string;            // Authentication password (secure)
-  tutorialUrl?: string;             // Auto-launch tutorial URL
+  recommenderServiceUrl?: string; // AI recommendation service
+  docsBaseUrl?: string; // Documentation base URL
+  docsUsername?: string; // Authentication username
+  docsPassword?: string; // Authentication password (secure)
+  tutorialUrl?: string; // Auto-launch tutorial URL
 }
 ```
 
@@ -222,11 +231,13 @@ interface DocsPluginConfig {
 ### HTML Parser System
 
 **Parsing Pipeline:**
+
 ```
 Raw HTML → Element Walking → Attribute Mapping → Component Creation → Error Collection
 ```
 
 **Key Features:**
+
 - **Element Mapping**: HTML tags to React component mapping
 - **Attribute Transformation**: HTML attributes to React props conversion
 - **Interactive Detection**: Identification of interactive elements
@@ -236,6 +247,7 @@ Raw HTML → Element Walking → Attribute Mapping → Component Creation → Er
 ### Content Enhancement
 
 **Post-Processing Steps:**
+
 1. **Interactive Elements**: Conversion of special elements to interactive components
 2. **Code Blocks**: Syntax highlighting and copy button addition
 3. **Images**: Lightbox functionality and lazy loading
@@ -247,15 +259,17 @@ Raw HTML → Element Walking → Attribute Mapping → Component Creation → Er
 ### Requirements System
 
 **Validation Architecture:**
+
 ```typescript
 interface RequirementsCheckResult {
-  requirements: string;              // Requirements expression
-  pass: boolean;                    // Validation result
-  error: CheckResultError[];        // Detailed error information
+  requirements: string; // Requirements expression
+  pass: boolean; // Validation result
+  error: CheckResultError[]; // Detailed error information
 }
 ```
 
 **Check Types:**
+
 - **DOM Checks**: Element existence and state validation
 - **Permission Checks**: User role and capability validation
 - **Environment Checks**: Grafana version and feature availability
@@ -264,11 +278,13 @@ interface RequirementsCheckResult {
 ### Step Execution System
 
 **Execution Flow:**
+
 ```
 Requirements Check → UI State Setup → Action Execution → Completion Validation → Progress Update
 ```
 
 **Action Types:**
+
 - **Button Actions**: Automated button clicking
 - **Form Fill**: Input field population
 - **Navigation**: Menu and page navigation
@@ -280,6 +296,7 @@ Requirements Check → UI State Setup → Action Execution → Completion Valida
 ### CSS-in-JS Organization
 
 **Style Structure:**
+
 ```
 src/styles/
 ├── docs-panel.styles.ts          # Main panel styling
@@ -290,6 +307,7 @@ src/styles/
 ```
 
 **Theme Integration:**
+
 - **Grafana Theme**: Full integration with Grafana's design system
 - **Dark/Light Mode**: Automatic theme switching support
 - **Component Variants**: Consistent styling patterns across components
@@ -300,6 +318,7 @@ src/styles/
 ### Content Fetching Resilience
 
 **Error Recovery:**
+
 1. **Multiple Strategies**: Fallback URLs and methods
 2. **Graceful Degradation**: Partial content display on failures
 3. **User Feedback**: Clear error messages with retry options
@@ -308,6 +327,7 @@ src/styles/
 ### Interactive System Resilience
 
 **Error Management:**
+
 - **Requirement Failures**: User-friendly explanations and fix suggestions
 - **DOM Changes**: Mutation observer for dynamic content adaptation
 - **Step Failures**: Individual step isolation prevents cascade failures
@@ -318,6 +338,7 @@ src/styles/
 ### Content Optimization
 
 **Loading Strategies:**
+
 - **Lazy Loading**: Content loaded on tab activation
 - **Intelligent Caching**: Context-aware cache invalidation
 - **Preloading**: Next milestone preloading for learning journeys
@@ -326,6 +347,7 @@ src/styles/
 ### Rendering Optimization
 
 **React Performance:**
+
 - **Memoization**: Strategic use of useMemo and useCallback
 - **Component Splitting**: Focused components with single responsibilities
 - **State Optimization**: Minimal re-renders through state design
@@ -336,6 +358,7 @@ src/styles/
 ### Content Security
 
 **Safe Rendering:**
+
 - **HTML Sanitization**: Controlled HTML parsing and rendering
 - **XSS Prevention**: Attribute sanitization and content validation
 - **CSP Compliance**: Content Security Policy adherence
@@ -344,6 +367,7 @@ src/styles/
 ### Authentication Security
 
 **Credential Management:**
+
 - **Secure Storage**: Grafana's secure JSON data for passwords
 - **Token Handling**: Secure API token management
 - **Permission Validation**: User capability checking before actions
@@ -354,18 +378,19 @@ src/styles/
 ### User Interaction Tracking
 
 **Event Categories:**
+
 ```typescript
 enum UserInteraction {
   // Navigation
   StartLearningJourneyClick,
   MilestoneArrowInteractionClick,
   CloseTabClick,
-  
-  // Content Interaction  
+
+  // Content Interaction
   ViewDocumentationClick,
   LearningJourneySummaryClick,
   JumpIntoMilestoneClick,
-  
+
   // Interactive Elements
   ShowMeButtonClick,
   DoItButtonClick,
@@ -374,7 +399,8 @@ enum UserInteraction {
 ```
 
 **Analytics Data:**
-- **User Behavior**: Click patterns and navigation flows  
+
+- **User Behavior**: Click patterns and navigation flows
 - **Content Performance**: Most accessed journeys and docs
 - **Feature Usage**: Interactive element engagement rates
 - **Error Rates**: Failed actions and recovery patterns
@@ -384,6 +410,7 @@ enum UserInteraction {
 ### Content Source Integration
 
 **Pluggable Architecture:**
+
 - **Content Fetchers**: Custom content source implementations
 - **Parser Extensions**: Additional HTML element support
 - **Renderer Plugins**: Custom React component renderers
@@ -392,6 +419,7 @@ enum UserInteraction {
 ### Interactive Element Extensions
 
 **Custom Actions:**
+
 - **Action Types**: New interactive action implementations
 - **Requirement Checkers**: Custom validation logic
 - **UI Components**: Custom interactive UI elements
@@ -402,6 +430,7 @@ enum UserInteraction {
 ### Scalability Improvements
 
 **Planned Enhancements:**
+
 - **Micro-frontend Architecture**: Plugin modularity improvements
 - **Web Workers**: Heavy parsing and processing offloading
 - **Service Worker**: Offline content caching and serving
@@ -410,11 +439,12 @@ enum UserInteraction {
 ### Integration Expansions
 
 **External System Integration:**
+
 - **Learning Management Systems**: Progress tracking integration
-- **Content Management Systems**: Dynamic content source support  
+- **Content Management Systems**: Dynamic content source support
 - **Analytics Platforms**: Enhanced user behavior tracking
 - **Collaboration Tools**: Shared learning session support
 
 ---
 
-This architecture provides a solid foundation for maintainable, scalable, and extensible documentation functionality within Grafana, with clear separation of concerns and robust error handling throughout the system. 
+This architecture provides a solid foundation for maintainable, scalable, and extensible documentation functionality within Grafana, with clear separation of concerns and robust error handling throughout the system.

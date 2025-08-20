@@ -8,7 +8,7 @@ export function initializeContextServices(): void {
   try {
     // Initialize EchoSrv event logging immediately
     ContextService.initializeEchoLogging();
-    
+
     // Initialize from any recent events that might have been cached
     ContextService.initializeFromRecentEvents();
   } catch (error) {

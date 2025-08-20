@@ -1,7 +1,7 @@
 export const testIds = {
   appConfig: {
     docsBaseUrl: 'data-testid-docs-base-url',
-    docsUsername: 'data-testid-docs-username', 
+    docsUsername: 'data-testid-docs-username',
     docsPassword: 'data-testid-docs-password',
     recommenderServiceUrl: 'data-testid-recommender-service-url',
     tutorialUrl: 'data-testid-tutorial-url',
@@ -10,4 +10,4 @@ export const testIds = {
     apiKey: 'data-testid-api-key',
     apiUrl: 'data-testid-api-url',
   },
-}; 
+};

@@ -1,15 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { locationService } from '@grafana/runtime';
 import { ContextService } from './context.service';
-import { 
-  ContextData, 
-  UseContextPanelOptions, 
-  UseContextPanelReturn
-} from './context.types';
+import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from './context.types';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
-  
+
   // State
   const [contextData, setContextData] = useState<ContextData>({
     currentPath: '',
@@ -27,23 +23,23 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     timestamp: '',
     searchParams: {},
   });
-  
+
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   const [otherDocsExpanded, setOtherDocsExpanded] = useState(false);
-  
+
   // Track location changes with more detail
-  const lastLocationRef = useRef<{ 
-    path: string; 
-    url: string; 
+  const lastLocationRef = useRef<{
+    path: string;
+    url: string;
     vizType: string | null;
     selectedDatasource: string | null;
     searchParams: string;
-  }>({ 
-    path: '', 
-    url: '', 
+  }>({
+    path: '',
+    url: '',
     vizType: null,
     selectedDatasource: null,
-    searchParams: ''
+    searchParams: '',
   });
 
   // Timeout ref for debounced refresh
@@ -52,42 +48,47 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   // Fetch context data
   const fetchContextData = useCallback(async () => {
     try {
-      setContextData(prev => ({ ...prev, isLoading: true }));
+      setContextData((prev) => ({ ...prev, isLoading: true }));
       const newContextData = await ContextService.getContextData();
       setContextData(newContextData);
     } catch (error) {
       console.error('Failed to fetch context data:', error);
-      setContextData(prev => ({ ...prev, isLoading: false }));
+      setContextData((prev) => ({ ...prev, isLoading: false }));
     }
   }, []); // Empty dependency array - setContextData is stable
 
   // Debounced refresh to avoid excessive API calls
-  const debouncedRefresh = useCallback((delay = 300) => {
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
-    }
-    refreshTimeoutRef.current = setTimeout(async () => {
-      await fetchContextData();
-    }, delay);
-  }, [fetchContextData]);
+  const debouncedRefresh = useCallback(
+    (delay = 300) => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      refreshTimeoutRef.current = setTimeout(async () => {
+        await fetchContextData();
+      }, delay);
+    },
+    [fetchContextData]
+  );
 
   // Fetch recommendations
   const fetchRecommendations = useCallback(async (contextData: ContextData) => {
-    if (!contextData.currentPath || contextData.isLoading) {return;}
-    
+    if (!contextData.currentPath || contextData.isLoading) {
+      return;
+    }
+
     setIsLoadingRecommendations(true);
     try {
       const { recommendations, error } = await ContextService.fetchRecommendations(contextData);
-      setContextData(prev => ({ 
-        ...prev, 
-        recommendations, 
-        recommendationsError: error 
+      setContextData((prev) => ({
+        ...prev,
+        recommendations,
+        recommendationsError: error,
       }));
     } catch (error) {
       console.error('Failed to fetch recommendations:', error);
-      setContextData(prev => ({ 
-        ...prev, 
-        recommendationsError: 'Failed to fetch recommendations' 
+      setContextData((prev) => ({
+        ...prev,
+        recommendationsError: 'Failed to fetch recommendations',
       }));
     } finally {
       setIsLoadingRecommendations(false);
@@ -101,25 +102,25 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       const currentPath = location.pathname || window.location.pathname || '';
       const currentUrl = window.location.href;
       const currentSearchParams = window.location.search;
-      
+
       // Only check location/URL changes - EchoSrv handles datasource/viz detection
       const hasLocationChanged = lastLocationRef.current.path !== currentPath;
       const hasUrlChanged = lastLocationRef.current.url !== currentUrl;
       const hasSearchParamsChanged = lastLocationRef.current.searchParams !== currentSearchParams;
-      
+
       if (hasLocationChanged || hasUrlChanged || hasSearchParamsChanged) {
         // Get current EchoSrv state for tracking (but don't trigger on changes)
         const currentVizType = ContextService.getDetectedVisualizationType();
         const currentSelectedDatasource = ContextService.getDetectedDatasourceType();
-        
-        lastLocationRef.current = { 
-          path: currentPath, 
-          url: currentUrl, 
+
+        lastLocationRef.current = {
+          path: currentPath,
+          url: currentUrl,
           vizType: currentVizType,
           selectedDatasource: currentSelectedDatasource,
-          searchParams: currentSearchParams
+          searchParams: currentSearchParams,
         };
-        
+
         // Debounced refresh to avoid rapid-fire updates
         debouncedRefresh();
       }
@@ -140,12 +141,12 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
     // Listen for browser navigation
     window.addEventListener('popstate', handlePopState);
-    
+
     // Listen for Grafana location changes (if available)
     if (locationService.getHistory) {
       const history = locationService.getHistory();
       const unlisten = history.listen(handleLocationChange);
-      
+
       return () => {
         window.removeEventListener('popstate', handlePopState);
         unlisten();
@@ -168,17 +169,17 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     const unsubscribe = ContextService.onContextChange(async () => {
       // Force immediate context refresh when EchoSrv events occur
       try {
-        setContextData(prev => ({ ...prev, isLoading: true }));
+        setContextData((prev) => ({ ...prev, isLoading: true }));
         const newContextData = await ContextService.getContextData();
         setContextData(newContextData);
-        
+
         // Now fetch recommendations with the fresh context data
         if (newContextData.currentPath) {
           fetchRecommendations(newContextData);
         }
       } catch (error) {
         console.error('Failed to refresh context after EchoSrv change:', error);
-        setContextData(prev => ({ ...prev, isLoading: false }));
+        setContextData((prev) => ({ ...prev, isLoading: false }));
       }
     });
 
@@ -193,11 +194,11 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- contextData would cause infinite loop
   }, [
-    contextData.isLoading, 
-    contextData.currentPath, 
+    contextData.isLoading,
+    contextData.currentPath,
     tagsString, // Extracted to separate variable - includes datasource tags
     contextData.visualizationType, // Direct viz type tracking
-    fetchRecommendations
+    fetchRecommendations,
   ]); // fetchRecommendations is stable due to useCallback with empty deps
 
   // Actions
@@ -210,23 +211,29 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     fetchRecommendations(contextData);
   }, [fetchRecommendations, contextData]);
 
-  const openLearningJourney = useCallback((url: string, title: string) => {
-    onOpenLearningJourney?.(url, title);
-  }, [onOpenLearningJourney]);
+  const openLearningJourney = useCallback(
+    (url: string, title: string) => {
+      onOpenLearningJourney?.(url, title);
+    },
+    [onOpenLearningJourney]
+  );
 
-  const openDocsPage = useCallback((url: string, title: string) => {
-    onOpenDocsPage?.(url, title);
-  }, [onOpenDocsPage]);
+  const openDocsPage = useCallback(
+    (url: string, title: string) => {
+      onOpenDocsPage?.(url, title);
+    },
+    [onOpenDocsPage]
+  );
 
   const toggleSummaryExpansion = useCallback((recommendationUrl: string) => {
-    setContextData(prev => ({
+    setContextData((prev) => ({
       ...prev,
-      recommendations: prev.recommendations.map(rec => {
+      recommendations: prev.recommendations.map((rec) => {
         if (rec.url === recommendationUrl) {
           return { ...rec, summaryExpanded: !rec.summaryExpanded };
         }
         return rec;
-      })
+      }),
     }));
   }, []);
 
@@ -235,14 +242,14 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, []);
 
   const toggleOtherDocsExpansion = useCallback(() => {
-    setOtherDocsExpanded(prev => !prev);
+    setOtherDocsExpanded((prev) => !prev);
   }, []);
 
   return {
     contextData,
     isLoadingRecommendations,
     otherDocsExpanded,
-    
+
     // Actions
     refreshContext,
     refreshRecommendations,
@@ -267,4 +274,4 @@ export const useRecommendations = () => {
     isLoading: isLoadingRecommendations,
     error: contextData.recommendationsError,
   };
-}; 
+};

@@ -19,18 +19,18 @@ export const getFeedbackButtonStyles = (theme: GrafanaTheme2) => ({
     // Balanced vertical spacing around the button (footer padding feel)
     margin: `${theme.spacing(1)} 0`,
     alignSelf: 'flex-start', // Left align instead of center
-    
+
     '&:hover': {
       backgroundColor: theme.colors.primary.shade,
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z2,
     },
-    
+
     '&:active': {
       transform: 'translateY(0)',
       boxShadow: theme.shadows.z1,
     },
-    
+
     '&:focus': {
       outline: `2px solid ${theme.colors.primary.main}`,
       outlineOffset: '2px',
@@ -75,4 +75,4 @@ export const getFeedbackButtonStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
     whiteSpace: 'nowrap',
   }),
-}); 
+});

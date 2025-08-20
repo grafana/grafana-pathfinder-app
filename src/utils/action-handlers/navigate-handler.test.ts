@@ -7,13 +7,13 @@ import { locationService } from '@grafana/runtime';
 jest.mock('../interactive-state-manager');
 jest.mock('@grafana/runtime', () => ({
   locationService: {
-    push: jest.fn()
-  }
+    push: jest.fn(),
+  },
 }));
 
 const mockStateManager = {
   setState: jest.fn(),
-  handleError: jest.fn()
+  handleError: jest.fn(),
 } as unknown as InteractiveStateManager;
 
 const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
@@ -22,7 +22,7 @@ const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
 const mockWindowOpen = jest.fn();
 Object.defineProperty(window, 'open', {
   value: mockWindowOpen,
-  writable: true
+  writable: true,
 });
 
 // Mock console.log to avoid noise in tests
@@ -33,11 +33,8 @@ describe('NavigateHandler', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
-    navigateHandler = new NavigateHandler(
-      mockStateManager,
-      mockWaitForReactUpdates
-    );
+
+    navigateHandler = new NavigateHandler(mockStateManager, mockWaitForReactUpdates);
   });
 
   afterAll(() => {
@@ -52,7 +49,7 @@ describe('NavigateHandler', () => {
       requirements: 'test-requirements',
       tagName: 'a',
       textContent: 'Test Link',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     it('should handle show mode correctly', async () => {
@@ -77,7 +74,7 @@ describe('NavigateHandler', () => {
 
     it('should handle do mode with external URL correctly', async () => {
       const externalData = { ...mockData, reftarget: 'https://example.com' };
-      
+
       await navigateHandler.execute(externalData, true);
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(externalData, 'running');
@@ -90,7 +87,7 @@ describe('NavigateHandler', () => {
 
     it('should handle HTTP external URL correctly', async () => {
       const httpData = { ...mockData, reftarget: 'http://example.com' };
-      
+
       await navigateHandler.execute(httpData, true);
 
       expect(mockWindowOpen).toHaveBeenCalledWith('http://example.com', '_blank', 'noopener,noreferrer');
@@ -99,7 +96,7 @@ describe('NavigateHandler', () => {
 
     it('should handle HTTPS external URL correctly', async () => {
       const httpsData = { ...mockData, reftarget: 'https://example.com' };
-      
+
       await navigateHandler.execute(httpsData, true);
 
       expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer');
@@ -108,7 +105,7 @@ describe('NavigateHandler', () => {
 
     it('should handle relative internal route correctly', async () => {
       const relativeData = { ...mockData, reftarget: './relative-path' };
-      
+
       await navigateHandler.execute(relativeData, true);
 
       expect(locationService.push).toHaveBeenCalledWith('./relative-path');
@@ -117,7 +114,7 @@ describe('NavigateHandler', () => {
 
     it('should handle absolute internal route correctly', async () => {
       const absoluteData = { ...mockData, reftarget: '/absolute-path' };
-      
+
       await navigateHandler.execute(absoluteData, true);
 
       expect(locationService.push).toHaveBeenCalledWith('/absolute-path');
@@ -130,11 +127,7 @@ describe('NavigateHandler', () => {
 
       await navigateHandler.execute(mockData, true);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(
-        testError,
-        'NavigateHandler',
-        mockData
-      );
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', mockData);
     });
 
     it('should handle errors in show mode', async () => {
@@ -143,38 +136,30 @@ describe('NavigateHandler', () => {
 
       await navigateHandler.execute(mockData, false);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(
-        testError,
-        'NavigateHandler',
-        mockData
-      );
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', mockData);
     });
 
     it('should handle locationService.push errors', async () => {
       const testError = new Error('Location service failed');
-      (locationService.push as jest.Mock).mockImplementationOnce(() => { throw testError; });
+      (locationService.push as jest.Mock).mockImplementationOnce(() => {
+        throw testError;
+      });
 
       await navigateHandler.execute(mockData, true);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(
-        testError,
-        'NavigateHandler',
-        mockData
-      );
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', mockData);
     });
 
     it('should handle window.open errors', async () => {
       const externalData = { ...mockData, reftarget: 'https://example.com' };
       const testError = new Error('Window open failed');
-      mockWindowOpen.mockImplementationOnce(() => { throw testError; });
+      mockWindowOpen.mockImplementationOnce(() => {
+        throw testError;
+      });
 
       await navigateHandler.execute(externalData, true);
 
-      expect(mockStateManager.handleError).toHaveBeenCalledWith(
-        testError,
-        'NavigateHandler',
-        externalData
-      );
+      expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'NavigateHandler', externalData);
     });
   });
 });

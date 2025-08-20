@@ -4,33 +4,34 @@ This file lists common, stable selectors and patterns already used across tutori
 
 ## Navigation and core areas
 
-| Component/Area | Preferred selector | Notes |
-|---|---|---|
-| Nav menu item (by href) | `a[data-testid='data-testid Nav menu item'][href='/connections']` | Used for Connections, Dashboards, Explore, Alerting, Admin, Home. Replace href accordingly. |
-| Navigation container | `div[data-testid="data-testid navigation mega-menu"]` | Used to detect open nav. Fallbacks include `ul[aria-label='Navigation']` and `div[data-testid*='navigation']`. |
+| Component/Area          | Preferred selector                                                | Notes                                                                                                          |
+| ----------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Nav menu item (by href) | `a[data-testid='data-testid Nav menu item'][href='/connections']` | Used for Connections, Dashboards, Explore, Alerting, Admin, Home. Replace href accordingly.                    |
+| Navigation container    | `div[data-testid="data-testid navigation mega-menu"]`             | Used to detect open nav. Fallbacks include `ul[aria-label='Navigation']` and `div[data-testid*='navigation']`. |
 
 ## Editor and panel building
 
-| Component/Area | Preferred selector | Notes |
-|---|---|---|
-| Query mode toggle (Code) | `div[data-testid="QueryEditorModeToggle"] label[for^="option-code-radiogroup"]` | Switch to Code mode for raw queries. |
-| Visualization picker toggle | `button[data-testid="data-testid toggle-viz-picker"]` | Opens visualization picker. |
-| Panel title input | `input[data-testid="data-testid Panel editor option pane field input Title"]` | Edit panel title. |
+| Component/Area              | Preferred selector                                                              | Notes                                |
+| --------------------------- | ------------------------------------------------------------------------------- | ------------------------------------ |
+| Query mode toggle (Code)    | `div[data-testid="QueryEditorModeToggle"] label[for^="option-code-radiogroup"]` | Switch to Code mode for raw queries. |
+| Visualization picker toggle | `button[data-testid="data-testid toggle-viz-picker"]`                           | Opens visualization picker.          |
+| Panel title input           | `input[data-testid="data-testid Panel editor option pane field input Title"]`   | Edit panel title.                    |
 
 ## Drilldowns (example)
 
-| Component/Area | Preferred selector | Notes |
-|---|---|---|
-| Metrics drilldown app | `a[data-testid='data-testid Nav menu item'][href='/a/grafana-metricsdrilldown-app/drilldown']` | Opens app entrypoint. |
-| Select metric action | `button[data-testid="select-action_<metric_name>"]` | Replace `<metric_name>`. |
-| Related metrics tab | `button[data-testid="data-testid Tab Related metrics"]` | Tab toggle. |
-| Related logs tab | `button[data-testid="data-testid Tab Related logs"]` | Tab toggle. |
+| Component/Area        | Preferred selector                                                                             | Notes                    |
+| --------------------- | ---------------------------------------------------------------------------------------------- | ------------------------ |
+| Metrics drilldown app | `a[data-testid='data-testid Nav menu item'][href='/a/grafana-metricsdrilldown-app/drilldown']` | Opens app entrypoint.    |
+| Select metric action  | `button[data-testid="select-action_<metric_name>"]`                                            | Replace `<metric_name>`. |
+| Related metrics tab   | `button[data-testid="data-testid Tab Related metrics"]`                                        | Tab toggle.              |
+| Related logs tab      | `button[data-testid="data-testid Tab Related logs"]`                                           | Tab toggle.              |
 
 ## Buttons by text
 
 For generic buttons, prefer the `button` action with `data-reftarget` as the button’s visible text. The system finds buttons by text reliably and avoids brittle CSS.
 
 Examples:
+
 ```html
 <li class="interactive" data-targetaction="button" data-reftarget="Add new data source"></li>
 <li class="interactive" data-targetaction="button" data-reftarget="Save & test"></li>

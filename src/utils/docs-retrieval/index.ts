@@ -5,7 +5,7 @@
 export * from './content.types';
 export * from './content-fetcher';
 
-// Learning journey helpers  
+// Learning journey helpers
 export * from './learning-journey-helpers';
 
 // React content renderer
@@ -15,9 +15,7 @@ export * from './content-renderer';
 export * from './html-parser';
 
 // Re-export main functions with clear names for easy migration
-export {
-  fetchContent as fetchUnifiedContent,
-} from './content-fetcher';
+export { fetchContent as fetchUnifiedContent } from './content-fetcher';
 
 export {
   getNextMilestoneUrl as getNextMilestoneUrlFromContent,
@@ -27,9 +25,6 @@ export {
   clearJourneyCompletion,
 } from './learning-journey-helpers';
 
-export {
-  ContentRenderer,
-  useContentRenderer,
-} from './content-renderer';
+export { ContentRenderer, useContentRenderer } from './content-renderer';
 
-// Compatibility layer removed - migration complete! 
+// Compatibility layer removed - migration complete!

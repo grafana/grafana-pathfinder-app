@@ -1,7 +1,7 @@
 /**
  * Pure requirements checking utilities
  * Extracted from interactive.hook.ts to eliminate mock element anti-pattern
- * 
+ *
  * This module handles requirements checking without DOM manipulation,
  * focusing on API calls, configuration checks, and Grafana state validation.
  */
@@ -36,20 +36,18 @@ export interface RequirementsCheckOptions {
  * Core requirements checking function (pure implementation)
  * Replaces the mock element anti-pattern with direct string-based checking
  */
-export async function checkRequirements(
-  options: RequirementsCheckOptions
-): Promise<RequirementsCheckResult> {
+export async function checkRequirements(options: RequirementsCheckOptions): Promise<RequirementsCheckResult> {
   const { requirements, targetAction = 'button', refTarget = '' } = options;
-  
+
   if (!requirements) {
     return {
       requirements: requirements || '',
       pass: true,
-      error: []
+      error: [],
     };
   }
 
-  const checks: string[] = requirements.split(',').map(check => check.trim());
+  const checks: string[] = requirements.split(',').map((check) => check.trim());
 
   /**
    * Perform individual requirement check
@@ -60,7 +58,7 @@ export async function checkRequirements(
     if (check === 'exists-reftarget') {
       return reftargetExistsCHECK(refTarget, targetAction);
     }
-    
+
     if (check === 'navmenu-open') {
       return navmenuOpenCHECK();
     }
@@ -69,7 +67,7 @@ export async function checkRequirements(
     if (check === 'has-datasources') {
       return hasDatasourcesCHECK(check);
     }
-    
+
     if (check === 'is-admin') {
       return isAdminCHECK(check);
     }
@@ -78,7 +76,7 @@ export async function checkRequirements(
     if (check.startsWith('has-permission:')) {
       return hasPermissionCHECK(check);
     }
-    
+
     if (check.startsWith('has-role:')) {
       return hasRoleCHECK(check);
     }
@@ -87,11 +85,11 @@ export async function checkRequirements(
     if (check.startsWith('has-datasource:')) {
       return hasDataSourceCHECK(check);
     }
-    
+
     if (check.startsWith('has-plugin:')) {
       return hasPluginCHECK(check);
     }
-    
+
     if (check.startsWith('has-dashboard-named:')) {
       return hasDashboardNamedCHECK(check);
     }
@@ -105,11 +103,11 @@ export async function checkRequirements(
     if (check.startsWith('has-feature:')) {
       return hasFeatureCHECK(check);
     }
-    
+
     if (check.startsWith('in-environment:')) {
       return inEnvironmentCHECK(check);
     }
-    
+
     if (check.startsWith('min-version:')) {
       return minVersionCHECK(check);
     }
@@ -120,20 +118,20 @@ export async function checkRequirements(
     }
 
     // Unknown requirement
-    console.warn("Unknown requirement:", check);
+    console.warn('Unknown requirement:', check);
     return {
       requirement: check,
       pass: true,
-      error: "Unknown requirement"
+      error: 'Unknown requirement',
     };
   }
 
-  const results = await Promise.all(checks.map(check => performCheck(check)));
+  const results = await Promise.all(checks.map((check) => performCheck(check)));
 
   return {
     requirements,
-    pass: results.every(result => result.pass),
-    error: results
+    pass: results.every((result) => result.pass),
+    error: results,
   };
 }
 
@@ -149,17 +147,17 @@ async function hasPermissionCHECK(check: string): Promise<CheckResultError> {
   try {
     const permission = check.replace('has-permission:', '');
     const hasAccess = hasPermission(permission);
-    
+
     return {
       requirement: check,
       pass: hasAccess,
-      error: hasAccess ? undefined : `Missing permission: ${permission}`
+      error: hasAccess ? undefined : `Missing permission: ${permission}`,
     };
   } catch (error) {
     return {
       requirement: check,
       pass: false,
-      error: `Permission check failed: ${error}`
+      error: `Permission check failed: ${error}`,
     };
   }
 }
@@ -172,13 +170,13 @@ async function hasRoleCHECK(check: string): Promise<CheckResultError> {
       return {
         requirement: check,
         pass: false,
-        error: "User information not available"
+        error: 'User information not available',
       };
     }
 
     const requiredRole = check.replace('has-role:', '').toLowerCase();
     let hasRole = false;
-    
+
     switch (requiredRole) {
       case 'admin':
       case 'grafana-admin':
@@ -193,17 +191,17 @@ async function hasRoleCHECK(check: string): Promise<CheckResultError> {
       default:
         hasRole = user.orgRole === requiredRole;
     }
-    
+
     return {
       requirement: check,
       pass: hasRole,
-      error: hasRole ? undefined : `User role '${user.orgRole || 'none'}' does not meet requirement '${requiredRole}'`
+      error: hasRole ? undefined : `User role '${user.orgRole || 'none'}' does not meet requirement '${requiredRole}'`,
     };
   } catch (error) {
     return {
       requirement: check,
       pass: false,
-      error: `Role check failed: ${error}`
+      error: `Role check failed: ${error}`,
     };
   }
 }
@@ -213,26 +211,27 @@ async function hasDataSourceCHECK(check: string): Promise<CheckResultError> {
   try {
     const dataSourceSrv = getDataSourceSrv();
     const dsRequirement = check.replace('has-datasource:', '').toLowerCase();
-    
+
     const dataSources = dataSourceSrv.getList();
     let found = false;
-    
-    found = dataSources.some(ds => 
-        ds.name.toLowerCase() === dsRequirement || 
+
+    found = dataSources.some(
+      (ds) =>
+        ds.name.toLowerCase() === dsRequirement ||
         ds.uid.toLowerCase() === dsRequirement ||
         ds.type.toLowerCase() === dsRequirement
     );
-    
+
     return {
       requirement: check,
       pass: found,
-      error: found ? undefined : `No data source found with name/uid/type: ${dsRequirement}`
+      error: found ? undefined : `No data source found with name/uid/type: ${dsRequirement}`,
     };
   } catch (error) {
     return {
       requirement: check,
       pass: false,
-      error: `Data source check failed: ${error}`
+      error: `Data source check failed: ${error}`,
     };
   }
 }
@@ -242,18 +241,18 @@ async function hasPluginCHECK(check: string): Promise<CheckResultError> {
   try {
     const pluginId = check.replace('has-plugin:', '');
     const plugins = await ContextService.fetchPlugins();
-    const pluginExists = plugins.some(plugin => plugin.id === pluginId);
-    
+    const pluginExists = plugins.some((plugin) => plugin.id === pluginId);
+
     return {
       requirement: check,
       pass: pluginExists,
-      error: pluginExists ? undefined : `Plugin '${pluginId}' is not installed or enabled`
+      error: pluginExists ? undefined : `Plugin '${pluginId}' is not installed or enabled`,
     };
   } catch (error) {
     return {
       requirement: check,
       pass: false,
-      error: `Plugin check failed: ${error}`
+      error: `Plugin check failed: ${error}`,
     };
   }
 }
@@ -263,20 +262,20 @@ async function hasDashboardNamedCHECK(check: string): Promise<CheckResultError> 
   try {
     const dashboardName = check.replace('has-dashboard-named:', '');
     const dashboards = await ContextService.fetchDashboardsByName(dashboardName);
-    const dashboardExists = dashboards.some(dashboard => 
-      dashboard.title.toLowerCase() === dashboardName.toLowerCase()
+    const dashboardExists = dashboards.some(
+      (dashboard) => dashboard.title.toLowerCase() === dashboardName.toLowerCase()
     );
-    
+
     return {
       requirement: check,
       pass: dashboardExists,
-      error: dashboardExists ? undefined : `Dashboard named '${dashboardName}' not found`
+      error: dashboardExists ? undefined : `Dashboard named '${dashboardName}' not found`,
     };
   } catch (error) {
     return {
       requirement: check,
       pass: false,
-      error: `Dashboard check failed: ${error}`
+      error: `Dashboard check failed: ${error}`,
     };
   }
 }
@@ -288,17 +287,17 @@ async function onPageCHECK(check: string): Promise<CheckResultError> {
     const requiredPath = check.replace('on-page:', '');
     const currentPath = location.pathname;
     const matches = currentPath.includes(requiredPath) || currentPath === requiredPath;
-    
+
     return {
       requirement: check,
       pass: matches,
-      error: matches ? undefined : `Current page '${currentPath}' does not match required path '${requiredPath}'`
+      error: matches ? undefined : `Current page '${currentPath}' does not match required path '${requiredPath}'`,
     };
   } catch (error) {
     return {
       requirement: check,
       pass: false,
-      error: `Page check failed: ${error}`
+      error: `Page check failed: ${error}`,
     };
   }
 }
@@ -309,17 +308,17 @@ async function hasFeatureCHECK(check: string): Promise<CheckResultError> {
     const featureName = check.replace('has-feature:', '');
     const featureToggles = config.featureToggles as Record<string, boolean> | undefined;
     const isEnabled = featureToggles && featureToggles[featureName];
-    
+
     return {
       requirement: check,
       pass: !!isEnabled,
-      error: isEnabled ? undefined : `Feature toggle '${featureName}' is not enabled`
+      error: isEnabled ? undefined : `Feature toggle '${featureName}' is not enabled`,
     };
   } catch (error) {
     return {
       requirement: check,
       pass: false,
-      error: `Feature check failed: ${error}`
+      error: `Feature check failed: ${error}`,
     };
   }
 }
@@ -329,17 +328,20 @@ async function inEnvironmentCHECK(check: string): Promise<CheckResultError> {
   try {
     const requiredEnv = check.replace('in-environment:', '').toLowerCase();
     const currentEnv = config.buildInfo?.env?.toLowerCase() || 'unknown';
-    
+
     return {
       requirement: check,
       pass: currentEnv === requiredEnv,
-      error: currentEnv === requiredEnv ? undefined : `Current environment '${currentEnv}' does not match required '${requiredEnv}'`
+      error:
+        currentEnv === requiredEnv
+          ? undefined
+          : `Current environment '${currentEnv}' does not match required '${requiredEnv}'`,
     };
   } catch (error) {
     return {
       requirement: check,
       pass: false,
-      error: `Environment check failed: ${error}`
+      error: `Environment check failed: ${error}`,
     };
   }
 }
@@ -349,26 +351,28 @@ async function minVersionCHECK(check: string): Promise<CheckResultError> {
   try {
     const requiredVersion = check.replace('min-version:', '');
     const currentVersion = config.buildInfo?.version || '0.0.0';
-    
-    const parseVersion = (v: string) => v.split('.').map(n => parseInt(n, 10));
+
+    const parseVersion = (v: string) => v.split('.').map((n) => parseInt(n, 10));
     const [reqMajor, reqMinor, reqPatch] = parseVersion(requiredVersion);
     const [curMajor, curMinor, curPatch] = parseVersion(currentVersion);
-    
-    const meetsRequirement = 
-      curMajor > reqMajor || 
+
+    const meetsRequirement =
+      curMajor > reqMajor ||
       (curMajor === reqMajor && curMinor > reqMinor) ||
       (curMajor === reqMajor && curMinor === reqMinor && curPatch >= reqPatch);
-    
+
     return {
       requirement: check,
       pass: meetsRequirement,
-      error: meetsRequirement ? undefined : `Current version '${currentVersion}' does not meet minimum requirement '${requiredVersion}'`
+      error: meetsRequirement
+        ? undefined
+        : `Current version '${currentVersion}' does not meet minimum requirement '${requiredVersion}'`,
     };
   } catch (error) {
     return {
       requirement: check,
       pass: false,
-      error: `Version check failed: ${error}`
+      error: `Version check failed: ${error}`,
     };
   }
 }
@@ -380,22 +384,22 @@ async function isAdminCHECK(check: string): Promise<CheckResultError> {
     return {
       requirement: check,
       pass: true,
-      context: user
+      context: user,
     };
   } else if (user) {
     return {
       requirement: check,
       pass: false,
-      error: "User is not an admin",
-      context: user
+      error: 'User is not an admin',
+      context: user,
     };
   }
 
   return {
     requirement: check,
     pass: false,
-    error: "Unable to determine user admin status",
-    context: null
+    error: 'Unable to determine user admin status',
+    context: null,
   };
 }
 
@@ -405,8 +409,8 @@ async function hasDatasourcesCHECK(check: string): Promise<CheckResultError> {
   return {
     requirement: check,
     pass: dataSources.length > 0,
-    error: dataSources.length > 0 ? undefined : "No data sources found",
-    context: dataSources
+    error: dataSources.length > 0 ? undefined : 'No data sources found',
+    context: dataSources,
   };
 }
 
@@ -414,16 +418,16 @@ async function hasDatasourcesCHECK(check: string): Promise<CheckResultError> {
 async function sectionCompletedCHECK(check: string): Promise<CheckResultError> {
   try {
     const sectionId = check.replace('section-completed:', '');
-    
+
     // Check if the section exists in DOM and has completed class
     const sectionElement = document.getElementById(sectionId);
     const isCompleted = sectionElement?.classList.contains('completed') || false;
-    
+
     return {
       requirement: check,
       pass: isCompleted,
       error: isCompleted ? undefined : `Section '${sectionId}' must be completed first`,
-      context: { sectionId, found: !!sectionElement, hasCompletedClass: isCompleted }
+      context: { sectionId, found: !!sectionElement, hasCompletedClass: isCompleted },
     };
   } catch (error) {
     console.error('Section completion check error:', error);
@@ -431,7 +435,7 @@ async function sectionCompletedCHECK(check: string): Promise<CheckResultError> {
       requirement: check,
       pass: false,
       error: `Section completion check failed: ${error}`,
-      context: { error }
+      context: { error },
     };
   }
 }
