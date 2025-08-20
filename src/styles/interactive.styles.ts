@@ -959,6 +959,11 @@ export const addGlobalInteractiveStyles = () => {
       border-top: 8px solid var(--grafana-colors-background-primary, #1f1f23);
     }
 
+    /* Hide interactive comment spans - they're extracted as metadata */
+    span.interactive-comment {
+      display: none !important;
+    }
+
     /* Spinner animation for section running state */
     @keyframes spin {
       0% { transform: rotate(0deg); }

@@ -12,9 +12,9 @@ on:
         required: true
         type: choice
         options:
-          - 'dev'
-          - 'ops'
-          - 'prod'
+          - "dev"
+          - "ops"
+          - "prod"
       docs-only:
         description: Only publish docs, do not publish the plugin
         default: false
@@ -43,8 +43,9 @@ jobs:
       docs-only: ${{ fromJSON(github.event.inputs.docs-only) }}
       scopes: universal
       grafana-cloud-deployment-type: provisioned
-      argo-workflow-slack-channel: '#grafana-plugins-platform-ci'
+      argo-workflow-slack-channel: "#grafana-plugins-platform-ci"
       publish-to-catalog-as-pending: true
+
 
       # TODO: add here any other CI custom inputs you may need:
       #   https://enghub.grafana-ops.net/docs/default/component/grafana-plugins-platform/plugins-ci-github-actions/010-plugins-ci-github-actions/#customizing-the-workflows-with-inputs

@@ -664,15 +664,14 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
             );
           }
 
-          // Extract interactive-comment spans as metadata and hide from children
+          // Extract interactive-comment spans as metadata (hidden via CSS)
           let interactiveComment: string | null = null;
           const commentSpans = el.querySelectorAll('span.interactive-comment');
 
           if (commentSpans.length > 0) {
             // Use the first comment span found and capture its full HTML content
             interactiveComment = commentSpans[0].innerHTML;
-            // Remove all comment spans from the element before processing children
-            commentSpans.forEach((span) => span.remove());
+            // Note: Spans are hidden via CSS rule instead of DOM removal
           }
 
           // Process children as React components (same approach as expandable tables)

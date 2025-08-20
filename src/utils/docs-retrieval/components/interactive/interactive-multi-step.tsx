@@ -3,6 +3,7 @@ import { Button } from '@grafana/ui';
 
 import { useInteractiveElements } from '../../../interactive.hook';
 import { useStepChecker } from '../../../step-checker.hook';
+import { INTERACTIVE_CONFIG } from '../../../../constants/interactive-config';
 
 interface InternalAction {
   targetAction: string;
@@ -63,7 +64,10 @@ async function checkActionRequirements(
 
     // Check requirements with timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Requirements check timeout')), 5000);
+      setTimeout(
+        () => reject(new Error('Requirements check timeout')),
+        INTERACTIVE_CONFIG.delays.requirements.checkTimeout
+      );
     });
 
     const result = await Promise.race([checkRequirementsFromData(actionData), timeoutPromise]);
@@ -109,7 +113,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       requirements,
       objectives,
       onComplete,
-      stepDelay = 1800, // Default 1800ms delay between steps
+      stepDelay = INTERACTIVE_CONFIG.delays.multiStep.defaultStepDelay, // Default delay between steps
       resetTrigger,
     },
     ref
@@ -258,12 +262,11 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'show');
 
             // Delay between show and do with cancellation check
-            for (let j = 0; j < 10; j++) {
-              // 10 * 100ms = 1000ms
+            for (let j = 0; j < INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations; j++) {
               if (isCancelledRef.current) {
                 break;
               }
-              await new Promise((resolve) => setTimeout(resolve, 100));
+              await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.multiStep.baseInterval));
             }
             if (isCancelledRef.current) {
               continue;
@@ -274,12 +277,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
             // Add delay between steps with cancellation check (but not after the last step)
             if (i < internalActions.length - 1 && stepDelay > 0) {
-              const delaySteps = Math.ceil(stepDelay / 100); // Convert delay to 100ms steps
+              const delaySteps = Math.ceil(stepDelay / INTERACTIVE_CONFIG.delays.multiStep.baseInterval); // Convert delay to base interval steps
               for (let j = 0; j < delaySteps; j++) {
                 if (isCancelledRef.current) {
                   break;
                 }
-                await new Promise((resolve) => setTimeout(resolve, 100));
+                await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.multiStep.baseInterval));
               }
             }
           } catch (actionError) {

@@ -179,7 +179,7 @@ export class FormFillHandler {
         element.dispatchEvent(
           new KeyboardEvent('keyup', { key: ch, code: ch === '=' ? 'Equal' : undefined, bubbles: true })
         );
-        await sleep(50);
+        await sleep(INTERACTIVE_CONFIG.delays.formFill.keystrokeDelay);
       }
       element.dispatchEvent(new Event('change', { bubbles: true }));
     };

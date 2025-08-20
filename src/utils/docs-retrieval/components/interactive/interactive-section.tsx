@@ -5,6 +5,7 @@ import { useInteractiveElements } from '../../../interactive.hook';
 import { useStepChecker } from '../../../step-checker.hook';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
+import { INTERACTIVE_CONFIG } from '../../../../constants/interactive-config';
 
 // Shared type definitions
 export interface BaseInteractiveProps {
@@ -515,12 +516,11 @@ export function InteractiveSection({
 
           // Wait for highlight to be visible and animation to complete
           // Check cancellation during wait
-          for (let j = 0; j < 20; j++) {
-            // 20 * 100ms = 2000ms
+          for (let j = 0; j < INTERACTIVE_CONFIG.delays.section.showPhaseIterations; j++) {
             if (isCancelledRef.current) {
               break;
             }
-            await new Promise((resolve) => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.section.baseInterval));
           }
           if (isCancelledRef.current) {
             continue;
@@ -548,12 +548,11 @@ export function InteractiveSection({
           // Wait between steps for visual feedback
           // Check cancellation during wait
           if (i < stepComponents.length - 1) {
-            for (let j = 0; j < 12; j++) {
-              // 12 * 100ms = 1200ms
+            for (let j = 0; j < INTERACTIVE_CONFIG.delays.section.betweenStepsIterations; j++) {
               if (isCancelledRef.current) {
                 break;
               }
-              await new Promise((resolve) => setTimeout(resolve, 100));
+              await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.section.baseInterval));
             }
           }
         } else {

@@ -45,7 +45,10 @@ export class NavigationManager {
     }
   }
 
-  private waitForScrollComplete(element: HTMLElement, fallbackTimeout = 500): Promise<void> {
+  private waitForScrollComplete(
+    element: HTMLElement,
+    fallbackTimeout = INTERACTIVE_CONFIG.delays.navigation.scrollFallbackTimeout
+  ): Promise<void> {
     return new Promise((resolve) => {
       let scrollTimeout: NodeJS.Timeout;
       let fallbackTimeoutId: NodeJS.Timeout;
@@ -57,7 +60,7 @@ export class NavigationManager {
           element.removeEventListener('scroll', handleScroll);
           clearTimeout(fallbackTimeoutId);
           resolve();
-        }, 200);
+        }, INTERACTIVE_CONFIG.delays.navigation.scrollTimeout);
       };
 
       // Add event listener
@@ -144,7 +147,7 @@ export class NavigationManager {
             if (commentBox.parentNode) {
               commentBox.parentNode.removeChild(commentBox);
             }
-          }, 200); // Short delay for exit animation
+          }, INTERACTIVE_CONFIG.delays.navigation.commentExitAnimation); // Short delay for exit animation
         }
       }, delay);
     } else {
