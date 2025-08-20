@@ -232,7 +232,9 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               lastError = `Cannot load styled Grafana content. Unstyled version required but failed to load: ${finalUnstyledUrl}`;
               return null;
             } catch (unstyledError) {
-              lastError = `Cannot load styled Grafana content. Unstyled version failed: ${unstyledError instanceof Error ? unstyledError.message : 'Unknown error'}`;
+              lastError = `Cannot load styled Grafana content. Unstyled version failed: ${
+                unstyledError instanceof Error ? unstyledError.message : 'Unknown error'
+              }`;
               return null;
             }
           }
