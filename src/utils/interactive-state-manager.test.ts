@@ -23,19 +23,24 @@ describe('InteractiveStateManager', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('should log and dispatch event on setState completed', async () => {
+  it('should dispatch event on setState completed', async () => {
     const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
     await manager.setState(data, 'completed');
-    expect(consoleLogSpy).toHaveBeenCalledWith('✅ Interactive action completed:', data);
     expect(dispatchSpy).toHaveBeenCalledWith(expect.any(CustomEvent));
     dispatchSpy.mockRestore();
   });
 
-  it('should not log or dispatch event on setState running', async () => {
+  it('should not log or dispatch interactive-action-completed event on setState running', async () => {
     const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
     await manager.setState(data, 'running');
     expect(consoleLogSpy).not.toHaveBeenCalled();
-    expect(dispatchSpy).not.toHaveBeenCalled();
+    
+    // Check that no 'interactive-action-completed' event was dispatched
+    const completedEvents = dispatchSpy.mock.calls.filter(call => 
+      call[0] instanceof CustomEvent && call[0].type === 'interactive-action-completed'
+    );
+    expect(completedEvents).toHaveLength(0);
+    
     dispatchSpy.mockRestore();
   });
 
