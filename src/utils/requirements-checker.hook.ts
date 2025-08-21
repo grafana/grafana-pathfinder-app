@@ -112,10 +112,7 @@ export function useRequirementsChecker({
         ? { ...state, isEnabled: false, isChecking: false, isCompleted: true } // Preserve completion
         : { ...state, isEnabled: true, isChecking: false }; // Enable if no requirements
 
-      // Debug logging for completion state preservation
-      if (process.env.NODE_ENV === 'development' && state.isCompleted) {
-        console.warn(`🔒 Step ${uniqueId} completion state PRESERVED during re-check`);
-      }
+      // Completion state preservation (no debug logging needed)
 
       setState(newState);
 
@@ -206,9 +203,6 @@ export function useRequirementsChecker({
 
       // If this is a section completion, trigger reactive check to unlock dependent sections
       if (uniqueId.startsWith('section-')) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn(`🔓 Section ${uniqueId} completed - triggering reactive check for dependent steps`);
-        }
         // Delayed reactive check to allow state to settle
         setTimeout(() => {
           managerRef.current?.triggerReactiveCheck();
@@ -216,10 +210,7 @@ export function useRequirementsChecker({
       }
     }
 
-    // Debug logging for completion tracking
-    if (process.env.NODE_ENV === 'development') {
-      console.warn(`🎯 Step ${uniqueId} marked as COMPLETED`);
-    }
+    // Step completion tracking (no debug logging needed)
   }, [state, uniqueId]);
 
   const reset = useCallback(() => {
@@ -312,14 +303,6 @@ export class SequentialRequirementsManager {
 
   // Trigger reactive checking of all steps (e.g., after completing a step or DOM changes)
   triggerReactiveCheck(): void {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn(`🔄 Triggering reactive check for all steps`, {
-        totalSteps: this.steps.size,
-        totalCheckers: this.stepCheckers.size,
-        totalCheckersById: this.stepCheckersByID.size,
-        stepIds: Array.from(this.steps.keys()),
-      });
-    }
 
     // Trigger actual requirements re-checking for all registered steps
     this.recheckAllSteps();
@@ -357,9 +340,6 @@ export class SequentialRequirementsManager {
   triggerStepCheck(stepId: string): void {
     const checker = this.stepCheckersByID.get(stepId);
     if (checker) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn(`🎯 Triggering targeted requirements check for step: ${stepId}`);
-      }
       setTimeout(() => {
         checker();
       }, 10);
@@ -490,16 +470,7 @@ export class SequentialRequirementsManager {
 
   // Debug helpers
   logCurrentState(): void {
-    console.log('📊 Sequential Requirements State:', {
-      totalSteps: this.steps.size,
-      steps: Array.from(this.steps.entries()).map(([id, state]) => ({
-        id,
-        type: id.startsWith('section-') ? 'section' : 'regular',
-        enabled: state.isEnabled,
-        completed: state.isCompleted,
-        checking: state.isChecking,
-      })),
-    });
+    // Sequential requirements state logging removed
   }
 }
 
@@ -559,9 +530,6 @@ export function useSequentialRequirements({
   const checkRequirements = useCallback(async () => {
     // If this step is already completed, don't re-evaluate it - preserve completion state
     if (basicChecker.isCompleted) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn(`⏭️ Step ${uniqueId} skipped re-evaluation (already completed)`);
-      }
       return;
     }
 
@@ -638,15 +606,7 @@ export function useSequentialRequirements({
   const managerState = manager.getStepState(uniqueId);
   const currentState = managerState || basicChecker;
 
-  // Debug the final state being returned to components (reduced logging)
-  if (process.env.NODE_ENV === 'development' && Math.random() < 0.05) {
-    console.warn(`🏁 Final state sample for ${uniqueId.substring(0, 20)}...:`, {
-      enabled: currentState.isEnabled,
-      completed: currentState.isCompleted,
-      checking: currentState.isChecking,
-      hasError: !!currentState.error,
-    });
-  }
+  // Final state determined for component
 
   return {
     ...currentState,

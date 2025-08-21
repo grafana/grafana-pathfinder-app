@@ -31,7 +31,6 @@ export class NavigationManager {
       rect.right <= (window.innerWidth || document.documentElement.clientWidth);
 
     if (!isVisible) {
-      console.warn('📜 Scrolling element into view for better visibility');
       element.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
@@ -94,9 +93,6 @@ export class NavigationManager {
    * @returns Promise that resolves when highlighting is complete
    */
   async highlightWithComment(element: HTMLElement, comment?: string): Promise<HTMLElement> {
-    if (comment) {
-      console.warn(`🎨 NavigationManager showing comment box:`, comment.substring(0, 50) + '...');
-    }
 
     // First, ensure navigation is open and element is visible
     await this.ensureNavigationOpen(element);
@@ -309,7 +305,7 @@ export class NavigationManager {
 
     if (isNavClosed) {
       if (logWarnings) {
-        console.warn('🔄 Opening navigation menu for interactive element access');
+        // Opening navigation menu
       }
       megaMenuToggle.click();
 
@@ -318,7 +314,7 @@ export class NavigationManager {
       const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
       if (dockMenuButton) {
         if (logWarnings) {
-          console.warn('📌 Docking navigation menu to keep it in place');
+          // Docking navigation menu
         }
         dockMenuButton.click();
 
@@ -335,14 +331,14 @@ export class NavigationManager {
       const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
       if (dockMenuButton) {
         if (logWarnings) {
-          console.warn('📌 Navigation already open, ensuring it is docked');
+          // Navigation already open, ensuring it is docked
         }
         dockMenuButton.click();
         await waitForReactUpdates();
         return;
       } else {
         if (logWarnings) {
-          console.warn('✅ Navigation already open and accessible');
+          // Navigation already open and accessible
         }
         return;
       }

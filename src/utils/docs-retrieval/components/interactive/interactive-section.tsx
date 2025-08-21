@@ -84,13 +84,11 @@ export function InteractiveSection({
     if (id) {
       // Use the HTML id attribute, prefixed with section- for consistency
       const generatedId = `section-${id}`;
-      console.warn(`🏷️ InteractiveSection using HTML id: ${generatedId} (from HTML id="${id}")`);
       return generatedId;
     }
     // Fallback to sequential ID for sections without explicit id
     interactiveSectionCounter++;
     const generatedId = `section-${interactiveSectionCounter}`;
-    console.warn(`🏷️ InteractiveSection using sequential id: ${generatedId} (no HTML id provided)`);
     return generatedId;
   }, [id]);
 
@@ -154,7 +152,6 @@ export function InteractiveSection({
 
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {
-    console.warn(`🛑 Section cancelled by user: ${sectionId}`);
     isCancelledRef.current = true; // Set ref for immediate access
     // The running loop will detect this and break
   }, [sectionId]);
@@ -225,9 +222,7 @@ export function InteractiveSection({
     }
   }, [getStorageKey, stepComponents]);
 
-  // if (objectives) {
-  //   console.log("🔍 [DEBUG] InteractiveSection: " + sectionId + " objectives", objectives);
-  // }
+  // Objectives checking is handled by the step checker hook
 
   // Calculate base completion (steps completed) - needed for completion logic
   const stepsCompleted = stepComponents.length > 0 && completedSteps.size >= stepComponents.length;
@@ -243,25 +238,7 @@ export function InteractiveSection({
   const isCompletedByObjectives = objectivesChecker.completionReason === 'objectives';
   const isCompleted = isCompletedByObjectives || stepsCompleted;
 
-  // Debug logging for section completion tracking
-  useEffect(() => {
-    console.warn(`📊 Section completion status for ${sectionId}:`, {
-      isCompleted,
-      isCompletedByObjectives,
-      stepsCompleted,
-      completedStepsCount: completedSteps.size,
-      totalSteps: stepComponents.length,
-      completedStepIds: Array.from(completedSteps),
-    });
-  }, [
-    isCompleted,
-    isCompletedByObjectives,
-    stepsCompleted,
-    completedSteps.size,
-    stepComponents.length,
-    sectionId,
-    completedSteps,
-  ]);
+  // Section completion status tracking (debug logging removed)
 
   // When section objectives are met, mark all child steps as complete (clarification 2, 16)
   useEffect(() => {
@@ -271,9 +248,6 @@ export function InteractiveSection({
       if (completedSteps && completedSteps.size !== allStepIds.size) {
         setCompletedSteps(allStepIds);
         setCurrentStepIndex(stepComponents.length); // Mark as all completed
-        console.log(
-          `✅ Section objectives met for ${sectionId}, marking all ${allStepIds.size} child steps as complete`
-        );
       }
     }
   }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
@@ -346,8 +320,6 @@ export function InteractiveSection({
   // Handle individual step completion
   const handleStepComplete = useCallback(
     (stepId: string, skipStateUpdate = false) => {
-      console.warn(`🎯 Step completed in section ${sectionId}: ${stepId}`);
-
       if (!skipStateUpdate) {
         const newCompletedSteps = new Set([...completedSteps, stepId]);
         setCompletedSteps(newCompletedSteps);
@@ -358,7 +330,6 @@ export function InteractiveSection({
       const currentIndex = stepComponents.findIndex((step) => step.stepId === stepId);
       if (currentIndex >= 0) {
         setCurrentStepIndex(currentIndex + 1);
-        console.warn(`📍 Next step index advanced to: ${currentIndex + 1}/${stepComponents.length}`);
       }
 
       // Check if all steps are completed (only when we actually updated the state)
@@ -367,15 +338,8 @@ export function InteractiveSection({
         // Persist
         persistCompletedSteps(newCompletedSteps);
         const allStepsCompleted = newCompletedSteps.size >= stepComponents.length;
-        console.warn(`📊 Section completion check for ${sectionId}:`, {
-          newCompletedCount: newCompletedSteps.size,
-          totalSteps: stepComponents.length,
-          allStepsCompleted,
-          completedStepIds: Array.from(newCompletedSteps),
-        });
 
         if (allStepsCompleted) {
-          console.warn(`🏁 All steps completed in section: ${sectionId}`);
           onComplete?.();
         }
       }
@@ -386,7 +350,6 @@ export function InteractiveSection({
   // Handle individual step reset (redo functionality)
   const handleStepReset = useCallback(
     (stepId: string) => {
-      console.log(`🔄 Step reset requested: ${stepId}`);
       setCompletedSteps((prev) => {
         const newSet = new Set(prev);
         newSet.delete(stepId);
@@ -399,7 +362,6 @@ export function InteractiveSection({
       const resetIndex = stepComponents.findIndex((step) => step.stepId === stepId);
       if (resetIndex >= 0 && resetIndex < currentStepIndex) {
         setCurrentStepIndex(resetIndex);
-        console.log(`📍 Step index moved back to: ${resetIndex}/${stepComponents.length}`);
       }
 
       // Also clear currently executing step if it matches
@@ -415,7 +377,6 @@ export function InteractiveSection({
     async (stepInfo: StepInfo): Promise<boolean> => {
       // For multi-step components, call their executeStep method via stored ref
       if (stepInfo.isMultiStep) {
-        console.log(`🔄 Executing multi-step via stored ref: ${stepInfo.stepId}`);
         const multiStepRef = multiStepRefs.current.get(stepInfo.stepId);
 
         if (multiStepRef?.executeStep) {
@@ -430,8 +391,6 @@ export function InteractiveSection({
           return false;
         }
       }
-
-      console.log(`🚀 Executing step: ${stepInfo.stepId} (${stepInfo.targetAction}: ${stepInfo.refTarget})`);
 
       try {
         // Execute the action using existing interactive logic
@@ -458,7 +417,6 @@ export function InteractiveSection({
       return;
     }
 
-    console.log(`🚀 Starting section sequence: ${sectionId} (${stepComponents.length} steps)`);
     setIsRunning(true);
 
     isCancelledRef.current = false; // Reset ref as well
@@ -468,14 +426,9 @@ export function InteractiveSection({
 
     // If currentStepIndex is beyond the end, it means all steps are completed - reset for full re-run
     if (startIndex >= stepComponents.length) {
-      console.log(`🔄 All steps completed, resetting for full re-run: ${sectionId}`);
       setCompletedSteps(new Set());
       setCurrentStepIndex(0);
       startIndex = 0;
-    } else if (startIndex > 0) {
-      console.log(
-        `▶️ Resuming section from step ${startIndex + 1}/${stepComponents.length}: ${stepComponents[startIndex].stepId}`
-      );
     }
 
     // Start section-level blocking (persists for entire section)
@@ -495,8 +448,6 @@ export function InteractiveSection({
       for (let i = startIndex; i < stepComponents.length; i++) {
         // Check for cancellation before each step
         if (isCancelledRef.current) {
-          console.warn(`🛑 Section execution cancelled at step ${i + 1}/${stepComponents.length}`);
-          console.warn(`📝 Current step "${stepComponents[i].stepId}" left incomplete`);
           break;
         }
 
@@ -505,7 +456,6 @@ export function InteractiveSection({
 
         // First, show the step (highlight it) - skip for multi-step components
         if (!stepInfo.isMultiStep) {
-          console.log(`👁️ Showing step: ${stepInfo.stepId}`);
           await executeInteractiveAction(
             stepInfo.targetAction!,
             stepInfo.refTarget!,
@@ -528,17 +478,12 @@ export function InteractiveSection({
         }
 
         // Then, execute the step
-        console.warn(`🚀 Executing step ${i + 1}/${stepComponents.length}: ${stepInfo.stepId}`);
         const success = await executeStep(stepInfo);
-        console.warn(`📊 Step execution result for ${stepInfo.stepId}: ${success ? 'SUCCESS' : 'FAILED'}`);
 
         if (success) {
           // Mark step as completed immediately and persistently
           setCompletedSteps((prev) => {
             const newSet = new Set([...prev, stepInfo.stepId]);
-            console.warn(
-              `✅ Step ${stepInfo.stepId} marked as completed, total completed: ${newSet.size}/${stepComponents.length}`
-            );
             return newSet;
           });
 
@@ -556,27 +501,12 @@ export function InteractiveSection({
             }
           }
         } else {
-          console.warn(
-            `⚠️ Breaking section sequence at step ${i + 1}/${stepComponents.length} due to execution failure: ${
-              stepInfo.stepId
-            }`
-          );
-          console.warn(`❌ Failed step details:`, {
-            stepId: stepInfo.stepId,
-            targetAction: stepInfo.targetAction,
-            refTarget: stepInfo.refTarget,
-            targetValue: stepInfo.targetValue,
-            isMultiStep: stepInfo.isMultiStep,
-          });
           break;
         }
       }
 
       // Section sequence completed or cancelled
-      if (isCancelledRef.current) {
-        console.log(`🛑 Section sequence cancelled: ${sectionId}`);
-      } else {
-        console.log(`🏁 Section sequence completed: ${sectionId}`);
+      if (!isCancelledRef.current) {
 
         // Ensure all steps are marked as completed when section execution finishes
         const allStepIds = new Set(stepComponents.map((step) => step.stepId));
@@ -622,7 +552,6 @@ export function InteractiveSection({
     setCurrentlyExecutingStep(null);
     setCurrentStepIndex(0); // Reset to start from beginning
     setResetTrigger((prev) => prev + 1); // Signal child steps to reset their local state
-    console.log(`🔄 Section reset: ${sectionId} - starting from step index 0`);
     // Clear persistence
     try {
       localStorage.removeItem(getStorageKey());

@@ -83,8 +83,6 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
       setTimeout(() => {
         targetElement!.classList.remove('fragment-highlight');
       }, 3000);
-
-      console.warn(`📍 Scrolled to fragment #${fragment}`);
     } else {
       console.warn(`Fragment element not found: #${fragment}`);
     }
@@ -352,7 +350,6 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
       );
     case 'raw-html':
       // This should only be used for specific known-safe content
-      console.warn('[DocsPlugin] Rendering raw HTML - this should be rare in the new architecture');
       return <div key={key} dangerouslySetInnerHTML={{ __html: element.props.html }} />;
     default:
       // Standard HTML elements - strict validation
