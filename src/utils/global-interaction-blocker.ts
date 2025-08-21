@@ -40,10 +40,10 @@ class GlobalInteractionBlocker {
 
     // Create main content overlay
     this.createMainContentOverlay(data);
-    
-    // Create header overlay  
+
+    // Create header overlay
     this.createHeaderOverlay();
-    
+
     // Create full screen overlay (initially hidden)
     this.createFullScreenOverlay();
 
@@ -59,7 +59,7 @@ class GlobalInteractionBlocker {
    */
   private createMainContentOverlay(data: InteractiveElementData): void {
     const pageContent = document.getElementById('pageContent');
-    
+
     this.blockingOverlay = document.createElement('div');
     this.blockingOverlay.id = 'interactive-blocking-overlay';
 
@@ -78,7 +78,7 @@ class GlobalInteractionBlocker {
         pointer-events: auto;
       `;
     }
-    
+
     document.body.appendChild(this.blockingOverlay);
   }
 
@@ -87,7 +87,7 @@ class GlobalInteractionBlocker {
    */
   private createHeaderOverlay(): void {
     const header = document.querySelector('header.css-1ef5w88') as HTMLElement;
-    
+
     if (!header) {
       return; // No header found, skip
     }
@@ -95,11 +95,11 @@ class GlobalInteractionBlocker {
     this.headerOverlay = document.createElement('div');
     this.headerOverlay.id = 'interactive-header-overlay';
     this.positionOverlayToElement(this.headerOverlay, header);
-    
+
     // Header overlay has no cancel button - it's purely blocking
     this.headerOverlay.style.cursor = 'not-allowed';
     this.addBlockingHandlers(this.headerOverlay);
-    
+
     document.body.appendChild(this.headerOverlay);
   }
 
@@ -121,7 +121,7 @@ class GlobalInteractionBlocker {
       cursor: not-allowed;
       display: none;
     `;
-    
+
     // Full-screen overlay gets basic blocking (the cancel button from main overlay will still work)
     this.addBlockingHandlers(this.fullScreenOverlay);
     document.body.appendChild(this.fullScreenOverlay);
@@ -142,9 +142,9 @@ class GlobalInteractionBlocker {
       overlay.style.zIndex = '9999';
       overlay.style.pointerEvents = 'auto';
     };
-    
+
     applyRect();
-    
+
     // Store the update function for later use
     if (!this.windowResizeHandler) {
       this.windowResizeHandler = () => {
@@ -158,11 +158,11 @@ class GlobalInteractionBlocker {
         }
       };
       this.windowScrollHandler = this.windowResizeHandler;
-      
+
       window.addEventListener('resize', this.windowResizeHandler, { passive: true });
       window.addEventListener('scroll', this.windowScrollHandler, { passive: true });
     }
-    
+
     // Observe size changes for the target element
     if ('ResizeObserver' in window && !this.resizeObserver) {
       this.resizeObserver = new ResizeObserver(() => {
@@ -381,7 +381,7 @@ class GlobalInteractionBlocker {
 
     // Remove global keyboard handler when overlays are removed
     this.removeGlobalKeyboardHandler();
-    
+
     // Remove position sync listeners/observers
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
@@ -395,7 +395,7 @@ class GlobalInteractionBlocker {
       window.removeEventListener('scroll', this.windowScrollHandler);
       this.windowScrollHandler = null;
     }
-    
+
     // Clean up modal detection resources
     if (this.modalObserver) {
       this.modalObserver.disconnect();
@@ -409,7 +409,7 @@ class GlobalInteractionBlocker {
       window.clearInterval(this.modalPollingInterval);
       this.modalPollingInterval = null;
     }
-    
+
     // Reset state tracking
     this.lastKnownModalState = false;
   }
@@ -425,7 +425,7 @@ class GlobalInteractionBlocker {
     this.sectionBlockingActive = true;
     this.cancelCallback = cancelCallback || null;
     this.createBlockingOverlay(data);
-    
+
     // Initialize modal state tracking with current state
     this.lastKnownModalState = this.isModalActive();
   }
@@ -489,11 +489,11 @@ class GlobalInteractionBlocker {
     // Set up mutation observer with comprehensive options
     this.modalObserver = new MutationObserver(debouncedUpdate);
     this.modalObserver.observe(document.body, {
-      childList: true,    // Watch for added/removed nodes
-      subtree: true,      // Watch all descendants
-      attributes: true,   // Watch for attribute changes
+      childList: true, // Watch for added/removed nodes
+      subtree: true, // Watch all descendants
+      attributes: true, // Watch for attribute changes
       attributeFilter: ['class', 'style', 'role', 'aria-hidden', 'data-modal'], // Focus on modal-related attributes
-      characterData: false // Don't need text changes
+      characterData: false, // Don't need text changes
     });
 
     // Also set up a polling fallback to catch any edge cases
@@ -525,11 +525,12 @@ class GlobalInteractionBlocker {
       const style = window.getComputedStyle(dialog);
       if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
         // Check if this is a navigation drawer (these should NOT trigger full-screen mode)
-        const isNavigationDrawer = dialog.closest('[class*="nav-"]') || 
-                                   dialog.querySelector('[aria-label*="navigation"]') ||
-                                   dialog.querySelector('[data-testid*="nav"]') ||
-                                   (dialog.textContent || '').toLowerCase().includes('navigation menu');
-        
+        const isNavigationDrawer =
+          dialog.closest('[class*="nav-"]') ||
+          dialog.querySelector('[aria-label*="navigation"]') ||
+          dialog.querySelector('[data-testid*="nav"]') ||
+          (dialog.textContent || '').toLowerCase().includes('navigation menu');
+
         if (!isNavigationDrawer) {
           return true; // This is a real modal (save, settings, etc.)
         }
@@ -546,13 +547,13 @@ class GlobalInteractionBlocker {
     if (!this.blockingOverlay || !this.fullScreenOverlay) {
       return;
     }
-    
+
     const modalActive = this.isModalActive();
-    
+
     // Only update if modal state has changed to avoid unnecessary DOM manipulation
     if (modalActive !== this.lastKnownModalState) {
       this.lastKnownModalState = modalActive;
-      
+
       if (modalActive) {
         // Modal is active: Hide targeted overlays and show full-screen overlay
         // Hide normal overlays
@@ -560,15 +561,14 @@ class GlobalInteractionBlocker {
         if (this.headerOverlay) {
           this.headerOverlay.style.display = 'none';
         }
-        
+
         // Show full-screen overlay to block modal interaction
         this.fullScreenOverlay.style.display = 'block';
-        
       } else {
         // Modal is gone: Show targeted overlays and hide full-screen overlay
         // Hide full-screen overlay
         this.fullScreenOverlay.style.display = 'none';
-        
+
         // Restore normal overlays
         this.blockingOverlay.style.display = 'block';
         if (this.headerOverlay) {

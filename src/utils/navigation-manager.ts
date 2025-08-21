@@ -93,7 +93,6 @@ export class NavigationManager {
    * @returns Promise that resolves when highlighting is complete
    */
   async highlightWithComment(element: HTMLElement, comment?: string): Promise<HTMLElement> {
-
     // First, ensure navigation is open and element is visible
     await this.ensureNavigationOpen(element);
     await this.ensureElementVisible(element);

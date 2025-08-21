@@ -162,10 +162,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       parentCompleted || isLocallyCompleted || checker.completionReason === 'objectives';
 
     // Create cancellation handler
-      const handleMultiStepCancel = useCallback(() => {
-    isCancelledRef.current = true; // Set ref for immediate access
-    // The running loop will detect this and break
-  }, [stepId]);
+    const handleMultiStepCancel = useCallback(() => {
+      isCancelledRef.current = true; // Set ref for immediate access
+      // The running loop will detect this and break
+    }, []);
 
     // Main execution logic (similar to InteractiveSection's sequence execution)
     const executeStep = useCallback(async (): Promise<boolean> => {
@@ -313,7 +313,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     }, [
       checker.isEnabled,
       isCompletedWithObjectives,
-      disabled,
       isExecuting,
       stepId,
       internalActions,

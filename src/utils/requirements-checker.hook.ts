@@ -303,7 +303,6 @@ export class SequentialRequirementsManager {
 
   // Trigger reactive checking of all steps (e.g., after completing a step or DOM changes)
   triggerReactiveCheck(): void {
-
     // Trigger actual requirements re-checking for all registered steps
     this.recheckAllSteps();
     // Also notify listeners for UI updates

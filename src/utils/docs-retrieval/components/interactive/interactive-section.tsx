@@ -154,7 +154,7 @@ export function InteractiveSection({
   const handleSectionCancel = useCallback(() => {
     isCancelledRef.current = true; // Set ref for immediate access
     // The running loop will detect this and break
-  }, [sectionId]);
+  }, []);
 
   // Use executeInteractiveAction directly (no wrapper needed)
   // Section-level blocking is managed separately at the section level
@@ -344,7 +344,7 @@ export function InteractiveSection({
         }
       }
     },
-    [completedSteps, stepComponents, sectionId, onComplete, persistCompletedSteps]
+    [completedSteps, stepComponents, onComplete, persistCompletedSteps]
   );
 
   // Handle individual step reset (redo functionality)
@@ -507,7 +507,6 @@ export function InteractiveSection({
 
       // Section sequence completed or cancelled
       if (!isCancelledRef.current) {
-
         // Ensure all steps are marked as completed when section execution finishes
         const allStepIds = new Set(stepComponents.map((step) => step.stepId));
         setCompletedSteps(allStepIds);
@@ -558,7 +557,7 @@ export function InteractiveSection({
     } catch {
       // ignore
     }
-  }, [disabled, isRunning, sectionId, getStorageKey]);
+  }, [disabled, isRunning, getStorageKey]);
 
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {

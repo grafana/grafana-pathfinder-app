@@ -272,7 +272,7 @@ export function useStepChecker({
     };
     setState(completedState);
     updateManager(completedState);
-  }, [stepId, state, updateManager]);
+  }, [state, updateManager]);
 
   // Auto-check when eligibility or conditions change
   useEffect(() => {
