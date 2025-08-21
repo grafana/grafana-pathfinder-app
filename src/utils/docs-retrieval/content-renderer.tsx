@@ -395,7 +395,7 @@ function renderTabsStructure(element: ParsedElement): React.ReactNode {
           />
         ))}
       </TabsBar>
-      <TabContent>
+      <TabContent className="tab-content">
         {(() => {
           const contentIndex = parseInt(activeTab, 10) || 0;
           const content = tabContentItems[contentIndex];
