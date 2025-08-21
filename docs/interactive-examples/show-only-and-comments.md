@@ -24,10 +24,12 @@ When `data-doit='false'` is set:
 ### Basic usage
 
 ```html
-<li class="interactive"
-    data-reftarget='div[data-testid="uplot-main-div"]:first-of-type'
-    data-targetaction='highlight'
-    data-doit='false'>
+<li
+  class="interactive"
+  data-reftarget='div[data-testid="uplot-main-div"]:first-of-type'
+  data-targetaction="highlight"
+  data-doit="false"
+>
   Examine the metrics visualization panel above the logs.
 </li>
 ```
@@ -36,9 +38,7 @@ When `data-doit='false'` is set:
 
 ```html
 <!-- Default behavior (data-doit defaults to true) -->
-<li class="interactive"
-    data-reftarget='button[data-testid="save-dashboard"]'
-    data-targetaction='highlight'>
+<li class="interactive" data-reftarget='button[data-testid="save-dashboard"]' data-targetaction="highlight">
   Save your dashboard changes.
 </li>
 ```
@@ -75,11 +75,15 @@ Provides **rich, contextual explanations** that appear as floating comment boxes
 ### Basic example
 
 ```html
-<li class="interactive"
-    data-reftarget='div[data-testid="uplot-main-div"]:first-of-type'
-    data-targetaction='highlight'
-    data-doit='false'>
-  <span class="interactive-comment">This <strong>metrics panel</strong> shows log volume over time with different log levels (debug, info, etc.).</span>
+<li
+  class="interactive"
+  data-reftarget='div[data-testid="uplot-main-div"]:first-of-type'
+  data-targetaction="highlight"
+  data-doit="false"
+>
+  <span class="interactive-comment"
+    >This <strong>metrics panel</strong> shows log volume over time with different log levels (debug, info, etc.).</span
+  >
   Examine the <strong>metrics visualization panel</strong> above the logs.
 </li>
 ```
@@ -87,11 +91,17 @@ Provides **rich, contextual explanations** that appear as floating comment boxes
 ### Rich formatting example
 
 ```html
-<li class="interactive"
-    data-reftarget='a[data-testid="Nav menu item"][href="/connections"]'
-    data-targetaction='highlight'
-    data-doit='false'>
-  <span class="interactive-comment">The <strong>Connections</strong> section is where you manage all your data sources. This is your central hub for connecting Grafana to various data backends like <code>Prometheus</code>, <code>Loki</code>, <code>InfluxDB</code>, and more.</span>
+<li
+  class="interactive"
+  data-reftarget='a[data-testid="Nav menu item"][href="/connections"]'
+  data-targetaction="highlight"
+  data-doit="false"
+>
+  <span class="interactive-comment"
+    >The <strong>Connections</strong> section is where you manage all your data sources. This is your central hub for
+    connecting Grafana to various data backends like <code>Prometheus</code>, <code>Loki</code>, <code>InfluxDB</code>,
+    and more.</span
+  >
   Click on the Connections menu item.
 </li>
 ```
@@ -99,12 +109,18 @@ Provides **rich, contextual explanations** that appear as floating comment boxes
 ### Complex content example
 
 ```html
-<li class="interactive"
-    data-reftarget='textarea[data-testid="query-editor"]'
-    data-targetaction='formfill'
-    data-targetvalue='avg(alloy_component_controller_running_components{})'
-    data-doit='false'>
-  <span class="interactive-comment">This is <strong>PromQL</strong> (Prometheus Query Language)! The <code>avg()</code> function calculates the average value, and <code>alloy_component_controller_running_components{}</code> is a metric that tracks running components. The empty <code>{}</code> means we're not filtering by labels.</span>
+<li
+  class="interactive"
+  data-reftarget='textarea[data-testid="query-editor"]'
+  data-targetaction="formfill"
+  data-targetvalue="avg(alloy_component_controller_running_components{})"
+  data-doit="false"
+>
+  <span class="interactive-comment"
+    >This is <strong>PromQL</strong> (Prometheus Query Language)! The <code>avg()</code> function calculates the average
+    value, and <code>alloy_component_controller_running_components{}</code> is a metric that tracks running components.
+    The empty <code>{}</code> means we're not filtering by labels.</span
+  >
   The query editor shows a PromQL query for monitoring component health.
 </li>
 ```
@@ -114,11 +130,17 @@ Provides **rich, contextual explanations** that appear as floating comment boxes
 Show-only mode and interactive comments work perfectly together to create **guided educational experiences**:
 
 ```html
-<li class="interactive"
-    data-reftarget='div[data-testid="visualization-picker"]'
-    data-targetaction='highlight' 
-    data-doit='false'>
-  <span class="interactive-comment">Grafana offers <strong>many visualization types</strong>: <em>Time series</em> for trends, <em>Bar charts</em> for comparisons, <em>Heatmaps</em> for distributions, <em>Tables</em> for raw data, and <em>Stat</em> for single values. Choose based on your data story!</span>
+<li
+  class="interactive"
+  data-reftarget='div[data-testid="visualization-picker"]'
+  data-targetaction="highlight"
+  data-doit="false"
+>
+  <span class="interactive-comment"
+    >Grafana offers <strong>many visualization types</strong>: <em>Time series</em> for trends, <em>Bar charts</em> for
+    comparisons, <em>Heatmaps</em> for distributions, <em>Tables</em> for raw data, and <em>Stat</em> for single values.
+    Choose based on your data story!</span
+  >
   Notice the variety of visualization options available in the picker.
 </li>
 ```
@@ -126,12 +148,14 @@ Show-only mode and interactive comments work perfectly together to create **guid
 ## Best practices
 
 ### When to use show-only mode
+
 - **Orientation tutorials**: Showing where important UI elements are located
 - **Feature explanations**: Pointing out interface elements without changing state
 - **Concept education**: Teaching about what things do rather than how to use them
 - **Progressive disclosure**: Building understanding before hands-on interaction
 
 ### When to use interactive comments
+
 - **Context is crucial**: When users need background to understand what they're seeing
 - **Complex interfaces**: When UI elements aren't self-explanatory
 - **Educational content**: When you want to teach concepts alongside actions
@@ -140,6 +164,7 @@ Show-only mode and interactive comments work perfectly together to create **guid
 ### Content guidelines
 
 #### For interactive comments:
+
 - **Start with the element name** in bold: `<strong>Connections</strong> section`
 - **Use code formatting** for technical terms: `<code>Prometheus</code>`
 - **Add emphasis** for key concepts: `<em>mission control center</em>`
@@ -147,6 +172,7 @@ Show-only mode and interactive comments work perfectly together to create **guid
 - **Focus on "what" and "why"** rather than "how"
 
 #### For show-only actions:
+
 - **Use descriptive text** that matches the comment
 - **Focus on observation** verbs: "Examine", "Notice", "Observe"
 - **Avoid action** verbs: "Click", "Enter", "Select"
@@ -192,12 +218,16 @@ if (commentSpans.length > 0) {
 Both features work seamlessly with the requirements system:
 
 ```html
-<li class="interactive"
-    data-reftarget='div[data-testid="dashboard-panel"]'
-    data-targetaction='highlight'
-    data-requirements='on-page:/dashboard'
-    data-doit='false'>
-  <span class="interactive-comment">This <strong>panel</strong> displays real-time metrics from your <code>Prometheus</code> data source.</span>
+<li
+  class="interactive"
+  data-reftarget='div[data-testid="dashboard-panel"]'
+  data-targetaction="highlight"
+  data-requirements="on-page:/dashboard"
+  data-doit="false"
+>
+  <span class="interactive-comment"
+    >This <strong>panel</strong> displays real-time metrics from your <code>Prometheus</code> data source.</span
+  >
   Look at the dashboard panel showing your metrics.
 </li>
 ```

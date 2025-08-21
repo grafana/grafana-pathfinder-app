@@ -110,11 +110,16 @@ Common checks supported by the system:
 ### show-only mode with rich comments
 
 ```html
-<li class="interactive"
-    data-reftarget='div[data-testid="uplot-main-div"]:first-of-type'
-    data-targetaction='highlight'
-    data-doit='false'>
-  <span class="interactive-comment">This <strong>metrics panel</strong> shows log volume over time with different log levels (<code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code>). The legend displays total counts for each level.</span>
+<li
+  class="interactive"
+  data-reftarget='div[data-testid="uplot-main-div"]:first-of-type'
+  data-targetaction="highlight"
+  data-doit="false"
+>
+  <span class="interactive-comment"
+    >This <strong>metrics panel</strong> shows log volume over time with different log levels (<code>debug</code>,
+    <code>info</code>, <code>warn</code>, <code>error</code>). The legend displays total counts for each level.</span
+  >
   Examine the metrics visualization panel above the logs.
 </li>
 ```
