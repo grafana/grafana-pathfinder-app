@@ -127,9 +127,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
     console.error(`Failed to load bundled interactive ${contentId}:`, error);
     return {
       content: null,
-      error: `Failed to load bundled interactive: ${contentId}. Error: ${
-        error instanceof Error ? error.message : 'Unknown error'
-      }`,
+      error: `Failed to load bundled interactive: ${contentId}. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
     };
   }
 }
