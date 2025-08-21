@@ -77,7 +77,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
 
   // Links
   '& a': {
-    color: theme.colors.primary.main,
+    color: theme.colors.text.link,
     textDecoration: 'none',
     '&:hover': {
       textDecoration: 'underline',

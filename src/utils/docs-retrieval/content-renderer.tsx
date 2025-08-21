@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { EmbeddedScene, SceneFlexItem, SceneFlexLayout } from '@grafana/scenes';
-import { Card, TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
+import { Card, TabsBar, Tab, TabContent, Badge, Tooltip, Button, IconButton, Box, Grid } from '@grafana/ui';
 
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
@@ -311,14 +311,21 @@ function ScenesModelRenderer({ model }: { model: any }) {
 
 // Whitelisted @grafana/ui React components by tag name
 const allowedUiComponents: Record<string, React.ElementType> = {
+  box: Box,
   card: Card,
   'card.heading': Card.Heading,
   'card.description': Card.Description,
+  'card.meta': Card.Meta,
+  'card.actions': Card.Actions,
+  'card.secondaryactions': Card.SecondaryActions,
+  iconbutton: IconButton,
   tab: Tab,
   tabsbar: TabsBar,
   tabcontent: TabContent,
   badge: Badge,
   tooltip: Tooltip,
+  button: Button,
+  grid: Grid,
 };
 
 // Special tabs state management
@@ -603,8 +610,32 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
             if (/\bnopadding\b/i.test(originalHTML)) {
               uiProps.noPadding = true;
             }
+            if (/\bpadding\b/i.test(originalHTML)) {
+              const match = originalHTML.match(/padding\s*=\s*["']([^"']+)["']/i);
+              uiProps.padding = match ? parseInt(match[1], 10) : undefined;
+            }
             if (/\bisselected\b/i.test(originalHTML)) {
               uiProps.isSelected = true;
+            }
+            if (/\bbackgroundcolor\b/i.test(originalHTML)) {
+              const match = originalHTML.match(/backgroundcolor\s*=\s*["']([^"']+)["']/i);
+              uiProps.backgroundColor = match ? match[1] : undefined;
+            }
+            if (/\bbordercolor\b/i.test(originalHTML)) {
+              const match = originalHTML.match(/bordercolor\s*=\s*["']([^"']+)["']/i);
+              uiProps.borderColor = match ? match[1] : undefined;
+            }
+            if (/\bborderstyle\b/i.test(originalHTML)) {
+              const match = originalHTML.match(/borderstyle\s*=\s*["']([^"']+)["']/i);
+              uiProps.borderStyle = match ? match[1] : undefined;
+            }
+            if (/\bcolumns\b/i.test(originalHTML)) {
+              const match = originalHTML.match(/columns\s*=\s*["']([^"']+)["']/i);
+              uiProps.columns = match ? parseInt(match[1], 10) : undefined;
+            }
+            if (/\bgap\b/i.test(originalHTML)) {
+              const match = originalHTML.match(/gap\s*=\s*["']([^"']+)["']/i);
+              uiProps.gap = match ? parseInt(match[1], 10) : undefined;
             }
           }
 

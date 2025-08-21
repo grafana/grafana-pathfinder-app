@@ -308,8 +308,6 @@ export class ContextService {
         ...defaultRecommendations,
       ];
 
-      console.log(allRecommendations);
-
       // Process recommendations
       const processedRecommendations = await Promise.all(
         allRecommendations.map(async (rec) => {

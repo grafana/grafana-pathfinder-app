@@ -45,8 +45,6 @@ export function CodeBlock({ code, language, showCopy = true, inline = false, cla
       }
     };
 
-    console.log('loadPrism');
-
     loadPrism();
   }, []);
 
@@ -55,8 +53,6 @@ export function CodeBlock({ code, language, showCopy = true, inline = false, cla
     const prismInstance = (window as any).Prism;
 
     if (prismInstance && language && codeRef.current) {
-      console.log('Language requested:', language, codeRef?.current, code);
-
       // Apply Prism highlighting
       prismInstance.highlightElement(codeRef?.current);
     } else {
