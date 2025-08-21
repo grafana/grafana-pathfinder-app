@@ -34,13 +34,13 @@ describe('InteractiveStateManager', () => {
     const dispatchSpy = jest.spyOn(document, 'dispatchEvent');
     await manager.setState(data, 'running');
     expect(consoleLogSpy).not.toHaveBeenCalled();
-    
+
     // Check that no 'interactive-action-completed' event was dispatched
-    const completedEvents = dispatchSpy.mock.calls.filter(call => 
-      call[0] instanceof CustomEvent && call[0].type === 'interactive-action-completed'
+    const completedEvents = dispatchSpy.mock.calls.filter(
+      (call) => call[0] instanceof CustomEvent && call[0].type === 'interactive-action-completed'
     );
     expect(completedEvents).toHaveLength(0);
-    
+
     dispatchSpy.mockRestore();
   });
 
