@@ -591,6 +591,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
 
       // Whitelisted @grafana/ui components mapping
       if (typeof element.type === 'string') {
+        console.log('element.type', element);
         const lowerType = element.type.toLowerCase();
         const comp = allowedUiComponents[lowerType];
         if (comp) {
@@ -600,42 +601,60 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
             )
             .filter((child: React.ReactNode) => child !== null);
 
-          // Normalize boolean-like props that HTML parser might have dropped
+          // Extract custom attributes from the original HTML using DOM parsing
           const uiProps: Record<string, any> = { ...element.props };
           const originalHTML: string | undefined = (element as any).originalHTML;
+
           if (typeof originalHTML === 'string') {
-            if (/\bnomargin\b/i.test(originalHTML)) {
-              uiProps.noMargin = true;
-            }
-            if (/\bnopadding\b/i.test(originalHTML)) {
-              uiProps.noPadding = true;
-            }
-            if (/\bpadding\b/i.test(originalHTML)) {
-              const match = originalHTML.match(/padding\s*=\s*["']([^"']+)["']/i);
-              uiProps.padding = match ? parseInt(match[1], 10) : undefined;
-            }
-            if (/\bisselected\b/i.test(originalHTML)) {
-              uiProps.isSelected = true;
-            }
-            if (/\bbackgroundcolor\b/i.test(originalHTML)) {
-              const match = originalHTML.match(/backgroundcolor\s*=\s*["']([^"']+)["']/i);
-              uiProps.backgroundColor = match ? match[1] : undefined;
-            }
-            if (/\bbordercolor\b/i.test(originalHTML)) {
-              const match = originalHTML.match(/bordercolor\s*=\s*["']([^"']+)["']/i);
-              uiProps.borderColor = match ? match[1] : undefined;
-            }
-            if (/\bborderstyle\b/i.test(originalHTML)) {
-              const match = originalHTML.match(/borderstyle\s*=\s*["']([^"']+)["']/i);
-              uiProps.borderStyle = match ? match[1] : undefined;
-            }
-            if (/\bcolumns\b/i.test(originalHTML)) {
-              const match = originalHTML.match(/columns\s*=\s*["']([^"']+)["']/i);
-              uiProps.columns = match ? parseInt(match[1], 10) : undefined;
-            }
-            if (/\bgap\b/i.test(originalHTML)) {
-              const match = originalHTML.match(/gap\s*=\s*["']([^"']+)["']/i);
-              uiProps.gap = match ? parseInt(match[1], 10) : undefined;
+            // Parse the original HTML to extract attributes
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = originalHTML;
+            const tempElement = tempDiv.firstElementChild;
+
+            if (tempElement) {
+              // Helper function to get attribute value
+              const getAttr = (name: string) => tempElement.getAttribute(name);
+
+              // Boolean attributes
+              if (getAttr('nomargin')) {
+                uiProps.noMargin = true;
+              }
+              if (getAttr('nopadding')) {
+                uiProps.noPadding = true;
+              }
+              if (getAttr('isselected')) {
+                uiProps.isSelected = true;
+              }
+
+              // Custom attributes for Box component
+              const backgroundColor = getAttr('backgroundcolor');
+              const borderColor = getAttr('bordercolor');
+              const borderStyle = getAttr('borderstyle');
+              const padding = getAttr('padding');
+
+              // Custom attributes for Grid component
+              const columns = getAttr('columns');
+              const gap = getAttr('gap');
+
+              // Set props if they exist
+              if (backgroundColor) {
+                uiProps.backgroundColor = backgroundColor;
+              }
+              if (borderColor) {
+                uiProps.borderColor = borderColor;
+              }
+              if (borderStyle) {
+                uiProps.borderStyle = borderStyle;
+              }
+              if (padding) {
+                uiProps.padding = parseInt(padding, 10);
+              }
+              if (columns) {
+                uiProps.columns = parseInt(columns, 10);
+              }
+              if (gap) {
+                uiProps.gap = parseInt(gap, 10);
+              }
             }
           }
 
