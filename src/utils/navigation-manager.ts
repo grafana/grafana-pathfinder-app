@@ -303,18 +303,12 @@ export class NavigationManager {
     const isNavClosed = ariaExpanded === 'false' || ariaExpanded === null;
 
     if (isNavClosed) {
-      if (logWarnings) {
-        // Opening navigation menu
-      }
       megaMenuToggle.click();
 
       await waitForReactUpdates();
 
       const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
       if (dockMenuButton) {
-        if (logWarnings) {
-          // Docking navigation menu
-        }
         dockMenuButton.click();
 
         await waitForReactUpdates();
@@ -329,16 +323,10 @@ export class NavigationManager {
       // Navigation is already open, just try to dock it if needed
       const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
       if (dockMenuButton) {
-        if (logWarnings) {
-          // Navigation already open, ensuring it is docked
-        }
         dockMenuButton.click();
         await waitForReactUpdates();
         return;
       } else {
-        if (logWarnings) {
-          // Navigation already open and accessible
-        }
         return;
       }
     }
