@@ -229,7 +229,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       if (onStepReset && stepId) {
         onStepReset(stepId);
       }
-    }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset, checker, verifyStepResult]);
+    }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset, checker]);
 
     const getActionDescription = () => {
       switch (targetAction) {
