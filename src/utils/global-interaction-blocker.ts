@@ -83,21 +83,37 @@ class GlobalInteractionBlocker {
   }
 
   /**
-   * Create overlay for top navigation header
+   * Create overlay for top navigation header - uses actual header height but spans full viewport width
    */
   private createHeaderOverlay(): void {
-    const header = document.querySelector('header.css-1ef5w88') as HTMLElement;
+    // Find the header element using robust selectors
+    const header = document.querySelector('header') as HTMLElement;
 
     if (!header) {
-      return; // No header found, skip
+      console.warn('No header element found for overlay creation');
+      return;
     }
 
     this.headerOverlay = document.createElement('div');
     this.headerOverlay.id = 'interactive-header-overlay';
-    this.positionOverlayToElement(this.headerOverlay, header);
+
+    // Get the actual header dimensions
+    const headerRect = header.getBoundingClientRect();
+
+    // Position to span full viewport width but use actual header height
+    this.headerOverlay.style.cssText = `
+      position: fixed;
+      top: ${headerRect.top}px;
+      left: 0;
+      width: 100vw;
+      height: ${headerRect.height}px;
+      background: transparent;
+      z-index: 9999;
+      pointer-events: auto;
+      cursor: not-allowed;
+    `;
 
     // Header overlay has no cancel button - it's purely blocking
-    this.headerOverlay.style.cursor = 'not-allowed';
     this.addBlockingHandlers(this.headerOverlay);
 
     document.body.appendChild(this.headerOverlay);
@@ -151,10 +167,7 @@ class GlobalInteractionBlocker {
         applyRect();
         // Also update header overlay if it exists
         if (this.headerOverlay) {
-          const header = document.querySelector('header.css-1ef5w88') as HTMLElement;
-          if (header) {
-            this.positionOverlayToElement(this.headerOverlay, header);
-          }
+          this.updateHeaderOverlayPosition();
         }
       };
       this.windowScrollHandler = this.windowResizeHandler;
@@ -168,14 +181,34 @@ class GlobalInteractionBlocker {
       this.resizeObserver = new ResizeObserver(() => {
         applyRect();
         if (this.headerOverlay) {
-          const header = document.querySelector('header.css-1ef5w88') as HTMLElement;
-          if (header) {
-            this.positionOverlayToElement(this.headerOverlay, header);
-          }
+          this.updateHeaderOverlayPosition();
         }
       });
       this.resizeObserver.observe(targetElement);
     }
+  }
+
+  /**
+   * Update header overlay position when window is resized/scrolled
+   */
+  private updateHeaderOverlayPosition(): void {
+    if (!this.headerOverlay) {
+      return;
+    }
+
+    const header = document.querySelector('header') as HTMLElement;
+
+    if (!header) {
+      return;
+    }
+
+    const headerRect = header.getBoundingClientRect();
+
+    // Update position to span full viewport width but use actual header dimensions
+    this.headerOverlay.style.top = `${headerRect.top}px`;
+    this.headerOverlay.style.left = '0';
+    this.headerOverlay.style.width = '100vw';
+    this.headerOverlay.style.height = `${headerRect.height}px`;
   }
 
   /**
@@ -519,21 +552,41 @@ class GlobalInteractionBlocker {
       }
     }
 
-    // 2. Detect standard ARIA dialogs (like save modal, settings modal, etc.)
-    const ariaDialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+    // 2. Detect ARIA dialogs (either role="dialog" OR aria-modal="true")
+    const ariaDialogs = document.querySelectorAll('[role="dialog"], [aria-modal="true"]');
     for (const dialog of ariaDialogs) {
       const style = window.getComputedStyle(dialog);
       if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
         // Check if this is a navigation drawer (these should NOT trigger full-screen mode)
         const isNavigationDrawer =
-          dialog.closest('[class*="nav-"]') ||
+          dialog.closest('[class*="nav"]') ||
+          dialog.closest('.rc-drawer') ||
           dialog.querySelector('[aria-label*="navigation"]') ||
           dialog.querySelector('[data-testid*="nav"]') ||
-          (dialog.textContent || '').toLowerCase().includes('navigation menu');
+          (dialog.textContent || '').toLowerCase().includes('navigation menu') ||
+          dialog.classList.contains('drawer');
 
         if (!isNavigationDrawer) {
-          return true; // This is a real modal (save, settings, etc.)
+          console.warn(
+            'Modal detected:',
+            dialog.getAttribute('role') === 'dialog' ? 'role="dialog"' : 'aria-modal="true"',
+            dialog.getAttribute('aria-labelledby') || dialog.textContent?.substring(0, 50) || 'Unknown dialog'
+          );
+          return true; // This is a real modal (save, settings, data source selector, etc.)
         }
+      }
+    }
+
+    // 3. Also check for overlay containers (common modal pattern)
+    const overlayContainers = document.querySelectorAll('[data-overlay-container="true"]');
+    for (const container of overlayContainers) {
+      const style = window.getComputedStyle(container);
+      if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
+        console.warn(
+          'Modal detected - overlay container:',
+          container.querySelector('[role="dialog"]')?.getAttribute('aria-labelledby') || 'Unknown overlay modal'
+        );
+        return true;
       }
     }
 
