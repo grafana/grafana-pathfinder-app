@@ -214,11 +214,10 @@ export function getPostVerifyExplanation(verify?: string, error?: string): strin
     }
   }
 
-  // Priority 2: Map verification token(s) to friendly messages
+  // Priority 2: Map verification tokens to friendly messages
   if (verify && verify.trim()) {
     return mapRequirementToUserFriendlyMessage(verify.trim());
   }
 
-  // Fallback
-  return 'Verification failed. The expected result was not achieved. Please review the step and try again.';
+  return 'Verification failed. The expected result was not achieved. Review the step and try again.';
 }

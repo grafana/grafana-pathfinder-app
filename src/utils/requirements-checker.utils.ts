@@ -43,11 +43,6 @@ interface CheckContext {
   refTarget?: string;
 }
 
-function shouldIncludeInMode(_check: string, _mode: CheckMode): boolean {
-  // Allow all checks in both modes. Authors can choose appropriate tokens for pre vs post.
-  return true;
-}
-
 async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<CheckResultError> {
   const { targetAction = 'button', refTarget = '' } = ctx;
 
@@ -119,8 +114,7 @@ async function runUnifiedChecks(
   ctx: CheckContext
 ): Promise<RequirementsCheckResult> {
   const checks: string[] = checksString.split(',').map(c => c.trim()).filter(Boolean);
-  const filtered = checks.filter(check => shouldIncludeInMode(check, mode));
-  const results = await Promise.all(filtered.map(check => routeUnifiedCheck(check, ctx)));
+  const results = await Promise.all(checks.map(check => routeUnifiedCheck(check, ctx)));
   return {
     requirements: checksString,
     pass: results.every(r => r.pass),
