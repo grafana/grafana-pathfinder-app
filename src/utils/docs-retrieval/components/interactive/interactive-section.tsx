@@ -156,7 +156,7 @@ export function InteractiveSection({
     executeInteractiveAction, 
     startSectionBlocking, 
     stopSectionBlocking,
-    checkPostconditionsFromString,
+    verifyStepResult,
   } = useInteractiveElements();
   
   // Create cancellation handler
@@ -456,7 +456,7 @@ export function InteractiveSection({
         ? stepInfo.postVerify
         : stepInfo.requirements;
       if (postConditions && postConditions.trim() !== '') {
-        const result = await checkPostconditionsFromString(
+        const result = await verifyStepResult(
           postConditions,
           stepInfo.targetAction || 'button',
           stepInfo.refTarget || '',
@@ -475,7 +475,7 @@ export function InteractiveSection({
         return false;
       }
     },
-    [executeInteractiveAction]
+    [executeInteractiveAction, verifyStepResult]
   );
 
   // Handle sequence execution (do section)

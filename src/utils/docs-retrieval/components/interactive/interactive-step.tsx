@@ -54,7 +54,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
     const isCompleted = parentCompleted || isLocallyCompleted;
 
     // Get the interactive functions from the hook
-    const { executeInteractiveAction, checkPostconditionsFromString } = useInteractiveElements();
+    const { executeInteractiveAction, verifyStepResult } = useInteractiveElements();
 
     // Use the new step requirements hook with parent coordination
     const checker = useStepChecker({
@@ -89,7 +89,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
         if (postVerify && postVerify.trim() !== '') {
           console.warn(`🔍 Post-verify: ${postVerify}`);
           await waitForReactUpdates();
-          const result = await checkPostconditionsFromString(
+          const result = await verifyStepResult(
             postVerify,
             targetAction,
             refTarget || '',
@@ -134,7 +134,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       targetValue,
       targetComment,
       postVerify,
-      checkPostconditionsFromString,
+      verifyStepResult,
       executeInteractiveAction,
       onStepComplete,
       onComplete,
@@ -229,7 +229,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       if (onStepReset && stepId) {
         onStepReset(stepId);
       }
-    }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset, checker]);
+    }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset, checker, verifyStepResult]);
 
     const getActionDescription = () => {
       switch (targetAction) {

@@ -173,7 +173,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   /**
    * Postconditions checker using the new verification path
    */
-  const checkPostconditionsFromString = useCallback(async (
+  const verifyStepResult = useCallback(async (
     verifyString: string,
     targetAction?: string,
     refTarget?: string,
@@ -368,7 +368,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     interactiveNavigate,
     checkElementRequirements,
     checkRequirementsFromData,
-    checkPostconditionsFromString,
+    verifyStepResult,
     checkRequirementsWithData,
     executeInteractiveAction, // New direct interface for React components
     fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(), // Add the new function to the return object
