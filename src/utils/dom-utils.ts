@@ -104,10 +104,8 @@ export function findButtonByText(targetText: string): HTMLButtonElement[] {
 
   // Return exact matches if any exist, otherwise return partial matches
   if (exactMatches.length > 0) {
-    console.warn(`🎯 Found ${exactMatches.length} exact matches for "${targetText}"`);
     return exactMatches;
   } else if (partialMatches.length > 0) {
-    console.warn(`🔍 Found ${partialMatches.length} partial matches for "${targetText}"`);
     return partialMatches;
   }
 
@@ -152,6 +150,7 @@ export async function reftargetExistsCHECK(
 
   // For other actions, check if the CSS selector matches an element
   const targetElement = document.querySelector(reftarget);
+
   if (targetElement) {
     return {
       requirement: 'exists-reftarget',

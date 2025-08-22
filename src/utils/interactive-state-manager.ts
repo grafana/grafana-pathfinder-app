@@ -31,7 +31,7 @@ export class InteractiveStateManager {
   async setState(data: InteractiveElementData, state: InteractiveState): Promise<void> {
     if (state === 'completed') {
       if (this.options.enableLogging) {
-        console.log('✅ Interactive action completed:', data);
+        // Interactive action completed
       }
 
       if (this.options.enableEvents) {

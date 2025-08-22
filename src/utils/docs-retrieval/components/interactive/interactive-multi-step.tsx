@@ -130,7 +130,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
-        console.log(`🔄 Resetting multi-step local completion: ${stepId}`);
         setIsLocallyCompleted(false);
         setExecutionError(null); // Also clear any execution errors
         isCancelledRef.current = false; // Reset cancellation state
@@ -164,28 +163,20 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
     // Create cancellation handler
     const handleMultiStepCancel = useCallback(() => {
-      console.warn(`🛑 Multi-step cancelled by user: ${stepId}`);
       isCancelledRef.current = true; // Set ref for immediate access
       // The running loop will detect this and break
-    }, [stepId]);
+    }, []);
 
     // Main execution logic (similar to InteractiveSection's sequence execution)
     const executeStep = useCallback(async (): Promise<boolean> => {
       // When called via ref (section execution), ignore disabled prop to avoid race conditions
       // Only check if not enabled, completed, or already executing
       if (!checker.isEnabled || isCompletedWithObjectives || isExecuting) {
-        console.warn(`⚠️ Multi-step execution blocked: ${stepId}`, {
-          enabled: checker.isEnabled,
-          completed: isCompletedWithObjectives,
-          disabled,
-          executing: isExecuting,
-        });
         return false;
       }
 
       // Check objectives before executing internal actions (clarification 18)
       if (checker.completionReason === 'objectives') {
-        console.log(`✅ Multi-step objectives already met for ${stepId}, skipping all internal actions`);
         setIsLocallyCompleted(true);
 
         // Notify parent if we have the callback (section coordination)
@@ -212,7 +203,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
       // Only start blocking if we're not already in a blocking state (avoid double-blocking)
       if (!isNestedInSection) {
-        console.log(`🚫 Starting multi-step blocking for: ${multiStepId}`);
         // Create dummy data for blocking overlay
         const dummyData = {
           reftarget: `multistep-${multiStepId}`,
@@ -224,8 +214,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           timestamp: Date.now(),
         };
         startSectionBlocking(multiStepId, dummyData, handleMultiStepCancel);
-      } else {
-        console.log(`🔍 Multi-step ${multiStepId} is nested in section, skipping blocking overlay`);
       }
 
       try {
@@ -235,13 +223,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
           // Check for cancellation before each action
           if (isCancelledRef.current) {
-            console.warn(`🛑 Multi-step execution cancelled at action ${i + 1}/${internalActions.length}`);
-            console.warn(`📝 Current action "${action.targetAction}" left incomplete`);
             break;
           }
           setCurrentActionIndex(i);
-
-          console.log(`🔄 Multi-step ${stepId}: Executing internal action ${i + 1}/${internalActions.length}`, action);
 
           // Just-in-time requirements checking for this specific action
           if (action.requirements) {
@@ -295,12 +279,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
         // Check if execution was cancelled
         if (isCancelledRef.current) {
-          console.log(`🛑 Multi-step sequence cancelled: ${stepId}`);
           return false;
         }
 
         // All internal actions completed successfully
-        console.log(`🏁 Multi-step sequence completed: ${stepId}`);
         setIsLocallyCompleted(true);
 
         // Notify parent if we have the callback (section coordination)
@@ -331,7 +313,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     }, [
       checker.isEnabled,
       isCompletedWithObjectives,
-      disabled,
       isExecuting,
       stepId,
       internalActions,
@@ -371,8 +352,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       if (disabled || isExecuting) {
         return;
       }
-
-      console.log(`🔄 Resetting individual multi-step: ${stepId}`);
 
       // Reset local completion state
       setIsLocallyCompleted(false);

@@ -2,7 +2,9 @@ import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffec
 import { Button } from '@grafana/ui';
 
 import { useInteractiveElements } from '../../../interactive.hook';
+import { waitForReactUpdates } from '../../../requirements-checker.hook';
 import { useStepChecker } from '../../../step-checker.hook';
+import { getPostVerifyExplanation } from '../../../requirement-explanations';
 import type { InteractiveStepProps } from './interactive-section';
 
 export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> }, InteractiveStepProps>(
@@ -12,6 +14,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       refTarget,
       targetValue,
       targetComment,
+      postVerify,
       doIt = true, // Default to true - show "Do it" button unless explicitly disabled
       title,
       description,
@@ -37,11 +40,11 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
     const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
+    const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
 
     // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
-        console.log(`🔄 Resetting step local completion: ${stepId}`);
         setIsLocallyCompleted(false);
       }
     }, [resetTrigger, stepId]);
@@ -50,7 +53,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
     const isCompleted = parentCompleted || isLocallyCompleted;
 
     // Get the interactive functions from the hook
-    const { executeInteractiveAction } = useInteractiveElements();
+    const { executeInteractiveAction, verifyStepResult } = useInteractiveElements();
 
     // Use the new step requirements hook with parent coordination
     const checker = useStepChecker({
@@ -67,19 +70,37 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
     // Execution logic (shared between individual and sequence execution)
     const executeStep = useCallback(async (): Promise<boolean> => {
       if (!checker.isEnabled || isCompletedWithObjectives || disabled) {
-        console.warn(`⚠️ Step execution blocked: ${stepId}`, {
-          enabled: checker.isEnabled,
-          completed: isCompletedWithObjectives,
-          disabled,
-        });
         return false;
       }
 
       try {
-        console.log(`🚀 Executing step: ${stepId} (${targetAction}: ${refTarget})`);
-
         // Execute the action using existing interactive logic
         await executeInteractiveAction(targetAction, refTarget, targetValue, 'do', targetComment);
+
+        // If author provided explicit post verification (data-verify), run it now
+        if (postVerify && postVerify.trim() !== '') {
+          console.warn(`🔍 Post-verify: ${postVerify}`);
+          await waitForReactUpdates();
+          const result = await verifyStepResult(
+            postVerify,
+            targetAction,
+            refTarget || '',
+            targetValue,
+            stepId || 'post-verify'
+          );
+          if (!result.pass) {
+            const friendly = getPostVerifyExplanation(
+              postVerify,
+              result.error
+                ?.map((e) => e.error)
+                .filter(Boolean)
+                .join(', ')
+            );
+            setPostVerifyError(friendly || 'Verification failed.');
+            console.warn(`⛔ Post-verify failed for ${stepId}:`, friendly);
+            return false;
+          }
+        }
 
         // Mark as completed locally and notify parent
         setIsLocallyCompleted(true);
@@ -94,10 +115,10 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
           onComplete();
         }
 
-        console.log(`✅ Step completed: ${stepId}`);
         return true;
       } catch (error) {
         console.error(`❌ Step execution failed: ${stepId}`, error);
+        setPostVerifyError(error instanceof Error ? error.message : 'Execution failed');
         return false;
       }
     }, [
@@ -109,6 +130,8 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       refTarget,
       targetValue,
       targetComment,
+      postVerify,
+      verifyStepResult,
       executeInteractiveAction,
       onStepComplete,
       onComplete,
@@ -190,10 +213,9 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
         return;
       }
 
-      console.log(`🔄 Resetting individual step: ${stepId}`);
-
       // Reset local completion state
       setIsLocallyCompleted(false);
+      setPostVerifyError(null);
 
       // Trigger requirements recheck to reset the step checker state
       checker.checkStep();
@@ -291,6 +313,11 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
             </div>
           )}
         </div>
+
+        {/* Post-verify failure message */}
+        {!isCompletedWithObjectives && !checker.isChecking && postVerifyError && (
+          <div className="interactive-step-execution-error">{postVerifyError}</div>
+        )}
 
         {/* Show explanation text when requirements aren't met, but objectives always win (clarification 2) */}
         {checker.completionReason !== 'objectives' &&
