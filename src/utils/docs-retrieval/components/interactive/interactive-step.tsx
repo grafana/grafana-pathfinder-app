@@ -45,7 +45,6 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
     // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
-        console.log(`🔄 Resetting step local completion: ${stepId}`);
         setIsLocallyCompleted(false);
       }
     }, [resetTrigger, stepId]);
@@ -71,17 +70,10 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
     // Execution logic (shared between individual and sequence execution)
     const executeStep = useCallback(async (): Promise<boolean> => {
       if (!checker.isEnabled || isCompletedWithObjectives || disabled) {
-        console.warn(`⚠️ Step execution blocked: ${stepId}`, {
-          enabled: checker.isEnabled,
-          completed: isCompletedWithObjectives,
-          disabled,
-        });
         return false;
       }
 
       try {
-        console.log(`🚀 Executing step: ${stepId} (${targetAction}: ${refTarget})`);
-
         // Execute the action using existing interactive logic
         await executeInteractiveAction(targetAction, refTarget, targetValue, 'do', targetComment);
 
@@ -123,7 +115,6 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
           onComplete();
         }
 
-        console.log(`✅ Step completed: ${stepId}`);
         return true;
       } catch (error) {
         console.error(`❌ Step execution failed: ${stepId}`, error);
@@ -221,8 +212,6 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       if (disabled || isDoRunning || isShowRunning) {
         return;
       }
-
-      console.log(`🔄 Resetting individual step: ${stepId}`);
 
       // Reset local completion state
       setIsLocallyCompleted(false);

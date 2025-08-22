@@ -675,6 +675,23 @@ export const addGlobalInteractiveStyles = () => {
       border: none !important;
     }
 
+    /* Full-screen overlay for modal blocking */
+    #interactive-fullscreen-overlay {
+      background: transparent !important;
+      /* Gray pulse around the outside edge - more visible for full screen */
+      border: 2px solid rgba(170, 170, 170, 0.4);
+      box-shadow: inset 0 0 0 0 rgba(170, 170, 170, 0.3);
+      animation: fullscreen-breathe 2.8s ease-in-out infinite;
+    }
+
+    /* Header overlay styling */
+    #interactive-header-overlay {
+      background: transparent !important;
+      border: 1px solid rgba(170, 170, 170, 0.35);
+      box-shadow: inset 0 0 0 0 rgba(170, 170, 170, 0.22);
+      animation: blocker-breathe 3.2s ease-in-out infinite;
+    }
+
     @keyframes blocker-breathe {
       0% {
         box-shadow: inset 0 0 0 0 rgba(170, 170, 170, 0.18);
@@ -684,6 +701,21 @@ export const addGlobalInteractiveStyles = () => {
       }
       100% {
         box-shadow: inset 0 0 0 0 rgba(170, 170, 170, 0.18);
+      }
+    }
+
+    @keyframes fullscreen-breathe {
+      0% {
+        box-shadow: inset 0 0 0 0 rgba(170, 170, 170, 0.25);
+        border-color: rgba(170, 170, 170, 0.35);
+      }
+      50% {
+        box-shadow: inset 0 0 0 8px rgba(170, 170, 170, 0.30);
+        border-color: rgba(170, 170, 170, 0.45);
+      }
+      100% {
+        box-shadow: inset 0 0 0 0 rgba(170, 170, 170, 0.25);
+        border-color: rgba(170, 170, 170, 0.35);
       }
     }
     /* Global interactive highlight styles */
