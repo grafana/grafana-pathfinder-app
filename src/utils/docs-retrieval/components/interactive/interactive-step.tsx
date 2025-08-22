@@ -285,10 +285,10 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
                 {checker.isChecking
                   ? 'Checking...'
                   : isShowRunning
-                  ? 'Showing...'
-                  : !checker.isEnabled
-                  ? 'Requirements not met'
-                  : 'Show me'}
+                    ? 'Showing...'
+                    : !checker.isEnabled
+                      ? 'Requirements not met'
+                      : 'Show me'}
               </Button>
             )}
 

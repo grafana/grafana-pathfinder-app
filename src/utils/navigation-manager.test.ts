@@ -54,7 +54,7 @@ document.createElement = jest.fn(
       style: {
         setProperty: jest.fn(),
       },
-    } as unknown as HTMLElement)
+    }) as unknown as HTMLElement
 );
 
 // Mock document.body.appendChild
