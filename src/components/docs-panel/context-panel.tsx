@@ -5,6 +5,7 @@ import { Icon, useStyles2, Card } from '@grafana/ui';
 import logoSvg from '../../img/logo.svg';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
+import { HelpFooter } from '../HelpFooter';
 import { locationService } from '@grafana/runtime';
 
 // Import refactored context system
@@ -377,6 +378,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             )}
           </div>
         )}
+
+        {/* Help Footer */}
+        <HelpFooter />
       </div>
     </div>
   );
