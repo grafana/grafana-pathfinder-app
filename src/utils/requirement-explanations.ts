@@ -138,17 +138,17 @@ export function mapRequirementToUserFriendlyMessage(requirement: string): string
  */
 function getSafeErrorMessage(error: string): string | null {
   const lowerError = error.toLowerCase();
-  
+
   // Network-related errors (safe to expose)
   if (lowerError.includes('network') || lowerError.includes('connection') || lowerError.includes('timeout')) {
     return 'Network connection issue. Please check your internet connection and try again.';
   }
-  
+
   // Permission/authentication errors (safe to expose)
   if (lowerError.includes('permission') || lowerError.includes('unauthorized') || lowerError.includes('forbidden')) {
     return 'Permission denied. You may need to log in or request additional permissions.';
   }
-  
+
   // Common HTTP status codes (safe to expose)
   if (lowerError.includes('404') || lowerError.includes('not found')) {
     return 'The requested resource was not found. Please check the URL or try again later.';
@@ -159,17 +159,17 @@ function getSafeErrorMessage(error: string): string | null {
   if (lowerError.includes('503') || lowerError.includes('service unavailable')) {
     return 'Service temporarily unavailable. Please try again later.';
   }
-  
+
   // Element not found errors (safe to expose)
   if (lowerError.includes('element') && (lowerError.includes('not found') || lowerError.includes('missing'))) {
     return 'The expected element is not available on the page. Please check if the page has loaded completely.';
   }
-  
+
   // Timeout errors (safe to expose)
   if (lowerError.includes('timeout')) {
     return 'Operation timed out. Please try again.';
   }
-  
+
   // Return null for unknown/unsafe errors to avoid information leakage
   return null;
 }
@@ -199,7 +199,7 @@ export function getRequirementExplanation(requirements?: string, hints?: string,
 
   // Fallback
   return 'Requirements not met. Please check the page state and try again.';
-} 
+}
 
 /**
  * Get user-friendly explanation for why a post-verify (data-verify) failed

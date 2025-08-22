@@ -1,14 +1,8 @@
 import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 import { waitForReactUpdates } from './requirements-checker.hook';
-import { 
-  checkRequirements, 
-  checkPostconditions,
-  RequirementsCheckOptions, 
-} from './requirements-checker.utils';
-import { 
-  extractInteractiveDataFromElement, 
-} from './dom-utils';
+import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from './requirements-checker.utils';
+import { extractInteractiveDataFromElement } from './dom-utils';
 import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { InteractiveStateManager } from './interactive-state-manager';
@@ -130,11 +124,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     // Heuristic delays by action type plus double RAF
     await waitForReactUpdates();
     if (targetAction === 'button' || targetAction === 'formfill') {
-      await new Promise(resolve => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.button));
+      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.button));
     } else if (targetAction === 'navigate') {
-      await new Promise(resolve => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.navigation));
+      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.navigation));
     } else {
-      await new Promise(resolve => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.base));
+      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.base));
     }
     await waitForReactUpdates();
   }, []);
@@ -173,34 +167,37 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   /**
    * Postconditions checker using the new verification path
    */
-  const verifyStepResult = useCallback(async (
-    verifyString: string,
-    targetAction?: string,
-    refTarget?: string,
-    targetValue?: string,
-    stepId?: string,
-  ): Promise<InteractiveRequirementsCheck> => {
-    const options: RequirementsCheckOptions = {
-      requirements: verifyString || '',
-      targetAction,
-      refTarget,
-      targetValue,
-      stepId,
-    };
-    // Ensure any action-triggered async operations have time to settle
-    await waitForActionToSettle(targetAction);
-    const result = await checkPostconditions(options);
-    return {
-      requirements: result.requirements,
-      pass: result.pass,
-      error: result.error.map(e => ({
-        requirement: e.requirement,
-        pass: e.pass,
-        error: e.error,
-        context: e.context,
-      }))
-    };
-  }, [waitForActionToSettle]);
+  const verifyStepResult = useCallback(
+    async (
+      verifyString: string,
+      targetAction?: string,
+      refTarget?: string,
+      targetValue?: string,
+      stepId?: string
+    ): Promise<InteractiveRequirementsCheck> => {
+      const options: RequirementsCheckOptions = {
+        requirements: verifyString || '',
+        targetAction,
+        refTarget,
+        targetValue,
+        stepId,
+      };
+      // Ensure any action-triggered async operations have time to settle
+      await waitForActionToSettle(targetAction);
+      const result = await checkPostconditions(options);
+      return {
+        requirements: result.requirements,
+        pass: result.pass,
+        error: result.error.map((e) => ({
+          requirement: e.requirement,
+          pass: e.pass,
+          error: e.error,
+          context: e.context,
+        })),
+      };
+    },
+    [waitForActionToSettle]
+  );
 
   // SequenceManager instance - moved here to be available for interactiveSequence
   const sequenceManager = useMemo(

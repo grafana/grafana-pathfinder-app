@@ -152,13 +152,9 @@ export function InteractiveSection({
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
 
   // Get the interactive functions from the hook
-  const { 
-    executeInteractiveAction, 
-    startSectionBlocking, 
-    stopSectionBlocking,
-    verifyStepResult,
-  } = useInteractiveElements();
-  
+  const { executeInteractiveAction, startSectionBlocking, stopSectionBlocking, verifyStepResult } =
+    useInteractiveElements();
+
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {
     console.warn(`🛑 Section cancelled by user: ${sectionId}`);
@@ -450,24 +446,23 @@ export function InteractiveSection({
           'do',
           stepInfo.targetComment
         );
-      
-      // Prefer explicit postVerify over generic requirements for post-checking
-      const postConditions = (stepInfo.postVerify && stepInfo.postVerify.trim() !== '')
-        ? stepInfo.postVerify
-        : stepInfo.requirements;
-      if (postConditions && postConditions.trim() !== '') {
-        const result = await verifyStepResult(
-          postConditions,
-          stepInfo.targetAction || 'button',
-          stepInfo.refTarget || '',
-          stepInfo.targetValue,
-          stepInfo.stepId
-        );
-        if (!result.pass) {
-          console.warn(`⛔ Post-verify failed for ${stepInfo.stepId}:`, result.error);
-          return false;
+
+        // Prefer explicit postVerify over generic requirements for post-checking
+        const postConditions =
+          stepInfo.postVerify && stepInfo.postVerify.trim() !== '' ? stepInfo.postVerify : stepInfo.requirements;
+        if (postConditions && postConditions.trim() !== '') {
+          const result = await verifyStepResult(
+            postConditions,
+            stepInfo.targetAction || 'button',
+            stepInfo.refTarget || '',
+            stepInfo.targetValue,
+            stepInfo.stepId
+          );
+          if (!result.pass) {
+            console.warn(`⛔ Post-verify failed for ${stepInfo.stepId}:`, result.error);
+            return false;
+          }
         }
-      }
 
         return true;
       } catch (error) {

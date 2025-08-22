@@ -97,7 +97,13 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
             stepId || 'post-verify'
           );
           if (!result.pass) {
-            const friendly = getPostVerifyExplanation(postVerify, result.error?.map(e => e.error).filter(Boolean).join(', '));
+            const friendly = getPostVerifyExplanation(
+              postVerify,
+              result.error
+                ?.map((e) => e.error)
+                .filter(Boolean)
+                .join(', ')
+            );
             setPostVerifyError(friendly || 'Verification failed.');
             console.warn(`⛔ Post-verify failed for ${stepId}:`, friendly);
             return false;
@@ -279,10 +285,10 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
                 {checker.isChecking
                   ? 'Checking...'
                   : isShowRunning
-                    ? 'Showing...'
-                    : !checker.isEnabled
-                      ? 'Requirements not met'
-                      : 'Show me'}
+                  ? 'Showing...'
+                  : !checker.isEnabled
+                  ? 'Requirements not met'
+                  : 'Show me'}
               </Button>
             )}
 
@@ -321,9 +327,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
 
         {/* Post-verify failure message */}
         {!isCompletedWithObjectives && !checker.isChecking && postVerifyError && (
-          <div className="interactive-step-execution-error">
-            {postVerifyError}
-          </div>
+          <div className="interactive-step-execution-error">{postVerifyError}</div>
         )}
 
         {/* Show explanation text when requirements aren't met, but objectives always win (clarification 2) */}

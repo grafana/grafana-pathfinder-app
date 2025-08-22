@@ -3,10 +3,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { locationService } from '@grafana/runtime';
 
 export class NavigateHandler {
-  constructor(
-    private stateManager: InteractiveStateManager,
-    private waitForReactUpdates: () => Promise<void>
-  ) {}
+  constructor(private stateManager: InteractiveStateManager, private waitForReactUpdates: () => Promise<void>) {}
 
   async execute(data: InteractiveElementData, navigate: boolean): Promise<void> {
     this.stateManager.setState(data, 'running');

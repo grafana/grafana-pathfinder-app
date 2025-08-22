@@ -24,7 +24,7 @@ const createMockElement = (data: Partial<InteractiveElementData> = {}): Element 
     getAttribute: jest.fn(),
     querySelector: jest.fn(),
     querySelectorAll: jest.fn(),
-  }) as unknown as Element;
+  } as unknown as Element);
 
 const createMockInteractiveData = (overrides: Partial<InteractiveElementData> = {}): InteractiveElementData => ({
   reftarget: 'test-selector',

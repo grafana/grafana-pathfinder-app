@@ -104,7 +104,7 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
   return {
     requirement: check,
     pass: true,
-    error: 'Unknown requirement'
+    error: 'Unknown requirement',
   };
 }
 
@@ -113,24 +113,25 @@ async function runUnifiedChecks(
   mode: CheckMode,
   ctx: CheckContext
 ): Promise<RequirementsCheckResult> {
-  const checks: string[] = checksString.split(',').map(c => c.trim()).filter(Boolean);
-  const results = await Promise.all(checks.map(check => routeUnifiedCheck(check, ctx)));
+  const checks: string[] = checksString
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean);
+  const results = await Promise.all(checks.map((check) => routeUnifiedCheck(check, ctx)));
   return {
     requirements: checksString,
-    pass: results.every(r => r.pass),
-    error: results
+    pass: results.every((r) => r.pass),
+    error: results,
   };
 }
 
-export async function checkRequirements(
-  options: RequirementsCheckOptions
-): Promise<RequirementsCheckResult> {
+export async function checkRequirements(options: RequirementsCheckOptions): Promise<RequirementsCheckResult> {
   const { requirements, targetAction = 'button', refTarget = '' } = options;
   if (!requirements) {
     return {
       requirements: requirements || '',
       pass: true,
-      error: []
+      error: [],
     };
   }
   return runUnifiedChecks(requirements, 'pre', { targetAction, refTarget });
@@ -142,15 +143,13 @@ export async function checkRequirements(
  * Uses the same underlying pure checks where applicable (e.g., has-plugin, has-datasource, has-dashboard-named, on-page).
  * Excludes pre-action gating like navmenu-open and existence checks that are about enabling interactions.
  */
-export async function checkPostconditions(
-  options: RequirementsCheckOptions
-): Promise<RequirementsCheckResult> {
+export async function checkPostconditions(options: RequirementsCheckOptions): Promise<RequirementsCheckResult> {
   const { requirements: verifyString, targetAction = 'button', refTarget = '' } = options;
   if (!verifyString) {
     return {
       requirements: verifyString || '',
       pass: true,
-      error: []
+      error: [],
     };
   }
   return runUnifiedChecks(verifyString, 'post', { targetAction, refTarget });
