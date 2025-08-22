@@ -19,6 +19,8 @@ export interface UseStepCheckerProps {
   objectives?: string;
   hints?: string;
   stepId: string;
+  targetAction?: string; // Add targetAction to pass through to requirements checking
+  refTarget?: string; // Add refTarget to pass through to requirements checking
   isEligibleForChecking: boolean;
 }
 
@@ -49,6 +51,8 @@ export function useStepChecker({
   objectives,
   hints,
   stepId,
+  targetAction,
+  refTarget,
   isEligibleForChecking = true,
 }: UseStepCheckerProps): UseStepCheckerReturn {
   const [state, setState] = useState({
@@ -105,8 +109,8 @@ export function useStepChecker({
         // Create proper InteractiveElementData structure
         const actionData = {
           requirements: conditions,
-          targetaction: 'button' as const,
-          reftarget: stepId,
+          targetaction: targetAction || 'button',
+          reftarget: refTarget || stepId, // Use actual refTarget if available, fallback to stepId
           textContent: stepId,
           tagName: 'div' as const,
           objectives: type === 'objectives' ? conditions : undefined,
@@ -132,7 +136,7 @@ export function useStepChecker({
         return { pass: false, error: errorMessage };
       }
     },
-    [stepId, checkRequirementsFromData]
+    [stepId, refTarget, targetAction, checkRequirementsFromData]
   );
 
   /**

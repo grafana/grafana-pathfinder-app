@@ -59,6 +59,8 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
     const checker = useStepChecker({
       requirements,
       hints,
+      targetAction,
+      refTarget,
       stepId: stepId || `step-${Date.now()}`, // Fallback if no stepId provided
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
     });
