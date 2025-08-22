@@ -21,6 +21,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence';
   refTarget: string;
   targetValue?: string;
+  postVerify?: string;
   targetComment?: string;
   doIt?: boolean; // Control whether "Do it" button appears (defaults to true)
   title?: string;
@@ -55,6 +56,7 @@ export interface StepInfo {
   targetValue?: string;
   targetComment?: string; // Optional comment to show during execution
   requirements?: string;
+  postVerify?: string;
   isMultiStep: boolean; // Flag to identify component type
 }
 
@@ -150,7 +152,8 @@ export function InteractiveSection({
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
 
   // Get the interactive functions from the hook
-  const { executeInteractiveAction, startSectionBlocking, stopSectionBlocking } = useInteractiveElements();
+  const { executeInteractiveAction, startSectionBlocking, stopSectionBlocking, verifyStepResult } =
+    useInteractiveElements();
 
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {
@@ -180,6 +183,7 @@ export function InteractiveSection({
           targetValue: props.targetValue,
           targetComment: props.targetComment,
           requirements: props.requirements,
+          postVerify: props.postVerify,
           isMultiStep: false,
         });
       } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
@@ -443,13 +447,30 @@ export function InteractiveSection({
           stepInfo.targetComment
         );
 
+        // Prefer explicit postVerify over generic requirements for post-checking
+        const postConditions =
+          stepInfo.postVerify && stepInfo.postVerify.trim() !== '' ? stepInfo.postVerify : stepInfo.requirements;
+        if (postConditions && postConditions.trim() !== '') {
+          const result = await verifyStepResult(
+            postConditions,
+            stepInfo.targetAction || 'button',
+            stepInfo.refTarget || '',
+            stepInfo.targetValue,
+            stepInfo.stepId
+          );
+          if (!result.pass) {
+            console.warn(`⛔ Post-verify failed for ${stepInfo.stepId}:`, result.error);
+            return false;
+          }
+        }
+
         return true;
       } catch (error) {
         console.error(`❌ Step execution failed: ${stepInfo.stepId}`, error);
         return false;
       }
     },
-    [executeInteractiveAction]
+    [executeInteractiveAction, verifyStepResult]
   );
 
   // Handle sequence execution (do section)
