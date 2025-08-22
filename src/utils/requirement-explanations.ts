@@ -133,6 +133,48 @@ export function mapRequirementToUserFriendlyMessage(requirement: string): string
 }
 
 /**
+ * Analyze error message to determine if it's a known, safe error type
+ * Returns a user-friendly message for known errors, null for unknown/unsafe errors
+ */
+function getSafeErrorMessage(error: string): string | null {
+  const lowerError = error.toLowerCase();
+  
+  // Network-related errors (safe to expose)
+  if (lowerError.includes('network') || lowerError.includes('connection') || lowerError.includes('timeout')) {
+    return 'Network connection issue. Please check your internet connection and try again.';
+  }
+  
+  // Permission/authentication errors (safe to expose)
+  if (lowerError.includes('permission') || lowerError.includes('unauthorized') || lowerError.includes('forbidden')) {
+    return 'Permission denied. You may need to log in or request additional permissions.';
+  }
+  
+  // Common HTTP status codes (safe to expose)
+  if (lowerError.includes('404') || lowerError.includes('not found')) {
+    return 'The requested resource was not found. Please check the URL or try again later.';
+  }
+  if (lowerError.includes('500') || lowerError.includes('server error')) {
+    return 'Server error occurred. Please try again later.';
+  }
+  if (lowerError.includes('503') || lowerError.includes('service unavailable')) {
+    return 'Service temporarily unavailable. Please try again later.';
+  }
+  
+  // Element not found errors (safe to expose)
+  if (lowerError.includes('element') && (lowerError.includes('not found') || lowerError.includes('missing'))) {
+    return 'The expected element is not available on the page. Please check if the page has loaded completely.';
+  }
+  
+  // Timeout errors (safe to expose)
+  if (lowerError.includes('timeout')) {
+    return 'Operation timed out. Please try again.';
+  }
+  
+  // Return null for unknown/unsafe errors to avoid information leakage
+  return null;
+}
+
+/**
  * Get user-friendly explanation for why requirements aren't met
  * Prioritizes data-hint over mapped requirement messages
  */
@@ -147,9 +189,12 @@ export function getRequirementExplanation(requirements?: string, hints?: string,
     return mapRequirementToUserFriendlyMessage(requirements.trim());
   }
 
-  // Priority 3: Use error message if available
+  // Priority 3: Use safe error message if available
   if (error && error.trim()) {
-    return error.trim();
+    const safeError = getSafeErrorMessage(error.trim());
+    if (safeError) {
+      return safeError;
+    }
   }
 
   // Fallback
@@ -161,9 +206,12 @@ export function getRequirementExplanation(requirements?: string, hints?: string,
  * Uses the same mapping as requirements, but prioritizes any concrete error details
  */
 export function getPostVerifyExplanation(verify?: string, error?: string): string {
-  // Priority 1: Use error details if provided (e.g., network/permission message)
+  // Priority 1: Use safe error details if provided
   if (error && error.trim()) {
-    return error.trim();
+    const safeError = getSafeErrorMessage(error.trim());
+    if (safeError) {
+      return safeError;
+    }
   }
 
   // Priority 2: Map verification token(s) to friendly messages
