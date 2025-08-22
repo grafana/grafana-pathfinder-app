@@ -1,6 +1,6 @@
 # Grafana Pathfinder
 
-![Grafana Pathfinder](./src/img/logo.svg)
+![Grafana Pathfinder](https://github.com/grafana/docs-plugin/blob/main/src/img/logo.svg)
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
@@ -26,6 +26,7 @@ Grafana Pathfinder brings contextual help and interactive learning directly into
 ## Settings (optional)
 
 Admins can configure the plugin from the app’s configuration page:
+
 - Recommender service URL
 - Docs base URL and credentials (if needed)
 - Auto-launch tutorial URL (opens automatically on startup)
@@ -56,4 +57,4 @@ We welcome issues and PRs. Please follow TypeScript + React best practices and o
 
 ## License
 
- GNU AFFERO GENERAL PUBLIC LICENSE
+GNU AFFERO GENERAL PUBLIC LICENSE

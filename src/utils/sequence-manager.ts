@@ -28,7 +28,7 @@ export class SequenceManager {
           if (!requirementsCheck.pass) {
             retryCount++;
             if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
               continue;
             } else {
               break;
@@ -41,7 +41,7 @@ export class SequenceManager {
           this.stateManager.logError('Error processing interactive element', error as Error, data);
           retryCount++;
           if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
           } else {
             break;
           }
@@ -66,7 +66,7 @@ export class SequenceManager {
           if (!requirementsCheck.pass) {
             retryCount++;
             if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
               continue;
             } else {
               break;
@@ -78,7 +78,7 @@ export class SequenceManager {
           if (!secondCheck.pass) {
             retryCount++;
             if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+              await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
               continue;
             } else {
               break;
@@ -93,7 +93,7 @@ export class SequenceManager {
           this.stateManager.logError('Error in interactive step', error as Error, data);
           retryCount++;
           if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
           } else {
             break;
           }

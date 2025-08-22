@@ -35,6 +35,7 @@ npm run server
 ```
 
 Notes:
+
 - This uses the `docker-compose.yaml` in the project root.
 - Provisioning files live under `provisioning/` and are already set up for local dev.
 
@@ -82,5 +83,3 @@ This uses `@grafana/sign-plugin`. Follow prompts or pass environment variables p
 - If the sidebar button disappears, ensure titles in `src/module.tsx` and `src/plugin.json` match.
 - After editing `src/plugin.json`, restart Grafana (docker-compose) to reload the manifest.
 - Clear browser cache/localStorage if UI state seems stale.
-
-

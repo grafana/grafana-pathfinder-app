@@ -279,6 +279,8 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           refTarget={element.props.refTarget}
           targetValue={element.props.targetValue}
           hints={element.props.hints}
+          targetComment={element.props.targetComment}
+          doIt={element.props.doIt}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           postVerify={element.props.postVerify}

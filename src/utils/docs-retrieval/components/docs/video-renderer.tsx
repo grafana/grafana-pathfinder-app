@@ -15,7 +15,9 @@ export function VideoRenderer({ src, type, baseUrl, onClick, ...props }: VideoRe
       return undefined;
     }
     if (!baseUrl) {
-      console.warn('VideoRenderer: No baseUrl provided, using relative URL', { videoSrc });
+      console.warn('VideoRenderer: No baseUrl provided, using relative URL', {
+        videoSrc,
+      });
       return videoSrc;
     }
     if (videoSrc.startsWith('/') && !videoSrc.startsWith('//')) {

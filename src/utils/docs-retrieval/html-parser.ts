@@ -518,8 +518,6 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
 
           // Use general attribute mapping to capture ALL data attributes
           const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
-          
-
 
           return {
             type: 'interactive-section',
@@ -666,6 +664,16 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
             );
           }
 
+          // Extract interactive-comment spans as metadata (hidden via CSS)
+          let interactiveComment: string | null = null;
+          const commentSpans = el.querySelectorAll('span.interactive-comment');
+
+          if (commentSpans.length > 0) {
+            // Use the first comment span found and capture its full HTML content
+            interactiveComment = commentSpans[0].innerHTML;
+            // Note: Spans are hidden via CSS rule instead of DOM removal
+          }
+
           // Process children as React components (same approach as expandable tables)
           const children: Array<ParsedElement | string> = [];
           el.childNodes.forEach((child, index) => {
@@ -695,10 +703,14 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
           return {
             type: 'interactive-step',
             props: {
-              // Core interactive step props
+              // Include ALL other attributes (including future data-* attributes) FIRST
+              ...allProps,
+              // Core interactive step props (these override any conflicting data-* attributes)
               targetAction,
               refTarget,
               targetValue: el.getAttribute('data-targetvalue'),
+              targetComment: interactiveComment || el.getAttribute('data-targetcomment'), // Prefer extracted comment
+              doIt: el.getAttribute('data-doit') !== 'false', // Default to true, only false if explicitly set to 'false'
               title: undefined, // Remove title - content will be in children
               // Specific data attribute mappings for React prop names
               requirements: el.getAttribute('data-requirements'),

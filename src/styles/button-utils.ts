@@ -2,36 +2,40 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
 // Base button styles that can be extended
-export const createButtonBase = (theme: GrafanaTheme2) => css({
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  border: 'none',
-  borderRadius: theme.shape.radius.default,
-  fontWeight: theme.typography.fontWeightMedium,
-  cursor: 'pointer',
-  transition: 'all 0.2s ease',
-  textDecoration: 'none',
-  
-  '&:disabled': {
-    opacity: 0.6,
-    cursor: 'not-allowed',
-    pointerEvents: 'none',
-  },
-  
-  '&:focus': {
-    outline: 'none',
-    boxShadow: `0 0 0 2px ${theme.colors.primary.main}33`,
-  },
-});
+export const createButtonBase = (theme: GrafanaTheme2) =>
+  css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    textDecoration: 'none',
+
+    '&:disabled': {
+      opacity: 0.6,
+      cursor: 'not-allowed',
+      pointerEvents: 'none',
+    },
+
+    '&:focus': {
+      outline: 'none',
+      boxShadow: `0 0 0 2px ${theme.colors.primary.main}33`,
+    },
+  });
 
 // Primary button variant
-export const createPrimaryButton = (theme: GrafanaTheme2, options: {
-  size?: 'sm' | 'md' | 'lg';
-  minWidth?: string;
-} = {}) => {
+export const createPrimaryButton = (
+  theme: GrafanaTheme2,
+  options: {
+    size?: 'sm' | 'md' | 'lg';
+    minWidth?: string;
+  } = {}
+) => {
   const { size = 'md', minWidth } = options;
-  
+
   const sizeMap = {
     sm: {
       padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
@@ -49,38 +53,38 @@ export const createPrimaryButton = (theme: GrafanaTheme2, options: {
       gap: theme.spacing(1),
     },
   };
-  
+
   const sizeStyles = sizeMap[size];
-  
-  return css(
-    createButtonBase(theme),
-    {
-      backgroundColor: theme.colors.primary.main,
-      color: theme.colors.primary.contrastText,
-      ...sizeStyles,
-      ...(minWidth && { minWidth }),
-      
-      '&:hover:not(:disabled)': {
-        backgroundColor: theme.colors.primary.shade,
-        transform: 'translateY(-1px)',
-        boxShadow: theme.shadows.z1,
-      },
-      
-      '&:active': {
-        transform: 'translateY(0)',
-        boxShadow: 'none',
-      },
-    }
-  );
+
+  return css(createButtonBase(theme), {
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    ...sizeStyles,
+    ...(minWidth && { minWidth }),
+
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.primary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+    },
+
+    '&:active': {
+      transform: 'translateY(0)',
+      boxShadow: 'none',
+    },
+  });
 };
 
-// Secondary button variant  
-export const createSecondaryButton = (theme: GrafanaTheme2, options: {
-  size?: 'sm' | 'md' | 'lg';
-  minWidth?: string;
-} = {}) => {
+// Secondary button variant
+export const createSecondaryButton = (
+  theme: GrafanaTheme2,
+  options: {
+    size?: 'sm' | 'md' | 'lg';
+    minWidth?: string;
+  } = {}
+) => {
   const { size = 'md', minWidth } = options;
-  
+
   const sizeMap = {
     sm: {
       padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
@@ -98,40 +102,40 @@ export const createSecondaryButton = (theme: GrafanaTheme2, options: {
       gap: theme.spacing(1),
     },
   };
-  
+
   const sizeStyles = sizeMap[size];
-  
-  return css(
-    createButtonBase(theme),
-    {
-      backgroundColor: theme.colors.secondary.main,
-      color: theme.colors.secondary.contrastText,
-      border: `1px solid ${theme.colors.secondary.border}`,
-      ...sizeStyles,
-      ...(minWidth && { minWidth }),
-      
-      '&:hover:not(:disabled)': {
-        backgroundColor: theme.colors.secondary.shade,
-        borderColor: theme.colors.secondary.shade,
-        transform: 'translateY(-1px)',
-        boxShadow: theme.shadows.z1,
-      },
-      
-      '&:active': {
-        transform: 'translateY(0)',
-        boxShadow: 'none',
-      },
-    }
-  );
+
+  return css(createButtonBase(theme), {
+    backgroundColor: theme.colors.secondary.main,
+    color: theme.colors.secondary.contrastText,
+    border: `1px solid ${theme.colors.secondary.border}`,
+    ...sizeStyles,
+    ...(minWidth && { minWidth }),
+
+    '&:hover:not(:disabled)': {
+      backgroundColor: theme.colors.secondary.shade,
+      borderColor: theme.colors.secondary.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+    },
+
+    '&:active': {
+      transform: 'translateY(0)',
+      boxShadow: 'none',
+    },
+  });
 };
 
 // Utility button (for copy buttons, close buttons, etc.)
-export const createUtilityButton = (theme: GrafanaTheme2, options: {
-  size?: 'xs' | 'sm' | 'md';
-  variant?: 'ghost' | 'outline';
-} = {}) => {
+export const createUtilityButton = (
+  theme: GrafanaTheme2,
+  options: {
+    size?: 'xs' | 'sm' | 'md';
+    variant?: 'ghost' | 'outline';
+  } = {}
+) => {
   const { size = 'sm', variant = 'ghost' } = options;
-  
+
   const sizeMap = {
     xs: {
       padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
@@ -152,34 +156,34 @@ export const createUtilityButton = (theme: GrafanaTheme2, options: {
       minHeight: '32px',
     },
   };
-  
+
   const sizeStyles = sizeMap[size];
-  
-  const variantStyles = variant === 'outline' ? {
-    backgroundColor: 'transparent',
-    color: theme.colors.text.secondary,
-    border: `1px solid ${theme.colors.border.weak}`,
-    
-    '&:hover:not(:disabled)': {
-      backgroundColor: theme.colors.action.hover,
-      borderColor: theme.colors.border.medium,
-      color: theme.colors.text.primary,
-    },
-  } : {
-    backgroundColor: 'transparent',
-    color: theme.colors.text.secondary,
-    
-    '&:hover:not(:disabled)': {
-      backgroundColor: theme.colors.action.hover,
-      color: theme.colors.text.primary,
-    },
-  };
-  
-  return css(
-    createButtonBase(theme),
-    {
-      ...sizeStyles,
-      ...variantStyles,
-    }
-  );
-}; 
+
+  const variantStyles =
+    variant === 'outline'
+      ? {
+          backgroundColor: 'transparent',
+          color: theme.colors.text.secondary,
+          border: `1px solid ${theme.colors.border.weak}`,
+
+          '&:hover:not(:disabled)': {
+            backgroundColor: theme.colors.action.hover,
+            borderColor: theme.colors.border.medium,
+            color: theme.colors.text.primary,
+          },
+        }
+      : {
+          backgroundColor: 'transparent',
+          color: theme.colors.text.secondary,
+
+          '&:hover:not(:disabled)': {
+            backgroundColor: theme.colors.action.hover,
+            color: theme.colors.text.primary,
+          },
+        };
+
+  return css(createButtonBase(theme), {
+    ...sizeStyles,
+    ...variantStyles,
+  });
+};

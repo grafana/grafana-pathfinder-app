@@ -34,6 +34,7 @@ The component uses emotion CSS-in-JS with Grafana's theme system. Styles are def
 ## Analytics
 
 When clicked, the button reports an interaction with:
+
 - `type`: `UserInteraction.GeneralPluginFeedbackButton`
 - `interaction_location`: `'feedback_button'`
 - `panel_type`: `'combined_learning_journey'`
@@ -41,4 +42,4 @@ When clicked, the button reports an interaction with:
 ## External Link
 
 Opens the Google Forms feedback form in a new window:
-`https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header` 
+`https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header`

@@ -1,10 +1,10 @@
 /**
  * Unified hook for checking both tutorial-specific requirements and objectives
  * Combines and replaces useStepRequirements and useStepObjectives
- * 
+ *
  * Priority Logic (per interactiveRequirements.mdc):
  * 1. Check objectives first (they always win)
- * 2. If not eligible (sequential dependency), block regardless of requirements/objectives  
+ * 2. If not eligible (sequential dependency), block regardless of requirements/objectives
  * 3. Check requirements only if objectives not met
  * 4. Smart performance: skip requirements if objectives are satisfied
  */
@@ -27,13 +27,13 @@ export interface UseStepCheckerReturn {
   isEnabled: boolean;
   isCompleted: boolean;
   isChecking: boolean;
-  
+
   // Diagnostics
   completionReason: 'none' | 'objectives' | 'manual';
   explanation?: string;
   error?: string;
   canFixRequirement?: boolean; // Whether the requirement can be automatically fixed
-  
+
   // Actions
   checkStep: () => Promise<void>;
   markCompleted: () => void;
@@ -49,7 +49,7 @@ export function useStepChecker({
   objectives,
   hints,
   stepId,
-  isEligibleForChecking = true
+  isEligibleForChecking = true,
 }: UseStepCheckerProps): UseStepCheckerReturn {
   const [state, setState] = useState({
     isEnabled: false,
@@ -61,10 +61,10 @@ export function useStepChecker({
   });
 
   // Requirements checking is now handled by the pure requirements utility
-  
+
   // Manager integration for state propagation
   const managerRef = useRef<SequentialRequirementsManager | null>(null);
-  
+
   // Initialize manager reference
   if (!managerRef.current) {
     managerRef.current = SequentialRequirementsManager.getInstance();
@@ -73,62 +73,67 @@ export function useStepChecker({
   /**
    * Update manager with unified state for cross-step propagation
    */
-  const updateManager = useCallback((newState: typeof state) => {
-    if (managerRef.current) {
-      managerRef.current.updateStep(stepId, {
-        isEnabled: newState.isEnabled,
-        isCompleted: newState.isCompleted,
-        isChecking: newState.isChecking,
-        error: newState.error,
-        explanation: newState.explanation,
-        // Add completion reason for future extensibility
-        ...(newState.completionReason !== 'none' && { completionReason: newState.completionReason }),
-      });
-    }
-  }, [stepId]);
+  const updateManager = useCallback(
+    (newState: typeof state) => {
+      if (managerRef.current) {
+        managerRef.current.updateStep(stepId, {
+          isEnabled: newState.isEnabled,
+          isCompleted: newState.isCompleted,
+          isChecking: newState.isChecking,
+          error: newState.error,
+          explanation: newState.explanation,
+          // Add completion reason for future extensibility
+          ...(newState.completionReason !== 'none' && { completionReason: newState.completionReason }),
+        });
+      }
+    },
+    [stepId]
+  );
 
   // Get the interactive elements hook for proper requirements checking
   const { checkRequirementsFromData, fixNavigationRequirements } = useInteractiveElements();
-  
+
   // Check if this step has navigation requirements that can be fixed
   const canFixRequirement = requirements?.includes('navmenu-open') || false;
-  
+
   /**
    * Check conditions (requirements or objectives) using proper DOM check functions
    */
-  const checkConditions = useCallback(async (conditions: string, type: 'requirements' | 'objectives') => {
-    try {
-      // Create proper InteractiveElementData structure
-      const actionData = {
-        requirements: conditions,
-        targetaction: 'button' as const,
-        reftarget: stepId,
-        textContent: stepId,
-        tagName: 'div' as const,
-        objectives: type === 'objectives' ? conditions : undefined
-      };
-      
-      // Add timeout to prevent hanging (same as original hooks)
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`${type} check timeout`)), 5000);
-      });
-      
-      const result = await Promise.race([
-        checkRequirementsFromData(actionData),
-        timeoutPromise
-      ]);
-      
-      // For objectives: ALL must be met (AND logic as per specification)
-      // For requirements: ALL must be met (same logic)
-      const conditionsMet = result.pass;
-      const errorMessage = conditionsMet ? undefined : result.error?.map((e: any) => e.error || e.requirement).join(', ');
-      
-      return { pass: conditionsMet, error: errorMessage };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : `Failed to check ${type}`;
-      return { pass: false, error: errorMessage };
-    }
-  }, [stepId, checkRequirementsFromData]);
+  const checkConditions = useCallback(
+    async (conditions: string, type: 'requirements' | 'objectives') => {
+      try {
+        // Create proper InteractiveElementData structure
+        const actionData = {
+          requirements: conditions,
+          targetaction: 'button' as const,
+          reftarget: stepId,
+          textContent: stepId,
+          tagName: 'div' as const,
+          objectives: type === 'objectives' ? conditions : undefined,
+        };
+
+        // Add timeout to prevent hanging (same as original hooks)
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`${type} check timeout`)), 5000);
+        });
+
+        const result = await Promise.race([checkRequirementsFromData(actionData), timeoutPromise]);
+
+        // For objectives: ALL must be met (AND logic as per specification)
+        // For requirements: ALL must be met (same logic)
+        const conditionsMet = result.pass;
+        const errorMessage = conditionsMet
+          ? undefined
+          : result.error?.map((e: any) => e.error || e.requirement).join(', ');
+
+        return { pass: conditionsMet, error: errorMessage };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : `Failed to check ${type}`;
+        return { pass: false, error: errorMessage };
+      }
+    },
+    [stepId, checkRequirementsFromData]
+  );
 
   /**
    * Core checking logic with proper priority:
@@ -137,13 +142,13 @@ export function useStepChecker({
    * 3. Requirements (only if objectives not met)
    */
   const checkStep = useCallback(async () => {
-    setState(prev => ({ ...prev, isChecking: true, error: undefined }));
-    
+    setState((prev) => ({ ...prev, isChecking: true, error: undefined }));
+
     try {
       // STEP 1: Check objectives first (they always win)
       if (objectives && objectives.trim() !== '') {
         console.log(`🎯 [DEBUG] Checking objectives for ${stepId}: ${objectives}`);
-        
+
         const objectivesResult = await checkConditions(objectives, 'objectives');
         if (objectivesResult.pass) {
           console.log(`✅ [DEBUG] Objectives met for ${stepId}, auto-completing`);
@@ -183,18 +188,18 @@ export function useStepChecker({
       // STEP 3: Check requirements (only if objectives not met and eligible)
       if (requirements && requirements.trim() !== '') {
         console.warn(`🔍 [DEBUG] Checking requirements for ${stepId}: ${requirements}`);
-        
+
         const requirementsResult = await checkConditions(requirements, 'requirements');
         console.warn(`📋 [DEBUG] Requirements result for ${stepId}:`, {
           pass: requirementsResult.pass,
           error: requirementsResult.error,
-          requirements
+          requirements,
         });
-        
-        const explanation = requirementsResult.pass 
-          ? undefined 
+
+        const explanation = requirementsResult.pass
+          ? undefined
           : getRequirementExplanation(requirements, hints, requirementsResult.error);
-          
+
         const requirementsState = {
           isEnabled: requirementsResult.pass,
           isCompleted: false, // Requirements enable, don't auto-complete
@@ -203,7 +208,7 @@ export function useStepChecker({
           explanation,
           error: requirementsResult.pass ? undefined : requirementsResult.error,
         };
-        
+
         console.warn(`🎯 [DEBUG] Setting requirements state for ${stepId}:`, requirementsState);
         setState(requirementsState);
         updateManager(requirementsState);
@@ -221,7 +226,6 @@ export function useStepChecker({
       };
       setState(enabledState);
       updateManager(enabledState);
-
     } catch (error) {
       console.error(`❌ Step checking failed for ${stepId}:`, error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to check step conditions';
@@ -245,25 +249,24 @@ export function useStepChecker({
     if (!canFixRequirement || !fixNavigationRequirements) {
       return;
     }
-    
+
     try {
-      setState(prev => ({ ...prev, isChecking: true }));
-      
+      setState((prev) => ({ ...prev, isChecking: true }));
+
       // Use the fix function from the interactive hook
       await fixNavigationRequirements();
-      
+
       // After fixing, recheck the requirements
-      await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for UI to update
-      
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Small delay for UI to update
+
       // Trigger a requirements check to see if the fix worked
       await checkStep();
-      
     } catch (error) {
       console.error('Failed to fix navigation requirements:', error);
-      setState(prev => ({ 
-        ...prev, 
+      setState((prev) => ({
+        ...prev,
         isChecking: false,
-        error: 'Failed to fix navigation requirements'
+        error: 'Failed to fix navigation requirements',
       }));
     }
   }, [canFixRequirement, fixNavigationRequirements, checkStep]);
@@ -300,7 +303,7 @@ export function useStepChecker({
           checkStep();
         }
       });
-      
+
       return () => {
         unregisterChecker();
       };
@@ -329,4 +332,4 @@ export function useStepChecker({
     canFixRequirement,
     fixRequirement: canFixRequirement ? fixRequirement : undefined,
   };
-} 
+}

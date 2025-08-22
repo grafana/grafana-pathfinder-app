@@ -5,8 +5,10 @@ Organized CSS-in-JS styling with Grafana theme integration, extracted from the m
 ## Files Overview
 
 ### `interactive.styles.ts` ⭐ **Interactive Elements Styling**
+
 **Purpose**: Specialized styling for interactive elements within documentation content
-**Role**: 
+**Role**:
+
 - Provides theme-aware styling for interactive buttons and elements
 - Manages visual states (idle, running, completed, error)
 - Integrates with the interactive hook system
@@ -15,18 +17,21 @@ Organized CSS-in-JS styling with Grafana theme integration, extracted from the m
 **Key Features**:
 
 #### Interactive Element States
+
 - **Idle State**: Primary-themed buttons with play icons (▶)
-- **Completed State**: Green styling with checkmark (✓) 
+- **Completed State**: Green styling with checkmark (✓)
 - **Running State**: Warning-themed with spinning icon (⟳)
 - **Error State**: Error-themed with warning icon (⚠)
 
 #### Action Type Indicators
+
 - **Highlight Actions**: Eye icon (👁) for UI highlighting
 - **Button Actions**: Button icon (🔘) for clicking buttons
 - **Form Fill Actions**: Pencil icon (📝) for form interactions
 - **Sequence Actions**: Special container styling for multi-step processes
 
 #### Visual Design
+
 - Distinctive left border for clear identification
 - Consistent with Grafana button patterns but visually distinct
 - Hover effects and smooth transitions
@@ -34,11 +39,13 @@ Organized CSS-in-JS styling with Grafana theme integration, extracted from the m
 - Theme-aware colors that work in light/dark modes
 
 #### Integration Points
+
 - Works with `src/utils/interactive.hook.ts` for functionality
 - Applied to elements with `class="interactive"` and `data-targetaction` attributes
 - Global styles for highlight animations and element targeting
 
 **Usage**:
+
 ```typescript
 import { getInteractiveStyles, addGlobalInteractiveStyles } from './interactive.styles';
 
@@ -52,14 +59,17 @@ addGlobalInteractiveStyles();
 ```
 
 **Used By**:
+
 - Content rendered in `src/components/docs-panel/docs-panel.tsx`
 - Interactive elements processed by `src/utils/interactive.hook.ts`
 
 ---
 
 ### `docs-panel.styles.ts` ⭐ **Component Styling**
+
 **Purpose**: Main styling functions for the documentation panel components
-**Role**: 
+**Role**:
+
 - Provides theme-aware styling for all UI components
 - Organizes styles into logical groups for maintainability
 - Supports both light and dark Grafana themes
@@ -68,16 +78,19 @@ addGlobalInteractiveStyles();
 **Key Style Groups**:
 
 #### Container Styles (`getContainerStyles`)
+
 - Main panel container layout and positioning
 - Background colors and borders
 - Responsive height and width calculations
 
 #### Top Bar Styles (`getTopBarStyles`)
+
 - Header area with title and action buttons
 - App icon styling and layout
 - Title text and content organization
 
 #### Tab Styles (`getTabStyles`)
+
 - Tab bar layout and scrolling behavior
 - Individual tab styling and states
 - Active tab highlighting
@@ -85,24 +98,28 @@ addGlobalInteractiveStyles();
 - Loading states and animations
 
 #### Content Styles (`getContentStyles`)
+
 - Content area layout for different content types
 - Journey vs docs content distinction
 - Content metadata display
 - Loading and error state styling
 
 #### Milestone Styles (`getMilestoneStyles`)
+
 - Progress indicators for learning journeys
 - Navigation button styling
 - Progress bar animations
 - Milestone counter display
 
 #### Global Modal Styles (`addGlobalModalStyles`)
+
 - Image lightbox modal styling
 - Backdrop and container positioning
 - Responsive sizing and theming
 - Close button and header styling
 
 **Theme Integration**:
+
 ```typescript
 export const getStyles = (theme: GrafanaTheme2) => ({
   ...getContainerStyles(theme),
@@ -114,14 +131,17 @@ export const getStyles = (theme: GrafanaTheme2) => ({
 ```
 
 **Used By**:
+
 - `src/components/docs-panel/docs-panel.tsx` - Main component styling
 - `src/utils/link-handler.hook.ts` - Image lightbox modal creation
 
 ---
 
 ### `content-html.styles.ts` ⭐ **Content Styling**
+
 **Purpose**: Specialized styling for rendered HTML content from documentation sources
-**Role**: 
+**Role**:
+
 - Styles for learning journey and docs content
 - HTML element styling (headings, paragraphs, lists, etc.)
 - Interactive element styling (code blocks, images, etc.)
@@ -130,6 +150,7 @@ export const getStyles = (theme: GrafanaTheme2) => ({
 **Key Style Functions**:
 
 #### `journeyContentHtml(theme: GrafanaTheme2)`
+
 - Comprehensive styling for learning journey content
 - Code block styling with copy buttons
 - Image styling with lightbox cursors
@@ -140,6 +161,7 @@ export const getStyles = (theme: GrafanaTheme2) => ({
 - Bottom navigation styling
 
 #### `docsContentHtml(theme: GrafanaTheme2)`
+
 - Styling for standalone documentation pages
 - Similar features to journey content but optimized for docs
 - Streamlined styling without journey-specific elements
@@ -147,47 +169,56 @@ export const getStyles = (theme: GrafanaTheme2) => ({
 **Content Features Styled**:
 
 #### Typography
+
 - Responsive heading hierarchy
 - Paragraph spacing and line height
 - List styling and indentation
 
 #### Code Elements
+
 - Syntax highlighted code blocks
 - Inline code styling
 - Copy button positioning and animation
 - Scrollbar customization
 
 #### Interactive Elements
+
 - Image hover effects and lightbox cursors
 - Button styling for journey actions
 - Link styling with hover states
 - Collapsible section animations
 
 #### Media Elements
+
 - Responsive image sizing
 - Video iframe responsive wrappers
 - Image lightbox integration
 
 #### Special Content
+
 - Admonition styling (NOTE, WARNING, TIP)
 - Table responsive design
 - Journey navigation elements
 - Side journey and related journey sections
 
 **Responsive Design**:
+
 - Mobile-first responsive breakpoints
 - Flexible image and video sizing
 - Optimal reading width constraints
 - Touch-friendly interactive elements
 
 **Used By**:
+
 - `src/components/docs-panel/docs-panel.tsx` - Applied to content areas
 - `src/utils/content-processing.hook.ts` - Classes referenced for processing
 
 ## Design System Integration
 
 ### Grafana Theme Support
+
 Both style files integrate deeply with Grafana's theming:
+
 - **Color Tokens**: Uses `theme.colors.*` for consistent theming
 - **Typography**: Follows `theme.typography.*` scale and fonts
 - **Spacing**: Uses `theme.spacing()` for consistent spacing
@@ -195,12 +226,14 @@ Both style files integrate deeply with Grafana's theming:
 - **Border Radius**: Uses `theme.shape.radius.*` for consistency
 
 ### Accessibility Features
+
 - **Color Contrast**: Ensures WCAG compliance with theme colors
 - **Focus States**: Clear focus indicators for keyboard navigation
 - **Screen Reader**: Semantic markup support
 - **Touch Targets**: Adequate sizing for touch interactions
 
 ### Performance Considerations
+
 - **CSS-in-JS**: Emotion for optimized runtime styling
 - **Theme Memoization**: Efficient theme-based style computation
 - **Minimal Recomputation**: Styles computed only when theme changes
@@ -208,15 +241,17 @@ Both style files integrate deeply with Grafana's theming:
 ## Organization Benefits
 
 ### Before Refactor
+
 - Styles embedded inline in massive component files
 - Difficult to maintain and update
 - No clear organization or grouping
 
 ### After Refactor ✅
+
 - **Logical Grouping**: Styles organized by function and component area
 - **Reusability**: Functions can be used across components
 - **Maintainability**: Easy to find and update specific styling
 - **Testing**: Styles can be tested independently
 - **Theme Consistency**: Centralized theme integration
 
-This organization makes the styling more maintainable, consistent, and easier for designers and developers to work with. 
+This organization makes the styling more maintainable, consistent, and easier for designers and developers to work with.

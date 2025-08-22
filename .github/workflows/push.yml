@@ -20,7 +20,7 @@ env:
   # - 'universal': on-prem + cloud (default)
   # - 'grafana_cloud': cloud only, hidden for on-prem users
   SCOPES: universal # TODO: Choose the appropriate scope for your plugin.
-  ARGO_WORKFLOW_SLACK_CHANNEL: "#grafana-plugins-platform-ci" # TODO: Change with your own Slack channel
+  ARGO_WORKFLOW_SLACK_CHANNEL: "#pathfinder-app-release" # TODO: Change with your own Slack channel
 
   # Grafana Cloud environment to deploy the provisioned plugin to.
   # - 'dev': dev
@@ -44,14 +44,14 @@ jobs:
 
       # When pushing to "main", publish and deploy to Grafana Cloud (CD).
       # For PRs, skip publishing and deploying (run CI only).
-      environment: ${{ (github.event_name == 'push' && github.ref_name == 'main') && env.CD_ENVIRONMENT || 'none' }}
-      scopes: ${{ env.SCOPES }}
+      environment: ${{ (github.event_name == 'push' && github.ref_name == 'main') && 'dev' || 'none' }}
+      scopes: universal
 
       # This will trigger the Argo Workflow to update your plugin version in Grafana Cloud via deployment_tools
       grafana-cloud-deployment-type: provisioned
-      argo-workflow-slack-channel: ${{ env.ARGO_WORKFLOW_SLACK_CHANNEL }}
+      argo-workflow-slack-channel: pathfinder-argo-workflow
       # Auto-merge all PRs in deployment_tools
-      auto-merge-environments: ${{ env.CD_ENVIRONMENT }}
+      auto-merge-environments: dev
 
       # Add the git head ref sha to the plugin version as suffix (`+abcdef`). This is required for CD builds.
       plugin-version-suffix: ${{ github.event_name == 'push' && github.sha || github.event.pull_request.head.sha }}
