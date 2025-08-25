@@ -173,7 +173,7 @@ export async function reftargetExistsCHECK(
   return {
     requirement: 'exists-reftarget',
     pass: false,
-    error: `Element not found after ${maxRetries} attempts: ${reftarget}`,
+    error: `Element not found`,
   };
 }
 
