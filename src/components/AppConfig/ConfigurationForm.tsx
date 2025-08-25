@@ -3,6 +3,7 @@ import { Button, Field, Input, useStyles2, FieldSet, SecretInput } from '@grafan
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
+import { updatePluginSettingsAndReload } from '../../utils/utils.plugin';
 import {
   DocsPluginConfig,
   DEFAULT_RECOMMENDER_SERVICE_URL,
@@ -10,6 +11,7 @@ import {
   DEFAULT_DOCS_USERNAME,
   DEFAULT_TUTORIAL_URL,
   ConfigService,
+  TERMS_VERSION,
 } from '../../constants';
 
 type JsonData = DocsPluginConfig & {
@@ -52,10 +54,10 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         recommenderServiceUrl: jsonData.recommenderServiceUrl,
         docsBaseUrl: jsonData.docsBaseUrl,
         docsUsername: jsonData.docsUsername,
-        docsPassword: jsonData.docsPassword,
         tutorialUrl: jsonData.tutorialUrl,
-        acceptedTermsAndConditions: jsonData.acceptedTermsAndConditions,
-        termsVersion: jsonData.termsVersion,
+        // Ensure T&C fields have proper defaults to avoid resetting to undefined
+        acceptedTermsAndConditions: jsonData.acceptedTermsAndConditions ?? false,
+        termsVersion: jsonData.termsVersion || TERMS_VERSION,
       });
     }
   }, [jsonData]);
@@ -106,26 +108,29 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    // Omit docsPassword from any jsonData we handle client-side
+    const { docsPassword: _omitSecretFromJsonData, ...jsonDataWithoutSecret } = jsonData || {};
+
     const newConfig: DocsPluginConfig = {
-      ...jsonData,
+      ...jsonDataWithoutSecret,
       recommenderServiceUrl: state.recommenderServiceUrl,
       docsBaseUrl: state.docsBaseUrl,
       docsUsername: state.docsUsername,
-      docsPassword: state.docsPassword,
+      // Intentionally omit docsPassword from persisted jsonData
       tutorialUrl: state.tutorialUrl,
     };
 
     // Update the configuration service with all fields preserved
     ConfigService.setConfig({
-      ...jsonData, // Preserve existing fields (including T&C settings)
+      ...jsonDataWithoutSecret, // Preserve existing fields (including T&C settings), without secrets
       ...newConfig, // Apply configuration updates
     });
 
-    await updatePluginAndReload(plugin.meta.id, {
+    await updatePluginSettingsAndReload(plugin.meta.id, {
       enabled,
       pinned,
       jsonData: {
-        ...jsonData, // Preserve ALL existing fields first (including T&C settings)
+        ...jsonDataWithoutSecret, // Preserve ALL existing fields first (including T&C settings), without secrets
         ...newConfig, // Then apply the configuration updates
         isDocsPasswordSet: state.isDocsPasswordSet || Boolean(state.docsPassword),
       },
@@ -243,24 +248,4 @@ const getStyles = (theme: GrafanaTheme2) => ({
   `,
 });
 
-// Helper function to update plugin (reused from AppConfig.tsx)
-const updatePluginAndReload = async (pluginId: string, data: any) => {
-  const { getBackendSrv, locationService } = await import('@grafana/runtime');
-  const { lastValueFrom } = await import('rxjs');
-
-  try {
-    const response = getBackendSrv().fetch({
-      url: `/api/plugins/${pluginId}/settings`,
-      method: 'POST',
-      data,
-    });
-
-    await lastValueFrom(response as any);
-
-    // Reloading the page as the changes made here wouldn't be propagated to the actual plugin otherwise.
-    // This is not ideal, however unfortunately currently there is no supported way for updating the plugin state.
-    locationService.reload();
-  } catch (e) {
-    console.error('Error while updating the plugin', e);
-  }
-};
+// Local helper removed in favor of shared updatePluginSettingsAndReload

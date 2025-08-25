@@ -1,8 +1,9 @@
 import React, { useState, ChangeEvent, useEffect } from 'react';
 import { Button, useStyles2, FieldSet, Switch, Text, Alert } from '@grafana/ui';
-import { AppPluginMeta, GrafanaTheme2, PluginMeta, PluginConfigPageProps } from '@grafana/data';
+import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
+import { updatePluginSettingsAndReload } from '../../utils/utils.plugin';
 import { DocsPluginConfig, ConfigService, TERMS_VERSION } from '../../constants';
 import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
 
@@ -57,7 +58,7 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
       // Update the configuration service
       ConfigService.setConfig(newConfig);
 
-      await updatePluginAndReload(plugin.meta.id, {
+      await updatePluginSettingsAndReload(plugin.meta.id, {
         enabled,
         pinned,
         jsonData: {
@@ -194,24 +195,4 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-// Helper function to update plugin (reused from AppConfig.tsx)
-const updatePluginAndReload = async (pluginId: string, data: Partial<PluginMeta<JsonData>>) => {
-  const { getBackendSrv, locationService } = await import('@grafana/runtime');
-  const { lastValueFrom } = await import('rxjs');
-
-  try {
-    const response = getBackendSrv().fetch({
-      url: `/api/plugins/${pluginId}/settings`,
-      method: 'POST',
-      data,
-    });
-
-    await lastValueFrom(response as any);
-
-    // Reloading the page as the changes made here wouldn't be propagated to the actual plugin otherwise.
-    // This is not ideal, however unfortunately currently there is no supported way for updating the plugin state.
-    locationService.reload();
-  } catch (e) {
-    console.error('Error while updating the plugin', e);
-  }
-};
+// Local helper removed in favor of shared updatePluginSettingsAndReload
