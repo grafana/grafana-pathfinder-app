@@ -1,5 +1,5 @@
 import { getBackendSrv, config, locationService, getEchoSrv, EchoEventType } from '@grafana/runtime';
-import { getRecommenderServiceUrl, isRecommenderEnabled } from '../../constants';
+import { getConfigWithDefaults, isRecommenderEnabled, DocsPluginConfig } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import {
   ContextData,
@@ -238,7 +238,7 @@ export class ContextService {
   /**
    * Fetch recommendations based on context
    */
-  static async fetchRecommendations(contextData: ContextData): Promise<{
+  static async fetchRecommendations(contextData: ContextData, pluginConfig: DocsPluginConfig = {}): Promise<{
     recommendations: Recommendation[];
     error: string | null;
   }> {
@@ -254,7 +254,8 @@ export class ContextService {
       const bundledRecommendations: Recommendation[] = this.getBundledInteractiveRecommendations(contextData);
 
       // Check if T&C have been accepted before fetching external recommendations
-      if (!isRecommenderEnabled()) {
+      const configWithDefaults = getConfigWithDefaults(pluginConfig);
+      if (!isRecommenderEnabled(pluginConfig)) {
         // Process only bundled recommendations when T&C not accepted
         const processedBundledRecommendations = await Promise.all(
           bundledRecommendations.map(async (rec) => {
@@ -305,7 +306,7 @@ export class ContextService {
         platform: config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss',
       };
 
-      const response = await fetch(`${getRecommenderServiceUrl()}/recommend`, {
+      const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

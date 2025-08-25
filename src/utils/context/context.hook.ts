@@ -1,10 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { locationService } from '@grafana/runtime';
+import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
 import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from './context.types';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
+  
+  // Get plugin configuration
+  const pluginContext = usePluginContext();
+  const pluginConfig = pluginContext?.meta?.jsonData || {};
 
   // State
   const [contextData, setContextData] = useState<ContextData>({
@@ -78,7 +83,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
     setIsLoadingRecommendations(true);
     try {
-      const { recommendations, error } = await ContextService.fetchRecommendations(contextData);
+      const { recommendations, error } = await ContextService.fetchRecommendations(contextData, pluginConfig);
       setContextData((prev) => ({
         ...prev,
         recommendations,
@@ -93,7 +98,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     } finally {
       setIsLoadingRecommendations(false);
     }
-  }, []); // Empty dependency array - setContextData and setIsLoadingRecommendations are stable
+  }, [pluginConfig]); // Add pluginConfig as dependency
 
   // Simplified location-based change detection (EchoSrv handles datasource/viz changes)
   useEffect(() => {

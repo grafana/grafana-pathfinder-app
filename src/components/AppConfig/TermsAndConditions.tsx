@@ -4,7 +4,7 @@ import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps } from '@grafana/da
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
 import { updatePluginSettingsAndReload } from '../../utils/utils.plugin';
-import { DocsPluginConfig, ConfigService, TERMS_VERSION } from '../../constants';
+import { DocsPluginConfig } from '../../constants';
 import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
 
 type JsonData = DocsPluginConfig & {
@@ -22,17 +22,7 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
   );
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
-  // Update the configuration service when the config changes (similar to ConfigurationForm)  
-  useEffect(() => {
-    if (jsonData) {
-      // Ensure acceptedTermsAndConditions has a default value
-      const configWithDefaults = {
-        ...jsonData,
-        acceptedTermsAndConditions: jsonData.acceptedTermsAndConditions ?? false,
-      };
-      ConfigService.setConfig(configWithDefaults);
-    }
-  }, [jsonData]);
+  // Configuration is now retrieved directly from plugin meta via usePluginContext
 
   // Sync local state with jsonData when it changes (after reload)
   useEffect(() => {
@@ -49,27 +39,22 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
     setIsSaving(true);
 
     try {
-      const newConfig: DocsPluginConfig = {
+      const newJsonData = {
         ...jsonData,
         acceptedTermsAndConditions: isRecommenderEnabled,
-        termsVersion: TERMS_VERSION,
       };
 
-      // Update the configuration service
-      ConfigService.setConfig(newConfig);
-
+      // Save settings and reload page to ensure changes take effect immediately
       await updatePluginSettingsAndReload(plugin.meta.id, {
         enabled,
         pinned,
-        jsonData: {
-          ...jsonData, // Preserve all existing jsonData fields
-          ...newConfig, // Apply the new config
-        },
+        jsonData: newJsonData,
       });
     } catch (error) {
       console.error('Error saving Terms and Conditions:', error);
-    } finally {
       setIsSaving(false);
+      // Re-throw to let user know something went wrong
+      throw error;
     }
   };
 

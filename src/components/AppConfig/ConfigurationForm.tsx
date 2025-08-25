@@ -1,4 +1,4 @@
-import React, { useState, ChangeEvent, useEffect } from 'react';
+import React, { useState, ChangeEvent } from 'react';
 import { Button, Field, Input, useStyles2, FieldSet, SecretInput } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -10,7 +10,6 @@ import {
   DEFAULT_DOCS_BASE_URL,
   DEFAULT_DOCS_USERNAME,
   DEFAULT_TUTORIAL_URL,
-  ConfigService,
 } from '../../constants';
 
 type JsonData = DocsPluginConfig & {
@@ -45,21 +44,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     isDocsPasswordSet: Boolean(jsonData?.isDocsPasswordSet),
     tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
   });
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Update the configuration service when the config changes
-  useEffect(() => {
-    if (jsonData) {
-      ConfigService.setConfig({
-        recommenderServiceUrl: jsonData.recommenderServiceUrl,
-        docsBaseUrl: jsonData.docsBaseUrl,
-        docsUsername: jsonData.docsUsername,
-        tutorialUrl: jsonData.tutorialUrl,
-        // Do not set or default T&C here to avoid clobbering saved values on partial loads
-        acceptedTermsAndConditions: jsonData.acceptedTermsAndConditions,
-        termsVersion: jsonData.termsVersion,
-      });
-    }
-  }, [jsonData]);
+  // Configuration is now retrieved directly from plugin meta via usePluginContext
 
   const isSubmitDisabled = Boolean(!state.recommenderServiceUrl || !state.docsBaseUrl);
 
@@ -107,40 +94,36 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    // Omit docsPassword from any jsonData we handle client-side
-    const { docsPassword: _omitSecretFromJsonData, ...jsonDataWithoutSecret } = jsonData || {};
+    setIsSaving(true);
 
-    const newConfig: DocsPluginConfig = {
-      ...jsonDataWithoutSecret,
-      recommenderServiceUrl: state.recommenderServiceUrl,
-      docsBaseUrl: state.docsBaseUrl,
-      docsUsername: state.docsUsername,
-      // Intentionally omit docsPassword from persisted jsonData
-      tutorialUrl: state.tutorialUrl,
-    };
-
-    // Update the configuration service with all fields preserved
-    ConfigService.setConfig({
-      ...jsonDataWithoutSecret, // Preserve existing fields (including T&C settings), without secrets
-      ...newConfig, // Apply configuration updates
-    });
-
-    await updatePluginSettingsAndReload(plugin.meta.id, {
-      enabled,
-      pinned,
-      jsonData: {
-        ...jsonDataWithoutSecret, // Preserve ALL existing fields first (including T&C settings), without secrets
-        ...newConfig, // Then apply the configuration updates
+    try {
+      const newJsonData = {
+        ...jsonData, // Preserve existing fields
+        recommenderServiceUrl: state.recommenderServiceUrl,
+        docsBaseUrl: state.docsBaseUrl,
+        docsUsername: state.docsUsername,
+        tutorialUrl: state.tutorialUrl,
         isDocsPasswordSet: state.isDocsPasswordSet || Boolean(state.docsPassword),
-      },
-      // This cannot be queried later by the frontend.
-      // We don't want to override it in case it was set previously and left untouched now.
-      secureJsonData: state.isDocsPasswordSet
-        ? undefined
-        : {
-            docsPassword: state.docsPassword,
-          },
-    });
+      };
+
+      // Save settings and reload page to ensure changes take effect immediately
+      await updatePluginSettingsAndReload(plugin.meta.id, {
+        enabled,
+        pinned,
+        jsonData: newJsonData,
+        // Only include secureJsonData if password was changed
+        secureJsonData: state.isDocsPasswordSet
+          ? undefined
+          : {
+              docsPassword: state.docsPassword,
+            },
+      });
+    } catch (error) {
+      console.error('Error saving configuration:', error);
+      setIsSaving(false);
+      // Re-throw to let user know something went wrong
+      throw error;
+    }
   };
 
   return (
@@ -224,8 +207,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         </Field>
 
         <div className={s.marginTop}>
-          <Button type="submit" data-testid={testIds.appConfig.submit} disabled={isSubmitDisabled}>
-            Save Configuration
+          <Button 
+            type="submit" 
+            data-testid={testIds.appConfig.submit} 
+            disabled={isSubmitDisabled || isSaving}
+          >
+            {isSaving ? 'Saving...' : 'Save Configuration'}
           </Button>
         </div>
       </FieldSet>

@@ -1,7 +1,7 @@
 import React from 'react';
 // @ts-expect-error - Icon kept available as core Grafana UI component
 import { Button, Alert, Icon, useStyles2 } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
+import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { css } from '@emotion/css';
 import { locationService } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
@@ -13,9 +13,11 @@ interface EnableRecommenderBannerProps {
 
 export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = ({ className }) => {
   const styles = useStyles2(getStyles);
+  const context = usePluginContext();
+  const config = context?.meta?.jsonData || {};
 
   // Only show if recommender is disabled
-  if (isRecommenderEnabled()) {
+  if (isRecommenderEnabled(config)) {
     return null;
   }
 
