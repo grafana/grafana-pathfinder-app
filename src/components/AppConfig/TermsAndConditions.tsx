@@ -67,57 +67,21 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
     }
   };
 
-  // Convert markdown-like content to JSX for basic rendering
-  const renderTermsContent = (content: string) => {
-    const lines = content.split('\n');
-    return lines.map((line, index) => {
-      if (line.startsWith('# ')) {
-        return (
-          <h2 key={index} className={styles.heading}>
-            {line.substring(2)}
-          </h2>
-        );
-      } else if (line.startsWith('## ')) {
-        return (
-          <h3 key={index} className={styles.subheading}>
-            {line.substring(3)}
-          </h3>
-        );
-      } else if (line.startsWith('### ')) {
-        return (
-          <h4 key={index} className={styles.subsubheading}>
-            {line.substring(4)}
-          </h4>
-        );
-      } else if (line.startsWith('- ') || line.startsWith('* ')) {
-        return (
-          <li key={index} className={styles.listItem}>
-            {line.substring(2)}
-          </li>
-        );
-      } else if (line.startsWith('**') && line.endsWith('**')) {
-        return (
-          <p key={index} className={styles.bold}>
-            {line.substring(2, line.length - 2)}
-          </p>
-        );
-      } else if (line.trim() === '') {
-        return <br key={index} />;
-      } else if (line.trim() === '---') {
-        return <hr key={index} className={styles.divider} />;
-      } else {
-        return (
-          <p key={index} className={styles.paragraph}>
-            {line}
-          </p>
-        );
-      }
-    });
-  };
-
   return (
     <form onSubmit={onSubmit}>
       <FieldSet label="Recommender Service" className={styles.termsFieldSet}>
+        <Alert title="Data Usage Information" severity={isRecommenderEnabled ? 'info' : 'warning'}>
+          {isRecommenderEnabled
+            ? "When enabled, contextual data from your Grafana instance will be sent to Grafana's hosted recommendation service to provide personalized recommendations. Review the details below."
+            : "If you enable this feature, contextual data from your Grafana instance will be sent to Grafana's hosted recommendation service. Please review the data usage details below before enabling."}
+        </Alert>
+
+        <div
+          data-testid={testIds.termsAndConditions.termsContent}
+          className={styles.termsContent}
+          dangerouslySetInnerHTML={{ __html: TERMS_AND_CONDITIONS_CONTENT }}
+        />
+
         <div className={styles.toggleSection}>
           <div className={styles.toggleHeader}>
             <Switch
@@ -137,16 +101,6 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
               </Text>
             </div>
           </div>
-        </div>
-
-        <Alert title="Data Usage Information" severity={isRecommenderEnabled ? 'info' : 'warning'}>
-          {isRecommenderEnabled
-            ? "When enabled, contextual data from your Grafana instance will be sent to Grafana's hosted recommendation service to provide personalized recommendations. Review the details below."
-            : "If you enable this feature, contextual data from your Grafana instance will be sent to Grafana's hosted recommendation service. Please review the data usage details below before enabling."}
-        </Alert>
-
-        <div className={styles.termsContainer} data-testid={testIds.termsAndConditions.termsContent}>
-          {renderTermsContent(TERMS_AND_CONDITIONS_CONTENT)}
         </div>
 
         <div className={styles.button}>
@@ -169,6 +123,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(2),
   }),
   toggleSection: css({
+    marginTop: theme.spacing(3),
     marginBottom: theme.spacing(2),
   }),
   toggleHeader: css({
@@ -182,59 +137,55 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(0.5),
     flex: 1,
   }),
-  termsContainer: css({
-    backgroundColor: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
-    padding: theme.spacing(2),
+  termsContent: css({
     marginTop: theme.spacing(2),
     marginBottom: theme.spacing(2),
-    maxHeight: '400px',
-    overflowY: 'auto',
+    '& h2': {
+      fontSize: theme.typography.h2.fontSize,
+      fontWeight: theme.typography.h2.fontWeight,
+      color: theme.colors.text.primary,
+      marginTop: theme.spacing(2),
+      marginBottom: theme.spacing(1),
+    },
+    '& h3': {
+      fontSize: theme.typography.h3.fontSize,
+      fontWeight: theme.typography.h3.fontWeight,
+      color: theme.colors.text.primary,
+      marginTop: theme.spacing(2),
+      marginBottom: theme.spacing(1),
+    },
+    '& h4': {
+      fontSize: theme.typography.h4.fontSize,
+      fontWeight: theme.typography.h4.fontWeight,
+      color: theme.colors.text.primary,
+      marginTop: theme.spacing(1.5),
+      marginBottom: theme.spacing(0.5),
+    },
+    '& p': {
+      color: theme.colors.text.secondary,
+      lineHeight: 1.4,
+      marginBottom: theme.spacing(1),
+    },
+    '& ul': {
+      paddingLeft: theme.spacing(2),
+      marginBottom: theme.spacing(1),
+    },
+    '& li': {
+      color: theme.colors.text.secondary,
+      marginBottom: theme.spacing(0.5),
+    },
+    '& hr': {
+      border: 'none',
+      borderTop: `1px solid ${theme.colors.border.weak}`,
+      margin: `${theme.spacing(2)} 0`,
+    },
+    '& strong': {
+      fontWeight: theme.typography.fontWeightBold,
+      color: theme.colors.text.primary,
+    },
   }),
   button: css({
     marginTop: theme.spacing(2),
-  }),
-  heading: css({
-    fontSize: theme.typography.h2.fontSize,
-    fontWeight: theme.typography.h2.fontWeight,
-    marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(1),
-    color: theme.colors.text.primary,
-  }),
-  subheading: css({
-    fontSize: theme.typography.h3.fontSize,
-    fontWeight: theme.typography.h3.fontWeight,
-    marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(1),
-    color: theme.colors.text.primary,
-  }),
-  subsubheading: css({
-    fontSize: theme.typography.h4.fontSize,
-    fontWeight: theme.typography.h4.fontWeight,
-    marginTop: theme.spacing(1.5),
-    marginBottom: theme.spacing(0.5),
-    color: theme.colors.text.primary,
-  }),
-  paragraph: css({
-    margin: `${theme.spacing(0.5)} 0`,
-    color: theme.colors.text.secondary,
-    lineHeight: 1.4,
-  }),
-  bold: css({
-    margin: `${theme.spacing(0.5)} 0`,
-    fontWeight: theme.typography.fontWeightBold,
-    color: theme.colors.text.primary,
-  }),
-  listItem: css({
-    marginLeft: theme.spacing(2),
-    marginBottom: theme.spacing(0.5),
-    color: theme.colors.text.secondary,
-  }),
-  divider: css({
-    border: 'none',
-    borderTop: `1px solid ${theme.colors.border.weak}`,
-    margin: `${theme.spacing(2)} 0`,
   }),
 });
 
