@@ -255,10 +255,6 @@ export class ContextService {
 
       // Check if T&C have been accepted before fetching external recommendations
       if (!isRecommenderEnabled()) {
-        console.warn(
-          '@context/ Recommender service disabled - Terms and Conditions not accepted. Only showing bundled recommendations.'
-        );
-
         // Process only bundled recommendations when T&C not accepted
         const processedBundledRecommendations = await Promise.all(
           bundledRecommendations.map(async (rec) => {
