@@ -29,7 +29,8 @@ let pluginConfig: DocsPluginConfig = {};
 // Configuration service
 export const ConfigService = {
   setConfig: (config: DocsPluginConfig) => {
-    pluginConfig = config;
+    // Merge to preserve previously known fields when partial configs are provided
+    pluginConfig = { ...pluginConfig, ...config };
   },
 
   getConfig: (): DocsPluginConfig => ({

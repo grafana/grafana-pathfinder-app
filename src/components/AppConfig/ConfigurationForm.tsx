@@ -11,7 +11,6 @@ import {
   DEFAULT_DOCS_USERNAME,
   DEFAULT_TUTORIAL_URL,
   ConfigService,
-  TERMS_VERSION,
 } from '../../constants';
 
 type JsonData = DocsPluginConfig & {
@@ -55,9 +54,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         docsBaseUrl: jsonData.docsBaseUrl,
         docsUsername: jsonData.docsUsername,
         tutorialUrl: jsonData.tutorialUrl,
-        // Ensure T&C fields have proper defaults to avoid resetting to undefined
-        acceptedTermsAndConditions: jsonData.acceptedTermsAndConditions ?? false,
-        termsVersion: jsonData.termsVersion || TERMS_VERSION,
+        // Do not set or default T&C here to avoid clobbering saved values on partial loads
+        acceptedTermsAndConditions: jsonData.acceptedTermsAndConditions,
+        termsVersion: jsonData.termsVersion,
       });
     }
   }, [jsonData]);
