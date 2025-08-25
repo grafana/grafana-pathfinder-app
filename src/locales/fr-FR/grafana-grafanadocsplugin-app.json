@@ -1,0 +1,73 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Échec du chargement des recommandations : {{error}}",
+    "items_one": "{{count}} élément",
+    "items_many": "{{count}} éléments",
+    "items_other": "{{count}} éléments",
+    "milestones": "Étapes :",
+    "noRecommendations": "Aucune recommandation disponible pour votre contexte actuel",
+    "otherDocumentation": "Autre Documentation",
+    "percentComplete": "{{percent}}% terminé",
+    "recommendedDocumentation": "Documentation Recommandée",
+    "start": "Commencer",
+    "startLearningJourney": "Commencer le Parcours d'Apprentissage",
+    "subtitle": "Basé sur votre contexte actuel, voici quelques parcours d'apprentissage et documentation qui peuvent être bénéfiques.",
+    "summary": "Résumé",
+    "view": "Voir",
+    "viewDocumentation": "Voir la Documentation"
+  },
+  "docsPanel": {
+    "closeTab": "Fermer {{title}}",
+    "documentation": "Documentation",
+    "interactiveJourney": "Parcours interactif",
+    "learningJourney": "Parcours d'Apprentissage",
+    "loading": "Chargement...",
+    "milestoneProgress": "Étape {{current}} sur {{total}}",
+    "milestonesCount_one": "{{count}} étape",
+    "milestonesCount_many": "{{count}} étapes",
+    "milestonesCount_other": "{{count}} étapes",
+    "moreTabs_one": "{{count}} de plus",
+    "moreTabs_many": "{{count}} de plus",
+    "moreTabs_other": "{{count}} de plus",
+    "moreTabsMenu": "Plus d'onglets",
+    "nextMilestone": "Étape suivante",
+    "nextMilestoneTooltip": "Étape suivante (Alt + →)",
+    "open": "Ouvrir",
+    "openInNewTab": "Ouvrir cette page dans un nouvel onglet",
+    "previousMilestone": "Étape précédente",
+    "previousMilestoneTooltip": "Étape précédente (Alt + ←)",
+    "recommendations": "Recommandations",
+    "showMoreTabs_one": "Afficher {{count}} onglet de plus",
+    "showMoreTabs_many": "Afficher {{count}} onglets de plus",
+    "showMoreTabs_other": "Afficher {{count}} onglets de plus",
+    "switchToTab": "Basculer vers {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Donner des commentaires sur ce plugin",
+    "text": "Donner des commentaires",
+    "title": "Donner des commentaires sur ce plugin"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Communauté",
+      "documentation": "Documentation",
+      "download": "Télécharger",
+      "enterprise": "Enterprise",
+      "shortcuts": "Raccourcis",
+      "support": "Support"
+    },
+    "modal": {
+      "dashboardSettings": "Paramètres du tableau de bord",
+      "dashboardShortcuts": "Raccourcis du Tableau de Bord",
+      "exitEditViews": "Quitter les vues d'édition/paramètres",
+      "globalShortcuts": "Raccourcis Globaux",
+      "goToDashboards": "Aller aux Tableaux de Bord",
+      "goToHomeDashboard": "Aller au Tableau de Bord Principal",
+      "keyboardShortcuts": "Raccourcis Clavier",
+      "refreshAllPanels": "Actualiser tous les panneaux",
+      "showAllShortcuts": "Afficher tous les raccourcis clavier",
+      "simplifiedView": "Ceci est une vue simplifiée. Vous pouvez la remplacer par le composant HelpModal complet de Grafana.",
+      "toggleViewMode": "Basculer le mode d'affichage"
+    }
+  }
+}

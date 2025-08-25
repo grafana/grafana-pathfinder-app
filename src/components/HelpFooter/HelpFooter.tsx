@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Icon, useTheme2, Modal } from '@grafana/ui';
 import { config } from '@grafana/runtime';
+import { t } from '@grafana/i18n';
 import { getHelpFooterStyles } from '../../styles/help-footer.styles';
 
 interface HelpFooterProps {
@@ -23,37 +24,37 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
   const helpButtons = [
     {
       key: 'documentation',
-      label: 'Documentation',
+      label: t('helpFooter.buttons.documentation', 'Documentation'),
       icon: 'file-alt' as const,
       href: 'https://grafana.com/docs/grafana/latest/?utm_source=grafana_footer',
     },
     {
       key: 'support',
-      label: 'Support',
+      label: t('helpFooter.buttons.support', 'Support'),
       icon: 'question-circle' as const,
-      href: 'https://grafana.com/products/enterprise/?utm_source=grafana_footer',
+      href: 'https://grafana.com/support/?utm_source=grafana_footer',
     },
     {
       key: 'community',
-      label: 'Community',
+      label: t('helpFooter.buttons.community', 'Community'),
       icon: 'comments-alt' as const,
       href: 'https://community.grafana.com/?utm_source=grafana_footer',
     },
     {
       key: 'enterprise',
-      label: 'Enterprise',
+      label: t('helpFooter.buttons.enterprise', 'Enterprise'),
       icon: 'external-link-alt' as const,
       href: 'https://grafana.com/products/enterprise/?utm_source=grafana_footer',
     },
     {
       key: 'download',
-      label: 'Download',
+      label: t('helpFooter.buttons.download', 'Download'),
       icon: 'download-alt' as const,
       href: 'https://grafana.com/grafana/download?utm_source=grafana_footer',
     },
     {
       key: 'shortcuts',
-      label: 'Shortcuts',
+      label: t('helpFooter.buttons.shortcuts', 'Shortcuts'),
       icon: 'keyboard' as const,
       onClick: handleKeyboardShortcuts,
     },
@@ -97,10 +98,14 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
 
       {/* Keyboard Shortcuts Modal */}
       {isHelpModalOpen && (
-        <Modal title="Keyboard Shortcuts" isOpen={isHelpModalOpen} onDismiss={handleCloseHelpModal}>
+        <Modal
+          title={t('helpFooter.modal.keyboardShortcuts', 'Keyboard Shortcuts')}
+          isOpen={isHelpModalOpen}
+          onDismiss={handleCloseHelpModal}
+        >
           <div style={{ minWidth: '500px', padding: '16px' }}>
             <div style={{ marginBottom: '16px' }}>
-              <h3 style={{ marginBottom: '8px' }}>Global Shortcuts</h3>
+              <h3 style={{ marginBottom: '8px' }}>{t('helpFooter.modal.globalShortcuts', 'Global Shortcuts')}</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '8px', fontSize: '14px' }}>
                 <div>
                   <kbd
@@ -114,7 +119,7 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
                     ?
                   </kbd>
                 </div>
-                <div>Show all keyboard shortcuts</div>
+                <div>{t('helpFooter.modal.showAllShortcuts', 'Show all keyboard shortcuts')}</div>
                 <div>
                   <kbd
                     style={{
@@ -127,7 +132,7 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
                     g h
                   </kbd>
                 </div>
-                <div>Go to Home Dashboard</div>
+                <div>{t('helpFooter.modal.goToHomeDashboard', 'Go to Home Dashboard')}</div>
                 <div>
                   <kbd
                     style={{
@@ -140,7 +145,7 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
                     g d
                   </kbd>
                 </div>
-                <div>Go to Dashboards</div>
+                <div>{t('helpFooter.modal.goToDashboards', 'Go to Dashboards')}</div>
                 <div>
                   <kbd
                     style={{
@@ -153,12 +158,12 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
                     esc
                   </kbd>
                 </div>
-                <div>Exit edit/setting views</div>
+                <div>{t('helpFooter.modal.exitEditViews', 'Exit edit/setting views')}</div>
               </div>
             </div>
 
             <div style={{ marginBottom: '16px' }}>
-              <h3 style={{ marginBottom: '8px' }}>Dashboard Shortcuts</h3>
+              <h3 style={{ marginBottom: '8px' }}>{t('helpFooter.modal.dashboardShortcuts', 'Dashboard Shortcuts')}</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '8px', fontSize: '14px' }}>
                 <div>
                   <kbd
@@ -172,7 +177,7 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
                     d r
                   </kbd>
                 </div>
-                <div>Refresh all panels</div>
+                <div>{t('helpFooter.modal.refreshAllPanels', 'Refresh all panels')}</div>
                 <div>
                   <kbd
                     style={{
@@ -185,7 +190,7 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
                     d s
                   </kbd>
                 </div>
-                <div>Dashboard settings</div>
+                <div>{t('helpFooter.modal.dashboardSettings', 'Dashboard settings')}</div>
                 <div>
                   <kbd
                     style={{
@@ -198,14 +203,17 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
                     d v
                   </kbd>
                 </div>
-                <div>Toggle view mode</div>
+                <div>{t('helpFooter.modal.toggleViewMode', 'Toggle view mode')}</div>
               </div>
             </div>
 
             <div
               style={{ fontSize: '12px', color: theme.colors.text.secondary, marginTop: '16px', fontStyle: 'italic' }}
             >
-              This is a simplified view. You can replace this with Grafana&apos;s full HelpModal component.
+              {t(
+                'helpFooter.modal.simplifiedView',
+                "This is a simplified view. You can replace this with Grafana's full HelpModal component."
+              )}
             </div>
           </div>
         </Modal>

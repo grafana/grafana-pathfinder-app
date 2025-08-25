@@ -1,0 +1,73 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Impossibile caricare le raccomandazioni: {{error}}",
+    "items_one": "{{count}} elemento",
+    "items_many": "{{count}} elementi",
+    "items_other": "{{count}} elementi",
+    "milestones": "Traguardi:",
+    "noRecommendations": "Nessuna raccomandazione disponibile per il tuo contesto attuale",
+    "otherDocumentation": "Altra Documentazione",
+    "percentComplete": "{{percent}}% completato",
+    "recommendedDocumentation": "Documentazione Consigliata",
+    "start": "Inizia",
+    "startLearningJourney": "Inizia Percorso di Apprendimento",
+    "subtitle": "Basato sul tuo contesto attuale, ecco alcuni percorsi di apprendimento e documentazione che potrebbero essere utili.",
+    "summary": "Riassunto",
+    "view": "Visualizza",
+    "viewDocumentation": "Visualizza Documentazione"
+  },
+  "docsPanel": {
+    "closeTab": "Chiudi {{title}}",
+    "documentation": "Documentazione",
+    "interactiveJourney": "Percorso interattivo",
+    "learningJourney": "Percorso di Apprendimento",
+    "loading": "Caricamento...",
+    "milestoneProgress": "Traguardo {{current}} di {{total}}",
+    "milestonesCount_one": "{{count}} traguardo",
+    "milestonesCount_many": "{{count}} traguardi",
+    "milestonesCount_other": "{{count}} traguardi",
+    "moreTabs_one": "{{count}} altro",
+    "moreTabs_many": "{{count}} altri",
+    "moreTabs_other": "{{count}} altri",
+    "moreTabsMenu": "Più schede",
+    "nextMilestone": "Traguardo successivo",
+    "nextMilestoneTooltip": "Traguardo successivo (Alt + →)",
+    "open": "Apri",
+    "openInNewTab": "Apri questa pagina in una nuova scheda",
+    "previousMilestone": "Traguardo precedente",
+    "previousMilestoneTooltip": "Traguardo precedente (Alt + ←)",
+    "recommendations": "Raccomandazioni",
+    "showMoreTabs_one": "Mostra {{count}} scheda in più",
+    "showMoreTabs_many": "Mostra {{count}} schede in più",
+    "showMoreTabs_other": "Mostra {{count}} schede in più",
+    "switchToTab": "Passa a {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Fornisci feedback su questo plugin",
+    "text": "Fornisci feedback",
+    "title": "Fornisci feedback su questo plugin"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Community",
+      "documentation": "Documentazione",
+      "download": "Download",
+      "enterprise": "Enterprise",
+      "shortcuts": "Scorciatoie",
+      "support": "Supporto"
+    },
+    "modal": {
+      "dashboardSettings": "Dashboard settings",
+      "dashboardShortcuts": "Dashboard Shortcuts",
+      "exitEditViews": "Exit edit/setting views",
+      "globalShortcuts": "Global Shortcuts",
+      "goToDashboards": "Go to Dashboards",
+      "goToHomeDashboard": "Go to Home Dashboard",
+      "keyboardShortcuts": "Keyboard Shortcuts",
+      "refreshAllPanels": "Refresh all panels",
+      "showAllShortcuts": "Show all keyboard shortcuts",
+      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
+      "toggleViewMode": "Toggle view mode"
+    }
+  }
+}

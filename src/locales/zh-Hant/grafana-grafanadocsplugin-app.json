@@ -1,0 +1,65 @@
+{
+  "contextPanel": {
+    "failedToLoad": "載入推薦失敗：{{error}}",
+    "items_other": "{{count}} 個項目",
+    "milestones": "里程碑：",
+    "noRecommendations": "當前情境沒有可用的推薦",
+    "otherDocumentation": "其他文件",
+    "percentComplete": "{{percent}}% 完成",
+    "recommendedDocumentation": "推薦文件",
+    "start": "開始",
+    "startLearningJourney": "開始學習之旅",
+    "subtitle": "根據您當前的情境，這裡有一些可能有益的學習之旅和文件。",
+    "summary": "摘要",
+    "view": "查看",
+    "viewDocumentation": "查看文件"
+  },
+  "docsPanel": {
+    "closeTab": "關閉 {{title}}",
+    "documentation": "文件",
+    "interactiveJourney": "互動之旅",
+    "learningJourney": "學習之旅",
+    "loading": "載入中...",
+    "milestoneProgress": "里程碑 {{current}} / {{total}}",
+    "milestonesCount_other": "{{count}} 個里程碑",
+    "moreTabs_other": "還有 {{count}} 個",
+    "moreTabsMenu": "更多標籤頁",
+    "nextMilestone": "下一個里程碑",
+    "nextMilestoneTooltip": "下一個里程碑 (Alt + →)",
+    "open": "打開",
+    "openInNewTab": "在新標籤頁中打開此頁面",
+    "previousMilestone": "上一個里程碑",
+    "previousMilestoneTooltip": "上一個里程碑 (Alt + ←)",
+    "recommendations": "推薦",
+    "showMoreTabs_other": "顯示更多 {{count}} 個標籤頁",
+    "switchToTab": "切換到 {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "對此外掛程式提供回饋",
+    "text": "提供回饋",
+    "title": "對此外掛程式提供回饋"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "社群",
+      "documentation": "文件",
+      "download": "下載",
+      "enterprise": "企業版",
+      "shortcuts": "快捷鍵",
+      "support": "支援"
+    },
+    "modal": {
+      "dashboardSettings": "儀表板設定",
+      "dashboardShortcuts": "儀表板快捷鍵",
+      "exitEditViews": "離開編輯/設定檢視",
+      "globalShortcuts": "全域快捷鍵",
+      "goToDashboards": "前往儀表板",
+      "goToHomeDashboard": "前往首頁儀表板",
+      "keyboardShortcuts": "鍵盤快捷鍵",
+      "refreshAllPanels": "重新整理所有面板",
+      "showAllShortcuts": "顯示所有鍵盤快捷鍵",
+      "simplifiedView": "這是簡化的檢視。你可以將其替換為 Grafana 的完整 HelpModal 元件。",
+      "toggleViewMode": "切換檢視模式"
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Error al cargar recomendaciones: {{error}}",
+    "items_one": "{{count}} elemento",
+    "items_many": "{{count}} elementos",
+    "items_other": "{{count}} elementos",
+    "milestones": "Hitos:",
+    "noRecommendations": "No hay recomendaciones disponibles para tu contexto actual",
+    "otherDocumentation": "Otra Documentación",
+    "percentComplete": "{{percent}}% completado",
+    "recommendedDocumentation": "Documentación Recomendada",
+    "start": "Iniciar",
+    "startLearningJourney": "Iniciar Viaje de Aprendizaje",
+    "subtitle": "Basado en tu contexto actual, aquí tienes algunos viajes de aprendizaje y documentación que pueden ser beneficiosos.",
+    "summary": "Resumen",
+    "view": "Ver",
+    "viewDocumentation": "Ver Documentación"
+  },
+  "docsPanel": {
+    "closeTab": "Cerrar {{title}}",
+    "documentation": "Documentación",
+    "interactiveJourney": "Viaje interactivo",
+    "learningJourney": "Viaje de Aprendizaje",
+    "loading": "Cargando...",
+    "milestoneProgress": "Hito {{current}} de {{total}}",
+    "milestonesCount_one": "{{count}} hito",
+    "milestonesCount_many": "{{count}} hitos",
+    "milestonesCount_other": "{{count}} hitos",
+    "moreTabs_one": "{{count}} más",
+    "moreTabs_many": "{{count}} más",
+    "moreTabs_other": "{{count}} más",
+    "moreTabsMenu": "Más pestañas",
+    "nextMilestone": "Siguiente hito",
+    "nextMilestoneTooltip": "Siguiente hito (Alt + →)",
+    "open": "Abrir",
+    "openInNewTab": "Abrir esta página en nueva pestaña",
+    "previousMilestone": "Hito anterior",
+    "previousMilestoneTooltip": "Hito anterior (Alt + ←)",
+    "recommendations": "Recomendaciones",
+    "showMoreTabs_one": "Mostrar {{count}} pestaña más",
+    "showMoreTabs_many": "Mostrar {{count}} pestañas más",
+    "showMoreTabs_other": "Mostrar {{count}} pestañas más",
+    "switchToTab": "Cambiar a {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Dar comentarios sobre este plugin",
+    "text": "Dar comentarios",
+    "title": "Dar comentarios sobre este plugin"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Comunidad",
+      "documentation": "Documentación",
+      "download": "Descargar",
+      "enterprise": "Enterprise",
+      "shortcuts": "Atajos",
+      "support": "Soporte"
+    },
+    "modal": {
+      "dashboardSettings": "Configuración del dashboard",
+      "dashboardShortcuts": "Atajos del Dashboard",
+      "exitEditViews": "Salir de vistas de edición/configuración",
+      "globalShortcuts": "Atajos Globales",
+      "goToDashboards": "Ir a Dashboards",
+      "goToHomeDashboard": "Ir al Dashboard Principal",
+      "keyboardShortcuts": "Atajos de Teclado",
+      "refreshAllPanels": "Actualizar todos los paneles",
+      "showAllShortcuts": "Mostrar todos los atajos de teclado",
+      "simplifiedView": "Esta es una vista simplificada. Puedes reemplazar esto con el componente completo HelpModal de Grafana.",
+      "toggleViewMode": "Alternar modo de vista"
+    }
+  }
+}

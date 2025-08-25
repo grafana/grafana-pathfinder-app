@@ -1,0 +1,69 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Nem sikerült betölteni az ajánlásokat: {{error}}",
+    "items_one": "{{count}} elem",
+    "items_other": "{{count}} elem",
+    "milestones": "Mérföldkövek:",
+    "noRecommendations": "Nincs elérhető ajánlás a jelenlegi kontextushoz",
+    "otherDocumentation": "Egyéb Dokumentáció",
+    "percentComplete": "{{percent}}% kész",
+    "recommendedDocumentation": "Ajánlott Dokumentáció",
+    "start": "Indítás",
+    "startLearningJourney": "Tanulási Útvonalon Indítása",
+    "subtitle": "A jelenlegi kontextus alapján itt találhat néhány hasznos tanulási útvonalon és dokumentációt.",
+    "summary": "Összefoglaló",
+    "view": "Megtekintés",
+    "viewDocumentation": "Dokumentáció Megtekintése"
+  },
+  "docsPanel": {
+    "closeTab": "{{title}} bezárása",
+    "documentation": "Dokumentáció",
+    "interactiveJourney": "Interaktív útvonalon",
+    "learningJourney": "Tanulási Útvonalon",
+    "loading": "Betöltés...",
+    "milestoneProgress": "Mérföldkő {{current}} / {{total}}",
+    "milestonesCount_one": "{{count}} mérföldkő",
+    "milestonesCount_other": "{{count}} mérföldkő",
+    "moreTabs_one": "{{count}} további",
+    "moreTabs_other": "{{count}} további",
+    "moreTabsMenu": "További fülek",
+    "nextMilestone": "Következő mérföldkő",
+    "nextMilestoneTooltip": "Következő mérföldkő (Alt + →)",
+    "open": "Megnyitás",
+    "openInNewTab": "Oldal megnyitása új fülben",
+    "previousMilestone": "Előző mérföldkő",
+    "previousMilestoneTooltip": "Előző mérföldkő (Alt + ←)",
+    "recommendations": "Ajánlások",
+    "showMoreTabs_one": "{{count}} további fül megjelenítése",
+    "showMoreTabs_other": "{{count}} további fül megjelenítése",
+    "switchToTab": "Váltás a következőre: {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Visszajelzés küldése erről a pluginról",
+    "text": "Visszajelzés küldése",
+    "title": "Visszajelzés küldése erről a pluginról"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Közösség",
+      "documentation": "Dokumentáció",
+      "download": "Letöltés",
+      "enterprise": "Enterprise",
+      "shortcuts": "Billentyűparancsok",
+      "support": "Támogatás"
+    },
+    "modal": {
+      "dashboardSettings": "Dashboard settings",
+      "dashboardShortcuts": "Dashboard Shortcuts",
+      "exitEditViews": "Exit edit/setting views",
+      "globalShortcuts": "Global Shortcuts",
+      "goToDashboards": "Go to Dashboards",
+      "goToHomeDashboard": "Go to Home Dashboard",
+      "keyboardShortcuts": "Keyboard Shortcuts",
+      "refreshAllPanels": "Refresh all panels",
+      "showAllShortcuts": "Show all keyboard shortcuts",
+      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
+      "toggleViewMode": "Toggle view mode"
+    }
+  }
+}

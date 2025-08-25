@@ -1,0 +1,69 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Misslyckades att ladda rekommendationer: {{error}}",
+    "items_one": "{{count}} objekt",
+    "items_other": "{{count}} objekt",
+    "milestones": "Milstolpar:",
+    "noRecommendations": "Inga rekommendationer tillgängliga för din nuvarande kontext",
+    "otherDocumentation": "Annan Dokumentation",
+    "percentComplete": "{{percent}}% slutförd",
+    "recommendedDocumentation": "Rekommenderad Dokumentation",
+    "start": "Starta",
+    "startLearningJourney": "Starta Lärresa",
+    "subtitle": "Baserat på din nuvarande kontext, här är några lärresor och dokumentation som kan vara fördelaktiga.",
+    "summary": "Sammanfattning",
+    "view": "Visa",
+    "viewDocumentation": "Visa Dokumentation"
+  },
+  "docsPanel": {
+    "closeTab": "Stäng {{title}}",
+    "documentation": "Dokumentation",
+    "interactiveJourney": "Interaktiv resa",
+    "learningJourney": "Lärresa",
+    "loading": "Laddar...",
+    "milestoneProgress": "Milstolpe {{current}} av {{total}}",
+    "milestonesCount_one": "{{count}} milstolpe",
+    "milestonesCount_other": "{{count}} milstolpar",
+    "moreTabs_one": "{{count}} till",
+    "moreTabs_other": "{{count}} till",
+    "moreTabsMenu": "Fler flikar",
+    "nextMilestone": "Nästa milstolpe",
+    "nextMilestoneTooltip": "Nästa milstolpe (Alt + →)",
+    "open": "Öppna",
+    "openInNewTab": "Öppna denna sida i ny flik",
+    "previousMilestone": "Föregående milstolpe",
+    "previousMilestoneTooltip": "Föregående milstolpe (Alt + ←)",
+    "recommendations": "Rekommendationer",
+    "showMoreTabs_one": "Visa {{count}} flik till",
+    "showMoreTabs_other": "Visa {{count}} flikar till",
+    "switchToTab": "Växla till {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Ge feedback om detta plugin",
+    "text": "Ge feedback",
+    "title": "Ge feedback om detta plugin"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Community",
+      "documentation": "Dokumentation",
+      "download": "Ladda ner",
+      "enterprise": "Enterprise",
+      "shortcuts": "Kortkommandon",
+      "support": "Support"
+    },
+    "modal": {
+      "dashboardSettings": "Instrumentpanelsinställningar",
+      "dashboardShortcuts": "Kortkommandon för instrumentpanel",
+      "exitEditViews": "Avsluta redigerings-/inställningsvyer",
+      "globalShortcuts": "Globala kortkommandon",
+      "goToDashboards": "Gå till instrumentpaneler",
+      "goToHomeDashboard": "Gå till startsida",
+      "keyboardShortcuts": "Tangentbordsgenvägar",
+      "refreshAllPanels": "Uppdatera alla paneler",
+      "showAllShortcuts": "Visa alla tangentbordsgenvägar",
+      "simplifiedView": "Detta är en förenklad vy. Du kan ersätta den med Grafanas fullständiga HelpModal-komponent.",
+      "toggleViewMode": "Växla visningsläge"
+    }
+  }
+}

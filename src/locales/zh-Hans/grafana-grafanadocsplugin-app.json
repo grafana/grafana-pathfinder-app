@@ -1,0 +1,65 @@
+{
+  "contextPanel": {
+    "failedToLoad": "加载推荐失败：{{error}}",
+    "items_other": "{{count}} 项",
+    "milestones": "里程碑：",
+    "noRecommendations": "当前上下文没有可用的推荐",
+    "otherDocumentation": "其他文档",
+    "percentComplete": "{{percent}}% 完成",
+    "recommendedDocumentation": "推荐文档",
+    "start": "开始",
+    "startLearningJourney": "开始学习之旅",
+    "subtitle": "根据您当前的上下文，这里有一些可能有益的学习之旅和文档。",
+    "summary": "摘要",
+    "view": "查看",
+    "viewDocumentation": "查看文档"
+  },
+  "docsPanel": {
+    "closeTab": "关闭 {{title}}",
+    "documentation": "文档",
+    "interactiveJourney": "互动之旅",
+    "learningJourney": "学习之旅",
+    "loading": "加载中...",
+    "milestoneProgress": "里程碑 {{current}} / {{total}}",
+    "milestonesCount_other": "{{count}} 个里程碑",
+    "moreTabs_other": "还有 {{count}} 个",
+    "moreTabsMenu": "更多标签页",
+    "nextMilestone": "下一个里程碑",
+    "nextMilestoneTooltip": "下一个里程碑 (Alt + →)",
+    "open": "打开",
+    "openInNewTab": "在新标签页中打开此页面",
+    "previousMilestone": "上一个里程碑",
+    "previousMilestoneTooltip": "上一个里程碑 (Alt + ←)",
+    "recommendations": "推荐",
+    "showMoreTabs_other": "显示更多 {{count}} 个标签页",
+    "switchToTab": "切换到 {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "对此插件反馈",
+    "text": "反馈",
+    "title": "对此插件反馈"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "社区",
+      "documentation": "文档",
+      "download": "下载",
+      "enterprise": "企业版",
+      "shortcuts": "快捷键",
+      "support": "支持"
+    },
+    "modal": {
+      "dashboardSettings": "仪表盘设置",
+      "dashboardShortcuts": "仪表盘快捷键",
+      "exitEditViews": "退出编辑/设置视图",
+      "globalShortcuts": "全局快捷键",
+      "goToDashboards": "前往仪表盘",
+      "goToHomeDashboard": "前往首页仪表盘",
+      "keyboardShortcuts": "键盘快捷键",
+      "refreshAllPanels": "刷新所有面板",
+      "showAllShortcuts": "显示所有键盘快捷键",
+      "simplifiedView": "这是一个简化视图。你可以将其替换为 Grafana 的完整 HelpModal 组件。",
+      "toggleViewMode": "切换视图模式"
+    }
+  }
+}

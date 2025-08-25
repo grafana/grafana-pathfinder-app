@@ -2,6 +2,7 @@ import React from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, useStyles2, Card } from '@grafana/ui';
+import { t } from '@grafana/i18n';
 import logoSvg from '../../img/logo.svg';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -89,9 +90,14 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
           <div className={styles.contextSections}>
             <div className={styles.sectionHeader}>
               <img src={logoSvg} alt="Grafana Pathfinder" className={styles.headerIcon} width={24} height={24} />
-              <h2 className={styles.sectionTitle}>Recommended Documentation</h2>
+              <h2 className={styles.sectionTitle}>
+                {t('contextPanel.recommendedDocumentation', 'Recommended Documentation')}
+              </h2>
               <p className={styles.sectionSubtitle}>
-                Based on your current context, here are some learning journeys and documentation that may be beneficial.
+                {t(
+                  'contextPanel.subtitle',
+                  'Based on your current context, here are some learning journeys and documentation that may be beneficial.'
+                )}
               </p>
               <div>
                 <FeedbackButton variant="secondary" />
@@ -107,14 +113,20 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             {recommendationsError && !isLoadingRecommendations && (
               <div className={styles.errorContainer}>
                 <Icon name="exclamation-triangle" />
-                <span>Failed to load recommendations: {recommendationsError}</span>
+                <span>
+                  {t('contextPanel.failedToLoad', 'Failed to load recommendations: {{error}}', {
+                    error: recommendationsError,
+                  })}
+                </span>
               </div>
             )}
 
             {!isLoadingRecommendations && !recommendationsError && recommendations.length === 0 && (
               <div className={styles.emptyContainer}>
                 <Icon name="info-circle" />
-                <span>No recommendations available for your current context</span>
+                <span>
+                  {t('contextPanel.noRecommendations', 'No recommendations available for your current context')}
+                </span>
               </div>
             )}
 
@@ -173,7 +185,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                 }
                               >
                                 <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
-                                {recommendation.type === 'docs-page' ? 'View' : 'Start'}
+                                {recommendation.type === 'docs-page'
+                                  ? t('contextPanel.view', 'View')
+                                  : t('contextPanel.start', 'Start')}
                               </button>
                             </div>
                           </div>
@@ -200,7 +214,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                     className={styles.summaryButton}
                                   >
                                     <Icon name="info-circle" size="sm" />
-                                    <span>Summary</span>
+                                    <span>{t('contextPanel.summary', 'Summary')}</span>
                                     <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
                                   </button>
                                   {/* Show completion percentage for learning journeys */}
@@ -211,7 +225,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                           className={styles.completionPercentage}
                                           data-completion={recommendation.completionPercentage}
                                         >
-                                          {recommendation.completionPercentage}% complete
+                                          {t('contextPanel.percentComplete', '{{percent}}% complete', {
+                                            percent: recommendation.completionPercentage,
+                                          })}
                                         </div>
                                       </div>
                                     )}
@@ -232,7 +248,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                     recommendation.milestones && (
                                       <div className={styles.milestonesSection}>
                                         <div className={styles.milestonesHeader}>
-                                          <h4 className={styles.milestonesTitle}>Milestones:</h4>
+                                          <h4 className={styles.milestonesTitle}>
+                                            {t('contextPanel.milestones', 'Milestones:')}
+                                          </h4>
                                         </div>
                                         <div className={styles.milestonesList}>
                                           {recommendation.milestones.map((milestone, stepIndex) => (
@@ -301,8 +319,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                         size="sm"
                                       />
                                       {recommendation.type === 'docs-page'
-                                        ? 'View Documentation'
-                                        : 'Start Learning Journey'}
+                                        ? t('contextPanel.viewDocumentation', 'View Documentation')
+                                        : t('contextPanel.startLearningJourney', 'Start Learning Journey')}
                                     </button>
                                   </div>
                                 </div>
@@ -321,11 +339,10 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                     <div className={styles.otherDocsHeader}>
                       <button onClick={() => toggleOtherDocsExpansion()} className={styles.otherDocsToggle}>
                         <Icon name="file-alt" size="sm" />
-                        <span>Other Documentation</span>
+                        <span>{t('contextPanel.otherDocumentation', 'Other Documentation')}</span>
                         <span className={styles.otherDocsCount}>
                           <Icon name="list-ul" size="xs" />
-                          {secondaryDocs.length} item
-                          {secondaryDocs.length !== 1 ? 's' : ''}
+                          {t('contextPanel.items', '{{count}} item', { count: secondaryDocs.length })}
                         </span>
                         <Icon name={otherDocsExpanded ? 'angle-up' : 'angle-down'} size="sm" />
                       </button>

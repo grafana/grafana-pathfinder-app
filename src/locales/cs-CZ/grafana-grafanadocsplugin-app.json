@@ -1,0 +1,77 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Nepodařilo se načíst doporučení: {{error}}",
+    "items_one": "{{count}} položka",
+    "items_few": "{{count}} položky",
+    "items_many": "{{count}} položek",
+    "items_other": "{{count}} položek",
+    "milestones": "Mílníky:",
+    "noRecommendations": "Pro váš současný kontext nejsou k dispozici žádná doporučení",
+    "otherDocumentation": "Další dokumentace",
+    "percentComplete": "{{percent}}% dokončeno",
+    "recommendedDocumentation": "Doporučená dokumentace",
+    "start": "Spustit",
+    "startLearningJourney": "Spustit vzdělávací cestu",
+    "subtitle": "Na základě vašeho současného kontextu jsou zde některé vzdělávací cesty a dokumentace, které mohou být užitečné.",
+    "summary": "Shrnutí",
+    "view": "Zobrazit",
+    "viewDocumentation": "Zobrazit dokumentaci"
+  },
+  "docsPanel": {
+    "closeTab": "Zavřít {{title}}",
+    "documentation": "Dokumentace",
+    "interactiveJourney": "Interaktivní cesta",
+    "learningJourney": "Vzdělávací cesta",
+    "loading": "Načítání...",
+    "milestoneProgress": "Mílník {{current}} z {{total}}",
+    "milestonesCount_one": "{{count}} mílník",
+    "milestonesCount_few": "{{count}} mílníky",
+    "milestonesCount_many": "{{count}} mílníků",
+    "milestonesCount_other": "{{count}} mílníků",
+    "moreTabs_one": "{{count}} další",
+    "moreTabs_few": "{{count}} další",
+    "moreTabs_many": "{{count}} dalších",
+    "moreTabs_other": "{{count}} dalších",
+    "moreTabsMenu": "Další karty",
+    "nextMilestone": "Další mílník",
+    "nextMilestoneTooltip": "Další mílník (Alt + →)",
+    "open": "Otevřít",
+    "openInNewTab": "Otevřít tuto stránku v nové kartě",
+    "previousMilestone": "Předchozí mílník",
+    "previousMilestoneTooltip": "Předchozí mílník (Alt + ←)",
+    "recommendations": "Doporučení",
+    "showMoreTabs_one": "Zobrazit {{count}} další kartu",
+    "showMoreTabs_few": "Zobrazit {{count}} další karty",
+    "showMoreTabs_many": "Zobrazit {{count}} dalších karet",
+    "showMoreTabs_other": "Zobrazit {{count}} dalších karet",
+    "switchToTab": "Přepnout na {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Poskytnout zpětnou vazbu o tomto pluginu",
+    "text": "Poskytnout zpětnou vazbu",
+    "title": "Poskytnout zpětnou vazbu o tomto pluginu"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Komunita",
+      "documentation": "Dokumentace",
+      "download": "Stáhnout",
+      "enterprise": "Enterprise",
+      "shortcuts": "Zkratky",
+      "support": "Podpora"
+    },
+    "modal": {
+      "dashboardSettings": "Dashboard settings",
+      "dashboardShortcuts": "Dashboard Shortcuts",
+      "exitEditViews": "Exit edit/setting views",
+      "globalShortcuts": "Global Shortcuts",
+      "goToDashboards": "Go to Dashboards",
+      "goToHomeDashboard": "Go to Home Dashboard",
+      "keyboardShortcuts": "Keyboard Shortcuts",
+      "refreshAllPanels": "Refresh all panels",
+      "showAllShortcuts": "Show all keyboard shortcuts",
+      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
+      "toggleViewMode": "Toggle view mode"
+    }
+  }
+}
