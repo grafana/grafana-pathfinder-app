@@ -39,7 +39,8 @@ export const isRecommenderEnabled = (config: DocsPluginConfig): boolean => {
 };
 
 // Legacy exports for backward compatibility - now require config parameter
-export const getRecommenderServiceUrl = (config: DocsPluginConfig) => getConfigWithDefaults(config).recommenderServiceUrl;
+export const getRecommenderServiceUrl = (config: DocsPluginConfig) =>
+  getConfigWithDefaults(config).recommenderServiceUrl;
 export const getDocsBaseUrl = (config: DocsPluginConfig) => getConfigWithDefaults(config).docsBaseUrl;
 export const getDocsUsername = (config: DocsPluginConfig) => getConfigWithDefaults(config).docsUsername;
 export const getDocsPassword = (config: DocsPluginConfig) => getConfigWithDefaults(config).docsPassword;

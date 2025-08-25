@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { locationService } from '@grafana/runtime';
 import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
@@ -6,10 +6,12 @@ import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from './co
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
-  
-  // Get plugin configuration
+
+  // Get plugin configuration with stable reference
   const pluginContext = usePluginContext();
-  const pluginConfig = pluginContext?.meta?.jsonData || {};
+  const pluginConfig = useMemo(() => {
+    return pluginContext?.meta?.jsonData || {};
+  }, [pluginContext?.meta?.jsonData]);
 
   // State
   const [contextData, setContextData] = useState<ContextData>({
@@ -76,29 +78,32 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   );
 
   // Fetch recommendations
-  const fetchRecommendations = useCallback(async (contextData: ContextData) => {
-    if (!contextData.currentPath || contextData.isLoading) {
-      return;
-    }
+  const fetchRecommendations = useCallback(
+    async (contextData: ContextData) => {
+      if (!contextData.currentPath || contextData.isLoading) {
+        return;
+      }
 
-    setIsLoadingRecommendations(true);
-    try {
-      const { recommendations, error } = await ContextService.fetchRecommendations(contextData, pluginConfig);
-      setContextData((prev) => ({
-        ...prev,
-        recommendations,
-        recommendationsError: error,
-      }));
-    } catch (error) {
-      console.error('Failed to fetch recommendations:', error);
-      setContextData((prev) => ({
-        ...prev,
-        recommendationsError: 'Failed to fetch recommendations',
-      }));
-    } finally {
-      setIsLoadingRecommendations(false);
-    }
-  }, [pluginConfig]); // Add pluginConfig as dependency
+      setIsLoadingRecommendations(true);
+      try {
+        const { recommendations, error } = await ContextService.fetchRecommendations(contextData, pluginConfig);
+        setContextData((prev) => ({
+          ...prev,
+          recommendations,
+          recommendationsError: error,
+        }));
+      } catch (error) {
+        console.error('Failed to fetch recommendations:', error);
+        setContextData((prev) => ({
+          ...prev,
+          recommendationsError: 'Failed to fetch recommendations',
+        }));
+      } finally {
+        setIsLoadingRecommendations(false);
+      }
+    },
+    [pluginConfig]
+  ); // Add pluginConfig as dependency
 
   // Simplified location-based change detection (EchoSrv handles datasource/viz changes)
   useEffect(() => {

@@ -207,11 +207,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         </Field>
 
         <div className={s.marginTop}>
-          <Button 
-            type="submit" 
-            data-testid={testIds.appConfig.submit} 
-            disabled={isSubmitDisabled || isSaving}
-          >
+          <Button type="submit" data-testid={testIds.appConfig.submit} disabled={isSubmitDisabled || isSaving}>
             {isSaving ? 'Saving...' : 'Save Configuration'}
           </Button>
         </div>

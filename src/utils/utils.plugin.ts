@@ -14,7 +14,7 @@ export const subscribeToConfigChanges = (listener: ConfigChangeListener): (() =>
 };
 
 export const notifyConfigChange = () => {
-  configChangeListeners.forEach(listener => {
+  configChangeListeners.forEach((listener) => {
     try {
       listener();
     } catch (error) {
@@ -55,20 +55,17 @@ export const updatePluginSettings = async (pluginId: string, data: Partial<Plugi
   return lastValueFrom(response);
 };
 
-export const updatePluginSettingsAndReload = async (
-  pluginId: string,
-  data: Partial<PluginMeta>
-) => {
+export const updatePluginSettingsAndReload = async (pluginId: string, data: Partial<PluginMeta>) => {
   try {
     // Update plugin settings
     await updatePluginSettings(pluginId, data);
-    
+
     // Notify any listeners that configuration has changed
     notifyConfigChange();
-    
+
     // Small delay to ensure backend saves the data and listeners can react
-    await new Promise(resolve => setTimeout(resolve, 200));
-    
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
     // Force browser reload to ensure all changes take effect immediately
     window.location.reload();
   } catch (e) {

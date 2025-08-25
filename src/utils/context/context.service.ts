@@ -238,7 +238,10 @@ export class ContextService {
   /**
    * Fetch recommendations based on context
    */
-  static async fetchRecommendations(contextData: ContextData, pluginConfig: DocsPluginConfig = {}): Promise<{
+  static async fetchRecommendations(
+    contextData: ContextData,
+    pluginConfig: DocsPluginConfig = {}
+  ): Promise<{
     recommendations: Recommendation[];
     error: string | null;
   }> {
