@@ -1,5 +1,5 @@
 import { getBackendSrv, config, locationService, getEchoSrv, EchoEventType } from '@grafana/runtime';
-import { getRecommenderServiceUrl } from '../../constants';
+import { getRecommenderServiceUrl, isRecommenderEnabled } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import {
   ContextData,
@@ -250,6 +250,56 @@ export class ContextService {
         };
       }
 
+      // Add bundled interactive recommendations (contextual based on current URL)
+      const bundledRecommendations: Recommendation[] = this.getBundledInteractiveRecommendations(contextData);
+
+      // Check if T&C have been accepted before fetching external recommendations
+      if (!isRecommenderEnabled()) {
+        console.warn(
+          '@context/ Recommender service disabled - Terms and Conditions not accepted. Only showing bundled recommendations.'
+        );
+
+        // Process only bundled recommendations when T&C not accepted
+        const processedBundledRecommendations = await Promise.all(
+          bundledRecommendations.map(async (rec) => {
+            if (rec.type === 'learning-journey' || !rec.type) {
+              try {
+                const result = await fetchContent(rec.url);
+                const completionPercentage = getJourneyCompletionPercentage(rec.url);
+
+                // Extract learning journey data from the unified content
+                const milestones = result.content?.metadata.learningJourney?.milestones || [];
+                const summary = result.content?.metadata.learningJourney?.summary || rec.summary || '';
+
+                return {
+                  ...rec,
+                  totalSteps: milestones.length,
+                  milestones: milestones,
+                  summary: summary,
+                  completionPercentage,
+                };
+              } catch (error) {
+                console.warn(`Failed to fetch journey data for ${rec.title}:`, error);
+                return {
+                  ...rec,
+                  totalSteps: 0,
+                  milestones: [],
+                  summary: rec.summary || '',
+                  completionPercentage: getJourneyCompletionPercentage(rec.url),
+                };
+              }
+            }
+            return rec;
+          })
+        );
+
+        return {
+          recommendations: processedBundledRecommendations,
+          error: null,
+        };
+      }
+
+      // T&C accepted - fetch external recommendations
       const payload: ContextPayload = {
         path: contextData.currentPath,
         datasources: contextData.dataSources.map((ds) => ds.type.toLowerCase()),
@@ -270,9 +320,6 @@ export class ContextService {
       }
 
       const data: RecommenderResponse = await response.json();
-
-      // Add bundled interactive recommendations (contextual based on current URL)
-      const bundledRecommendations: Recommendation[] = this.getBundledInteractiveRecommendations(contextData);
 
       const allRecommendations = [...(data.recommendations || []), ...bundledRecommendations];
 

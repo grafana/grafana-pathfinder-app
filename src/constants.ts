@@ -8,6 +8,8 @@ export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
 export const DEFAULT_DOCS_USERNAME = '';
 export const DEFAULT_DOCS_PASSWORD = '';
 export const DEFAULT_TUTORIAL_URL = '';
+export const DEFAULT_TERMS_ACCEPTED = false;
+export const TERMS_VERSION = '1.0.0';
 
 // Configuration interface
 export interface DocsPluginConfig {
@@ -16,6 +18,9 @@ export interface DocsPluginConfig {
   docsUsername?: string;
   docsPassword?: string;
   tutorialUrl?: string;
+  // Terms and Conditions
+  acceptedTermsAndConditions?: boolean;
+  termsVersion?: string;
 }
 
 // Global configuration - will be set by the plugin initialization
@@ -33,7 +38,14 @@ export const ConfigService = {
     docsUsername: pluginConfig.docsUsername || DEFAULT_DOCS_USERNAME,
     docsPassword: pluginConfig.docsPassword || DEFAULT_DOCS_PASSWORD,
     tutorialUrl: pluginConfig.tutorialUrl || DEFAULT_TUTORIAL_URL,
+    acceptedTermsAndConditions: pluginConfig.acceptedTermsAndConditions ?? DEFAULT_TERMS_ACCEPTED,
+    termsVersion: pluginConfig.termsVersion || TERMS_VERSION,
   }),
+
+  isRecommenderEnabled: (): boolean => {
+    const config = ConfigService.getConfig();
+    return Boolean(config.acceptedTermsAndConditions);
+  },
 };
 
 // Export configuration values (with getters for dynamic access)
@@ -42,6 +54,9 @@ export const getDocsBaseUrl = () => ConfigService.getConfig().docsBaseUrl;
 export const getDocsUsername = () => ConfigService.getConfig().docsUsername;
 export const getDocsPassword = () => ConfigService.getConfig().docsPassword;
 export const getTutorialUrl = () => ConfigService.getConfig().tutorialUrl;
+export const getTermsAccepted = () => ConfigService.getConfig().acceptedTermsAndConditions;
+export const getTermsVersion = () => ConfigService.getConfig().termsVersion;
+export const isRecommenderEnabled = () => ConfigService.isRecommenderEnabled();
 
 // Legacy exports for backward compatibility
 export const RECOMMENDER_SERVICE_URL = DEFAULT_RECOMMENDER_SERVICE_URL;
