@@ -17,20 +17,25 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
   const { enabled, pinned, jsonData } = plugin.meta;
 
   const [isRecommenderEnabled, setIsRecommenderEnabled] = useState<boolean>(
-    Boolean(jsonData?.acceptedTermsAndConditions)
+    Boolean(jsonData?.acceptedTermsAndConditions ?? false)
   );
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
-  // Update the configuration service when the config changes (similar to ConfigurationForm)
+  // Update the configuration service when the config changes (similar to ConfigurationForm)  
   useEffect(() => {
     if (jsonData) {
-      ConfigService.setConfig(jsonData);
+      // Ensure acceptedTermsAndConditions has a default value
+      const configWithDefaults = {
+        ...jsonData,
+        acceptedTermsAndConditions: jsonData.acceptedTermsAndConditions ?? false,
+      };
+      ConfigService.setConfig(configWithDefaults);
     }
   }, [jsonData]);
 
   // Sync local state with jsonData when it changes (after reload)
   useEffect(() => {
-    const newToggleState = Boolean(jsonData?.acceptedTermsAndConditions);
+    const newToggleState = Boolean(jsonData?.acceptedTermsAndConditions ?? false);
     setIsRecommenderEnabled(newToggleState);
   }, [jsonData?.acceptedTermsAndConditions]);
 

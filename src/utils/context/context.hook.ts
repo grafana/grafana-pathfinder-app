@@ -188,9 +188,13 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
   // Fetch recommendations when context data changes (but not when loading)
   const tagsString = contextData.tags?.join(',') || '';
+  const contextDataRef = useRef(contextData);
+  contextDataRef.current = contextData;
+
   useEffect(() => {
     if (!contextData.isLoading && contextData.currentPath) {
-      fetchRecommendations(contextData);
+      // Use ref to avoid stale closure issues
+      fetchRecommendations(contextDataRef.current);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- contextData would cause infinite loop
   }, [

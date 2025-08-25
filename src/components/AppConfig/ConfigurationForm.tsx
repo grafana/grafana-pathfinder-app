@@ -115,14 +115,18 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       tutorialUrl: state.tutorialUrl,
     };
 
-    // Update the configuration service
-    ConfigService.setConfig(newConfig);
+    // Update the configuration service with all fields preserved
+    ConfigService.setConfig({
+      ...jsonData, // Preserve existing fields (including T&C settings)
+      ...newConfig, // Apply configuration updates
+    });
 
     await updatePluginAndReload(plugin.meta.id, {
       enabled,
       pinned,
       jsonData: {
-        ...newConfig,
+        ...jsonData, // Preserve ALL existing fields first (including T&C settings)
+        ...newConfig, // Then apply the configuration updates
         isDocsPasswordSet: state.isDocsPasswordSet || Boolean(state.docsPassword),
       },
       // This cannot be queried later by the frontend.
