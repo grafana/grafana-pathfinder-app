@@ -250,13 +250,15 @@ export class ContextService {
         };
       }
 
+      const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
+
       const payload: ContextPayload = {
         path: contextData.currentPath,
         datasources: contextData.dataSources.map((ds) => ds.type.toLowerCase()),
         tags: contextData.tags,
-        user_id: config.bootData.user.analytics.identifier,
+        user_id: isCloud ? config.bootData.user.analytics.identifier : 'oss-user',
         user_role: config.bootData.user.orgRole || 'Viewer',
-        platform: config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss',
+        platform: isCloud ? 'cloud' : 'oss',
       };
 
       const response = await fetch(`${getRecommenderServiceUrl()}/recommend`, {
