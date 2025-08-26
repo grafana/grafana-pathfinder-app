@@ -1,0 +1,65 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Gagal memuat rekomendasi: {{error}}",
+    "items_other": "{{count}} item",
+    "milestones": "Pencapaian:",
+    "noRecommendations": "Tidak ada rekomendasi yang tersedia untuk konteks Anda saat ini",
+    "otherDocumentation": "Dokumentasi Lainnya",
+    "percentComplete": "{{percent}}% selesai",
+    "recommendedDocumentation": "Dokumentasi yang Direkomendasikan",
+    "start": "Mulai",
+    "startLearningJourney": "Mulai Perjalanan Belajar",
+    "subtitle": "Berdasarkan konteks Anda saat ini, berikut adalah beberapa perjalanan belajar dan dokumentasi yang mungkin bermanfaat.",
+    "summary": "Ringkasan",
+    "view": "Lihat",
+    "viewDocumentation": "Lihat Dokumentasi"
+  },
+  "docsPanel": {
+    "closeTab": "Tutup {{title}}",
+    "documentation": "Dokumentasi",
+    "interactiveJourney": "Perjalanan interaktif",
+    "learningJourney": "Perjalanan Belajar",
+    "loading": "Memuat...",
+    "milestoneProgress": "Pencapaian {{current}} dari {{total}}",
+    "milestonesCount_other": "{{count}} pencapaian",
+    "moreTabs_other": "{{count}} lagi",
+    "moreTabsMenu": "Tab lainnya",
+    "nextMilestone": "Pencapaian berikutnya",
+    "nextMilestoneTooltip": "Pencapaian berikutnya (Alt + →)",
+    "open": "Buka",
+    "openInNewTab": "Buka halaman ini di tab baru",
+    "previousMilestone": "Pencapaian sebelumnya",
+    "previousMilestoneTooltip": "Pencapaian sebelumnya (Alt + ←)",
+    "recommendations": "Rekomendasi",
+    "showMoreTabs_other": "Tampilkan {{count}} tab lagi",
+    "switchToTab": "Beralih ke {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Berikan umpan balik tentang plugin ini",
+    "text": "Berikan umpan balik",
+    "title": "Berikan umpan balik tentang plugin ini"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Komunitas",
+      "documentation": "Dokumentasi",
+      "download": "Unduh",
+      "enterprise": "Enterprise",
+      "shortcuts": "Pintasan",
+      "support": "Dukungan"
+    },
+    "modal": {
+      "dashboardSettings": "Dashboard settings",
+      "dashboardShortcuts": "Dashboard Shortcuts",
+      "exitEditViews": "Exit edit/setting views",
+      "globalShortcuts": "Global Shortcuts",
+      "goToDashboards": "Go to Dashboards",
+      "goToHomeDashboard": "Go to Home Dashboard",
+      "keyboardShortcuts": "Keyboard Shortcuts",
+      "refreshAllPanels": "Refresh all panels",
+      "showAllShortcuts": "Show all keyboard shortcuts",
+      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
+      "toggleViewMode": "Toggle view mode"
+    }
+  }
+}

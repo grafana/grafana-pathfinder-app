@@ -42,5 +42,28 @@
   "dependencies": {
     "grafanaDependency": ">=12.1.0",
     "plugins": []
-  }
+  },
+  "languages": [
+    "en-US",
+    "id-ID",
+    "cs-CZ",
+    "de-DE",
+    "es-ES",
+    "fr-FR",
+    "it-IT",
+    "hu-HU",
+    "nl-NL",
+    "pl-PL",
+    "pt-PT",
+    "pt-BR",
+    "sv-SE",
+    "tr-TR",
+    "ru-RU",
+    "ko-KR",
+    "zh-CN",
+    "zh-TW",
+    "zh-Hans",
+    "zh-Hant",
+    "ja-JP"
+  ]
 }

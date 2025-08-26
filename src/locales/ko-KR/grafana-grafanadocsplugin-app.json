@@ -1,0 +1,65 @@
+{
+  "contextPanel": {
+    "failedToLoad": "추천 로드 실패: {{error}}",
+    "items_other": "{{count}}개 항목",
+    "milestones": "마일스톤:",
+    "noRecommendations": "현재 컨텍스트에 대한 추천이 없습니다",
+    "otherDocumentation": "다른 문서",
+    "percentComplete": "{{percent}}% 완료",
+    "recommendedDocumentation": "추천 문서",
+    "start": "시작",
+    "startLearningJourney": "학습 여정 시작",
+    "subtitle": "현재 컨텍스트를 기반으로 도움이 될 수 있는 학습 여정과 문서를 소개합니다.",
+    "summary": "요약",
+    "view": "보기",
+    "viewDocumentation": "문서 보기"
+  },
+  "docsPanel": {
+    "closeTab": "{{title}} 닫기",
+    "documentation": "문서",
+    "interactiveJourney": "인터랙티브 여정",
+    "learningJourney": "학습 여정",
+    "loading": "로딩 중...",
+    "milestoneProgress": "마일스톤 {{current}} / {{total}}",
+    "milestonesCount_other": "{{count}}개 마일스톤",
+    "moreTabs_other": "{{count}}개 더",
+    "moreTabsMenu": "더 많은 탭",
+    "nextMilestone": "다음 마일스톤",
+    "nextMilestoneTooltip": "다음 마일스톤 (Alt + →)",
+    "open": "열기",
+    "openInNewTab": "이 페이지를 새 탭에서 열기",
+    "previousMilestone": "이전 마일스톤",
+    "previousMilestoneTooltip": "이전 마일스톤 (Alt + ←)",
+    "recommendations": "추천",
+    "showMoreTabs_other": "{{count}}개 탭 더 보기",
+    "switchToTab": "{{title}}로 전환"
+  },
+  "feedbackButton": {
+    "ariaLabel": "이 플러그인에 대한 피드백 제공",
+    "text": "피드백 제공",
+    "title": "이 플러그인에 대한 피드백 제공"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "커뮤니티",
+      "documentation": "문서",
+      "download": "다운로드",
+      "enterprise": "엔터프라이즈",
+      "shortcuts": "단축키",
+      "support": "지원"
+    },
+    "modal": {
+      "dashboardSettings": "대시보드 설정",
+      "dashboardShortcuts": "대시보드 단축키",
+      "exitEditViews": "편집/설정 보기 종료",
+      "globalShortcuts": "전역 단축키",
+      "goToDashboards": "대시보드로 이동",
+      "goToHomeDashboard": "홈 대시보드로 이동",
+      "keyboardShortcuts": "키보드 단축키",
+      "refreshAllPanels": "모든 패널 새로고침",
+      "showAllShortcuts": "모든 키보드 단축키 보기",
+      "simplifiedView": "이것은 단순화된 보기입니다. Grafana의 전체 HelpModal 구성 요소로 교체할 수 있습니다.",
+      "toggleViewMode": "보기 모드 전환"
+    }
+  }
+}

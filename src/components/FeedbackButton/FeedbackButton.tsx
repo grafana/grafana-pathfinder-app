@@ -2,6 +2,7 @@ import React from 'react';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getFeedbackButtonStyles } from '../../styles/feedback-button.styles';
 import { useTheme2 } from '@grafana/ui';
+import { t } from '@grafana/i18n';
 
 interface FeedbackButtonProps {
   className?: string;
@@ -30,8 +31,8 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ className, varia
         className || ''
       }`}
       onClick={handleClick}
-      aria-label="Give feedback about this plugin"
-      title="Give feedback about this plugin"
+      aria-label={t('feedbackButton.ariaLabel', 'Give feedback about this plugin')}
+      title={t('feedbackButton.title', 'Give feedback about this plugin')}
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -43,7 +44,7 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ className, varia
       >
         <path d="M19,2H5A3,3,0,0,0,2,5V15a3,3,0,0,0,3,3H16.59l3.7,3.71A1,1,0,0,0,21,22a.84.84,0,0,0,.38-.08A1,1,0,0,0,22,21V5A3,3,0,0,0,19,2Zm1,16.59-2.29-2.3A1,1,0,0,0,17,16H5a1,1,0,0,1-1-1V5A1,1,0,0,1,5,4H19a1,1,0,0,1,1,1Z"></path>
       </svg>
-      <span className={styles.feedbackText}>Give feedback</span>
+      <span className={styles.feedbackText}>{t('feedbackButton.text', 'Give feedback')}</span>
     </button>
   );
 };

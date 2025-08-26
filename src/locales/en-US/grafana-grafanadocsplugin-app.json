@@ -1,0 +1,69 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Failed to load recommendations: {{error}}",
+    "items_one": "{{count}} item",
+    "items_other": "{{count}} items",
+    "milestones": "Milestones:",
+    "noRecommendations": "No recommendations available for your current context",
+    "otherDocumentation": "Other Documentation",
+    "percentComplete": "{{percent}}% complete",
+    "recommendedDocumentation": "Recommended Documentation",
+    "start": "Start",
+    "startLearningJourney": "Start Learning Journey",
+    "subtitle": "Based on your current context, here are some learning journeys and documentation that may be beneficial.",
+    "summary": "Summary",
+    "view": "View",
+    "viewDocumentation": "View Documentation"
+  },
+  "docsPanel": {
+    "closeTab": "Close {{title}}",
+    "documentation": "Documentation",
+    "interactiveJourney": "Interactive journey",
+    "learningJourney": "Learning Journey",
+    "loading": "Loading...",
+    "milestoneProgress": "Milestone {{current}} of {{total}}",
+    "milestonesCount_one": "{{count}} milestone",
+    "milestonesCount_other": "{{count}} milestones",
+    "moreTabs_one": "{{count}} more",
+    "moreTabs_other": "{{count}} more",
+    "moreTabsMenu": "More tabs",
+    "nextMilestone": "Next milestone",
+    "nextMilestoneTooltip": "Next milestone (Alt + →)",
+    "open": "Open",
+    "openInNewTab": "Open this page in new tab",
+    "previousMilestone": "Previous milestone",
+    "previousMilestoneTooltip": "Previous milestone (Alt + ←)",
+    "recommendations": "Recommendations",
+    "showMoreTabs_one": "Show {{count}} more tab",
+    "showMoreTabs_other": "Show {{count}} more tabs",
+    "switchToTab": "Switch to {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Give feedback about this plugin",
+    "text": "Give feedback",
+    "title": "Give feedback about this plugin"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Community",
+      "documentation": "Documentation",
+      "download": "Download",
+      "enterprise": "Enterprise",
+      "shortcuts": "Shortcuts",
+      "support": "Support"
+    },
+    "modal": {
+      "dashboardSettings": "Dashboard settings",
+      "dashboardShortcuts": "Dashboard Shortcuts",
+      "exitEditViews": "Exit edit/setting views",
+      "globalShortcuts": "Global Shortcuts",
+      "goToDashboards": "Go to Dashboards",
+      "goToHomeDashboard": "Go to Home Dashboard",
+      "keyboardShortcuts": "Keyboard Shortcuts",
+      "refreshAllPanels": "Refresh all panels",
+      "showAllShortcuts": "Show all keyboard shortcuts",
+      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
+      "toggleViewMode": "Toggle view mode"
+    }
+  }
+}

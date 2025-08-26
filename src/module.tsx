@@ -2,6 +2,11 @@ import { AppPlugin, type AppRootProps } from '@grafana/data';
 import { LoadingPlaceholder } from '@grafana/ui';
 import React, { Suspense, lazy } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
+import { initPluginTranslations } from '@grafana/i18n';
+import pluginJson from './plugin.json';
+
+// Initialize translations
+await initPluginTranslations(pluginJson.id);
 
 const LazyApp = lazy(() => import('./components/App/App'));
 const LazyMemoizedContextPanel = lazy(() =>

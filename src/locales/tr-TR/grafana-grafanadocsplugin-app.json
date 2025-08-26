@@ -1,0 +1,69 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Öneriler yüklenemedi: {{error}}",
+    "items_one": "{{count}} öğe",
+    "items_other": "{{count}} öğe",
+    "milestones": "Kilometre Taşları:",
+    "noRecommendations": "Mevcut bağlamınız için öneriler yok",
+    "otherDocumentation": "Diğer Belgeler",
+    "percentComplete": "{{percent}}% tamamlandı",
+    "recommendedDocumentation": "Önerilen Belgeler",
+    "start": "Başla",
+    "startLearningJourney": "Öğrenme Yolculuğunu Başlat",
+    "subtitle": "Mevcut bağlamınıza dayalı olarak, faydalı olabilecek bazı öğrenme yolculukları ve belgeler burada.",
+    "summary": "Özet",
+    "view": "Görüntüle",
+    "viewDocumentation": "Belgeleri Görüntüle"
+  },
+  "docsPanel": {
+    "closeTab": "{{title}} kapat",
+    "documentation": "Belgeler",
+    "interactiveJourney": "Etkileşimli yolculuk",
+    "learningJourney": "Öğrenme Yolculuğu",
+    "loading": "Yükleniyor...",
+    "milestoneProgress": "Kilometre taşı {{current}} / {{total}}",
+    "milestonesCount_one": "{{count}} kilometre taşı",
+    "milestonesCount_other": "{{count}} kilometre taşı",
+    "moreTabs_one": "{{count}} daha",
+    "moreTabs_other": "{{count}} daha",
+    "moreTabsMenu": "Daha fazla sekme",
+    "nextMilestone": "Sonraki kilometre taşı",
+    "nextMilestoneTooltip": "Sonraki kilometre taşı (Alt + →)",
+    "open": "Aç",
+    "openInNewTab": "Bu sayfayı yeni sekmede aç",
+    "previousMilestone": "Önceki kilometre taşı",
+    "previousMilestoneTooltip": "Önceki kilometre taşı (Alt + ←)",
+    "recommendations": "Öneriler",
+    "showMoreTabs_one": "{{count}} sekme daha göster",
+    "showMoreTabs_other": "{{count}} sekme daha göster",
+    "switchToTab": "{{title}} sekmesine geç"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Bu eklenti hakkında geri bildirim ver",
+    "text": "Geri bildirim ver",
+    "title": "Bu eklenti hakkında geri bildirim ver"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Topluluk",
+      "documentation": "Dokümantasyon",
+      "download": "İndir",
+      "enterprise": "Kurumsal",
+      "shortcuts": "Kısayollar",
+      "support": "Destek"
+    },
+    "modal": {
+      "dashboardSettings": "Dashboard settings",
+      "dashboardShortcuts": "Dashboard Shortcuts",
+      "exitEditViews": "Exit edit/setting views",
+      "globalShortcuts": "Global Shortcuts",
+      "goToDashboards": "Go to Dashboards",
+      "goToHomeDashboard": "Go to Home Dashboard",
+      "keyboardShortcuts": "Keyboard Shortcuts",
+      "refreshAllPanels": "Refresh all panels",
+      "showAllShortcuts": "Show all keyboard shortcuts",
+      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
+      "toggleViewMode": "Toggle view mode"
+    }
+  }
+}

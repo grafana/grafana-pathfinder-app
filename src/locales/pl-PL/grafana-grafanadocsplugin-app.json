@@ -1,0 +1,77 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Nie udało się załadować rekomendacji: {{error}}",
+    "items_one": "{{count}} element",
+    "items_few": "{{count}} elementy",
+    "items_many": "{{count}} elementów",
+    "items_other": "{{count}} elementów",
+    "milestones": "Kamienie milowe:",
+    "noRecommendations": "Brak dostępnych rekomendacji dla Twojego obecnego kontekstu",
+    "otherDocumentation": "Inna Dokumentacja",
+    "percentComplete": "{{percent}}% ukończono",
+    "recommendedDocumentation": "Zalecana Dokumentacja",
+    "start": "Rozpocznij",
+    "startLearningJourney": "Rozpocznij Podróż Edukacyjną",
+    "subtitle": "Na podstawie Twojego obecnego kontekstu, oto niektóre podróże edukacyjne i dokumentacja, które mogą być korzystne.",
+    "summary": "Podsumowanie",
+    "view": "Zobacz",
+    "viewDocumentation": "Zobacz Dokumentację"
+  },
+  "docsPanel": {
+    "closeTab": "Zamknij {{title}}",
+    "documentation": "Dokumentacja",
+    "interactiveJourney": "Interaktywna podróż",
+    "learningJourney": "Podróż Edukacyjna",
+    "loading": "Ładowanie...",
+    "milestoneProgress": "Kamień milowy {{current}} z {{total}}",
+    "milestonesCount_one": "{{count}} kamień milowy",
+    "milestonesCount_few": "{{count}} kamienie milowe",
+    "milestonesCount_many": "{{count}} kamieni milowych",
+    "milestonesCount_other": "{{count}} kamieni milowych",
+    "moreTabs_one": "{{count}} więcej",
+    "moreTabs_few": "{{count}} więcej",
+    "moreTabs_many": "{{count}} więcej",
+    "moreTabs_other": "{{count}} więcej",
+    "moreTabsMenu": "Więcej kart",
+    "nextMilestone": "Następny kamień milowy",
+    "nextMilestoneTooltip": "Następny kamień milowy (Alt + →)",
+    "open": "Otwórz",
+    "openInNewTab": "Otwórz tę stronę w nowej karcie",
+    "previousMilestone": "Poprzedni kamień milowy",
+    "previousMilestoneTooltip": "Poprzedni kamień milowy (Alt + ←)",
+    "recommendations": "Rekomendacje",
+    "showMoreTabs_one": "Pokaż {{count}} więcej kart",
+    "showMoreTabs_few": "Pokaż {{count}} więcej kart",
+    "showMoreTabs_many": "Pokaż {{count}} więcej kart",
+    "showMoreTabs_other": "Pokaż {{count}} więcej kart",
+    "switchToTab": "Przełącz na {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Prześlij opinię o tej wtyczce",
+    "text": "Prześlij opinię",
+    "title": "Prześlij opinię o tej wtyczce"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Społeczność",
+      "documentation": "Dokumentacja",
+      "download": "Pobierz",
+      "enterprise": "Enterprise",
+      "shortcuts": "Skróty",
+      "support": "Wsparcie"
+    },
+    "modal": {
+      "dashboardSettings": "Dashboard settings",
+      "dashboardShortcuts": "Dashboard Shortcuts",
+      "exitEditViews": "Exit edit/setting views",
+      "globalShortcuts": "Global Shortcuts",
+      "goToDashboards": "Go to Dashboards",
+      "goToHomeDashboard": "Go to Home Dashboard",
+      "keyboardShortcuts": "Keyboard Shortcuts",
+      "refreshAllPanels": "Refresh all panels",
+      "showAllShortcuts": "Show all keyboard shortcuts",
+      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
+      "toggleViewMode": "Toggle view mode"
+    }
+  }
+}
