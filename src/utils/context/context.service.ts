@@ -251,7 +251,7 @@ export class ContextService {
       }
 
       const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
-      
+
       const payload: ContextPayload = {
         path: contextData.currentPath,
         datasources: contextData.dataSources.map((ds) => ds.type.toLowerCase()),
