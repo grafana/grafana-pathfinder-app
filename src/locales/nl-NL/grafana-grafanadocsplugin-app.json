@@ -1,0 +1,69 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Kan aanbevelingen niet laden: {{error}}",
+    "items_one": "{{count}} item",
+    "items_other": "{{count}} items",
+    "milestones": "Mijlpalen:",
+    "noRecommendations": "Geen aanbevelingen beschikbaar voor uw huidige context",
+    "otherDocumentation": "Andere Documentatie",
+    "percentComplete": "{{percent}}% voltooid",
+    "recommendedDocumentation": "Aanbevolen Documentatie",
+    "start": "Starten",
+    "startLearningJourney": "Leerreis Starten",
+    "subtitle": "Op basis van uw huidige context zijn hier enkele leerreizen en documentatie die nuttig kunnen zijn.",
+    "summary": "Samenvatting",
+    "view": "Bekijken",
+    "viewDocumentation": "Documentatie Bekijken"
+  },
+  "docsPanel": {
+    "closeTab": "{{title}} sluiten",
+    "documentation": "Documentatie",
+    "interactiveJourney": "Interactieve reis",
+    "learningJourney": "Leerreis",
+    "loading": "Laden...",
+    "milestoneProgress": "Mijlpaal {{current}} van {{total}}",
+    "milestonesCount_one": "{{count}} mijlpaal",
+    "milestonesCount_other": "{{count}} mijlpalen",
+    "moreTabs_one": "{{count}} meer",
+    "moreTabs_other": "{{count}} meer",
+    "moreTabsMenu": "Meer tabbladen",
+    "nextMilestone": "Volgende mijlpaal",
+    "nextMilestoneTooltip": "Volgende mijlpaal (Alt + →)",
+    "open": "Openen",
+    "openInNewTab": "Deze pagina openen in nieuw tabblad",
+    "previousMilestone": "Vorige mijlpaal",
+    "previousMilestoneTooltip": "Vorige mijlpaal (Alt + ←)",
+    "recommendations": "Aanbevelingen",
+    "showMoreTabs_one": "{{count}} meer tabblad tonen",
+    "showMoreTabs_other": "{{count}} meer tabbladen tonen",
+    "switchToTab": "Overschakelen naar {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Feedback geven over deze plugin",
+    "text": "Feedback geven",
+    "title": "Feedback geven over deze plugin"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Community",
+      "documentation": "Documentatie",
+      "download": "Download",
+      "enterprise": "Enterprise",
+      "shortcuts": "Sneltoetsen",
+      "support": "Support"
+    },
+    "modal": {
+      "dashboardSettings": "Dashboard settings",
+      "dashboardShortcuts": "Dashboard Shortcuts",
+      "exitEditViews": "Exit edit/setting views",
+      "globalShortcuts": "Global Shortcuts",
+      "goToDashboards": "Go to Dashboards",
+      "goToHomeDashboard": "Go to Home Dashboard",
+      "keyboardShortcuts": "Keyboard Shortcuts",
+      "refreshAllPanels": "Refresh all panels",
+      "showAllShortcuts": "Show all keyboard shortcuts",
+      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
+      "toggleViewMode": "Toggle view mode"
+    }
+  }
+}

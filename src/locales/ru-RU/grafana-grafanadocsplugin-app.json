@@ -1,0 +1,77 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Ошибка загрузки рекомендаций: {{error}}",
+    "items_one": "{{count}} элемент",
+    "items_few": "{{count}} элемента",
+    "items_many": "{{count}} элементов",
+    "items_other": "{{count}} элементов",
+    "milestones": "Этапы:",
+    "noRecommendations": "Нет рекомендаций для вашего текущего контекста",
+    "otherDocumentation": "Другая Документация",
+    "percentComplete": "{{percent}}% завершено",
+    "recommendedDocumentation": "Рекомендуемая Документация",
+    "start": "Начать",
+    "startLearningJourney": "Начать Обучающий Путь",
+    "subtitle": "Основываясь на вашем текущем контексте, вот некоторые обучающие пути и документация, которые могут быть полезными.",
+    "summary": "Краткое содержание",
+    "view": "Посмотреть",
+    "viewDocumentation": "Посмотреть Документацию"
+  },
+  "docsPanel": {
+    "closeTab": "Закрыть {{title}}",
+    "documentation": "Документация",
+    "interactiveJourney": "Интерактивное путешествие",
+    "learningJourney": "Обучающий Путь",
+    "loading": "Загрузка...",
+    "milestoneProgress": "Этап {{current}} из {{total}}",
+    "milestonesCount_one": "{{count}} этап",
+    "milestonesCount_few": "{{count}} этапа",
+    "milestonesCount_many": "{{count}} этапов",
+    "milestonesCount_other": "{{count}} этапов",
+    "moreTabs_one": "еще {{count}}",
+    "moreTabs_few": "еще {{count}}",
+    "moreTabs_many": "еще {{count}}",
+    "moreTabs_other": "еще {{count}}",
+    "moreTabsMenu": "Больше вкладок",
+    "nextMilestone": "Следующий этап",
+    "nextMilestoneTooltip": "Следующий этап (Alt + →)",
+    "open": "Открыть",
+    "openInNewTab": "Открыть эту страницу в новой вкладке",
+    "previousMilestone": "Предыдущий этап",
+    "previousMilestoneTooltip": "Предыдущий этап (Alt + ←)",
+    "recommendations": "Рекомендации",
+    "showMoreTabs_one": "Показать еще {{count}} вкладку",
+    "showMoreTabs_few": "Показать еще {{count}} вкладки",
+    "showMoreTabs_many": "Показать еще {{count}} вкладок",
+    "showMoreTabs_other": "Показать еще {{count}} вкладок",
+    "switchToTab": "Перейти к {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Оставить отзыв об этом плагине",
+    "text": "Оставить отзыв",
+    "title": "Оставить отзыв об этом плагине"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Сообщество",
+      "documentation": "Документация",
+      "download": "Скачать",
+      "enterprise": "Enterprise",
+      "shortcuts": "Сочетания клавиш",
+      "support": "Поддержка"
+    },
+    "modal": {
+      "dashboardSettings": "Dashboard settings",
+      "dashboardShortcuts": "Dashboard Shortcuts",
+      "exitEditViews": "Exit edit/setting views",
+      "globalShortcuts": "Global Shortcuts",
+      "goToDashboards": "Go to Dashboards",
+      "goToHomeDashboard": "Go to Home Dashboard",
+      "keyboardShortcuts": "Keyboard Shortcuts",
+      "refreshAllPanels": "Refresh all panels",
+      "showAllShortcuts": "Show all keyboard shortcuts",
+      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
+      "toggleViewMode": "Toggle view mode"
+    }
+  }
+}
