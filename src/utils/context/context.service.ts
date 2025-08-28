@@ -323,7 +323,17 @@ export class ContextService {
     }
 
     const data: RecommenderResponse = await response.json();
-    const allRecommendations = [...(data.recommendations || []), ...bundledRecommendations];
+
+    // Map external API recommendations to ensure description field is mapped to summary
+    const mappedExternalRecommendations = (data.recommendations || []).map((rec: any) => {
+      const mappedRec = {
+        ...rec,
+        summary: rec.summary || rec.description || '', // Map description to summary if summary is missing
+      };
+      return mappedRec;
+    });
+
+    const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
     const processedRecommendations = await this.processLearningJourneys(allRecommendations);
 
     // Filter and sort recommendations
