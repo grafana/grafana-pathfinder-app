@@ -302,7 +302,7 @@ export class ContextService {
     const configWithDefaults = getConfigWithDefaults(pluginConfig);
 
     const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
-    
+
     const payload: ContextPayload = {
       path: contextData.currentPath,
       datasources: contextData.dataSources.map((ds) => ds.type.toLowerCase()),
@@ -790,10 +790,14 @@ export class ContextService {
    * Check if match condition contains any tag properties
    */
   private static containsTagInMatch(match: any): boolean {
-    if (!match) {return false;}
+    if (!match) {
+      return false;
+    }
 
     // Check for direct tag property
-    if (match.tag) {return true;}
+    if (match.tag) {
+      return true;
+    }
 
     // Recursively check AND conditions
     if (match.and && Array.isArray(match.and)) {
@@ -812,7 +816,9 @@ export class ContextService {
    * Check if match condition matches current platform
    */
   private static matchesPlatform(match: any, currentPlatform: string): boolean {
-    if (!match) {return false;}
+    if (!match) {
+      return false;
+    }
 
     // Check for direct targetPlatform property
     if (match.targetPlatform) {
@@ -838,7 +844,9 @@ export class ContextService {
    * Handles both urlPrefix and urlPrefixIn formats
    */
   private static matchesUrlPrefix(match: any, currentPath: string): boolean {
-    if (!match) {return false;}
+    if (!match) {
+      return false;
+    }
 
     // Check for direct urlPrefix property
     if (match.urlPrefix) {
