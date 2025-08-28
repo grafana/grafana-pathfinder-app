@@ -126,7 +126,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
               <>
                 <div className={styles.emptyContainer}>
                   <Icon name="info-circle" />
-                  <span>No recommendations available for your current context</span>
+                  <span>No recommendations available for your current context.</span>
                 </div>
                 <EnableRecommenderBanner />
               </>
