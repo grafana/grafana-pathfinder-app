@@ -144,7 +144,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           />
         </Field>
 
-        {/* Docs Base URL */}
+        {/* Docs Base website URL */}
         <Field label="Docs base URL" description="The base URL for the documentation service" className={s.marginTop}>
           <Input
             width={60}
