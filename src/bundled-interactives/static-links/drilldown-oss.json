@@ -1,0 +1,84 @@
+{
+  "rules": [
+    {
+      "title": "Simplified exploration",
+      "url": "https://grafana.com/docs/grafana/next/explore/simplified-exploration/",
+      "description": "Learn about Simplified exploration.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/drilldown"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Metrics Drilldown",
+      "url": "https://grafana.com/docs/grafana/next/explore/simplified-exploration/metrics/",
+      "description": "Learn about Grafana Metrics Drilldown.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-metricsdrilldown-app/drilldown"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Logs Drilldown",
+      "url": "https://grafana.com/docs/grafana/next/explore/simplified-exploration/logs/",
+      "description": "Learn about Grafana Logs Drilldown.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-lokiexplore-app/explore"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Traces Drilldown",
+      "url": "https://grafana.com/docs/grafana/next/explore/simplified-exploration/traces/",
+      "description": "Learn about Traces Drilldown.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-exploretraces-app/explore"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Profiles Drilldown",
+      "url": "https://grafana.com/docs/grafana/next/explore/simplified-exploration/profiles/",
+      "description": "Learn about Profiles Drilldown.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-pyroscope-app/explore"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -19,6 +19,11 @@ export class ContextService {
   private static currentDatasourceType: string | null = null;
   private static currentVisualizationType: string | null = null;
 
+  // Constants for recommendation accuracy scores
+  private static readonly CONFIDENCE_THRESHOLD = 0.5;
+  private static readonly STATIC_LINK_ACCURACY = 0.7;
+  private static readonly BUNDLED_INTERACTIVE_ACCURACY = 0.8;
+
   // Event buffer to handle missed events when plugin is closed/reopened
   private static eventBuffer: Array<{
     datasourceType?: string;
@@ -253,118 +258,13 @@ export class ContextService {
         };
       }
 
-      // Add bundled interactive recommendations (contextual based on current URL)
-      const bundledRecommendations: Recommendation[] = this.getBundledInteractiveRecommendations(contextData);
+      const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData);
 
-      // Check if T&C have been accepted before fetching external recommendations
-      const configWithDefaults = getConfigWithDefaults(pluginConfig);
       if (!isRecommenderEnabled(pluginConfig)) {
-        // Process only bundled recommendations when T&C not accepted
-        const processedBundledRecommendations = await Promise.all(
-          bundledRecommendations.map(async (rec) => {
-            if (rec.type === 'learning-journey' || !rec.type) {
-              try {
-                const result = await fetchContent(rec.url);
-                const completionPercentage = getJourneyCompletionPercentage(rec.url);
-
-                // Extract learning journey data from the unified content
-                const milestones = result.content?.metadata.learningJourney?.milestones || [];
-                const summary = result.content?.metadata.learningJourney?.summary || rec.summary || '';
-
-                return {
-                  ...rec,
-                  totalSteps: milestones.length,
-                  milestones: milestones,
-                  summary: summary,
-                  completionPercentage,
-                };
-              } catch (error) {
-                console.warn(`Failed to fetch journey data for ${rec.title}:`, error);
-                return {
-                  ...rec,
-                  totalSteps: 0,
-                  milestones: [],
-                  summary: rec.summary || '',
-                  completionPercentage: getJourneyCompletionPercentage(rec.url),
-                };
-              }
-            }
-            return rec;
-          })
-        );
-
-        return {
-          recommendations: processedBundledRecommendations,
-          error: null,
-        };
+        return this.getFallbackRecommendations(contextData, bundledRecommendations);
       }
 
-      // T&C accepted - fetch external recommendations
-      const payload: ContextPayload = {
-        path: contextData.currentPath,
-        datasources: contextData.dataSources.map((ds) => ds.type.toLowerCase()),
-        tags: contextData.tags,
-        user_id: config.bootData.user.analytics.identifier,
-        user_role: config.bootData.user.orgRole || 'Viewer',
-        platform: config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss',
-      };
-
-      const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data: RecommenderResponse = await response.json();
-
-      const allRecommendations = [...(data.recommendations || []), ...bundledRecommendations];
-
-      // Process recommendations
-      const processedRecommendations = await Promise.all(
-        allRecommendations.map(async (rec) => {
-          if (rec.type === 'learning-journey' || !rec.type) {
-            try {
-              const result = await fetchContent(rec.url);
-              const completionPercentage = getJourneyCompletionPercentage(rec.url);
-
-              // Extract learning journey data from the unified content
-              const milestones = result.content?.metadata.learningJourney?.milestones || [];
-              const summary = result.content?.metadata.learningJourney?.summary || rec.summary || '';
-
-              return {
-                ...rec,
-                totalSteps: milestones.length,
-                milestones: milestones,
-                summary: summary,
-                completionPercentage,
-              };
-            } catch (error) {
-              console.warn(`Failed to fetch journey data for ${rec.title}:`, error);
-              return {
-                ...rec,
-                totalSteps: 0,
-                milestones: [],
-                summary: rec.summary || '',
-                completionPercentage: getJourneyCompletionPercentage(rec.url),
-              };
-            }
-          }
-          return rec;
-        })
-      );
-
-      // Filter and sort recommendations
-      const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
-      const sortedRecommendations = this.sortRecommendationsByAccuracy(filteredRecommendations);
-
-      return {
-        recommendations: sortedRecommendations,
-        error: null,
-      };
+      return this.getExternalRecommendations(contextData, pluginConfig, bundledRecommendations);
     } catch (error) {
       console.warn('Failed to fetch recommendations:', error);
       return {
@@ -372,6 +272,111 @@ export class ContextService {
         error: error instanceof Error ? error.message : 'Failed to fetch recommendations',
       };
     }
+  }
+
+  /**
+   * Get fallback recommendations when external recommender is disabled
+   */
+  private static async getFallbackRecommendations(
+    contextData: ContextData,
+    bundledRecommendations: Recommendation[]
+  ): Promise<{ recommendations: Recommendation[]; error: string | null }> {
+    const staticLinkRecommendations = this.getStaticLinkRecommendations(contextData);
+    const allRecommendations = [...bundledRecommendations, ...staticLinkRecommendations];
+    const processedRecommendations = await this.processLearningJourneys(allRecommendations);
+
+    return {
+      recommendations: processedRecommendations,
+      error: null,
+    };
+  }
+
+  /**
+   * Get recommendations from external API service
+   */
+  private static async getExternalRecommendations(
+    contextData: ContextData,
+    pluginConfig: DocsPluginConfig,
+    bundledRecommendations: Recommendation[]
+  ): Promise<{ recommendations: Recommendation[]; error: string | null }> {
+    const configWithDefaults = getConfigWithDefaults(pluginConfig);
+
+    const payload: ContextPayload = {
+      path: contextData.currentPath,
+      datasources: contextData.dataSources.map((ds) => ds.type.toLowerCase()),
+      tags: contextData.tags,
+      user_id: config.bootData.user.analytics.identifier,
+      user_role: config.bootData.user.orgRole || 'Viewer',
+      platform: this.getCurrentPlatform(),
+    };
+
+    const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data: RecommenderResponse = await response.json();
+    const allRecommendations = [...(data.recommendations || []), ...bundledRecommendations];
+    const processedRecommendations = await this.processLearningJourneys(allRecommendations);
+
+    // Filter and sort recommendations
+    const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
+    const sortedRecommendations = this.sortRecommendationsByAccuracy(filteredRecommendations);
+
+    return {
+      recommendations: sortedRecommendations,
+      error: null,
+    };
+  }
+
+  /**
+   * Process learning journey recommendations to add metadata
+   */
+  private static async processLearningJourneys(recommendations: Recommendation[]): Promise<Recommendation[]> {
+    return Promise.all(
+      recommendations.map(async (rec) => {
+        if (rec.type === 'learning-journey' || !rec.type) {
+          try {
+            const result = await fetchContent(rec.url);
+            const completionPercentage = getJourneyCompletionPercentage(rec.url);
+
+            // Extract learning journey data from the unified content
+            const milestones = result.content?.metadata.learningJourney?.milestones || [];
+            const summary = result.content?.metadata.learningJourney?.summary || rec.summary || '';
+
+            return {
+              ...rec,
+              totalSteps: milestones.length,
+              milestones: milestones,
+              summary: summary,
+              completionPercentage,
+            };
+          } catch (error) {
+            console.warn(`Failed to fetch journey data for ${rec.title}:`, error);
+            return {
+              ...rec,
+              totalSteps: 0,
+              milestones: [],
+              summary: rec.summary || '',
+              completionPercentage: getJourneyCompletionPercentage(rec.url),
+            };
+          }
+        }
+        return rec;
+      })
+    );
+  }
+
+  /**
+   * Get current platform (cloud vs oss)
+   */
+  private static getCurrentPlatform(): string {
+    return config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss';
   }
 
   /**
@@ -695,9 +700,9 @@ export class ContextService {
         return false;
       }
 
-      // Drop recommendations with confidence <= 0.5
+      // Drop recommendations with low confidence
       const confidence = rec.matchAccuracy ?? 0;
-      if (confidence <= 0.5) {
+      if (confidence <= this.CONFIDENCE_THRESHOLD) {
         return false;
       }
 
@@ -715,6 +720,146 @@ export class ContextService {
       const accuracyB = b.matchAccuracy ?? 0;
       return accuracyB - accuracyA;
     });
+  }
+
+  /**
+   * Get static link recommendations from static-links/*.json files
+   * Only used when recommender is disabled - provides fallback recommendations
+   * Uses simple URL prefix matching only (no complex tag logic)
+   */
+  private static getStaticLinkRecommendations(contextData: ContextData): Recommendation[] {
+    const staticRecommendations: Recommendation[] = [];
+
+    try {
+      const currentPlatform = this.getCurrentPlatform();
+
+      // Dynamically load all JSON files from static-links directory
+      const staticLinksContext = (require as any).context('../../bundled-interactives/static-links', false, /\.json$/);
+      const allFilePaths = staticLinksContext.keys();
+
+      // Deduplicate files by filename to handle webpack context finding same files with different paths
+      const uniqueFilePaths = this.deduplicateFilePaths(allFilePaths);
+
+      // Load each unique static links file
+      for (const filePath of uniqueFilePaths) {
+        const filename = filePath.replace('./', ''); // Convert ./explore-oss.json to explore-oss.json
+        try {
+          const staticData = staticLinksContext(filePath);
+
+          if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
+            const relevantLinks = staticData.rules.filter((rule: any) => {
+              // Skip entries with tag properties (only want top-level navigation)
+              if (this.containsTagInMatch(rule.match)) {
+                return false;
+              }
+
+              // Check platform match
+              if (!this.matchesPlatform(rule.match, currentPlatform)) {
+                return false;
+              }
+
+              // Check URL prefix match (handle both formats)
+              return this.matchesUrlPrefix(rule.match, contextData.currentPath);
+            });
+
+            // Convert to recommendation format
+            relevantLinks.forEach((rule: any) => {
+              staticRecommendations.push({
+                title: rule.title,
+                url: rule.url,
+                type: rule.type || 'docs-page',
+                summary: rule.description || '',
+                matchAccuracy: this.STATIC_LINK_ACCURACY,
+              });
+            });
+          }
+        } catch (error) {
+          console.warn(`Failed to load static links file ${filename}:`, error);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load static link recommendations:', error);
+    }
+
+    return staticRecommendations;
+  }
+
+  /**
+   * Check if match condition contains any tag properties
+   */
+  private static containsTagInMatch(match: any): boolean {
+    if (!match) {return false;}
+
+    // Check for direct tag property
+    if (match.tag) {return true;}
+
+    // Recursively check AND conditions
+    if (match.and && Array.isArray(match.and)) {
+      return match.and.some((condition: any) => this.containsTagInMatch(condition));
+    }
+
+    // Recursively check OR conditions
+    if (match.or && Array.isArray(match.or)) {
+      return match.or.some((condition: any) => this.containsTagInMatch(condition));
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if match condition matches current platform
+   */
+  private static matchesPlatform(match: any, currentPlatform: string): boolean {
+    if (!match) {return false;}
+
+    // Check for direct targetPlatform property
+    if (match.targetPlatform) {
+      return match.targetPlatform === currentPlatform;
+    }
+
+    // Check AND conditions - all must match
+    if (match.and && Array.isArray(match.and)) {
+      return match.and.every((condition: any) => this.matchesPlatform(condition, currentPlatform));
+    }
+
+    // Check OR conditions - at least one must match
+    if (match.or && Array.isArray(match.or)) {
+      return match.or.some((condition: any) => this.matchesPlatform(condition, currentPlatform));
+    }
+
+    // If no platform-related properties, assume it matches (no platform constraint)
+    return true;
+  }
+
+  /**
+   * Check if match condition matches current URL path
+   * Handles both urlPrefix and urlPrefixIn formats
+   */
+  private static matchesUrlPrefix(match: any, currentPath: string): boolean {
+    if (!match) {return false;}
+
+    // Check for direct urlPrefix property
+    if (match.urlPrefix) {
+      return currentPath.startsWith(match.urlPrefix);
+    }
+
+    // Check for urlPrefixIn array property
+    if (match.urlPrefixIn && Array.isArray(match.urlPrefixIn)) {
+      return match.urlPrefixIn.some((prefix: string) => currentPath.startsWith(prefix));
+    }
+
+    // Check AND conditions - all must match
+    if (match.and && Array.isArray(match.and)) {
+      return match.and.every((condition: any) => this.matchesUrlPrefix(condition, currentPath));
+    }
+
+    // Check OR conditions - at least one must match
+    if (match.or && Array.isArray(match.or)) {
+      return match.or.some((condition: any) => this.matchesUrlPrefix(condition, currentPath));
+    }
+
+    // If no URL-related properties, assume it matches (no URL constraint)
+    return true;
   }
 
   /**
@@ -748,7 +893,7 @@ export class ContextService {
             url: `bundled:${interactive.id}`,
             type: 'docs-page',
             summary: interactive.summary,
-            matchAccuracy: 0.8, // Higher accuracy since it's contextually relevant
+            matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
           });
         });
       }
@@ -758,5 +903,20 @@ export class ContextService {
     }
 
     return bundledRecommendations;
+  }
+
+  /**
+   * Deduplicate file paths by filename to handle webpack finding same files with different paths
+   */
+  private static deduplicateFilePaths(filePaths: string[]): string[] {
+    return filePaths.filter((filePath: string, index: number, arr: string[]) => {
+      const filename = filePath.split('/').pop() || filePath;
+      return (
+        arr.findIndex((fp: string) => {
+          const compareFilename = fp.split('/').pop() || fp;
+          return compareFilename === filename;
+        }) === index
+      );
+    });
   }
 }

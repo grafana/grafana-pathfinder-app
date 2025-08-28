@@ -1,6 +1,7 @@
 import React, { useState, ChangeEvent, useEffect } from 'react';
 import { Button, useStyles2, FieldSet, Switch, Text, Alert } from '@grafana/ui';
 import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps } from '@grafana/data';
+import { config } from '@grafana/runtime';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
 import { updatePluginSettingsAndReload } from '../../utils/utils.plugin';
@@ -13,12 +14,27 @@ type JsonData = DocsPluginConfig & {
 
 export interface TermsAndConditionsProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
 
+/**
+ * Get platform-specific default for recommender enabled state
+ * Cloud: enabled by default (always online)
+ * OSS: disabled by default (might be offline)
+ */
+const getPlatformSpecificDefault = (): boolean => {
+  try {
+    const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
+    return isCloud; // Cloud = true (enabled), OSS = false (disabled)
+  } catch (error) {
+    console.warn('Failed to detect platform, defaulting to disabled:', error);
+    return false; // Conservative default
+  }
+};
+
 const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
   const styles = useStyles2(getStyles);
   const { enabled, pinned, jsonData } = plugin.meta;
 
   const [isRecommenderEnabled, setIsRecommenderEnabled] = useState<boolean>(
-    Boolean(jsonData?.acceptedTermsAndConditions ?? false)
+    Boolean(jsonData?.acceptedTermsAndConditions ?? getPlatformSpecificDefault())
   );
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
@@ -26,7 +42,7 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
 
   // Sync local state with jsonData when it changes (after reload)
   useEffect(() => {
-    const newToggleState = Boolean(jsonData?.acceptedTermsAndConditions ?? false);
+    const newToggleState = Boolean(jsonData?.acceptedTermsAndConditions ?? getPlatformSpecificDefault());
     setIsRecommenderEnabled(newToggleState);
   }, [jsonData?.acceptedTermsAndConditions]);
 

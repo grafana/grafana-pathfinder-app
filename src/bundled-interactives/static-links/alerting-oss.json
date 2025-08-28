@@ -1,0 +1,132 @@
+{
+  "rules": [
+    {
+      "title": "Grafana Alerting",
+      "url": "https://grafana.com/docs/grafana/next/alerting/",
+      "description": "Learn about Grafana Alerting.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure contact points",
+      "url": "https://grafana.com/docs/grafana/next/alerting/configure-notifications/manage-contact-points/",
+      "description": "How to configure contact points.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/notifications"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage notification templates",
+      "url": "https://grafana.com/docs/grafana/next/alerting/configure-notifications/template-notifications/manage-notification-templates/",
+      "description": "How to manage notification templates.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/notifications"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure notification policies",
+      "url": "https://grafana.com/docs/grafana/next/alerting/configure-notifications/create-notification-policy/",
+      "description": "How to configure notification policies.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/routes"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure mute timings",
+      "url": "https://grafana.com/docs/grafana/next/alerting/configure-notifications/mute-timings/",
+      "description": "How to configure mute timings.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/routes"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure silences",
+      "url": "https://grafana.com/docs/grafana/next/alerting/configure-notifications/create-silence/",
+      "description": "How to configure silences.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/silences"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "View active notifications",
+      "url": "https://grafana.com/docs/grafana/next/alerting/monitor-status/view-active-notifications/",
+      "description": "Learn about View active notifications.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/groups"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Alertmanagers",
+      "url": "https://grafana.com/docs/grafana/next/alerting/set-up/configure-alertmanager/",
+      "description": "How to configure Alertmanagers.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/admin/alertmanager"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    }
+  ]
+}
