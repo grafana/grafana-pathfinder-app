@@ -32,6 +32,8 @@ export class ContextService {
   // Simple event system for context changes
   private static changeListeners: Set<() => void> = new Set();
 
+  // Debouncing removed from service level - now handled at hook level for unified control
+
   /**
    * Subscribe to context changes (for hooks to refresh when EchoSrv events occur)
    */
@@ -43,7 +45,7 @@ export class ContextService {
   }
 
   /**
-   * Notify all listeners that context has changed
+   * Notify all listeners that context has changed (immediate notification - debouncing handled at hook level)
    */
   private static notifyContextChange(): void {
     this.changeListeners.forEach((listener) => {
@@ -713,5 +715,12 @@ export class ContextService {
     }
 
     return bundledRecommendations;
+  }
+
+  /**
+   * Cleanup method - no longer needed as debouncing moved to hook level
+   */
+  public static cleanup(): void {
+    // No timeouts to clean up at service level anymore
   }
 }

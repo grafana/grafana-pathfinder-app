@@ -28,4 +28,6 @@ export function onPluginStart(): void {
  */
 export function onPluginStop(): void {
   // Note: We deliberately don't stop EchoSrv to keep capturing events
+  // But we should clean up any pending debounced notifications
+  ContextService.cleanup();
 }

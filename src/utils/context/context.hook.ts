@@ -42,7 +42,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     searchParams: '',
   });
 
-  // Timeout ref for debounced refresh
+  // Unified timeout ref for all context refreshes (location + EchoSrv)
   const refreshTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Fetch context data
@@ -57,9 +57,9 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     }
   }, []); // Empty dependency array - setContextData is stable
 
-  // Debounced refresh to avoid excessive API calls
+  // Unified debounced refresh for ALL context changes (location + EchoSrv)
   const debouncedRefresh = useCallback(
-    (delay = 300) => {
+    (delay = 500) => {
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
       }
@@ -165,26 +165,14 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [debouncedRefresh]); // debouncedRefresh is stable due to useCallback
 
   // Listen for EchoSrv-triggered context changes (datasource/viz changes)
+  // Now uses unified debouncing with location changes
   useEffect(() => {
-    const unsubscribe = ContextService.onContextChange(async () => {
-      // Force immediate context refresh when EchoSrv events occur
-      try {
-        setContextData((prev) => ({ ...prev, isLoading: true }));
-        const newContextData = await ContextService.getContextData();
-        setContextData(newContextData);
-
-        // Now fetch recommendations with the fresh context data
-        if (newContextData.currentPath) {
-          fetchRecommendations(newContextData);
-        }
-      } catch (error) {
-        console.error('Failed to refresh context after EchoSrv change:', error);
-        setContextData((prev) => ({ ...prev, isLoading: false }));
-      }
+    const unsubscribe = ContextService.onContextChange(() => {
+      debouncedRefresh();
     });
 
     return unsubscribe;
-  }, [fetchRecommendations]); // Removed contextData dependency to avoid stale closures
+  }, [debouncedRefresh]); // Only depend on debouncedRefresh
 
   // Fetch recommendations when context data changes (but not when loading)
   const tagsString = contextData.tags?.join(',') || '';
