@@ -19,7 +19,7 @@ type JsonData = DocsPluginConfig & {
 type State = {
   // The URL to reach the recommender service
   recommenderServiceUrl: string;
-  // The base URL for the docs service
+  // The base URL for the docs website service
   docsBaseUrl: string;
   // Username for docs authentication
   docsUsername: string;
