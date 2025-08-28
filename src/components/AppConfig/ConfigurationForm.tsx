@@ -131,7 +131,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       <FieldSet label="Plugin Configuration" className={s.marginTopXl}>
         {/* Recommender Service URL */}
         <Field
-          label="Recommender Service URL"
+          label="Recommender service URL"
           description="The URL of the service that provides documentation recommendations"
         >
           <Input
@@ -145,7 +145,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         </Field>
 
         {/* Docs Base URL */}
-        <Field label="Docs Base URL" description="The base URL for the documentation service" className={s.marginTop}>
+        <Field label="Docs base URL" description="The base URL for the documentation service" className={s.marginTop}>
           <Input
             width={60}
             id="docs-base-url"
@@ -158,7 +158,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
         {/* Docs Username */}
         <Field
-          label="Docs Username"
+          label="Docs username"
           description="Username for accessing the documentation service (if authentication is required)"
           className={s.marginTop}
         >
@@ -174,7 +174,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
         {/* Docs Password */}
         <Field
-          label="Docs Password"
+          label="Docs password"
           description="Password for accessing the documentation service (if authentication is required)"
           className={s.marginTop}
         >
@@ -192,7 +192,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
         {/* Tutorial URL */}
         <Field
-          label="Auto-Launch Tutorial URL"
+          label="Auto-launch tutorial URL"
           description="Optional: URL of a learning journey or documentation page to automatically open when Grafana starts. Useful for demo scenarios. Can be set via environment variable GF_PLUGINS_GRAFANA_GRAFANADOCSPLUGIN_APP_TUTORIAL_URL"
           className={s.marginTop}
         >
@@ -208,7 +208,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
         <div className={s.marginTop}>
           <Button type="submit" data-testid={testIds.appConfig.submit} disabled={isSubmitDisabled || isSaving}>
-            {isSaving ? 'Saving...' : 'Save Configuration'}
+            {isSaving ? 'Saving...' : 'Save configuration'}
           </Button>
         </div>
       </FieldSet>

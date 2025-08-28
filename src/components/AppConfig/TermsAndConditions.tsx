@@ -76,8 +76,8 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
 
   return (
     <form onSubmit={onSubmit}>
-      <FieldSet label="Recommender Service" className={styles.termsFieldSet}>
-        <Alert title="Data Usage Information" severity={isRecommenderEnabled ? 'info' : 'warning'}>
+      <FieldSet label="Recommender service" className={styles.termsFieldSet}>
+        <Alert title="Data usage information" severity={isRecommenderEnabled ? 'info' : 'warning'}>
           {isRecommenderEnabled
             ? "When enabled, contextual data from your Grafana instance will be sent to Grafana's hosted recommendation service to provide personalized recommendations. Review the details below."
             : "If you enable this feature, contextual data from your Grafana instance will be sent to Grafana's hosted recommendation service. Please review the data usage details below before enabling."}
@@ -99,7 +99,7 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
             />
             <div className={styles.toggleLabels}>
               <Text variant="body" weight="medium">
-                Enable Context-Aware Recommendations
+                Enable context-aware recommendations
               </Text>
               <Text variant="body" color="secondary">
                 {isRecommenderEnabled
@@ -112,7 +112,7 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
 
         <div className={styles.button}>
           <Button type="submit" data-testid={testIds.termsAndConditions.submit} disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save Settings'}
+            {isSaving ? 'Saving...' : 'Save settings'}
           </Button>
         </div>
       </FieldSet>

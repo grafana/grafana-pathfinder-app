@@ -40,8 +40,8 @@ export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = (
             <div className={styles.messageText}>
               <strong>Context-aware recommendations are disabled</strong>
               <p>
-                Enable personalized recommendations based on your current Grafana context for more relevant
-                documentation suggestions.
+                Enable recommendations based on your current Grafana context for more relevant documentation
+                suggestions.
               </p>
             </div>
           </div>
@@ -53,7 +53,7 @@ export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = (
               icon="cog"
               className={styles.enableButton}
             >
-              Enable Recommendations
+              Enable recommendations
             </Button>
           </div>
         </div>

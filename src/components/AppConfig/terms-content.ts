@@ -2,51 +2,49 @@
 // This can be moved to an external API later if needed
 
 export const TERMS_AND_CONDITIONS_CONTENT = `
-<h2>Context-Aware Recommendations</h2>
+<h2>Context-aware recommendations</h2>
 <p><strong>When enabled, contextual data from your Grafana instance will be sent to Grafana's hosted recommendation service to provide personalized documentation recommendations.</strong></p>
 
-<h3>Data Collection and Usage</h3>
-<p>When you enable the recommender features, the following contextual information may be collected and sent to Grafana's hosted recommendation service:</p>
+<h3>Data collection and usage</h3>
+<p>When you enable the recommender feature, the following contextual information may be collected and sent to Grafana's hosted recommendation service:</p>
 
-<h4>Information Collected</h4>
+<h4>Information collected</h4>
 <ul>
-<li><strong>Current page path and URL</strong> - To understand which Grafana feature you're using</li>
-<li><strong>Data source types</strong> - To recommend relevant data source documentation</li>
-<li><strong>Dashboard information</strong> - Including dashboard titles, tags, and folder information when viewing dashboards</li>
-<li><strong>Visualization types</strong> - When creating or editing panels</li>
-<li><strong>User role</strong> - Your organizational role (e.g., Admin, Editor, Viewer)</li>
-<li><strong>Grafana instance type</strong> - Whether you're using Grafana Cloud or Open Source</li>
-<li><strong>User identifier</strong> - A hashed identifier for personalization (no personal information)</li>
+<li><strong>Current page path and URL</strong> - to identify which Grafana feature you are using</li>
+<li><strong>Data source types</strong> - to recommend relevant data source documentation</li>
+<li><strong>Dashboard information</strong> - including dashboard titles, tags, and folder information when viewing dashboards. This information is processed only by the plugin’s internal interactive service and is not transmitted to the hosted recommendation service</li>
+<li><strong>Visualization types</strong> - when creating or editing panels</li>
+<li><strong>User role</strong> - your organizational role (for example, admin, editor, or viewer)</li>
+<li><strong>Grafana instance type</strong> - whether you are using Grafana Cloud or Grafana Open Source</li>
+<li><strong>User identifier</strong> - for Grafana Cloud, a non-sensitive identifier used for personalization. For Grafana Open Source, no user identifier is collected</li>
 </ul>
 
-<h4>How Data is Used</h4>
+<h4>How data is used</h4>
 <ul>
-<li><strong>Personalized Recommendations</strong> - To provide contextually relevant documentation and learning journeys</li>
-<li><strong>Service Improvement</strong> - To improve the quality and relevance of recommendations</li>
-<li><strong>Analytics</strong> - To understand which recommendations are most helpful to users</li>
+<li><strong>Personalized recommendations</strong> - to provide documentation and learning journeys that are contextually relevant</li>
+<li><strong>Service improvement</strong> - to enhance the quality and accuracy of recommendations</li>
+<li><strong>Analytics</strong> - to evaluate which recommendations are most useful to users</li>
 </ul>
 
-<h4>Data Security</h4>
+<h4>Data security</h4>
 <ul>
 <li>All data is transmitted securely using HTTPS</li>
-<li>User identifiers are anonymized and hashed</li>
-<li>No sensitive data such as dashboard content, query details, or personal information is collected</li>
-<li>Data is used only for the purposes described above</li>
+<li>No sensitive information such as dashboard content, query details, or personal data is collected</li>
+<li>Data is used only for the purposes described in this notice</li>
 </ul>
 
-<h4>Your Control</h4>
+<h4>Your control</h4>
 <ul>
-<li>You can disable the recommender service at any time in the plugin configuration</li>
-<li>When disabled, only bundled examples and documentation will be shown</li>
+<li>You can disable the recommender feature at any time in the plugin configuration</li>
+<li>When disabled, only bundled examples and documentation will be displayed</li>
 <li>No contextual data will be sent to Grafana's hosted services when the recommender is disabled</li>
-<li>You retain full control over what data is shared</li>
 </ul>
 
-<h3>Changes to Data Usage</h3>
-<p>We may update this data usage information from time to time. When we do, we will notify you through the plugin interface.</p>
+<h3>Changes to data usage</h3>
+<p>We may update this notice from time to time. Any material updates will be communicated through the plugin interface.</p>
 
-<h3>Effective Date</h3>
-<p>This data usage applies when the recommender service is enabled and will cease when you disable the feature or uninstall the plugin.</p>
+<h3>Effective date</h3>
+<p>This data usage applies while the recommender feature is enabled and ends when you disable the feature or uninstall the plugin.</p>
 
 <hr/>
 
