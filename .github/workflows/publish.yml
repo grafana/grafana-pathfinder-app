@@ -44,6 +44,7 @@ jobs:
       scopes: universal
       grafana-cloud-deployment-type: provisioned
       argo-workflow-slack-channel: "#pathfinder-app-release"
+      auto-merge-environments: dev,ops
       publish-to-catalog-as-pending: true
 
 
