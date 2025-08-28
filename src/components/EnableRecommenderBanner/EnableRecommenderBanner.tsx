@@ -53,7 +53,7 @@ export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = (
               icon="cog"
               className={styles.enableButton}
             >
-              Enable recommendations
+              Go to plugin configuration
             </Button>
           </div>
         </div>
