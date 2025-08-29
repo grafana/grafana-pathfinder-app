@@ -30,7 +30,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   Array.from(element.attributes).forEach((attr) => {
     if (
       attr.name.startsWith('data-') &&
-      !['data-reftarget', 'data-targetaction', 'data-targetvalue', 'data-requirements', 'data-objectives'].includes(
+      !['data-reftarget', 'data-targetaction', 'data-targetvalue', 'data-requirements', 'data-objectives', 'data-skipable'].includes(
         attr.name
       )
     ) {
@@ -45,6 +45,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const targetvalue = element.getAttribute('data-targetvalue') || undefined;
   const requirements = element.getAttribute('data-requirements') || undefined;
   const objectives = element.getAttribute('data-objectives') || undefined;
+  const skipable = element.getAttribute('data-skipable') === 'true'; // Default to false, only true if explicitly set
   const textContent = element.textContent?.trim() || undefined;
 
   // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
@@ -58,6 +59,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     targetvalue: targetvalue,
     requirements: requirements,
     objectives: objectives,
+    skipable: skipable,
     tagName: element.tagName.toLowerCase(),
     className: element.className || undefined,
     id: element.id || undefined,
@@ -126,11 +128,12 @@ export function resetValueTracker(targetElement: HTMLElement): void {
  * For button actions, checks if buttons with matching text exist
  * For other actions, checks if the CSS selector matches an element
  * Includes retry logic for elements that might not exist immediately
+ * Enhanced with parent section expansion detection for navigation menu items
  */
 export async function reftargetExistsCHECK(
   reftarget: string,
   targetAction: string
-): Promise<{ requirement: string; pass: boolean; error?: string }> {
+): Promise<{ requirement: string; pass: boolean; error?: string; canFix?: boolean; fixType?: string; targetHref?: string }> {
   // For button actions, check if buttons with matching text exist
   if (targetAction === 'button') {
     const buttons = findButtonByText(reftarget);
@@ -170,6 +173,24 @@ export async function reftargetExistsCHECK(
     }
   }
 
+  // Element not found - check if this might be a navigation menu item that needs expansion
+  // Handle both single and double quotes in the selector
+  const navigationMenuItemMatch = reftarget.match(/a\[data-testid=['"]data-testid Nav menu item['"]\]\[href=['"]([^'"]+)['"]\]/);
+  if (navigationMenuItemMatch) {
+    const targetHref = navigationMenuItemMatch[1];
+    
+    // Any navigation menu item that can't be found might need expansion
+    // This includes both nested paths (/alerting/list) and non-conforming URLs (/plugins)
+    return {
+      requirement: 'exists-reftarget',
+      pass: false,
+      error: `Navigation menu item not found - may need section expansion`,
+      canFix: true,
+      fixType: 'expand-parent-navigation',
+      targetHref: targetHref,
+    };
+  }
+
   return {
     requirement: 'exists-reftarget',
     pass: false,
@@ -181,7 +202,7 @@ export async function reftargetExistsCHECK(
  * Check if the navigation menu is open by trying various selectors
  * Based on Grafana's HTML structure, tries selectors in order of preference
  */
-export async function navmenuOpenCHECK(): Promise<{ requirement: string; pass: boolean; error?: string }> {
+export async function navmenuOpenCHECK(): Promise<{ requirement: string; pass: boolean; error?: string; canFix?: boolean; fixType?: string }> {
   // Based on your HTML structure, try these selectors in order of preference
   const selectorsToTry = [
     // Most specific to your Grafana version
@@ -208,5 +229,7 @@ export async function navmenuOpenCHECK(): Promise<{ requirement: string; pass: b
     requirement: 'navmenu-open',
     pass: false,
     error: 'Navigation menu not detected - menu may be closed or selector mismatch',
+    canFix: true,
+    fixType: 'navigation',
   };
 }

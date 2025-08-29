@@ -7,7 +7,7 @@ import { useStepChecker } from '../../../step-checker.hook';
 import { getPostVerifyExplanation } from '../../../requirement-explanations';
 import type { InteractiveStepProps } from './interactive-section';
 
-export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> }, InteractiveStepProps>(
+export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean>; markSkipped?: () => void }, InteractiveStepProps>(
   (
     {
       targetAction,
@@ -16,6 +16,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       targetComment,
       postVerify,
       doIt = true, // Default to true - show "Do it" button unless explicitly disabled
+      skipable = false, // Default to false - only skipable if explicitly set
       title,
       description,
       children,
@@ -42,13 +43,6 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
     const [isDoRunning, setIsDoRunning] = useState(false);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
 
-    // Handle reset trigger from parent section
-    useEffect(() => {
-      if (resetTrigger && resetTrigger > 0) {
-        setIsLocallyCompleted(false);
-      }
-    }, [resetTrigger, stepId]);
-
     // Combined completion state (parent takes precedence for coordination)
     const isCompleted = parentCompleted || isLocallyCompleted;
 
@@ -63,11 +57,20 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       refTarget,
       stepId: stepId || `step-${Date.now()}`, // Fallback if no stepId provided
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
+      skipable,
     });
 
-    // Combined completion state: objectives always win (clarification 1, 2)
+    // Combined completion state: objectives always win, skipped also counts as completed (clarification 1, 2)
     const isCompletedWithObjectives =
-      parentCompleted || isLocallyCompleted || checker.completionReason === 'objectives';
+      parentCompleted || isLocallyCompleted || checker.completionReason === 'objectives' || checker.completionReason === 'skipped';
+
+    // Handle reset trigger from parent section
+    useEffect(() => {
+      if (resetTrigger && resetTrigger > 0) {
+        setIsLocallyCompleted(false);
+        setPostVerifyError(null);
+      }
+    }, [resetTrigger, stepId]);
 
     // Execution logic (shared between individual and sequence execution)
     const executeStep = useCallback(async (): Promise<boolean> => {
@@ -144,8 +147,9 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       ref,
       () => ({
         executeStep,
+        markSkipped: skipable && checker.markSkipped ? checker.markSkipped : undefined,
       }),
-      [executeStep]
+      [executeStep, skipable, checker.markSkipped]
     );
 
     // Handle individual "Show me" action
@@ -219,6 +223,11 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
       setIsLocallyCompleted(false);
       setPostVerifyError(null);
 
+      // Reset skipped state if the checker has a reset function
+      if (checker.resetStep) {
+        checker.resetStep();
+      }
+
       // Trigger requirements recheck to reset the step checker state
       checker.checkStep();
 
@@ -250,7 +259,7 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
     return (
       <div
         className={`interactive-step${className ? ` ${className}` : ''}${
-          isCompletedWithObjectives ? ' completed' : ''
+          isCompletedWithObjectives ? (checker.completionReason === 'skipped' ? ' skipped' : ' completed') : ''
         }${isCurrentlyExecuting ? ' executing' : ''}`}
       >
         <div className="interactive-step-content">
@@ -302,12 +311,14 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
 
           {isCompletedWithObjectives && (
             <div className="interactive-step-completion-group">
-              <span className="interactive-step-completed-indicator">✓</span>
+              <span className={`interactive-step-completed-indicator ${checker.completionReason === 'skipped' ? 'skipped' : ''}`}>
+                {checker.completionReason === 'skipped' ? '↷' : '✓'}
+              </span>
               <button
                 className="interactive-step-redo-btn"
                 onClick={handleStepRedo}
                 disabled={disabled || isAnyActionRunning}
-                title="Redo this step (execute again)"
+                title={checker.completionReason === 'skipped' ? 'Redo this step (try again)' : 'Redo this step (execute again)'}
               >
                 <span className="interactive-step-redo-icon">↻</span>
                 <span className="interactive-step-redo-text">Redo</span>
@@ -323,24 +334,51 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean> 
 
         {/* Show explanation text when requirements aren't met, but objectives always win (clarification 2) */}
         {checker.completionReason !== 'objectives' &&
+          checker.completionReason !== 'skipped' &&
           !checker.isEnabled &&
           !isCompletedWithObjectives &&
           !checker.isChecking &&
           checker.explanation && (
             <div className="interactive-step-requirement-explanation">
               {checker.explanation}
-              <button
-                className="interactive-requirement-retry-btn"
-                onClick={async () => {
-                  if (checker.canFixRequirement && checker.fixRequirement) {
-                    await checker.fixRequirement();
-                  } else {
-                    checker.checkStep();
-                  }
-                }}
-              >
-                {checker.canFixRequirement ? 'Fix this' : 'Retry'}
-              </button>
+              <div className="interactive-step-requirement-buttons">
+                <button
+                  className="interactive-requirement-retry-btn"
+                  onClick={async () => {
+                    if (checker.canFixRequirement && checker.fixRequirement) {
+                      await checker.fixRequirement();
+                    } else {
+                      checker.checkStep();
+                    }
+                  }}
+                >
+                  {checker.canFixRequirement ? 'Fix this' : 'Retry'}
+                </button>
+                
+                {checker.canSkip && checker.markSkipped && (
+                  <button
+                    className="interactive-requirement-skip-btn"
+                    onClick={async () => {
+                      if (checker.markSkipped) {
+                        await checker.markSkipped();
+                        
+                        // Notify parent section that this step is "completed" (skipped)
+                        if (onStepComplete && stepId) {
+                          onStepComplete(stepId);
+                        }
+                        
+                        // Call the original onComplete callback if provided
+                        if (onComplete) {
+                          onComplete();
+                        }
+                      }
+                    }}
+                  >
+                    Skip
+                  </button>
+                )}
+
+              </div>
             </div>
           )}
       </div>

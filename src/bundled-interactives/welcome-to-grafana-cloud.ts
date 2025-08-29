@@ -20,7 +20,7 @@ export const welcomeToGrafanaCloudHtml = `<html>
         <h2>Tour of Grafana Cloud</h2>
         <p>Let's start by exploring the main areas of Grafana. We'll visit each key section so you know where everything is located.</p>
 
-        <span id="grafana-tour" class="interactive" data-requirements="navmenu-open" data-targetaction="sequence" data-reftarget="span#grafana-tour">
+        <span id="grafana-tour" class="interactive" data-targetaction="sequence" data-reftarget="span#grafana-tour">
             <ul>
               <li class="interactive" 
                   data-requirements="navmenu-open"

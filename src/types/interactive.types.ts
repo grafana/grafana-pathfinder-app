@@ -6,6 +6,7 @@ export interface InteractiveElementData {
   targetcomment?: string;
   requirements?: string;
   objectives?: string;
+  skipable?: boolean; // Whether this step can be skipped if requirements fail
 
   // Element context
   tagName: string;

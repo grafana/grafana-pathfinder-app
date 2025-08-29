@@ -58,10 +58,11 @@ export const firstDashboardHtml = `<html>
                   class='interactive' 
                   data-hint="You'll need to be logged in, and an administrator"
                   data-requirements="is-admin"
+                  data-skipable="true"
                   data-reftarget='Install' 
                   data-targetaction='button'
                   data-verify="has-plugin:volkovlabs-rss-datasource">
-                Click the Install Button
+                Click the Install Button (requires admin privileges - can be skipped if you don't have access)
               </li>
             </ul>
         </span>    
