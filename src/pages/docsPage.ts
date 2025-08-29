@@ -17,7 +17,7 @@ function contextScene() {
         new SceneFlexItem({
           width: '100%',
           height: 600,
-          body: new CombinedLearningJourneyPanel(),
+          body: new CombinedLearningJourneyPanel({}), // Pass empty config, will use defaults
         }),
       ],
     }),

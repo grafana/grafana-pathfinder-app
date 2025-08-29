@@ -4,9 +4,9 @@ import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps } from '@grafana/da
 import { config } from '@grafana/runtime';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
-import { updatePluginSettingsAndReload } from '../../utils/utils.plugin';
-import { DocsPluginConfig } from '../../constants';
+import { DocsPluginConfig, TERMS_VERSION } from '../../constants';
 import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
+import { updatePluginSettings } from '../../utils/utils.plugin';
 
 type JsonData = DocsPluginConfig & {
   isDocsPasswordSet?: boolean;
@@ -58,14 +58,27 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
       const newJsonData = {
         ...jsonData,
         acceptedTermsAndConditions: isRecommenderEnabled,
+        // Persist the current terms version when enabling; leave unchanged when disabling
+        termsVersion: isRecommenderEnabled ? TERMS_VERSION : jsonData?.termsVersion,
       };
 
-      // Save settings and reload page to ensure changes take effect immediately
-      await updatePluginSettingsAndReload(plugin.meta.id, {
+      await updatePluginSettings(plugin.meta.id, {
         enabled,
         pinned,
         jsonData: newJsonData,
       });
+
+      // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh
+      setTimeout(() => {
+        try {
+          window.location.reload();
+        } catch (e) {
+          console.error('Failed to reload page after saving settings', e);
+        }
+      }, 100);
+
+      // Reset saving state - let Grafana's plugin context system handle the refresh
+      setIsSaving(false);
     } catch (error) {
       console.error('Error saving Terms and Conditions:', error);
       setIsSaving(false);
@@ -195,5 +208,3 @@ const getStyles = (theme: GrafanaTheme2) => ({
     marginTop: theme.spacing(2),
   }),
 });
-
-// Local helper removed in favor of shared updatePluginSettingsAndReload

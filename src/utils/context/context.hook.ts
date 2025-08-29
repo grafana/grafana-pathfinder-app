@@ -24,6 +24,8 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     tags: [],
     isLoading: true,
     recommendationsError: null,
+    recommendationsErrorType: null,
+    usingFallbackRecommendations: false,
     visualizationType: null,
     grafanaVersion: 'Unknown',
     theme: 'dark',
@@ -86,17 +88,22 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
       setIsLoadingRecommendations(true);
       try {
-        const { recommendations, error } = await ContextService.fetchRecommendations(contextData, pluginConfig);
+        const { recommendations, error, errorType, usingFallbackRecommendations } =
+          await ContextService.fetchRecommendations(contextData, pluginConfig);
         setContextData((prev) => ({
           ...prev,
           recommendations,
           recommendationsError: error,
+          recommendationsErrorType: errorType,
+          usingFallbackRecommendations,
         }));
       } catch (error) {
         console.error('Failed to fetch recommendations:', error);
         setContextData((prev) => ({
           ...prev,
           recommendationsError: 'Failed to fetch recommendations',
+          recommendationsErrorType: 'other',
+          usingFallbackRecommendations: true,
         }));
       } finally {
         setIsLoadingRecommendations(false);

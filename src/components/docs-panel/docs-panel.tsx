@@ -6,6 +6,7 @@ import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana
 import { IconButton, Alert, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { t } from '@grafana/i18n';
+import { getConfigWithDefaults, DocsPluginConfig } from '../../constants';
 
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
@@ -62,6 +63,7 @@ interface CombinedPanelState extends SceneObjectState {
   tabs: LearningJourneyTab[];
   activeTabId: string;
   contextPanel: ContextPanel;
+  pluginConfig: DocsPluginConfig;
 }
 
 const STORAGE_KEY = 'grafana-docs-plugin-tabs';
@@ -74,7 +76,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     return true;
   }
 
-  public constructor() {
+  public constructor(pluginConfig: DocsPluginConfig = {}) {
     const restoredTabs = CombinedLearningJourneyPanel.restoreTabsFromStorage();
     const contextPanel = new ContextPanel(
       (url: string, title: string) => this.openLearningJourney(url, title),
@@ -87,6 +89,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       tabs: restoredTabs,
       activeTabId,
       contextPanel,
+      pluginConfig,
     });
 
     // Initialize the active tab if needed
@@ -256,7 +259,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      const result = await fetchContent(url);
+      const configWithDefaults = getConfigWithDefaults(this.state.pluginConfig);
+      const result = await fetchContent(url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
 
       const finalUpdatedTabs = this.state.tabs.map((t) =>
         t.id === tabId
@@ -447,7 +451,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      const result = await fetchContent(url);
+      const configWithDefaults = getConfigWithDefaults(this.state.pluginConfig);
+      const result = await fetchContent(url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
 
       const finalUpdatedTabs = this.state.tabs.map((t) =>
         t.id === tabId

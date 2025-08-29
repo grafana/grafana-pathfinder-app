@@ -3,7 +3,6 @@ import { Button, Field, Input, useStyles2, FieldSet, SecretInput } from '@grafan
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
-import { updatePluginSettingsAndReload } from '../../utils/utils.plugin';
 import {
   DocsPluginConfig,
   DEFAULT_RECOMMENDER_SERVICE_URL,
@@ -11,10 +10,9 @@ import {
   DEFAULT_DOCS_USERNAME,
   DEFAULT_TUTORIAL_URL,
 } from '../../constants';
+import { updatePluginSettings } from '../../utils/utils.plugin';
 
-type JsonData = DocsPluginConfig & {
-  isDocsPasswordSet?: boolean;
-};
+type JsonData = DocsPluginConfig;
 
 type State = {
   // The URL to reach the recommender service
@@ -25,7 +23,7 @@ type State = {
   docsUsername: string;
   // Password for docs authentication
   docsPassword: string;
-  // Tells us if the docs password secret is set
+  // Tells us if the docs password secret is set (from secureJsonFields)
   isDocsPasswordSet: boolean;
   // Auto-launch tutorial URL (for demo scenarios)
   tutorialUrl: string;
@@ -35,13 +33,13 @@ export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginM
 
 const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const s = useStyles2(getStyles);
-  const { enabled, pinned, jsonData } = plugin.meta;
+  const { enabled, pinned, jsonData, secureJsonFields } = plugin.meta;
   const [state, setState] = useState<State>({
     recommenderServiceUrl: jsonData?.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
     docsBaseUrl: jsonData?.docsBaseUrl || DEFAULT_DOCS_BASE_URL,
     docsUsername: jsonData?.docsUsername || DEFAULT_DOCS_USERNAME,
     docsPassword: '',
-    isDocsPasswordSet: Boolean(jsonData?.isDocsPasswordSet),
+    isDocsPasswordSet: Boolean(secureJsonFields && (secureJsonFields as any).docsPassword),
     tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -103,21 +101,24 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         docsBaseUrl: state.docsBaseUrl,
         docsUsername: state.docsUsername,
         tutorialUrl: state.tutorialUrl,
-        isDocsPasswordSet: state.isDocsPasswordSet || Boolean(state.docsPassword),
       };
 
-      // Save settings and reload page to ensure changes take effect immediately
-      await updatePluginSettingsAndReload(plugin.meta.id, {
+      await updatePluginSettings(plugin.meta.id, {
         enabled,
         pinned,
         jsonData: newJsonData,
         // Only include secureJsonData if password was changed
-        secureJsonData: state.isDocsPasswordSet
-          ? undefined
-          : {
-              docsPassword: state.docsPassword,
-            },
+        secureJsonData: state.isDocsPasswordSet ? undefined : { docsPassword: state.docsPassword },
       });
+
+      // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh
+      setTimeout(() => {
+        try {
+          window.location.reload();
+        } catch (e) {
+          console.error('Failed to reload page after saving configuration', e);
+        }
+      }, 100);
     } catch (error) {
       console.error('Error saving configuration:', error);
       setIsSaving(false);
@@ -229,5 +230,3 @@ const getStyles = (theme: GrafanaTheme2) => ({
     margin-top: ${theme.spacing(6)};
   `,
 });
-
-// Local helper removed in favor of shared updatePluginSettingsAndReload

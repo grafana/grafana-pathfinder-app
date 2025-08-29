@@ -19,6 +19,13 @@ export class ContextService {
   private static currentDatasourceType: string | null = null;
   private static currentVisualizationType: string | null = null;
 
+  // Error handling state
+  private static lastExternalRecommenderError: {
+    type: 'unavailable' | 'rate-limit' | 'other';
+    timestamp: number;
+    message: string;
+  } | null = null;
+
   // Constants for recommendation accuracy scores
   private static readonly CONFIDENCE_THRESHOLD = 0.5;
   private static readonly STATIC_LINK_ACCURACY = 0.7;
@@ -232,6 +239,8 @@ export class ContextService {
       tags,
       isLoading: false,
       recommendationsError: null,
+      recommendationsErrorType: null,
+      usingFallbackRecommendations: false,
       visualizationType: this.getVisualizationTypeForContext(pathSegments, searchParams),
       grafanaVersion: this.getGrafanaVersion(),
       theme: config.theme2.isDark ? 'dark' : 'light',
@@ -249,27 +258,41 @@ export class ContextService {
   ): Promise<{
     recommendations: Recommendation[];
     error: string | null;
+    errorType: 'unavailable' | 'rate-limit' | 'other' | null;
+    usingFallbackRecommendations: boolean;
   }> {
     try {
       if (!contextData.currentPath) {
         return {
           recommendations: [],
           error: 'No path provided for recommendations',
+          errorType: 'other',
+          usingFallbackRecommendations: false,
         };
       }
 
       const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData);
 
       if (!isRecommenderEnabled(pluginConfig)) {
-        return this.getFallbackRecommendations(contextData, bundledRecommendations);
+        const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
+        return {
+          ...fallbackResult,
+          errorType: null,
+          usingFallbackRecommendations: false, // Not using fallback due to error, just disabled
+        };
       }
 
+      // Always try external recommendations when T&C are enabled, regardless of previous errors
       return this.getExternalRecommendations(contextData, pluginConfig, bundledRecommendations);
     } catch (error) {
       console.warn('Failed to fetch recommendations:', error);
+      const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData);
+      const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
-        recommendations: [],
+        ...fallbackResult,
         error: error instanceof Error ? error.message : 'Failed to fetch recommendations',
+        errorType: 'other',
+        usingFallbackRecommendations: true,
       };
     }
   }
@@ -283,7 +306,7 @@ export class ContextService {
   ): Promise<{ recommendations: Recommendation[]; error: string | null }> {
     const staticLinkRecommendations = this.getStaticLinkRecommendations(contextData);
     const allRecommendations = [...bundledRecommendations, ...staticLinkRecommendations];
-    const processedRecommendations = await this.processLearningJourneys(allRecommendations);
+    const processedRecommendations = await this.processLearningJourneys(allRecommendations, {});
 
     return {
       recommendations: processedRecommendations,
@@ -298,63 +321,185 @@ export class ContextService {
     contextData: ContextData,
     pluginConfig: DocsPluginConfig,
     bundledRecommendations: Recommendation[]
-  ): Promise<{ recommendations: Recommendation[]; error: string | null }> {
-    const configWithDefaults = getConfigWithDefaults(pluginConfig);
+  ): Promise<{
+    recommendations: Recommendation[];
+    error: string | null;
+    errorType: 'unavailable' | 'rate-limit' | 'other' | null;
+    usingFallbackRecommendations: boolean;
+  }> {
+    try {
+      const configWithDefaults = getConfigWithDefaults(pluginConfig);
 
-    const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
+      const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
 
-    const payload: ContextPayload = {
-      path: contextData.currentPath,
-      datasources: contextData.dataSources.map((ds) => ds.type.toLowerCase()),
-      tags: contextData.tags,
-      user_id: isCloud ? config.bootData.user.analytics.identifier : 'oss-user',
-      user_role: config.bootData.user.orgRole || 'Viewer',
-      platform: this.getCurrentPlatform(),
+      const payload: ContextPayload = {
+        path: contextData.currentPath,
+        datasources: contextData.dataSources.map((ds) => ds.type.toLowerCase()),
+        tags: contextData.tags,
+        user_id: isCloud ? config.bootData.user.analytics.identifier : 'oss-user',
+        user_role: config.bootData.user.orgRole || 'Viewer',
+        platform: this.getCurrentPlatform(),
+      };
+
+      const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        // Handle specific HTTP error codes
+        if (response.status === 404) {
+          return this.handleRecommenderError(
+            'unavailable',
+            'Recommender service not found',
+            contextData,
+            bundledRecommendations
+          );
+        }
+
+        if (response.status === 426 || response.status === 429) {
+          return this.handleRecommenderError(
+            'rate-limit',
+            'Recommender service is under strain',
+            contextData,
+            bundledRecommendations
+          );
+        }
+
+        // Handle other HTTP errors
+        return this.handleRecommenderError(
+          'other',
+          `HTTP error! status: ${response.status}`,
+          contextData,
+          bundledRecommendations
+        );
+      }
+
+      const data: RecommenderResponse = await response.json();
+
+      // Map external API recommendations to ensure description field is mapped to summary
+      const mappedExternalRecommendations = (data.recommendations || []).map((rec: any) => {
+        const mappedRec = {
+          ...rec,
+          summary: rec.summary || rec.description || '', // Map description to summary if summary is missing
+        };
+        return mappedRec;
+      });
+
+      const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
+      const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
+
+      // Filter and sort recommendations
+      const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
+      const sortedRecommendations = this.sortRecommendationsByAccuracy(filteredRecommendations);
+
+      // Clear any previous errors on successful call
+      this.lastExternalRecommenderError = null;
+
+      return {
+        recommendations: sortedRecommendations,
+        error: null,
+        errorType: null,
+        usingFallbackRecommendations: false,
+      };
+    } catch (error) {
+      // Handle network errors (CORS, network failures, etc.)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // Check if it's a CORS or network error
+      if (
+        errorMessage.includes('CORS') ||
+        errorMessage.includes('NetworkError') ||
+        errorMessage.includes('Failed to fetch')
+      ) {
+        return this.handleRecommenderError(
+          'unavailable',
+          'Recommender service unavailable',
+          contextData,
+          bundledRecommendations
+        );
+      }
+
+      // Handle other errors
+      return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
+    }
+  }
+
+  /**
+   * Handle recommender service errors by falling back to static recommendations
+   */
+  private static async handleRecommenderError(
+    errorType: 'unavailable' | 'rate-limit' | 'other',
+    errorMessage: string,
+    contextData: ContextData,
+    bundledRecommendations: Recommendation[]
+  ): Promise<{
+    recommendations: Recommendation[];
+    error: string | null;
+    errorType: 'unavailable' | 'rate-limit' | 'other' | null;
+    usingFallbackRecommendations: boolean;
+  }> {
+    // Store error state for tracking
+    this.lastExternalRecommenderError = {
+      type: errorType,
+      timestamp: Date.now(),
+      message: errorMessage,
     };
 
-    const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    // Get fallback recommendations
+    const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data: RecommenderResponse = await response.json();
-
-    // Map external API recommendations to ensure description field is mapped to summary
-    const mappedExternalRecommendations = (data.recommendations || []).map((rec: any) => {
-      const mappedRec = {
-        ...rec,
-        summary: rec.summary || rec.description || '', // Map description to summary if summary is missing
-      };
-      return mappedRec;
-    });
-
-    const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
-    const processedRecommendations = await this.processLearningJourneys(allRecommendations);
-
-    // Filter and sort recommendations
-    const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
-    const sortedRecommendations = this.sortRecommendationsByAccuracy(filteredRecommendations);
+    // Generate user-friendly error message
+    const userMessage = this.generateErrorMessage(errorType);
 
     return {
-      recommendations: sortedRecommendations,
-      error: null,
+      ...fallbackResult,
+      error: userMessage,
+      errorType,
+      usingFallbackRecommendations: true,
     };
+  }
+
+  /**
+   * Generate user-friendly error messages based on error type
+   */
+  private static generateErrorMessage(errorType: 'unavailable' | 'rate-limit' | 'other'): string {
+    switch (errorType) {
+      case 'unavailable':
+        return 'Recommender unavailable. Showing static recommendations.';
+      case 'rate-limit':
+        return 'Recommender is under a lot of strain. Switching to static recommendations.';
+      case 'other':
+      default:
+        return 'Recommender service error. Using static recommendations.';
+    }
+  }
+
+  /**
+   * Get the last external recommender error for debugging or status display
+   */
+  public static getLastRecommenderError(): {
+    type: 'unavailable' | 'rate-limit' | 'other';
+    timestamp: number;
+    message: string;
+  } | null {
+    return this.lastExternalRecommenderError;
   }
 
   /**
    * Process learning journey recommendations to add metadata
    */
-  private static async processLearningJourneys(recommendations: Recommendation[]): Promise<Recommendation[]> {
+  private static async processLearningJourneys(
+    recommendations: Recommendation[],
+    pluginConfig?: DocsPluginConfig
+  ): Promise<Recommendation[]> {
     return Promise.all(
       recommendations.map(async (rec) => {
         if (rec.type === 'learning-journey' || !rec.type) {
           try {
-            const result = await fetchContent(rec.url);
+            const configWithDefaults = getConfigWithDefaults(pluginConfig || {});
+            const result = await fetchContent(rec.url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
             const completionPercentage = getJourneyCompletionPercentage(rec.url);
 
             // Extract learning journey data from the unified content
