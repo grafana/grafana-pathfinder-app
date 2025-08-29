@@ -358,7 +358,7 @@ export class ContextService {
           );
         }
 
-        if (response.status === 426 || response.status === 429) {
+        if (response.status === 429) {
           return this.handleRecommenderError(
             'rate-limit',
             'Recommender service is under strain',
