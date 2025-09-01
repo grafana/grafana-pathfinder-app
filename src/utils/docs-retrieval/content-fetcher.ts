@@ -207,7 +207,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
   let redirectInfo: string | null = null;
 
   try {
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(replaceRecommendationBaseUrl(url, options.docsBaseUrl), fetchOptions);
 
     // Log redirect information if the final URL is different
     if (response.url && response.url !== url) {
@@ -237,7 +237,10 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           const finalUnstyledUrl = getUnstyledContentUrl(response.url);
           if (finalUnstyledUrl !== response.url) {
             try {
-              const unstyledResponse = await fetch(finalUnstyledUrl, fetchOptions);
+              const unstyledResponse = await fetch(
+                replaceRecommendationBaseUrl(finalUnstyledUrl, options.docsBaseUrl),
+                fetchOptions
+              );
               if (unstyledResponse.ok) {
                 const unstyledHtml = await unstyledResponse.text();
                 if (unstyledHtml && unstyledHtml.trim()) {
@@ -280,7 +283,10 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           if (baseUrlMatch) {
             const fullRedirectUrl = baseUrlMatch[1] + location;
             try {
-              const redirectResponse = await fetch(fullRedirectUrl, fetchOptions);
+              const redirectResponse = await fetch(
+                replaceRecommendationBaseUrl(fullRedirectUrl, options.docsBaseUrl),
+                fetchOptions
+              );
               if (redirectResponse.ok) {
                 const html = await redirectResponse.text();
                 if (html && html.trim()) {
@@ -663,4 +669,12 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
 function urlsMatch(url1: string, url2: string): boolean {
   const normalize = (u: string) => u.replace(/\/$/, '').toLowerCase();
   return normalize(url1) === normalize(url2);
+}
+
+/**
+ * replace recommendation base url with the base url from the config
+ * ensures trailing slash and unstyled.html is added to the url
+ */
+function replaceRecommendationBaseUrl(url: string, docsBaseUrl: string | undefined): string {
+  return url.replace('https://grafana.com', docsBaseUrl || '');
 }
