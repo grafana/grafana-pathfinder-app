@@ -10,6 +10,7 @@ export const DEFAULT_DOCS_PASSWORD = '';
 export const DEFAULT_TUTORIAL_URL = '';
 export const DEFAULT_TERMS_ACCEPTED = false;
 export const TERMS_VERSION = '1.0.0';
+export const DEFAULT_DEV_MODE = false;
 
 // Configuration interface
 export interface DocsPluginConfig {
@@ -21,6 +22,7 @@ export interface DocsPluginConfig {
   // Terms and Conditions
   acceptedTermsAndConditions?: boolean;
   termsVersion?: string;
+  devMode?: boolean;
 }
 
 // Helper functions to get configuration values with defaults
@@ -32,6 +34,7 @@ export const getConfigWithDefaults = (config: DocsPluginConfig): Required<DocsPl
   tutorialUrl: config.tutorialUrl || DEFAULT_TUTORIAL_URL,
   acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? DEFAULT_TERMS_ACCEPTED,
   termsVersion: config.termsVersion || TERMS_VERSION,
+  devMode: config.devMode || DEFAULT_DEV_MODE,
 });
 
 export const isRecommenderEnabled = (config: DocsPluginConfig): boolean => {
@@ -47,6 +50,7 @@ export const getDocsPassword = (config: DocsPluginConfig) => getConfigWithDefaul
 export const getTutorialUrl = (config: DocsPluginConfig) => getConfigWithDefaults(config).tutorialUrl;
 export const getTermsAccepted = (config: DocsPluginConfig) => getConfigWithDefaults(config).acceptedTermsAndConditions;
 export const getTermsVersion = (config: DocsPluginConfig) => getConfigWithDefaults(config).termsVersion;
+export const getDevMode = (config: DocsPluginConfig) => getConfigWithDefaults(config).devMode;
 
 // Legacy exports for backward compatibility
 export const RECOMMENDER_SERVICE_URL = DEFAULT_RECOMMENDER_SERVICE_URL;
