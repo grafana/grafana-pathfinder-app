@@ -124,6 +124,7 @@ export const prometheusGrafana101Html = `<html>
               <li class="interactive" 
                   data-reftarget='Refresh'
                   data-targetaction='button'>
+                <span class="interactive-comment">The <strong>Refresh</strong> button is used to execute the query and see your Prometheus data.</span>
                 Click the <strong>Refresh</strong> button to execute the query and see your Prometheus data.
               </li>
 
@@ -143,6 +144,7 @@ export const prometheusGrafana101Html = `<html>
                   data-reftarget='input[data-testid="data-testid Panel editor option pane field input Title"]'
                   data-targetaction='formfill' 
                   data-targetvalue='Number of running components'>
+                <span class="interactive-comment">The <strong>Title</strong> is the name of the panel. It's used to identify the panel in the dashboard.</span>
                 In the panel options, change the <strong>Title</strong> to <strong>Number of running components</strong>.
               </li>
 

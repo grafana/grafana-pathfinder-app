@@ -14,7 +14,12 @@ This guide documents the core data-\* attributes used to define interactive acti
 - **data-targetvalue**: Optional value for `formfill` actions.
 - **data-requirements**: Comma-separated preconditions that must pass for the action to be enabled.
 - **data-objectives**: Conditions which, when already true, mark a step or section complete without execution.
-- Optional: **data-hint**: Tooltip or hint text for UI.
+- **data-doit**: Controls button behavior. Set to `'false'` for show-only mode (no "Do it" button, completes after showing). Defaults to `true`.
+- **data-hint**: Tooltip or hint text for UI.
+
+## Special content elements
+
+- **`<span class="interactive-comment">`**: Rich HTML content that appears as a floating comment box during element highlighting. Supports bold, code, and emphasis formatting. Hidden in normal display but shown as contextual overlay.
 
 ## Requirements reference (selection)
 
@@ -102,6 +107,23 @@ Common checks supported by the system:
 </li>
 ```
 
+### show-only mode with rich comments
+
+```html
+<li
+  class="interactive"
+  data-reftarget='div[data-testid="uplot-main-div"]:first-of-type'
+  data-targetaction="highlight"
+  data-doit="false"
+>
+  <span class="interactive-comment"
+    >This <strong>metrics panel</strong> shows log volume over time with different log levels (<code>debug</code>,
+    <code>info</code>, <code>warn</code>, <code>error</code>). The legend displays total counts for each level.</span
+  >
+  Examine the metrics visualization panel above the logs.
+</li>
+```
+
 ## Authoring tips
 
 - Prefer `data-testid`, `href`, `id`, and ARIA attributes over CSS classes in selectors.
@@ -109,3 +131,6 @@ Common checks supported by the system:
 - Keep `data-requirements` minimal and specific; group with commas.
 - Use `data-objectives` for outcome-based auto-completion when the state is already satisfied.
 - For sequences, ensure the container `id` is unique and referenced by `data-reftarget`.
+- Use `data-doit='false'` for educational/explanatory interactions that don't require user action.
+- Place `<span class="interactive-comment">` content at the start of the element for better organization.
+- In interactive comments, use `<strong>` for UI element names, `<code>` for technical terms, and `<em>` for emphasis.

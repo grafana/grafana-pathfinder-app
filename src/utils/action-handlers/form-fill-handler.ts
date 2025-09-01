@@ -32,20 +32,17 @@ export class FormFillHandler {
   }
 
   private async findTargetElement(selector: string): Promise<HTMLElement> {
-    console.warn(`🔍 FormFill: Searching for selector: ${selector}`);
     const targetElements = document.querySelectorAll(selector);
 
-    console.warn(`🔍 FormFill: Found ${targetElements.length} elements matching selector`);
     if (targetElements.length === 0) {
       throw new Error(`No elements found matching selector: ${selector}`);
     }
 
     if (targetElements.length > 1) {
-      console.warn(`⚠️ Multiple elements found matching selector: ${selector}`);
+      console.warn(`Multiple elements found matching selector: ${selector}`);
     }
 
     const targetElement = targetElements[0] as HTMLElement;
-    console.warn(`🎯 FormFill: Target element found:`, targetElement);
     return targetElement;
   }
 
@@ -67,7 +64,6 @@ export class FormFillHandler {
     // Special handling for Grafana's combobox label filter inputs
     const isCombobox = this.isAriaCombobox(targetElement);
     if (isCombobox) {
-      console.warn('🎛️ FormFill: Detected ARIA combobox, using staged entry sequence');
       await this.fillComboboxStaged(targetElement, value);
       // Combobox flow handles its own events/enters; still dispatch final blur/change to settle state
       await this.dispatchEvents(targetElement, tagName, false);
@@ -190,7 +186,6 @@ export class FormFillHandler {
         continue;
       }
       const tokenToType = stripQuotes(token);
-      console.warn(`⌨️ Combobox stage token -> ${tokenToType}`);
       if (isOperatorToken(tokenToType)) {
         await typeOperator(tokenToType);
       } else {
@@ -202,7 +197,6 @@ export class FormFillHandler {
     }
 
     // Defocus: send Escape to close any menus, then blur
-    console.warn('🧹 Combobox finalize: ESC + blur');
     element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
     element.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', bubbles: true }));
     await sleep(stageDelay);
@@ -227,8 +221,6 @@ export class FormFillHandler {
   }
 
   private async setMonacoEditorValue(element: HTMLElement, value: string): Promise<void> {
-    console.warn('🎯 Detected Monaco editor, using enhanced approach for value setting');
-
     element.focus();
     await this.clearMonacoEditor(element);
     this.setNativeTextareaValue(element, value);

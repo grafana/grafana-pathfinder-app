@@ -1,0 +1,69 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Fehler beim Laden der Empfehlungen: {{error}}",
+    "items_one": "{{count}} Element",
+    "items_other": "{{count}} Elemente",
+    "milestones": "Meilensteine:",
+    "noRecommendations": "Keine Empfehlungen für Ihren aktuellen Kontext verfügbar",
+    "otherDocumentation": "Weitere Dokumentation",
+    "percentComplete": "{{percent}}% abgeschlossen",
+    "recommendedDocumentation": "Empfohlene Dokumentation",
+    "start": "Starten",
+    "startLearningJourney": "Lernreise starten",
+    "subtitle": "Basierend auf Ihrem aktuellen Kontext finden Sie hier einige Lernreisen und Dokumentationen, die nützlich sein könnten.",
+    "summary": "Zusammenfassung",
+    "view": "Anzeigen",
+    "viewDocumentation": "Dokumentation anzeigen"
+  },
+  "docsPanel": {
+    "closeTab": "{{title}} schließen",
+    "documentation": "Dokumentation",
+    "interactiveJourney": "Interaktive Reise",
+    "learningJourney": "Lernreise",
+    "loading": "Wird geladen...",
+    "milestoneProgress": "Meilenstein {{current}} von {{total}}",
+    "milestonesCount_one": "{{count}} Meilenstein",
+    "milestonesCount_other": "{{count}} Meilensteine",
+    "moreTabs_one": "{{count}} weitere",
+    "moreTabs_other": "{{count}} weitere",
+    "moreTabsMenu": "Weitere Tabs",
+    "nextMilestone": "Nächster Meilenstein",
+    "nextMilestoneTooltip": "Nächster Meilenstein (Alt + →)",
+    "open": "Öffnen",
+    "openInNewTab": "Diese Seite in neuem Tab öffnen",
+    "previousMilestone": "Vorheriger Meilenstein",
+    "previousMilestoneTooltip": "Vorheriger Meilenstein (Alt + ←)",
+    "recommendations": "Empfehlungen",
+    "showMoreTabs_one": "{{count}} weiteren Tab anzeigen",
+    "showMoreTabs_other": "{{count}} weitere Tabs anzeigen",
+    "switchToTab": "Zu {{title}} wechseln"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Feedback zu diesem Plugin geben",
+    "text": "Feedback geben",
+    "title": "Feedback zu diesem Plugin geben"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Community",
+      "documentation": "Dokumentation",
+      "download": "Download",
+      "enterprise": "Enterprise",
+      "shortcuts": "Tastenkürzel",
+      "support": "Support"
+    },
+    "modal": {
+      "dashboardSettings": "Dashboard-Einstellungen",
+      "dashboardShortcuts": "Dashboard-Tastenkürzel",
+      "exitEditViews": "Bearbeitungs-/Einstellungsansichten verlassen",
+      "globalShortcuts": "Globale Tastenkürzel",
+      "goToDashboards": "Zu Dashboards gehen",
+      "goToHomeDashboard": "Zum Home-Dashboard gehen",
+      "keyboardShortcuts": "Tastenkürzel",
+      "refreshAllPanels": "Alle Panels aktualisieren",
+      "showAllShortcuts": "Alle Tastenkürzel anzeigen",
+      "simplifiedView": "Dies ist eine vereinfachte Ansicht. Sie können diese durch Grafanas vollständige HelpModal-Komponente ersetzen.",
+      "toggleViewMode": "Ansichtsmodus umschalten"
+    }
+  }
+}

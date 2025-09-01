@@ -19,6 +19,8 @@ export interface UseStepCheckerProps {
   objectives?: string;
   hints?: string;
   stepId: string;
+  targetAction?: string; // Add targetAction to pass through to requirements checking
+  refTarget?: string; // Add refTarget to pass through to requirements checking
   isEligibleForChecking: boolean;
 }
 
@@ -49,6 +51,8 @@ export function useStepChecker({
   objectives,
   hints,
   stepId,
+  targetAction,
+  refTarget,
   isEligibleForChecking = true,
 }: UseStepCheckerProps): UseStepCheckerReturn {
   const [state, setState] = useState({
@@ -105,8 +109,8 @@ export function useStepChecker({
         // Create proper InteractiveElementData structure
         const actionData = {
           requirements: conditions,
-          targetaction: 'button' as const,
-          reftarget: stepId,
+          targetaction: targetAction || 'button',
+          reftarget: refTarget || stepId, // Use actual refTarget if available, fallback to stepId
           textContent: stepId,
           tagName: 'div' as const,
           objectives: type === 'objectives' ? conditions : undefined,
@@ -132,7 +136,7 @@ export function useStepChecker({
         return { pass: false, error: errorMessage };
       }
     },
-    [stepId, checkRequirementsFromData]
+    [stepId, refTarget, targetAction, checkRequirementsFromData]
   );
 
   /**
@@ -147,11 +151,8 @@ export function useStepChecker({
     try {
       // STEP 1: Check objectives first (they always win)
       if (objectives && objectives.trim() !== '') {
-        console.log(`🎯 [DEBUG] Checking objectives for ${stepId}: ${objectives}`);
-
         const objectivesResult = await checkConditions(objectives, 'objectives');
         if (objectivesResult.pass) {
-          console.log(`✅ [DEBUG] Objectives met for ${stepId}, auto-completing`);
           const finalState = {
             isEnabled: true,
             isCompleted: true,
@@ -171,7 +172,6 @@ export function useStepChecker({
 
       // STEP 2: Check eligibility (sequential dependencies)
       if (!isEligibleForChecking) {
-        // console.log(`⏭️ [DEBUG] Step ${stepId} not eligible due to sequential dependency`);
         const blockedState = {
           isEnabled: false,
           isCompleted: false,
@@ -187,14 +187,7 @@ export function useStepChecker({
 
       // STEP 3: Check requirements (only if objectives not met and eligible)
       if (requirements && requirements.trim() !== '') {
-        console.warn(`🔍 [DEBUG] Checking requirements for ${stepId}: ${requirements}`);
-
         const requirementsResult = await checkConditions(requirements, 'requirements');
-        console.warn(`📋 [DEBUG] Requirements result for ${stepId}:`, {
-          pass: requirementsResult.pass,
-          error: requirementsResult.error,
-          requirements,
-        });
 
         const explanation = requirementsResult.pass
           ? undefined
@@ -209,7 +202,6 @@ export function useStepChecker({
           error: requirementsResult.pass ? undefined : requirementsResult.error,
         };
 
-        console.warn(`🎯 [DEBUG] Setting requirements state for ${stepId}:`, requirementsState);
         setState(requirementsState);
         updateManager(requirementsState);
         return;
@@ -275,7 +267,6 @@ export function useStepChecker({
    * Manual completion (for user-executed steps)
    */
   const markCompleted = useCallback(() => {
-    console.log(`🎯 [DEBUG] Manually marking ${stepId} as completed`);
     const completedState = {
       ...state,
       isCompleted: true,
@@ -285,7 +276,7 @@ export function useStepChecker({
     };
     setState(completedState);
     updateManager(completedState);
-  }, [stepId, state, updateManager]);
+  }, [state, updateManager]);
 
   // Auto-check when eligibility or conditions change
   useEffect(() => {

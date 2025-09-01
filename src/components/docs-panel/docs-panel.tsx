@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
+import { t } from '@grafana/i18n';
 
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
@@ -116,7 +117,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         const tabs: LearningJourneyTab[] = [
           {
             id: 'recommendations',
-            title: 'Recommendations',
+            title: 'Recommendations', // Will be translated in renderer
             baseUrl: '',
             currentUrl: '',
             content: null,
@@ -599,49 +600,66 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       <div className={styles.topBar}>
         <div className={styles.tabBar}>
           <div className={styles.tabList} ref={tabListRef}>
-            {visibleTabs.map((tab) => (
-              <button
-                key={tab.id}
-                className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
-                onClick={() => model.setActiveTab(tab.id)}
-                disabled={tab.isLoading}
-                title={tab.title}
-              >
-                <div className={styles.tabContent}>
-                  {tab.id !== 'recommendations' && (
-                    <Icon name={tab.type === 'docs' ? 'file-alt' : 'book'} size="xs" className={styles.tabIcon} />
-                  )}
-                  <span className={styles.tabTitle}>
-                    {tab.isLoading ? (
-                      <>
-                        <Icon name="sync" size="xs" />
-                        <span>Loading...</span>
-                      </>
-                    ) : (
-                      tab.title
+            {visibleTabs.map((tab) => {
+              const getTranslatedTitle = (title: string) => {
+                if (title === 'Recommendations') {
+                  return t('docsPanel.recommendations', 'Recommendations');
+                }
+                if (title === 'Learning Journey') {
+                  return t('docsPanel.learningJourney', 'Learning Journey');
+                }
+                if (title === 'Documentation') {
+                  return t('docsPanel.documentation', 'Documentation');
+                }
+                return title; // Custom titles stay as-is
+              };
+
+              return (
+                <button
+                  key={tab.id}
+                  className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
+                  onClick={() => model.setActiveTab(tab.id)}
+                  disabled={tab.isLoading}
+                  title={getTranslatedTitle(tab.title)}
+                >
+                  <div className={styles.tabContent}>
+                    {tab.id !== 'recommendations' && (
+                      <Icon name={tab.type === 'docs' ? 'file-alt' : 'book'} size="xs" className={styles.tabIcon} />
                     )}
-                  </span>
-                  {tab.id !== 'recommendations' && (
-                    <IconButton
-                      name="times"
-                      size="sm"
-                      aria-label={`Close ${tab.title}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        reportAppInteraction(UserInteraction.CloseTabClick, {
-                          tab_type: tab.type || 'learning-journey',
-                          tab_title: tab.title,
-                          tab_url: tab.currentUrl || tab.baseUrl,
-                          close_location: 'tab_button',
-                        });
-                        model.closeTab(tab.id);
-                      }}
-                      className={styles.closeButton}
-                    />
-                  )}
-                </div>
-              </button>
-            ))}
+                    <span className={styles.tabTitle}>
+                      {tab.isLoading ? (
+                        <>
+                          <Icon name="sync" size="xs" />
+                          <span>{t('docsPanel.loading', 'Loading...')}</span>
+                        </>
+                      ) : (
+                        getTranslatedTitle(tab.title)
+                      )}
+                    </span>
+                    {tab.id !== 'recommendations' && (
+                      <IconButton
+                        name="times"
+                        size="sm"
+                        aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
+                          title: getTranslatedTitle(tab.title),
+                        })}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          reportAppInteraction(UserInteraction.CloseTabClick, {
+                            tab_type: tab.type || 'learning-journey',
+                            tab_title: tab.title,
+                            tab_url: tab.currentUrl || tab.baseUrl,
+                            close_location: 'tab_button',
+                          });
+                          model.closeTab(tab.id);
+                        }}
+                        className={styles.closeButton}
+                      />
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           {overflowedTabs.length > 0 && (
@@ -655,70 +673,96 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                   }
                   setIsDropdownOpen(!isDropdownOpen);
                 }}
-                aria-label={`Show ${overflowedTabs.length} more tabs`}
+                aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', { count: overflowedTabs.length })}
                 aria-expanded={isDropdownOpen}
                 aria-haspopup="true"
               >
                 <div className={styles.tabContent}>
                   <Icon name="angle-right" size="sm" className={styles.chevronIcon} />
-                  <span className={styles.tabTitle}>{overflowedTabs.length} more</span>
+                  <span className={styles.tabTitle}>
+                    {t('docsPanel.moreTabs', '{{count}} more', { count: overflowedTabs.length })}
+                  </span>
                 </div>
               </button>
             </div>
           )}
 
           {isDropdownOpen && overflowedTabs.length > 0 && (
-            <div ref={dropdownRef} className={styles.tabDropdown} role="menu" aria-label="More tabs">
-              {overflowedTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
-                  onClick={() => {
-                    model.setActiveTab(tab.id);
-                    setIsDropdownOpen(false);
-                  }}
-                  role="menuitem"
-                  aria-label={`Switch to ${tab.title}`}
-                >
-                  <div className={styles.dropdownItemContent}>
-                    {tab.id !== 'recommendations' && (
-                      <Icon
-                        name={tab.type === 'docs' ? 'file-alt' : 'book'}
-                        size="xs"
-                        className={styles.dropdownItemIcon}
-                      />
-                    )}
-                    <span className={styles.dropdownItemTitle}>
-                      {tab.isLoading ? (
-                        <>
-                          <Icon name="sync" size="xs" />
-                          <span>Loading...</span>
-                        </>
-                      ) : (
-                        tab.title
+            <div
+              ref={dropdownRef}
+              className={styles.tabDropdown}
+              role="menu"
+              aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
+            >
+              {overflowedTabs.map((tab) => {
+                const getTranslatedTitle = (title: string) => {
+                  if (title === 'Recommendations') {
+                    return t('docsPanel.recommendations', 'Recommendations');
+                  }
+                  if (title === 'Learning Journey') {
+                    return t('docsPanel.learningJourney', 'Learning Journey');
+                  }
+                  if (title === 'Documentation') {
+                    return t('docsPanel.documentation', 'Documentation');
+                  }
+                  return title; // Custom titles stay as-is
+                };
+
+                return (
+                  <button
+                    key={tab.id}
+                    className={`${styles.dropdownItem} ${tab.id === activeTabId ? styles.activeDropdownItem : ''}`}
+                    onClick={() => {
+                      model.setActiveTab(tab.id);
+                      setIsDropdownOpen(false);
+                    }}
+                    role="menuitem"
+                    aria-label={t('docsPanel.switchToTab', 'Switch to {{title}}', {
+                      title: getTranslatedTitle(tab.title),
+                    })}
+                  >
+                    <div className={styles.dropdownItemContent}>
+                      {tab.id !== 'recommendations' && (
+                        <Icon
+                          name={tab.type === 'docs' ? 'file-alt' : 'book'}
+                          size="xs"
+                          className={styles.dropdownItemIcon}
+                        />
                       )}
-                    </span>
-                    {tab.id !== 'recommendations' && (
-                      <IconButton
-                        name="times"
-                        size="sm"
-                        aria-label={`Close ${tab.title}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          reportAppInteraction(UserInteraction.CloseTabClick, {
-                            tab_type: tab.type || 'learning-journey',
-                            tab_title: tab.title,
-                            tab_url: tab.currentUrl || tab.baseUrl,
-                            close_location: 'dropdown',
-                          });
-                          model.closeTab(tab.id);
-                        }}
-                        className={styles.dropdownItemClose}
-                      />
-                    )}
-                  </div>
-                </button>
-              ))}
+                      <span className={styles.dropdownItemTitle}>
+                        {tab.isLoading ? (
+                          <>
+                            <Icon name="sync" size="xs" />
+                            <span>{t('docsPanel.loading', 'Loading...')}</span>
+                          </>
+                        ) : (
+                          getTranslatedTitle(tab.title)
+                        )}
+                      </span>
+                      {tab.id !== 'recommendations' && (
+                        <IconButton
+                          name="times"
+                          size="sm"
+                          aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
+                            title: getTranslatedTitle(tab.title),
+                          })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            reportAppInteraction(UserInteraction.CloseTabClick, {
+                              tab_type: tab.type || 'learning-journey',
+                              tab_title: tab.title,
+                              tab_url: tab.currentUrl || tab.baseUrl,
+                              close_location: 'dropdown',
+                            });
+                            model.closeTab(tab.id);
+                          }}
+                          className={styles.dropdownItemClose}
+                        />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -764,12 +808,14 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                 {isLearningJourneyTab && !showMilestoneProgress && (
                   <div className={styles.contentMeta}>
                     <div className={styles.metaInfo}>
-                      <span>Learning Journey</span>
+                      <span>{t('docsPanel.learningJourney', 'Learning Journey')}</span>
                     </div>
                     <small>
                       {(activeTab.content?.metadata.learningJourney?.totalMilestones || 0) > 0
-                        ? `${activeTab.content?.metadata.learningJourney?.totalMilestones} milestones`
-                        : 'Interactive journey'}
+                        ? t('docsPanel.milestonesCount', '{{count}} milestones', {
+                            count: activeTab.content?.metadata.learningJourney?.totalMilestones,
+                          })
+                        : t('docsPanel.interactiveJourney', 'Interactive journey')}
                     </small>
                   </div>
                 )}
@@ -778,7 +824,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                 {activeTab.type === 'docs' && (
                   <div className={styles.contentMeta}>
                     <div className={styles.metaInfo}>
-                      <span>Documentation</span>
+                      <span>{t('docsPanel.documentation', 'Documentation')}</span>
                     </div>
                     <div
                       style={{
@@ -803,7 +849,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                           return (
                             <button
                               className={styles.secondaryActionButton}
-                              aria-label="Open this page in new tab"
+                              aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
                               onClick={() => {
                                 reportAppInteraction(UserInteraction.OpenDocumentationButton, {
                                   content_type: activeTab.type || 'docs',
@@ -815,7 +861,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                               }}
                             >
                               <Icon name="external-link-alt" size="sm" />
-                              <span>Open</span>
+                              <span>{t('docsPanel.open', 'Open')}</span>
                             </button>
                           );
                         }
@@ -834,7 +880,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         <IconButton
                           name="arrow-left"
                           size="sm"
-                          aria-label="Previous milestone"
+                          aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
                           onClick={() => {
                             reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
                               journey_title: activeTab.title,
@@ -847,19 +893,21 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
                             model.navigateToPreviousMilestone();
                           }}
-                          tooltip="Previous milestone (Alt + ←)"
+                          tooltip={t('docsPanel.previousMilestoneTooltip', 'Previous milestone (Alt + ←)')}
                           tooltipPlacement="top"
                           disabled={!model.canNavigatePrevious() || activeTab.isLoading}
                           className={styles.navButton}
                         />
                         <span className={styles.milestoneText}>
-                          Milestone {activeTab.content?.metadata.learningJourney?.currentMilestone} of{' '}
-                          {activeTab.content?.metadata.learningJourney?.totalMilestones}
+                          {t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
+                            current: activeTab.content?.metadata.learningJourney?.currentMilestone,
+                            total: activeTab.content?.metadata.learningJourney?.totalMilestones,
+                          })}
                         </span>
                         <IconButton
                           name="arrow-right"
                           size="sm"
-                          aria-label="Next milestone"
+                          aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
                           onClick={() => {
                             reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
                               journey_title: activeTab.title,
@@ -872,7 +920,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
                             model.navigateToNextMilestone();
                           }}
-                          tooltip="Next milestone (Alt + →)"
+                          tooltip={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')}
                           tooltipPlacement="top"
                           disabled={!model.canNavigateNext() || activeTab.isLoading}
                           className={styles.navButton}

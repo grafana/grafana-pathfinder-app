@@ -31,7 +31,6 @@ export class NavigationManager {
       rect.right <= (window.innerWidth || document.documentElement.clientWidth);
 
     if (!isVisible) {
-      console.warn('📜 Scrolling element into view for better visibility');
       element.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
@@ -94,10 +93,6 @@ export class NavigationManager {
    * @returns Promise that resolves when highlighting is complete
    */
   async highlightWithComment(element: HTMLElement, comment?: string): Promise<HTMLElement> {
-    if (comment) {
-      console.warn(`🎨 NavigationManager showing comment box:`, comment.substring(0, 50) + '...');
-    }
-
     // First, ensure navigation is open and element is visible
     await this.ensureNavigationOpen(element);
     await this.ensureElementVisible(element);
@@ -308,18 +303,12 @@ export class NavigationManager {
     const isNavClosed = ariaExpanded === 'false' || ariaExpanded === null;
 
     if (isNavClosed) {
-      if (logWarnings) {
-        console.warn('🔄 Opening navigation menu for interactive element access');
-      }
       megaMenuToggle.click();
 
       await waitForReactUpdates();
 
       const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
       if (dockMenuButton) {
-        if (logWarnings) {
-          console.warn('📌 Docking navigation menu to keep it in place');
-        }
         dockMenuButton.click();
 
         await waitForReactUpdates();
@@ -334,16 +323,10 @@ export class NavigationManager {
       // Navigation is already open, just try to dock it if needed
       const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement;
       if (dockMenuButton) {
-        if (logWarnings) {
-          console.warn('📌 Navigation already open, ensuring it is docked');
-        }
         dockMenuButton.click();
         await waitForReactUpdates();
         return;
       } else {
-        if (logWarnings) {
-          console.warn('✅ Navigation already open and accessible');
-        }
         return;
       }
     }

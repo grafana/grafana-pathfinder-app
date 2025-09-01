@@ -1,0 +1,73 @@
+{
+  "contextPanel": {
+    "failedToLoad": "Falha ao carregar recomendações: {{error}}",
+    "items_one": "{{count}} item",
+    "items_many": "{{count}} itens",
+    "items_other": "{{count}} itens",
+    "milestones": "Marcos:",
+    "noRecommendations": "Nenhuma recomendação disponível para o seu contexto actual",
+    "otherDocumentation": "Outra Documentação",
+    "percentComplete": "{{percent}}% completo",
+    "recommendedDocumentation": "Documentação Recomendada",
+    "start": "Iniciar",
+    "startLearningJourney": "Iniciar Jornada de Aprendizagem",
+    "subtitle": "Com base no seu contexto actual, aqui tem algumas jornadas de aprendizagem e documentação que podem ser benéficas.",
+    "summary": "Resumo",
+    "view": "Ver",
+    "viewDocumentation": "Ver Documentação"
+  },
+  "docsPanel": {
+    "closeTab": "Fechar {{title}}",
+    "documentation": "Documentação",
+    "interactiveJourney": "Jornada interactiva",
+    "learningJourney": "Jornada de Aprendizagem",
+    "loading": "A carregar...",
+    "milestoneProgress": "Marco {{current}} de {{total}}",
+    "milestonesCount_one": "{{count}} marco",
+    "milestonesCount_many": "{{count}} marcos",
+    "milestonesCount_other": "{{count}} marcos",
+    "moreTabs_one": "{{count}} mais",
+    "moreTabs_many": "{{count}} mais",
+    "moreTabs_other": "{{count}} mais",
+    "moreTabsMenu": "Mais separadores",
+    "nextMilestone": "Próximo marco",
+    "nextMilestoneTooltip": "Próximo marco (Alt + →)",
+    "open": "Abrir",
+    "openInNewTab": "Abrir esta página em novo separador",
+    "previousMilestone": "Marco anterior",
+    "previousMilestoneTooltip": "Marco anterior (Alt + ←)",
+    "recommendations": "Recomendações",
+    "showMoreTabs_one": "Mostrar {{count}} separador a mais",
+    "showMoreTabs_many": "Mostrar {{count}} separadores a mais",
+    "showMoreTabs_other": "Mostrar {{count}} separadores a mais",
+    "switchToTab": "Mudar para {{title}}"
+  },
+  "feedbackButton": {
+    "ariaLabel": "Dar feedback sobre este plugin",
+    "text": "Dar feedback",
+    "title": "Dar feedback sobre este plugin"
+  },
+  "helpFooter": {
+    "buttons": {
+      "community": "Comunidade",
+      "documentation": "Documentação",
+      "download": "Transferir",
+      "enterprise": "Enterprise",
+      "shortcuts": "Atalhos",
+      "support": "Suporte"
+    },
+    "modal": {
+      "dashboardSettings": "Dashboard settings",
+      "dashboardShortcuts": "Dashboard Shortcuts",
+      "exitEditViews": "Exit edit/setting views",
+      "globalShortcuts": "Global Shortcuts",
+      "goToDashboards": "Go to Dashboards",
+      "goToHomeDashboard": "Go to Home Dashboard",
+      "keyboardShortcuts": "Keyboard Shortcuts",
+      "refreshAllPanels": "Refresh all panels",
+      "showAllShortcuts": "Show all keyboard shortcuts",
+      "simplifiedView": "This is a simplified view. You can replace this with Grafana's full HelpModal component.",
+      "toggleViewMode": "Toggle view mode"
+    }
+  }
+}

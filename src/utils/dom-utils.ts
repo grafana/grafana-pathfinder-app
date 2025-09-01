@@ -104,10 +104,8 @@ export function findButtonByText(targetText: string): HTMLButtonElement[] {
 
   // Return exact matches if any exist, otherwise return partial matches
   if (exactMatches.length > 0) {
-    console.warn(`🎯 Found ${exactMatches.length} exact matches for "${targetText}"`);
     return exactMatches;
   } else if (partialMatches.length > 0) {
-    console.warn(`🔍 Found ${partialMatches.length} partial matches for "${targetText}"`);
     return partialMatches;
   }
 
@@ -127,6 +125,7 @@ export function resetValueTracker(targetElement: HTMLElement): void {
  * Check if a target element exists based on the action type
  * For button actions, checks if buttons with matching text exist
  * For other actions, checks if the CSS selector matches an element
+ * Includes retry logic for elements that might not exist immediately
  */
 export async function reftargetExistsCHECK(
   reftarget: string,
@@ -151,18 +150,30 @@ export async function reftargetExistsCHECK(
   }
 
   // For other actions, check if the CSS selector matches an element
-  const targetElement = document.querySelector(reftarget);
-  if (targetElement) {
-    return {
-      requirement: 'exists-reftarget',
-      pass: true,
-    };
+  // Add retry logic for elements that might not exist immediately
+  const maxRetries = 3;
+  const retryDelay = 500; // 500ms between retries
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const targetElement = document.querySelector(reftarget);
+
+    if (targetElement) {
+      return {
+        requirement: 'exists-reftarget',
+        pass: true,
+      };
+    }
+
+    // If this isn't the last attempt, wait before retrying
+    if (attempt < maxRetries) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
   }
 
   return {
     requirement: 'exists-reftarget',
     pass: false,
-    error: 'Element not found',
+    error: `Element not found`,
   };
 }
 

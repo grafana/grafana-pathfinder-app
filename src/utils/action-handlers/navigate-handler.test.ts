@@ -56,7 +56,6 @@ describe('NavigateHandler', () => {
       await navigateHandler.execute(mockData, false);
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
-      expect(mockConsoleLog).toHaveBeenCalledWith(`🔍 Show mode: Would navigate to ${mockData.reftarget}`);
       expect(mockWaitForReactUpdates).toHaveBeenCalled();
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });
@@ -65,7 +64,6 @@ describe('NavigateHandler', () => {
       await navigateHandler.execute(mockData, true);
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'running');
-      expect(mockConsoleLog).toHaveBeenCalledWith(`🧭 Navigating to: ${mockData.reftarget}`);
       expect(locationService.push).toHaveBeenCalledWith('/test-route');
       expect(mockWindowOpen).not.toHaveBeenCalled();
       expect(mockWaitForReactUpdates).toHaveBeenCalled();
@@ -78,7 +76,6 @@ describe('NavigateHandler', () => {
       await navigateHandler.execute(externalData, true);
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(externalData, 'running');
-      expect(mockConsoleLog).toHaveBeenCalledWith(`🧭 Navigating to: ${externalData.reftarget}`);
       expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer');
       expect(locationService.push).not.toHaveBeenCalled();
       expect(mockWaitForReactUpdates).toHaveBeenCalled();
