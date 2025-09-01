@@ -1,6 +1,6 @@
 # Grafana Pathfinder
 
-![Grafana Pathfinder](https://github.com/grafana/docs-plugin/blob/main/src/img/logo.svg)
+![Grafana Pathfinder](https://raw.githubusercontent.com/grafana/docs-plugin/refs/heads/main/src/img/logo.svg)
 
 [![License](https://img.shields.io/github/license/grafana/docs-plugin)](LICENSE)
 
