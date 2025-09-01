@@ -227,13 +227,18 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               const baseHost = new URL(docsBase).host;
               return host === baseHost;
             }
-            return u.includes('/docs/') || u.includes('/tutorials/');
+            return u.includes('/docs/') || u.includes('/tutorials/') || u.includes('/components/');
           } catch {
             return false;
           }
         };
 
-        if (isDocsHost(response.url) && (response.url.includes('/docs/') || response.url.includes('/tutorials/'))) {
+        if (
+          isDocsHost(response.url) &&
+          (response.url.includes('/docs/') ||
+            response.url.includes('/tutorials/') ||
+            response.url.includes('/components/'))
+        ) {
           const finalUnstyledUrl = getUnstyledContentUrl(response.url);
           if (finalUnstyledUrl !== response.url) {
             try {

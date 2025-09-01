@@ -1040,7 +1040,7 @@ export class ContextService {
     if (configWithDefaults.devMode) {
       bundledRecommendations.push({
         title: 'Components',
-        url: 'https://grafana.com/components',
+        url: 'https://grafana.com/components/',
         type: 'docs-page',
         summary: 'Components page',
       });
