@@ -180,7 +180,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     });
 
     return unsubscribe;
-  }, [debouncedRefresh]); // Only depend on debouncedRefresh
+  }, [debouncedRefresh]);
 
   // Fetch recommendations when context data changes (but not when loading)
   const tagsString = contextData.tags?.join(',') || '';
