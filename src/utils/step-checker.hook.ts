@@ -172,6 +172,12 @@ export function useStepChecker({
    * 3. Requirements (only if objectives not met)
    */
   const checkStep = useCallback(async () => {
+    // Prevent infinite loops by checking if we're already in the right state
+    if (state.isChecking) {
+      console.warn(`⚠️ Step ${stepId}: Already checking, skipping duplicate check`);
+      return;
+    }
+    
     setState((prev) => ({ ...prev, isChecking: true, error: undefined }));
 
     try {
@@ -203,22 +209,39 @@ export function useStepChecker({
 
       // STEP 2: Check eligibility (sequential dependencies)
       if (!isEligibleForChecking) {
-        const blockedState = {
-          isEnabled: false,
-          isCompleted: false,
-          isChecking: false,
-          isSkipped: false,
-          completionReason: 'none' as const,
-          explanation: 'Complete the previous steps in order before this one becomes available.',
-          error: 'Sequential dependency not met',
-          canFixRequirement: false,
-          canSkip: false, // Never allow skipping for sequential dependencies
-          fixType: undefined,
-          targetHref: undefined,
-        };
-        setState(blockedState);
-        updateManager(blockedState);
-        return;
+        console.warn(`🚫 Step ${stepId}: NOT ELIGIBLE - isEligibleForChecking = false`);
+        
+        // Check if this step is part of a section (section controls its own eligibility)
+        const isPartOfSection = stepId.includes('section-') && stepId.includes('-step-');
+        
+        if (isPartOfSection) {
+          console.warn(`🏠 Step ${stepId}: Part of section - section controls eligibility`);
+          // For section steps, the section's getStepEligibility is authoritative
+          // Don't override with any logic - just clear checking state and let section decide
+          setState(prev => ({ 
+            ...prev, 
+            isChecking: false,
+            // Don't override other state - let section eligibility control behavior
+          }));
+          return;
+        } else {
+          const blockedState = {
+            isEnabled: false,
+            isCompleted: false,
+            isChecking: false,
+            isSkipped: false,
+            completionReason: 'none' as const,
+            explanation: 'Complete the previous steps in order before this one becomes available.',
+            error: 'Sequential dependency not met',
+            canFixRequirement: false,
+            canSkip: false, // Never allow skipping for sequential dependencies
+            fixType: undefined,
+            targetHref: undefined,
+          };
+          setState(blockedState);
+          updateManager(blockedState);
+          return;
+        }
       }
 
       // STEP 3: Check requirements (only if objectives not met and eligible)
@@ -376,7 +399,7 @@ export function useStepChecker({
         managerRef.current?.triggerReactiveCheck();
       }, 100);
     }
-  }, [state, updateManager]);
+  }, [updateManager]); // Removed state to prevent infinite loops
 
   /**
    * Reset step to initial state (including skipped state) and recheck requirements
@@ -400,24 +423,33 @@ export function useStepChecker({
 
     // Trigger a recheck after reset to properly enable steps that meet requirements
     setTimeout(() => {
-      checkStep();
+      checkStepRef.current();
     }, 50);
-  }, [skipable, updateManager, checkStep]);
+  }, [skipable, updateManager]); // Removed checkStep to prevent infinite loops
 
   // Auto-check when eligibility or conditions change
+  const checkStepRef = useRef(checkStep);
+  checkStepRef.current = checkStep;
+  
   useEffect(() => {
     // Skip checking if already completed (prevent redundant checks)
-    if (!state.isCompleted) {
-      checkStep();
+    if (!state.isCompleted && !state.isChecking) {
+      checkStepRef.current();
     }
-  }, [checkStep, state.isCompleted]);
+  }, [state.isCompleted, state.isChecking]); // Use ref to avoid infinite loops
 
   // Register with manager for reactive re-checking
   useEffect(() => {
     if (managerRef.current) {
       const unregisterChecker = managerRef.current.registerStepCheckerByID(stepId, () => {
-        if (!state.isCompleted) {
-          checkStep();
+        // Only recheck if not completed AND if eligible (respect section authority)
+        // Use current state values to avoid stale closures
+        const currentState = managerRef.current?.getStepState(stepId);
+        if (!currentState?.isCompleted && isEligibleForChecking) {
+          console.warn(`🔄 Manager triggering recheck for ${stepId} - eligible and not completed`);
+          checkStepRef.current();
+        } else {
+          console.warn(`🔄 Manager skipping recheck for ${stepId} - completed: ${currentState?.isCompleted}, eligible: ${isEligibleForChecking}`);
         }
       });
 
@@ -426,7 +458,7 @@ export function useStepChecker({
       };
     }
     return undefined;
-  }, [stepId, checkStep, state.isCompleted]);
+  }, [stepId, isEligibleForChecking]); // Use minimal dependencies to prevent loops
 
   // Listen for section completion events (for section dependencies)
   useEffect(() => {

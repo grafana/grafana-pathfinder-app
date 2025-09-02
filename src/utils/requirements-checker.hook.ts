@@ -39,6 +39,8 @@ export interface RequirementsState {
   error?: string;
   hint?: string;
   explanation?: string; // User-friendly explanation for why requirements aren't met
+  isSkipped?: boolean; // Whether this step was skipped
+  completionReason?: 'none' | 'objectives' | 'manual' | 'skipped';
 }
 
 export interface RequirementsCheckResultLegacy {
@@ -187,31 +189,40 @@ export function useRequirementsChecker({
     checkPromiseRef.current = checkPromise();
     await checkPromiseRef.current;
     checkPromiseRef.current = null;
-  }, [requirements, targetAction, uniqueId, hints, state, checkRequirementsFromData]); // Removed state.isCompleted to prevent infinite loops
+  }, [requirements, targetAction, uniqueId, hints, checkRequirementsFromData]); // Removed state to prevent infinite loops
 
   const markCompleted = useCallback(() => {
-    const newState = {
-      ...state,
+    setState(prev => ({
+      ...prev,
       isCompleted: true,
       isEnabled: false, // Completed steps are disabled
-    };
-    setState(newState);
+    }));
 
     // Directly notify the manager with the new state to avoid timing issues
-    if (managerRef.current) {
-      managerRef.current.updateStep(uniqueId, newState);
+    setState(prev => {
+      const newState = {
+        ...prev,
+        isCompleted: true,
+        isEnabled: false,
+      };
+      
+      if (managerRef.current) {
+        managerRef.current.updateStep(uniqueId, newState);
 
-      // If this is a section completion, trigger reactive check to unlock dependent sections
-      if (uniqueId.startsWith('section-')) {
-        // Delayed reactive check to allow state to settle
-        setTimeout(() => {
-          managerRef.current?.triggerReactiveCheck();
-        }, 100);
+        // If this is a section completion, trigger reactive check to unlock dependent sections
+        if (uniqueId.startsWith('section-')) {
+          // Delayed reactive check to allow state to settle
+          setTimeout(() => {
+            managerRef.current?.triggerReactiveCheck();
+          }, 100);
+        }
       }
-    }
+      
+      return newState;
+    });
 
     // Step completion tracking (no debug logging needed)
-  }, [state, uniqueId]);
+  }, [uniqueId]);
 
   const reset = useCallback(() => {
     setState({
@@ -302,20 +313,34 @@ export class SequentialRequirementsManager {
   }
 
   // Trigger reactive checking of all steps (e.g., after completing a step or DOM changes)
+  private reactiveCheckThrottle: NodeJS.Timeout | null = null;
+  
   triggerReactiveCheck(): void {
-    // Trigger actual requirements re-checking for all registered steps
-    this.recheckAllSteps();
-    // Also notify listeners for UI updates
-    this.notifyListeners();
+    // Throttle reactive checks to prevent infinite loops
+    if (this.reactiveCheckThrottle) {
+      clearTimeout(this.reactiveCheckThrottle);
+    }
+    
+    this.reactiveCheckThrottle = setTimeout(() => {
+      // Trigger actual requirements re-checking for all registered steps
+      this.recheckAllSteps();
+      // Also notify listeners for UI updates
+      this.notifyListeners();
+      this.reactiveCheckThrottle = null;
+    }, 50); // Throttle to 50ms to prevent rapid-fire calls
   }
 
   private recheckAllSteps(): void {
     // Notify all step checkers to re-run their requirements
-    this.stepCheckers.forEach((checker) => {
-      // Trigger async recheck with minimal delay to prevent race conditions
-      setTimeout(() => {
-        checker();
-      }, 10); // Reduced from 50ms to 10ms for faster unlocking
+    // Use requestAnimationFrame to batch all checks together
+    requestAnimationFrame(() => {
+      this.stepCheckers.forEach((checker) => {
+        try {
+          checker();
+        } catch (error) {
+          console.error('Error in step checker:', error);
+        }
+      });
     });
   }
 
@@ -587,7 +612,7 @@ export function useSequentialRequirements({
     return () => {
       unregisterChecker();
     };
-  }, [manager, checkRequirements, uniqueId]);
+  }, [manager, uniqueId]); // Removed checkRequirements to prevent infinite loops
 
   const markCompleted = useCallback(() => {
     // Just delegate to the basic checker - it will update the manager directly
@@ -599,7 +624,7 @@ export function useSequentialRequirements({
     setTimeout(() => {
       manager.triggerReactiveCheck();
     }, 150); // Slightly longer delay to ensure basic checker's timeout completes first
-  }, [basicChecker, manager]);
+  }, [manager]); // Removed basicChecker to prevent infinite loops - use current reference
 
   // Get current state from manager (which includes sequential logic)
   const managerState = manager.getStepState(uniqueId);

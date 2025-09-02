@@ -52,16 +52,25 @@ export const InteractiveStep = forwardRef<
     // Get the interactive functions from the hook
     const { executeInteractiveAction, verifyStepResult } = useInteractiveElements();
 
-    // Use the new step requirements hook with parent coordination
+    // For section steps, use a simplified checker that respects section authority
+    // For standalone steps, use the full global checker
+    const isPartOfSection = stepId?.includes('section-') && stepId?.includes('-step-');
+    
     const checker = useStepChecker({
       requirements,
       hints,
       targetAction,
       refTarget,
       stepId: stepId || `step-${Date.now()}`, // Fallback if no stepId provided
-      isEligibleForChecking: isEligibleForChecking && !isCompleted,
+      isEligibleForChecking: isPartOfSection ? true : (isEligibleForChecking && !isCompleted), // Section steps always eligible in checker
       skipable,
     });
+
+    // Debug: Log when eligibility changes (disabled to prevent spam)
+    // useEffect(() => {
+    //   console.warn(`Step ${stepId}: isEligibleForChecking changed to ${isEligibleForChecking}, isCompleted = ${isCompleted}`);
+    //   console.warn(`Step ${stepId}: Final eligibility = ${isEligibleForChecking && !isCompleted}`);
+    // }, [isEligibleForChecking, isCompleted, stepId]);
 
     // Combined completion state: objectives always win, skipped also counts as completed (clarification 1, 2)
     const isCompletedWithObjectives =
@@ -69,18 +78,33 @@ export const InteractiveStep = forwardRef<
       isLocallyCompleted ||
       checker.completionReason === 'objectives' ||
       checker.completionReason === 'skipped';
+      
+    // For section steps, combine section eligibility with requirements checking
+    // For standalone steps, use checker's decision
+    const finalIsEnabled = isPartOfSection 
+      ? (isEligibleForChecking && !isCompleted && checker.completionReason !== 'objectives') 
+      : checker.isEnabled;
+      
+    // For section steps, show explanations when they have requirements that aren't met
+    const shouldShowExplanation = isPartOfSection 
+      ? (!isEligibleForChecking || (requirements && !checker.isEnabled))
+      : !checker.isEnabled;
 
     // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
+        console.warn(`🔄 Step ${stepId}: Received resetTrigger ${resetTrigger} - resetting local state only`);
         setIsLocallyCompleted(false);
         setPostVerifyError(null);
+        
+        // Don't call checker.resetStep() here as it can cause loops
+        // The section reset will handle manager state directly
       }
     }, [resetTrigger, stepId]);
 
     // Execution logic (shared between individual and sequence execution)
     const executeStep = useCallback(async (): Promise<boolean> => {
-      if (!checker.isEnabled || isCompletedWithObjectives || disabled) {
+      if (!finalIsEnabled || isCompletedWithObjectives || disabled) {
         return false;
       }
 
@@ -133,7 +157,7 @@ export const InteractiveStep = forwardRef<
         return false;
       }
     }, [
-      checker.isEnabled,
+      finalIsEnabled,
       isCompletedWithObjectives,
       disabled,
       stepId,
@@ -160,7 +184,7 @@ export const InteractiveStep = forwardRef<
 
     // Handle individual "Show me" action
     const handleShowAction = useCallback(async () => {
-      if (disabled || isShowRunning || isCompletedWithObjectives || !checker.isEnabled) {
+      if (disabled || isShowRunning || isCompletedWithObjectives || !finalIsEnabled) {
         return;
       }
 
@@ -196,7 +220,7 @@ export const InteractiveStep = forwardRef<
       disabled,
       isShowRunning,
       isCompletedWithObjectives,
-      checker.isEnabled,
+      finalIsEnabled,
       executeInteractiveAction,
       onStepComplete,
       onComplete,
@@ -205,7 +229,7 @@ export const InteractiveStep = forwardRef<
 
     // Handle individual "Do it" action (delegates to executeStep)
     const handleDoAction = useCallback(async () => {
-      if (disabled || isDoRunning || isCompletedWithObjectives || !checker.isEnabled) {
+      if (disabled || isDoRunning || isCompletedWithObjectives || !finalIsEnabled) {
         return;
       }
 
@@ -217,13 +241,15 @@ export const InteractiveStep = forwardRef<
       } finally {
         setIsDoRunning(false);
       }
-    }, [disabled, isDoRunning, isCompletedWithObjectives, checker.isEnabled, executeStep]);
+    }, [disabled, isDoRunning, isCompletedWithObjectives, finalIsEnabled, executeStep]);
 
     // Handle individual step reset (redo functionality)
     const handleStepRedo = useCallback(async () => {
       if (disabled || isDoRunning || isShowRunning) {
         return;
       }
+
+      console.warn(`🔄 Step ${stepId}: Starting redo process`);
 
       // Reset local completion state
       setIsLocallyCompleted(false);
@@ -234,14 +260,15 @@ export const InteractiveStep = forwardRef<
         checker.resetStep();
       }
 
-      // Trigger requirements recheck to reset the step checker state
-      checker.checkStep();
-
       // Notify parent section to remove from completed steps
+      // The section is the authoritative source - it will update its state
+      // and the eligibility will be recalculated on the next render
       if (onStepReset && stepId) {
         onStepReset(stepId);
       }
-    }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset, checker]);
+      // No need for complex timing logic - the section's getStepEligibility
+      // will use the updated completedSteps state on the next render
+    }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset, checker, isEligibleForChecking]);
 
     const getActionDescription = () => {
       switch (targetAction) {
@@ -281,7 +308,7 @@ export const InteractiveStep = forwardRef<
               <Button
                 onClick={handleShowAction}
                 disabled={
-                  disabled || isAnyActionRunning || (!checker.isEnabled && checker.completionReason !== 'objectives')
+                  disabled || isAnyActionRunning || (!finalIsEnabled && checker.completionReason !== 'objectives')
                 }
                 size="sm"
                 variant="secondary"
@@ -292,18 +319,18 @@ export const InteractiveStep = forwardRef<
                   ? 'Checking...'
                   : isShowRunning
                     ? 'Showing...'
-                    : !checker.isEnabled
+                    : !finalIsEnabled
                       ? 'Requirements not met'
                       : 'Show me'}
               </Button>
             )}
 
             {/* Only show "Do it" button when doIt prop is true */}
-            {doIt && !isCompletedWithObjectives && (checker.isEnabled || checker.completionReason === 'objectives') && (
+            {doIt && !isCompletedWithObjectives && (finalIsEnabled || checker.completionReason === 'objectives') && (
               <Button
                 onClick={handleDoAction}
                 disabled={
-                  disabled || isAnyActionRunning || (!checker.isEnabled && checker.completionReason !== 'objectives')
+                  disabled || isAnyActionRunning || (!finalIsEnabled && checker.completionReason !== 'objectives')
                 }
                 size="sm"
                 variant="primary"
@@ -347,12 +374,12 @@ export const InteractiveStep = forwardRef<
         {/* Show explanation text when requirements aren't met, but objectives always win (clarification 2) */}
         {checker.completionReason !== 'objectives' &&
           checker.completionReason !== 'skipped' &&
-          !checker.isEnabled &&
+          shouldShowExplanation &&
           !isCompletedWithObjectives &&
           !checker.isChecking &&
-          checker.explanation && (
+          (checker.explanation || (!isEligibleForChecking && isPartOfSection)) && (
             <div className="interactive-step-requirement-explanation">
-              {checker.explanation}
+              {checker.explanation || (!isEligibleForChecking && isPartOfSection ? 'Complete the previous steps in order before this one becomes available.' : '')}
               <div className="interactive-step-requirement-buttons">
                 <button
                   className="interactive-requirement-retry-btn"

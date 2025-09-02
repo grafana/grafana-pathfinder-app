@@ -363,13 +363,15 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       // Reset cancellation state
       isCancelledRef.current = false;
 
-      // Trigger requirements recheck to reset the step checker state
-      checker.checkStep();
-
       // Notify parent section to remove from completed steps
+      // The section is the authoritative source - it will update its state
+      // and the eligibility will be recalculated on the next render
       if (onStepReset && stepId) {
         onStepReset(stepId);
       }
+      
+      // No need for complex timing logic - the section's getStepEligibility
+      // will use the updated completedSteps state on the next render
     }, [disabled, isExecuting, stepId, onStepReset, checker]);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;

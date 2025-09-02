@@ -276,7 +276,7 @@ export function InteractiveSection({
       import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
         const manager = SequentialRequirementsManager.getInstance();
 
-        // Trigger reactive check for all steps that might depend on this section
+        // Single reactive check to prevent infinite loops
         manager.triggerReactiveCheck();
 
         // Also trigger DOM event for any steps listening for section completion
@@ -285,36 +285,37 @@ export function InteractiveSection({
         });
         document.dispatchEvent(completionEvent);
 
-        // Multiple delayed triggers to ensure dependent steps get unlocked
-        setTimeout(() => {
-          manager.triggerReactiveCheck();
-          document.dispatchEvent(completionEvent);
-        }, 100);
-        setTimeout(() => {
-          manager.triggerReactiveCheck();
-        }, 300);
+        // REMOVED: Multiple delayed triggers that were causing infinite loops
+        // The single triggerReactiveCheck() call above with throttling is sufficient
       });
     }
   }, [isCompleted, sectionId, stepComponents.length]);
 
   // Calculate which step is eligible for checking (sequential logic)
+  // This is the AUTHORITATIVE source for step eligibility within this section
   const getStepEligibility = useCallback(
     (stepIndex: number) => {
+      // Reduced logging to prevent spam during re-renders
+      
       // First step is always eligible (Trust but Verify)
       if (stepIndex === 0) {
         return true;
       }
 
       // Subsequent steps are eligible if all previous steps are completed
+      // Use section's completedSteps as the authoritative source
       for (let i = 0; i < stepIndex; i++) {
         const prevStepId = stepComponents[i].stepId;
-        if (!completedSteps.has(prevStepId)) {
+        const isCompleted = completedSteps.has(prevStepId);
+        if (!isCompleted) {
+          // Only log when debugging is needed
+          // console.warn(`Step ${stepIndex} (${stepId}) blocked by incomplete step ${i} (${prevStepId})`);
           return false;
         }
       }
       return true;
     },
-    [completedSteps, stepComponents]
+    [completedSteps, stepComponents, sectionId]
   );
 
   // Calculate resume information for button display
@@ -367,16 +368,27 @@ export function InteractiveSection({
   // Handle individual step reset (redo functionality)
   const handleStepReset = useCallback(
     (stepId: string) => {
+      console.warn(`🔄 Section ${sectionId}: Resetting step ${stepId}`);
+      
+      // Find the index of the step being reset
+      const resetIndex = stepComponents.findIndex((step) => step.stepId === stepId);
+      
+      // Update section state - only remove this step AND all subsequent steps
       setCompletedSteps((prev) => {
         const newSet = new Set(prev);
-        newSet.delete(stepId);
+        
+        // Remove the target step and all steps after it
+        for (let i = resetIndex; i < stepComponents.length; i++) {
+          const stepToRemove = stepComponents[i].stepId;
+          newSet.delete(stepToRemove);
+        }
+        
         // Persist removal
         persistCompletedSteps(newSet);
         return newSet;
       });
 
-      // Move currentStepIndex back if we're resetting an earlier step
-      const resetIndex = stepComponents.findIndex((step) => step.stepId === stepId);
+      // Move currentStepIndex back to the reset step
       if (resetIndex >= 0 && resetIndex < currentStepIndex) {
         setCurrentStepIndex(resetIndex);
       }
@@ -385,8 +397,11 @@ export function InteractiveSection({
       if (currentlyExecutingStep === stepId) {
         setCurrentlyExecutingStep(null);
       }
+      
+      // The step's own reset logic will handle updating the manager state
+      // No need to manually sync here - let the normal flow handle it
     },
-    [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps]
+    [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps, completedSteps, sectionId]
   );
 
   // Execute a single step (shared between individual and sequence execution)
@@ -747,24 +762,56 @@ export function InteractiveSection({
       return;
     }
 
+    console.warn(`🔄 Section ${sectionId}: Starting complete section reset`);
+
+    // Clear section state immediately and force re-render
     setCompletedSteps(new Set());
     setCurrentlyExecutingStep(null);
     setCurrentStepIndex(0); // Reset to start from beginning
-    setResetTrigger((prev) => prev + 1); // Signal child steps to reset their local state
+    
+    // Signal ALL child steps to reset their local state (including skipped)
+    setResetTrigger((prev) => prev + 1);
 
-    // Trigger reactive check to properly re-enable steps based on current requirements
-    setTimeout(() => {
-      const { SequentialRequirementsManager } = require('../../../requirements-checker.hook');
-      SequentialRequirementsManager.getInstance().triggerReactiveCheck();
-    }, 100);
-
-    // Clear persistence
+    // Clear persistence immediately
     try {
       localStorage.removeItem(getStorageKey());
     } catch {
       // ignore
     }
-  }, [disabled, isRunning, getStorageKey]);
+
+    // Reset all step states in the manager to clear ALL states (completed, skipped, etc.)
+    // Import once to avoid multiple async imports and use a single batch operation
+    import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
+      const manager = SequentialRequirementsManager.getInstance();
+      
+      // Batch all step resets into a single operation to prevent cascading updates
+      console.warn(`🔄 Section ${sectionId}: Batch resetting ${stepComponents.length} steps`);
+      
+      // Stop DOM monitoring temporarily to prevent reactive loops during reset
+      manager.stopDOMMonitoring();
+      
+      // Reset all steps synchronously
+      stepComponents.forEach(step => {
+        manager.updateStep(step.stepId, {
+          isEnabled: false,
+          isCompleted: false,
+          isChecking: false,
+          explanation: undefined,
+          error: undefined,
+        });
+      });
+      
+      // Single reactive check after all resets are done, then restart monitoring
+      setTimeout(() => {
+        console.warn(`🔄 Section ${sectionId}: Final reactive check after batch reset`);
+        manager.triggerReactiveCheck();
+        // Restart DOM monitoring after reset is complete
+        setTimeout(() => {
+          manager.startDOMMonitoring();
+        }, 100);
+      }, 200); // Longer delay to ensure all state updates settle
+    });
+  }, [disabled, isRunning, getStorageKey, stepComponents, sectionId, completedSteps]);
 
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {
@@ -778,6 +825,9 @@ export function InteractiveSection({
         const isEligibleForChecking = getStepEligibility(index);
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
+        
+        // Reduced logging to prevent spam during re-renders
+        // console.warn(`Step ${index} (${stepInfo.stepId}): eligible=${isEligibleForChecking}, completed=${isCompleted}`);
 
         return React.cloneElement(child as React.ReactElement<InteractiveStepProps>, {
           ...child.props,
@@ -838,7 +888,7 @@ export function InteractiveSection({
     children,
     stepComponents,
     getStepEligibility,
-    completedSteps,
+    completedSteps, // This should trigger re-render when completedSteps changes
     currentlyExecutingStep,
     handleStepComplete,
     handleStepReset,
