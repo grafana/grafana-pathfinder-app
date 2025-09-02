@@ -206,7 +206,7 @@ export function useRequirementsChecker({
         // Delayed reactive check to allow state to settle
         setTimeout(() => {
           managerRef.current?.triggerReactiveCheck();
-        }, 100);
+        }, INTERACTIVE_CONFIG.delays.debouncing.stateSettling);
       }
     }
 
@@ -228,7 +228,7 @@ export function useRequirementsChecker({
     if (!state.isCompleted && !state.isChecking && !state.isEnabled && requirements) {
       const retryTimeout = setTimeout(() => {
         checkRequirements();
-      }, 10000); // 10 second auto-retry
+      }, INTERACTIVE_CONFIG.delays.debouncing.requirementsRetry);
 
       return () => clearTimeout(retryTimeout);
     }
@@ -513,7 +513,7 @@ export function useSequentialRequirements({
       timeoutId = window.setTimeout(() => {
         forceUpdate({});
         timeoutId = null;
-      }, 25); // Reduced debounce for faster UI updates
+      }, INTERACTIVE_CONFIG.delays.debouncing.uiUpdates);
     });
 
     return () => {
@@ -598,7 +598,7 @@ export function useSequentialRequirements({
     // all dependent steps get re-evaluated
     setTimeout(() => {
       manager.triggerReactiveCheck();
-    }, 150); // Slightly longer delay to ensure basic checker's timeout completes first
+    }, INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck);
   }, [basicChecker, manager]);
 
   // Get current state from manager (which includes sequential logic)

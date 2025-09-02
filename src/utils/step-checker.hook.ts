@@ -13,6 +13,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { getRequirementExplanation } from './requirement-explanations';
 import { SequentialRequirementsManager } from './requirements-checker.hook';
 import { useInteractiveElements } from './interactive.hook';
+import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 
 export interface UseStepCheckerProps {
   requirements?: string;
@@ -249,7 +250,7 @@ export function useStepChecker({
       await fixNavigationRequirements();
 
       // After fixing, recheck the requirements
-      await new Promise((resolve) => setTimeout(resolve, 100)); // Small delay for UI to update
+      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.debouncing.stateSettling));
 
       // Trigger a requirements check to see if the fix worked
       await checkStep();

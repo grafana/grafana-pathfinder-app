@@ -718,9 +718,23 @@ export class ContextService {
   }
 
   /**
-   * Cleanup method - no longer needed as debouncing moved to hook level
+   * Cleanup method - clear any pending timeouts and reset state
    */
   public static cleanup(): void {
-    // No timeouts to clean up at service level anymore
+    // Clear any pending context-related timeouts from the centralized timeout manager
+    try {
+      const { TimeoutManager } = require('../timeout-manager');
+      const timeoutManager = TimeoutManager.getInstance();
+      timeoutManager.clear('context-refresh');
+      
+      // Clear any other context-related timeouts
+      timeoutManager.clear('context-recommendations');
+      timeoutManager.clear('context-debounce');
+    } catch (error) {
+      console.warn('Failed to clean up context timeouts:', error);
+    }
+    
+    // Reset EchoSrv state if needed (but keep it running to capture events)
+    // Note: We deliberately don't stop EchoSrv to keep capturing events
   }
 }

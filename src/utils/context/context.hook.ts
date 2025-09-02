@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { locationService } from '@grafana/runtime';
 import { ContextService } from './context.service';
 import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from './context.types';
+import { useTimeoutManager } from '../timeout-manager';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
@@ -42,8 +43,8 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     searchParams: '',
   });
 
-  // Unified timeout ref for all context refreshes (location + EchoSrv)
-  const refreshTimeoutRef = useRef<NodeJS.Timeout>();
+  // Use centralized timeout manager instead of local refs
+  const timeoutManager = useTimeoutManager();
 
   // Fetch context data
   const fetchContextData = useCallback(async () => {
@@ -59,15 +60,10 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
   // Unified debounced refresh for ALL context changes (location + EchoSrv)
   const debouncedRefresh = useCallback(
-    (delay = 500) => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-      refreshTimeoutRef.current = setTimeout(async () => {
-        await fetchContextData();
-      }, delay);
+    (delay?: number) => {
+      timeoutManager.setDebounced('context-refresh', fetchContextData, delay, 'contextRefresh');
     },
-    [fetchContextData]
+    [fetchContextData, timeoutManager]
   );
 
   // Fetch recommendations
@@ -150,17 +146,13 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       return () => {
         window.removeEventListener('popstate', handlePopState);
         unlisten();
-        if (refreshTimeoutRef.current) {
-          clearTimeout(refreshTimeoutRef.current);
-        }
+        timeoutManager.clear('context-refresh');
       };
     }
 
     return () => {
       window.removeEventListener('popstate', handlePopState);
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
+      timeoutManager.clear('context-refresh');
     };
   }, [debouncedRefresh]); // debouncedRefresh is stable due to useCallback
 
@@ -175,17 +167,50 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [debouncedRefresh]); // Only depend on debouncedRefresh
 
   // Fetch recommendations when context data changes (but not when loading)
-  const tagsString = contextData.tags?.join(',') || '';
-  useEffect(() => {
-    if (!contextData.isLoading && contextData.currentPath) {
-      fetchRecommendations(contextData);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- contextData would cause infinite loop
-  }, [
-    contextData.isLoading,
+  // Separate the trigger data from the full context to prevent feedback loops
+  const recommendationTriggerData = React.useMemo(() => ({
+    currentPath: contextData.currentPath,
+    isLoading: contextData.isLoading,
+    tags: contextData.tags,
+    visualizationType: contextData.visualizationType,
+    dataSources: contextData.dataSources,
+    dashboardInfo: contextData.dashboardInfo,
+    pathSegments: contextData.pathSegments,
+    grafanaVersion: contextData.grafanaVersion,
+    theme: contextData.theme,
+    timestamp: contextData.timestamp,
+    searchParams: contextData.searchParams,
+  }), [
     contextData.currentPath,
+    contextData.isLoading,
+    contextData.tags,
+    contextData.visualizationType,
+    contextData.dataSources,
+    contextData.dashboardInfo,
+    contextData.pathSegments,
+    contextData.grafanaVersion,
+    contextData.theme,
+    contextData.timestamp,
+    contextData.searchParams,
+  ]);
+
+  const tagsString = recommendationTriggerData.tags?.join(',') || '';
+  useEffect(() => {
+    if (!recommendationTriggerData.isLoading && recommendationTriggerData.currentPath) {
+      // Create full context data for recommendations but don't depend on it
+      const fullContextData: ContextData = {
+        ...recommendationTriggerData,
+        currentUrl: contextData.currentUrl, // Include missing required property
+        recommendations: [], // Don't include current recommendations to prevent loops
+        recommendationsError: null,
+      };
+      fetchRecommendations(fullContextData);
+    }
+  }, [
+    recommendationTriggerData.isLoading,
+    recommendationTriggerData.currentPath,
     tagsString, // Extracted to separate variable - includes datasource tags
-    contextData.visualizationType, // Direct viz type tracking
+    recommendationTriggerData.visualizationType, // Direct viz type tracking
     fetchRecommendations,
   ]); // fetchRecommendations is stable due to useCallback with empty deps
 
@@ -196,8 +221,15 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [fetchContextData]);
 
   const refreshRecommendations = useCallback(() => {
-    fetchRecommendations(contextData);
-  }, [fetchRecommendations, contextData]);
+    // Use current state at time of call, not dependency
+    const currentContextData = {
+      ...recommendationTriggerData,
+      currentUrl: contextData.currentUrl,
+      recommendations: [],
+      recommendationsError: null,
+    };
+    fetchRecommendations(currentContextData);
+  }, [fetchRecommendations, recommendationTriggerData, contextData.currentUrl]);
 
   const openLearningJourney = useCallback(
     (url: string, title: string) => {

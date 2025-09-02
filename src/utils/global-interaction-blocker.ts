@@ -1,4 +1,5 @@
 import { InteractiveElementData } from '../types/interactive.types';
+import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 
 /**
  * Global interaction blocking state (singleton pattern)
@@ -516,7 +517,7 @@ class GlobalInteractionBlocker {
       this.modalStateDebounceTimer = window.setTimeout(() => {
         this.updateOverlayModalState();
         this.modalStateDebounceTimer = null;
-      }, 50); // 50ms debounce
+      }, INTERACTIVE_CONFIG.delays.debouncing.modalDetection);
     };
 
     // Set up mutation observer with comprehensive options
