@@ -1,5 +1,5 @@
 import { getBackendSrv, config, locationService, getEchoSrv, EchoEventType } from '@grafana/runtime';
-import { getRecommenderServiceUrl } from '../../constants';
+import { getConfigWithDefaults, isRecommenderEnabled, DocsPluginConfig } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import {
   ContextData,
@@ -18,6 +18,18 @@ export class ContextService {
   private static echoLoggingInitialized = false;
   private static currentDatasourceType: string | null = null;
   private static currentVisualizationType: string | null = null;
+
+  // Error handling state
+  private static lastExternalRecommenderError: {
+    type: 'unavailable' | 'rate-limit' | 'other';
+    timestamp: number;
+    message: string;
+  } | null = null;
+
+  // Constants for recommendation accuracy scores
+  private static readonly CONFIDENCE_THRESHOLD = 0.5;
+  private static readonly STATIC_LINK_ACCURACY = 0.7;
+  private static readonly BUNDLED_INTERACTIVE_ACCURACY = 0.8;
 
   // Event buffer to handle missed events when plugin is closed/reopened
   private static eventBuffer: Array<{
@@ -229,6 +241,8 @@ export class ContextService {
       tags,
       isLoading: false,
       recommendationsError: null,
+      recommendationsErrorType: null,
+      usingFallbackRecommendations: false,
       visualizationType: this.getVisualizationTypeForContext(pathSegments, searchParams),
       grafanaVersion: this.getGrafanaVersion(),
       theme: config.theme2.isDark ? 'dark' : 'light',
@@ -240,17 +254,83 @@ export class ContextService {
   /**
    * Fetch recommendations based on context
    */
-  static async fetchRecommendations(contextData: ContextData): Promise<{
+  static async fetchRecommendations(
+    contextData: ContextData,
+    pluginConfig: DocsPluginConfig = {}
+  ): Promise<{
     recommendations: Recommendation[];
     error: string | null;
+    errorType: 'unavailable' | 'rate-limit' | 'other' | null;
+    usingFallbackRecommendations: boolean;
   }> {
     try {
       if (!contextData.currentPath) {
         return {
           recommendations: [],
           error: 'No path provided for recommendations',
+          errorType: 'other',
+          usingFallbackRecommendations: false,
         };
       }
+
+      const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData);
+
+      if (!isRecommenderEnabled(pluginConfig)) {
+        const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
+        return {
+          ...fallbackResult,
+          errorType: null,
+          usingFallbackRecommendations: false, // Not using fallback due to error, just disabled
+        };
+      }
+
+      // Always try external recommendations when T&C are enabled, regardless of previous errors
+      return this.getExternalRecommendations(contextData, pluginConfig, bundledRecommendations);
+    } catch (error) {
+      console.warn('Failed to fetch recommendations:', error);
+      const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData);
+      const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
+      return {
+        ...fallbackResult,
+        error: error instanceof Error ? error.message : 'Failed to fetch recommendations',
+        errorType: 'other',
+        usingFallbackRecommendations: true,
+      };
+    }
+  }
+
+  /**
+   * Get fallback recommendations when external recommender is disabled
+   */
+  private static async getFallbackRecommendations(
+    contextData: ContextData,
+    bundledRecommendations: Recommendation[]
+  ): Promise<{ recommendations: Recommendation[]; error: string | null }> {
+    const staticLinkRecommendations = this.getStaticLinkRecommendations(contextData);
+    const allRecommendations = [...bundledRecommendations, ...staticLinkRecommendations];
+    const processedRecommendations = await this.processLearningJourneys(allRecommendations, {});
+
+    return {
+      recommendations: processedRecommendations,
+      error: null,
+    };
+  }
+
+  /**
+   * Get recommendations from external API service
+   */
+  private static async getExternalRecommendations(
+    contextData: ContextData,
+    pluginConfig: DocsPluginConfig,
+    bundledRecommendations: Recommendation[]
+  ): Promise<{
+    recommendations: Recommendation[];
+    error: string | null;
+    errorType: 'unavailable' | 'rate-limit' | 'other' | null;
+    usingFallbackRecommendations: boolean;
+  }> {
+    try {
+      const configWithDefaults = getConfigWithDefaults(pluginConfig);
 
       const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
 
@@ -260,75 +340,202 @@ export class ContextService {
         tags: contextData.tags,
         user_id: isCloud ? config.bootData.user.analytics.identifier : 'oss-user',
         user_role: config.bootData.user.orgRole || 'Viewer',
-        platform: isCloud ? 'cloud' : 'oss',
+        platform: this.getCurrentPlatform(),
       };
 
-      const response = await fetch(`${getRecommenderServiceUrl()}/recommend`, {
+      const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // Handle specific HTTP error codes
+        if (response.status === 404) {
+          return this.handleRecommenderError(
+            'unavailable',
+            'Recommender service not found',
+            contextData,
+            bundledRecommendations
+          );
+        }
+
+        if (response.status === 429) {
+          return this.handleRecommenderError(
+            'rate-limit',
+            'Recommender service is under strain',
+            contextData,
+            bundledRecommendations
+          );
+        }
+
+        // Handle other HTTP errors
+        return this.handleRecommenderError(
+          'other',
+          `HTTP error! status: ${response.status}`,
+          contextData,
+          bundledRecommendations
+        );
       }
 
       const data: RecommenderResponse = await response.json();
 
-      // Add bundled interactive recommendations (contextual based on current URL)
-      const bundledRecommendations: Recommendation[] = this.getBundledInteractiveRecommendations(contextData);
+      // Map external API recommendations to ensure description field is mapped to summary
+      const mappedExternalRecommendations = (data.recommendations || []).map((rec: any) => {
+        const mappedRec = {
+          ...rec,
+          summary: rec.summary || rec.description || '', // Map description to summary if summary is missing
+        };
+        return mappedRec;
+      });
 
-      const allRecommendations = [...(data.recommendations || []), ...bundledRecommendations];
-
-      // Process recommendations
-      const processedRecommendations = await Promise.all(
-        allRecommendations.map(async (rec) => {
-          if (rec.type === 'learning-journey' || !rec.type) {
-            try {
-              const result = await fetchContent(rec.url);
-              const completionPercentage = getJourneyCompletionPercentage(rec.url);
-
-              // Extract learning journey data from the unified content
-              const milestones = result.content?.metadata.learningJourney?.milestones || [];
-              const summary = result.content?.metadata.learningJourney?.summary || rec.summary || '';
-
-              return {
-                ...rec,
-                totalSteps: milestones.length,
-                milestones: milestones,
-                summary: summary,
-                completionPercentage,
-              };
-            } catch (error) {
-              console.warn(`Failed to fetch journey data for ${rec.title}:`, error);
-              return {
-                ...rec,
-                totalSteps: 0,
-                milestones: [],
-                summary: rec.summary || '',
-                completionPercentage: getJourneyCompletionPercentage(rec.url),
-              };
-            }
-          }
-          return rec;
-        })
-      );
+      const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
+      const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
 
       // Filter and sort recommendations
       const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
       const sortedRecommendations = this.sortRecommendationsByAccuracy(filteredRecommendations);
 
+      // Clear any previous errors on successful call
+      this.lastExternalRecommenderError = null;
+
       return {
         recommendations: sortedRecommendations,
         error: null,
+        errorType: null,
+        usingFallbackRecommendations: false,
       };
     } catch (error) {
-      console.warn('Failed to fetch recommendations:', error);
-      return {
-        recommendations: [],
-        error: error instanceof Error ? error.message : 'Failed to fetch recommendations',
-      };
+      // Handle network errors (CORS, network failures, etc.)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // Check if it's a CORS or network error
+      if (
+        errorMessage.includes('CORS') ||
+        errorMessage.includes('NetworkError') ||
+        errorMessage.includes('Failed to fetch')
+      ) {
+        return this.handleRecommenderError(
+          'unavailable',
+          'Recommender service unavailable',
+          contextData,
+          bundledRecommendations
+        );
+      }
+
+      // Handle other errors
+      return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
     }
+  }
+
+  /**
+   * Handle recommender service errors by falling back to static recommendations
+   */
+  private static async handleRecommenderError(
+    errorType: 'unavailable' | 'rate-limit' | 'other',
+    errorMessage: string,
+    contextData: ContextData,
+    bundledRecommendations: Recommendation[]
+  ): Promise<{
+    recommendations: Recommendation[];
+    error: string | null;
+    errorType: 'unavailable' | 'rate-limit' | 'other' | null;
+    usingFallbackRecommendations: boolean;
+  }> {
+    // Store error state for tracking
+    this.lastExternalRecommenderError = {
+      type: errorType,
+      timestamp: Date.now(),
+      message: errorMessage,
+    };
+
+    // Get fallback recommendations
+    const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
+
+    // Generate user-friendly error message
+    const userMessage = this.generateErrorMessage(errorType);
+
+    return {
+      ...fallbackResult,
+      error: userMessage,
+      errorType,
+      usingFallbackRecommendations: true,
+    };
+  }
+
+  /**
+   * Generate user-friendly error messages based on error type
+   */
+  private static generateErrorMessage(errorType: 'unavailable' | 'rate-limit' | 'other'): string {
+    switch (errorType) {
+      case 'unavailable':
+        return 'Recommender unavailable. Showing static recommendations.';
+      case 'rate-limit':
+        return 'Recommender is under a lot of strain. Switching to static recommendations.';
+      case 'other':
+      default:
+        return 'Recommender service error. Using static recommendations.';
+    }
+  }
+
+  /**
+   * Get the last external recommender error for debugging or status display
+   */
+  public static getLastRecommenderError(): {
+    type: 'unavailable' | 'rate-limit' | 'other';
+    timestamp: number;
+    message: string;
+  } | null {
+    return this.lastExternalRecommenderError;
+  }
+
+  /**
+   * Process learning journey recommendations to add metadata
+   */
+  private static async processLearningJourneys(
+    recommendations: Recommendation[],
+    pluginConfig?: DocsPluginConfig
+  ): Promise<Recommendation[]> {
+    return Promise.all(
+      recommendations.map(async (rec) => {
+        if (rec.type === 'learning-journey' || !rec.type) {
+          try {
+            const configWithDefaults = getConfigWithDefaults(pluginConfig || {});
+            const result = await fetchContent(rec.url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
+            const completionPercentage = getJourneyCompletionPercentage(rec.url);
+
+            // Extract learning journey data from the unified content
+            const milestones = result.content?.metadata.learningJourney?.milestones || [];
+            const summary = result.content?.metadata.learningJourney?.summary || rec.summary || '';
+
+            return {
+              ...rec,
+              totalSteps: milestones.length,
+              milestones: milestones,
+              summary: summary,
+              completionPercentage,
+            };
+          } catch (error) {
+            console.warn(`Failed to fetch journey data for ${rec.title}:`, error);
+            return {
+              ...rec,
+              totalSteps: 0,
+              milestones: [],
+              summary: rec.summary || '',
+              completionPercentage: getJourneyCompletionPercentage(rec.url),
+            };
+          }
+        }
+        return rec;
+      })
+    );
+  }
+
+  /**
+   * Get current platform (cloud vs oss)
+   */
+  private static getCurrentPlatform(): string {
+    return config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss';
   }
 
   /**
@@ -652,9 +859,9 @@ export class ContextService {
         return false;
       }
 
-      // Drop recommendations with confidence <= 0.5
+      // Drop recommendations with low confidence
       const confidence = rec.matchAccuracy ?? 0;
-      if (confidence <= 0.5) {
+      if (confidence <= this.CONFIDENCE_THRESHOLD) {
         return false;
       }
 
@@ -672,6 +879,154 @@ export class ContextService {
       const accuracyB = b.matchAccuracy ?? 0;
       return accuracyB - accuracyA;
     });
+  }
+
+  /**
+   * Get static link recommendations from static-links/*.json files
+   * Only used when recommender is disabled - provides fallback recommendations
+   * Uses simple URL prefix matching only (no complex tag logic)
+   */
+  private static getStaticLinkRecommendations(contextData: ContextData): Recommendation[] {
+    const staticRecommendations: Recommendation[] = [];
+
+    try {
+      const currentPlatform = this.getCurrentPlatform();
+
+      // Dynamically load all JSON files from static-links directory
+      const staticLinksContext = (require as any).context('../../bundled-interactives/static-links', false, /\.json$/);
+      const allFilePaths = staticLinksContext.keys();
+
+      // Deduplicate files by filename to handle webpack context finding same files with different paths
+      const uniqueFilePaths = this.deduplicateFilePaths(allFilePaths);
+
+      // Load each unique static links file
+      for (const filePath of uniqueFilePaths) {
+        const filename = filePath.replace('./', ''); // Convert ./explore-oss.json to explore-oss.json
+        try {
+          const staticData = staticLinksContext(filePath);
+
+          if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
+            const relevantLinks = staticData.rules.filter((rule: any) => {
+              // Skip entries with tag properties (only want top-level navigation)
+              if (this.containsTagInMatch(rule.match)) {
+                return false;
+              }
+
+              // Check platform match
+              if (!this.matchesPlatform(rule.match, currentPlatform)) {
+                return false;
+              }
+
+              // Check URL prefix match (handle both formats)
+              return this.matchesUrlPrefix(rule.match, contextData.currentPath);
+            });
+
+            // Convert to recommendation format
+            relevantLinks.forEach((rule: any) => {
+              staticRecommendations.push({
+                title: rule.title,
+                url: rule.url,
+                type: rule.type || 'docs-page',
+                summary: rule.description || '',
+                matchAccuracy: this.STATIC_LINK_ACCURACY,
+              });
+            });
+          }
+        } catch (error) {
+          console.warn(`Failed to load static links file ${filename}:`, error);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load static link recommendations:', error);
+    }
+
+    return staticRecommendations;
+  }
+
+  /**
+   * Check if match condition contains any tag properties
+   */
+  private static containsTagInMatch(match: any): boolean {
+    if (!match) {
+      return false;
+    }
+
+    // Check for direct tag property
+    if (match.tag) {
+      return true;
+    }
+
+    // Recursively check AND conditions
+    if (match.and && Array.isArray(match.and)) {
+      return match.and.some((condition: any) => this.containsTagInMatch(condition));
+    }
+
+    // Recursively check OR conditions
+    if (match.or && Array.isArray(match.or)) {
+      return match.or.some((condition: any) => this.containsTagInMatch(condition));
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if match condition matches current platform
+   */
+  private static matchesPlatform(match: any, currentPlatform: string): boolean {
+    if (!match) {
+      return false;
+    }
+
+    // Check for direct targetPlatform property
+    if (match.targetPlatform) {
+      return match.targetPlatform === currentPlatform;
+    }
+
+    // Check AND conditions - all must match
+    if (match.and && Array.isArray(match.and)) {
+      return match.and.every((condition: any) => this.matchesPlatform(condition, currentPlatform));
+    }
+
+    // Check OR conditions - at least one must match
+    if (match.or && Array.isArray(match.or)) {
+      return match.or.some((condition: any) => this.matchesPlatform(condition, currentPlatform));
+    }
+
+    // If no platform-related properties, assume it matches (no platform constraint)
+    return true;
+  }
+
+  /**
+   * Check if match condition matches current URL path
+   * Handles both urlPrefix and urlPrefixIn formats
+   */
+  private static matchesUrlPrefix(match: any, currentPath: string): boolean {
+    if (!match) {
+      return false;
+    }
+
+    // Check for direct urlPrefix property
+    if (match.urlPrefix) {
+      return currentPath.startsWith(match.urlPrefix);
+    }
+
+    // Check for urlPrefixIn array property
+    if (match.urlPrefixIn && Array.isArray(match.urlPrefixIn)) {
+      return match.urlPrefixIn.some((prefix: string) => currentPath.startsWith(prefix));
+    }
+
+    // Check AND conditions - all must match
+    if (match.and && Array.isArray(match.and)) {
+      return match.and.every((condition: any) => this.matchesUrlPrefix(condition, currentPath));
+    }
+
+    // Check OR conditions - at least one must match
+    if (match.or && Array.isArray(match.or)) {
+      return match.or.some((condition: any) => this.matchesUrlPrefix(condition, currentPath));
+    }
+
+    // If no URL-related properties, assume it matches (no URL constraint)
+    return true;
   }
 
   /**
@@ -705,7 +1060,7 @@ export class ContextService {
             url: `bundled:${interactive.id}`,
             type: 'docs-page',
             summary: interactive.summary,
-            matchAccuracy: 0.8, // Higher accuracy since it's contextually relevant
+            matchAccuracy: this.BUNDLED_INTERACTIVE_ACCURACY,
           });
         });
       }
@@ -718,23 +1073,17 @@ export class ContextService {
   }
 
   /**
-   * Cleanup method - clear any pending timeouts and reset state
+   * Deduplicate file paths by filename to handle webpack finding same files with different paths
    */
-  public static cleanup(): void {
-    // Clear any pending context-related timeouts from the centralized timeout manager
-    try {
-      const { TimeoutManager } = require('../timeout-manager');
-      const timeoutManager = TimeoutManager.getInstance();
-      timeoutManager.clear('context-refresh');
-      
-      // Clear any other context-related timeouts
-      timeoutManager.clear('context-recommendations');
-      timeoutManager.clear('context-debounce');
-    } catch (error) {
-      console.warn('Failed to clean up context timeouts:', error);
-    }
-    
-    // Reset EchoSrv state if needed (but keep it running to capture events)
-    // Note: We deliberately don't stop EchoSrv to keep capturing events
+  private static deduplicateFilePaths(filePaths: string[]): string[] {
+    return filePaths.filter((filePath: string, index: number, arr: string[]) => {
+      const filename = filePath.split('/').pop() || filePath;
+      return (
+        arr.findIndex((fp: string) => {
+          const compareFilename = fp.split('/').pop() || fp;
+          return compareFilename === filename;
+        }) === index
+      );
+    });
   }
 }

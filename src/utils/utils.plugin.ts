@@ -1,17 +1,19 @@
-import React, { useContext } from 'react';
-import { AppRootProps } from '@grafana/data';
+import React from 'react';
+import { AppRootProps, PluginMeta } from '@grafana/data';
+import { getBackendSrv } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
 
 // This is used to be able to retrieve the root plugin props anywhere inside the app.
 export const PluginPropsContext = React.createContext<AppRootProps | null>(null);
 
-export const usePluginProps = () => {
-  const pluginProps = useContext(PluginPropsContext);
+export const updatePluginSettings = async (pluginId: string, data: Partial<PluginMeta>) => {
+  // Simple plugin update following working plugin patterns - no reload needed
+  const response = getBackendSrv().fetch({
+    url: `/api/plugins/${pluginId}/settings`,
+    method: 'POST',
+    data,
+  });
 
-  return pluginProps;
-};
-
-export const usePluginMeta = () => {
-  const pluginProps = usePluginProps();
-
-  return pluginProps?.meta;
+  const dataResponse = await lastValueFrom(response);
+  return dataResponse.data;
 };

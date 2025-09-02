@@ -1,0 +1,301 @@
+{
+  "rules": [
+    {
+      "title": "Create a dashboard",
+      "url": "https://grafana.com/docs/grafana/next/dashboards/build-dashboards/create-dashboard/",
+      "description": "Create a dashboard",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Import dashboards",
+      "url": "https://grafana.com/docs/grafana/next/dashboards/build-dashboards/import-dashboards/",
+      "description": "Import dashboards",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Create a dashboard folder",
+      "url": "https://grafana.com/docs/grafana/next/dashboards/manage-dashboards/#create-a-dashboard-folder",
+      "description": "Create a dashboard folder",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Manage playlists",
+      "url": "https://grafana.com/docs/grafana/next/dashboards/create-manage-playlists/",
+      "description": "Manage playlists",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/playlists"] }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Share a snapshot",
+      "url": "https://grafana.com/docs/grafana/next/dashboards/share-dashboards-panels/#publish-a-snapshot",
+      "description": "Share a snapshot",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboard/snapshots"] }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Manage library panels",
+      "url": "https://grafana.com/docs/grafana/next/dashboards/build-dashboards/manage-library-panels/",
+      "description": "Manage library panels",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/library-panels"] }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Externally shared dashboards",
+      "url": "https://grafana.com/docs/grafana/next/dashboards/share-dashboards-panels/shared-dashboards/",
+      "description": "Externally shared dashboards",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboard/public"] }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Time series",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/time-series/",
+      "description": "Time series",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:timeseries" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Alert list",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/alert-list/",
+      "description": "Alert list",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:alertlist" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Annotations list",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/annotations/",
+      "description": "Annotations list",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:annolist" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Bar chart",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/bar-chart/",
+      "description": "Bar chart",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:barchart" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Bar gauge",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/bar-gauge/",
+      "description": "Bar gauge",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:bargauge" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Candlestick",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/candlestick/",
+      "description": "Candlestick",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:candlestick" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Canvas",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/canvas/",
+      "description": "Canvas",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:canvas" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Dashboard list",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/dashboard-list/",
+      "description": "Dashboard list",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:dashlist" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Datagrid",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/datagrid/",
+      "description": "Datagrid",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:datagrid" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Flame graph",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/flame-graph/",
+      "description": "Flame graph",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:flamegraph" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Gauge",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/gauge/",
+      "description": "Gauge",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:gauge" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Geomap",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/geomap/",
+      "description": "Geomap",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:geomap" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Heatmap",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/heatmap/",
+      "description": "Heatmap",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:heatmap" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Histogram",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/histogram/",
+      "description": "Histogram",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:histogram" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Logs",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/logs/",
+      "description": "Logs",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:logs" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "News",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/news/",
+      "description": "News",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:news" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Node graph",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/node-graph/",
+      "description": "Node graph",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:nodegraph" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Pie chart",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/pie-chart/",
+      "description": "Pie chart",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:piechart" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Stat",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/stat/",
+      "description": "Stat",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:stat" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "State timeline",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/state-timeline/",
+      "description": "State timeline",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:state-timeline" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Status history",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/status-history/",
+      "description": "Status history",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:status-history" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Table",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/table/",
+      "description": "Table",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:table" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Text",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/text/",
+      "description": "Text",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:text" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Traces",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/traces/",
+      "description": "Traces",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:traces" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "Trend",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/trend/",
+      "description": "Trend",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:trend" }, { "targetPlatform": "oss" }]
+      }
+    },
+    {
+      "title": "XY chart",
+      "url": "https://grafana.com/docs/grafana/next/panels-visualizations/visualizations/xy-chart/",
+      "description": "XY chart",
+      "type": "docs-page",
+      "match": {
+        "and": [{ "urlPrefixIn": ["/dashboards"] }, { "tag": "panel-type:xychart" }, { "targetPlatform": "oss" }]
+      }
+    }
+  ]
+}

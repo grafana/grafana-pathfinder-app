@@ -46,7 +46,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     }
 
     // Extract basic metadata without DOM processing
-    const metadata = await extractMetadata(html, cleanUrl, contentType);
+    const metadata = await extractMetadata(html, cleanUrl, contentType, options.docsBaseUrl);
 
     // Create unified content object
     const content: RawContent = {
@@ -218,8 +218,22 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
     if (response.ok) {
       const html = await response.text();
       if (html && html.trim()) {
-        // If this is a Grafana docs or tutorial URL, we MUST get the unstyled version
-        if (response.url.includes('grafana.com/docs/') || response.url.includes('grafana.com/tutorials/')) {
+        // If this is a docs or tutorial URL on the docs host, we MUST get the unstyled version
+        const docsBase = options.docsBaseUrl || '';
+        const isDocsHost = (u: string) => {
+          try {
+            const host = new URL(u).host;
+            if (docsBase) {
+              const baseHost = new URL(docsBase).host;
+              return host === baseHost;
+            }
+            return u.includes('/docs/') || u.includes('/tutorials/');
+          } catch {
+            return false;
+          }
+        };
+
+        if (isDocsHost(response.url) && (response.url.includes('/docs/') || response.url.includes('/tutorials/'))) {
           const finalUnstyledUrl = getUnstyledContentUrl(response.url);
           if (finalUnstyledUrl !== response.url) {
             try {
@@ -242,11 +256,14 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           }
         }
 
-        // For non-Grafana docs/tutorials or when unstyled URL is same as regular URL
+        // For non-docs URLs or when unstyled URL is same as regular URL
         if (redirectInfo) {
           console.warn(`Successfully fetched content after redirect: ${redirectInfo}`);
-        } else if (response.url.includes('grafana.com/docs/') || response.url.includes('grafana.com/tutorials/')) {
-          console.warn(`Successfully fetched Grafana content: ${response.url}`);
+        } else if (
+          isDocsHost(response.url) &&
+          (response.url.includes('/docs/') || response.url.includes('/tutorials/'))
+        ) {
+          console.warn(`Successfully fetched docs content: ${response.url}`);
         }
         return html;
       }
@@ -288,9 +305,10 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
     console.warn(`Failed to fetch from ${url}:`, error);
   }
 
-  // If original URL failed, try GitHub raw content variations
-  if (!lastError?.includes('Unstyled version required')) {
-    // Don't try GitHub for Grafana docs/tutorials that need unstyled
+  // If original URL failed, only try GitHub variations if no docsBaseUrl was configured
+  // When docsBaseUrl is provided, we should respect that configuration and not fallback to other sources
+  if (!lastError?.includes('Unstyled version required') && !options.docsBaseUrl) {
+    // Only try GitHub for URLs that are actually GitHub URLs and when no specific docs base is configured
     const githubVariations = generateGitHubVariations(url);
     if (githubVariations.length > 0) {
       console.warn(`Trying GitHub raw content variations for: ${url}`);
@@ -395,11 +413,16 @@ function getAuthHeaders(): Record<string, string> {
  * Extract metadata from HTML without DOM processing
  * Uses simple string parsing instead of DOM manipulation
  */
-async function extractMetadata(html: string, url: string, contentType: ContentType): Promise<ContentMetadata> {
+async function extractMetadata(
+  html: string,
+  url: string,
+  contentType: ContentType,
+  docsBaseUrl?: string
+): Promise<ContentMetadata> {
   const title = extractTitle(html);
 
   if (contentType === 'learning-journey') {
-    const learningJourney = await extractLearningJourneyMetadata(html, url);
+    const learningJourney = await extractLearningJourneyMetadata(html, url, docsBaseUrl);
     return { title, learningJourney };
   } else {
     const singleDoc = extractSingleDocMetadata(html);
@@ -432,8 +455,12 @@ function extractTitle(html: string): string {
  * Extract learning journey metadata using simple parsing
  * Replaces complex DOM processing with string-based extraction
  */
-async function extractLearningJourneyMetadata(html: string, url: string): Promise<LearningJourneyMetadata> {
-  const baseUrl = getLearningJourneyBaseUrl(url);
+async function extractLearningJourneyMetadata(
+  html: string,
+  url: string,
+  docsBaseUrl?: string
+): Promise<LearningJourneyMetadata> {
+  const baseUrl = getLearningJourneyBaseUrl(url, docsBaseUrl);
 
   // Extract milestones from index.json metadata file
   const milestones = await fetchLearningJourneyMetadataFromJson(baseUrl);
@@ -513,7 +540,7 @@ function extractDocSummary(html: string): string {
  * Learning journey specific functions
  * These are simplified versions that focus on data extraction only
  */
-function getLearningJourneyBaseUrl(url: string): string {
+function getLearningJourneyBaseUrl(url: string, docsBaseUrl?: string): string {
   // Handle cases like:
   // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
   // https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
@@ -528,6 +555,17 @@ function getLearningJourneyBaseUrl(url: string): string {
   if (tutorialMatch) {
     return tutorialMatch[1];
   }
+
+  // If docsBaseUrl is provided and the URL is relative to it, normalize to that base
+  try {
+    if (docsBaseUrl) {
+      const baseHost = new URL(docsBaseUrl).host;
+      const urlHost = new URL(url).host;
+      if (baseHost === urlHost) {
+        return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
+      }
+    }
+  } catch {}
 
   return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
 }
@@ -556,7 +594,7 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
             number: index + 1,
             title: item.params?.title || item.params?.menutitle || `Step ${index + 1}`,
             duration: '5-10 min', // Default duration as it's not in the data
-            url: `https://grafana.com${item.permalink || item.params?.permalink || ''}`,
+            url: `${new URL(baseUrl).origin}${item.permalink || item.params?.permalink || ''}`,
             isActive: false,
           };
 
@@ -571,7 +609,7 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
 
           if (item.params?.cta?.image) {
             milestone.conclusionImage = {
-              src: `https://grafana.com${item.params.cta.image.src}`,
+              src: `${new URL(baseUrl).origin}${item.params.cta.image.src}`,
               width: item.params.cta.image.width,
               height: item.params.cta.image.height,
             };

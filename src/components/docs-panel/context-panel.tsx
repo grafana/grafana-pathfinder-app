@@ -6,6 +6,7 @@ import { t } from '@grafana/i18n';
 import logoSvg from '../../img/logo.svg';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
+import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
 import { locationService } from '@grafana/runtime';
 
@@ -122,12 +123,13 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             )}
 
             {!isLoadingRecommendations && !recommendationsError && recommendations.length === 0 && (
-              <div className={styles.emptyContainer}>
-                <Icon name="info-circle" />
-                <span>
-                  {t('contextPanel.noRecommendations', 'No recommendations available for your current context')}
-                </span>
-              </div>
+              <>
+                <div className={styles.emptyContainer}>
+                  <Icon name="info-circle" />
+                  <span>No recommendations available for your current context.</span>
+                </div>
+                <EnableRecommenderBanner />
+              </>
             )}
 
             {!isLoadingRecommendations && recommendations.length > 0 && (
@@ -392,6 +394,11 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Show Enable Recommender Banner when recommendations exist but recommender is disabled */}
+            {!isLoadingRecommendations && !recommendationsError && recommendations.length > 0 && (
+              <EnableRecommenderBanner />
             )}
           </div>
         )}

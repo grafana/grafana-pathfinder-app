@@ -1,11 +1,18 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { locationService } from '@grafana/runtime';
+import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
 import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from './context.types';
 import { useTimeoutManager } from '../timeout-manager';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
+
+  // Get plugin configuration with stable reference
+  const pluginContext = usePluginContext();
+  const pluginConfig = useMemo(() => {
+    return pluginContext?.meta?.jsonData || {};
+  }, [pluginContext?.meta?.jsonData]);
 
   // State
   const [contextData, setContextData] = useState<ContextData>({
@@ -18,6 +25,8 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     tags: [],
     isLoading: true,
     recommendationsError: null,
+    recommendationsErrorType: null,
+    usingFallbackRecommendations: false,
     visualizationType: null,
     grafanaVersion: 'Unknown',
     theme: 'dark',
@@ -67,29 +76,37 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   );
 
   // Fetch recommendations
-  const fetchRecommendations = useCallback(async (contextData: ContextData) => {
-    if (!contextData.currentPath || contextData.isLoading) {
-      return;
-    }
+  const fetchRecommendations = useCallback(
+    async (contextData: ContextData) => {
+      if (!contextData.currentPath || contextData.isLoading) {
+        return;
+      }
 
-    setIsLoadingRecommendations(true);
-    try {
-      const { recommendations, error } = await ContextService.fetchRecommendations(contextData);
-      setContextData((prev) => ({
-        ...prev,
-        recommendations,
-        recommendationsError: error,
-      }));
-    } catch (error) {
-      console.error('Failed to fetch recommendations:', error);
-      setContextData((prev) => ({
-        ...prev,
-        recommendationsError: 'Failed to fetch recommendations',
-      }));
-    } finally {
-      setIsLoadingRecommendations(false);
-    }
-  }, []); // Empty dependency array - setContextData and setIsLoadingRecommendations are stable
+      setIsLoadingRecommendations(true);
+      try {
+        const { recommendations, error, errorType, usingFallbackRecommendations } =
+          await ContextService.fetchRecommendations(contextData, pluginConfig);
+        setContextData((prev) => ({
+          ...prev,
+          recommendations,
+          recommendationsError: error,
+          recommendationsErrorType: errorType,
+          usingFallbackRecommendations,
+        }));
+      } catch (error) {
+        console.error('Failed to fetch recommendations:', error);
+        setContextData((prev) => ({
+          ...prev,
+          recommendationsError: 'Failed to fetch recommendations',
+          recommendationsErrorType: 'other',
+          usingFallbackRecommendations: true,
+        }));
+      } finally {
+        setIsLoadingRecommendations(false);
+      }
+    },
+    [pluginConfig]
+  ); // Add pluginConfig as dependency
 
   // Simplified location-based change detection (EchoSrv handles datasource/viz changes)
   useEffect(() => {
@@ -167,48 +184,15 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [debouncedRefresh]); // Only depend on debouncedRefresh
 
   // Fetch recommendations when context data changes (but not when loading)
-  // Separate the trigger data from the full context to prevent feedback loops
-  const recommendationTriggerData = React.useMemo(() => ({
-    currentPath: contextData.currentPath,
-    isLoading: contextData.isLoading,
-    tags: contextData.tags,
-    visualizationType: contextData.visualizationType,
-    dataSources: contextData.dataSources,
-    dashboardInfo: contextData.dashboardInfo,
-    pathSegments: contextData.pathSegments,
-    grafanaVersion: contextData.grafanaVersion,
-    theme: contextData.theme,
-    timestamp: contextData.timestamp,
-    searchParams: contextData.searchParams,
-  }), [
-    contextData.currentPath,
-    contextData.isLoading,
-    contextData.tags,
-    contextData.visualizationType,
-    contextData.dataSources,
-    contextData.dashboardInfo,
-    contextData.pathSegments,
-    contextData.grafanaVersion,
-    contextData.theme,
-    contextData.timestamp,
-    contextData.searchParams,
-  ]);
-
-  const tagsString = recommendationTriggerData.tags?.join(',') || '';
+  const tagsString = contextData.tags?.join(',') || '';
   useEffect(() => {
-    if (!recommendationTriggerData.isLoading && recommendationTriggerData.currentPath) {
-      // Create full context data for recommendations but don't depend on it
-      const fullContextData: ContextData = {
-        ...recommendationTriggerData,
-        currentUrl: contextData.currentUrl, // Include missing required property
-        recommendations: [], // Don't include current recommendations to prevent loops
-        recommendationsError: null,
-      };
-      fetchRecommendations(fullContextData);
+    if (!contextData.isLoading && contextData.currentPath) {
+      fetchRecommendations(contextData);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- contextData would cause infinite loop
   }, [
-    recommendationTriggerData.isLoading,
-    recommendationTriggerData.currentPath,
+    contextData.isLoading,
+    contextData.currentPath,
     tagsString, // Extracted to separate variable - includes datasource tags
     recommendationTriggerData.visualizationType, // Direct viz type tracking
     fetchRecommendations,

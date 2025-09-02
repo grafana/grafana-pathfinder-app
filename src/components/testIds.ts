@@ -10,4 +10,9 @@ export const testIds = {
     apiKey: 'data-testid-api-key',
     apiUrl: 'data-testid-api-url',
   },
+  termsAndConditions: {
+    toggle: 'data-testid-recommender-toggle',
+    submit: 'data-testid-recommender-submit',
+    termsContent: 'data-testid-terms-content',
+  },
 };
