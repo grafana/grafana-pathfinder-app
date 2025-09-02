@@ -272,22 +272,11 @@ export function InteractiveSection({
   // Trigger reactive checks when section completion status changes
   useEffect(() => {
     if (isCompleted && stepComponents.length > 0) {
-      // Import and use the SequentialRequirementsManager to trigger reactive checks
-      import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
-        const manager = SequentialRequirementsManager.getInstance();
-
-        // Single reactive check to prevent infinite loops
-        manager.triggerReactiveCheck();
-
-        // Also trigger DOM event for any steps listening for section completion
-        const completionEvent = new CustomEvent('section-completed', {
-          detail: { sectionId },
-        });
-        document.dispatchEvent(completionEvent);
-
-        // REMOVED: Multiple delayed triggers that were causing infinite loops
-        // The single triggerReactiveCheck() call above with throttling is sufficient
+      // Notify dependent steps that this section is complete
+      const completionEvent = new CustomEvent('section-completed', {
+        detail: { sectionId },
       });
+      document.dispatchEvent(completionEvent);
     }
   }, [isCompleted, sectionId, stepComponents.length]);
 
@@ -295,8 +284,6 @@ export function InteractiveSection({
   // This is the AUTHORITATIVE source for step eligibility within this section
   const getStepEligibility = useCallback(
     (stepIndex: number) => {
-      // Reduced logging to prevent spam during re-renders
-      
       // First step is always eligible (Trust but Verify)
       if (stepIndex === 0) {
         return true;
@@ -308,14 +295,12 @@ export function InteractiveSection({
         const prevStepId = stepComponents[i].stepId;
         const isCompleted = completedSteps.has(prevStepId);
         if (!isCompleted) {
-          // Only log when debugging is needed
-          // console.warn(`Step ${stepIndex} (${stepId}) blocked by incomplete step ${i} (${prevStepId})`);
           return false;
         }
       }
       return true;
     },
-    [completedSteps, stepComponents, sectionId]
+    [completedSteps, stepComponents] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Calculate resume information for button display
@@ -348,6 +333,16 @@ export function InteractiveSection({
       const currentIndex = stepComponents.findIndex((step) => step.stepId === stepId);
       if (currentIndex >= 0) {
         setCurrentStepIndex(currentIndex + 1);
+
+        // Trigger requirements check for the next step that becomes eligible
+        const nextStepIndex = currentIndex + 1;
+        if (nextStepIndex < stepComponents.length) {
+          const nextStepId = stepComponents[nextStepIndex].stepId;
+          import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
+            const manager = SequentialRequirementsManager.getInstance();
+            manager.triggerStepEligibilityCheck(nextStepId);
+          });
+        }
       }
 
       // Check if all steps are completed (only when we actually updated the state)
@@ -365,24 +360,25 @@ export function InteractiveSection({
     [completedSteps, stepComponents, onComplete, persistCompletedSteps]
   );
 
-  // Handle individual step reset (redo functionality)
+  /**
+   * Handle individual step reset (redo functionality)
+   * Removes the target step and all subsequent steps from completion state
+   */
   const handleStepReset = useCallback(
     (stepId: string) => {
-      console.warn(`🔄 Section ${sectionId}: Resetting step ${stepId}`);
-      
       // Find the index of the step being reset
       const resetIndex = stepComponents.findIndex((step) => step.stepId === stepId);
-      
+
       // Update section state - only remove this step AND all subsequent steps
       setCompletedSteps((prev) => {
         const newSet = new Set(prev);
-        
+
         // Remove the target step and all steps after it
         for (let i = resetIndex; i < stepComponents.length; i++) {
           const stepToRemove = stepComponents[i].stepId;
           newSet.delete(stepToRemove);
         }
-        
+
         // Persist removal
         persistCompletedSteps(newSet);
         return newSet;
@@ -397,11 +393,10 @@ export function InteractiveSection({
       if (currentlyExecutingStep === stepId) {
         setCurrentlyExecutingStep(null);
       }
-      
-      // The step's own reset logic will handle updating the manager state
-      // No need to manually sync here - let the normal flow handle it
+
+      // Individual step components handle their own state reset via resetTrigger
     },
-    [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps, completedSteps, sectionId]
+    [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Execute a single step (shared between individual and sequence execution)
@@ -756,62 +751,59 @@ export function InteractiveSection({
     checkRequirementsFromData,
   ]);
 
-  // Handle section reset (clear completed steps and reset individual step states)
+  /**
+   * Handle complete section reset
+   * Clears all completion state and resets all steps to initial state
+   */
   const handleResetSection = useCallback(() => {
     if (disabled || isRunning) {
       return;
     }
 
-    console.warn(`🔄 Section ${sectionId}: Starting complete section reset`);
-
-    // Clear section state immediately and force re-render
+    // Clear section state immediately
     setCompletedSteps(new Set());
     setCurrentlyExecutingStep(null);
     setCurrentStepIndex(0); // Reset to start from beginning
-    
-    // Signal ALL child steps to reset their local state (including skipped)
+
+    // Signal all child steps to reset their local state
     setResetTrigger((prev) => prev + 1);
 
-    // Clear persistence immediately
+    // Clear localStorage persistence
     try {
       localStorage.removeItem(getStorageKey());
     } catch {
       // ignore
     }
 
-    // Reset all step states in the manager to clear ALL states (completed, skipped, etc.)
-    // Import once to avoid multiple async imports and use a single batch operation
+    // Reset all step states in the global manager
     import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
       const manager = SequentialRequirementsManager.getInstance();
-      
-      // Batch all step resets into a single operation to prevent cascading updates
-      console.warn(`🔄 Section ${sectionId}: Batch resetting ${stepComponents.length} steps`);
-      
-      // Stop DOM monitoring temporarily to prevent reactive loops during reset
+
+      // Temporarily stop DOM monitoring during reset
       manager.stopDOMMonitoring();
-      
-      // Reset all steps synchronously
-      stepComponents.forEach(step => {
+
+      // Reset all step states including completion and skipped status
+      stepComponents.forEach((step) => {
         manager.updateStep(step.stepId, {
           isEnabled: false,
           isCompleted: false,
           isChecking: false,
+          isSkipped: false, // Clear skipped state on reset
+          completionReason: 'none',
           explanation: undefined,
           error: undefined,
         });
       });
-      
-      // Single reactive check after all resets are done, then restart monitoring
+
+      // Re-enable monitoring and trigger check for first step after reset
       setTimeout(() => {
-        console.warn(`🔄 Section ${sectionId}: Final reactive check after batch reset`);
         manager.triggerReactiveCheck();
-        // Restart DOM monitoring after reset is complete
         setTimeout(() => {
           manager.startDOMMonitoring();
         }, 100);
-      }, 200); // Longer delay to ensure all state updates settle
+      }, 200);
     });
-  }, [disabled, isRunning, getStorageKey, stepComponents, sectionId, completedSteps]);
+  }, [disabled, isRunning, getStorageKey, stepComponents, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {
@@ -825,9 +817,8 @@ export function InteractiveSection({
         const isEligibleForChecking = getStepEligibility(index);
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
-        
-        // Reduced logging to prevent spam during re-renders
-        // console.warn(`Step ${index} (${stepInfo.stepId}): eligible=${isEligibleForChecking}, completed=${isCompleted}`);
+
+        // Enhanced step props with section coordination
 
         return React.cloneElement(child as React.ReactElement<InteractiveStepProps>, {
           ...child.props,

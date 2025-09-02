@@ -97,6 +97,7 @@ describe('extractInteractiveDataFromElement', () => {
       targetvalue: 'submit',
       requirements: 'logged-in',
       objectives: 'learn-navigation',
+      skipable: false,
       tagName: 'button',
       className: 'btn-primary',
       id: 'submit-btn',
@@ -116,10 +117,14 @@ describe('extractInteractiveDataFromElement', () => {
     expect(result).toEqual({
       reftarget: '',
       targetaction: '',
+      requirements: undefined,
+      objectives: undefined,
+      skipable: false,
       tagName: 'div',
       className: undefined,
       id: undefined,
       textContent: 'Simple element',
+      targetvalue: undefined,
       parentTagName: undefined,
       timestamp: expect.any(Number),
       customData: undefined,
@@ -392,6 +397,8 @@ describe('navmenuOpenCHECK', () => {
       requirement: 'navmenu-open',
       pass: false,
       error: 'Navigation menu not detected - menu may be closed or selector mismatch',
+      canFix: true,
+      fixType: 'navigation',
     });
   });
 

@@ -43,7 +43,7 @@ export const INTERACTIVE_CONFIG = {
     },
     // Requirements checking timing
     requirements: {
-      checkTimeout: 5000, // Maximum time to wait for requirements check
+      checkTimeout: 3000, // PERFORMANCE FIX: Reduced from 5000ms to 3000ms for faster UX
     },
   },
   // Event-driven settling detection configuration

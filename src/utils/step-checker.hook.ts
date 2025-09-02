@@ -133,9 +133,9 @@ export function useStepChecker({
           objectives: type === 'objectives' ? conditions : undefined,
         };
 
-        // Add timeout to prevent hanging (same as original hooks)
+        // Add timeout to prevent hanging - PERFORMANCE FIX: Reduced timeout for faster UX
         const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error(`${type} check timeout`)), 5000);
+          setTimeout(() => reject(new Error(`${type} check timeout`)), 3000); // Reduced from 5000ms to 3000ms
         });
 
         const result = await Promise.race([checkRequirementsFromData(actionData), timeoutPromise]);
@@ -166,18 +166,17 @@ export function useStepChecker({
   );
 
   /**
-   * Core checking logic with proper priority:
-   * 1. Objectives first (always win if met)
-   * 2. Eligibility check (sequential dependencies)
-   * 3. Requirements (only if objectives not met)
+   * Check step conditions with priority logic:
+   * 1. Objectives (auto-complete if met)
+   * 2. Sequential eligibility (block if previous steps incomplete)
+   * 3. Requirements (validate if eligible)
    */
   const checkStep = useCallback(async () => {
     // Prevent infinite loops by checking if we're already in the right state
     if (state.isChecking) {
-      console.warn(`⚠️ Step ${stepId}: Already checking, skipping duplicate check`);
       return;
     }
-    
+
     setState((prev) => ({ ...prev, isChecking: true, error: undefined }));
 
     try {
@@ -209,20 +208,28 @@ export function useStepChecker({
 
       // STEP 2: Check eligibility (sequential dependencies)
       if (!isEligibleForChecking) {
-        console.warn(`🚫 Step ${stepId}: NOT ELIGIBLE - isEligibleForChecking = false`);
-        
+        // Step is not eligible for checking
+
         // Check if this step is part of a section (section controls its own eligibility)
         const isPartOfSection = stepId.includes('section-') && stepId.includes('-step-');
-        
+
         if (isPartOfSection) {
-          console.warn(`🏠 Step ${stepId}: Part of section - section controls eligibility`);
-          // For section steps, the section's getStepEligibility is authoritative
-          // Don't override with any logic - just clear checking state and let section decide
-          setState(prev => ({ 
-            ...prev, 
+          // Section step not eligible - set blocked state with sequential dependency message
+          const sectionBlockedState = {
+            isEnabled: false,
+            isCompleted: false,
             isChecking: false,
-            // Don't override other state - let section eligibility control behavior
-          }));
+            isSkipped: false,
+            completionReason: 'none' as const,
+            explanation: 'Complete the previous steps in order before this one becomes available.',
+            error: 'Sequential dependency not met',
+            canFixRequirement: false,
+            canSkip: false, // Never allow skipping for sequential dependencies
+            fixType: undefined,
+            targetHref: undefined,
+          };
+          setState(sectionBlockedState);
+          updateManager(sectionBlockedState);
           return;
         } else {
           const blockedState = {
@@ -306,10 +313,10 @@ export function useStepChecker({
       setState(errorState);
       updateManager(errorState);
     }
-  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skipable, updateManager, checkConditions]);
+  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skipable, updateManager]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
-   * Fix requirements by applying the appropriate fix based on the detected issue
+   * Attempt to automatically fix failed requirements
    */
   const fixRequirement = useCallback(async () => {
     if (!state.canFixRequirement) {
@@ -320,8 +327,7 @@ export function useStepChecker({
       setState((prev) => ({ ...prev, isChecking: true }));
 
       if (state.fixType === 'expand-parent-navigation' && state.targetHref && navigationManagerRef.current) {
-        // Expand parent navigation section
-        console.warn('🔧 Attempting to expand parent navigation section for:', state.targetHref);
+        // Attempt to expand parent navigation section
         const success = await navigationManagerRef.current.expandParentNavigationSection(state.targetHref);
 
         if (!success) {
@@ -337,7 +343,7 @@ export function useStepChecker({
         // Fix basic navigation requirements (menu open/dock)
         await fixNavigationRequirements();
       } else {
-        console.warn('Unknown fix type or missing fix function:', state.fixType);
+        console.warn('Unknown fix type:', state.fixType);
         setState((prev) => ({
           ...prev,
           isChecking: false,
@@ -346,10 +352,8 @@ export function useStepChecker({
         return;
       }
 
-      // After fixing, recheck the requirements
-      await new Promise((resolve) => setTimeout(resolve, 100)); // Small delay for UI to update
-
-      // Trigger a requirements check to see if the fix worked
+      // Wait for UI to update, then recheck requirements
+      await new Promise((resolve) => setTimeout(resolve, 100));
       await checkStep();
     } catch (error) {
       console.error('Failed to fix requirements:', error);
@@ -392,14 +396,13 @@ export function useStepChecker({
     setState(skippedState);
     updateManager(skippedState);
 
-    // IMPORTANT: Trigger reactive check to unlock dependent steps
-    // Skipped steps should unlock the next step in the sequence
+    // Trigger check for dependent steps when this step is skipped
     if (managerRef.current) {
       setTimeout(() => {
         managerRef.current?.triggerReactiveCheck();
       }, 100);
     }
-  }, [updateManager]); // Removed state to prevent infinite loops
+  }, [updateManager]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Reset step to initial state (including skipped state) and recheck requirements
@@ -421,35 +424,33 @@ export function useStepChecker({
     setState(resetState);
     updateManager(resetState);
 
-    // Trigger a recheck after reset to properly enable steps that meet requirements
+    // Recheck requirements after reset
     setTimeout(() => {
       checkStepRef.current();
     }, 50);
   }, [skipable, updateManager]); // Removed checkStep to prevent infinite loops
 
-  // Auto-check when eligibility or conditions change
+  /**
+   * Stable reference to checkStep function for event-driven triggers
+   */
   const checkStepRef = useRef(checkStep);
   checkStepRef.current = checkStep;
-  
+
+  // Initial requirements check for first steps when component mounts
   useEffect(() => {
-    // Skip checking if already completed (prevent redundant checks)
-    if (!state.isCompleted && !state.isChecking) {
+    const isFirstStep = stepId?.includes('-step-1') || (!stepId?.includes('section-') && !stepId?.includes('step-'));
+    if (isFirstStep && !state.isCompleted && !state.isChecking) {
       checkStepRef.current();
     }
-  }, [state.isCompleted, state.isChecking]); // Use ref to avoid infinite loops
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- Intentionally empty - only run on mount
 
-  // Register with manager for reactive re-checking
+  // Register step checker with global manager for targeted re-checking
   useEffect(() => {
     if (managerRef.current) {
       const unregisterChecker = managerRef.current.registerStepCheckerByID(stepId, () => {
-        // Only recheck if not completed AND if eligible (respect section authority)
-        // Use current state values to avoid stale closures
         const currentState = managerRef.current?.getStepState(stepId);
         if (!currentState?.isCompleted && isEligibleForChecking) {
-          console.warn(`🔄 Manager triggering recheck for ${stepId} - eligible and not completed`);
           checkStepRef.current();
-        } else {
-          console.warn(`🔄 Manager skipping recheck for ${stepId} - completed: ${currentState?.isCompleted}, eligible: ${isEligibleForChecking}`);
         }
       });
 
@@ -458,7 +459,14 @@ export function useStepChecker({
       };
     }
     return undefined;
-  }, [stepId, isEligibleForChecking]); // Use minimal dependencies to prevent loops
+  }, [stepId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Check requirements when step becomes eligible
+  useEffect(() => {
+    if (isEligibleForChecking && !state.isCompleted && !state.isChecking) {
+      checkStepRef.current();
+    }
+  }, [isEligibleForChecking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for section completion events (for section dependencies)
   useEffect(() => {
@@ -482,7 +490,7 @@ export function useStepChecker({
       document.removeEventListener('section-completed', handleSectionCompletion);
       document.removeEventListener('step-auto-skipped', handleAutoSkip as EventListener);
     };
-  }, [checkStep, state.isCompleted, requirements, stepId, markSkipped]);
+  }, [checkStep, state.isCompleted, requirements, stepId, markSkipped]); // eslint-disable-line react-hooks/exhaustive-deps -- Intentionally minimal dependencies for event listeners
 
   return {
     ...state,

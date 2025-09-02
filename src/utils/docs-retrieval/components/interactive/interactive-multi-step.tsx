@@ -369,10 +369,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       if (onStepReset && stepId) {
         onStepReset(stepId);
       }
-      
+
       // No need for complex timing logic - the section's getStepEligibility
       // will use the updated completedSteps state on the next render
-    }, [disabled, isExecuting, stepId, onStepReset, checker]);
+    }, [disabled, isExecuting, stepId, onStepReset]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 

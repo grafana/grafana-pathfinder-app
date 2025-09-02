@@ -23,13 +23,13 @@ export function waitForReactUpdates(): Promise<void> {
 
 /**
  * React-based requirements checking system
- * Replaces the DOM-based requirements.util.ts with a clean React approach
+ * Provides event-driven requirements validation for interactive tutorial steps
  *
- * Key features:
- * - Sequential dependency: only one step enabled at a time
- * - Completion state tracking: completed steps stay disabled
- * - Trust but verify: first step always gets checked
- * - Section vs regular step workflows
+ * Features:
+ * - Event-driven checking (no continuous polling)
+ * - Sequential step dependencies
+ * - Completion state preservation
+ * - Section and standalone step workflows
  */
 
 export interface RequirementsState {
@@ -68,8 +68,8 @@ export interface UseRequirementsCheckerReturn extends RequirementsState {
 }
 
 /**
- * React hook for requirements checking
- * Integrates with the existing useInteractiveElements hook for requirement validation
+ * React hook for individual step requirements checking
+ * Handles both DOM-dependent and pure requirements validation
  */
 export function useRequirementsChecker({
   requirements,
@@ -113,8 +113,6 @@ export function useRequirementsChecker({
       const newState = state.isCompleted
         ? { ...state, isEnabled: false, isChecking: false, isCompleted: true } // Preserve completion
         : { ...state, isEnabled: true, isChecking: false }; // Enable if no requirements
-
-      // Completion state preservation (no debug logging needed)
 
       setState(newState);
 
@@ -189,23 +187,18 @@ export function useRequirementsChecker({
     checkPromiseRef.current = checkPromise();
     await checkPromiseRef.current;
     checkPromiseRef.current = null;
-  }, [requirements, targetAction, uniqueId, hints, checkRequirementsFromData]); // Removed state to prevent infinite loops
+  }, [requirements, targetAction, uniqueId, hints]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const markCompleted = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      isCompleted: true,
-      isEnabled: false, // Completed steps are disabled
-    }));
-
-    // Directly notify the manager with the new state to avoid timing issues
-    setState(prev => {
+    // PERFORMANCE FIX: Single setState call with manager notification
+    setState((prev) => {
       const newState = {
         ...prev,
         isCompleted: true,
-        isEnabled: false,
+        isEnabled: false, // Completed steps are disabled
       };
-      
+
+      // Notify manager immediately with the new state
       if (managerRef.current) {
         managerRef.current.updateStep(uniqueId, newState);
 
@@ -217,7 +210,7 @@ export function useRequirementsChecker({
           }, 100);
         }
       }
-      
+
       return newState;
     });
 
@@ -234,17 +227,7 @@ export function useRequirementsChecker({
     });
   }, [hints, requirements]);
 
-  // Auto-retry failed requirements every 10 seconds to prevent permanent stuck state
-  useEffect(() => {
-    if (!state.isCompleted && !state.isChecking && !state.isEnabled && requirements) {
-      const retryTimeout = setTimeout(() => {
-        checkRequirements();
-      }, 10000); // 10 second auto-retry
-
-      return () => clearTimeout(retryTimeout);
-    }
-    return undefined;
-  }, [state.isCompleted, state.isChecking, state.isEnabled, requirements, uniqueId, checkRequirements]);
+  // Manual retry available through UI - no automatic background checking
 
   return {
     ...state,
@@ -257,7 +240,8 @@ export function useRequirementsChecker({
 
 /**
  * Global sequential requirements manager
- * Manages the "one step at a time" logic across all interactive elements
+ * Coordinates step eligibility and provides event-driven requirements checking
+ * Singleton pattern ensures consistent state across all interactive components
  */
 export class SequentialRequirementsManager {
   private static instance: SequentialRequirementsManager;
@@ -314,35 +298,73 @@ export class SequentialRequirementsManager {
 
   // Trigger reactive checking of all steps (e.g., after completing a step or DOM changes)
   private reactiveCheckThrottle: NodeJS.Timeout | null = null;
-  
+
   triggerReactiveCheck(): void {
-    // Throttle reactive checks to prevent infinite loops
-    if (this.reactiveCheckThrottle) {
-      clearTimeout(this.reactiveCheckThrottle);
-    }
-    
-    this.reactiveCheckThrottle = setTimeout(() => {
-      // Trigger actual requirements re-checking for all registered steps
-      this.recheckAllSteps();
-      // Also notify listeners for UI updates
-      this.notifyListeners();
-      this.reactiveCheckThrottle = null;
-    }, 50); // Throttle to 50ms to prevent rapid-fire calls
+    // Trigger selective checking of eligible steps only
+    this.triggerSelectiveRecheck();
   }
 
-  private recheckAllSteps(): void {
-    // Notify all step checkers to re-run their requirements
-    // Use requestAnimationFrame to batch all checks together
+  /**
+   * Selective reactive checking - only re-evaluates eligible steps
+   * Prevents infinite loops by avoiding checks of ineligible steps
+   */
+  private triggerSelectiveRecheck(): void {
+    // Throttle reactive checks to prevent infinite loops
+    if (this.reactiveCheckThrottle) {
+      clearTimeout(this.reactiveCheckThrottle as NodeJS.Timeout);
+    }
+
+    this.reactiveCheckThrottle = setTimeout(() => {
+      // Only recheck steps that are eligible for checking
+      this.recheckEligibleStepsOnly();
+      // Notify listeners for UI updates
+      this.notifyListeners();
+      this.reactiveCheckThrottle = null;
+    }, 50);
+  }
+
+  /**
+   * Recheck only steps that are eligible for requirements validation
+   */
+  private recheckEligibleStepsOnly(): void {
     requestAnimationFrame(() => {
-      this.stepCheckers.forEach((checker) => {
-        try {
-          checker();
-        } catch (error) {
-          console.error('Error in step checker:', error);
+      this.stepCheckersByID.forEach((checker, stepId) => {
+        const stepState = this.steps.get(stepId);
+
+        // Only check steps that are not completed and not currently checking
+        if (stepState && !stepState.isCompleted && !stepState.isChecking) {
+          try {
+            checker();
+          } catch (error) {
+            console.error(`Error in selective step checker for ${stepId}:`, error);
+          }
         }
       });
     });
   }
+
+  /**
+   * Trigger requirements checking for a specific step
+   * Used when a step becomes eligible due to previous step completion
+   */
+  triggerStepEligibilityCheck(stepId: string): void {
+    const checker = this.stepCheckersByID.get(stepId);
+    if (checker) {
+      const stepState = this.steps.get(stepId);
+      if (stepState && !stepState.isCompleted && !stepState.isChecking) {
+        // Use immediate execution for eligibility-triggered checks
+        requestAnimationFrame(() => {
+          try {
+            checker();
+          } catch (error) {
+            console.error(`Error in eligibility-triggered check for ${stepId}:`, error);
+          }
+        });
+      }
+    }
+  }
+
+  // Removed: Global step checking method that caused infinite loops
 
   // Registry of step checker functions for reactive re-checking
   private stepCheckers = new Set<() => void>();
@@ -429,8 +451,8 @@ export class SequentialRequirementsManager {
           clearTimeout(this.domCheckThrottle);
         }
         this.domCheckThrottle = setTimeout(() => {
-          this.triggerReactiveCheck();
-        }, 800); // Shorter delay for DOM changes
+          this.triggerSelectiveRecheck();
+        }, 800);
       }
     });
 
@@ -454,8 +476,8 @@ export class SequentialRequirementsManager {
           clearTimeout(this.urlCheckThrottle);
         }
         this.urlCheckThrottle = setTimeout(() => {
-          this.triggerReactiveCheck();
-        }, 1500); // Reduced delay for faster responsiveness
+          this.triggerSelectiveRecheck();
+        }, 1500);
       }
     };
 
@@ -612,7 +634,7 @@ export function useSequentialRequirements({
     return () => {
       unregisterChecker();
     };
-  }, [manager, uniqueId]); // Removed checkRequirements to prevent infinite loops
+  }, [manager, uniqueId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const markCompleted = useCallback(() => {
     // Just delegate to the basic checker - it will update the manager directly
@@ -624,7 +646,7 @@ export function useSequentialRequirements({
     setTimeout(() => {
       manager.triggerReactiveCheck();
     }, 150); // Slightly longer delay to ensure basic checker's timeout completes first
-  }, [manager]); // Removed basicChecker to prevent infinite loops - use current reference
+  }, [manager]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Get current state from manager (which includes sequential logic)
   const managerState = manager.getStepState(uniqueId);

@@ -165,9 +165,37 @@ export async function reftargetExistsCHECK(
   }
 
   // For other actions, check if the CSS selector matches an element
-  // Add retry logic for elements that might not exist immediately
-  const maxRetries = 3;
-  const retryDelay = 500; // 500ms between retries
+  // Fast-path check for navigation menu items
+  if (reftarget.includes('data-testid Nav menu item')) {
+    // Most navigation menu items are immediately visible
+    const targetElement = document.querySelector(reftarget);
+    if (targetElement) {
+      return {
+        requirement: 'exists-reftarget',
+        pass: true,
+      };
+    }
+
+    // If not found, it likely needs expansion - fail fast with fix suggestion
+    const navigationMenuItemMatch = reftarget.match(
+      /a\[data-testid=['"]data-testid Nav menu item['"]\]\[href=['"]([^'"]+)['"]\]/
+    );
+    if (navigationMenuItemMatch) {
+      const targetHref = navigationMenuItemMatch[1];
+      return {
+        requirement: 'exists-reftarget',
+        pass: false,
+        error: `Navigation menu item not found - may need section expansion`,
+        canFix: true,
+        fixType: 'expand-parent-navigation',
+        targetHref: targetHref,
+      };
+    }
+  }
+
+  // Retry configuration for element detection
+  const maxRetries = 2;
+  const retryDelay = 200;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const targetElement = document.querySelector(reftarget);
@@ -185,23 +213,17 @@ export async function reftargetExistsCHECK(
     }
   }
 
-  // Element not found - check if this might be a navigation menu item that needs expansion
-  // Handle both single and double quotes in the selector
-  const navigationMenuItemMatch = reftarget.match(
-    /a\[data-testid=['"]data-testid Nav menu item['"]\]\[href=['"]([^'"]+)['"]\]/
-  );
-  if (navigationMenuItemMatch) {
-    const targetHref = navigationMenuItemMatch[1];
-
-    // Any navigation menu item that can't be found might need expansion
-    // This includes both nested paths (/alerting/list) and non-conforming URLs (/plugins)
+  // Element not found after retries - check for general navigation menu pattern
+  if (
+    reftarget.includes('data-testid Nav menu item') &&
+    !reftarget.includes('/alerting/list') &&
+    !reftarget.includes('/plugins')
+  ) {
+    // For general navigation items that don't need expansion, return simple not found
     return {
       requirement: 'exists-reftarget',
       pass: false,
-      error: `Navigation menu item not found - may need section expansion`,
-      canFix: true,
-      fixType: 'expand-parent-navigation',
-      targetHref: targetHref,
+      error: `Navigation menu item not found`,
     };
   }
 
@@ -228,8 +250,6 @@ export async function navmenuOpenCHECK(): Promise<{
     // Most specific to your Grafana version
     'div[data-testid="data-testid navigation mega-menu"]',
     'ul[aria-label="Navigation"]',
-    'nav.css-rs8tod',
-    // Fallbacks for other versions
     'div[data-testid*="navigation"]',
     'nav[aria-label="Navigation"]',
     'ul[aria-label="Main navigation"]',

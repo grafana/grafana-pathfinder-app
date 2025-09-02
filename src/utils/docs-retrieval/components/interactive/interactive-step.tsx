@@ -55,22 +55,16 @@ export const InteractiveStep = forwardRef<
     // For section steps, use a simplified checker that respects section authority
     // For standalone steps, use the full global checker
     const isPartOfSection = stepId?.includes('section-') && stepId?.includes('-step-');
-    
+
     const checker = useStepChecker({
       requirements,
       hints,
       targetAction,
       refTarget,
       stepId: stepId || `step-${Date.now()}`, // Fallback if no stepId provided
-      isEligibleForChecking: isPartOfSection ? true : (isEligibleForChecking && !isCompleted), // Section steps always eligible in checker
+      isEligibleForChecking: isPartOfSection ? isEligibleForChecking : isEligibleForChecking && !isCompleted,
       skipable,
     });
-
-    // Debug: Log when eligibility changes (disabled to prevent spam)
-    // useEffect(() => {
-    //   console.warn(`Step ${stepId}: isEligibleForChecking changed to ${isEligibleForChecking}, isCompleted = ${isCompleted}`);
-    //   console.warn(`Step ${stepId}: Final eligibility = ${isEligibleForChecking && !isCompleted}`);
-    // }, [isEligibleForChecking, isCompleted, stepId]);
 
     // Combined completion state: objectives always win, skipped also counts as completed (clarification 1, 2)
     const isCompletedWithObjectives =
@@ -78,29 +72,38 @@ export const InteractiveStep = forwardRef<
       isLocallyCompleted ||
       checker.completionReason === 'objectives' ||
       checker.completionReason === 'skipped';
-      
-    // For section steps, combine section eligibility with requirements checking
-    // For standalone steps, use checker's decision
-    const finalIsEnabled = isPartOfSection 
-      ? (isEligibleForChecking && !isCompleted && checker.completionReason !== 'objectives') 
+
+    // Determine if step should show action buttons
+    // Section steps require both eligibility AND requirements to be met
+    const finalIsEnabled = isPartOfSection
+      ? isEligibleForChecking && !isCompleted && checker.isEnabled && checker.completionReason !== 'objectives'
       : checker.isEnabled;
-      
-    // For section steps, show explanations when they have requirements that aren't met
-    const shouldShowExplanation = isPartOfSection 
-      ? (!isEligibleForChecking || (requirements && !checker.isEnabled))
+
+    // Determine when to show explanation text and what text to show
+    const shouldShowExplanation = isPartOfSection
+      ? !isEligibleForChecking || (isEligibleForChecking && requirements && !checker.isEnabled)
       : !checker.isEnabled;
+
+    // Choose appropriate explanation text based on step state
+    const explanationText = isPartOfSection
+      ? !isEligibleForChecking
+        ? 'Complete the previous steps in order before this one becomes available.'
+        : checker.explanation
+      : checker.explanation;
 
     // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
-        console.warn(`🔄 Step ${stepId}: Received resetTrigger ${resetTrigger} - resetting local state only`);
+        // Reset local completion state
         setIsLocallyCompleted(false);
         setPostVerifyError(null);
-        
-        // Don't call checker.resetStep() here as it can cause loops
-        // The section reset will handle manager state directly
+
+        // Reset step checker state including skipped status
+        if (checker.resetStep) {
+          checker.resetStep();
+        }
       }
-    }, [resetTrigger, stepId]);
+    }, [resetTrigger, stepId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Execution logic (shared between individual and sequence execution)
     const executeStep = useCallback(async (): Promise<boolean> => {
@@ -112,9 +115,8 @@ export const InteractiveStep = forwardRef<
         // Execute the action using existing interactive logic
         await executeInteractiveAction(targetAction, refTarget, targetValue, 'do', targetComment);
 
-        // If author provided explicit post verification (data-verify), run it now
+        // Run post-verification if specified by author
         if (postVerify && postVerify.trim() !== '') {
-          console.warn(`🔍 Post-verify: ${postVerify}`);
           await waitForReactUpdates();
           const result = await verifyStepResult(
             postVerify,
@@ -132,7 +134,7 @@ export const InteractiveStep = forwardRef<
                 .join(', ')
             );
             setPostVerifyError(friendly || 'Verification failed.');
-            console.warn(`⛔ Post-verify failed for ${stepId}:`, friendly);
+
             return false;
           }
         }
@@ -249,8 +251,6 @@ export const InteractiveStep = forwardRef<
         return;
       }
 
-      console.warn(`🔄 Step ${stepId}: Starting redo process`);
-
       // Reset local completion state
       setIsLocallyCompleted(false);
       setPostVerifyError(null);
@@ -268,7 +268,7 @@ export const InteractiveStep = forwardRef<
       }
       // No need for complex timing logic - the section's getStepEligibility
       // will use the updated completedSteps state on the next render
-    }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset, checker, isEligibleForChecking]);
+    }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const getActionDescription = () => {
       switch (targetAction) {
@@ -377,36 +377,39 @@ export const InteractiveStep = forwardRef<
           shouldShowExplanation &&
           !isCompletedWithObjectives &&
           !checker.isChecking &&
-          (checker.explanation || (!isEligibleForChecking && isPartOfSection)) && (
+          explanationText && (
             <div className="interactive-step-requirement-explanation">
-              {checker.explanation || (!isEligibleForChecking && isPartOfSection ? 'Complete the previous steps in order before this one becomes available.' : '')}
+              {explanationText}
               <div className="interactive-step-requirement-buttons">
-                <button
-                  className="interactive-requirement-retry-btn"
-                  onClick={async () => {
-                    if (checker.canFixRequirement && checker.fixRequirement) {
-                      await checker.fixRequirement();
-                    } else {
-                      checker.checkStep();
-                    }
-                  }}
-                >
-                  {checker.canFixRequirement ? 'Fix this' : 'Retry'}
-                </button>
+                {/* Retry button for eligible steps or fixable requirements */}
+                {(isEligibleForChecking || checker.canFixRequirement) && (
+                  <button
+                    className="interactive-requirement-retry-btn"
+                    onClick={async () => {
+                      if (checker.canFixRequirement && checker.fixRequirement) {
+                        await checker.fixRequirement();
+                      } else {
+                        checker.checkStep();
+                      }
+                    }}
+                  >
+                    {checker.canFixRequirement ? 'Fix this' : 'Retry'}
+                  </button>
+                )}
 
-                {checker.canSkip && checker.markSkipped && (
+                {/* Skip button only for eligible steps with failed requirements */}
+                {isEligibleForChecking && checker.canSkip && checker.markSkipped && !checker.isEnabled && (
                   <button
                     className="interactive-requirement-skip-btn"
                     onClick={async () => {
                       if (checker.markSkipped) {
                         await checker.markSkipped();
 
-                        // Notify parent section that this step is "completed" (skipped)
+                        // Notify parent section of step completion (skipped counts as completed)
                         if (onStepComplete && stepId) {
                           onStepComplete(stepId);
                         }
 
-                        // Call the original onComplete callback if provided
                         if (onComplete) {
                           onComplete();
                         }
