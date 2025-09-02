@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
+import { Card } from '@grafana/ui';
 
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
@@ -246,6 +247,16 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
   );
 }
 
+// Whitelisted @grafana/ui React components by tag name
+const allowedUiComponents: Record<string, React.ElementType> = {
+  card: Card,
+  'card.heading': Card.Heading,
+  'card.description': Card.Description,
+  'card.meta': Card.Meta,
+  'card.actions': Card.Actions,
+  'card.secondaryactions': Card.SecondaryActions,
+};
+
 function renderParsedElement(element: ParsedElement | ParsedElement[], key: string | number): React.ReactNode {
   if (Array.isArray(element)) {
     return element.map((child, i) => renderParsedElement(child, `${key}-${i}`));
@@ -354,6 +365,47 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
       // This should only be used for specific known-safe content
       return <div key={key} dangerouslySetInnerHTML={{ __html: element.props.html }} />;
     default:
+      // Whitelisted @grafana/ui components mapping
+      if (typeof element.type === 'string') {
+        const lowerType = element.type.toLowerCase();
+        const comp = allowedUiComponents[lowerType];
+        if (comp) {
+          const children = element.children
+            ?.map((child: ParsedElement | string, childIndex: number) =>
+              typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
+            )
+            .filter((child: React.ReactNode) => child !== null);
+
+          const uiProps: Record<string, any> = { ...element.props };
+          const originalHTML: string | undefined = (element as any).originalHTML;
+
+          if (typeof originalHTML === 'string') {
+            // Parse the original HTML to extract attributes
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = originalHTML;
+            const tempElement = tempDiv.firstElementChild;
+
+            if (tempElement) {
+              // Helper function to get attribute value
+              const getAttr = (name: string) => tempElement.getAttribute(name);
+
+              // Boolean attributes
+              if (getAttr('nomargin')) {
+                uiProps.noMargin = true;
+              }
+              if (getAttr('nopadding')) {
+                uiProps.noPadding = true;
+              }
+              if (getAttr('isselected')) {
+                uiProps.isSelected = true;
+              }
+            }
+          }
+
+          return React.createElement(comp, { key, ...uiProps }, ...(children && children.length > 0 ? children : []));
+        }
+      }
+
       // Standard HTML elements - strict validation
       if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
         console.error('[DocsPlugin] Invalid element type for parsed element:', element);
