@@ -678,7 +678,6 @@ function urlsMatch(url1: string, url2: string): boolean {
 
 /**
  * replace recommendation base url with the base url from the config
- * ensures trailing slash and unstyled.html is added to the url
  */
 function replaceRecommendationBaseUrl(url: string, docsBaseUrl: string | undefined): string {
   return url.replace('https://grafana.com', docsBaseUrl || '');
