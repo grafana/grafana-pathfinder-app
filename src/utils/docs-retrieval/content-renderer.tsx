@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
-import { Card, TabsBar, Tab, TabContent } from '@grafana/ui';
+import { Card, TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
 
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
@@ -258,6 +258,8 @@ const allowedUiComponents: Record<string, React.ElementType> = {
   tab: Tab,
   tabsbar: TabsBar,
   tabcontent: TabContent,
+  badge: Badge,
+  tooltip: Tooltip,
 };
 
 // TabsWrapper manages tabs state
@@ -339,6 +341,19 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
 
   // Handle special cases first
   switch (element.type) {
+    case 'badge':
+      return <Badge key={key} text={element.props.text} color={element.props.color} className="mr-1" />;
+    case 'badge-tooltip':
+      return (
+        <Badge
+          key={key}
+          text={element.props.text}
+          color={element.props.color}
+          icon={element.props.icon}
+          tooltip={element.props.tooltip}
+          className="mr-1"
+        />
+      );
     case 'interactive-section':
       return (
         <InteractiveSection
