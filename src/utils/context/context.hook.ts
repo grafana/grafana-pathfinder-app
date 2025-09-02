@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { locationService } from '@grafana/runtime';
 import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
@@ -171,7 +171,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       window.removeEventListener('popstate', handlePopState);
       timeoutManager.clear('context-refresh');
     };
-  }, [debouncedRefresh]); // debouncedRefresh is stable due to useCallback
+  }, [debouncedRefresh, timeoutManager]); // debouncedRefresh is stable due to useCallback
 
   // Listen for EchoSrv-triggered context changes (datasource/viz changes)
   // Now uses unified debouncing with location changes
@@ -194,7 +194,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     contextData.isLoading,
     contextData.currentPath,
     tagsString, // Extracted to separate variable - includes datasource tags
-    recommendationTriggerData.visualizationType, // Direct viz type tracking
+    contextData.visualizationType, // Direct viz type tracking
     fetchRecommendations,
   ]); // fetchRecommendations is stable due to useCallback with empty deps
 
@@ -207,13 +207,12 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   const refreshRecommendations = useCallback(() => {
     // Use current state at time of call, not dependency
     const currentContextData = {
-      ...recommendationTriggerData,
-      currentUrl: contextData.currentUrl,
+      ...contextData,
       recommendations: [],
       recommendationsError: null,
     };
     fetchRecommendations(currentContextData);
-  }, [fetchRecommendations, recommendationTriggerData, contextData.currentUrl]);
+  }, [fetchRecommendations, contextData]);
 
   const openLearningJourney = useCallback(
     (url: string, title: string) => {
