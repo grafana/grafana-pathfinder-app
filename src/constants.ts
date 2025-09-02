@@ -3,14 +3,14 @@ import pluginJson from './plugin.json';
 export const PLUGIN_BASE_URL = `/a/${pluginJson.id}`;
 
 // Default configuration values
-export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://recommender.grafana-dev.com';
+export const DEFAULT_DEV_MODE = false;
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
 export const DEFAULT_DOCS_USERNAME = '';
 export const DEFAULT_DOCS_PASSWORD = '';
-export const DEFAULT_TUTORIAL_URL = '';
+export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://recommender.grafana-dev.com';
 export const DEFAULT_TERMS_ACCEPTED = false;
+export const DEFAULT_TUTORIAL_URL = '';
 export const TERMS_VERSION = '1.0.0';
-export const DEFAULT_DEV_MODE = false;
 
 // Configuration interface
 export interface DocsPluginConfig {
