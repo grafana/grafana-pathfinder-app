@@ -1,8 +1,8 @@
 # Grafana Pathfinder
 
-![Grafana Pathfinder](https://github.com/grafana/docs-plugin/blob/main/src/img/logo.svg)
+![Grafana Pathfinder](https://raw.githubusercontent.com/grafana/docs-plugin/refs/heads/main/src/img/logo.svg)
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License](https://img.shields.io/github/license/grafana/docs-plugin)](LICENSE)
 
 Grafana Pathfinder brings contextual help and interactive learning directly into Grafana. Open the sidebar, get tailored recommendations, and follow guided learning journeys without leaving your workflow.
 

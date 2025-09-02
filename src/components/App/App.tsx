@@ -4,7 +4,7 @@ import { SceneApp } from '@grafana/scenes';
 import { docsPage } from '../../pages/docsPage';
 import { ContextPanelComponent } from '../../utils/docs.utils';
 import { PluginPropsContext } from '../../utils/utils.plugin';
-import { getTutorialUrl, ConfigService } from '../../constants';
+import { getConfigWithDefaults } from '../../constants';
 
 function getSceneApp() {
   return new SceneApp({
@@ -21,15 +21,9 @@ function App(props: AppRootProps) {
 
   // Auto-launch tutorial if configured
   useEffect(() => {
-    // Update configuration service with plugin metadata
-    if (props.meta.jsonData) {
-      ConfigService.setConfig(props.meta.jsonData);
-    } else {
-      console.warn('⚠️ No jsonData found in props.meta');
-    }
-
-    // Check if a tutorial URL is configured for auto-launch
-    const tutorialUrl = getTutorialUrl();
+    // Get configuration directly from plugin meta
+    const config = getConfigWithDefaults(props.meta.jsonData || {});
+    const tutorialUrl = config.tutorialUrl;
 
     if (tutorialUrl && tutorialUrl.trim()) {
       // Small delay to ensure the app is fully loaded

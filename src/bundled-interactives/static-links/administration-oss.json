@@ -1,0 +1,516 @@
+{
+  "rules": [
+    {
+      "title": "Administration",
+      "url": "https://grafana.com/docs/grafana/next/administration/",
+      "description": "Learn about Administration.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Provision Grafana",
+      "url": "https://grafana.com/docs/grafana/next/administration/provisioning/",
+      "description": "Learn about Provision Grafana.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/provisioning"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "View server statistics and license",
+      "url": "https://grafana.com/docs/grafana/next/administration/stats-and-license/",
+      "description": "Learn about View server statistics and license.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/general"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Organization preferences",
+      "url": "https://grafana.com/docs/grafana/next/administration/organization-preferences/",
+      "description": "Learn about Organization preferences.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/general"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Grafana",
+      "url": "https://grafana.com/docs/grafana/next/setup-grafana/configure-grafana/",
+      "description": "How to configure Grafana.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/general"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage organizations",
+      "url": "https://grafana.com/docs/grafana/next/administration/organization-management/",
+      "description": "Learn about Manage organizations.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/general"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Migrate from Grafana OSS/Enterprise to Grafana Cloud",
+      "url": "https://grafana.com/docs/grafana/next/administration/migration-guide/",
+      "description": "Learn about Migrate from Grafana OSS/Enterprise to Grafana Cloud.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/general"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "View server statistics and license",
+      "url": "https://grafana.com/docs/grafana/next/administration/stats-and-license/",
+      "description": "Learn about View server statistics and license.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/licensing"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Organization preferences",
+      "url": "https://grafana.com/docs/grafana/next/administration/organization-preferences/",
+      "description": "Learn about Organization preferences.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Grafana",
+      "url": "https://grafana.com/docs/grafana/next/setup-grafana/configure-grafana/",
+      "description": "How to configure Grafana.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/settings"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage organizations",
+      "url": "https://grafana.com/docs/grafana/next/administration/organization-management/",
+      "description": "Learn about Manage organizations.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/orgs"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Migrate from Grafana OSS/Enterprise to Grafana Cloud manually",
+      "url": "https://grafana.com/docs/grafana/next/administration/migration-guide/manually-migrate-to-grafana-cloud/",
+      "description": "Learn about Migrate from Grafana OSS/Enterprise to Grafana Cloud manually.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/migrate-to-cloud"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Cloud Migration Assistant",
+      "url": "https://grafana.com/docs/grafana/next/administration/migration-guide/cloud-migration-assistant/",
+      "description": "Learn about Grafana Cloud Migration Assistant.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/migrate-to-cloud"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Install a plugin",
+      "url": "https://grafana.com/docs/grafana/next/administration/plugin-management/#install-a-plugin",
+      "description": "How to install a plugin.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/plugins"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Correlations",
+      "url": "https://grafana.com/docs/grafana/next/administration/correlations/",
+      "description": "Learn about Correlations.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/plugins"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Install a plugin",
+      "url": "https://grafana.com/docs/grafana/next/administration/plugin-management/#install-a-plugin",
+      "description": "How to install a plugin.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/plugins"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create a new correlation",
+      "url": "https://grafana.com/docs/grafana/next/administration/correlations/create-a-new-correlation/",
+      "description": "Learn about Create a new correlation.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/datasources/correlations"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Use correlations in visualizations",
+      "url": "https://grafana.com/docs/grafana/next/administration/correlations/use-correlations-in-visualizations/",
+      "description": "Learn about Use correlations in visualizations.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/datasources/correlations"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Use variables and transformations in a correlation",
+      "url": "https://grafana.com/docs/grafana/next/administration/correlations/use-variables-and-transformations/",
+      "description": "Learn about Use variables and transformations in a correlation.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/datasources/correlations"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "User management",
+      "url": "https://grafana.com/docs/grafana/next/administration/user-management/",
+      "description": "Learn about User management.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/access"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Teams",
+      "url": "https://grafana.com/docs/grafana/next/administration/team-management/",
+      "description": "Learn about Grafana Teams.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/access"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Service accounts",
+      "url": "https://grafana.com/docs/grafana/next/administration/service-accounts/",
+      "description": "Learn about Service accounts.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/access"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Add a user",
+      "url": "https://grafana.com/docs/grafana/next/administration/user-management/server-user-management/#add-a-user",
+      "description": "Learn about Add a user.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/users"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage users in an organization",
+      "url": "https://grafana.com/docs/grafana/next/administration/user-management/manage-org-users/",
+      "description": "Learn about Manage users in an organization.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/users"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "User management",
+      "url": "https://grafana.com/docs/grafana/next/administration/user-management/",
+      "description": "Learn about User management.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/users"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Grafana Teams",
+      "url": "https://grafana.com/docs/grafana/next/administration/team-management/configure-grafana-teams/",
+      "description": "How to configure Grafana Teams.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/teams"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Administer Grafana Teams",
+      "url": "https://grafana.com/docs/grafana/next/administration/team-management/administering-grafana-teams/",
+      "description": "Learn about Administer Grafana Teams.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/teams"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Teams",
+      "url": "https://grafana.com/docs/grafana/next/administration/team-management/",
+      "description": "Learn about Grafana Teams.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/teams"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create a service account in Grafana",
+      "url": "https://grafana.com/docs/grafana/next/administration/service-accounts/#create-a-service-account-in-grafana",
+      "description": "Learn about Create a service account in Grafana.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/serviceaccounts"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Assign roles to a service account in Grafana",
+      "url": "https://grafana.com/docs/grafana/next/administration/service-accounts/#assign-roles-to-a-service-account-in-grafana",
+      "description": "Learn about Assign roles to a service account in Grafana.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/serviceaccounts"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage users and teams permissions for a service account in Grafana",
+      "url": "https://grafana.com/docs/grafana/next/administration/service-accounts/#manage-users-and-teams-permissions-for-a-service-account-in-grafana",
+      "description": "Learn about Manage users and teams permissions for a service account in Grafana.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/serviceaccounts"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure authentication",
+      "url": "https://grafana.com/docs/grafana/next/setup-grafana/configure-security/configure-authentication/",
+      "description": "How to configure authentication.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/authentication"
+          },
+          {
+            "targetPlatform": "oss"
+          }
+        ]
+      }
+    }
+  ]
+}
