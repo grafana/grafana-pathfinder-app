@@ -174,7 +174,6 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [debouncedRefresh, timeoutManager]); // debouncedRefresh is stable due to useCallback
 
   // Listen for EchoSrv-triggered context changes (datasource/viz changes)
-  // Now uses unified debouncing with location changes
   useEffect(() => {
     const unsubscribe = ContextService.onContextChange(() => {
       debouncedRefresh();
