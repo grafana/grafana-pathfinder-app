@@ -517,7 +517,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.success.main,
     fontSize: '16px',
     fontWeight: 'bold',
-    
+
     // Skipped state - blue instead of green
     '&.skipped': {
       color: theme.colors.info.main,

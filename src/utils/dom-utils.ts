@@ -30,9 +30,14 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   Array.from(element.attributes).forEach((attr) => {
     if (
       attr.name.startsWith('data-') &&
-      !['data-reftarget', 'data-targetaction', 'data-targetvalue', 'data-requirements', 'data-objectives', 'data-skipable'].includes(
-        attr.name
-      )
+      ![
+        'data-reftarget',
+        'data-targetaction',
+        'data-targetvalue',
+        'data-requirements',
+        'data-objectives',
+        'data-skipable',
+      ].includes(attr.name)
     ) {
       const key = attr.name.substring(5); // Remove 'data-' prefix
       customData[key] = attr.value;
@@ -133,7 +138,14 @@ export function resetValueTracker(targetElement: HTMLElement): void {
 export async function reftargetExistsCHECK(
   reftarget: string,
   targetAction: string
-): Promise<{ requirement: string; pass: boolean; error?: string; canFix?: boolean; fixType?: string; targetHref?: string }> {
+): Promise<{
+  requirement: string;
+  pass: boolean;
+  error?: string;
+  canFix?: boolean;
+  fixType?: string;
+  targetHref?: string;
+}> {
   // For button actions, check if buttons with matching text exist
   if (targetAction === 'button') {
     const buttons = findButtonByText(reftarget);
@@ -175,10 +187,12 @@ export async function reftargetExistsCHECK(
 
   // Element not found - check if this might be a navigation menu item that needs expansion
   // Handle both single and double quotes in the selector
-  const navigationMenuItemMatch = reftarget.match(/a\[data-testid=['"]data-testid Nav menu item['"]\]\[href=['"]([^'"]+)['"]\]/);
+  const navigationMenuItemMatch = reftarget.match(
+    /a\[data-testid=['"]data-testid Nav menu item['"]\]\[href=['"]([^'"]+)['"]\]/
+  );
   if (navigationMenuItemMatch) {
     const targetHref = navigationMenuItemMatch[1];
-    
+
     // Any navigation menu item that can't be found might need expansion
     // This includes both nested paths (/alerting/list) and non-conforming URLs (/plugins)
     return {
@@ -202,7 +216,13 @@ export async function reftargetExistsCHECK(
  * Check if the navigation menu is open by trying various selectors
  * Based on Grafana's HTML structure, tries selectors in order of preference
  */
-export async function navmenuOpenCHECK(): Promise<{ requirement: string; pass: boolean; error?: string; canFix?: boolean; fixType?: string }> {
+export async function navmenuOpenCHECK(): Promise<{
+  requirement: string;
+  pass: boolean;
+  error?: string;
+  canFix?: boolean;
+  fixType?: string;
+}> {
   // Based on your HTML structure, try these selectors in order of preference
   const selectorsToTry = [
     // Most specific to your Grafana version

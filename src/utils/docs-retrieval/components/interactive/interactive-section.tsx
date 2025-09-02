@@ -45,6 +45,7 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
   children: React.ReactNode;
   isSequence?: boolean;
   id?: string; // HTML id attribute for section identification
+  skipable?: boolean; // Whether this section can be skipped if requirements fail
 }
 
 // Types for unified state management
@@ -150,13 +151,18 @@ export function InteractiveSection({
 
   // Store refs to multistep components for section-level execution
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
-  
+
   // Store refs to regular step components for skip functionality
   const stepRefs = useRef<Map<string, { executeStep: () => Promise<boolean>; markSkipped?: () => void }>>(new Map());
 
   // Get the interactive functions from the hook
-  const { executeInteractiveAction, startSectionBlocking, stopSectionBlocking, verifyStepResult, checkRequirementsFromData } =
-    useInteractiveElements();
+  const {
+    executeInteractiveAction,
+    startSectionBlocking,
+    stopSectionBlocking,
+    verifyStepResult,
+    checkRequirementsFromData,
+  } = useInteractiveElements();
 
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {
@@ -244,8 +250,6 @@ export function InteractiveSection({
     stepId: sectionId,
     isEligibleForChecking: !stepsCompleted, // Stop checking once steps are done
   });
-
-
 
   // UNIFIED completion calculation - objectives always win (clarification 1, 2)
   const isCompletedByObjectives = objectivesChecker.completionReason === 'objectives';
@@ -478,22 +482,22 @@ export function InteractiveSection({
           // Section requirements not met - try to fix
           if (sectionRequirementsResult.error?.some((e: any) => e.canFix)) {
             const fixableError = sectionRequirementsResult.error.find((e: any) => e.canFix);
-            
+
             try {
               // Try to fix the section requirement automatically
               const { NavigationManager } = await import('../../../navigation-manager');
               const navigationManager = new NavigationManager();
-              
+
               if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
                 await navigationManager.expandParentNavigationSection(fixableError.targetHref);
               } else if (requirements.includes('navmenu-open')) {
                 await navigationManager.fixNavigationRequirements();
               }
-              
+
               // Recheck section requirements after fix attempt
-              await new Promise(resolve => setTimeout(resolve, 200));
+              await new Promise((resolve) => setTimeout(resolve, 200));
               const sectionRecheckResult = await checkRequirementsFromData(sectionRequirementsData);
-              
+
               if (!sectionRecheckResult.pass) {
                 // Section requirements still not met after fix attempt
                 console.warn('⚠️ Section requirements could not be fixed, stopping execution');
@@ -559,26 +563,29 @@ export function InteractiveSection({
             const requirementsResult = await checkRequirementsFromData(stepRequirementsData);
             if (!requirementsResult.pass) {
               // Requirements not met - apply priority logic
-              
+
               // Priority 2: Try to fix the requirement if possible
               if (requirementsResult.error?.some((e: any) => e.canFix)) {
                 const fixableError = requirementsResult.error.find((e: any) => e.canFix);
-                
+
                 try {
                   // Try to fix the requirement automatically
                   const { NavigationManager } = await import('../../../navigation-manager');
                   const navigationManager = new NavigationManager();
-                  
+
                   if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
                     await navigationManager.expandParentNavigationSection(fixableError.targetHref);
-                  } else if (fixableError?.fixType === 'navigation' || stepInfo.requirements?.includes('navmenu-open')) {
+                  } else if (
+                    fixableError?.fixType === 'navigation' ||
+                    stepInfo.requirements?.includes('navmenu-open')
+                  ) {
                     await navigationManager.fixNavigationRequirements();
                   }
-                  
+
                   // Recheck requirements after fix attempt
-                  await new Promise(resolve => setTimeout(resolve, 200)); // Wait for UI to settle
+                  await new Promise((resolve) => setTimeout(resolve, 200)); // Wait for UI to settle
                   const recheckResult = await checkRequirementsFromData(stepRequirementsData);
-                  
+
                   if (!recheckResult.pass) {
                     // Fix didn't work - check if step is skipable
                     // Priority 3: Skip if possible
@@ -600,7 +607,7 @@ export function InteractiveSection({
                   // If recheck passed, continue with normal execution below
                 } catch (fixError) {
                   console.warn(`⚠️ Failed to fix requirements for step ${i + 1}:`, fixError);
-                  
+
                   // Fix failed - check if step is skipable
                   if (stepInfo.skipable) {
                     // Skip this step properly using the step's own markSkipped function
@@ -730,6 +737,7 @@ export function InteractiveSection({
     title,
     handleSectionCancel,
     currentStepIndex,
+    requirements,
     checkRequirementsFromData,
   ]);
 
@@ -743,13 +751,13 @@ export function InteractiveSection({
     setCurrentlyExecutingStep(null);
     setCurrentStepIndex(0); // Reset to start from beginning
     setResetTrigger((prev) => prev + 1); // Signal child steps to reset their local state
-    
+
     // Trigger reactive check to properly re-enable steps based on current requirements
     setTimeout(() => {
       const { SequentialRequirementsManager } = require('../../../requirements-checker.hook');
       SequentialRequirementsManager.getInstance().triggerReactiveCheck();
     }, 100);
-    
+
     // Clear persistence
     try {
       localStorage.removeItem(getStorageKey());
@@ -860,8 +868,6 @@ export function InteractiveSection({
       {description && <div className="interactive-section-description">{description}</div>}
 
       <div className="interactive-section-content">{enhancedChildren}</div>
-
-
 
       <div className="interactive-section-actions">
         <Button

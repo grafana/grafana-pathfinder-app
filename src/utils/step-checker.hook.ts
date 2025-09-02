@@ -149,11 +149,9 @@ export function useStepChecker({
 
         // Check if any error has fix capability
         const fixableError = result.error?.find((e: any) => e.canFix);
-        
 
-        
-        return { 
-          pass: conditionsMet, 
+        return {
+          pass: conditionsMet,
           error: errorMessage,
           canFix: !!fixableError,
           fixType: fixableError?.fixType,
@@ -285,7 +283,7 @@ export function useStepChecker({
       setState(errorState);
       updateManager(errorState);
     }
-  }, [objectives, requirements, hints, stepId, isEligibleForChecking, updateManager, checkConditions]);
+  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skipable, updateManager, checkConditions]);
 
   /**
    * Fix requirements by applying the appropriate fix based on the detected issue
@@ -302,7 +300,7 @@ export function useStepChecker({
         // Expand parent navigation section
         console.warn('🔧 Attempting to expand parent navigation section for:', state.targetHref);
         const success = await navigationManagerRef.current.expandParentNavigationSection(state.targetHref);
-        
+
         if (!success) {
           console.error('Failed to expand parent navigation section');
           setState((prev) => ({
@@ -399,7 +397,7 @@ export function useStepChecker({
     };
     setState(resetState);
     updateManager(resetState);
-    
+
     // Trigger a recheck after reset to properly enable steps that meet requirements
     setTimeout(() => {
       checkStep();
@@ -447,7 +445,7 @@ export function useStepChecker({
 
     document.addEventListener('section-completed', handleSectionCompletion);
     document.addEventListener('step-auto-skipped', handleAutoSkip as EventListener);
-    
+
     return () => {
       document.removeEventListener('section-completed', handleSectionCompletion);
       document.removeEventListener('step-auto-skipped', handleAutoSkip as EventListener);

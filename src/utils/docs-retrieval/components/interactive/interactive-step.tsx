@@ -7,7 +7,10 @@ import { useStepChecker } from '../../../step-checker.hook';
 import { getPostVerifyExplanation } from '../../../requirement-explanations';
 import type { InteractiveStepProps } from './interactive-section';
 
-export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean>; markSkipped?: () => void }, InteractiveStepProps>(
+export const InteractiveStep = forwardRef<
+  { executeStep: () => Promise<boolean>; markSkipped?: () => void },
+  InteractiveStepProps
+>(
   (
     {
       targetAction,
@@ -62,7 +65,10 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean>;
 
     // Combined completion state: objectives always win, skipped also counts as completed (clarification 1, 2)
     const isCompletedWithObjectives =
-      parentCompleted || isLocallyCompleted || checker.completionReason === 'objectives' || checker.completionReason === 'skipped';
+      parentCompleted ||
+      isLocallyCompleted ||
+      checker.completionReason === 'objectives' ||
+      checker.completionReason === 'skipped';
 
     // Handle reset trigger from parent section
     useEffect(() => {
@@ -311,14 +317,20 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean>;
 
           {isCompletedWithObjectives && (
             <div className="interactive-step-completion-group">
-              <span className={`interactive-step-completed-indicator ${checker.completionReason === 'skipped' ? 'skipped' : ''}`}>
+              <span
+                className={`interactive-step-completed-indicator ${checker.completionReason === 'skipped' ? 'skipped' : ''}`}
+              >
                 {checker.completionReason === 'skipped' ? '↷' : '✓'}
               </span>
               <button
                 className="interactive-step-redo-btn"
                 onClick={handleStepRedo}
                 disabled={disabled || isAnyActionRunning}
-                title={checker.completionReason === 'skipped' ? 'Redo this step (try again)' : 'Redo this step (execute again)'}
+                title={
+                  checker.completionReason === 'skipped'
+                    ? 'Redo this step (try again)'
+                    : 'Redo this step (execute again)'
+                }
               >
                 <span className="interactive-step-redo-icon">↻</span>
                 <span className="interactive-step-redo-text">Redo</span>
@@ -354,19 +366,19 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean>;
                 >
                   {checker.canFixRequirement ? 'Fix this' : 'Retry'}
                 </button>
-                
+
                 {checker.canSkip && checker.markSkipped && (
                   <button
                     className="interactive-requirement-skip-btn"
                     onClick={async () => {
                       if (checker.markSkipped) {
                         await checker.markSkipped();
-                        
+
                         // Notify parent section that this step is "completed" (skipped)
                         if (onStepComplete && stepId) {
                           onStepComplete(stepId);
                         }
-                        
+
                         // Call the original onComplete callback if provided
                         if (onComplete) {
                           onComplete();
@@ -377,7 +389,6 @@ export const InteractiveStep = forwardRef<{ executeStep: () => Promise<boolean>;
                     Skip
                   </button>
                 )}
-
               </div>
             </div>
           )}

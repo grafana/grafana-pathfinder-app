@@ -41,9 +41,9 @@ export class NavigationManager {
       // await waitForReactUpdates();
       // await new Promise(resolve => setTimeout(resolve, 1000));
       await this.waitForScrollComplete(element);
-      
+
       // Add small DOM settling delay after scroll completes to ensure element position is stable
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 
@@ -279,7 +279,7 @@ export class NavigationManager {
     try {
       // First ensure navigation is open
       await this.fixNavigationRequirements();
-      
+
       // Parse the href to find the parent section
       const parentPath = this.getParentPathFromHref(targetHref);
       if (!parentPath) {
@@ -302,10 +302,10 @@ export class NavigationManager {
 
       // Click the expand button to reveal nested items
       parentExpandButton.click();
-      
+
       // Wait for expansion animation to complete
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
       return true;
     } catch (error) {
       console.error('Failed to expand parent navigation section:', error);
@@ -351,8 +351,10 @@ export class NavigationManager {
     // Strategy 2: Look for expand button by aria-label containing the section name
     const sectionName = parentPath.substring(1); // Remove leading slash
     const capitalizedName = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
-    
-    const expandButton = document.querySelector(`button[aria-label*="Expand section: ${capitalizedName}"]`) as HTMLButtonElement;
+
+    const expandButton = document.querySelector(
+      `button[aria-label*="Expand section: ${capitalizedName}"]`
+    ) as HTMLButtonElement;
     if (expandButton) {
       return expandButton;
     }
@@ -383,7 +385,7 @@ export class NavigationManager {
 
     // Check if the button has collapsed/expanded classes or icons
     const ariaLabel = expandButton.getAttribute('aria-label') || '';
-    
+
     // If aria-label says "Collapse" instead of "Expand", it's already expanded
     if (ariaLabel.includes('Collapse') || ariaLabel.includes('collapse')) {
       return true;
@@ -410,16 +412,18 @@ export class NavigationManager {
     try {
       // First ensure navigation is open
       await this.fixNavigationRequirements();
-      
+
       // Find all expand buttons in the navigation
-      const expandButtons = document.querySelectorAll('button[aria-label*="Expand section"]') as NodeListOf<HTMLButtonElement>;
-      
+      const expandButtons = document.querySelectorAll(
+        'button[aria-label*="Expand section"]'
+      ) as NodeListOf<HTMLButtonElement>;
+
       if (expandButtons.length === 0) {
         return false; // No expandable sections found
       }
 
       let expandedAny = false;
-      
+
       // Click all expand buttons that are currently collapsed
       for (const button of expandButtons) {
         if (!this.isParentSectionExpanded(button)) {
@@ -427,12 +431,12 @@ export class NavigationManager {
           expandedAny = true;
         }
       }
-      
+
       if (expandedAny) {
         // Wait for all expansion animations to complete
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
-      
+
       return true;
     } catch (error) {
       console.error('Failed to expand all navigation sections:', error);

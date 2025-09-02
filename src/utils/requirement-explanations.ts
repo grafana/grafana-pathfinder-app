@@ -179,7 +179,12 @@ function getSafeErrorMessage(error: string): string | null {
  * Prioritizes data-hint over mapped requirement messages
  * Enhanced to handle skipable steps with appropriate messaging
  */
-export function getRequirementExplanation(requirements?: string, hints?: string, error?: string, isSkipable?: boolean): string {
+export function getRequirementExplanation(
+  requirements?: string,
+  hints?: string,
+  error?: string,
+  isSkipable?: boolean
+): string {
   // Priority 1: Use data-hint if provided
   if (hints && hints.trim()) {
     const baseHint = hints.trim();

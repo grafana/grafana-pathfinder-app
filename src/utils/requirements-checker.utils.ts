@@ -121,7 +121,7 @@ async function runUnifiedChecks(
     .map((c) => c.trim())
     .filter(Boolean);
   const results = await Promise.all(checks.map((check) => routeUnifiedCheck(check, ctx)));
-  
+
   return {
     requirements: checksString,
     pass: results.every((r) => r.pass),
