@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
+import { usePluginContext } from '@grafana/data';
 import { ContextPanel } from '../components/docs-panel/context-panel';
 import { CombinedLearningJourneyPanel } from '../components/docs-panel/docs-panel';
+import { getConfigWithDefaults } from '../constants';
 
 /**
  * Hook to create and memoize a ContextPanel Scene instance
@@ -15,7 +17,12 @@ export function useContextPanelScene() {
  * Prevents recreation on every render and ensures proper cleanup
  */
 export function useLearningJourneyPanel() {
-  return useMemo(() => new CombinedLearningJourneyPanel(), []);
+  const pluginContext = usePluginContext();
+  const pluginConfig = useMemo(() => {
+    return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+  }, [pluginContext?.meta?.jsonData]);
+
+  return useMemo(() => new CombinedLearningJourneyPanel(pluginConfig), [pluginConfig]);
 }
 
 /**

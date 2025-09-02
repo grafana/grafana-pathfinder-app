@@ -13,6 +13,7 @@ const LazyMemoizedContextPanel = lazy(() =>
   import('./components/App/App').then((module) => ({ default: module.MemoizedContextPanel }))
 );
 const LazyAppConfig = lazy(() => import('./components/AppConfig/AppConfig'));
+const LazyTermsAndConditions = lazy(() => import('./components/AppConfig/TermsAndConditions'));
 
 const App = (props: AppRootProps) => (
   <Suspense fallback={<LoadingPlaceholder text="" />}>
@@ -20,11 +21,18 @@ const App = (props: AppRootProps) => (
   </Suspense>
 );
 
-const plugin = new AppPlugin<{}>().setRootPage(App).addConfigPage({
-  title: 'Configuration',
-  body: LazyAppConfig,
-  id: 'configuration',
-});
+const plugin = new AppPlugin<{}>()
+  .setRootPage(App)
+  .addConfigPage({
+    title: 'Configuration',
+    body: LazyAppConfig,
+    id: 'configuration',
+  })
+  .addConfigPage({
+    title: 'Recommendations',
+    body: LazyTermsAndConditions,
+    id: 'recommendations-config',
+  });
 
 export { plugin };
 

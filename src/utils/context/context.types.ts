@@ -69,6 +69,8 @@ export interface ContextData {
   tags: string[];
   isLoading: boolean;
   recommendationsError: string | null;
+  recommendationsErrorType: 'unavailable' | 'rate-limit' | 'other' | null;
+  usingFallbackRecommendations: boolean;
   visualizationType: string | null;
   grafanaVersion: string;
   theme: string;
