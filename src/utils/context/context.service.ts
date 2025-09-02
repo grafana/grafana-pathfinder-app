@@ -271,8 +271,7 @@ export class ContextService {
         };
       }
 
-      const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData);
-
+      const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData, pluginConfig);
       if (!isRecommenderEnabled(pluginConfig)) {
         const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
         return {
@@ -286,7 +285,7 @@ export class ContextService {
       return this.getExternalRecommendations(contextData, pluginConfig, bundledRecommendations);
     } catch (error) {
       console.warn('Failed to fetch recommendations:', error);
-      const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData);
+      const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData, pluginConfig);
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
         ...fallbackResult,
@@ -1031,8 +1030,21 @@ export class ContextService {
    * Get bundled interactive recommendations from index.json file
    * Filters based on current URL to show contextually relevant interactives
    */
-  private static getBundledInteractiveRecommendations(contextData: ContextData): Recommendation[] {
+  private static getBundledInteractiveRecommendations(
+    contextData: ContextData,
+    pluginConfig: DocsPluginConfig
+  ): Recommendation[] {
+    const configWithDefaults = getConfigWithDefaults(pluginConfig);
     const bundledRecommendations: Recommendation[] = [];
+
+    if (configWithDefaults.devMode) {
+      bundledRecommendations.push({
+        title: 'Components',
+        url: 'https://grafana.com/components/',
+        type: 'docs-page',
+        summary: 'Components page',
+      });
+    }
 
     try {
       // Load the index.json file that contains metadata for all bundled interactives

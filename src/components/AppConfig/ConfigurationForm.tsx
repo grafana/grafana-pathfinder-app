@@ -27,11 +27,15 @@ type State = {
   isDocsPasswordSet: boolean;
   // Auto-launch tutorial URL (for demo scenarios)
   tutorialUrl: string;
+  // Dev mode enables loading of the components page for testing of proper rendering of components
+  devMode: boolean;
 };
 
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
 
 const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const showDevModeInput = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
   const { enabled, pinned, jsonData, secureJsonFields } = plugin.meta;
   const [state, setState] = useState<State>({
@@ -41,6 +45,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     docsPassword: '',
     isDocsPasswordSet: Boolean(secureJsonFields && (secureJsonFields as any).docsPassword),
     tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
+    devMode: jsonData?.devMode || false,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -90,6 +95,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
+  const onChangeDevMode = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      devMode: event.target.checked,
+    });
+  };
+
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSaving(true);
@@ -101,6 +113,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         docsBaseUrl: state.docsBaseUrl,
         docsUsername: state.docsUsername,
         tutorialUrl: state.tutorialUrl,
+        devMode: state.devMode,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -206,6 +219,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             onChange={onChangeTutorialUrl}
           />
         </Field>
+
+        {/* Dev Mode */}
+        {showDevModeInput && (
+          <Field label="Dev Mode" description="Enable dev mode" className={s.marginTop}>
+            <Input type="checkbox" id="dev-mode" checked={state.devMode} onChange={onChangeDevMode} />
+          </Field>
+        )}
 
         <div className={s.marginTop}>
           <Button type="submit" data-testid={testIds.appConfig.submit} disabled={isSubmitDisabled || isSaving}>
