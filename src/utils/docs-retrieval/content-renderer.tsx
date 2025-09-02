@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
-import { Card } from '@grafana/ui';
+import { Card, TabsBar, Tab, TabContent } from '@grafana/ui';
 
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
@@ -255,7 +255,82 @@ const allowedUiComponents: Record<string, React.ElementType> = {
   'card.meta': Card.Meta,
   'card.actions': Card.Actions,
   'card.secondaryactions': Card.SecondaryActions,
+  tab: Tab,
+  tabsbar: TabsBar,
+  tabcontent: TabContent,
 };
+
+// TabsWrapper manages tabs state
+function TabsWrapper({ element }: { element: ParsedElement }) {
+  // Extract tab data first to determine initial state
+  const tabsBarElement = element.children?.find(
+    (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tabs-bar'
+  ) as ParsedElement | undefined;
+
+  const tabContentElement = element.children?.find(
+    (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tab-content'
+  ) as ParsedElement | undefined;
+
+  // Extract tab data from tabs-bar children
+  const tabElements =
+    (tabsBarElement?.children?.filter(
+      (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tab'
+    ) as ParsedElement[]) || [];
+
+  const tabsData = tabElements.map((tabEl) => ({
+    key: tabEl.props?.['data-key'] || '',
+    label: tabEl.props?.['data-label'] || '',
+  }));
+
+  const [activeTab, setActiveTab] = React.useState(tabsData[0]?.key || '');
+
+  React.useEffect(() => {
+    if (tabsData.length > 0 && !activeTab) {
+      setActiveTab(tabsData[0].key);
+    }
+  }, [tabsData, activeTab]);
+
+  if (!tabsBarElement || !tabContentElement) {
+    console.warn('Missing required tabs elements');
+    return null;
+  }
+
+  // Extract content for each tab from tab-content children
+  // The content items are direct children of tab-content (like <pre> elements), not div[data-element="tab-content-item"]
+  const tabContentItems = tabContentElement.children || [];
+
+  return (
+    <div>
+      <TabsBar>
+        {tabsData.map((tab) => (
+          <Tab
+            key={tab.key}
+            label={tab.label}
+            active={activeTab === tab.key}
+            onChangeTab={() => setActiveTab(tab.key)}
+          />
+        ))}
+      </TabsBar>
+      <TabContent className="tab-content">
+        {(() => {
+          const contentIndex = parseInt(activeTab, 10) || 0;
+          const content = tabContentItems[contentIndex];
+
+          if (content && typeof content !== 'string') {
+            // Render the content as raw HTML to avoid HTML parser interference
+            const originalHTML = (content as any).originalHTML;
+            if (originalHTML) {
+              return <div dangerouslySetInnerHTML={{ __html: originalHTML }} />;
+            }
+            // Fallback to normal rendering if no originalHTML
+            return renderParsedElement(content, 'tab-content');
+          }
+          return null;
+        })()}
+      </TabContent>
+    </div>
+  );
+}
 
 function renderParsedElement(element: ParsedElement | ParsedElement[], key: string | number): React.ReactNode {
   if (Array.isArray(element)) {
@@ -365,6 +440,36 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
       // This should only be used for specific known-safe content
       return <div key={key} dangerouslySetInnerHTML={{ __html: element.props.html }} />;
     default:
+      // Handle tabs root
+      if (element.props?.['data-element'] === 'tabs') {
+        // Create a TabsWrapper component to manage state
+        return <TabsWrapper key={key} element={element} />;
+      }
+
+      // Handle tabs bar and content
+      if (typeof element.type === 'string' && element.type === 'div' && element.children) {
+        const hasTabsBar = element.children.some(
+          (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tabs-bar'
+        );
+        const hasTabContent = element.children.some(
+          (child) => typeof child !== 'string' && (child as any).props?.['data-element'] === 'tab-content'
+        );
+
+        if (hasTabsBar && hasTabContent) {
+          // Create a TabsWrapper component to manage state
+          return <TabsWrapper key={key} element={element} />;
+        }
+      }
+
+      // Also check if this is a tab-content div that should be handled specially
+      if (
+        typeof element.type === 'string' &&
+        element.type === 'div' &&
+        element.props?.['data-element'] === 'tab-content'
+      ) {
+        return null;
+      }
+
       // Whitelisted @grafana/ui components mapping
       if (typeof element.type === 'string') {
         const lowerType = element.type.toLowerCase();
