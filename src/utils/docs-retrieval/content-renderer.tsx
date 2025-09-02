@@ -472,7 +472,6 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
 
       // Whitelisted @grafana/ui components mapping
       if (typeof element.type === 'string') {
-        console.log('element.type', element);
         const lowerType = element.type.toLowerCase();
         const comp = allowedUiComponents[lowerType];
         if (comp) {
