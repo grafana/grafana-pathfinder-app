@@ -67,7 +67,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     }
   }, []); // Empty dependency array - setContextData is stable
 
-  // Unified debounced refresh for ALL context changes (location + EchoSrv)
+  // All context changes that trigger a refresh should share this debounce to prevent repeated API calls and changes to the UI.
   const debouncedRefresh = useCallback(
     (delay?: number) => {
       timeoutManager.setDebounced('context-refresh', fetchContextData, delay, 'contextRefresh');
