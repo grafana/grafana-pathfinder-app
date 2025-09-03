@@ -1,6 +1,9 @@
 /**
  * Centralized timeout manager to prevent competing debounce mechanisms
  * Provides a single source of truth for all timeout-based operations
+ * 
+ * Use setDebounced() for operations that should be debounced (cancels previous calls)
+ * Use setTimeout() for simple delays that should not interfere with each other
  */
 
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
@@ -20,6 +23,11 @@ export class TimeoutManager {
 
   /**
    * Set a debounced timeout with automatic cleanup
+   * 
+   * DEBOUNCING BEHAVIOR: If called multiple times with the same key,
+   * cancels the previous timeout and starts a new one. Only the final
+   * call will execute after the delay period.
+   * 
    * @param key - Unique identifier for this timeout
    * @param callback - Function to execute after delay
    * @param delay - Delay in milliseconds (uses config defaults if not specified)
@@ -53,12 +61,17 @@ export class TimeoutManager {
 
   /**
    * Set a simple timeout (non-debounced)
+   * 
+   * NO DEBOUNCING: Multiple calls with the same key will create multiple
+   * concurrent timeouts. Each call executes independently after its delay.
+   * Use this for simple delays where you don't want cancellation behavior.
+   * 
    * @param key - Unique identifier for this timeout
    * @param callback - Function to execute after delay
    * @param delay - Delay in milliseconds
    */
   setTimeout(key: string, callback: () => void | Promise<void>, delay: number): void {
-    // Don't clear existing timeout - this is for simple delays, not debouncing
+    // Don't clear existing timeout - allows multiple concurrent timeouts with same key
     const timeoutId = setTimeout(async () => {
       try {
         await callback();
