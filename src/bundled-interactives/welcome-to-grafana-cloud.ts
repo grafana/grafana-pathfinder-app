@@ -40,6 +40,7 @@ export const welcomeToGrafanaCloudHtml = `<html>
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/explore']"
                   data-targetaction='highlight'
+                  data-skipable="true"
                 <span class="interactive-comment"><strong>Explore</strong> is your data playground! Query logs with <code>LogQL</code>, run <code>PromQL</code> queries against metrics, and investigate traces with <code>TraceQL</code>. Perfect for troubleshooting and <em>data discovery</em>.</span>
                 Then <strong>Explore</strong> - perfect for ad-hoc queries and data exploration.
               </li>
@@ -54,6 +55,7 @@ export const welcomeToGrafanaCloudHtml = `<html>
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections']"
                   data-targetaction='highlight'
+                  data-skipable="true"
                 <span class="interactive-comment">Grafana Cloud comes with <strong>pre-configured data sources</strong>! Your <code>Prometheus</code>, <code>Loki</code>, and <code>Tempo</code> instances are already connected. You can also add external sources like <code>AWS</code>, <code>GCP</code>, or your own infrastructure.</span>
                 <strong>Connections</strong> - the heart of Grafana where you connect to your data sources.
               </li>

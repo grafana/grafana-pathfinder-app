@@ -373,6 +373,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       // No need for complex timing logic - the section's getStepEligibility
       // will use the updated completedSteps state on the next render
     }, [disabled, isExecuting, stepId, onStepReset]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Intentionally excluding to prevent circular dependencies:
+    // - setIsLocallyCompleted, setExecutionError: stable React setters
+    // - isCancelledRef: ref changes don't trigger re-creation, including would cause unnecessary updates
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 

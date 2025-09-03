@@ -40,6 +40,7 @@ export const welcomeToGrafanaHtml = `<html>
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/explore']"
                   data-targetaction='highlight'>
+                  data-skipable="true"
                 <span class="interactive-comment"><strong>Explore</strong> is your data investigation tool! Write <code>PromQL</code> queries, search logs with <code>LogQL</code>, and analyze traces. Perfect for troubleshooting incidents and <em>exploring your data</em> without creating dashboards.</span>
                 Then <strong>Explore</strong> - perfect for ad-hoc queries and data exploration.
               </li>
@@ -69,26 +70,8 @@ export const welcomeToGrafanaHtml = `<html>
                 Finally, <strong>Administration</strong> - for managing users, plugins, and system settings.
               </li>
 
-              <li class="interactive" 
-                  data-requirements="exists-reftarget"
-                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/alerting/list']"
-                  data-targetaction='highlight'>
-                <span class="interactive-comment">This is a nested menu item under <strong>Alerting</strong>. If the <strong>Alerting</strong> section is collapsed, this step expands that section.</span>
-                Let's also visit <strong>Alert rules</strong> - a nested item under <strong>Alerting</strong>.
-              </li>
-
-              <li class="interactive" 
-                  data-requirements="exists-reftarget"
-                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/plugins']"
-                  data-skipable="true"
-                  data-targetaction='highlight'>
-                <span class="interactive-comment">The <strong>Plugins</strong> section is nested under <strong>Administration</strong>.
-                When the plugin can't reach the section directly, it expands the full navigation menu.
-              </li>
             </ul>
         </span>
-
-
 
         <h2>🎉 Congratulations!</h2>
         <p>Amazing work! You've completed your welcome tour of Grafana. You now know:</p>

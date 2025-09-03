@@ -269,6 +269,9 @@ export const InteractiveStep = forwardRef<
       // No need for complex timing logic - the section's getStepEligibility
       // will use the updated completedSteps state on the next render
     }, [disabled, isDoRunning, isShowRunning, stepId, onStepReset]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Intentionally excluding to prevent circular dependencies:
+    // - setIsLocallyCompleted, setPostVerifyError: stable React setters
+    // - checker.resetStep: including 'checker' would cause infinite re-creation since checker depends on component state
 
     const getActionDescription = () => {
       switch (targetAction) {
