@@ -65,8 +65,8 @@ export const welcomeToGrafanaHtml = `<html>
 
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin']"
-                  data-targetaction='highlight'>
-                  data-skippable="true"
+                  data-targetaction='highlight'
+                  data-skippable="true" >
                 <span class="interactive-comment">The <strong>Administration</strong> section is your control center. Manage user accounts, install <code>plugins</code>, configure <code>authentication</code>, monitor system health, and adjust global settings. <em>Admin power at your fingertips!</em></span>
                 Finally, <strong>Administration</strong> - for managing users, plugins, and system settings.
               </li>
