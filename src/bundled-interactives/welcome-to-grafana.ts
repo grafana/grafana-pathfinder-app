@@ -82,8 +82,8 @@ export const welcomeToGrafanaHtml = `<html>
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/plugins']"
                   data-skipable="true"
                   data-targetaction='highlight'>
-                <span class="interactive-comment">The <strong>Plugins</strong> section is nested under Administration but has a non-conforming URL pattern. This demonstrates the "expand all" fallback feature!</span>
-                Finally, let's visit <strong>Plugins</strong> - this tests the expand-all fallback for complex nesting.
+                <span class="interactive-comment">The <strong>Plugins</strong> section is nested under <strong>Administration</strong>.
+                When the plugin can't reach the section directly, it expands the full navigation menu.
               </li>
             </ul>
         </span>
