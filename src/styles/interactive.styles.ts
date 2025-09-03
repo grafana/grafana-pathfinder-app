@@ -42,6 +42,23 @@ const getBaseInteractiveStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     flexShrink: 0,
   },
+  '.tab-content': {
+    '& > div > pre': {
+      marginTop: 0,
+    },
+    '.code-block-language': {
+      display: 'none',
+    },
+    '& > div > div': {
+      padding: theme.spacing(2),
+    },
+    '& > div > .code-block': {
+      padding: 0,
+      marginTop: 0,
+      marginLeft: 0,
+      marginRight: 0,
+    },
+  },
 });
 
 // Button styles (shared across different interactive elements)
@@ -825,32 +842,32 @@ export const addGlobalInteractiveStyles = () => {
 
     /* Enhanced comment box animations */
     @keyframes fadeInComment {
-      0% { 
-        opacity: 0; 
-        transform: scale(0.85) translateY(-8px); 
+      0% {
+        opacity: 0;
+        transform: scale(0.85) translateY(-8px);
       }
       60% {
         transform: scale(1.02) translateY(0);
       }
-      100% { 
-        opacity: 1; 
-        transform: scale(1) translateY(0); 
+      100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
       }
     }
-    
+
     /* Comment box exit animation */
     .comment-box-exit {
       animation: fadeOutComment 0.2s ease-in forwards !important;
     }
-    
+
     @keyframes fadeOutComment {
-      0% { 
-        opacity: 1; 
-        transform: scale(1) translateY(0); 
+      0% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
       }
-      100% { 
-        opacity: 0; 
-        transform: scale(0.9) translateY(-5px); 
+      100% {
+        opacity: 0;
+        transform: scale(0.9) translateY(-5px);
       }
     }
 
@@ -871,7 +888,7 @@ export const addGlobalInteractiveStyles = () => {
         box-shadow: 0 0 0 0 rgba(180, 180, 180, 0.12);
       }
     }
-    
+
     /* Fragment highlighting for anchor navigation */
     .fragment-highlight {
       position: relative;
@@ -896,7 +913,7 @@ export const addGlobalInteractiveStyles = () => {
         border-left-color: transparent;
       }
     }
-    
+
     /* Interactive comment box - positioning only (no theme colors) */
     .interactive-comment-box {
       position: absolute;
@@ -931,7 +948,7 @@ export const addGlobalInteractiveStyles = () => {
     /* Orange glow border for comment boxes */
     .interactive-comment-glow {
       border: 2px solid rgba(255, 136, 0, 0.5) !important;
-      box-shadow: 
+      box-shadow:
         0 4px 12px rgba(0, 0, 0, 0.15),
         0 0 0 3px rgba(255, 136, 0, 0.6),
         0 0 15px rgba(255, 136, 0, 0.4),

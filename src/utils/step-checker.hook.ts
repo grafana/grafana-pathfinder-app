@@ -13,6 +13,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { getRequirementExplanation } from './requirement-explanations';
 import { SequentialRequirementsManager } from './requirements-checker.hook';
 import { useInteractiveElements } from './interactive.hook';
+import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { useTimeoutManager } from './timeout-manager';
 
 export interface UseStepCheckerProps {
   requirements?: string;
@@ -74,6 +76,8 @@ export function useStepChecker({
     fixType: undefined as string | undefined,
     targetHref: undefined as string | undefined,
   });
+
+  const timeoutManager = useTimeoutManager();
 
   // Requirements checking is now handled by the pure requirements utility
 
@@ -352,8 +356,10 @@ export function useStepChecker({
         return;
       }
 
-      // Wait for UI to update, then recheck requirements
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // After fixing, recheck the requirements
+      await new Promise<void>((resolve) => 
+        timeoutManager.setTimeout(`fix-recheck-${stepId}`, () => resolve(), INTERACTIVE_CONFIG.delays.debouncing.stateSettling)
+      );
       await checkStep();
     } catch (error) {
       console.error('Failed to fix requirements:', error);
@@ -398,7 +404,7 @@ export function useStepChecker({
 
     // Trigger check for dependent steps when this step is skipped
     if (managerRef.current) {
-      setTimeout(() => {
+      timeoutManager.setTimeout(`skip-reactive-check-${stepId}`, () => {
         managerRef.current?.triggerReactiveCheck();
       }, 100);
     }
@@ -425,7 +431,7 @@ export function useStepChecker({
     updateManager(resetState);
 
     // Recheck requirements after reset
-    setTimeout(() => {
+    timeoutManager.setTimeout(`reset-recheck-${stepId}`, () => {
       checkStepRef.current();
     }, 50);
   }, [skipable, updateManager]); // Removed checkStep to prevent infinite loops

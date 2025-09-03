@@ -3,6 +3,7 @@ import { getRequirementExplanation } from './requirement-explanations';
 import { useInteractiveElements } from './interactive.hook';
 import { RequirementsCheckResult } from './requirements-checker.utils';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { useTimeoutManager, TimeoutManager } from './timeout-manager';
 
 /**
  * Wait for React state updates to complete before proceeding
@@ -86,6 +87,8 @@ export function useRequirementsChecker({
     hint: hints,
     explanation: requirements ? getRequirementExplanation(requirements, hints) : undefined,
   });
+
+  const timeoutManager = useTimeoutManager();
 
   // Get the interactive elements hook for proper requirements checking
   const { checkRequirementsFromData } = useInteractiveElements();
@@ -205,9 +208,9 @@ export function useRequirementsChecker({
         // If this is a section completion, trigger reactive check to unlock dependent sections
         if (uniqueId.startsWith('section-')) {
           // Delayed reactive check to allow state to settle
-          setTimeout(() => {
+          timeoutManager.setDebounced(`section-completion-${uniqueId}`, () => {
             managerRef.current?.triggerReactiveCheck();
-          }, 100);
+          }, undefined, 'stateSettling');
         }
       }
 
@@ -227,7 +230,12 @@ export function useRequirementsChecker({
     });
   }, [hints, requirements]);
 
-  // Manual retry available through UI - no automatic background checking
+  // Event-driven requirements checking - no automatic retries
+  // Requirements are rechecked when:
+  // 1. DOM changes (via MutationObserver)
+  // 2. Navigation occurs (via navigation events)
+  // 3. User actions trigger reactive checks
+  // 4. Previous steps complete (via SequentialRequirementsManager)
 
   return {
     ...state,
@@ -297,8 +305,6 @@ export class SequentialRequirementsManager {
   }
 
   // Trigger reactive checking of all steps (e.g., after completing a step or DOM changes)
-  private reactiveCheckThrottle: NodeJS.Timeout | null = null;
-
   triggerReactiveCheck(): void {
     // Trigger selective checking of eligible steps only
     this.triggerSelectiveRecheck();
@@ -309,17 +315,12 @@ export class SequentialRequirementsManager {
    * Prevents infinite loops by avoiding checks of ineligible steps
    */
   private triggerSelectiveRecheck(): void {
-    // Throttle reactive checks to prevent infinite loops
-    if (this.reactiveCheckThrottle) {
-      clearTimeout(this.reactiveCheckThrottle as NodeJS.Timeout);
-    }
-
-    this.reactiveCheckThrottle = setTimeout(() => {
+    const timeoutManager = TimeoutManager.getInstance();
+    timeoutManager.setDebounced('reactive-check-throttle', () => {
       // Only recheck steps that are eligible for checking
       this.recheckEligibleStepsOnly();
       // Notify listeners for UI updates
       this.notifyListeners();
-      this.reactiveCheckThrottle = null;
     }, 50);
   }
 
@@ -386,7 +387,9 @@ export class SequentialRequirementsManager {
   triggerStepCheck(stepId: string): void {
     const checker = this.stepCheckersByID.get(stepId);
     if (checker) {
-      setTimeout(() => {
+      // Use a minimal delay for step checking
+      const timeoutManager = TimeoutManager.getInstance();
+      timeoutManager.setTimeout(`step-check-${stepId}`, () => {
         checker();
       }, 10);
     } else {
@@ -417,8 +420,6 @@ export class SequentialRequirementsManager {
 
   // Enhanced monitoring for reactive requirements checking
   private domObserver?: MutationObserver;
-  private domCheckThrottle?: NodeJS.Timeout;
-  private urlCheckThrottle?: NodeJS.Timeout;
   private lastUrl?: string;
   private navigationUnlisten?: () => void;
 
@@ -447,10 +448,8 @@ export class SequentialRequirementsManager {
       });
 
       if (significantChange) {
-        if (this.domCheckThrottle) {
-          clearTimeout(this.domCheckThrottle);
-        }
-        this.domCheckThrottle = setTimeout(() => {
+        const timeoutManager = TimeoutManager.getInstance();
+        timeoutManager.setDebounced('dom-check-throttle', () => {
           this.triggerSelectiveRecheck();
         }, 800);
       }
@@ -472,26 +471,29 @@ export class SequentialRequirementsManager {
         this.lastUrl = currentUrl;
 
         // Debounce URL change checks - wait for page to settle
-        if (this.urlCheckThrottle) {
-          clearTimeout(this.urlCheckThrottle);
-        }
-        this.urlCheckThrottle = setTimeout(() => {
+        const timeoutManager = TimeoutManager.getInstance();
+        timeoutManager.setDebounced('url-check-throttle', () => {
           this.triggerSelectiveRecheck();
         }, 1500);
       }
     };
 
-    // Listen for various navigation events
+    // Listen for various navigation events (event-driven, no polling)
     window.addEventListener('popstate', checkURL);
     window.addEventListener('hashchange', checkURL);
-
-    // Poll for programmatic navigation (SPA routing)
-    const urlPoller = setInterval(checkURL, 500); // More frequent polling for SPA
+    
+    // Listen for Grafana-specific navigation events if available
+    // These are more reliable than polling for SPA navigation
+    document.addEventListener('grafana:location-changed', checkURL);
+    
+    // Listen for focus events which can indicate navigation in SPAs
+    window.addEventListener('focus', checkURL);
 
     this.navigationUnlisten = () => {
       window.removeEventListener('popstate', checkURL);
       window.removeEventListener('hashchange', checkURL);
-      clearInterval(urlPoller);
+      document.removeEventListener('grafana:location-changed', checkURL);
+      window.removeEventListener('focus', checkURL);
     };
   }
 
@@ -500,18 +502,14 @@ export class SequentialRequirementsManager {
       this.domObserver.disconnect();
       this.domObserver = undefined;
     }
-    if (this.domCheckThrottle) {
-      clearTimeout(this.domCheckThrottle);
-      this.domCheckThrottle = undefined;
-    }
-    if (this.urlCheckThrottle) {
-      clearTimeout(this.urlCheckThrottle);
-      this.urlCheckThrottle = undefined;
-    }
     if (this.navigationUnlisten) {
       this.navigationUnlisten();
       this.navigationUnlisten = undefined;
     }
+    // Clear any pending timeouts from the timeout manager
+    const timeoutManager = TimeoutManager.getInstance();
+    timeoutManager.clear('dom-check-throttle');
+    timeoutManager.clear('url-check-throttle');
   }
 
   // Debug helpers
@@ -535,6 +533,7 @@ export function useSequentialRequirements({
   const uniqueId = sectionId ? `section-${sectionId}` : stepId ? `step-${stepId}` : `fallback-${Date.now()}`;
   const manager = SequentialRequirementsManager.getInstance();
   const basicChecker = useRequirementsChecker({ requirements, hints, stepId, sectionId, targetAction, isSequence });
+  const timeoutManager = useTimeoutManager();
 
   // Local state to force re-renders when manager state changes
   const [, forceUpdate] = useState({});
@@ -560,7 +559,7 @@ export function useSequentialRequirements({
       timeoutId = window.setTimeout(() => {
         forceUpdate({});
         timeoutId = null;
-      }, 25); // Reduced debounce for faster UI updates
+      }, INTERACTIVE_CONFIG.delays.debouncing.uiUpdates);
     });
 
     return () => {
@@ -643,10 +642,10 @@ export function useSequentialRequirements({
     // Additional reactive check for section dependencies
     // The basic checker handles section-level reactive checks, but we ensure
     // all dependent steps get re-evaluated
-    setTimeout(() => {
+    timeoutManager.setDebounced(`sequential-reactive-check-${uniqueId}`, () => {
       manager.triggerReactiveCheck();
-    }, 150); // Slightly longer delay to ensure basic checker's timeout completes first
-  }, [manager]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, undefined, 'reactiveCheck');
+  }, [basicChecker, manager]);
 
   // Get current state from manager (which includes sequential logic)
   const managerState = manager.getStepState(uniqueId);

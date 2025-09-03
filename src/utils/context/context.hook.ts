@@ -3,6 +3,7 @@ import { locationService } from '@grafana/runtime';
 import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
 import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from './context.types';
+import { useTimeoutManager } from '../timeout-manager';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;
@@ -51,8 +52,8 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     searchParams: '',
   });
 
-  // Timeout ref for debounced refresh
-  const refreshTimeoutRef = useRef<NodeJS.Timeout>();
+  // Use centralized timeout manager instead of local refs
+  const timeoutManager = useTimeoutManager();
 
   // Fetch context data
   const fetchContextData = useCallback(async () => {
@@ -66,17 +67,12 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     }
   }, []); // Empty dependency array - setContextData is stable
 
-  // Debounced refresh to avoid excessive API calls
+  // All context changes that trigger a refresh should share this debounce to prevent repeated API calls and changes to the UI.
   const debouncedRefresh = useCallback(
-    (delay = 300) => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-      refreshTimeoutRef.current = setTimeout(async () => {
-        await fetchContextData();
-      }, delay);
+    (delay?: number) => {
+      timeoutManager.setDebounced('context-refresh', fetchContextData, delay, 'contextRefresh');
     },
-    [fetchContextData]
+    [fetchContextData, timeoutManager]
   );
 
   // Fetch recommendations
@@ -167,51 +163,30 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       return () => {
         window.removeEventListener('popstate', handlePopState);
         unlisten();
-        if (refreshTimeoutRef.current) {
-          clearTimeout(refreshTimeoutRef.current);
-        }
+        timeoutManager.clear('context-refresh');
       };
     }
 
     return () => {
       window.removeEventListener('popstate', handlePopState);
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
+      timeoutManager.clear('context-refresh');
     };
-  }, [debouncedRefresh]); // debouncedRefresh is stable due to useCallback
+  }, [debouncedRefresh, timeoutManager]); // debouncedRefresh is stable due to useCallback
 
   // Listen for EchoSrv-triggered context changes (datasource/viz changes)
   useEffect(() => {
-    const unsubscribe = ContextService.onContextChange(async () => {
-      // Force immediate context refresh when EchoSrv events occur
-      try {
-        setContextData((prev) => ({ ...prev, isLoading: true }));
-        const newContextData = await ContextService.getContextData();
-        setContextData(newContextData);
-
-        // Now fetch recommendations with the fresh context data
-        if (newContextData.currentPath) {
-          fetchRecommendations(newContextData);
-        }
-      } catch (error) {
-        console.error('Failed to refresh context after EchoSrv change:', error);
-        setContextData((prev) => ({ ...prev, isLoading: false }));
-      }
+    const unsubscribe = ContextService.onContextChange(() => {
+      debouncedRefresh();
     });
 
     return unsubscribe;
-  }, [fetchRecommendations]); // Removed contextData dependency to avoid stale closures
+  }, [debouncedRefresh]);
 
   // Fetch recommendations when context data changes (but not when loading)
   const tagsString = contextData.tags?.join(',') || '';
-  const contextDataRef = useRef(contextData);
-  contextDataRef.current = contextData;
-
   useEffect(() => {
     if (!contextData.isLoading && contextData.currentPath) {
-      // Use ref to avoid stale closure issues
-      fetchRecommendations(contextDataRef.current);
+      fetchRecommendations(contextData);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- contextData would cause infinite loop
   }, [
@@ -229,7 +204,13 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
   }, [fetchContextData]);
 
   const refreshRecommendations = useCallback(() => {
-    fetchRecommendations(contextData);
+    // Use current state at time of call, not dependency
+    const currentContextData = {
+      ...contextData,
+      recommendations: [],
+      recommendationsError: null,
+    };
+    fetchRecommendations(currentContextData);
   }, [fetchRecommendations, contextData]);
 
   const openLearningJourney = useCallback(
