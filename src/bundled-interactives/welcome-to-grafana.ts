@@ -74,9 +74,8 @@ export const welcomeToGrafanaHtml = `<html>
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
                   data-requirements="exists-reftarget"
                   data-targetaction='highlight'
-                  data-skipable="true"
-                  <span class="interactive-comment"> Plugins and data allows you to extend Grafana's functionality. You can install custom plugins from here.
-                  </span>
+                  data-skipable="true">
+                <span class="interactive-comment">Plugins and data allows you to extend Grafana's functionality. You can install custom plugins from here.</span>
                   Plugins extend Grafana by adding capabilities that are not available by default. For example, you can install plugins that add the ability to import data from diverse sources, that bundle data sources and panels, or that provide new visualization types for use in dashboards.
               </li>
 
