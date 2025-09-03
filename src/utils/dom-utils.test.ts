@@ -364,9 +364,9 @@ describe('navmenuOpenCHECK', () => {
     });
   });
 
-  it('should detect navigation menu with CSS class selector', async () => {
+  it('should detect navigation menu with nav aria-label selector', async () => {
     const nav = document.createElement('nav');
-    nav.className = 'css-rs8tod';
+    nav.setAttribute('aria-label', 'Navigation');
     container.appendChild(nav);
 
     const result = await navmenuOpenCHECK();
