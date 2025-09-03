@@ -60,7 +60,6 @@ export const welcomeToGrafanaHtml = `<html>
                 <span class="interactive-comment"><strong>Connections</strong> lets you connect to databases like PostgreSQL, monitoring systems like Prometheus, log aggregators like Loki, cloud services like AWS CloudWatch, and <em>hundreds more</em>.</span>
                 You need the Admin role to connect data sources.
                 You can skip this step if you don't have permissions.
-                <strong>Connections</strong> - the heart of Grafana where you connect to your data sources (can be skipped if you don't have permissions).
               </li>
 
               <li class="interactive" 
