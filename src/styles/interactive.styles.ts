@@ -46,8 +46,17 @@ const getBaseInteractiveStyles = (theme: GrafanaTheme2) => ({
     '& > div > pre': {
       marginTop: 0,
     },
+    '.code-block-language': {
+      display: 'none',
+    },
     '& > div > div': {
       padding: theme.spacing(2),
+    },
+    '& > div > .code-block': {
+      padding: 0,
+      marginTop: 0,
+      marginLeft: 0,
+      marginRight: 0,
     },
   },
 });
