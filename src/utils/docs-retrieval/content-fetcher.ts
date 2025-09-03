@@ -202,18 +202,22 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
     fetchOptions.headers = { ...fetchOptions.headers, ...authHeaders };
   }
 
-  // Try the original URL first to follow redirects
+  // Handle GitHub URLs proactively to avoid CORS issues
+  // Convert tree/blob URLs to raw URLs before attempting fetch
+  let actualUrl = url;
+  if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
+    const githubVariations = generateGitHubVariations(url);
+    if (githubVariations.length > 0) {
+      // Use the first (most specific) GitHub variation instead of the original URL
+      actualUrl = githubVariations[0];
+    }
+  }
+
+  // Try the actual URL (original or converted GitHub raw URL)
   let lastError: string | null = null;
-  let redirectInfo: string | null = null;
 
   try {
-    const response = await fetch(replaceRecommendationBaseUrl(url, options.docsBaseUrl), fetchOptions);
-
-    // Log redirect information if the final URL is different
-    if (response.url && response.url !== url) {
-      redirectInfo = `Redirected from ${url} to ${response.url}`;
-      console.warn(redirectInfo);
-    }
+    const response = await fetch(replaceRecommendationBaseUrl(actualUrl, options.docsBaseUrl), fetchOptions);
 
     if (response.ok) {
       const html = await response.text();
@@ -264,15 +268,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           }
         }
 
-        // For non-docs URLs or when unstyled URL is same as regular URL
-        if (redirectInfo) {
-          console.warn(`Successfully fetched content after redirect: ${redirectInfo}`);
-        } else if (
-          isDocsHost(response.url) &&
-          (response.url.includes('/docs/') || response.url.includes('/tutorials/'))
-        ) {
-          console.warn(`Successfully fetched docs content: ${response.url}`);
-        }
+        // Content fetched successfully
         return html;
       }
     } else if (response.status >= 300 && response.status < 400) {
@@ -295,7 +291,6 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               if (redirectResponse.ok) {
                 const html = await redirectResponse.text();
                 if (html && html.trim()) {
-                  console.warn(`Successfully fetched content from manual redirect: ${fullRedirectUrl}`);
                   return html;
                 }
               }
@@ -317,20 +312,17 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
   }
 
   // If original URL failed, only try GitHub variations if no docsBaseUrl was configured
-  // When docsBaseUrl is provided, we should respect that configuration and not fallback to other sources
-  if (!lastError?.includes('Unstyled version required') && !options.docsBaseUrl) {
+  // AND we haven't already converted the URL (to avoid trying the same variations twice)
+  if (!lastError?.includes('Unstyled version required') && !options.docsBaseUrl && actualUrl === url) {
     // Only try GitHub for URLs that are actually GitHub URLs and when no specific docs base is configured
     const githubVariations = generateGitHubVariations(url);
     if (githubVariations.length > 0) {
-      console.warn(`Trying GitHub raw content variations for: ${url}`);
-
       for (const githubUrl of githubVariations) {
         try {
           const githubResponse = await fetch(githubUrl, fetchOptions);
           if (githubResponse.ok) {
             const githubHtml = await githubResponse.text();
             if (githubHtml && githubHtml.trim()) {
-              console.warn(`Successfully fetched content from GitHub raw: ${githubUrl}`);
               return githubHtml;
             }
           }
