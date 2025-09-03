@@ -73,8 +73,8 @@ export const welcomeToGrafanaHtml = `<html>
                   data-requirements="exists-reftarget"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/alerting/list']"
                   data-targetaction='highlight'>
-                <span class="interactive-comment">This is a <strong>nested menu item</strong> under Alerting. If the Alerting section is collapsed, this step will demonstrate the automatic parent expansion feature!</span>
-                Let's also visit <strong>Alert rules</strong> - a nested item under Alerting.
+                <span class="interactive-comment">This is a nested menu item under <strong>Alerting</strong>. If the <strong>Alerting</strong> section is collapsed, this step expands that section.</span>
+                Let's also visit <strong>Alert rules</strong> - a nested item under <strong>Alerting</strong>.
               </li>
 
               <li class="interactive" 
