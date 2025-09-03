@@ -357,8 +357,12 @@ export function useStepChecker({
       }
 
       // After fixing, recheck the requirements
-      await new Promise<void>((resolve) => 
-        timeoutManager.setTimeout(`fix-recheck-${stepId}`, () => resolve(), INTERACTIVE_CONFIG.delays.debouncing.stateSettling)
+      await new Promise<void>((resolve) =>
+        timeoutManager.setTimeout(
+          `fix-recheck-${stepId}`,
+          () => resolve(),
+          INTERACTIVE_CONFIG.delays.debouncing.stateSettling
+        )
       );
       await checkStep();
     } catch (error) {
@@ -369,7 +373,16 @@ export function useStepChecker({
         error: 'Failed to fix requirements',
       }));
     }
-  }, [state.canFixRequirement, state.fixType, state.targetHref, requirements, fixNavigationRequirements, checkStep]);
+  }, [
+    state.canFixRequirement,
+    state.fixType,
+    state.targetHref,
+    requirements,
+    fixNavigationRequirements,
+    checkStep,
+    stepId,
+    timeoutManager,
+  ]);
 
   /**
    * Manual completion (for user-executed steps)
@@ -404,11 +417,15 @@ export function useStepChecker({
 
     // Trigger check for dependent steps when this step is skipped
     if (managerRef.current) {
-      timeoutManager.setTimeout(`skip-reactive-check-${stepId}`, () => {
-        managerRef.current?.triggerReactiveCheck();
-      }, 100);
+      timeoutManager.setTimeout(
+        `skip-reactive-check-${stepId}`,
+        () => {
+          managerRef.current?.triggerReactiveCheck();
+        },
+        100
+      );
     }
-  }, [updateManager]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [updateManager, stepId, timeoutManager]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Reset step to initial state (including skipped state) and recheck requirements
@@ -431,10 +448,14 @@ export function useStepChecker({
     updateManager(resetState);
 
     // Recheck requirements after reset
-    timeoutManager.setTimeout(`reset-recheck-${stepId}`, () => {
-      checkStepRef.current();
-    }, 50);
-  }, [skipable, updateManager]); // Removed checkStep to prevent infinite loops
+    timeoutManager.setTimeout(
+      `reset-recheck-${stepId}`,
+      () => {
+        checkStepRef.current();
+      },
+      50
+    );
+  }, [skipable, updateManager, stepId, timeoutManager]); // Removed checkStep to prevent infinite loops
 
   /**
    * Stable reference to checkStep function for event-driven triggers

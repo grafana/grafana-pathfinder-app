@@ -208,9 +208,14 @@ export function useRequirementsChecker({
         // If this is a section completion, trigger reactive check to unlock dependent sections
         if (uniqueId.startsWith('section-')) {
           // Delayed reactive check to allow state to settle
-          timeoutManager.setDebounced(`section-completion-${uniqueId}`, () => {
-            managerRef.current?.triggerReactiveCheck();
-          }, undefined, 'stateSettling');
+          timeoutManager.setDebounced(
+            `section-completion-${uniqueId}`,
+            () => {
+              managerRef.current?.triggerReactiveCheck();
+            },
+            undefined,
+            'stateSettling'
+          );
         }
       }
 
@@ -218,7 +223,7 @@ export function useRequirementsChecker({
     });
 
     // Step completion tracking (no debug logging needed)
-  }, [uniqueId]);
+  }, [uniqueId, timeoutManager]);
 
   const reset = useCallback(() => {
     setState({
@@ -316,12 +321,16 @@ export class SequentialRequirementsManager {
    */
   private triggerSelectiveRecheck(): void {
     const timeoutManager = TimeoutManager.getInstance();
-    timeoutManager.setDebounced('reactive-check-throttle', () => {
-      // Only recheck steps that are eligible for checking
-      this.recheckEligibleStepsOnly();
-      // Notify listeners for UI updates
-      this.notifyListeners();
-    }, 50);
+    timeoutManager.setDebounced(
+      'reactive-check-throttle',
+      () => {
+        // Only recheck steps that are eligible for checking
+        this.recheckEligibleStepsOnly();
+        // Notify listeners for UI updates
+        this.notifyListeners();
+      },
+      50
+    );
   }
 
   /**
@@ -389,9 +398,13 @@ export class SequentialRequirementsManager {
     if (checker) {
       // Use a minimal delay for step checking
       const timeoutManager = TimeoutManager.getInstance();
-      timeoutManager.setTimeout(`step-check-${stepId}`, () => {
-        checker();
-      }, 10);
+      timeoutManager.setTimeout(
+        `step-check-${stepId}`,
+        () => {
+          checker();
+        },
+        10
+      );
     } else {
       // Fallback to global recheck if specific step checker not found
       this.triggerReactiveCheck();
@@ -449,9 +462,13 @@ export class SequentialRequirementsManager {
 
       if (significantChange) {
         const timeoutManager = TimeoutManager.getInstance();
-        timeoutManager.setDebounced('dom-check-throttle', () => {
-          this.triggerSelectiveRecheck();
-        }, 800);
+        timeoutManager.setDebounced(
+          'dom-check-throttle',
+          () => {
+            this.triggerSelectiveRecheck();
+          },
+          800
+        );
       }
     });
 
@@ -472,20 +489,24 @@ export class SequentialRequirementsManager {
 
         // Debounce URL change checks - wait for page to settle
         const timeoutManager = TimeoutManager.getInstance();
-        timeoutManager.setDebounced('url-check-throttle', () => {
-          this.triggerSelectiveRecheck();
-        }, 1500);
+        timeoutManager.setDebounced(
+          'url-check-throttle',
+          () => {
+            this.triggerSelectiveRecheck();
+          },
+          1500
+        );
       }
     };
 
     // Listen for various navigation events (event-driven, no polling)
     window.addEventListener('popstate', checkURL);
     window.addEventListener('hashchange', checkURL);
-    
+
     // Listen for Grafana-specific navigation events if available
     // These are more reliable than polling for SPA navigation
     document.addEventListener('grafana:location-changed', checkURL);
-    
+
     // Listen for focus events which can indicate navigation in SPAs
     window.addEventListener('focus', checkURL);
 
@@ -642,10 +663,15 @@ export function useSequentialRequirements({
     // Additional reactive check for section dependencies
     // The basic checker handles section-level reactive checks, but we ensure
     // all dependent steps get re-evaluated
-    timeoutManager.setDebounced(`sequential-reactive-check-${uniqueId}`, () => {
-      manager.triggerReactiveCheck();
-    }, undefined, 'reactiveCheck');
-  }, [basicChecker, manager]);
+    timeoutManager.setDebounced(
+      `sequential-reactive-check-${uniqueId}`,
+      () => {
+        manager.triggerReactiveCheck();
+      },
+      undefined,
+      'reactiveCheck'
+    );
+  }, [basicChecker, manager, timeoutManager, uniqueId]);
 
   // Get current state from manager (which includes sequential logic)
   const managerState = manager.getStepState(uniqueId);
