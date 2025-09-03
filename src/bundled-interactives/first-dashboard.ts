@@ -62,7 +62,9 @@ export const firstDashboardHtml = `<html>
                   data-reftarget='Install' 
                   data-targetaction='button'
                   data-verify="has-plugin:volkovlabs-rss-datasource">
-                Click the Install Button (requires admin privileges - can be skipped if you don't have access)
+                Click the <strong>Install</strong> button.
+                You need to have the Admin role to install a plugin.
+                You can skip this step if you don't have these permissions.
               </li>
             </ul>
         </span>    
