@@ -19,7 +19,7 @@ export const InteractiveStep = forwardRef<
       targetComment,
       postVerify,
       doIt = true, // Default to true - show "Do it" button unless explicitly disabled
-      skipable = false, // Default to false - only skipable if explicitly set
+      skippable = false, // Default to false - only skippable if explicitly set
       title,
       description,
       children,
@@ -63,7 +63,7 @@ export const InteractiveStep = forwardRef<
       refTarget,
       stepId: stepId || `step-${Date.now()}`, // Fallback if no stepId provided
       isEligibleForChecking: isPartOfSection ? isEligibleForChecking : isEligibleForChecking && !isCompleted,
-      skipable,
+      skippable,
     });
 
     // Combined completion state: objectives always win, skipped also counts as completed (clarification 1, 2)
@@ -179,9 +179,9 @@ export const InteractiveStep = forwardRef<
       ref,
       () => ({
         executeStep,
-        markSkipped: skipable && checker.markSkipped ? checker.markSkipped : undefined,
+        markSkipped: skippable && checker.markSkipped ? checker.markSkipped : undefined,
       }),
-      [executeStep, skipable, checker.markSkipped]
+      [executeStep, skippable, checker.markSkipped]
     );
 
     // Handle individual "Show me" action

@@ -377,7 +377,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           key={key}
           title={element.props.title || 'Interactive Section'}
           isSequence={element.props.isSequence}
-          skipable={element.props.skipable}
+          skippable={element.props.skippable}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           hints={element.props.hints}
@@ -398,7 +398,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           hints={element.props.hints}
           targetComment={element.props.targetComment}
           doIt={element.props.doIt}
-          skipable={element.props.skipable}
+          skippable={element.props.skippable}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           postVerify={element.props.postVerify}
@@ -414,7 +414,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
         <InteractiveMultiStep
           key={key}
           internalActions={element.props.internalActions}
-          skipable={element.props.skipable}
+          skippable={element.props.skippable}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           hints={element.props.hints}

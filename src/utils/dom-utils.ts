@@ -36,7 +36,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
         'data-targetvalue',
         'data-requirements',
         'data-objectives',
-        'data-skipable',
+        'data-skippable',
       ].includes(attr.name)
     ) {
       const key = attr.name.substring(5); // Remove 'data-' prefix
@@ -50,7 +50,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const targetvalue = element.getAttribute('data-targetvalue') || undefined;
   const requirements = element.getAttribute('data-requirements') || undefined;
   const objectives = element.getAttribute('data-objectives') || undefined;
-  const skipable = element.getAttribute('data-skipable') === 'true'; // Default to false, only true if explicitly set
+  const skippable = element.getAttribute('data-skippable') === 'true'; // Default to false, only true if explicitly set
   const textContent = element.textContent?.trim() || undefined;
 
   // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
@@ -64,7 +64,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     targetvalue: targetvalue,
     requirements: requirements,
     objectives: objectives,
-    skipable: skipable,
+    skippable: skippable,
     tagName: element.tagName.toLowerCase(),
     className: element.className || undefined,
     id: element.id || undefined,

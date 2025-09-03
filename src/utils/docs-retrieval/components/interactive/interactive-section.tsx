@@ -24,7 +24,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   postVerify?: string;
   targetComment?: string;
   doIt?: boolean; // Control whether "Do it" button appears (defaults to true)
-  skipable?: boolean; // Whether this step can be skipped if requirements fail
+  skippable?: boolean; // Whether this step can be skipped if requirements fail
   title?: string;
   description?: string;
   children?: React.ReactNode;
@@ -45,7 +45,7 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
   children: React.ReactNode;
   isSequence?: boolean;
   id?: string; // HTML id attribute for section identification
-  skipable?: boolean; // Whether this section can be skipped if requirements fail
+  skippable?: boolean; // Whether this section can be skipped if requirements fail
 }
 
 // Types for unified state management
@@ -59,7 +59,7 @@ export interface StepInfo {
   targetComment?: string; // Optional comment to show during execution
   requirements?: string;
   postVerify?: string;
-  skipable?: boolean; // Whether this step can be skipped
+  skippable?: boolean; // Whether this step can be skipped
   isMultiStep: boolean; // Flag to identify component type
 }
 
@@ -192,7 +192,7 @@ export function InteractiveSection({
           targetComment: props.targetComment,
           requirements: props.requirements,
           postVerify: props.postVerify,
-          skipable: props.skipable,
+          skippable: props.skippable,
           isMultiStep: false,
         });
       } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
@@ -207,7 +207,7 @@ export function InteractiveSection({
           refTarget: undefined,
           targetValue: undefined,
           requirements: props.requirements,
-          skipable: props.skipable,
+          skippable: props.skippable,
           isMultiStep: true,
         });
       }
@@ -597,9 +597,9 @@ export function InteractiveSection({
                   const recheckResult = await checkRequirementsFromData(stepRequirementsData);
 
                   if (!recheckResult.pass) {
-                    // Fix didn't work - check if step is skipable
+                    // Fix didn't work - check if step is skippable
                     // Priority 3: Skip if possible
-                    if (stepInfo.skipable) {
+                    if (stepInfo.skippable) {
                       // Skip this step properly using the step's own markSkipped function
                       const stepRef = stepRefs.current.get(stepInfo.stepId);
                       if (stepRef?.markSkipped) {
@@ -608,7 +608,7 @@ export function InteractiveSection({
                       }
                       continue; // Continue to next step
                     } else {
-                      // Priority 4: Stop execution if not skipable
+                      // Priority 4: Stop execution if not skippable
                       setCurrentStepIndex(i);
                       stoppedDueToRequirements = true;
                       break;
@@ -618,8 +618,8 @@ export function InteractiveSection({
                 } catch (fixError) {
                   console.warn(`⚠️ Failed to fix requirements for step ${i + 1}:`, fixError);
 
-                  // Fix failed - check if step is skipable
-                  if (stepInfo.skipable) {
+                  // Fix failed - check if step is skippable
+                  if (stepInfo.skippable) {
                     // Skip this step properly using the step's own markSkipped function
                     const stepRef = stepRefs.current.get(stepInfo.stepId);
                     if (stepRef?.markSkipped) {
@@ -635,9 +635,9 @@ export function InteractiveSection({
                   }
                 }
               } else {
-                // No fix available - check if step is skipable
+                // No fix available - check if step is skippable
                 // Priority 3: Skip if possible
-                if (stepInfo.skipable) {
+                if (stepInfo.skippable) {
                   // Skip this step properly using the step's own markSkipped function
                   const stepRef = stepRefs.current.get(stepInfo.stepId);
                   if (stepRef?.markSkipped) {
@@ -646,7 +646,7 @@ export function InteractiveSection({
                   }
                   continue; // Continue to next step
                 } else {
-                  // Priority 4: Stop execution if not skipable and no fix available
+                  // Priority 4: Stop execution if not skippable and no fix available
                   setCurrentStepIndex(i);
                   stoppedDueToRequirements = true;
                   break;

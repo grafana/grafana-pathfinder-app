@@ -40,7 +40,7 @@ export const welcomeToGrafanaHtml = `<html>
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/explore']"
                   data-targetaction='highlight'
-                  data-skipable="true">
+                  data-skippable="true">
                 <span class="interactive-comment"><strong>Explore</strong> is your data investigation tool! Write <code>PromQL</code> queries, search logs with <code>LogQL</code>, and analyze traces. Perfect for troubleshooting incidents and <em>exploring your data</em> without creating dashboards.</span>
                 Then <strong>Explore</strong> - perfect for ad-hoc queries and data exploration.
               </li>
@@ -54,7 +54,7 @@ export const welcomeToGrafanaHtml = `<html>
 
               <li class="interactive" 
                   data-requirements="has-permission:datasources.read"
-                  data-skipable="true"
+                  data-skippable="true"
                   data-hint="Connections requires data source permissions to access"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections']"
                   data-targetaction='highlight'>
@@ -74,7 +74,7 @@ export const welcomeToGrafanaHtml = `<html>
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
                   data-requirements="exists-reftarget"
                   data-targetaction='highlight'
-                  data-skipable="true">
+                  data-skippable="true">
                 <span class="interactive-comment">Plugins and data allows you to extend Grafana's functionality. You can install custom plugins from here.</span>
                   Plugins extend Grafana by adding capabilities that are not available by default. For example, you can install plugins that add the ability to import data from diverse sources, that bundle data sources and panels, or that provide new visualization types for use in dashboards.
               </li>

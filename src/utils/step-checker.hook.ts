@@ -24,7 +24,7 @@ export interface UseStepCheckerProps {
   targetAction?: string; // Add targetAction to pass through to requirements checking
   refTarget?: string; // Add refTarget to pass through to requirements checking
   isEligibleForChecking: boolean;
-  skipable?: boolean; // Whether this step can be skipped if requirements fail
+  skippable?: boolean; // Whether this step can be skipped if requirements fail
 }
 
 export interface UseStepCheckerReturn {
@@ -61,7 +61,7 @@ export function useStepChecker({
   targetAction,
   refTarget,
   isEligibleForChecking = true,
-  skipable = false,
+  skippable = false,
 }: UseStepCheckerProps): UseStepCheckerReturn {
   const [state, setState] = useState({
     isEnabled: false,
@@ -72,7 +72,7 @@ export function useStepChecker({
     explanation: undefined as string | undefined,
     error: undefined as string | undefined,
     canFixRequirement: false,
-    canSkip: skipable,
+    canSkip: skippable,
     fixType: undefined as string | undefined,
     targetHref: undefined as string | undefined,
   });
@@ -197,7 +197,7 @@ export function useStepChecker({
             explanation: 'Already done!',
             error: undefined,
             canFixRequirement: false,
-            canSkip: skipable,
+            canSkip: skippable,
             fixType: undefined,
             targetHref: undefined,
           };
@@ -261,7 +261,7 @@ export function useStepChecker({
 
         const explanation = requirementsResult.pass
           ? undefined
-          : getRequirementExplanation(requirements, hints, requirementsResult.error, skipable);
+          : getRequirementExplanation(requirements, hints, requirementsResult.error, skippable);
 
         const requirementsState = {
           isEnabled: requirementsResult.pass,
@@ -272,7 +272,7 @@ export function useStepChecker({
           explanation,
           error: requirementsResult.pass ? undefined : requirementsResult.error,
           canFixRequirement: requirementsResult.canFix || requirements.includes('navmenu-open'),
-          canSkip: skipable,
+          canSkip: skippable,
           fixType: requirementsResult.fixType || (requirements.includes('navmenu-open') ? 'navigation' : undefined),
           targetHref: requirementsResult.targetHref,
         };
@@ -292,7 +292,7 @@ export function useStepChecker({
         explanation: undefined,
         error: undefined,
         canFixRequirement: false,
-        canSkip: skipable,
+        canSkip: skippable,
         fixType: undefined,
         targetHref: undefined,
       };
@@ -307,17 +307,17 @@ export function useStepChecker({
         isChecking: false,
         isSkipped: false,
         completionReason: 'none' as const,
-        explanation: getRequirementExplanation(requirements || objectives, hints, errorMessage, skipable),
+        explanation: getRequirementExplanation(requirements || objectives, hints, errorMessage, skippable),
         error: errorMessage,
         canFixRequirement: false,
-        canSkip: skipable,
+        canSkip: skippable,
         fixType: undefined,
         targetHref: undefined,
       };
       setState(errorState);
       updateManager(errorState);
     }
-  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skipable, updateManager]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Attempt to automatically fix failed requirements
@@ -401,7 +401,7 @@ export function useStepChecker({
   }, [state, updateManager]);
 
   /**
-   * Mark step as skipped (for steps that can't meet requirements but are skipable)
+   * Mark step as skipped (for steps that can't meet requirements but are skippable)
    */
   const markSkipped = useCallback(() => {
     const skippedState = {
@@ -440,7 +440,7 @@ export function useStepChecker({
       explanation: undefined,
       error: undefined,
       canFixRequirement: false,
-      canSkip: skipable,
+      canSkip: skippable,
       fixType: undefined,
       targetHref: undefined,
     };
@@ -455,7 +455,7 @@ export function useStepChecker({
       },
       50
     );
-  }, [skipable, updateManager, stepId, timeoutManager]); // Removed checkStep to prevent infinite loops
+  }, [skippable, updateManager, stepId, timeoutManager]); // Removed checkStep to prevent infinite loops
 
   /**
    * Stable reference to checkStep function for event-driven triggers
@@ -523,7 +523,7 @@ export function useStepChecker({
     ...state,
     checkStep,
     markCompleted,
-    markSkipped: skipable ? markSkipped : undefined,
+    markSkipped: skippable ? markSkipped : undefined,
     resetStep,
     canFixRequirement: state.canFixRequirement,
     fixRequirement: state.canFixRequirement ? fixRequirement : undefined,

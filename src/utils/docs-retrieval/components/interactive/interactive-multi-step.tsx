@@ -32,7 +32,7 @@ interface InteractiveMultiStepProps {
   requirements?: string; // Overall requirements for the multi-step
   objectives?: string; // Overall objectives for the multi-step
   onComplete?: () => void;
-  skipable?: boolean; // Whether this multi-step can be skipped if requirements fail
+  skippable?: boolean; // Whether this multi-step can be skipped if requirements fail
 
   // Timing configuration
   stepDelay?: number; // Delay between steps in milliseconds (default: 1800ms)
