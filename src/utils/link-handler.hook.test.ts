@@ -197,10 +197,7 @@ describe('useLinkClickHandler', () => {
       fireEvent.click(grafanaLink);
 
       // Should try to open in app with unstyled URL
-      expect(mockModel.openDocsPage).toHaveBeenCalledWith(
-        expect.stringContaining('unstyled.html'),
-        'Grafana README'
-      );
+      expect(mockModel.openDocsPage).toHaveBeenCalledWith(expect.stringContaining('unstyled.html'), 'Grafana README');
       expect(windowOpen).not.toHaveBeenCalled();
     });
 
@@ -248,11 +245,7 @@ describe('useLinkClickHandler', () => {
 
       fireEvent.click(regularGitHubLink);
 
-      expect(windowOpen).toHaveBeenCalledWith(
-        'https://github.com/grafana/grafana',
-        '_blank',
-        'noopener,noreferrer'
-      );
+      expect(windowOpen).toHaveBeenCalledWith('https://github.com/grafana/grafana', '_blank', 'noopener,noreferrer');
       expect(mockModel.openDocsPage).not.toHaveBeenCalled();
     });
   });
