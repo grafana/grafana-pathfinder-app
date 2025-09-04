@@ -33,7 +33,7 @@ export const getConfigWithDefaults = (config: DocsPluginConfig): Required<DocsPl
   docsUsername: config.docsUsername || DEFAULT_DOCS_USERNAME,
   docsPassword: config.docsPassword || DEFAULT_DOCS_PASSWORD,
   tutorialUrl: config.tutorialUrl || DEFAULT_TUTORIAL_URL,
-  acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? DEFAULT_TERMS_ACCEPTED,
+  acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? getPlatformSpecificDefault(),
   termsVersion: config.termsVersion || TERMS_VERSION,
   devMode: config.devMode || DEFAULT_DEV_MODE,
 });
@@ -54,7 +54,7 @@ const getPlatformSpecificDefault = (): boolean => {
 };
 
 export const isRecommenderEnabled = (pluginConfig: DocsPluginConfig): boolean => {
-  return Boolean(pluginConfig.acceptedTermsAndConditions ?? getPlatformSpecificDefault());
+  return getConfigWithDefaults(pluginConfig).acceptedTermsAndConditions;
 };
 
 // Legacy exports for backward compatibility - now require config parameter
