@@ -1,52 +1,49 @@
-// Static Terms and Conditions content for the Docs Plugin
-// This can be moved to an external API later if needed
+// Terms and conditions
 
 export const TERMS_AND_CONDITIONS_CONTENT = `
 <h2>Context-aware recommendations</h2>
-<p><strong>When enabled, contextual data from your Grafana instance will be sent to Grafana's hosted recommendation service to provide personalized documentation recommendations.</strong></p>
+<p>When enabled, Grafana Pathfinder sends contextual data from your Grafana instance to the recommendation service which returns personalized documentation recommendations.</p>
 
 <h3>Data collection and usage</h3>
-<p>When you enable the recommender feature, the following contextual information may be collected and sent to Grafana's hosted recommendation service:</p>
+<p>When you enable the context-aware recommendations, Grafana Pathfinder collects the following information:</p>
 
-<h4>Information collected</h4>
 <ul>
-<li><strong>Current page path and URL</strong> - to identify which Grafana feature you are using</li>
-<li><strong>Data source types</strong> - to recommend relevant data source documentation</li>
-<li><strong>Dashboard information</strong> - including dashboard titles, tags, and folder information when viewing dashboards. This information is processed only by the plugin’s internal interactive service and is not transmitted to the hosted recommendation service</li>
-<li><strong>Visualization types</strong> - when creating or editing panels</li>
-<li><strong>User role</strong> - your organizational role (for example, admin, editor, or viewer)</li>
-<li><strong>Grafana instance type</strong> - whether you are using Grafana Cloud or Grafana Open Source</li>
-<li><strong>User identifier</strong> - for Grafana Cloud, a non-sensitive identifier used for personalization. For Grafana Open Source, no user identifier is collected</li>
+<li><strong>Current page path and URL</strong> - to identify which Grafana feature you're using.</li>
+<li><strong>A list of the types of installed data sources</strong> - to recommend relevant data source documentation.</li>
+<li><strong>Dashboard information</strong> - including dashboard titles, tags, and folder information when you're viewing dashboards. Grafana Pathfinder processes this information locally and doesn't send it to the recommendation service</li>
+<li><strong>Visualization types</strong> - when creating or editing panels.</li>
+<li><strong>User role</strong> - your organizational role, such as Admin, Editor, or Viewer.</li>
+<li><strong>Grafana instance type</strong> - whether you are using Grafana Cloud, Grafana Enterprise, or open source Grafana.</li>
+<li><strong>User identifier</strong> - for Grafana Cloud, a non-sensitive identifier used for personalization. Grafana Pathfinder doesn't collect a user identifier in open source Grafana.</li>
 </ul>
 
-<h4>How data is used</h4>
+<h3>How Grafana uses your data</h3>
 <ul>
 <li><strong>Personalized recommendations</strong> - to provide documentation and learning journeys that are contextually relevant</li>
 <li><strong>Service improvement</strong> - to enhance the quality and accuracy of recommendations</li>
 <li><strong>Analytics</strong> - to evaluate which recommendations are most useful to users</li>
 </ul>
 
-<h4>Data security</h4>
+<h3>Data security</h3>
 <ul>
-<li>All data is transmitted securely using HTTPS</li>
-<li>No sensitive information such as dashboard content, query details, or personal data is collected</li>
-<li>Data is used only for the purposes described in this notice</li>
+<li>Grafana Pathfinder transmits all data securely using HTTPS.</li>
+<li>Grafana Pathfinder doesn't collect any sensitive information such as dashboard content, query details, or personal data.</li>
+<li>Grafana only uses the data the purposes described in this notice.</li>
 </ul>
 
-<h4>Your control</h4>
+<h3>Your control</h3>
 <ul>
-<li>You can disable the recommender feature at any time in the plugin configuration</li>
-<li>When disabled, only bundled examples and documentation will be displayed</li>
-<li>No contextual data will be sent to Grafana's hosted services when the recommender is disabled</li>
+<li>You can disable the context-aware recommendations feature at any time in the plugin configuration.</li>
+<li>When disabled, Grafana Pathfinder only displays bundled examples and documentation.</li>
+<li>When disabled, Grafana Pathfinder won't send any data to the recommendation service.</li>
 </ul>
 
 <h3>Changes to data usage</h3>
-<p>We may update this notice from time to time. Any material updates will be communicated through the plugin interface.</p>
+<p>This notice is subject to change with updates to the plugin.</p>
 
 <h3>Effective date</h3>
-<p>This data usage applies while the recommender feature is enabled and ends when you disable the feature or uninstall the plugin.</p>
-
+<p>This data usage applies whenever you enable context-aware recommendations ends when you disable the feature or uninstall the plugin.</p>
 <hr/>
 
-<p><strong>You can enable or disable this feature at any time using the toggle above.</strong></p>
+<p><strong>You can enable or disable this feature at any time using the following toggle.</strong></p>
 `;
