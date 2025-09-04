@@ -97,6 +97,7 @@ describe('extractInteractiveDataFromElement', () => {
       targetvalue: 'submit',
       requirements: 'logged-in',
       objectives: 'learn-navigation',
+      skippable: false,
       tagName: 'button',
       className: 'btn-primary',
       id: 'submit-btn',
@@ -116,10 +117,14 @@ describe('extractInteractiveDataFromElement', () => {
     expect(result).toEqual({
       reftarget: '',
       targetaction: '',
+      requirements: undefined,
+      objectives: undefined,
+      skippable: false,
       tagName: 'div',
       className: undefined,
       id: undefined,
       textContent: 'Simple element',
+      targetvalue: undefined,
       parentTagName: undefined,
       timestamp: expect.any(Number),
       customData: undefined,
@@ -359,9 +364,9 @@ describe('navmenuOpenCHECK', () => {
     });
   });
 
-  it('should detect navigation menu with CSS class selector', async () => {
+  it('should detect navigation menu with nav aria-label selector', async () => {
     const nav = document.createElement('nav');
-    nav.className = 'css-rs8tod';
+    nav.setAttribute('aria-label', 'Navigation');
     container.appendChild(nav);
 
     const result = await navmenuOpenCHECK();
@@ -392,6 +397,8 @@ describe('navmenuOpenCHECK', () => {
       requirement: 'navmenu-open',
       pass: false,
       error: 'Navigation menu not detected - menu may be closed or selector mismatch',
+      canFix: true,
+      fixType: 'navigation',
     });
   });
 

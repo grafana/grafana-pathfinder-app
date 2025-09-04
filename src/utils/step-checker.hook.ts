@@ -14,6 +14,7 @@ import { getRequirementExplanation } from './requirement-explanations';
 import { SequentialRequirementsManager } from './requirements-checker.hook';
 import { useInteractiveElements } from './interactive.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { useTimeoutManager } from './timeout-manager';
 
 export interface UseStepCheckerProps {
   requirements?: string;
@@ -23,6 +24,7 @@ export interface UseStepCheckerProps {
   targetAction?: string; // Add targetAction to pass through to requirements checking
   refTarget?: string; // Add refTarget to pass through to requirements checking
   isEligibleForChecking: boolean;
+  skippable?: boolean; // Whether this step can be skipped if requirements fail
 }
 
 export interface UseStepCheckerReturn {
@@ -30,16 +32,20 @@ export interface UseStepCheckerReturn {
   isEnabled: boolean;
   isCompleted: boolean;
   isChecking: boolean;
+  isSkipped?: boolean; // Whether this step was skipped due to failed requirements
 
   // Diagnostics
-  completionReason: 'none' | 'objectives' | 'manual';
+  completionReason: 'none' | 'objectives' | 'manual' | 'skipped';
   explanation?: string;
   error?: string;
   canFixRequirement?: boolean; // Whether the requirement can be automatically fixed
+  canSkip?: boolean; // Whether this step can be skipped
 
   // Actions
   checkStep: () => Promise<void>;
   markCompleted: () => void;
+  markSkipped?: () => void; // Function to skip this step
+  resetStep: () => void; // Reset all step state including skipped
   fixRequirement?: () => Promise<void>; // Function to automatically fix the requirement
 }
 
@@ -55,15 +61,23 @@ export function useStepChecker({
   targetAction,
   refTarget,
   isEligibleForChecking = true,
+  skippable = false,
 }: UseStepCheckerProps): UseStepCheckerReturn {
   const [state, setState] = useState({
     isEnabled: false,
     isCompleted: false,
     isChecking: false,
-    completionReason: 'none' as 'none' | 'objectives' | 'manual',
+    isSkipped: false,
+    completionReason: 'none' as 'none' | 'objectives' | 'manual' | 'skipped',
     explanation: undefined as string | undefined,
     error: undefined as string | undefined,
+    canFixRequirement: false,
+    canSkip: skippable,
+    fixType: undefined as string | undefined,
+    targetHref: undefined as string | undefined,
   });
+
+  const timeoutManager = useTimeoutManager();
 
   // Requirements checking is now handled by the pure requirements utility
 
@@ -98,8 +112,14 @@ export function useStepChecker({
   // Get the interactive elements hook for proper requirements checking
   const { checkRequirementsFromData, fixNavigationRequirements } = useInteractiveElements();
 
-  // Check if this step has navigation requirements that can be fixed
-  const canFixRequirement = requirements?.includes('navmenu-open') || false;
+  // Import NavigationManager for parent expansion functionality
+  const navigationManagerRef = useRef<any>(null);
+  if (!navigationManagerRef.current) {
+    // Lazy import to avoid circular dependencies
+    import('./navigation-manager').then(({ NavigationManager }) => {
+      navigationManagerRef.current = new NavigationManager();
+    });
+  }
 
   /**
    * Check conditions (requirements or objectives) using proper DOM check functions
@@ -117,9 +137,9 @@ export function useStepChecker({
           objectives: type === 'objectives' ? conditions : undefined,
         };
 
-        // Add timeout to prevent hanging (same as original hooks)
+        // Add timeout to prevent hanging - PERFORMANCE FIX: Reduced timeout for faster UX
         const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error(`${type} check timeout`)), 5000);
+          setTimeout(() => reject(new Error(`${type} check timeout`)), 3000); // Reduced from 5000ms to 3000ms
         });
 
         const result = await Promise.race([checkRequirementsFromData(actionData), timeoutPromise]);
@@ -131,7 +151,16 @@ export function useStepChecker({
           ? undefined
           : result.error?.map((e: any) => e.error || e.requirement).join(', ');
 
-        return { pass: conditionsMet, error: errorMessage };
+        // Check if any error has fix capability
+        const fixableError = result.error?.find((e: any) => e.canFix);
+
+        return {
+          pass: conditionsMet,
+          error: errorMessage,
+          canFix: !!fixableError,
+          fixType: fixableError?.fixType,
+          targetHref: fixableError?.targetHref,
+        };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : `Failed to check ${type}`;
         return { pass: false, error: errorMessage };
@@ -141,12 +170,17 @@ export function useStepChecker({
   );
 
   /**
-   * Core checking logic with proper priority:
-   * 1. Objectives first (always win if met)
-   * 2. Eligibility check (sequential dependencies)
-   * 3. Requirements (only if objectives not met)
+   * Check step conditions with priority logic:
+   * 1. Objectives (auto-complete if met)
+   * 2. Sequential eligibility (block if previous steps incomplete)
+   * 3. Requirements (validate if eligible)
    */
   const checkStep = useCallback(async () => {
+    // Prevent infinite loops by checking if we're already in the right state
+    if (state.isChecking) {
+      return;
+    }
+
     setState((prev) => ({ ...prev, isChecking: true, error: undefined }));
 
     try {
@@ -158,9 +192,14 @@ export function useStepChecker({
             isEnabled: true,
             isCompleted: true,
             isChecking: false,
+            isSkipped: false,
             completionReason: 'objectives' as const,
             explanation: 'Already done!',
             error: undefined,
+            canFixRequirement: false,
+            canSkip: skippable,
+            fixType: undefined,
+            targetHref: undefined,
           };
           setState(finalState);
           updateManager(finalState);
@@ -173,17 +212,47 @@ export function useStepChecker({
 
       // STEP 2: Check eligibility (sequential dependencies)
       if (!isEligibleForChecking) {
-        const blockedState = {
-          isEnabled: false,
-          isCompleted: false,
-          isChecking: false,
-          completionReason: 'none' as const,
-          explanation: 'Complete the previous steps in order before this one becomes available.',
-          error: 'Sequential dependency not met',
-        };
-        setState(blockedState);
-        updateManager(blockedState);
-        return;
+        // Step is not eligible for checking
+
+        // Check if this step is part of a section (section controls its own eligibility)
+        const isPartOfSection = stepId.includes('section-') && stepId.includes('-step-');
+
+        if (isPartOfSection) {
+          // Section step not eligible - set blocked state with sequential dependency message
+          const sectionBlockedState = {
+            isEnabled: false,
+            isCompleted: false,
+            isChecking: false,
+            isSkipped: false,
+            completionReason: 'none' as const,
+            explanation: 'Complete the previous steps in order before this one becomes available.',
+            error: 'Sequential dependency not met',
+            canFixRequirement: false,
+            canSkip: false, // Never allow skipping for sequential dependencies
+            fixType: undefined,
+            targetHref: undefined,
+          };
+          setState(sectionBlockedState);
+          updateManager(sectionBlockedState);
+          return;
+        } else {
+          const blockedState = {
+            isEnabled: false,
+            isCompleted: false,
+            isChecking: false,
+            isSkipped: false,
+            completionReason: 'none' as const,
+            explanation: 'Complete the previous steps in order before this one becomes available.',
+            error: 'Sequential dependency not met',
+            canFixRequirement: false,
+            canSkip: false, // Never allow skipping for sequential dependencies
+            fixType: undefined,
+            targetHref: undefined,
+          };
+          setState(blockedState);
+          updateManager(blockedState);
+          return;
+        }
       }
 
       // STEP 3: Check requirements (only if objectives not met and eligible)
@@ -192,15 +261,20 @@ export function useStepChecker({
 
         const explanation = requirementsResult.pass
           ? undefined
-          : getRequirementExplanation(requirements, hints, requirementsResult.error);
+          : getRequirementExplanation(requirements, hints, requirementsResult.error, skippable);
 
         const requirementsState = {
           isEnabled: requirementsResult.pass,
           isCompleted: false, // Requirements enable, don't auto-complete
           isChecking: false,
+          isSkipped: false,
           completionReason: 'none' as const,
           explanation,
           error: requirementsResult.pass ? undefined : requirementsResult.error,
+          canFixRequirement: requirementsResult.canFix || requirements.includes('navmenu-open'),
+          canSkip: skippable,
+          fixType: requirementsResult.fixType || (requirements.includes('navmenu-open') ? 'navigation' : undefined),
+          targetHref: requirementsResult.targetHref,
         };
 
         setState(requirementsState);
@@ -213,9 +287,14 @@ export function useStepChecker({
         isEnabled: true,
         isCompleted: false,
         isChecking: false,
+        isSkipped: false,
         completionReason: 'none' as const,
         explanation: undefined,
         error: undefined,
+        canFixRequirement: false,
+        canSkip: skippable,
+        fixType: undefined,
+        targetHref: undefined,
       };
       setState(enabledState);
       updateManager(enabledState);
@@ -226,43 +305,84 @@ export function useStepChecker({
         isEnabled: false,
         isCompleted: false,
         isChecking: false,
+        isSkipped: false,
         completionReason: 'none' as const,
-        explanation: getRequirementExplanation(requirements || objectives, hints, errorMessage),
+        explanation: getRequirementExplanation(requirements || objectives, hints, errorMessage, skippable),
         error: errorMessage,
+        canFixRequirement: false,
+        canSkip: skippable,
+        fixType: undefined,
+        targetHref: undefined,
       };
       setState(errorState);
       updateManager(errorState);
     }
-  }, [objectives, requirements, hints, stepId, isEligibleForChecking, updateManager, checkConditions]);
+  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
-   * Fix navigation requirements by opening and docking the menu
+   * Attempt to automatically fix failed requirements
    */
   const fixRequirement = useCallback(async () => {
-    if (!canFixRequirement || !fixNavigationRequirements) {
+    if (!state.canFixRequirement) {
       return;
     }
 
     try {
       setState((prev) => ({ ...prev, isChecking: true }));
 
-      // Use the fix function from the interactive hook
-      await fixNavigationRequirements();
+      if (state.fixType === 'expand-parent-navigation' && state.targetHref && navigationManagerRef.current) {
+        // Attempt to expand parent navigation section
+        const success = await navigationManagerRef.current.expandParentNavigationSection(state.targetHref);
+
+        if (!success) {
+          console.error('Failed to expand parent navigation section');
+          setState((prev) => ({
+            ...prev,
+            isChecking: false,
+            error: 'Failed to expand parent navigation section',
+          }));
+          return;
+        }
+      } else if (requirements?.includes('navmenu-open') && fixNavigationRequirements) {
+        // Fix basic navigation requirements (menu open/dock)
+        await fixNavigationRequirements();
+      } else {
+        console.warn('Unknown fix type:', state.fixType);
+        setState((prev) => ({
+          ...prev,
+          isChecking: false,
+          error: 'Unable to automatically fix this requirement',
+        }));
+        return;
+      }
 
       // After fixing, recheck the requirements
-      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.debouncing.stateSettling));
-
-      // Trigger a requirements check to see if the fix worked
+      await new Promise<void>((resolve) =>
+        timeoutManager.setTimeout(
+          `fix-recheck-${stepId}`,
+          () => resolve(),
+          INTERACTIVE_CONFIG.delays.debouncing.stateSettling
+        )
+      );
       await checkStep();
     } catch (error) {
-      console.error('Failed to fix navigation requirements:', error);
+      console.error('Failed to fix requirements:', error);
       setState((prev) => ({
         ...prev,
         isChecking: false,
-        error: 'Failed to fix navigation requirements',
+        error: 'Failed to fix requirements',
       }));
     }
-  }, [canFixRequirement, fixNavigationRequirements, checkStep]);
+  }, [
+    state.canFixRequirement,
+    state.fixType,
+    state.targetHref,
+    requirements,
+    fixNavigationRequirements,
+    checkStep,
+    stepId,
+    timeoutManager,
+  ]);
 
   /**
    * Manual completion (for user-executed steps)
@@ -272,6 +392,7 @@ export function useStepChecker({
       ...state,
       isCompleted: true,
       isEnabled: false, // Completed steps are disabled
+      isSkipped: false,
       completionReason: 'manual' as const,
       explanation: 'Completed',
     };
@@ -279,20 +400,84 @@ export function useStepChecker({
     updateManager(completedState);
   }, [state, updateManager]);
 
-  // Auto-check when eligibility or conditions change
-  useEffect(() => {
-    // Skip checking if already completed (prevent redundant checks)
-    if (!state.isCompleted) {
-      checkStep();
-    }
-  }, [checkStep, state.isCompleted]);
+  /**
+   * Mark step as skipped (for steps that can't meet requirements but are skippable)
+   */
+  const markSkipped = useCallback(() => {
+    const skippedState = {
+      ...state,
+      isCompleted: true, // Skipped steps count as completed for flow purposes
+      isSkipped: true,
+      isEnabled: false, // Skipped steps are disabled
+      completionReason: 'skipped' as const,
+      explanation: 'Skipped due to requirements',
+    };
+    setState(skippedState);
+    updateManager(skippedState);
 
-  // Register with manager for reactive re-checking
+    // Trigger check for dependent steps when this step is skipped
+    if (managerRef.current) {
+      timeoutManager.setTimeout(
+        `skip-reactive-check-${stepId}`,
+        () => {
+          managerRef.current?.triggerReactiveCheck();
+        },
+        100
+      );
+    }
+  }, [updateManager, stepId, timeoutManager]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Reset step to initial state (including skipped state) and recheck requirements
+   */
+  const resetStep = useCallback(() => {
+    const resetState = {
+      isEnabled: false,
+      isCompleted: false,
+      isChecking: false,
+      isSkipped: false,
+      completionReason: 'none' as const,
+      explanation: undefined,
+      error: undefined,
+      canFixRequirement: false,
+      canSkip: skippable,
+      fixType: undefined,
+      targetHref: undefined,
+    };
+    setState(resetState);
+    updateManager(resetState);
+
+    // Recheck requirements after reset
+    timeoutManager.setTimeout(
+      `reset-recheck-${stepId}`,
+      () => {
+        checkStepRef.current();
+      },
+      50
+    );
+  }, [skippable, updateManager, stepId, timeoutManager]); // Removed checkStep to prevent infinite loops
+
+  /**
+   * Stable reference to checkStep function for event-driven triggers
+   */
+  const checkStepRef = useRef(checkStep);
+  checkStepRef.current = checkStep;
+
+  // Initial requirements check for first steps when component mounts
+  useEffect(() => {
+    const isFirstStep = stepId?.includes('-step-1') || (!stepId?.includes('section-') && !stepId?.includes('step-'));
+    if (isFirstStep && !state.isCompleted && !state.isChecking) {
+      checkStepRef.current();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- Intentionally empty - only run on mount
+
+  // Register step checker with global manager for targeted re-checking
   useEffect(() => {
     if (managerRef.current) {
       const unregisterChecker = managerRef.current.registerStepCheckerByID(stepId, () => {
-        if (!state.isCompleted) {
-          checkStep();
+        const currentState = managerRef.current?.getStepState(stepId);
+        if (!currentState?.isCompleted && isEligibleForChecking) {
+          checkStepRef.current();
         }
       });
 
@@ -301,7 +486,14 @@ export function useStepChecker({
       };
     }
     return undefined;
-  }, [stepId, checkStep, state.isCompleted]);
+  }, [stepId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Check requirements when step becomes eligible
+  useEffect(() => {
+    if (isEligibleForChecking && !state.isCompleted && !state.isChecking) {
+      checkStepRef.current();
+    }
+  }, [isEligibleForChecking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for section completion events (for section dependencies)
   useEffect(() => {
@@ -311,17 +503,29 @@ export function useStepChecker({
       }
     };
 
+    // Listen for auto-skip events from section execution
+    const handleAutoSkip = (event: CustomEvent) => {
+      if (event.detail?.stepId === stepId && !state.isCompleted) {
+        markSkipped();
+      }
+    };
+
     document.addEventListener('section-completed', handleSectionCompletion);
+    document.addEventListener('step-auto-skipped', handleAutoSkip as EventListener);
+
     return () => {
       document.removeEventListener('section-completed', handleSectionCompletion);
+      document.removeEventListener('step-auto-skipped', handleAutoSkip as EventListener);
     };
-  }, [checkStep, state.isCompleted, requirements]);
+  }, [checkStep, state.isCompleted, requirements, stepId, markSkipped]); // eslint-disable-line react-hooks/exhaustive-deps -- Intentionally minimal dependencies for event listeners
 
   return {
     ...state,
     checkStep,
     markCompleted,
-    canFixRequirement,
-    fixRequirement: canFixRequirement ? fixRequirement : undefined,
+    markSkipped: skippable ? markSkipped : undefined,
+    resetStep,
+    canFixRequirement: state.canFixRequirement,
+    fixRequirement: state.canFixRequirement ? fixRequirement : undefined,
   };
 }

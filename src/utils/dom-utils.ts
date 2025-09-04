@@ -30,9 +30,14 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   Array.from(element.attributes).forEach((attr) => {
     if (
       attr.name.startsWith('data-') &&
-      !['data-reftarget', 'data-targetaction', 'data-targetvalue', 'data-requirements', 'data-objectives'].includes(
-        attr.name
-      )
+      ![
+        'data-reftarget',
+        'data-targetaction',
+        'data-targetvalue',
+        'data-requirements',
+        'data-objectives',
+        'data-skippable',
+      ].includes(attr.name)
     ) {
       const key = attr.name.substring(5); // Remove 'data-' prefix
       customData[key] = attr.value;
@@ -45,6 +50,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   const targetvalue = element.getAttribute('data-targetvalue') || undefined;
   const requirements = element.getAttribute('data-requirements') || undefined;
   const objectives = element.getAttribute('data-objectives') || undefined;
+  const skippable = element.getAttribute('data-skippable') === 'true'; // Default to false, only true if explicitly set
   const textContent = element.textContent?.trim() || undefined;
 
   // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
@@ -58,6 +64,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     targetvalue: targetvalue,
     requirements: requirements,
     objectives: objectives,
+    skippable: skippable,
     tagName: element.tagName.toLowerCase(),
     className: element.className || undefined,
     id: element.id || undefined,
@@ -126,11 +133,19 @@ export function resetValueTracker(targetElement: HTMLElement): void {
  * For button actions, checks if buttons with matching text exist
  * For other actions, checks if the CSS selector matches an element
  * Includes retry logic for elements that might not exist immediately
+ * Enhanced with parent section expansion detection for navigation menu items
  */
 export async function reftargetExistsCHECK(
   reftarget: string,
   targetAction: string
-): Promise<{ requirement: string; pass: boolean; error?: string }> {
+): Promise<{
+  requirement: string;
+  pass: boolean;
+  error?: string;
+  canFix?: boolean;
+  fixType?: string;
+  targetHref?: string;
+}> {
   // For button actions, check if buttons with matching text exist
   if (targetAction === 'button') {
     const buttons = findButtonByText(reftarget);
@@ -150,9 +165,37 @@ export async function reftargetExistsCHECK(
   }
 
   // For other actions, check if the CSS selector matches an element
-  // Add retry logic for elements that might not exist immediately
-  const maxRetries = 3;
-  const retryDelay = 500; // 500ms between retries
+  // Fast-path check for navigation menu items
+  if (reftarget.includes('data-testid Nav menu item')) {
+    // Most navigation menu items are immediately visible
+    const targetElement = document.querySelector(reftarget);
+    if (targetElement) {
+      return {
+        requirement: 'exists-reftarget',
+        pass: true,
+      };
+    }
+
+    // If not found, it likely needs expansion - fail fast with fix suggestion
+    const navigationMenuItemMatch = reftarget.match(
+      /a\[data-testid=['"]data-testid Nav menu item['"]\]\[href=['"]([^'"]+)['"]\]/
+    );
+    if (navigationMenuItemMatch) {
+      const targetHref = navigationMenuItemMatch[1];
+      return {
+        requirement: 'exists-reftarget',
+        pass: false,
+        error: `Navigation menu item not found - may need section expansion`,
+        canFix: true,
+        fixType: 'expand-parent-navigation',
+        targetHref: targetHref,
+      };
+    }
+  }
+
+  // Retry configuration for element detection
+  const maxRetries = 2;
+  const retryDelay = 200;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const targetElement = document.querySelector(reftarget);
@@ -170,6 +213,20 @@ export async function reftargetExistsCHECK(
     }
   }
 
+  // Element not found after retries - check for general navigation menu pattern
+  if (
+    reftarget.includes('data-testid Nav menu item') &&
+    !reftarget.includes('/alerting/list') &&
+    !reftarget.includes('/plugins')
+  ) {
+    // For general navigation items that don't need expansion, return simple not found
+    return {
+      requirement: 'exists-reftarget',
+      pass: false,
+      error: `Navigation menu item not found`,
+    };
+  }
+
   return {
     requirement: 'exists-reftarget',
     pass: false,
@@ -181,14 +238,18 @@ export async function reftargetExistsCHECK(
  * Check if the navigation menu is open by trying various selectors
  * Based on Grafana's HTML structure, tries selectors in order of preference
  */
-export async function navmenuOpenCHECK(): Promise<{ requirement: string; pass: boolean; error?: string }> {
+export async function navmenuOpenCHECK(): Promise<{
+  requirement: string;
+  pass: boolean;
+  error?: string;
+  canFix?: boolean;
+  fixType?: string;
+}> {
   // Based on your HTML structure, try these selectors in order of preference
   const selectorsToTry = [
     // Most specific to your Grafana version
     'div[data-testid="data-testid navigation mega-menu"]',
     'ul[aria-label="Navigation"]',
-    'nav.css-rs8tod',
-    // Fallbacks for other versions
     'div[data-testid*="navigation"]',
     'nav[aria-label="Navigation"]',
     'ul[aria-label="Main navigation"]',
@@ -208,5 +269,7 @@ export async function navmenuOpenCHECK(): Promise<{ requirement: string; pass: b
     requirement: 'navmenu-open',
     pass: false,
     error: 'Navigation menu not detected - menu may be closed or selector mismatch',
+    canFix: true,
+    fixType: 'navigation',
   };
 }

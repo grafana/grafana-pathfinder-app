@@ -41,6 +41,9 @@ export class NavigationManager {
       // await waitForReactUpdates();
       // await new Promise(resolve => setTimeout(resolve, 1000));
       await this.waitForScrollComplete(element);
+
+      // Add small DOM settling delay after scroll completes to ensure element position is stable
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 
@@ -266,6 +269,179 @@ export class NavigationManager {
       logWarnings: true, // Verbose logging
       ensureDocked: true, // Always dock if open
     });
+  }
+
+  /**
+   * Attempt to expand parent navigation sections for nested menu items
+   * This function analyzes the target href to determine the parent section and expands it
+   */
+  async expandParentNavigationSection(targetHref: string): Promise<boolean> {
+    try {
+      // First ensure navigation is open
+      await this.fixNavigationRequirements();
+
+      // Parse the href to find the parent section
+      const parentPath = this.getParentPathFromHref(targetHref);
+      if (!parentPath) {
+        // Fallback: expand all navigation sections if we can't determine the parent path
+        return this.expandAllNavigationSections();
+      }
+
+      // Look for the parent section's expand button
+      const parentExpandButton = this.findParentExpandButton(parentPath);
+      if (!parentExpandButton) {
+        // Fallback: expand all navigation sections if we can't find the specific parent
+        return this.expandAllNavigationSections();
+      }
+
+      // Check if the parent section is already expanded
+      const isExpanded = this.isParentSectionExpanded(parentExpandButton);
+      if (isExpanded) {
+        return true; // Already expanded, so this is success
+      }
+
+      // Click the expand button to reveal nested items
+      parentExpandButton.click();
+
+      // Wait for expansion animation to complete
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      return true;
+    } catch (error) {
+      console.error('Failed to expand parent navigation section:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Extract parent path from href (e.g., '/alerting/list' -> '/alerting')
+   */
+  private getParentPathFromHref(href: string): string | null {
+    if (!href || !href.startsWith('/')) {
+      return null;
+    }
+
+    // Split path and get parent
+    const pathSegments = href.split('/').filter(Boolean);
+    if (pathSegments.length <= 1) {
+      return null; // No parent for top-level paths
+    }
+
+    // Return parent path
+    return `/${pathSegments[0]}`;
+  }
+
+  /**
+   * Find the expand button for a parent navigation section
+   */
+  private findParentExpandButton(parentPath: string): HTMLButtonElement | null {
+    // Strategy 1: Look for parent link, then find its expand button sibling
+    const parentLink = document.querySelector(`a[data-testid="data-testid Nav menu item"][href="${parentPath}"]`);
+    if (parentLink) {
+      // Look for expand button in the same container
+      const container = parentLink.closest('li, div');
+      if (container) {
+        const expandButton = container.querySelector('button[aria-label*="Expand section"]') as HTMLButtonElement;
+        if (expandButton) {
+          return expandButton;
+        }
+      }
+    }
+
+    // Strategy 2: Look for expand button by aria-label containing the section name
+    const sectionName = parentPath.substring(1); // Remove leading slash
+    const capitalizedName = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
+
+    const expandButton = document.querySelector(
+      `button[aria-label*="Expand section: ${capitalizedName}"]`
+    ) as HTMLButtonElement;
+    if (expandButton) {
+      return expandButton;
+    }
+
+    // Strategy 3: Look for any expand button near the parent link
+    if (parentLink) {
+      const nearbyButtons = parentLink.parentElement?.querySelectorAll('button') || [];
+      for (const button of nearbyButtons) {
+        const ariaLabel = button.getAttribute('aria-label') || '';
+        if (ariaLabel.includes('Expand') || ariaLabel.includes('expand')) {
+          return button as HTMLButtonElement;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Check if a parent section is already expanded by examining the expand button state
+   */
+  private isParentSectionExpanded(expandButton: HTMLButtonElement): boolean {
+    // Check aria-expanded attribute
+    const ariaExpanded = expandButton.getAttribute('aria-expanded');
+    if (ariaExpanded === 'true') {
+      return true;
+    }
+
+    // Check if the button has collapsed/expanded classes or icons
+    const ariaLabel = expandButton.getAttribute('aria-label') || '';
+
+    // If aria-label says "Collapse" instead of "Expand", it's already expanded
+    if (ariaLabel.includes('Collapse') || ariaLabel.includes('collapse')) {
+      return true;
+    }
+
+    // Check for visual indicators (chevron direction, etc.)
+    const svg = expandButton.querySelector('svg');
+    if (svg) {
+      // This is heuristic - in many UI frameworks, expanded sections have rotated chevrons
+      const transform = window.getComputedStyle(svg).transform;
+      if (transform && transform !== 'none' && transform.includes('rotate')) {
+        return true;
+      }
+    }
+
+    return false; // Default to collapsed if we can't determine state
+  }
+
+  /**
+   * Expand all collapsible navigation sections
+   * This is used as a fallback when we can't determine the specific parent section
+   */
+  async expandAllNavigationSections(): Promise<boolean> {
+    try {
+      // First ensure navigation is open
+      await this.fixNavigationRequirements();
+
+      // Find all expand buttons in the navigation
+      const expandButtons = document.querySelectorAll(
+        'button[aria-label*="Expand section"]'
+      ) as NodeListOf<HTMLButtonElement>;
+
+      if (expandButtons.length === 0) {
+        return false; // No expandable sections found
+      }
+
+      let expandedAny = false;
+
+      // Click all expand buttons that are currently collapsed
+      for (const button of expandButtons) {
+        if (!this.isParentSectionExpanded(button)) {
+          button.click();
+          expandedAny = true;
+        }
+      }
+
+      if (expandedAny) {
+        // Wait for all expansion animations to complete
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to expand all navigation sections:', error);
+      return false;
+    }
   }
 
   /**

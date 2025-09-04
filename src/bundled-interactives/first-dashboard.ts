@@ -58,10 +58,13 @@ export const firstDashboardHtml = `<html>
                   class='interactive' 
                   data-hint="You'll need to be logged in, and an administrator"
                   data-requirements="is-admin"
+                  data-skippable="true"
                   data-reftarget='Install' 
                   data-targetaction='button'
                   data-verify="has-plugin:volkovlabs-rss-datasource">
-                Click the Install Button
+                Click the <strong>Install</strong> button.
+                You need to have the Admin role to install a plugin.
+                You can skip this step if you don't have these permissions.
               </li>
             </ul>
         </span>    

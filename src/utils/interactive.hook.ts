@@ -21,6 +21,9 @@ export interface CheckResult {
   pass: boolean;
   error?: string;
   context?: any;
+  canFix?: boolean;
+  fixType?: string;
+  targetHref?: string;
 }
 
 interface UseInteractiveElementsOptions {
@@ -158,6 +161,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           pass: e.pass,
           error: e.error,
           context: e.context,
+          canFix: e.canFix,
+          fixType: e.fixType,
+          targetHref: e.targetHref,
         })),
       };
     },
@@ -193,6 +199,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           pass: e.pass,
           error: e.error,
           context: e.context,
+          canFix: e.canFix,
+          fixType: e.fixType,
+          targetHref: e.targetHref,
         })),
       };
     },

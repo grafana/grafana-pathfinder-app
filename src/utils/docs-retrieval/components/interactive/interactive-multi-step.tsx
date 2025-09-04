@@ -32,6 +32,7 @@ interface InteractiveMultiStepProps {
   requirements?: string; // Overall requirements for the multi-step
   objectives?: string; // Overall objectives for the multi-step
   onComplete?: () => void;
+  skippable?: boolean; // Whether this multi-step can be skipped if requirements fail
 
   // Timing configuration
   stepDelay?: number; // Delay between steps in milliseconds (default: 1800ms)
@@ -362,14 +363,19 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       // Reset cancellation state
       isCancelledRef.current = false;
 
-      // Trigger requirements recheck to reset the step checker state
-      checker.checkStep();
-
       // Notify parent section to remove from completed steps
+      // The section is the authoritative source - it will update its state
+      // and the eligibility will be recalculated on the next render
       if (onStepReset && stepId) {
         onStepReset(stepId);
       }
-    }, [disabled, isExecuting, stepId, onStepReset, checker]);
+
+      // No need for complex timing logic - the section's getStepEligibility
+      // will use the updated completedSteps state on the next render
+    }, [disabled, isExecuting, stepId, onStepReset]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Intentionally excluding to prevent circular dependencies:
+    // - setIsLocallyCompleted, setExecutionError: stable React setters
+    // - isCancelledRef: ref changes don't trigger re-creation, including would cause unnecessary updates
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 

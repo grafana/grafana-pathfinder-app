@@ -20,19 +20,19 @@ export const welcomeToGrafanaCloudHtml = `<html>
         <h2>Tour of Grafana Cloud</h2>
         <p>Let's start by exploring the main areas of Grafana. We'll visit each key section so you know where everything is located.</p>
 
-        <span id="grafana-tour" class="interactive" data-requirements="navmenu-open" data-targetaction="sequence" data-reftarget="span#grafana-tour">
+        <span id="grafana-tour" class="interactive" data-targetaction="sequence" data-reftarget="span#grafana-tour">
             <ul>
               <li class="interactive" 
                   data-requirements="navmenu-open"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/a/grafana-setupguide-app/home']"
-                  data-targetaction='highlight'
+                  data-targetaction='highlight'>
                 <span class="interactive-comment">The <strong>Home</strong> page in Grafana Cloud is your central hub. It shows your cloud instance overview, recent activity, and quick access to getting started guides. Perfect <em>starting point</em> for your observability journey!</span>
                 First, let's visit the <strong>Home</strong> page - your starting point in Grafana.
               </li>
 
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/dashboards']"
-                  data-targetaction='highlight'
+                  data-targetaction='highlight'>
                 <span class="interactive-comment">In Grafana Cloud, <strong>Dashboards</strong> can display data from multiple cloud services simultaneously. Create <code>time series</code> from Prometheus, <code>logs panels</code> from Loki, and <code>traces</code> from Tempo - all in one view!</span>
                 Next, <strong>Dashboards</strong> - where you'll create and manage your visualizations.
               </li>
@@ -40,30 +40,45 @@ export const welcomeToGrafanaCloudHtml = `<html>
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/explore']"
                   data-targetaction='highlight'
+                  data-skippable="true"
                 <span class="interactive-comment"><strong>Explore</strong> is your data playground! Query logs with <code>LogQL</code>, run <code>PromQL</code> queries against metrics, and investigate traces with <code>TraceQL</code>. Perfect for troubleshooting and <em>data discovery</em>.</span>
                 Then <strong>Explore</strong> - perfect for ad-hoc queries and data exploration.
               </li>
 
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/alerts-and-incidents']"
-                  data-targetaction='highlight'
+                  data-targetaction='highlight'>
                 <span class="interactive-comment">Grafana Cloud's <strong>Alerting</strong> system can monitor your metrics, logs, and traces simultaneously. Set up <code>Slack</code>, <code>PagerDuty</code>, or <code>email</code> notifications. Get alerted before your users notice issues!</span>
                 <strong>Alerting</strong> - where you'll set up notifications when things go wrong.
               </li>
 
               <li class="interactive" 
+                  data-requirements="is-admin"
+                  data-skippable="true"
+                  data-hint="Connections requires admin permissions to access"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections']"
-                  data-targetaction='highlight'
+                  data-targetaction='highlight'>
                 <span class="interactive-comment">Grafana Cloud comes with <strong>pre-configured data sources</strong>! Your <code>Prometheus</code>, <code>Loki</code>, and <code>Tempo</code> instances are already connected. You can also add external sources like <code>AWS</code>, <code>GCP</code>, or your own infrastructure.</span>
-                <strong>Connections</strong> - the heart of Grafana where you connect to your data sources.
+                You need the Admin role to connect data sources.
+                You can skip this step if you don't have permissions.
               </li>
 
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin']"
-                  data-targetaction='highlight'
+                  data-targetaction='highlight'>
                 <span class="interactive-comment">Cloud <strong>Administration</strong> gives you control over team management, <code>API keys</code>, usage analytics, and billing. Manage your entire cloud stack from here - <em>powerful stuff</em>!</span>
                 Finally, <strong>Administration</strong> - for managing users, plugins, and system settings.
               </li>
+
+              <li class="interactive" 
+                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
+                  data-requirements="exists-reftarget"
+                  data-targetaction='highlight'
+                  data-skippable="true">
+                <span class="interactive-comment">Plugins and data allows you to extend Grafana's functionality. You can install custom plugins from here.</span>
+                  Plugins extend Grafana by adding capabilities that are not available by default. For example, you can install plugins that add the ability to import data from diverse sources, that bundle data sources and panels, or that provide new visualization types for use in dashboards.
+              </li>
+
             </ul>
         </span>
 
