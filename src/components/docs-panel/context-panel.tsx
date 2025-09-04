@@ -2,6 +2,7 @@ import React from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, useStyles2, Card } from '@grafana/ui';
+import { usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import logoSvg from '../../img/logo.svg';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -14,6 +15,7 @@ import { locationService } from '@grafana/runtime';
 import { getStyles } from '../../styles/context-panel.styles';
 import { useContextPanel } from '../../utils/context';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { getConfigWithDefaults } from '../../constants';
 
 interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
@@ -57,6 +59,10 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 }
 
 function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
+  // Get plugin configuration with proper defaults applied
+  const pluginContext = usePluginContext();
+  const configWithDefaults = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+
   // Use the simplified context hook
   const {
     contextData,
@@ -128,7 +134,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                   <Icon name="info-circle" />
                   <span>No recommendations available for your current context.</span>
                 </div>
-                <EnableRecommenderBanner />
+                {!configWithDefaults.acceptedTermsAndConditions && <EnableRecommenderBanner />}
               </>
             )}
 
@@ -397,9 +403,10 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             )}
 
             {/* Show Enable Recommender Banner when recommendations exist but recommender is disabled */}
-            {!isLoadingRecommendations && !recommendationsError && recommendations.length > 0 && (
-              <EnableRecommenderBanner />
-            )}
+            {!isLoadingRecommendations &&
+              !recommendationsError &&
+              recommendations.length > 0 &&
+              !configWithDefaults.acceptedTermsAndConditions && <EnableRecommenderBanner />}
           </div>
         )}
 
