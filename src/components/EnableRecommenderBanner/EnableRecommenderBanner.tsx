@@ -14,10 +14,10 @@ interface EnableRecommenderBannerProps {
 export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = ({ className }) => {
   const styles = useStyles2(getStyles);
   const context = usePluginContext();
-  const config = context?.meta?.jsonData || {};
+  const pluginConfig = context?.meta?.jsonData || {};
 
-  // Only show if recommender is disabled
-  if (isRecommenderEnabled(config)) {
+  // Only show if recommender is disabled (now includes platform-specific defaults)
+  if (isRecommenderEnabled(pluginConfig)) {
     return null;
   }
 

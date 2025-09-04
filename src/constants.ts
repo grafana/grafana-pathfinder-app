@@ -1,4 +1,5 @@
 import pluginJson from './plugin.json';
+import { config } from '@grafana/runtime';
 
 export const PLUGIN_BASE_URL = `/a/${pluginJson.id}`;
 
@@ -37,8 +38,23 @@ export const getConfigWithDefaults = (config: DocsPluginConfig): Required<DocsPl
   devMode: config.devMode || DEFAULT_DEV_MODE,
 });
 
-export const isRecommenderEnabled = (config: DocsPluginConfig): boolean => {
-  return Boolean(config.acceptedTermsAndConditions);
+/**
+ * Get platform-specific default for recommender enabled state
+ * Cloud: enabled by default (always online)
+ * OSS: disabled by default (might be offline)
+ */
+const getPlatformSpecificDefault = (): boolean => {
+  try {
+    const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
+    return isCloud; // Cloud = true (enabled), OSS = false (disabled)
+  } catch (error) {
+    console.warn('Failed to detect platform, defaulting to disabled:', error);
+    return false; // Conservative default
+  }
+};
+
+export const isRecommenderEnabled = (pluginConfig: DocsPluginConfig): boolean => {
+  return Boolean(pluginConfig.acceptedTermsAndConditions ?? getPlatformSpecificDefault());
 };
 
 // Legacy exports for backward compatibility - now require config parameter
