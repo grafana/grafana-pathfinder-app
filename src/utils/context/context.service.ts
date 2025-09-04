@@ -335,7 +335,7 @@ export class ContextService {
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
-        datasources: contextData.dataSources.map((ds) => ds.type.toLowerCase()),
+        datasources: [...new Set(contextData.dataSources.map((ds) => ds.type.toLowerCase()))],
         tags: contextData.tags,
         user_id: isCloud ? config.bootData.user.analytics.identifier : 'oss-user',
         user_role: config.bootData.user.orgRole || 'Viewer',
