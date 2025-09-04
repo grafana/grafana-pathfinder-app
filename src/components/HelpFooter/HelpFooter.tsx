@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { Icon, useTheme2, Modal } from '@grafana/ui';
-import { config } from '@grafana/runtime';
-import { t } from '@grafana/i18n';
+import React from 'react';
+import { Icon, useTheme2 } from '@grafana/ui';
 import { getHelpFooterStyles } from '../../styles/help-footer.styles';
+import { useGrafanaHelpMenu } from '../../utils/help-menu.hook';
 
 interface HelpFooterProps {
   className?: string;
@@ -11,59 +10,19 @@ interface HelpFooterProps {
 export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
   const theme = useTheme2();
   const styles = getHelpFooterStyles(theme);
-  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
-  const handleKeyboardShortcuts = () => {
-    setIsHelpModalOpen(true);
-  };
+  // Get help menu data from Grafana's nav state
+  const helpMenuData = useGrafanaHelpMenu();
 
-  const handleCloseHelpModal = () => {
-    setIsHelpModalOpen(false);
-  };
-
-  const helpButtons = [
-    {
-      key: 'documentation',
-      label: t('helpFooter.buttons.documentation', 'Documentation'),
-      icon: 'file-alt' as const,
-      href: 'https://grafana.com/docs/grafana/latest/?utm_source=grafana_footer',
-    },
-    {
-      key: 'support',
-      label: t('helpFooter.buttons.support', 'Support'),
-      icon: 'question-circle' as const,
-      href: 'https://grafana.com/support/?utm_source=grafana_footer',
-    },
-    {
-      key: 'community',
-      label: t('helpFooter.buttons.community', 'Community'),
-      icon: 'comments-alt' as const,
-      href: 'https://community.grafana.com/?utm_source=grafana_footer',
-    },
-    {
-      key: 'enterprise',
-      label: t('helpFooter.buttons.enterprise', 'Enterprise'),
-      icon: 'external-link-alt' as const,
-      href: 'https://grafana.com/products/enterprise/?utm_source=grafana_footer',
-    },
-    {
-      key: 'download',
-      label: t('helpFooter.buttons.download', 'Download'),
-      icon: 'download-alt' as const,
-      href: 'https://grafana.com/grafana/download?utm_source=grafana_footer',
-    },
-    {
-      key: 'shortcuts',
-      label: t('helpFooter.buttons.shortcuts', 'Shortcuts'),
-      icon: 'keyboard' as const,
-      onClick: handleKeyboardShortcuts,
-    },
-  ];
+  // Only render if we have menu items
+  if (helpMenuData.items.length === 0) {
+    return null;
+  }
 
   return (
     <div className={`${styles.helpFooter} ${className || ''}`}>
       <div className={styles.helpButtons}>
-        {helpButtons.map((button) => {
+        {helpMenuData.items.map((button) => {
           const ButtonComponent = button.href ? 'a' : 'button';
           const buttonProps = button.href
             ? {
@@ -87,136 +46,13 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
         })}
       </div>
 
-      {/* Version info */}
-      {config.buildInfo && (
+      {/* Version info from help node subtitle */}
+      {helpMenuData.subtitle && (
         <div className={styles.versionInfo}>
           <div className={styles.versionText}>
-            Grafana v{config.buildInfo.version} ({config.buildInfo.commit?.substring(0, 10) || 'unknown'})
+            {helpMenuData.subtitle}
           </div>
         </div>
-      )}
-
-      {/* Keyboard Shortcuts Modal */}
-      {isHelpModalOpen && (
-        <Modal
-          title={t('helpFooter.modal.keyboardShortcuts', 'Keyboard Shortcuts')}
-          isOpen={isHelpModalOpen}
-          onDismiss={handleCloseHelpModal}
-        >
-          <div style={{ minWidth: '500px', padding: '16px' }}>
-            <div style={{ marginBottom: '16px' }}>
-              <h3 style={{ marginBottom: '8px' }}>{t('helpFooter.modal.globalShortcuts', 'Global Shortcuts')}</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '8px', fontSize: '14px' }}>
-                <div>
-                  <kbd
-                    style={{
-                      padding: '2px 6px',
-                      backgroundColor: theme.colors.background.secondary,
-                      border: `1px solid ${theme.colors.border.medium}`,
-                      borderRadius: '3px',
-                    }}
-                  >
-                    ?
-                  </kbd>
-                </div>
-                <div>{t('helpFooter.modal.showAllShortcuts', 'Show all keyboard shortcuts')}</div>
-                <div>
-                  <kbd
-                    style={{
-                      padding: '2px 6px',
-                      backgroundColor: theme.colors.background.secondary,
-                      border: `1px solid ${theme.colors.border.medium}`,
-                      borderRadius: '3px',
-                    }}
-                  >
-                    g h
-                  </kbd>
-                </div>
-                <div>{t('helpFooter.modal.goToHomeDashboard', 'Go to Home Dashboard')}</div>
-                <div>
-                  <kbd
-                    style={{
-                      padding: '2px 6px',
-                      backgroundColor: theme.colors.background.secondary,
-                      border: `1px solid ${theme.colors.border.medium}`,
-                      borderRadius: '3px',
-                    }}
-                  >
-                    g d
-                  </kbd>
-                </div>
-                <div>{t('helpFooter.modal.goToDashboards', 'Go to Dashboards')}</div>
-                <div>
-                  <kbd
-                    style={{
-                      padding: '2px 6px',
-                      backgroundColor: theme.colors.background.secondary,
-                      border: `1px solid ${theme.colors.border.medium}`,
-                      borderRadius: '3px',
-                    }}
-                  >
-                    esc
-                  </kbd>
-                </div>
-                <div>{t('helpFooter.modal.exitEditViews', 'Exit edit/setting views')}</div>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <h3 style={{ marginBottom: '8px' }}>{t('helpFooter.modal.dashboardShortcuts', 'Dashboard Shortcuts')}</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '8px', fontSize: '14px' }}>
-                <div>
-                  <kbd
-                    style={{
-                      padding: '2px 6px',
-                      backgroundColor: theme.colors.background.secondary,
-                      border: `1px solid ${theme.colors.border.medium}`,
-                      borderRadius: '3px',
-                    }}
-                  >
-                    d r
-                  </kbd>
-                </div>
-                <div>{t('helpFooter.modal.refreshAllPanels', 'Refresh all panels')}</div>
-                <div>
-                  <kbd
-                    style={{
-                      padding: '2px 6px',
-                      backgroundColor: theme.colors.background.secondary,
-                      border: `1px solid ${theme.colors.border.medium}`,
-                      borderRadius: '3px',
-                    }}
-                  >
-                    d s
-                  </kbd>
-                </div>
-                <div>{t('helpFooter.modal.dashboardSettings', 'Dashboard settings')}</div>
-                <div>
-                  <kbd
-                    style={{
-                      padding: '2px 6px',
-                      backgroundColor: theme.colors.background.secondary,
-                      border: `1px solid ${theme.colors.border.medium}`,
-                      borderRadius: '3px',
-                    }}
-                  >
-                    d v
-                  </kbd>
-                </div>
-                <div>{t('helpFooter.modal.toggleViewMode', 'Toggle view mode')}</div>
-              </div>
-            </div>
-
-            <div
-              style={{ fontSize: '12px', color: theme.colors.text.secondary, marginTop: '16px', fontStyle: 'italic' }}
-            >
-              {t(
-                'helpFooter.modal.simplifiedView',
-                "This is a simplified view. You can replace this with Grafana's full HelpModal component."
-              )}
-            </div>
-          </div>
-        </Modal>
       )}
     </div>
   );
