@@ -8,7 +8,7 @@ apps:
     jsonData:
       # Docs Base URL
       docsBaseUrl: https://grafana.com
-      # Feature flags for experimental features  
+      # Feature flags for experimental features
       features: custom_docs
       # Auto-launch tutorial URL (for demo scenarios)
-      tutorialUrl: ""
+      tutorialUrl: ''
