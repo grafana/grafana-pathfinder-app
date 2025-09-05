@@ -206,10 +206,25 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
   // Convert tree/blob URLs to raw URLs before attempting fetch
   let actualUrl = url;
   if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
-    const githubVariations = generateGitHubVariations(url);
-    if (githubVariations.length > 0) {
-      // Use the first (most specific) GitHub variation instead of the original URL
-      actualUrl = githubVariations[0];
+    // Use the shared GitHub URL conversion utility
+    try {
+      const { convertGitHubUrlToRaw } = await import('../github-url.utils');
+      const convertedUrl = convertGitHubUrlToRaw(url);
+      if (convertedUrl !== url) {
+        actualUrl = convertedUrl;
+      }
+    } catch (error) {
+      console.warn('Failed to use shared GitHub conversion, falling back to legacy method:', error);
+      // Fallback to existing logic
+      try {
+        const { generateGitHubVariations } = await import('../github-url.utils');
+        const githubVariations = generateGitHubVariations(url);
+        if (githubVariations.length > 0) {
+          actualUrl = githubVariations[0];
+        }
+      } catch (importError) {
+        console.warn('Failed to import GitHub utilities for fallback:', importError);
+      }
     }
   }
 
@@ -315,21 +330,26 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
   // AND we haven't already converted the URL (to avoid trying the same variations twice)
   if (!lastError?.includes('Unstyled version required') && !options.docsBaseUrl && actualUrl === url) {
     // Only try GitHub for URLs that are actually GitHub URLs and when no specific docs base is configured
-    const githubVariations = generateGitHubVariations(url);
-    if (githubVariations.length > 0) {
-      for (const githubUrl of githubVariations) {
-        try {
-          const githubResponse = await fetch(githubUrl, fetchOptions);
-          if (githubResponse.ok) {
-            const githubHtml = await githubResponse.text();
-            if (githubHtml && githubHtml.trim()) {
-              return githubHtml;
+    try {
+      const { generateGitHubVariations } = await import('../github-url.utils');
+      const githubVariations = generateGitHubVariations(url);
+      if (githubVariations.length > 0) {
+        for (const githubUrl of githubVariations) {
+          try {
+            const githubResponse = await fetch(githubUrl, fetchOptions);
+            if (githubResponse.ok) {
+              const githubHtml = await githubResponse.text();
+              if (githubHtml && githubHtml.trim()) {
+                return githubHtml;
+              }
             }
+          } catch (githubError) {
+            console.warn(`Failed to fetch from GitHub variation ${githubUrl}:`, githubError);
           }
-        } catch (githubError) {
-          console.warn(`Failed to fetch from GitHub variation ${githubUrl}:`, githubError);
         }
       }
+    } catch (importError) {
+      console.warn('Failed to import GitHub utilities:', importError);
     }
   }
 
@@ -341,46 +361,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
   return null;
 }
 
-/**
- * Generate GitHub raw content URL variations to try
- */
-function generateGitHubVariations(url: string): string[] {
-  const variations: string[] = [];
-
-  // Only try GitHub variations for GitHub URLs
-  if (url.includes('github.com') || url.includes('raw.githubusercontent.com')) {
-    // If it's a regular GitHub URL, try converting to raw.githubusercontent.com first (more targeted)
-    if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
-      // Handle tree URLs (directories) - convert to directory/unstyled.html
-      const treeMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
-      if (treeMatch) {
-        const [_fullMatch, owner, repo, branch, path] = treeMatch;
-        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/refs/heads/${branch}/${path}/unstyled.html`;
-        variations.push(rawUrl);
-      }
-
-      // Handle blob URLs (specific files)
-      const blobMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)/);
-      if (blobMatch) {
-        const [_fullMatch, owner, repo, branch, path] = blobMatch;
-        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
-        variations.push(rawUrl);
-
-        // Also try unstyled version of raw URL
-        if (!rawUrl.includes('/unstyled.html')) {
-          variations.push(`${rawUrl}/unstyled.html`);
-        }
-      }
-    }
-
-    // Generic fallback: try unstyled.html version (only if no specific conversion worked)
-    if (!url.includes('/unstyled.html') && variations.length === 0) {
-      variations.push(`${url.replace(/\/$/, '')}/unstyled.html`);
-    }
-  }
-
-  return variations;
-}
+// generateGitHubVariations is now imported from github-url.utils.ts
 
 /**
  * Get unstyled content URL (from single-docs-fetcher)

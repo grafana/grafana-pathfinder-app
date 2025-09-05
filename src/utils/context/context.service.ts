@@ -2,6 +2,12 @@ import { getBackendSrv, config, locationService, getEchoSrv, EchoEventType } fro
 import { getConfigWithDefaults, isRecommenderEnabled, DocsPluginConfig } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import {
+  getCurrentPlatform,
+  matchesPlatform,
+  matchesUrlPrefix,
+  containsTagInMatch,
+} from '../recommendation-matching.utils';
+import {
   ContextData,
   DataSource,
   Plugin,
@@ -274,8 +280,14 @@ export class ContextService {
       }
 
       const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData, pluginConfig);
+      const customDocsRecommendations = await this.getCustomDocsRecommendations(contextData, pluginConfig);
+
       if (!isRecommenderEnabled(pluginConfig)) {
-        const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
+        const fallbackResult = await this.getFallbackRecommendations(
+          contextData,
+          bundledRecommendations,
+          customDocsRecommendations
+        );
         return {
           ...fallbackResult,
           errorType: null,
@@ -284,11 +296,21 @@ export class ContextService {
       }
 
       // Always try external recommendations when T&C are enabled, regardless of previous errors
-      return this.getExternalRecommendations(contextData, pluginConfig, bundledRecommendations);
+      return this.getExternalRecommendations(
+        contextData,
+        pluginConfig,
+        bundledRecommendations,
+        customDocsRecommendations
+      );
     } catch (error) {
       console.warn('Failed to fetch recommendations:', error);
       const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData, pluginConfig);
-      const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
+      const customDocsRecommendations = await this.getCustomDocsRecommendations(contextData, pluginConfig);
+      const fallbackResult = await this.getFallbackRecommendations(
+        contextData,
+        bundledRecommendations,
+        customDocsRecommendations
+      );
       return {
         ...fallbackResult,
         error: error instanceof Error ? error.message : 'Failed to fetch recommendations',
@@ -303,10 +325,11 @@ export class ContextService {
    */
   private static async getFallbackRecommendations(
     contextData: ContextData,
-    bundledRecommendations: Recommendation[]
+    bundledRecommendations: Recommendation[],
+    customDocsRecommendations: Recommendation[] = []
   ): Promise<{ recommendations: Recommendation[]; error: string | null }> {
     const staticLinkRecommendations = this.getStaticLinkRecommendations(contextData);
-    const allRecommendations = [...bundledRecommendations, ...staticLinkRecommendations];
+    const allRecommendations = [...customDocsRecommendations, ...bundledRecommendations, ...staticLinkRecommendations];
     const processedRecommendations = await this.processLearningJourneys(allRecommendations, {});
 
     return {
@@ -321,7 +344,8 @@ export class ContextService {
   private static async getExternalRecommendations(
     contextData: ContextData,
     pluginConfig: DocsPluginConfig,
-    bundledRecommendations: Recommendation[]
+    bundledRecommendations: Recommendation[],
+    customDocsRecommendations: Recommendation[] = []
   ): Promise<{
     recommendations: Recommendation[];
     error: string | null;
@@ -339,7 +363,7 @@ export class ContextService {
         tags: contextData.tags,
         user_id: isCloud ? config.bootData.user.analytics.identifier : 'oss-user',
         user_role: config.bootData.user.orgRole || 'Viewer',
-        platform: this.getCurrentPlatform(),
+        platform: getCurrentPlatform(),
       };
 
       const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
@@ -355,7 +379,8 @@ export class ContextService {
             'unavailable',
             'Recommender service not found',
             contextData,
-            bundledRecommendations
+            bundledRecommendations,
+            customDocsRecommendations
           );
         }
 
@@ -364,7 +389,8 @@ export class ContextService {
             'rate-limit',
             'Recommender service is under strain',
             contextData,
-            bundledRecommendations
+            bundledRecommendations,
+            customDocsRecommendations
           );
         }
 
@@ -373,7 +399,8 @@ export class ContextService {
           'other',
           `HTTP error! status: ${response.status}`,
           contextData,
-          bundledRecommendations
+          bundledRecommendations,
+          customDocsRecommendations
         );
       }
 
@@ -388,7 +415,11 @@ export class ContextService {
         return mappedRec;
       });
 
-      const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
+      const allRecommendations = [
+        ...customDocsRecommendations,
+        ...mappedExternalRecommendations,
+        ...bundledRecommendations,
+      ];
       const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
 
       // Filter and sort recommendations
@@ -418,12 +449,19 @@ export class ContextService {
           'unavailable',
           'Recommender service unavailable',
           contextData,
-          bundledRecommendations
+          bundledRecommendations,
+          customDocsRecommendations
         );
       }
 
       // Handle other errors
-      return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
+      return this.handleRecommenderError(
+        'other',
+        errorMessage,
+        contextData,
+        bundledRecommendations,
+        customDocsRecommendations
+      );
     }
   }
 
@@ -434,7 +472,8 @@ export class ContextService {
     errorType: 'unavailable' | 'rate-limit' | 'other',
     errorMessage: string,
     contextData: ContextData,
-    bundledRecommendations: Recommendation[]
+    bundledRecommendations: Recommendation[],
+    customDocsRecommendations: Recommendation[] = []
   ): Promise<{
     recommendations: Recommendation[];
     error: string | null;
@@ -448,8 +487,12 @@ export class ContextService {
       message: errorMessage,
     };
 
-    // Get fallback recommendations
-    const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
+    // Get fallback recommendations including custom docs
+    const fallbackResult = await this.getFallbackRecommendations(
+      contextData,
+      bundledRecommendations,
+      customDocsRecommendations
+    );
 
     // Generate user-friendly error message
     const userMessage = this.generateErrorMessage(errorType);
@@ -530,12 +573,7 @@ export class ContextService {
     );
   }
 
-  /**
-   * Get current platform (cloud vs oss)
-   */
-  private static getCurrentPlatform(): string {
-    return config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss';
-  }
+  // getCurrentPlatform is now imported from recommendation-matching.utils.ts
 
   /**
    * Fetch data sources
@@ -889,7 +927,7 @@ export class ContextService {
     const staticRecommendations: Recommendation[] = [];
 
     try {
-      const currentPlatform = this.getCurrentPlatform();
+      const currentPlatform = getCurrentPlatform();
 
       // Dynamically load all JSON files from static-links directory
       const staticLinksContext = (require as any).context('../../bundled-interactives/static-links', false, /\.json$/);
@@ -907,17 +945,17 @@ export class ContextService {
           if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
             const relevantLinks = staticData.rules.filter((rule: any) => {
               // Skip entries with tag properties (only want top-level navigation)
-              if (this.containsTagInMatch(rule.match)) {
+              if (containsTagInMatch(rule.match)) {
                 return false;
               }
 
               // Check platform match
-              if (!this.matchesPlatform(rule.match, currentPlatform)) {
+              if (!matchesPlatform(rule.match, currentPlatform)) {
                 return false;
               }
 
               // Check URL prefix match (handle both formats)
-              return this.matchesUrlPrefix(rule.match, contextData.currentPath);
+              return matchesUrlPrefix(rule.match, contextData.currentPath);
             });
 
             // Convert to recommendation format
@@ -942,90 +980,44 @@ export class ContextService {
     return staticRecommendations;
   }
 
-  /**
-   * Check if match condition contains any tag properties
-   */
-  private static containsTagInMatch(match: any): boolean {
-    if (!match) {
-      return false;
-    }
-
-    // Check for direct tag property
-    if (match.tag) {
-      return true;
-    }
-
-    // Recursively check AND conditions
-    if (match.and && Array.isArray(match.and)) {
-      return match.and.some((condition: any) => this.containsTagInMatch(condition));
-    }
-
-    // Recursively check OR conditions
-    if (match.or && Array.isArray(match.or)) {
-      return match.or.some((condition: any) => this.containsTagInMatch(condition));
-    }
-
-    return false;
-  }
+  // URL matching, platform matching, and tag checking logic now imported from recommendation-matching.utils.ts
 
   /**
-   * Check if match condition matches current platform
+   * Get custom docs recommendations from user-configured repositories
    */
-  private static matchesPlatform(match: any, currentPlatform: string): boolean {
-    if (!match) {
-      return false;
+  private static async getCustomDocsRecommendations(
+    contextData: ContextData,
+    pluginConfig: DocsPluginConfig
+  ): Promise<Recommendation[]> {
+    try {
+      // Check feature flag: honor session flags and config-provided defaults
+      const { FeatureFlagService } = await import('../feature-flag.service');
+      const service = FeatureFlagService.getInstance();
+      const sessionEnabled = service.isEnabled('custom_docs');
+      const configEnabled = (pluginConfig.features || '')
+        .split(',')
+        .map((f) => f.trim())
+        .includes('custom_docs');
+      const isCustomDocsEnabled = sessionEnabled || configEnabled;
+
+      if (!isCustomDocsEnabled) {
+        return []; // Feature disabled, return empty array
+      }
+
+      const configWithDefaults = getConfigWithDefaults(pluginConfig);
+      const customRepos = configWithDefaults.customDocsRepos;
+
+      if (!customRepos || customRepos.length === 0) {
+        return [];
+      }
+
+      // Use the custom docs fetcher
+      const { getCustomDocsRecommendations } = await import('../custom-docs-fetcher');
+      return await getCustomDocsRecommendations(contextData, customRepos);
+    } catch (error) {
+      console.warn('Failed to fetch custom docs recommendations:', error);
+      return [];
     }
-
-    // Check for direct targetPlatform property
-    if (match.targetPlatform) {
-      return match.targetPlatform === currentPlatform;
-    }
-
-    // Check AND conditions - all must match
-    if (match.and && Array.isArray(match.and)) {
-      return match.and.every((condition: any) => this.matchesPlatform(condition, currentPlatform));
-    }
-
-    // Check OR conditions - at least one must match
-    if (match.or && Array.isArray(match.or)) {
-      return match.or.some((condition: any) => this.matchesPlatform(condition, currentPlatform));
-    }
-
-    // If no platform-related properties, assume it matches (no platform constraint)
-    return true;
-  }
-
-  /**
-   * Check if match condition matches current URL path
-   * Handles both urlPrefix and urlPrefixIn formats
-   */
-  private static matchesUrlPrefix(match: any, currentPath: string): boolean {
-    if (!match) {
-      return false;
-    }
-
-    // Check for direct urlPrefix property
-    if (match.urlPrefix) {
-      return currentPath.startsWith(match.urlPrefix);
-    }
-
-    // Check for urlPrefixIn array property
-    if (match.urlPrefixIn && Array.isArray(match.urlPrefixIn)) {
-      return match.urlPrefixIn.some((prefix: string) => currentPath.startsWith(prefix));
-    }
-
-    // Check AND conditions - all must match
-    if (match.and && Array.isArray(match.and)) {
-      return match.and.every((condition: any) => this.matchesUrlPrefix(condition, currentPath));
-    }
-
-    // Check OR conditions - at least one must match
-    if (match.or && Array.isArray(match.or)) {
-      return match.or.some((condition: any) => this.matchesUrlPrefix(condition, currentPath));
-    }
-
-    // If no URL-related properties, assume it matches (no URL constraint)
-    return true;
   }
 
   /**

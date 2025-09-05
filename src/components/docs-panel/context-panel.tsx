@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, useStyles2, Card } from '@grafana/ui';
+import { Icon, useStyles2, Card, Badge } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import logoSvg from '../../img/logo.svg';
@@ -160,7 +160,12 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                               recommendation.type === 'docs-page' ? styles.compactHeader : ''
                             }`}
                           >
-                            <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
+                            <div className={styles.titleContainer}>
+                              <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
+                              {recommendation.tag && (
+                                <Badge text={recommendation.tag} color="blue" className={styles.sourceTag} />
+                              )}
+                            </div>
                             <div
                               className={`${styles.cardActions} ${
                                 recommendation.summaryExpanded ? styles.hiddenActions : ''
@@ -389,7 +394,10 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                   }}
                                   className={styles.docLink}
                                 >
-                                  {item.title}
+                                  <div className={styles.docLinkContent}>
+                                    <span className={styles.docLinkTitle}>{item.title}</span>
+                                    {item.tag && <Badge text={item.tag} color="blue" className={styles.docSourceTag} />}
+                                  </div>
                                 </button>
                               </div>
                             </div>

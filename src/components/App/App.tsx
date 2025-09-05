@@ -5,6 +5,7 @@ import { docsPage } from '../../pages/docsPage';
 import { ContextPanelComponent } from '../../utils/docs.utils';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
+import { initializeFeatureFlags } from '../../utils/feature-flag.service';
 
 function getSceneApp() {
   return new SceneApp({
@@ -18,6 +19,20 @@ export function MemoizedContextPanel() {
 
 function App(props: AppRootProps) {
   const scene = useMemo(() => getSceneApp(), []);
+
+  // Initialize feature flags when App component mounts (plugin config is now available)
+  useEffect(() => {
+    try {
+      const features = props.meta.jsonData?.features;
+      console.warn('Initializing feature flags with:', features);
+      initializeFeatureFlags(features);
+
+      // Debug: Check if window.features was created
+      console.warn('window.features after init:', (window as any).features);
+    } catch (e) {
+      console.error('Error initializing feature flags', e);
+    }
+  }, [props.meta.jsonData?.features]);
 
   // Auto-launch tutorial if configured
   useEffect(() => {

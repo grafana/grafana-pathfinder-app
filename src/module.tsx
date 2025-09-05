@@ -1,8 +1,10 @@
-import { AppPlugin, type AppRootProps } from '@grafana/data';
+import { AppPlugin, type AppRootProps, usePluginContext } from '@grafana/data';
 import { LoadingPlaceholder } from '@grafana/ui';
 import React, { Suspense, lazy } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
+import { bootstrap } from './bootstrap';
+import { initializeFeatureFlags } from './utils/feature-flag.service';
 import pluginJson from './plugin.json';
 
 // Initialize translations
@@ -14,6 +16,7 @@ const LazyMemoizedContextPanel = lazy(() =>
 );
 const LazyAppConfig = lazy(() => import('./components/AppConfig/AppConfig'));
 const LazyTermsAndConditions = lazy(() => import('./components/AppConfig/TermsAndConditions'));
+const LazyCustomDocsConfig = lazy(() => import('./components/AppConfig/CustomDocsConfig'));
 
 const App = (props: AppRootProps) => (
   <Suspense fallback={<LoadingPlaceholder text="" />}>
@@ -32,7 +35,18 @@ const plugin = new AppPlugin<{}>()
     title: 'Recommendations',
     body: LazyTermsAndConditions,
     id: 'recommendations-config',
+  })
+  .addConfigPage({
+    title: 'Custom Docs',
+    body: LazyCustomDocsConfig,
+    id: 'custom-docs-config',
   });
+
+try {
+  await bootstrap(plugin);
+} catch (error) {
+  console.error('Error initializing Grafana Docs Plugin:', error);
+}
 
 export { plugin };
 
@@ -41,6 +55,18 @@ plugin.addComponent({
   title: 'Grafana Pathfinder',
   description: 'Opens Documentation App',
   component: function ContextSidebar() {
+    // Initialize feature flags for sidebar entry (root App may not be mounted)
+    const pluginContext = usePluginContext();
+    const features = pluginContext?.meta?.jsonData?.features;
+
+    React.useEffect(() => {
+      try {
+        initializeFeatureFlags(features);
+      } catch (e) {
+        console.error('Error initializing feature flags in sidebar:', e);
+      }
+    }, [features]);
+
     // Track when the sidebar component is mounted and unmounted
     React.useEffect(() => {
       // Component mounted - sidebar actually opened

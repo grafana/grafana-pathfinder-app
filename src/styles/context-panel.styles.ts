@@ -146,6 +146,14 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     maxWidth: '100%',
     marginBottom: theme.spacing(1),
   }),
+  titleContainer: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+    flex: 1,
+    minWidth: 0,
+    maxWidth: 'calc(100% - 100px)',
+  }),
   compactHeader: css({
     marginBottom: theme.spacing(0.5), // Reduced bottom margin for docs pages
     alignItems: 'center', // Center align for cleaner look
@@ -159,11 +167,16 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     wordBreak: 'break-word',
     flex: 1,
     minWidth: 0,
-    maxWidth: 'calc(100% - 100px)',
     display: '-webkit-box',
     '-webkit-line-clamp': '2',
     '-webkit-box-orient': 'vertical',
     overflow: 'hidden',
+  }),
+  sourceTag: css({
+    fontSize: '10px',
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
+    alignSelf: 'flex-start',
+    flexShrink: 0,
   }),
   cardActions: css({
     display: 'flex',
@@ -609,6 +622,24 @@ export const getOtherDocsStyles = (theme: GrafanaTheme2) => ({
       textDecoration: 'underline',
       color: theme.colors.primary.shade,
     },
+  }),
+  docLinkContent: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    width: '100%',
+  }),
+  docLinkTitle: css({
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  }),
+  docSourceTag: css({
+    fontSize: '9px',
+    padding: `${theme.spacing(0.125)} ${theme.spacing(0.375)}`,
+    flexShrink: 0,
   }),
   docActions: css({
     display: 'flex',

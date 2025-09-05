@@ -13,6 +13,13 @@ export const DEFAULT_TERMS_ACCEPTED = false;
 export const DEFAULT_TUTORIAL_URL = '';
 export const TERMS_VERSION = '1.0.0';
 
+// Custom docs repository configuration
+export interface CustomDocsRepo {
+  name: string;
+  url: string;
+  confidence: number; // 0.0 to 1.0
+}
+
 // Configuration interface
 export interface DocsPluginConfig {
   recommenderServiceUrl?: string;
@@ -24,6 +31,10 @@ export interface DocsPluginConfig {
   acceptedTermsAndConditions?: boolean;
   termsVersion?: string;
   devMode?: boolean;
+  // Feature flags (comma-separated string)
+  features?: string;
+  // Custom docs repositories
+  customDocsRepos?: CustomDocsRepo[];
 }
 
 // Helper functions to get configuration values with defaults
@@ -36,6 +47,8 @@ export const getConfigWithDefaults = (config: DocsPluginConfig): Required<DocsPl
   acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? getPlatformSpecificDefault(),
   termsVersion: config.termsVersion || TERMS_VERSION,
   devMode: config.devMode || DEFAULT_DEV_MODE,
+  features: config.features || '',
+  customDocsRepos: config.customDocsRepos || [],
 });
 
 /**

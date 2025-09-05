@@ -56,6 +56,7 @@ export interface Recommendation {
   summary?: string;
   summaryExpanded?: boolean;
   completionPercentage?: number;
+  tag?: string; // Optional tag to identify source (e.g., repo name for custom docs)
   [key: string]: any;
 }
 
