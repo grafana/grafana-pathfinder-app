@@ -7,6 +7,7 @@ import { reportAppInteraction, UserInteraction } from '../lib/analytics';
 const ALLOWED_GITHUB_URLS = [
   'https://raw.githubusercontent.com/moxious/',
   'https://raw.githubusercontent.com/Jayclifford345/',
+  'https://raw.githubusercontent.com/grafana/',
 ];
 
 interface LearningJourneyTab {
