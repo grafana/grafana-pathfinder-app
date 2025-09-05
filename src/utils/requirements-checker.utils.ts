@@ -117,7 +117,7 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
   if (check.startsWith('section-completed:')) {
     return sectionCompletedCHECK(check);
   }
-  
+
   // UI state checks
   if (check === 'form-valid') {
     return formValidCHECK(check);
@@ -241,12 +241,14 @@ async function hasRoleCHECK(check: string): Promise<CheckResultError> {
     return {
       requirement: check,
       pass: hasRole,
-      error: hasRole ? undefined : `User role '${user.orgRole || 'none'}' does not meet requirement '${requiredRole}' (isGrafanaAdmin: ${user.isGrafanaAdmin})`,
-      context: { 
-        orgRole: user.orgRole, 
+      error: hasRole
+        ? undefined
+        : `User role '${user.orgRole || 'none'}' does not meet requirement '${requiredRole}' (isGrafanaAdmin: ${user.isGrafanaAdmin})`,
+      context: {
+        orgRole: user.orgRole,
         isGrafanaAdmin: user.isGrafanaAdmin,
         requiredRole,
-        userId: user.id 
+        userId: user.id,
       },
     };
   } catch (error) {
@@ -291,10 +293,10 @@ async function hasDataSourceCHECK(check: string): Promise<CheckResultError> {
       requirement: check,
       pass: found,
       error: found ? undefined : `No data source found with name/uid/type: ${dsRequirement}`,
-      context: { 
+      context: {
         searched: dsRequirement,
         matchType: found ? matchType : null,
-        available: dataSources.map(ds => ({ name: ds.name, type: ds.type, uid: ds.uid }))
+        available: dataSources.map((ds) => ({ name: ds.name, type: ds.type, uid: ds.uid })),
       },
     };
   } catch (error) {
@@ -318,9 +320,9 @@ async function hasPluginCHECK(check: string): Promise<CheckResultError> {
       requirement: check,
       pass: pluginExists,
       error: pluginExists ? undefined : `Plugin '${pluginId}' is not installed or enabled`,
-      context: { 
+      context: {
         searched: pluginId,
-        availablePlugins: plugins.map(p => p.id).slice(0, 10) // Limit to avoid huge context
+        availablePlugins: plugins.map((p) => p.id).slice(0, 10), // Limit to avoid huge context
       },
     };
   } catch (error) {
@@ -346,9 +348,9 @@ async function hasDashboardNamedCHECK(check: string): Promise<CheckResultError> 
       requirement: check,
       pass: dashboardExists,
       error: dashboardExists ? undefined : `Dashboard named '${dashboardName}' not found`,
-      context: { 
+      context: {
         searched: dashboardName,
-        foundDashboards: dashboards.map(d => d.title).slice(0, 5) // Limit results
+        foundDashboards: dashboards.map((d) => d.title).slice(0, 5), // Limit results
       },
     };
   } catch (error) {
@@ -473,16 +475,18 @@ async function isAdminCHECK(check: string): Promise<CheckResultError> {
 
     // Check both isGrafanaAdmin and orgRole for comprehensive admin detection
     const isAdmin = user.isGrafanaAdmin === true || user.orgRole === 'Admin';
-    
+
     return {
       requirement: check,
       pass: isAdmin,
-      error: isAdmin ? undefined : `User role '${user.orgRole || 'none'}' is not admin (isGrafanaAdmin: ${user.isGrafanaAdmin})`,
-      context: { 
-        orgRole: user.orgRole, 
+      error: isAdmin
+        ? undefined
+        : `User role '${user.orgRole || 'none'}' is not admin (isGrafanaAdmin: ${user.isGrafanaAdmin})`,
+      context: {
+        orgRole: user.orgRole,
         isGrafanaAdmin: user.isGrafanaAdmin,
         userId: user.id,
-        login: user.login 
+        login: user.login,
       },
     };
   } catch (error) {
@@ -500,15 +504,15 @@ async function isLoggedInCHECK(check: string): Promise<CheckResultError> {
   try {
     const user = config.bootData?.user;
     const isLoggedIn = !!user && !!user.isSignedIn;
-    
+
     return {
       requirement: check,
       pass: isLoggedIn,
       error: isLoggedIn ? undefined : 'User is not logged in',
-      context: { 
+      context: {
         hasUser: !!user,
         isSignedIn: user?.isSignedIn,
-        userId: user?.id 
+        userId: user?.id,
       },
     };
   } catch (error) {
@@ -536,15 +540,15 @@ async function isEditorCHECK(check: string): Promise<CheckResultError> {
 
     // Editor or higher (Admin, Grafana Admin)
     const isEditor = user.orgRole === 'Editor' || user.orgRole === 'Admin' || user.isGrafanaAdmin === true;
-    
+
     return {
       requirement: check,
       pass: isEditor,
       error: isEditor ? undefined : `User role '${user.orgRole || 'none'}' does not have editor permissions`,
-      context: { 
-        orgRole: user.orgRole, 
+      context: {
+        orgRole: user.orgRole,
         isGrafanaAdmin: user.isGrafanaAdmin,
-        userId: user.id 
+        userId: user.id,
       },
     };
   } catch (error) {
@@ -565,7 +569,7 @@ async function hasDatasourcesCHECK(check: string): Promise<CheckResultError> {
       requirement: check,
       pass: dataSources.length > 0,
       error: dataSources.length > 0 ? undefined : 'No data sources found',
-      context: { count: dataSources.length, types: dataSources.map(ds => ds.type) },
+      context: { count: dataSources.length, types: dataSources.map((ds) => ds.type) },
     };
   } catch (error) {
     return {
@@ -613,20 +617,20 @@ async function sectionCompletedCHECK(check: string): Promise<CheckResultError> {
 async function pluginEnabledCHECK(check: string): Promise<CheckResultError> {
   try {
     const plugins = await ContextService.fetchPlugins();
-    
+
     // Find plugins that are enabled
-    const enabledPlugins = plugins.filter(plugin => plugin.enabled);
+    const enabledPlugins = plugins.filter((plugin) => plugin.enabled);
     const hasEnabledPlugins = enabledPlugins.length > 0;
 
     return {
       requirement: check,
       pass: hasEnabledPlugins,
       error: hasEnabledPlugins ? undefined : 'No enabled plugins found',
-      context: { 
+      context: {
         totalPlugins: plugins.length,
         enabledCount: enabledPlugins.length,
         disabledCount: plugins.length - enabledPlugins.length,
-        enabledPlugins: enabledPlugins.map(p => p.id).slice(0, 10) // Limit to avoid huge context
+        enabledPlugins: enabledPlugins.map((p) => p.id).slice(0, 10), // Limit to avoid huge context
       },
     };
   } catch (error) {
@@ -654,8 +658,8 @@ async function dashboardExistsCHECK(check: string): Promise<CheckResultError> {
       requirement: check,
       pass: hasDashboards,
       error: hasDashboards ? undefined : 'No dashboards found in the system',
-      context: { 
-        dashboardCount: dashboards?.length || 0
+      context: {
+        dashboardCount: dashboards?.length || 0,
       },
     };
   } catch (error) {
@@ -672,7 +676,7 @@ async function dashboardExistsCHECK(check: string): Promise<CheckResultError> {
 async function datasourceConfiguredCHECK(check: string): Promise<CheckResultError> {
   try {
     const dataSources = await ContextService.fetchDataSources();
-    
+
     if (dataSources.length === 0) {
       return {
         requirement: check,
@@ -684,25 +688,27 @@ async function datasourceConfiguredCHECK(check: string): Promise<CheckResultErro
 
     // Test the first available data source to see if it's properly configured
     const firstDataSource = dataSources[0];
-    
+
     try {
       // Use the data source test API
       const testResult = await getBackendSrv().post(`/api/datasources/${firstDataSource.id}/test`);
-      
+
       const isConfigured = testResult && (testResult.status === 'success' || testResult.message !== 'error');
-      
+
       return {
         requirement: check,
         pass: isConfigured,
-        error: isConfigured ? undefined : `Data source '${firstDataSource.name}' test failed: ${testResult?.message || 'Unknown error'}`,
-        context: { 
+        error: isConfigured
+          ? undefined
+          : `Data source '${firstDataSource.name}' test failed: ${testResult?.message || 'Unknown error'}`,
+        context: {
           testedDataSource: {
             id: firstDataSource.id,
             name: firstDataSource.name,
-            type: firstDataSource.type
+            type: firstDataSource.type,
           },
           testResult: testResult?.status || 'unknown',
-          totalDataSources: dataSources.length
+          totalDataSources: dataSources.length,
         },
       };
     } catch (testError) {
@@ -711,14 +717,14 @@ async function datasourceConfiguredCHECK(check: string): Promise<CheckResultErro
         requirement: check,
         pass: false,
         error: `Data source configuration test failed: ${testError}`,
-        context: { 
+        context: {
           testedDataSource: {
             id: firstDataSource.id,
             name: firstDataSource.name,
-            type: firstDataSource.type
+            type: firstDataSource.type,
           },
           testError: String(testError),
-          totalDataSources: dataSources.length
+          totalDataSources: dataSources.length,
         },
       };
     }
@@ -737,7 +743,7 @@ async function formValidCHECK(check: string): Promise<CheckResultError> {
   try {
     // Look for common form validation indicators in the DOM
     const forms = document.querySelectorAll('form');
-    
+
     if (forms.length === 0) {
       return {
         requirement: check,
@@ -754,13 +760,15 @@ async function formValidCHECK(check: string): Promise<CheckResultError> {
     forms.forEach((form, index) => {
       // Look for common validation error indicators
       const errorElements = form.querySelectorAll('.error, .invalid, [aria-invalid="true"], .has-error, .field-error');
-      const requiredEmptyFields = form.querySelectorAll('input[required]:invalid, select[required]:invalid, textarea[required]:invalid');
-      
+      const requiredEmptyFields = form.querySelectorAll(
+        'input[required]:invalid, select[required]:invalid, textarea[required]:invalid'
+      );
+
       if (errorElements.length > 0) {
         hasValidForms = false;
         validationErrors.push(`Form ${index + 1}: Has ${errorElements.length} validation errors`);
       }
-      
+
       if (requiredEmptyFields.length > 0) {
         hasValidForms = false;
         validationErrors.push(`Form ${index + 1}: Has ${requiredEmptyFields.length} required empty fields`);
@@ -771,10 +779,10 @@ async function formValidCHECK(check: string): Promise<CheckResultError> {
       requirement: check,
       pass: hasValidForms,
       error: hasValidForms ? undefined : `Form validation failed: ${validationErrors.join(', ')}`,
-      context: { 
+      context: {
         formCount: forms.length,
         validationErrors,
-        hasValidForms
+        hasValidForms,
       },
     };
   } catch (error) {
