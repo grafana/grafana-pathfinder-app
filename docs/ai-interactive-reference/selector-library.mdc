@@ -1,0 +1,748 @@
+# Stable Selector Library for AI
+
+## Selector Stability Guidelines
+
+### Preference Order (Most to Least Stable)
+1. **`data-testid`** - Explicitly for testing, highest stability
+2. **`id`** - Unique identifiers, very stable when present  
+3. **`href`** - Navigation targets, stable for links
+4. **ARIA attributes** - Accessibility attributes, stable and semantic
+5. **Semantic HTML** - Element types with context, moderately stable
+6. **Button text** - Visible text content, stable for button actions
+7. **CSS classes** - Styling classes, least stable, use only when necessary
+
+### Anti-Patterns (Never Use)
+❌ Auto-generated classes: `.css-1234567`, `.emotion-abc123`
+❌ Framework classes: `.react-component-xyz`, `.mui-button-root`  
+❌ Deep nesting: `.parent .child .grandchild .target`
+❌ Position-only: `:nth-child(3)` without context
+❌ Styling classes: `.blue-button`, `.large-text`, `.primary-color`
+
+## Core Navigation Selectors
+
+### Main Navigation Menu
+```html
+<!-- Navigation menu items (most stable pattern) -->
+Home: a[data-testid='data-testid Nav menu item'][href='/']
+Dashboards: a[data-testid='data-testid Nav menu item'][href='/dashboards']
+Explore: a[data-testid='data-testid Nav menu item'][href='/explore']
+Alerting: a[data-testid='data-testid Nav menu item'][href='/alerting']
+Connections: a[data-testid='data-testid Nav menu item'][href='/connections']
+Administration: a[data-testid='data-testid Nav menu item'][href='/admin']
+
+<!-- Navigation controls -->
+Menu Toggle: #mega-menu-toggle
+Dock Menu: #dock-menu-button
+Navigation Container: nav[data-testid='navigation-mega-menu']
+
+<!-- Fallback navigation selectors -->
+Home: a[href='/']
+Dashboards: a[href='/dashboards']
+Explore: a[href='/explore']
+```
+
+### Admin Subsections
+```html
+<!-- Admin navigation items -->
+Users: a[data-testid='data-testid Nav menu item'][href='/admin/users']
+Teams: a[data-testid='data-testid Nav menu item'][href='/admin/teams']
+Plugins: a[data-testid='data-testid Nav menu item'][href='/admin/plugins']
+Settings: a[data-testid='data-testid Nav menu item'][href='/admin/settings']
+Stats: a[data-testid='data-testid Nav menu item'][href='/admin/stats']
+
+<!-- Fallback admin selectors -->
+Users: a[href='/admin/users']
+Teams: a[href='/admin/teams']
+Plugins: a[href='/admin/plugins']
+```
+
+### Alerting Subsections
+```html
+<!-- Alerting navigation items -->
+Alert Rules: a[data-testid='data-testid Nav menu item'][href='/alerting/list']
+Contact Points: a[data-testid='data-testid Nav menu item'][href='/alerting/notifications']
+Notification Policies: a[data-testid='data-testid Nav menu item'][href='/alerting/routes']
+Silences: a[data-testid='data-testid Nav menu item'][href='/alerting/silences']
+Groups: a[data-testid='data-testid Nav menu item'][href='/alerting/groups']
+
+<!-- Fallback alerting selectors -->
+Alert Rules: a[href='/alerting/list']
+Contact Points: a[href='/alerting/notifications']
+```
+
+## Dashboard and Panel Selectors
+
+### Dashboard Management
+```html
+<!-- Dashboard actions -->
+New Dashboard: button[data-testid='new-dashboard']
+Save Dashboard: button[data-testid='save-dashboard']
+Dashboard Settings: button[data-testid='dashboard-settings']
+Share Dashboard: button[data-testid='share-dashboard']
+Star Dashboard: button[data-testid='star-dashboard']
+
+<!-- Dashboard form fields -->
+Dashboard Title: input[data-testid='dashboard-title-input']
+Dashboard Description: textarea[data-testid='dashboard-description']
+Dashboard Tags: input[data-testid='dashboard-tags']
+
+<!-- Fallback dashboard selectors -->
+New Dashboard: a[href='/dashboard/new']
+Save Dashboard: "Save", "Save dashboard"
+Dashboard Settings: "Settings", "Dashboard settings"
+```
+
+### Panel Management
+```html
+<!-- Panel actions -->
+Add Panel: button[data-testid='add-panel']
+Add Visualization: button[data-testid='add-visualization']
+Edit Panel: button[data-testid='panel-edit']
+Duplicate Panel: button[data-testid='panel-duplicate']
+Remove Panel: button[data-testid='panel-remove']
+
+<!-- Panel form fields -->
+Panel Title: input[data-testid='Panel editor option pane field input Title']
+Panel Description: textarea[data-testid='panel-description']
+
+<!-- Fallback panel selectors -->
+Add Panel: "Add panel", "Add visualization"
+Edit Panel: "Edit", "Edit panel"
+Panel Title: input[aria-label*='title'], input[placeholder*='title']
+```
+
+### Visualization and Query Editor
+```html
+<!-- Query editor -->
+Query Editor: textarea[data-testid='query-editor']
+Monaco Editor: textarea.inputarea.monaco-mouse-cursor-text
+Code Mode Toggle: div[data-testid="QueryEditorModeToggle"] label[for^="option-code-radiogroup"]
+Builder Mode Toggle: div[data-testid="QueryEditorModeToggle"] label[for^="option-builder-radiogroup"]
+
+<!-- Query actions -->
+Run Query: button[data-testid='run-query']
+Add Query: button[data-testid='add-query']
+Query Options: button[data-testid='query-options']
+
+<!-- Visualization picker -->
+Viz Picker Toggle: button[data-testid='toggle-viz-picker']
+Time Series: div[aria-label="Plugin visualization item Time series"]
+Stat: div[aria-label="Plugin visualization item Stat"]
+Table: div[aria-label="Plugin visualization item Table"]
+Bar Chart: div[aria-label="Plugin visualization item Bar chart"]
+Heatmap: div[aria-label="Plugin visualization item Heatmap"]
+
+<!-- Fallback query selectors -->
+Query Editor: textarea.inputarea, textarea[aria-label*='query']
+Run Query: "Run query", "Refresh", "Execute"
+```
+
+## Data Source Configuration Selectors
+
+### General Data Source Fields
+```html
+<!-- Standard configuration fields -->
+Data Source Name: input[id='basic-settings-name']
+Connection URL: input[id='connection-url']
+Timeout: input[id='timeout']
+Max Concurrent Queries: input[id='max-concurrent-queries']
+
+<!-- Authentication fields -->
+Username: input[id='username']
+Password: input[id='password']
+API Key: input[id='api-key']
+Token: input[id='token']
+
+<!-- SSL/TLS fields -->
+Skip TLS Verify: input[type='checkbox'][id='tls-skip-verify']
+TLS Client Auth: input[type='checkbox'][id='tls-client-auth']
+CA Certificate: textarea[id='tls-ca-cert']
+
+<!-- Actions -->
+Save & Test: button[data-testid='data-source-save-test']
+Reset: button[data-testid='data-source-reset']
+Delete: button[data-testid='data-source-delete']
+
+<!-- Fallback data source selectors -->
+Data Source Name: input[aria-label*='name'], input[placeholder*='name']
+Connection URL: input[aria-label*='url'], input[placeholder*='url']
+Save & Test: "Save & test", "Save and test", "Test connection"
+```
+
+### Prometheus Specific
+```html
+<!-- Prometheus data source selection -->
+Prometheus Type: a[href='/connections/datasources/prometheus']
+
+<!-- Prometheus-specific fields -->
+Prometheus URL: input[id='connection-url']
+Scrape Interval: input[id='scrape-interval']  
+Query Timeout: input[id='query-timeout']
+HTTP Method: select[id='http-method']
+
+<!-- Prometheus example values -->
+URL: "http://prometheus:9090"
+Scrape Interval: "15s"
+Query Timeout: "60s"
+```
+
+### Loki Specific
+```html
+<!-- Loki data source selection -->
+Loki Type: a[href='/connections/datasources/loki']
+
+<!-- Loki-specific fields -->
+Loki URL: input[id='connection-url']
+Max Lines: input[id='max-lines']
+Timeout: input[id='timeout']
+
+<!-- Loki example values -->
+URL: "http://loki:3100"
+Max Lines: "1000"
+Timeout: "60s"
+```
+
+### InfluxDB Specific
+```html
+<!-- InfluxDB data source selection -->
+InfluxDB Type: a[href='/connections/datasources/influxdb']
+
+<!-- InfluxDB-specific fields -->
+InfluxDB URL: input[id='connection-url']
+Database: input[id='influxdb-database']
+User: input[id='influxdb-user']
+Password: input[id='influxdb-password']
+
+<!-- InfluxDB example values -->
+URL: "http://influxdb:8086"
+Database: "mydb"
+User: "admin"
+```
+
+## Form Element Patterns
+
+### Input Field Types
+```html
+<!-- Text inputs -->
+Text Input by ID: input[id='{field-id}']
+Text Input by TestID: input[data-testid='{field-testid}']
+Text Input by Placeholder: input[placeholder='{placeholder-text}']
+Text Input by Label: input[aria-label='{label-text}']
+
+<!-- Specialized inputs -->
+Email Input: input[type='email']
+Password Input: input[type='password']
+Number Input: input[type='number']
+URL Input: input[type='url']
+Search Input: input[type='search']
+
+<!-- Multi-line text -->
+Textarea: textarea[data-testid='{testid}']
+Textarea by ID: textarea[id='{field-id}']
+Monaco Editor: textarea.inputarea.monaco-mouse-cursor-text
+
+<!-- Selection elements -->
+Select Dropdown: select[data-testid='{testid}']
+Checkbox: input[type='checkbox'][data-testid='{testid}']
+Radio Button: input[type='radio'][value='{value}']
+
+<!-- Advanced inputs -->
+ARIA Combobox: input[role='combobox'][aria-autocomplete='list']
+Date Picker: input[type='date']
+Time Picker: input[type='time']
+Color Picker: input[type='color']
+```
+
+### Form Interaction Patterns
+```html
+<!-- Simple text entry -->
+<li class="interactive" 
+    data-targetaction="formfill" 
+    data-reftarget="input[id='dashboard-name']"
+    data-targetvalue="My Dashboard">
+  Set dashboard name
+</li>
+
+<!-- Checkbox selection -->
+<li class="interactive" 
+    data-targetaction="formfill" 
+    data-reftarget="input[type='checkbox'][id='enable-alerts']"
+    data-targetvalue="true">
+  Enable alerting
+</li>
+
+<!-- Dropdown selection -->
+<li class="interactive" 
+    data-targetaction="formfill" 
+    data-reftarget="select[data-testid='refresh-interval']"
+    data-targetvalue="5s">
+  Set refresh interval
+</li>
+
+<!-- Complex query entry -->
+<li class="interactive" 
+    data-targetaction="formfill" 
+    data-reftarget="textarea.inputarea"
+    data-targetvalue="rate(http_requests_total[5m])">
+  Enter PromQL query
+</li>
+
+<!-- ARIA combobox (label filters) -->
+<li class="interactive" 
+    data-targetaction="formfill" 
+    data-reftarget="input[role='combobox'][aria-autocomplete='list']"
+    data-targetvalue='job="prometheus"'>
+  Filter by job label
+</li>
+```
+
+## Button Text Library
+
+### Common Button Patterns
+```html
+<!-- Primary actions -->
+Save: "Save", "Save dashboard", "Save changes"
+Create: "Create", "Create dashboard", "Create new"
+Add: "Add", "Add panel", "Add visualization", "Add new"
+Delete: "Delete", "Remove", "Delete dashboard"
+Edit: "Edit", "Edit panel", "Configure"
+
+<!-- Data source actions -->
+Save & Test: "Save & test", "Save and test"
+Test Connection: "Test", "Test connection"
+Add Data Source: "Add new data source", "Add data source"
+
+<!-- Panel actions -->
+Apply: "Apply", "Apply changes"
+Discard: "Discard", "Discard changes", "Cancel"
+Duplicate: "Duplicate", "Duplicate panel"
+
+<!-- Query actions -->
+Run Query: "Run query", "Refresh", "Execute"
+Add Query: "Add query", "+ Query"
+Clear: "Clear", "Reset", "Clear query"
+
+<!-- Navigation actions -->
+Back: "Back", "Go back"
+Next: "Next", "Continue"
+Finish: "Finish", "Complete", "Done"
+
+<!-- Admin actions -->
+Install: "Install", "Install plugin"
+Enable: "Enable", "Enable plugin"
+Configure: "Configure", "Configuration"
+```
+
+### Context-Specific Buttons
+```html
+<!-- Dashboard context -->
+"Add panel" - when on dashboard edit page
+"Save dashboard" - when editing dashboard
+"Share dashboard" - when viewing dashboard
+"Export dashboard" - in dashboard settings
+
+<!-- Panel context -->
+"Add visualization" - when creating new panel
+"Edit panel" - when viewing panel
+"View panel JSON" - in panel menu
+"Duplicate panel" - in panel menu
+
+<!-- Data source context -->
+"Save & test" - when configuring data source
+"Explore in Explore" - when testing data source
+"Build a dashboard" - after successful data source test
+
+<!-- Alert context -->
+"Create rule" - when creating alert
+"Test rule" - when configuring alert
+"Save rule" - when finishing alert setup
+```
+
+## Specialized Component Selectors
+
+### Time and Date Controls
+```html
+<!-- Time range picker -->
+Time Range Button: button[data-testid='time-range-picker']
+Absolute Time: button[data-testid='absolute-time']
+Relative Time: button[data-testid='relative-time']
+Custom Range: button[data-testid='custom-range']
+
+<!-- Refresh controls -->
+Refresh Button: button[data-testid='refresh-button']
+Auto Refresh: button[data-testid='auto-refresh']
+Refresh Interval: select[data-testid='refresh-interval']
+
+<!-- Time inputs -->
+From Time: input[data-testid='time-from']
+To Time: input[data-testid='time-to']
+```
+
+### Search and Filter Elements
+```html
+<!-- Global search -->
+Global Search: input[data-testid='search-input']
+Search Button: button[data-testid='search-button']
+
+<!-- Dashboard search -->
+Dashboard Search: input[data-testid='dashboard-search']
+Dashboard Filter: select[data-testid='dashboard-filter']
+
+<!-- Plugin search -->
+Plugin Search: input[data-testid='plugin-search']
+Plugin Filter: select[data-testid='plugin-filter']
+
+<!-- Data source search -->
+Data Source Search: input[data-testid='data-source-search']
+Data Source Filter: select[data-testid='data-source-filter']
+```
+
+### Modal and Dialog Selectors
+```html
+<!-- Modal containers -->
+Modal Dialog: div[role='dialog']
+Modal Header: div[data-testid='modal-header']
+Modal Content: div[data-testid='modal-content']
+Modal Footer: div[data-testid='modal-footer']
+
+<!-- Modal actions -->
+Modal Close: button[data-testid='modal-close']
+Modal Cancel: button[data-testid='modal-cancel']
+Modal Confirm: button[data-testid='modal-confirm']
+
+<!-- Confirmation dialogs -->
+Confirm Delete: button[data-testid='confirm-delete']
+Confirm Save: button[data-testid='confirm-save']
+```
+
+## Advanced Selector Patterns
+
+### Pseudo-Selector Usage
+```html
+<!-- First/last element selection -->
+First Panel: div[data-testid='panel-container']:first-of-type
+Last Panel: div[data-testid='panel-container']:last-of-type
+First Button: button:first-of-type
+Last Menu Item: li[data-testid='nav-item']:last-child
+
+<!-- Specific position -->
+Second Panel: div[data-testid='panel-container']:nth-of-type(2)
+Third Button: button:nth-of-type(3)
+
+<!-- State-based selection -->
+Expanded Menu: button[aria-expanded='true']
+Collapsed Menu: button[aria-expanded='false']
+Selected Tab: button[aria-selected='true']
+Checked Checkbox: input[type='checkbox']:checked
+```
+
+### Attribute Combination Patterns
+```html
+<!-- Multiple stable attributes -->
+Active Nav Item: a[data-testid='nav-item'][aria-current='page']
+Enabled Button: button[data-testid='action-btn']:not([disabled])
+Required Field: input[data-testid='form-field'][required]
+
+<!-- Type and state -->
+Text Input: input[type='text'][data-testid='text-field']
+Submit Button: input[type='submit'][data-testid='submit-btn']
+Hidden Element: div[data-testid='element'][aria-hidden='true']
+
+<!-- Content-based with attributes -->
+Save Button: button[data-testid='save-btn'][aria-label*='save']
+Delete Button: button[data-testid='delete-btn'][aria-label*='delete']
+```
+
+### Hierarchical Selection
+```html
+<!-- Scoped to containers -->
+Nav Menu Link: nav[data-testid='navigation'] a[href='/dashboards']
+Panel Editor Button: div[data-testid='panel-editor'] button[data-testid='save']
+Modal Confirm: div[role='dialog'] button[data-testid='confirm']
+
+<!-- Within specific contexts -->
+Dashboard Panel: div[data-testid='dashboard'] div[data-testid='panel']
+Explore Query: div[data-testid='explore'] textarea[data-testid='query']
+Alert Form: form[data-testid='alert-form'] input[data-testid='rule-name']
+```
+
+## Query Editor Specific Selectors
+
+### Query Editor Components
+```html
+<!-- Main query editor -->
+Query Editor: textarea[data-testid='query-editor']
+Monaco Query Editor: textarea.inputarea.monaco-mouse-cursor-text
+Query Builder: div[data-testid='query-builder']
+
+<!-- Query controls -->
+Run Query: button[data-testid='run-query']
+Format Query: button[data-testid='format-query']
+Query History: button[data-testid='query-history']
+Query Inspector: button[data-testid='query-inspector']
+
+<!-- Mode toggles -->
+Code Mode: label[for^="option-code-radiogroup"]
+Builder Mode: label[for^="option-builder-radiogroup"]
+Raw Mode: label[for^="option-raw-radiogroup"]
+
+<!-- Query options -->
+Max Data Points: input[data-testid='max-data-points']
+Min Interval: input[data-testid='min-interval']
+Relative Time: input[data-testid='relative-time']
+```
+
+### Data Source Specific Query Elements
+```html
+<!-- Prometheus query editor -->
+PromQL Editor: textarea[data-testid='prometheus-query-editor']
+Prometheus Metrics Browser: button[data-testid='metrics-browser']
+PromQL Query Type: select[data-testid='prometheus-query-type']
+
+<!-- Loki query editor -->
+LogQL Editor: textarea[data-testid='loki-query-editor']
+Loki Label Browser: button[data-testid='label-browser']
+Log Level Filter: select[data-testid='log-level-filter']
+
+<!-- InfluxDB query editor -->
+InfluxQL Editor: textarea[data-testid='influxql-query-editor']
+Measurement Select: select[data-testid='measurement-select']
+Field Select: select[data-testid='field-select']
+```
+
+## Plugin and App Selectors
+
+### Plugin Management
+```html
+<!-- Plugin catalog -->
+Plugin Catalog: div[data-testid='plugin-catalog']
+Plugin Search: input[data-testid='plugin-search']
+Plugin Category Filter: select[data-testid='plugin-category']
+
+<!-- Plugin actions -->
+Install Plugin: button[data-testid='plugin-install']
+Update Plugin: button[data-testid='plugin-update']
+Uninstall Plugin: button[data-testid='plugin-uninstall']
+Configure Plugin: button[data-testid='plugin-config']
+Enable Plugin: button[data-testid='plugin-enable']
+Disable Plugin: button[data-testid='plugin-disable']
+
+<!-- Plugin details -->
+Plugin Info: div[data-testid='plugin-info']
+Plugin Version: span[data-testid='plugin-version']
+Plugin Author: span[data-testid='plugin-author']
+```
+
+### Common App Plugin Selectors
+```html
+<!-- Synthetic Monitoring -->
+Synthetic Monitoring: a[href='/a/grafana-synthetic-monitoring-app/']
+SM Checks: div[data-testid='synthetic-monitoring-checks']
+SM Create Check: button[data-testid='create-check']
+
+<!-- Incident Management -->
+Incident App: a[href='/a/grafana-incident-app/']
+Incident List: div[data-testid='incident-list']
+Create Incident: button[data-testid='create-incident']
+
+<!-- Machine Learning -->
+ML App: a[href='/a/grafana-ml-app/']
+ML Jobs: div[data-testid='ml-jobs']
+Create Job: button[data-testid='create-ml-job']
+```
+
+## Alerting System Selectors
+
+### Alert Rule Management
+```html
+<!-- Alert rule list -->
+Alert Rules List: div[data-testid='alert-rules-list']
+Alert Rule Row: div[data-testid='alert-rule-row']
+New Alert Rule: button[data-testid='new-alert-rule']
+
+<!-- Alert rule editor -->
+Rule Name: input[data-testid='alert-rule-name']
+Rule Description: textarea[data-testid='alert-rule-description']
+Alert Query: textarea[data-testid='alert-query-editor']
+Alert Condition: select[data-testid='alert-condition']
+Threshold Value: input[data-testid='alert-threshold']
+
+<!-- Alert rule actions -->
+Save Rule: button[data-testid='save-alert-rule']
+Test Rule: button[data-testid='test-alert-rule']
+Delete Rule: button[data-testid='delete-alert-rule']
+```
+
+### Contact Points and Notifications
+```html
+<!-- Contact points -->
+Contact Points List: div[data-testid='contact-points-list']
+New Contact Point: button[data-testid='new-contact-point']
+Contact Point Name: input[data-testid='contact-point-name']
+Contact Point Type: select[data-testid='contact-point-type']
+
+<!-- Notification channels -->
+Slack Webhook: input[data-testid='slack-webhook-url']
+Email Addresses: input[data-testid='email-addresses']
+PagerDuty Key: input[data-testid='pagerduty-integration-key']
+Webhook URL: input[data-testid='webhook-url']
+```
+
+## User and Team Management Selectors
+
+### User Management
+```html
+<!-- User list -->
+Users List: table[data-testid='users-table']
+User Row: tr[data-testid='user-row']
+Add User: button[data-testid='add-user']
+
+<!-- User form -->
+User Name: input[data-testid='user-name']
+User Email: input[data-testid='user-email']
+User Login: input[data-testid='user-login']
+User Password: input[data-testid='user-password']
+User Role: select[data-testid='user-role']
+
+<!-- User actions -->
+Save User: button[data-testid='save-user']
+Delete User: button[data-testid='delete-user']
+Reset Password: button[data-testid='reset-password']
+```
+
+### Team Management
+```html
+<!-- Team list -->
+Teams List: div[data-testid='teams-list']
+Team Card: div[data-testid='team-card']
+New Team: button[data-testid='new-team']
+
+<!-- Team form -->
+Team Name: input[data-testid='team-name']
+Team Description: textarea[data-testid='team-description']
+Team Members: div[data-testid='team-members']
+
+<!-- Team actions -->
+Save Team: button[data-testid='save-team']
+Delete Team: button[data-testid='delete-team']
+Add Member: button[data-testid='add-team-member']
+```
+
+## Performance-Optimized Selectors
+
+### Fast Selectors (Prefer These)
+```html
+<!-- ID-based (fastest) -->
+#unique-element-id
+
+<!-- Single attribute with common values -->
+button[data-testid='save']
+input[type='text']
+a[href='/dashboard/new']
+
+<!-- Type + single attribute -->
+input[data-testid='query-editor']
+button[aria-label='Save']
+div[role='dialog']
+```
+
+### Moderate Performance Selectors
+```html
+<!-- Multiple attributes (still fast) -->
+input[type='text'][data-testid='field']
+button[data-testid='action'][aria-label='Save']
+a[data-testid='nav-item'][href='/path']
+
+<!-- Pseudo-selectors with context -->
+div[data-testid='panel']:first-of-type
+button[data-testid='action']:last-child
+input[data-testid='field']:nth-of-type(2)
+```
+
+### Avoid These (Slow) Selectors
+```html
+<!-- Complex nesting -->
+.container .row .col .panel .header .title
+
+<!-- Multiple classes -->
+.btn.btn-primary.btn-large.save-button
+
+<!-- Universal selectors -->
+* > button
+div * button
+[class*='partial-match']
+
+<!-- Deep descendant selectors -->
+body div div div button
+```
+
+## Selector Testing Patterns
+
+### Validation Methods
+```javascript
+// Test selector reliability
+const testSelector = (selector, description) => {
+  const elements = document.querySelectorAll(selector);
+  console.log(`${description}: ${elements.length} elements found`);
+  if (elements.length === 1) {
+    console.log(`✅ ${selector} - Perfect`);
+  } else if (elements.length > 1) {
+    console.log(`⚠️ ${selector} - Multiple matches, consider more specific`);
+  } else {
+    console.log(`❌ ${selector} - No matches, selector may be broken`);
+  }
+  return elements.length;
+};
+
+// Example usage
+testSelector("button[data-testid='save-dashboard']", "Save Dashboard Button");
+testSelector("a[data-testid='Nav menu item'][href='/dashboards']", "Dashboards Nav");
+```
+
+### Cross-Theme Testing
+```javascript
+// Test selectors across themes
+const themes = ['light', 'dark'];
+themes.forEach(theme => {
+  // Switch theme programmatically if possible
+  // Test critical selectors
+  console.log(`Testing in ${theme} theme:`);
+  testSelector("button[data-testid='save']", "Save Button");
+});
+```
+
+### Performance Testing
+```javascript
+// Measure selector performance
+const measureSelector = (selector) => {
+  const start = performance.now();
+  const elements = document.querySelectorAll(selector);
+  const end = performance.now();
+  console.log(`${selector}: ${end - start}ms for ${elements.length} elements`);
+  return end - start;
+};
+
+// Test critical selectors
+measureSelector("button[data-testid='save']"); // Should be < 1ms
+measureSelector(".complex .nested .selector"); // Avoid if > 5ms
+```
+
+## Selector Maintenance Guidelines
+
+### Regular Validation
+- Test selectors with each Grafana release
+- Verify selectors work across different themes
+- Check performance impact of complex selectors
+- Update documentation when selectors change
+
+### Deprecation Handling
+- Maintain fallback selectors for critical elements
+- Document migration paths for changed selectors
+- Provide transition periods for selector updates
+- Communicate changes to tutorial authors
+
+### Quality Assurance
+- All selectors should be tested in isolation
+- Critical paths should have multiple selector options
+- Performance impact should be measured and documented
+- Accessibility implications should be considered

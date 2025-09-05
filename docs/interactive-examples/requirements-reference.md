@@ -1,15 +1,46 @@
-### Requirements Reference
+# Requirements and Objectives Reference
 
-This comprehensive guide covers all supported requirements for interactive tutorial elements. Requirements are specified using the `data-requirements` attribute and control when interactive elements become enabled.
+This comprehensive guide covers all supported requirements and objectives for interactive tutorial elements. Requirements control when elements become enabled, while objectives provide auto-completion when desired states are already achieved.
 
-## Core concepts
+## System Overview
 
+### Requirements vs Objectives
+- **Requirements** (`data-requirements`): Preconditions that must be met for action execution
+- **Objectives** (`data-objectives`): Desired outcomes that auto-complete steps when already achieved
+- **Priority**: Objectives always win - if objectives are met, requirements are ignored
+- **Syntax**: Both use identical syntax and checking functions
+
+### Checking Behavior
+- **Event-Driven**: Requirements checked when DOM changes, navigation occurs, or user actions trigger updates
+- **Performance**: Intelligent caching and debouncing prevent excessive API calls
+- **Error Recovery**: Failed requirements show "Fix this" buttons where automatic fixes are possible
+- **Live Updates**: Requirements continuously monitored and re-evaluated as conditions change
+
+## Core Concepts
+
+### Syntax and Validation
 - **Requirements**: Comma-separated conditions in `data-requirements="requirement1,requirement2"`
-- **Validation**: All requirements must pass for the element to become enabled
-- **Live checking**: Requirements are continuously monitored and re-evaluated
-- **User feedback**: Failed requirements show helpful explanations with "Fix this" or "Retry" buttons
+- **Objectives**: Comma-separated conditions in `data-objectives="objective1,objective2"`
+- **AND Logic**: ALL conditions must pass (no OR logic supported)
+- **Live Checking**: Continuously monitored and re-evaluated as system state changes
+- **User Feedback**: Failed conditions show helpful explanations with actionable buttons
 
-## Navigation and UI State Requirements
+### Priority System
+1. **Objectives First**: If objectives are met, step is auto-completed regardless of requirements
+2. **Sequential Dependencies**: Previous steps must complete before next steps become eligible
+3. **Requirements Validation**: Only checked if objectives are not met and step is eligible
+4. **Error Display**: Shows most actionable error message to user
+
+### Auto-Fix Capabilities
+Some requirements can be automatically fixed:
+- **Navigation**: `navmenu-open` can auto-open and dock navigation menu
+- **Parent Navigation**: Can auto-expand collapsed navigation sections
+- **Permissions**: Some permission issues provide helpful guidance
+- **User Action**: "Fix this" buttons appear when automatic fixes are available
+
+## Complete Requirements Reference
+
+### Navigation and UI State Requirements
 
 ### `navmenu-open`
 
@@ -28,17 +59,47 @@ This comprehensive guide covers all supported requirements for interactive tutor
 
 **Explanation when failed**: "The navigation menu needs to be open and docked. Click 'Fix this' to automatically open and dock the navigation menu."
 
+**Auto-Fix**: ✅ Yes - automatically opens and docks navigation menu
+
+**Implementation**: Checks for `#mega-menu-toggle` button state and navigation visibility
+
 ### `exists-reftarget`
 
 **Purpose**: Verifies the target element specified in `data-reftarget` exists on the page.
 
 ```html
-<li class="interactive" data-targetaction="button" data-reftarget="Save dashboard" data-requirements="exists-reftarget">
+<li class="interactive" 
+    data-targetaction="button" 
+    data-reftarget="Save dashboard" 
+    data-requirements="exists-reftarget"
+    data-hint="Ensures the save button is available before trying to click it">
   Save your dashboard changes.
 </li>
 ```
 
 **Explanation when failed**: "The target element must be visible and available on the page."
+
+**Auto-Fix**: ❌ No - requires manual user action or navigation
+
+**Implementation**: Uses `document.querySelector()` to verify element existence
+
+### `navmenu-closed`
+
+**Purpose**: Ensures the navigation menu is closed/hidden (opposite of navmenu-open).
+
+```html
+<li class="interactive" 
+    data-targetaction="highlight" 
+    data-reftarget="button[data-testid='main-content-button']"
+    data-requirements="navmenu-closed"
+    data-hint="Some actions work better with navigation closed">
+  Focus on main content area
+</li>
+```
+
+**Explanation when failed**: "Please close the navigation menu first."
+
+**Auto-Fix**: ❌ No - user should manually close navigation
 
 ## Page and Navigation Requirements
 

@@ -1,0 +1,352 @@
+# Interactive Action Types Reference for AI
+
+## Action Type Definitions
+
+### highlight
+**Purpose**: Click DOM elements using CSS selectors
+**Target**: CSS selector (prefer data-testid attributes)
+**Show**: Scrolls to element, highlights with visual feedback
+**Do**: Scrolls to element, then clicks
+**Requirements**: Always include `exists-reftarget`
+
+```html
+<li class="interactive" 
+    data-targetaction="highlight" 
+    data-reftarget="a[data-testid='Nav menu item'][href='/dashboards']"
+    data-requirements="navmenu-open,exists-reftarget">
+  Click Dashboards in navigation
+</li>
+```
+
+### button  
+**Purpose**: Click buttons using visible text
+**Target**: Button text (exact or partial match)
+**Show**: Finds and highlights button by text
+**Do**: Finds and clicks button by text
+**Advantages**: More stable than CSS selectors
+
+```html
+<li class="interactive" 
+    data-targetaction="button" 
+    data-reftarget="Save & test"
+    data-requirements="exists-reftarget">
+  Save the data source
+</li>
+```
+
+### formfill
+**Purpose**: Fill form inputs with values
+**Target**: CSS selector for form element
+**Value**: String value to set (required)
+**Supports**: text inputs, textareas, selects, checkboxes, Monaco editors, ARIA comboboxes
+**Show**: Highlights the form field
+**Do**: Sets value and fires appropriate events
+
+```html
+<li class="interactive" 
+    data-targetaction="formfill" 
+    data-reftarget="input[id='connection-url']"
+    data-targetvalue="http://prometheus:9090"
+    data-requirements="exists-reftarget">
+  Set Prometheus URL
+</li>
+```
+
+### navigate
+**Purpose**: Navigate to internal routes or external URLs
+**Target**: URL path or external URL
+**Show**: Indicates navigation intent
+**Do**: Uses locationService.push() for internal routes, opens external URLs in new tab
+**Internal**: `/dashboard/new`, `/admin/plugins`
+**External**: `https://grafana.com/docs/`
+
+```html
+<li class="interactive" 
+    data-targetaction="navigate" 
+    data-reftarget="/dashboard/new"
+    data-requirements="has-datasources"
+    data-verify="on-page:/dashboard/new">
+  Create new dashboard
+</li>
+```
+
+### sequence
+**Purpose**: Group multiple steps with coordinated execution
+**Target**: Container selector (references self)
+**Structure**: Container with child interactive elements
+**Features**: Progress tracking, resumable execution, state persistence
+**Button**: Single "Do Section" button executes all child steps
+
+```html
+<span id="setup-datasource" 
+      class="interactive" 
+      data-targetaction="sequence" 
+      data-reftarget="span#setup-datasource"
+      data-objectives="has-datasource:prometheus">
+  <ul>
+    <li class="interactive" data-targetaction="button" data-reftarget="New">Step 1</li>
+    <li class="interactive" data-targetaction="formfill" data-reftarget="input[id='name']" data-targetvalue="prometheus">Step 2</li>
+  </ul>
+</span>
+```
+
+### multistep
+**Purpose**: Execute multiple actions as single atomic step
+**Target**: Not used (child spans define actions)
+**Structure**: Container with `<span class="interactive">` child actions
+**Execution**: Shows each action, then executes, in sequence
+**Button**: Single "Do it" button, no "Show me" button
+
+```html
+<li class="interactive" data-targetaction="multistep">
+  <span class="interactive" data-targetaction="button" data-reftarget="Add visualization"></span>
+  <span class="interactive" data-targetaction="button" data-reftarget="prometheus-datasource"></span>
+  Add visualization and select data source
+</li>
+```
+
+## Requirements System
+
+### Common Requirements
+- `exists-reftarget` - Target element exists in DOM
+- `navmenu-open` - Navigation menu is open (auto-fixable)
+- `is-admin` - User has admin privileges  
+- `has-datasources` - At least one data source configured
+- `has-datasource:name` - Specific data source exists
+- `has-plugin:id` - Plugin installed and enabled
+- `on-page:/path` - User is on specific page
+- `section-completed:id` - Previous section completed
+
+### Objectives System
+- Same syntax as requirements
+- Auto-completes steps when conditions already met
+- Always takes priority over requirements
+- For sections: marks ALL child steps complete
+
+## AI Generation Guidelines
+
+### Action Selection Logic
+```
+User wants to click something:
+  - Button with stable text → use "button" action
+  - Element with stable selector → use "highlight" action
+  - Multiple related clicks → use "multistep" action
+
+User wants to fill form:
+  - Single field → use "formfill" action
+  - Multiple fields → use "sequence" with formfill steps
+  - Complex workflow → use "multistep" action
+
+User wants to navigate:
+  - Change pages → use "navigate" action
+  - Navigate then act → use "multistep" with navigate + action
+
+User wants to teach workflow:
+  - Linear steps with checkpoints → use "sequence" action
+  - Atomic multi-action → use "multistep" action
+  - Just explanation → use "highlight" with data-doit="false"
+```
+
+### Requirements Selection Logic
+```
+For DOM interactions:
+  - Always include: exists-reftarget
+  - Navigation elements: add navmenu-open
+  - Page-specific elements: add on-page:/path
+
+For admin actions:
+  - Add: is-admin or has-role:admin
+  - Or: has-permission:specific-permission
+
+For data source actions:
+  - General: has-datasources
+  - Specific: has-datasource:name or has-datasource:type:prometheus
+
+For plugin actions:
+  - Add: has-plugin:plugin-id
+
+For sequential tutorials:
+  - Add: section-completed:previous-section-id
+```
+
+### Objectives Usage Logic
+```
+Use objectives when:
+  - Step outcome might already be achieved
+  - Want to skip entire sections if setup already done
+  - Checking expensive conditions that auto-complete
+
+Common objective patterns:
+  - has-datasource:type:prometheus (skip data source setup if exists)
+  - on-page:/target (skip navigation if already there)
+  - has-plugin:plugin-id (skip installation if already installed)
+  - has-dashboard-named:title (skip creation if already exists)
+```
+
+## Content Structure Patterns
+
+### Basic Step Pattern
+```html
+<li class="interactive" 
+    data-targetaction="ACTION_TYPE" 
+    data-reftarget="TARGET_REFERENCE"
+    [data-targetvalue="VALUE_FOR_FORMFILL"]
+    data-requirements="COMMA_SEPARATED_REQUIREMENTS"
+    [data-objectives="COMMA_SEPARATED_OBJECTIVES"]
+    [data-verify="POST_ACTION_VERIFICATION"]
+    [data-hint="USER_FRIENDLY_TOOLTIP"]
+    [data-skippable="true"]
+    [data-doit="false"]>
+  Human-readable step description
+</li>
+```
+
+### Section Pattern
+```html
+<span id="unique-section-id" 
+      class="interactive" 
+      data-targetaction="sequence" 
+      data-reftarget="span#unique-section-id"
+      [data-requirements="SECTION_REQUIREMENTS"]
+      [data-objectives="SECTION_OBJECTIVES"]
+      [data-hint="SECTION_DESCRIPTION"]>
+  
+  <h3>Section Title</h3>
+  <p>Section description explaining what will be accomplished.</p>
+  
+  <ul>
+    <!-- Child interactive steps -->
+  </ul>
+</span>
+```
+
+### Multi-step Pattern
+```html
+<li class="interactive" 
+    data-targetaction="multistep"
+    [data-requirements="OVERALL_REQUIREMENTS"]
+    [data-objectives="OVERALL_OBJECTIVES"]
+    [data-hint="WHAT_THIS_ACCOMPLISHES"]>
+  
+  <!-- Internal actions (not visually rendered) -->
+  <span class="interactive" 
+        data-targetaction="ACTION_TYPE_1" 
+        data-reftarget="TARGET_1"
+        [data-requirements="ACTION_1_REQUIREMENTS"]></span>
+  <span class="interactive" 
+        data-targetaction="ACTION_TYPE_2" 
+        data-reftarget="TARGET_2"
+        [data-requirements="ACTION_2_REQUIREMENTS"]></span>
+  
+  <!-- User-visible description -->
+  Human description of what these actions accomplish together
+</li>
+```
+
+### Interactive Comment Pattern
+```html
+<li class="interactive" 
+    data-targetaction="highlight" 
+    data-reftarget="SELECTOR"
+    data-doit="false"
+    data-requirements="exists-reftarget">
+  
+  <span class="interactive-comment">
+    The <strong>UI_ELEMENT_NAME</strong> [PURPOSE/FUNCTION]. 
+    [CONTEXT_EXPLANATION]. Use it for <code>TECHNICAL_FEATURES</code> 
+    to achieve <em>USER_BENEFITS</em>.
+  </span>
+  
+  Human-readable description for the step
+</li>
+```
+
+## Common Selector Patterns
+
+### Navigation Elements
+- `a[data-testid='data-testid Nav menu item'][href='/PATH']` - Navigation menu items
+- `#mega-menu-toggle` - Navigation menu toggle
+- `nav[data-testid='navigation-mega-menu']` - Navigation container
+
+### Dashboard Elements  
+- `button[data-testid='add-panel']` - Add panel button
+- `input[data-testid='dashboard-title-input']` - Dashboard title
+- `button[data-testid='save-dashboard']` - Save dashboard
+
+### Query Elements
+- `textarea[data-testid='query-editor']` - Query editor
+- `textarea.inputarea.monaco-mouse-cursor-text` - Monaco editor
+- `button[data-testid='run-query']` - Execute query
+
+### Data Source Elements
+- `input[id='basic-settings-name']` - Data source name
+- `input[id='connection-url']` - Connection URL
+- `button[data-testid='data-source-save-test']` - Save & test
+
+## AI Generation Rules
+
+### Mandatory Practices
+1. **Always include `exists-reftarget`** for DOM-dependent actions
+2. **Use `navmenu-open`** for navigation menu interactions
+3. **Include appropriate page requirements** (`on-page:/path`)
+4. **Add verification** (`data-verify`) for state-changing actions
+5. **Provide helpful hints** (`data-hint`) for user guidance
+
+### Selector Preferences
+1. **Prefer `button` action** for buttons with stable text
+2. **Use `data-testid` attributes** when available in selectors
+3. **Avoid CSS classes** unless they're semantic (like `interactive`)
+4. **Include element type** in selectors for specificity
+5. **Use pseudo-selectors** (`:first-of-type`) for precision
+
+### Content Organization
+1. **Use sections** for multi-step workflows
+2. **Use multisteps** for atomic multi-actions
+3. **Use show-only mode** for educational explanations
+4. **Include interactive comments** for complex UI elements
+5. **Structure progressively** from simple to complex
+
+### Error Prevention
+1. **Test selectors** before using in tutorials
+2. **Include fallback requirements** for edge cases
+3. **Make steps skippable** when permissions might vary
+4. **Provide clear error messages** in hints
+5. **Use objectives** to handle already-completed states
+
+## Common Tutorial Patterns
+
+### Onboarding Tour
+```html
+<span id="grafana-tour" class="interactive" data-targetaction="sequence" data-reftarget="span#grafana-tour">
+  <ul>
+    <li class="interactive" data-targetaction="highlight" data-reftarget="a[href='/']" data-doit="false">
+      <span class="interactive-comment">Home page explanation</span>
+      Tour the home page
+    </li>
+    <!-- More tour stops -->
+  </ul>
+</span>
+```
+
+### Setup Workflow
+```html
+<span id="setup-monitoring" class="interactive" data-targetaction="sequence" 
+      data-reftarget="span#setup-monitoring" data-objectives="has-datasource:prometheus">
+  <ul>
+    <li class="interactive" data-targetaction="navigate" data-reftarget="/connections">Navigate to connections</li>
+    <li class="interactive" data-targetaction="button" data-reftarget="Add new data source">Add data source</li>
+    <li class="interactive" data-targetaction="formfill" data-reftarget="input[id='name']" data-targetvalue="prometheus">Name it</li>
+    <li class="interactive" data-targetaction="button" data-reftarget="Save & test">Save and test</li>
+  </ul>
+</span>
+```
+
+### Complex Interaction
+```html
+<li class="interactive" data-targetaction="multistep" data-requirements="on-page:/dashboard/new">
+  <span class="interactive" data-targetaction="button" data-reftarget="Add visualization"></span>
+  <span class="interactive" data-targetaction="button" data-reftarget="prometheus-datasource"></span>
+  <span class="interactive" data-targetaction="formfill" data-reftarget="textarea[data-testid='query-editor']" data-targetvalue="up"></span>
+  Create a panel with Prometheus data source and basic query
+</li>
+```

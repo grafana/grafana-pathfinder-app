@@ -1,0 +1,656 @@
+# Complete Example Tutorial - All Features Demonstration
+
+## Tutorial: Advanced Grafana Monitoring Setup
+
+This complete tutorial demonstrates all interactive features and best practices. Use this as a template for creating comprehensive tutorials.
+
+```html
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Grafana Monitoring Setup</title>
+</head>
+<body>
+  <h1>Advanced Grafana Monitoring Setup</h1>
+
+  <p>Welcome to the complete Grafana monitoring setup tutorial! This comprehensive guide will teach you:</p>
+  <ul>
+    <li>Setting up multiple data sources (Prometheus, Loki)</li>
+    <li>Creating effective monitoring dashboards</li>
+    <li>Configuring intelligent alerting rules</li>
+    <li>Understanding advanced Grafana features</li>
+  </ul>
+
+  <!-- SECTION 1: INTERFACE ORIENTATION (Show-only with rich comments) -->
+  <h2>Section 1: Grafana Interface Overview</h2>
+  <p>Before we start building, let's explore Grafana's interface to understand where everything is located.</p>
+
+  <span id="interface-tour" 
+        class="interactive" 
+        data-targetaction="sequence" 
+        data-reftarget="span#interface-tour"
+        data-hint="Educational tour of Grafana's main interface elements">
+    <ul>
+      <!-- Navigation overview -->
+      <li class="interactive" 
+          data-targetaction="highlight" 
+          data-reftarget="nav[data-testid='navigation-mega-menu']"
+          data-requirements="navmenu-open"
+          data-doit="false">
+        <span class="interactive-comment">
+          The <strong>navigation menu</strong> is your control center for accessing all Grafana features. 
+          It organizes tools by function: <code>Dashboards</code> for visualizations, 
+          <code>Explore</code> for ad-hoc queries, <code>Alerting</code> for monitoring, 
+          and <code>Administration</code> for system management.
+        </span>
+        Explore the main navigation structure
+      </li>
+
+      <!-- Dashboard area explanation -->
+      <li class="interactive" 
+          data-targetaction="highlight" 
+          data-reftarget="main[data-testid='main-content']"
+          data-doit="false">
+        <span class="interactive-comment">
+          The <strong>main content area</strong> is where you'll spend most of your time. 
+          It displays <em>dashboards</em>, <em>configuration pages</em>, <em>query interfaces</em>, 
+          and all the tools you need for effective observability.
+        </span>
+        This is where your monitoring work happens
+      </li>
+
+      <!-- Header controls -->
+      <li class="interactive" 
+          data-targetaction="highlight" 
+          data-reftarget="header[data-testid='grafana-app-header']"
+          data-doit="false">
+        <span class="interactive-comment">
+          The <strong>top header</strong> contains global controls available from any page: 
+          <code>organization switcher</code>, <code>user preferences</code>, <code>help resources</code>, 
+          and <code>global search</code>. These tools support your workflow regardless of where you are in Grafana.
+        </span>
+        Notice the global controls in the header
+      </li>
+    </ul>
+  </span>
+
+  <!-- SECTION 2: DATA SOURCE SETUP (Full workflow with objectives) -->
+  <h2>Section 2: Configure Prometheus Data Source</h2>
+  <p>Now let's set up Prometheus as our metrics data source. This will provide the foundation for all our monitoring dashboards.</p>
+
+  <span id="setup-prometheus" 
+        class="interactive" 
+        data-targetaction="sequence" 
+        data-reftarget="span#setup-prometheus"
+        data-requirements="is-admin"
+        data-objectives="has-datasource:type:prometheus"
+        data-hint="Creates Prometheus data source - skipped if already configured">
+    <ul>
+      <!-- Navigate to data sources -->
+      <li class="interactive" 
+          data-targetaction="navigate" 
+          data-reftarget="/connections/datasources"
+          data-requirements="navmenu-open"
+          data-verify="on-page:/connections">
+        Navigate to data source management
+      </li>
+
+      <!-- Start new data source -->
+      <li class="interactive" 
+          data-targetaction="button" 
+          data-reftarget="Add new data source"
+          data-requirements="exists-reftarget">
+        Click Add new data source
+      </li>
+
+      <!-- Select Prometheus type -->
+      <li class="interactive" 
+          data-targetaction="highlight" 
+          data-reftarget="a[href='/connections/datasources/prometheus']"
+          data-requirements="exists-reftarget">
+        <span class="interactive-comment">
+          <strong>Prometheus</strong> is a powerful monitoring system that collects 
+          <code>time-series metrics</code> from your applications and infrastructure. 
+          It's perfect for tracking <em>performance indicators</em>, <em>resource usage</em>, 
+          and <em>application health</em>.
+        </span>
+        Select Prometheus from the data source types
+      </li>
+
+      <!-- Configure name -->
+      <li class="interactive" 
+          data-targetaction="formfill" 
+          data-reftarget="input[id='basic-settings-name']"
+          data-targetvalue="prometheus-main"
+          data-requirements="exists-reftarget"
+          data-hint="Descriptive names help identify data sources in large deployments">
+        Set a descriptive name for the data source
+      </li>
+
+      <!-- Configure URL -->
+      <li class="interactive" 
+          data-targetaction="formfill" 
+          data-reftarget="input[id='connection-url']"
+          data-targetvalue="http://prometheus:9090"
+          data-requirements="exists-reftarget">
+        <span class="interactive-comment">
+          The <strong>Prometheus URL</strong> tells Grafana where to find your metrics server. 
+          Port <code>9090</code> is the standard Prometheus port. In production, this might be 
+          <code>https://prometheus.company.com</code> or an internal service address.
+        </span>
+        Enter the Prometheus server URL
+      </li>
+
+      <!-- Save and test -->
+      <li class="interactive" 
+          data-targetaction="button" 
+          data-reftarget="Save & test"
+          data-requirements="exists-reftarget"
+          data-verify="has-datasource:prometheus-main">
+        Save and test the connection
+      </li>
+    </ul>
+  </span>
+
+  <!-- SECTION 3: DASHBOARD CREATION (Complex workflow with multisteps) -->
+  <h2>Section 3: Create Monitoring Dashboard</h2>
+  <p>With our data source configured, let's create a comprehensive monitoring dashboard with multiple visualization types.</p>
+
+  <span id="create-monitoring-dashboard" 
+        class="interactive" 
+        data-targetaction="sequence" 
+        data-reftarget="span#create-monitoring-dashboard"
+        data-requirements="section-completed:setup-prometheus"
+        data-objectives="has-dashboard-named:System Monitoring"
+        data-hint="Creates comprehensive monitoring dashboard with multiple panels">
+    <ul>
+      <!-- Navigate to dashboard creation -->
+      <li class="interactive" 
+          data-targetaction="navigate" 
+          data-reftarget="/dashboard/new"
+          data-requirements="navmenu-open"
+          data-verify="on-page:/dashboard/new">
+        Navigate to create a new dashboard
+      </li>
+
+      <!-- Create first panel (multistep) -->
+      <li class="interactive" 
+          data-targetaction="multistep"
+          data-requirements="on-page:/dashboard/new"
+          data-hint="Creates a stat panel showing system availability">
+        
+        <span class="interactive" 
+              data-targetaction="button" 
+              data-reftarget="Add visualization"
+              data-requirements="exists-reftarget"></span>
+        
+        <span class="interactive" 
+              data-targetaction="button" 
+              data-reftarget="prometheus-main"
+              data-requirements="has-datasource:prometheus-main"></span>
+        
+        Add visualization and select Prometheus data source
+      </li>
+
+      <!-- Configure stat panel -->
+      <li class="interactive" 
+          data-targetaction="formfill" 
+          data-reftarget="textarea[data-testid='query-editor']"
+          data-targetvalue="up"
+          data-requirements="exists-reftarget">
+        <span class="interactive-comment">
+          The <code>up</code> query shows how many monitoring targets are healthy. 
+          This is a fundamental <strong>availability metric</strong> that tells you 
+          if your monitoring infrastructure is working correctly.
+        </span>
+        Enter the availability query
+      </li>
+
+      <!-- Select stat visualization -->
+      <li class="interactive" 
+          data-targetaction="multistep"
+          data-requirements="exists-reftarget"
+          data-hint="Changes to stat visualization for single-value display">
+        
+        <span class="interactive" 
+              data-targetaction="button" 
+              data-reftarget="button[data-testid='toggle-viz-picker']"
+              data-requirements="exists-reftarget"></span>
+        
+        <span class="interactive" 
+              data-targetaction="highlight" 
+              data-reftarget="div[aria-label='Plugin visualization item Stat']"
+              data-requirements="exists-reftarget"></span>
+        
+        Open visualization picker and select Stat
+      </li>
+
+      <!-- Set panel title -->
+      <li class="interactive" 
+          data-targetaction="formfill" 
+          data-reftarget="input[data-testid='Panel editor option pane field input Title']"
+          data-targetvalue="Targets Up"
+          data-requirements="exists-reftarget">
+        Set descriptive panel title
+      </li>
+
+      <!-- Apply panel changes -->
+      <li class="interactive" 
+          data-targetaction="button" 
+          data-reftarget="Apply"
+          data-requirements="exists-reftarget">
+        Apply the panel configuration
+      </li>
+
+      <!-- Add second panel (time series) -->
+      <li class="interactive" 
+          data-targetaction="button" 
+          data-reftarget="Add panel"
+          data-requirements="exists-reftarget,on-page:/dashboard">
+        Add a second panel for trend analysis
+      </li>
+
+      <!-- Configure time series panel (multistep) -->
+      <li class="interactive" 
+          data-targetaction="multistep"
+          data-requirements="on-page:/dashboard"
+          data-hint="Creates time series panel for CPU usage trends">
+        
+        <span class="interactive" 
+              data-targetaction="button" 
+              data-reftarget="Add visualization"
+              data-requirements="exists-reftarget"></span>
+        
+        <span class="interactive" 
+              data-targetaction="button" 
+              data-reftarget="prometheus-main"
+              data-requirements="has-datasource:prometheus-main"></span>
+        
+        <span class="interactive" 
+              data-targetaction="formfill" 
+              data-reftarget="textarea[data-testid='query-editor']"
+              data-targetvalue="100 - (avg(rate(node_cpu_seconds_total{mode='idle'}[5m])) * 100)"
+              data-requirements="exists-reftarget"></span>
+        
+        Add visualization, select Prometheus, and enter CPU usage query
+      </li>
+
+      <!-- Time series is default, just set title -->
+      <li class="interactive" 
+          data-targetaction="formfill" 
+          data-reftarget="input[data-testid='Panel editor option pane field input Title']"
+          data-targetvalue="CPU Usage %"
+          data-requirements="exists-reftarget">
+        <span class="interactive-comment">
+          <strong>Time series</strong> visualizations are perfect for showing how metrics 
+          change over time. This <code>CPU usage percentage</code> calculation helps you 
+          understand <em>resource utilization patterns</em> and plan capacity accordingly.
+        </span>
+        Set time series panel title
+      </li>
+
+      <!-- Apply second panel -->
+      <li class="interactive" 
+          data-targetaction="button" 
+          data-reftarget="Apply"
+          data-requirements="exists-reftarget">
+        Apply the time series panel
+      </li>
+
+      <!-- Save complete dashboard -->
+      <li class="interactive" 
+          data-targetaction="multistep"
+          data-requirements="on-page:/dashboard"
+          data-hint="Saves dashboard with descriptive title">
+        
+        <span class="interactive" 
+              data-targetaction="button" 
+              data-reftarget="Save dashboard"
+              data-requirements="exists-reftarget"></span>
+        
+        <span class="interactive" 
+              data-targetaction="formfill" 
+              data-reftarget="input[aria-label='Save dashboard title field']"
+              data-targetvalue="System Monitoring"
+              data-requirements="exists-reftarget"></span>
+        
+        <span class="interactive" 
+              data-targetaction="button" 
+              data-reftarget="Save"
+              data-requirements="exists-reftarget"></span>
+        
+        Save dashboard with title "System Monitoring"
+      </li>
+    </ul>
+  </span>
+
+  <!-- SECTION 4: ALERTING SETUP (Permission-aware with skippable steps) -->
+  <h2>Section 4: Configure Monitoring Alerts</h2>
+  <p>Now let's set up intelligent alerts to notify you when system issues occur, before your users notice them.</p>
+
+  <span id="setup-alerting" 
+        class="interactive" 
+        data-targetaction="sequence" 
+        data-reftarget="span#setup-alerting"
+        data-requirements="section-completed:create-monitoring-dashboard,has-permission:alerting:write"
+        data-hint="Configures CPU usage alert - requires alerting permissions">
+    <ul>
+      <!-- Navigate to alerting -->
+      <li class="interactive" 
+          data-targetaction="navigate" 
+          data-reftarget="/alerting/new"
+          data-requirements="navmenu-open"
+          data-verify="on-page:/alerting/new">
+        Navigate to create new alert rule
+      </li>
+
+      <!-- Explain alert interface -->
+      <li class="interactive" 
+          data-targetaction="highlight" 
+          data-reftarget="div[data-testid='alert-rule-form']"
+          data-requirements="exists-reftarget"
+          data-doit="false">
+        <span class="interactive-comment">
+          The <strong>alert rule form</strong> lets you define monitoring conditions that trigger notifications. 
+          You'll specify <code>query conditions</code>, <code>evaluation frequency</code>, 
+          <code>threshold values</code>, and <code>notification channels</code> to create 
+          <em>proactive monitoring</em> that keeps your systems healthy.
+        </span>
+        Examine the alert rule configuration interface
+      </li>
+
+      <!-- Set alert name -->
+      <li class="interactive" 
+          data-targetaction="formfill" 
+          data-reftarget="input[data-testid='alert-rule-name']"
+          data-targetvalue="High CPU Usage Alert"
+          data-requirements="exists-reftarget">
+        Name your alert rule descriptively
+      </li>
+
+      <!-- Select data source for alert -->
+      <li class="interactive" 
+          data-targetaction="button" 
+          data-reftarget="prometheus-main"
+          data-requirements="has-datasource:prometheus-main,exists-reftarget">
+        Select Prometheus as the alert data source
+      </li>
+
+      <!-- Enter alert query -->
+      <li class="interactive" 
+          data-targetaction="formfill" 
+          data-reftarget="textarea[data-testid='alert-query-editor']"
+          data-targetvalue="100 - (avg(rate(node_cpu_seconds_total{mode='idle'}[5m])) * 100) > 80"
+          data-requirements="exists-reftarget">
+        <span class="interactive-comment">
+          This <strong>alert query</strong> triggers when CPU usage exceeds 80%. 
+          The <code>rate()</code> function calculates per-second CPU usage, 
+          and the condition <code>&gt; 80</code> defines our <em>threshold</em> 
+          for what constitutes "high" CPU usage.
+        </span>
+        Enter CPU usage alert condition
+      </li>
+
+      <!-- Set evaluation frequency -->
+      <li class="interactive" 
+          data-targetaction="formfill" 
+          data-reftarget="input[data-testid='evaluation-interval']"
+          data-targetvalue="1m"
+          data-requirements="exists-reftarget"
+          data-hint="How often Grafana checks this condition">
+        Set evaluation interval to 1 minute
+      </li>
+
+      <!-- Save alert rule -->
+      <li class="interactive" 
+          data-targetaction="button" 
+          data-reftarget="Save rule"
+          data-requirements="exists-reftarget">
+        Save the alert rule
+      </li>
+    </ul>
+  </span>
+
+  <!-- SECTION 5: ADVANCED FEATURES (Version and feature dependent) -->
+  <h2>Section 5: Explore Advanced Features</h2>
+  <p>Let's explore some of Grafana's advanced features that can enhance your monitoring experience.</p>
+
+  <span id="advanced-features" 
+        class="interactive" 
+        data-targetaction="sequence" 
+        data-reftarget="span#advanced-features"
+        data-requirements="section-completed:setup-alerting">
+    <ul>
+      <!-- Query Library (version dependent) -->
+      <li class="interactive" 
+          data-targetaction="navigate" 
+          data-reftarget="/explore"
+          data-requirements="navmenu-open,has-feature:queryLibrary,min-version:8.5.0"
+          data-skippable="true"
+          data-hint="Query library requires specific Grafana version and feature toggle"
+          data-verify="on-page:/explore">
+        Explore the query library feature (skip if not available)
+      </li>
+
+      <!-- Alternative for older versions -->
+      <li class="interactive" 
+          data-targetaction="navigate" 
+          data-reftarget="/explore"
+          data-requirements="navmenu-open"
+          data-verify="on-page:/explore">
+        Navigate to Explore for ad-hoc queries
+      </li>
+
+      <!-- Demonstrate query building -->
+      <li class="interactive" 
+          data-targetaction="highlight" 
+          data-reftarget="div[data-testid='query-editor-container']"
+          data-requirements="on-page:/explore,exists-reftarget"
+          data-doit="false">
+        <span class="interactive-comment">
+          <strong>Explore</strong> is your data investigation playground. Write queries, 
+          test hypotheses, and analyze metrics without creating permanent dashboards. 
+          It's perfect for <em>incident troubleshooting</em> and <em>data discovery</em>.
+        </span>
+        Learn about the Explore interface
+      </li>
+
+      <!-- Plugin management (admin only) -->
+      <li class="interactive" 
+          data-targetaction="navigate" 
+          data-reftarget="/admin/plugins"
+          data-requirements="is-admin,navmenu-open"
+          data-skippable="true"
+          data-hint="Plugin management requires admin privileges"
+          data-verify="on-page:/admin/plugins">
+        Access plugin management (admin only)
+      </li>
+
+      <!-- Plugin explanation for non-admins -->
+      <li class="interactive" 
+          data-targetaction="highlight" 
+          data-reftarget="div[data-testid='plugin-info']"
+          data-requirements="has-role:viewer"
+          data-doit="false">
+        <span class="interactive-comment">
+          <strong>Plugins</strong> extend Grafana's capabilities with new data sources, 
+          panel types, and applications. While you need <code>admin privileges</code> 
+          to install plugins, you can use any plugins that are already installed 
+          in your Grafana instance.
+        </span>
+        Learn about Grafana's plugin ecosystem
+      </li>
+    </ul>
+  </span>
+
+  <!-- SECTION 6: VERIFICATION AND TESTING -->
+  <h2>Section 6: Verify Your Setup</h2>
+  <p>Let's verify everything is working correctly and explore your new monitoring capabilities.</p>
+
+  <span id="verify-setup" 
+        class="interactive" 
+        data-targetaction="sequence" 
+        data-reftarget="span#verify-setup"
+        data-requirements="section-completed:create-monitoring-dashboard">
+    <ul>
+      <!-- Return to dashboard -->
+      <li class="interactive" 
+          data-targetaction="navigate" 
+          data-reftarget="/dashboards"
+          data-requirements="navmenu-open"
+          data-verify="on-page:/dashboards">
+        Return to your dashboards list
+      </li>
+
+      <!-- Find created dashboard -->
+      <li class="interactive" 
+          data-targetaction="highlight" 
+          data-reftarget="a[title*='System Monitoring']"
+          data-requirements="has-dashboard-named:System Monitoring,exists-reftarget"
+          data-doit="false">
+        <span class="interactive-comment">
+          Your <strong>System Monitoring</strong> dashboard now appears in the dashboard list. 
+          The <code>star icon</code> lets you favorite it for quick access, and the 
+          <code>menu button</code> provides options for sharing, exporting, or managing permissions.
+        </span>
+        Find your newly created monitoring dashboard
+      </li>
+
+      <!-- Open dashboard -->
+      <li class="interactive" 
+          data-targetaction="button" 
+          data-reftarget="System Monitoring"
+          data-requirements="has-dashboard-named:System Monitoring,exists-reftarget"
+          data-verify="on-page:/d/">
+        Open your System Monitoring dashboard
+      </li>
+
+      <!-- Examine panels -->
+      <li class="interactive" 
+          data-targetaction="highlight" 
+          data-reftarget="div[data-testid='panel-container']:first-of-type"
+          data-requirements="exists-reftarget"
+          data-doit="false">
+        <span class="interactive-comment">
+          Your <strong>Targets Up</strong> panel shows real-time availability data. 
+          The large number indicates how many monitoring targets are healthy. 
+          This gives you an <em>instant overview</em> of your infrastructure health.
+        </span>
+        Review your availability monitoring panel
+      </li>
+
+      <!-- Test time range controls -->
+      <li class="interactive" 
+          data-targetaction="highlight" 
+          data-reftarget="button[data-testid='time-range-picker']"
+          data-requirements="exists-reftarget"
+          data-doit="false">
+        <span class="interactive-comment">
+          The <strong>time range picker</strong> controls what time period your dashboard displays. 
+          Try <code>Last 1 hour</code> for recent data, <code>Last 24 hours</code> for daily patterns, 
+          or <code>Last 7 days</code> for <em>weekly trend analysis</em>.
+        </span>
+        Notice the time range controls
+      </li>
+
+      <!-- Test refresh controls -->
+      <li class="interactive" 
+          data-targetaction="highlight" 
+          data-reftarget="button[data-testid='refresh-button']"
+          data-requirements="exists-reftarget"
+          data-doit="false">
+        <span class="interactive-comment">
+          The <strong>refresh button</strong> updates your dashboard with the latest data. 
+          You can also enable <code>auto-refresh</code> to keep your monitoring views 
+          current without manual intervention - perfect for <em>live monitoring scenarios</em>.
+        </span>
+        Learn about dashboard refresh options
+      </li>
+    </ul>
+  </span>
+
+  <!-- COMPLETION AND NEXT STEPS -->
+  <h2>🎉 Congratulations!</h2>
+  <p>Outstanding work! You've successfully completed the advanced Grafana monitoring setup tutorial. You now have:</p>
+  <ul>
+    <li>✅ <strong>Comprehensive Interface Knowledge</strong> - You understand Grafana's layout and navigation</li>
+    <li>✅ <strong>Prometheus Data Source</strong> - Connected and tested for reliable metrics collection</li>
+    <li>✅ <strong>System Monitoring Dashboard</strong> - Multiple panel types showing different aspects of system health</li>
+    <li>✅ <strong>Intelligent Alerting</strong> - Proactive monitoring that notifies you of issues</li>
+    <li>✅ <strong>Advanced Feature Awareness</strong> - Knowledge of Explore, plugins, and additional capabilities</li>
+  </ul>
+  
+  <h3>What You Can Do Next</h3>
+  <ul>
+    <li><strong>Expand Your Dashboard</strong> - Add more panels for memory, disk, and network monitoring</li>
+    <li><strong>Configure More Alerts</strong> - Set up alerts for different metrics and thresholds</li>
+    <li><strong>Explore Data Sources</strong> - Connect Loki for logs, Tempo for traces, or other systems</li>
+    <li><strong>Team Collaboration</strong> - Share dashboards with your team and set up notification channels</li>
+    <li><strong>Advanced Queries</strong> - Learn more complex PromQL for sophisticated monitoring</li>
+  </ul>
+  
+  <p><strong>Next Recommended Tutorial:</strong> <a href="bundled:loki-grafana-101">Loki + Grafana 101</a> to add log monitoring to your observability stack.</p>
+  
+</body>
+</html>
+```
+
+## Key Features Demonstrated
+
+### 1. Show-Only Educational Mode
+- Interface orientation without state changes
+- Rich interactive comments with formatting
+- Progressive disclosure of concepts
+
+### 2. Requirements and Objectives System
+- Auto-completion when objectives already met
+- Permission-aware workflows
+- Graceful degradation for missing requirements
+
+### 3. Multi-Step Atomic Actions
+- Complex UI workflows as single user actions
+- Just-in-time requirements checking
+- Error handling with specific failure points
+
+### 4. Section-Based Organization
+- Logical grouping of related steps
+- Progress persistence across browser sessions
+- Sequential dependencies between sections
+
+### 5. Advanced Error Handling
+- Skippable steps for permission issues
+- Alternative workflows for different user types
+- Helpful error messages with context
+
+### 6. Performance Optimization
+- Efficient selector usage
+- Grouped requirement checks
+- Lazy evaluation of complex conditions
+
+### 7. Accessibility Features
+- Screen reader friendly hints
+- Keyboard navigation support
+- ARIA attribute integration
+
+## Tutorial Quality Characteristics
+
+### Educational Value
+- **Progressive Learning**: Concepts introduced before practice
+- **Contextual Explanations**: Rich comments explain why things matter
+- **Multiple Learning Modes**: Observation, demonstration, and hands-on practice
+- **Real-World Relevance**: Practical skills applicable to actual monitoring
+
+### Technical Excellence
+- **Robust Error Handling**: Graceful failure and recovery options
+- **Cross-Version Compatibility**: Works across different Grafana versions
+- **Performance Conscious**: Efficient selectors and requirement checking
+- **Accessibility Compliant**: Works with assistive technologies
+
+### User Experience
+- **Clear Progress Indicators**: Users always know where they are
+- **Resumable Workflows**: Can continue after interruptions
+- **Helpful Guidance**: Hints and comments provide context
+- **Flexible Paths**: Alternatives for different user capabilities
+
+This example demonstrates the full power of the interactive tutorial system and serves as a comprehensive template for creating high-quality, educational Grafana tutorials.
