@@ -361,8 +361,6 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
   return null;
 }
 
-// generateGitHubVariations is now imported from github-url.utils.ts
-
 /**
  * Get unstyled content URL (from single-docs-fetcher)
  */

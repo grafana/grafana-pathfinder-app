@@ -46,23 +46,7 @@ const CustomDocsConfig = ({ plugin }: CustomDocsConfigProps) => {
             This feature will allow you to configure custom GitHub repositories as documentation sources that integrate
             with Grafana&apos;s recommendation system.
           </p>
-          <details>
-            <summary>For developers: Enable this feature</summary>
-            <p>
-              <strong>Method 1 (Persistent):</strong>
-            </p>
-            <p>
-              Add <code>&quot;features&quot;: &quot;custom_docs&quot;</code> to the plugin&apos;s jsonData configuration
-              via provisioning or API.
-            </p>
-            <p>
-              <strong>Method 2 (Session only):</strong>
-            </p>
-            <p>
-              Run <code>window.features.enable(&apos;custom_docs&apos;)</code> in browser console. This only lasts until
-              page refresh.
-            </p>
-          </details>
+          <p>Contact your system administrator to enable this feature.</p>
         </Alert>
       </FieldSet>
     );

@@ -39,8 +39,6 @@ interface CustomDocsIndex {
   rules: CustomDocsRule[];
 }
 
-// convertToRawIndexUrl is now imported from github-url.utils.ts
-
 /**
  * Fetch index.json from a custom docs repository
  */
@@ -76,10 +74,6 @@ async function fetchCustomDocsIndex(repo: CustomDocsRepo): Promise<CustomDocsInd
     return null;
   }
 }
-
-// matchesContext is now imported from recommendation-matching.utils.ts
-
-// Platform, URL, and tag matching logic now imported from recommendation-matching.utils.ts
 
 /**
  * Main function to fetch custom docs recommendations
@@ -135,6 +129,3 @@ export async function getCustomDocsRecommendations(
 
   return customRecommendations;
 }
-
-// Re-export for backward compatibility
-export { convertGitHubUrlToRaw } from './github-url.utils';

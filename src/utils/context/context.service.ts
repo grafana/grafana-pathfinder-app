@@ -573,8 +573,6 @@ export class ContextService {
     );
   }
 
-  // getCurrentPlatform is now imported from recommendation-matching.utils.ts
-
   /**
    * Fetch data sources
    */
@@ -979,8 +977,6 @@ export class ContextService {
 
     return staticRecommendations;
   }
-
-  // URL matching, platform matching, and tag checking logic now imported from recommendation-matching.utils.ts
 
   /**
    * Get custom docs recommendations from user-configured repositories
