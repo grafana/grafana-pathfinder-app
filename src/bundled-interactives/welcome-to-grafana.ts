@@ -20,7 +20,7 @@ export const welcomeToGrafanaHtml = `<html>
         <h2>Tour of Grafana</h2>
         <p>Let's start by exploring the main areas of Grafana. We'll visit each key section so you know where everything is located.</p>
 
-        <span id="grafana-tour" class="interactive" data-requirements="navmenu-open" data-targetaction="sequence" data-reftarget="span#grafana-tour">
+        <span id="grafana-tour" class="interactive" data-targetaction="sequence" data-reftarget="span#grafana-tour">
             <ul>
               <li class="interactive" 
                   data-requirements="navmenu-open"
@@ -39,7 +39,8 @@ export const welcomeToGrafanaHtml = `<html>
 
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/explore']"
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-skippable="true">
                 <span class="interactive-comment"><strong>Explore</strong> is your data investigation tool! Write <code>PromQL</code> queries, search logs with <code>LogQL</code>, and analyze traces. Perfect for troubleshooting incidents and <em>exploring your data</em> without creating dashboards.</span>
                 Then <strong>Explore</strong> - perfect for ad-hoc queries and data exploration.
               </li>
@@ -52,22 +53,35 @@ export const welcomeToGrafanaHtml = `<html>
               </li>
 
               <li class="interactive" 
+                  data-requirements="is-admin"
+                  data-skippable="true"
+                  data-hint="Connections requires data source permissions to access"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections']"
                   data-targetaction='highlight'>
-                <span class="interactive-comment">This is where the magic happens! <strong>Connections</strong> lets you connect to databases like <code>PostgreSQL</code>, monitoring systems like <code>Prometheus</code>, log aggregators like <code>Loki</code>, cloud services like <code>AWS CloudWatch</code>, and <em>hundreds more</em>.</span>
-                <strong>Connections</strong> - the heart of Grafana where you connect to your data sources.
+                <span class="interactive-comment"><strong>Connections</strong> lets you connect to databases like PostgreSQL, monitoring systems like Prometheus, log aggregators like Loki, cloud services like AWS CloudWatch, and <em>hundreds more</em>.</span>
+                You need the Admin role to connect data sources.
+                You can skip this step if you don't have permissions.
               </li>
 
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin']"
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-skippable="true" >
                 <span class="interactive-comment">The <strong>Administration</strong> section is your control center. Manage user accounts, install <code>plugins</code>, configure <code>authentication</code>, monitor system health, and adjust global settings. <em>Admin power at your fingertips!</em></span>
                 Finally, <strong>Administration</strong> - for managing users, plugins, and system settings.
               </li>
+
+              <li class="interactive" 
+                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
+                  data-requirements="exists-reftarget"
+                  data-targetaction='highlight'
+                  data-skippable="true">
+                <span class="interactive-comment">Plugins and data allows you to extend Grafana's functionality. You can install custom plugins from here.</span>
+                  Plugins extend Grafana by adding capabilities that are not available by default. For example, you can install plugins that add the ability to import data from diverse sources, that bundle data sources and panels, or that provide new visualization types for use in dashboards.
+              </li>
+
             </ul>
         </span>
-
-
 
         <h2>🎉 Congratulations!</h2>
         <p>Amazing work! You've completed your welcome tour of Grafana. You now know:</p>

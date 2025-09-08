@@ -168,6 +168,88 @@ describe('useLinkClickHandler', () => {
     });
   });
 
+  describe('GitHub Links', () => {
+    let windowOpen: jest.SpyInstance;
+
+    beforeEach(() => {
+      windowOpen = jest.spyOn(window, 'open').mockImplementation();
+    });
+
+    afterEach(() => {
+      windowOpen.mockRestore();
+    });
+
+    it('should open allowed Grafana GitHub URLs in app tabs', () => {
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const grafanaLink = document.createElement('a');
+      grafanaLink.href = 'https://raw.githubusercontent.com/grafana/grafana/main/README.md';
+      grafanaLink.textContent = 'Grafana README';
+      contentDiv.appendChild(grafanaLink);
+
+      fireEvent.click(grafanaLink);
+
+      // Should try to open in app with unstyled URL
+      expect(mockModel.openDocsPage).toHaveBeenCalledWith(expect.stringContaining('unstyled.html'), 'Grafana README');
+      expect(windowOpen).not.toHaveBeenCalled();
+    });
+
+    it('should open disallowed URLs in new browser tab', () => {
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const disallowedLink = document.createElement('a');
+      disallowedLink.href = 'https://not-whitelisted.com/ExtraContent/README.md';
+      disallowedLink.textContent = 'Disallowed Link';
+      contentDiv.appendChild(disallowedLink);
+
+      fireEvent.click(disallowedLink);
+
+      // Should open in browser, not in app
+      expect(windowOpen).toHaveBeenCalledWith(
+        'https://not-whitelisted.com/ExtraContent/README.md',
+        '_blank',
+        'noopener,noreferrer'
+      );
+      expect(mockModel.openDocsPage).not.toHaveBeenCalled();
+      expect(mockModel.openLearningJourney).not.toHaveBeenCalled();
+    });
+
+    it('should open regular github.com URLs in browser if not in raw allowed list', () => {
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const regularGitHubLink = document.createElement('a');
+      regularGitHubLink.href = 'https://github.com/grafana/grafana';
+      regularGitHubLink.textContent = 'Grafana GitHub';
+      contentDiv.appendChild(regularGitHubLink);
+
+      fireEvent.click(regularGitHubLink);
+
+      expect(windowOpen).toHaveBeenCalledWith('https://github.com/grafana/grafana', '_blank', 'noopener,noreferrer');
+      expect(mockModel.openDocsPage).not.toHaveBeenCalled();
+    });
+  });
+
   describe('External Links', () => {
     it('should open external links in new tab', () => {
       // Mock window.open

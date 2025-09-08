@@ -43,7 +43,16 @@ export const INTERACTIVE_CONFIG = {
     },
     // Requirements checking timing
     requirements: {
-      checkTimeout: 5000, // Maximum time to wait for requirements check
+      checkTimeout: 3000, // PERFORMANCE FIX: Reduced from 5000ms to 3000ms for faster UX
+    },
+    // Debouncing and state management timing
+    debouncing: {
+      contextRefresh: 500, // Main context refresh debounce
+      uiUpdates: 25, // UI re-render debounce
+      modalDetection: 50, // Modal state change debounce
+      requirementsRetry: 10000, // Auto-retry for failed requirements
+      stateSettling: 100, // General state settling delay
+      reactiveCheck: 150, // Reactive check delay after completions
     },
   },
   // Event-driven settling detection configuration

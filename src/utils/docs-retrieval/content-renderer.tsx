@@ -326,7 +326,7 @@ function TabsWrapper({ element }: { element: ParsedElement }) {
             // Render the content as raw HTML to avoid HTML parser interference
             const originalHTML = (content as any).originalHTML;
             if (originalHTML) {
-              return <div dangerouslySetInnerHTML={{ __html: originalHTML }} />;
+              return <TabContentRenderer html={originalHTML} />;
             }
             // Fallback to normal rendering if no originalHTML
             return renderParsedElement(content, 'tab-content');
@@ -335,6 +335,23 @@ function TabsWrapper({ element }: { element: ParsedElement }) {
         })()}
       </TabContent>
     </div>
+  );
+}
+
+// Convert tab-content <pre> elements to CodeBlock components
+// while keeping other content as raw HTML
+function TabContentRenderer({ html }: { html: string }) {
+  // Parse the HTML to find <pre> elements and convert them to CodeBlock components
+  const parseResult = parseHTMLToComponents(html);
+
+  if (!parseResult.isValid || !parseResult.data) {
+    // Fallback to raw HTML if parsing fails
+    return <div dangerouslySetInnerHTML={{ __html: html }} />;
+  }
+
+  // Render the parsed content using the existing component system
+  return (
+    <div>{parseResult.data.elements.map((element, index) => renderParsedElement(element, `tab-content-${index}`))}</div>
   );
 }
 
@@ -364,6 +381,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           key={key}
           title={element.props.title || 'Interactive Section'}
           isSequence={element.props.isSequence}
+          skippable={element.props.skippable}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           hints={element.props.hints}
@@ -384,6 +402,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           hints={element.props.hints}
           targetComment={element.props.targetComment}
           doIt={element.props.doIt}
+          skippable={element.props.skippable}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           postVerify={element.props.postVerify}
@@ -399,6 +418,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
         <InteractiveMultiStep
           key={key}
           internalActions={element.props.internalActions}
+          skippable={element.props.skippable}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           hints={element.props.hints}

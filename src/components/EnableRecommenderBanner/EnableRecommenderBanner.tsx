@@ -5,7 +5,7 @@ import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { css } from '@emotion/css';
 import { locationService } from '@grafana/runtime';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { isRecommenderEnabled } from '../../constants';
+import { getConfigWithDefaults } from '../../constants';
 
 interface EnableRecommenderBannerProps {
   className?: string;
@@ -14,10 +14,10 @@ interface EnableRecommenderBannerProps {
 export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = ({ className }) => {
   const styles = useStyles2(getStyles);
   const context = usePluginContext();
-  const config = context?.meta?.jsonData || {};
+  const configWithDefaults = getConfigWithDefaults(context?.meta?.jsonData || {});
 
-  // Only show if recommender is disabled
-  if (isRecommenderEnabled(config)) {
+  // Only show if recommender is disabled (uses centralized config with platform defaults)
+  if (configWithDefaults.acceptedTermsAndConditions) {
     return null;
   }
 

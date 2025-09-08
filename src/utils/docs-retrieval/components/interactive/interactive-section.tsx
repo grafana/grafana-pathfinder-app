@@ -24,6 +24,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   postVerify?: string;
   targetComment?: string;
   doIt?: boolean; // Control whether "Do it" button appears (defaults to true)
+  skippable?: boolean; // Whether this step can be skipped if requirements fail
   title?: string;
   description?: string;
   children?: React.ReactNode;
@@ -44,6 +45,7 @@ export interface InteractiveSectionProps extends BaseInteractiveProps {
   children: React.ReactNode;
   isSequence?: boolean;
   id?: string; // HTML id attribute for section identification
+  skippable?: boolean; // Whether this section can be skipped if requirements fail
 }
 
 // Types for unified state management
@@ -57,6 +59,7 @@ export interface StepInfo {
   targetComment?: string; // Optional comment to show during execution
   requirements?: string;
   postVerify?: string;
+  skippable?: boolean; // Whether this step can be skipped
   isMultiStep: boolean; // Flag to identify component type
 }
 
@@ -149,9 +152,17 @@ export function InteractiveSection({
   // Store refs to multistep components for section-level execution
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
 
+  // Store refs to regular step components for skip functionality
+  const stepRefs = useRef<Map<string, { executeStep: () => Promise<boolean>; markSkipped?: () => void }>>(new Map());
+
   // Get the interactive functions from the hook
-  const { executeInteractiveAction, startSectionBlocking, stopSectionBlocking, verifyStepResult } =
-    useInteractiveElements();
+  const {
+    executeInteractiveAction,
+    startSectionBlocking,
+    stopSectionBlocking,
+    verifyStepResult,
+    checkRequirementsFromData,
+  } = useInteractiveElements();
 
   // Create cancellation handler
   const handleSectionCancel = useCallback(() => {
@@ -181,6 +192,7 @@ export function InteractiveSection({
           targetComment: props.targetComment,
           requirements: props.requirements,
           postVerify: props.postVerify,
+          skippable: props.skippable,
           isMultiStep: false,
         });
       } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
@@ -195,6 +207,7 @@ export function InteractiveSection({
           refTarget: undefined,
           targetValue: undefined,
           requirements: props.requirements,
+          skippable: props.skippable,
           isMultiStep: true,
         });
       }
@@ -259,32 +272,16 @@ export function InteractiveSection({
   // Trigger reactive checks when section completion status changes
   useEffect(() => {
     if (isCompleted && stepComponents.length > 0) {
-      // Import and use the SequentialRequirementsManager to trigger reactive checks
-      import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
-        const manager = SequentialRequirementsManager.getInstance();
-
-        // Trigger reactive check for all steps that might depend on this section
-        manager.triggerReactiveCheck();
-
-        // Also trigger DOM event for any steps listening for section completion
-        const completionEvent = new CustomEvent('section-completed', {
-          detail: { sectionId },
-        });
-        document.dispatchEvent(completionEvent);
-
-        // Multiple delayed triggers to ensure dependent steps get unlocked
-        setTimeout(() => {
-          manager.triggerReactiveCheck();
-          document.dispatchEvent(completionEvent);
-        }, 100);
-        setTimeout(() => {
-          manager.triggerReactiveCheck();
-        }, 300);
+      // Notify dependent steps that this section is complete
+      const completionEvent = new CustomEvent('section-completed', {
+        detail: { sectionId },
       });
+      document.dispatchEvent(completionEvent);
     }
   }, [isCompleted, sectionId, stepComponents.length]);
 
   // Calculate which step is eligible for checking (sequential logic)
+  // This is the AUTHORITATIVE source for step eligibility within this section
   const getStepEligibility = useCallback(
     (stepIndex: number) => {
       // First step is always eligible (Trust but Verify)
@@ -293,15 +290,17 @@ export function InteractiveSection({
       }
 
       // Subsequent steps are eligible if all previous steps are completed
+      // Use section's completedSteps as the authoritative source
       for (let i = 0; i < stepIndex; i++) {
         const prevStepId = stepComponents[i].stepId;
-        if (!completedSteps.has(prevStepId)) {
+        const isCompleted = completedSteps.has(prevStepId);
+        if (!isCompleted) {
           return false;
         }
       }
       return true;
     },
-    [completedSteps, stepComponents]
+    [completedSteps, stepComponents] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Calculate resume information for button display
@@ -334,6 +333,16 @@ export function InteractiveSection({
       const currentIndex = stepComponents.findIndex((step) => step.stepId === stepId);
       if (currentIndex >= 0) {
         setCurrentStepIndex(currentIndex + 1);
+
+        // Trigger requirements check for the next step that becomes eligible
+        const nextStepIndex = currentIndex + 1;
+        if (nextStepIndex < stepComponents.length) {
+          const nextStepId = stepComponents[nextStepIndex].stepId;
+          import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
+            const manager = SequentialRequirementsManager.getInstance();
+            manager.triggerStepEligibilityCheck(nextStepId);
+          });
+        }
       }
 
       // Check if all steps are completed (only when we actually updated the state)
@@ -351,19 +360,31 @@ export function InteractiveSection({
     [completedSteps, stepComponents, onComplete, persistCompletedSteps]
   );
 
-  // Handle individual step reset (redo functionality)
+  /**
+   * Handle individual step reset (redo functionality)
+   * Removes the target step and all subsequent steps from completion state
+   */
   const handleStepReset = useCallback(
     (stepId: string) => {
+      // Find the index of the step being reset
+      const resetIndex = stepComponents.findIndex((step) => step.stepId === stepId);
+
+      // Update section state - only remove this step AND all subsequent steps
       setCompletedSteps((prev) => {
         const newSet = new Set(prev);
-        newSet.delete(stepId);
+
+        // Remove the target step and all steps after it
+        for (let i = resetIndex; i < stepComponents.length; i++) {
+          const stepToRemove = stepComponents[i].stepId;
+          newSet.delete(stepToRemove);
+        }
+
         // Persist removal
         persistCompletedSteps(newSet);
         return newSet;
       });
 
-      // Move currentStepIndex back if we're resetting an earlier step
-      const resetIndex = stepComponents.findIndex((step) => step.stepId === stepId);
+      // Move currentStepIndex back to the reset step
       if (resetIndex >= 0 && resetIndex < currentStepIndex) {
         setCurrentStepIndex(resetIndex);
       }
@@ -372,8 +393,10 @@ export function InteractiveSection({
       if (currentlyExecutingStep === stepId) {
         setCurrentlyExecutingStep(null);
       }
+
+      // Individual step components handle their own state reset via resetTrigger
     },
-    [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps]
+    [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Execute a single step (shared between individual and sequence execution)
@@ -452,6 +475,64 @@ export function InteractiveSection({
       startIndex = 0;
     }
 
+    // Check section-level requirements first and apply same priority logic
+    if (requirements) {
+      const sectionRequirementsData = {
+        requirements: requirements,
+        targetaction: 'section',
+        reftarget: `section-${sectionId}`,
+        targetvalue: undefined,
+        textContent: title || 'Interactive Section',
+        tagName: 'section',
+      };
+
+      try {
+        const sectionRequirementsResult = await checkRequirementsFromData(sectionRequirementsData);
+        if (!sectionRequirementsResult.pass) {
+          // Section requirements not met - try to fix
+          if (sectionRequirementsResult.error?.some((e: any) => e.canFix)) {
+            const fixableError = sectionRequirementsResult.error.find((e: any) => e.canFix);
+
+            try {
+              // Try to fix the section requirement automatically
+              const { NavigationManager } = await import('../../../navigation-manager');
+              const navigationManager = new NavigationManager();
+
+              if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
+                await navigationManager.expandParentNavigationSection(fixableError.targetHref);
+              } else if (requirements.includes('navmenu-open')) {
+                await navigationManager.fixNavigationRequirements();
+              }
+
+              // Recheck section requirements after fix attempt
+              await new Promise((resolve) => setTimeout(resolve, 200));
+              const sectionRecheckResult = await checkRequirementsFromData(sectionRequirementsData);
+
+              if (!sectionRecheckResult.pass) {
+                // Section requirements still not met after fix attempt
+                console.warn('⚠️ Section requirements could not be fixed, stopping execution');
+                setIsRunning(false);
+                return;
+              }
+            } catch (fixError) {
+              console.warn('⚠️ Failed to fix section requirements:', fixError);
+              setIsRunning(false);
+              return;
+            }
+          } else {
+            // No fix available for section requirements
+            console.warn('⚠️ Section requirements not met and no fix available, stopping execution');
+            setIsRunning(false);
+            return;
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Section requirements check failed:', error);
+        setIsRunning(false);
+        return;
+      }
+    }
+
     // Start section-level blocking (persists for entire section)
     const dummyData = {
       reftarget: `section-${sectionId}`,
@@ -465,6 +546,8 @@ export function InteractiveSection({
     };
     startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
+    let stoppedDueToRequirements = false;
+
     try {
       for (let i = startIndex; i < stepComponents.length; i++) {
         // Check for cancellation before each step
@@ -474,6 +557,109 @@ export function InteractiveSection({
 
         const stepInfo = stepComponents[i];
         setCurrentlyExecutingStep(stepInfo.stepId);
+
+        // Check step requirements before attempting execution
+        if (stepInfo.requirements) {
+          const stepRequirementsData = {
+            requirements: stepInfo.requirements,
+            targetaction: stepInfo.targetAction || 'button',
+            reftarget: stepInfo.refTarget || '',
+            targetvalue: stepInfo.targetValue,
+            textContent: stepInfo.stepId,
+            tagName: 'div',
+          };
+
+          try {
+            const requirementsResult = await checkRequirementsFromData(stepRequirementsData);
+            if (!requirementsResult.pass) {
+              // Requirements not met - apply priority logic
+
+              // Priority 2: Try to fix the requirement if possible
+              if (requirementsResult.error?.some((e: any) => e.canFix)) {
+                const fixableError = requirementsResult.error.find((e: any) => e.canFix);
+
+                try {
+                  // Try to fix the requirement automatically
+                  const { NavigationManager } = await import('../../../navigation-manager');
+                  const navigationManager = new NavigationManager();
+
+                  if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
+                    await navigationManager.expandParentNavigationSection(fixableError.targetHref);
+                  } else if (
+                    fixableError?.fixType === 'navigation' ||
+                    stepInfo.requirements?.includes('navmenu-open')
+                  ) {
+                    await navigationManager.fixNavigationRequirements();
+                  }
+
+                  // Recheck requirements after fix attempt
+                  await new Promise((resolve) => setTimeout(resolve, 200)); // Wait for UI to settle
+                  const recheckResult = await checkRequirementsFromData(stepRequirementsData);
+
+                  if (!recheckResult.pass) {
+                    // Fix didn't work - check if step is skippable
+                    // Priority 3: Skip if possible
+                    if (stepInfo.skippable) {
+                      // Skip this step properly using the step's own markSkipped function
+                      const stepRef = stepRefs.current.get(stepInfo.stepId);
+                      if (stepRef?.markSkipped) {
+                        stepRef.markSkipped(); // This handles the blue state properly
+                        handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
+                      }
+                      continue; // Continue to next step
+                    } else {
+                      // Priority 4: Stop execution if not skippable
+                      setCurrentStepIndex(i);
+                      stoppedDueToRequirements = true;
+                      break;
+                    }
+                  }
+                  // If recheck passed, continue with normal execution below
+                } catch (fixError) {
+                  console.warn(`⚠️ Failed to fix requirements for step ${i + 1}:`, fixError);
+
+                  // Fix failed - check if step is skippable
+                  if (stepInfo.skippable) {
+                    // Skip this step properly using the step's own markSkipped function
+                    const stepRef = stepRefs.current.get(stepInfo.stepId);
+                    if (stepRef?.markSkipped) {
+                      stepRef.markSkipped(); // This handles the blue state properly
+                      handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
+                    }
+                    continue;
+                  } else {
+                    // Stop execution
+                    setCurrentStepIndex(i);
+                    stoppedDueToRequirements = true;
+                    break;
+                  }
+                }
+              } else {
+                // No fix available - check if step is skippable
+                // Priority 3: Skip if possible
+                if (stepInfo.skippable) {
+                  // Skip this step properly using the step's own markSkipped function
+                  const stepRef = stepRefs.current.get(stepInfo.stepId);
+                  if (stepRef?.markSkipped) {
+                    stepRef.markSkipped(); // This handles the blue state properly
+                    handleStepComplete(stepInfo.stepId, true); // This handles the flow continuation
+                  }
+                  continue; // Continue to next step
+                } else {
+                  // Priority 4: Stop execution if not skippable and no fix available
+                  setCurrentStepIndex(i);
+                  stoppedDueToRequirements = true;
+                  break;
+                }
+              }
+            }
+          } catch (error) {
+            console.warn(`⚠️ Step ${i + 1} requirements check failed, stopping section execution:`, error);
+            setCurrentStepIndex(i);
+            stoppedDueToRequirements = true;
+            break;
+          }
+        }
 
         // First, show the step (highlight it) - skip for multi-step components
         if (!stepInfo.isMultiStep) {
@@ -527,8 +713,9 @@ export function InteractiveSection({
       }
 
       // Section sequence completed or cancelled
-      if (!isCancelledRef.current) {
-        // Ensure all steps are marked as completed when section execution finishes
+      if (!isCancelledRef.current && !stoppedDueToRequirements) {
+        // Only auto-complete all steps if we actually completed the entire sequence
+        // Don't auto-complete if we stopped due to requirements failure
         const allStepIds = new Set(stepComponents.map((step) => step.stepId));
         setCompletedSteps(allStepIds);
         setCurrentStepIndex(stepComponents.length);
@@ -560,25 +747,63 @@ export function InteractiveSection({
     title,
     handleSectionCancel,
     currentStepIndex,
+    requirements,
+    checkRequirementsFromData,
   ]);
 
-  // Handle section reset (clear completed steps and reset individual step states)
+  /**
+   * Handle complete section reset
+   * Clears all completion state and resets all steps to initial state
+   */
   const handleResetSection = useCallback(() => {
     if (disabled || isRunning) {
       return;
     }
 
+    // Clear section state immediately
     setCompletedSteps(new Set());
     setCurrentlyExecutingStep(null);
     setCurrentStepIndex(0); // Reset to start from beginning
-    setResetTrigger((prev) => prev + 1); // Signal child steps to reset their local state
-    // Clear persistence
+
+    // Signal all child steps to reset their local state
+    setResetTrigger((prev) => prev + 1);
+
+    // Clear localStorage persistence
     try {
       localStorage.removeItem(getStorageKey());
     } catch {
       // ignore
     }
-  }, [disabled, isRunning, getStorageKey]);
+
+    // Reset all step states in the global manager
+    import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
+      const manager = SequentialRequirementsManager.getInstance();
+
+      // Temporarily stop DOM monitoring during reset
+      manager.stopDOMMonitoring();
+
+      // Reset all step states including completion and skipped status
+      stepComponents.forEach((step) => {
+        manager.updateStep(step.stepId, {
+          isEnabled: false,
+          isCompleted: false,
+          isChecking: false,
+          isSkipped: false, // Clear skipped state on reset
+          completionReason: 'none',
+          explanation: undefined,
+          error: undefined,
+        });
+      });
+
+      // Re-enable monitoring and trigger check for first step after reset
+      setTimeout(() => {
+        manager.triggerReactiveCheck();
+        setTimeout(() => {
+          manager.startDOMMonitoring();
+        }, 100);
+      }, 200);
+    });
+  }, [disabled, isRunning, getStorageKey, stepComponents, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {
@@ -593,6 +818,8 @@ export function InteractiveSection({
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
 
+        // Enhanced step props with section coordination
+
         return React.cloneElement(child as React.ReactElement<InteractiveStepProps>, {
           ...child.props,
           stepId: stepInfo.stepId,
@@ -604,6 +831,13 @@ export function InteractiveSection({
           disabled: disabled || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
           resetTrigger, // Pass reset signal to child steps
           key: stepInfo.stepId,
+          ref: (ref: { executeStep: () => Promise<boolean>; markSkipped?: () => void } | null) => {
+            if (ref) {
+              stepRefs.current.set(stepInfo.stepId, ref);
+            } else {
+              stepRefs.current.delete(stepInfo.stepId);
+            }
+          },
         });
       } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
         const stepInfo = stepComponents[index];
@@ -645,7 +879,7 @@ export function InteractiveSection({
     children,
     stepComponents,
     getStepEligibility,
-    completedSteps,
+    completedSteps, // This should trigger re-render when completedSteps changes
     currentlyExecutingStep,
     handleStepComplete,
     handleStepReset,

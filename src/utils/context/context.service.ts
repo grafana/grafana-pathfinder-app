@@ -44,6 +44,8 @@ export class ContextService {
   // Simple event system for context changes
   private static changeListeners: Set<() => void> = new Set();
 
+  // Debouncing removed from service level - now handled at hook level for unified control
+
   /**
    * Subscribe to context changes (for hooks to refresh when EchoSrv events occur)
    */
@@ -55,7 +57,7 @@ export class ContextService {
   }
 
   /**
-   * Notify all listeners that context has changed
+   * Notify all listeners that context has changed (immediate notification - debouncing handled at hook level)
    */
   private static notifyContextChange(): void {
     this.changeListeners.forEach((listener) => {
@@ -333,7 +335,7 @@ export class ContextService {
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
-        datasources: contextData.dataSources.map((ds) => ds.type.toLowerCase()),
+        datasources: [...new Set(contextData.dataSources.map((ds) => ds.type.toLowerCase()))],
         tags: contextData.tags,
         user_id: isCloud ? config.bootData.user.analytics.identifier : 'oss-user',
         user_role: config.bootData.user.orgRole || 'Viewer',

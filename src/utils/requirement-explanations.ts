@@ -177,27 +177,48 @@ function getSafeErrorMessage(error: string): string | null {
 /**
  * Get user-friendly explanation for why requirements aren't met
  * Prioritizes data-hint over mapped requirement messages
+ * Enhanced to handle skippable steps with appropriate messaging
  */
-export function getRequirementExplanation(requirements?: string, hints?: string, error?: string): string {
+export function getRequirementExplanation(
+  requirements?: string,
+  hints?: string,
+  error?: string,
+  isSkippable?: boolean
+): string {
   // Priority 1: Use data-hint if provided
   if (hints && hints.trim()) {
-    return hints.trim();
+    const baseHint = hints.trim();
+    if (isSkippable) {
+      return `${baseHint} This step can be skipped if you don't have the necessary permissions or setup.`;
+    }
+    return baseHint;
   }
 
   // Priority 2: Map data-requirements to user-friendly message
   if (requirements && requirements.trim()) {
-    return mapRequirementToUserFriendlyMessage(requirements.trim());
+    const baseMessage = mapRequirementToUserFriendlyMessage(requirements.trim());
+    if (isSkippable) {
+      return `${baseMessage} You can skip this step if you don't have the necessary permissions.`;
+    }
+    return baseMessage;
   }
 
   // Priority 3: Use safe error message if available
   if (error && error.trim()) {
     const safeError = getSafeErrorMessage(error.trim());
     if (safeError) {
-      return safeError;
+      const baseError = safeError;
+      if (isSkippable) {
+        return `${baseError} This step can be skipped if the requirement cannot be met.`;
+      }
+      return baseError;
     }
   }
 
   // Fallback
+  if (isSkippable) {
+    return 'Requirements not met, but this step can be skipped to continue the tutorial.';
+  }
   return 'Requirements not met. Please check the page state and try again.';
 }
 

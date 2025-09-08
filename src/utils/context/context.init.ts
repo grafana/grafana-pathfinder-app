@@ -22,10 +22,3 @@ export function initializeContextServices(): void {
 export function onPluginStart(): void {
   initializeContextServices();
 }
-
-/**
- * Plugin lifecycle hook - call this when plugin stops
- */
-export function onPluginStop(): void {
-  // Note: We deliberately don't stop EchoSrv to keep capturing events
-}

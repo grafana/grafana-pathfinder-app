@@ -46,8 +46,17 @@ const getBaseInteractiveStyles = (theme: GrafanaTheme2) => ({
     '& > div > pre': {
       marginTop: 0,
     },
+    '.code-block-language': {
+      display: 'none',
+    },
     '& > div > div': {
       padding: theme.spacing(2),
+    },
+    '& > div > .code-block': {
+      padding: 0,
+      marginTop: 0,
+      marginLeft: 0,
+      marginRight: 0,
     },
   },
 });
@@ -427,6 +436,18 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
+  '.interactive-section-requirement-explanation': {
+    color: theme.colors.text.secondary,
+    fontSize: '0.875rem',
+    margin: `${theme.spacing(2)} ${theme.spacing(2)} 0`,
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.warning.transparent,
+    border: `1px solid ${theme.colors.warning.border}`,
+    borderRadius: theme.shape.radius.default,
+    fontStyle: 'italic',
+    lineHeight: '1.4',
+  },
+
   '.interactive-section-actions': {
     padding: theme.spacing(2),
     borderTop: `1px solid ${theme.colors.border.weak}`,
@@ -452,6 +473,9 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.background.primary,
     '&.completed': {
       backgroundColor: theme.colors.success.transparent,
+    },
+    '&.skipped': {
+      backgroundColor: theme.colors.info.transparent,
     },
   },
 
@@ -510,6 +534,11 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.success.main,
     fontSize: '16px',
     fontWeight: 'bold',
+
+    // Skipped state - blue instead of green
+    '&.skipped': {
+      color: theme.colors.info.main,
+    },
   },
 
   '.interactive-step-completion-group': {
@@ -550,8 +579,13 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     paddingLeft: '12px',
   },
 
+  '.interactive-step-requirement-buttons': {
+    display: 'flex',
+    gap: theme.spacing(1),
+    marginTop: theme.spacing(1),
+  },
+
   '.interactive-requirement-retry-btn': {
-    marginLeft: '8px',
     padding: '2px 8px',
     fontSize: '0.75rem',
     border: `1px solid ${theme.colors.border.medium}`,
@@ -563,6 +597,21 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
       backgroundColor: theme.colors.action.hover,
       borderColor: theme.colors.border.strong,
       color: theme.colors.text.primary,
+    },
+  },
+
+  '.interactive-requirement-skip-btn': {
+    padding: '2px 8px',
+    fontSize: '0.75rem',
+    border: `1px solid ${theme.colors.info.border}`,
+    background: theme.colors.info.transparent,
+    color: theme.colors.info.text,
+    borderRadius: '4px',
+    cursor: 'pointer',
+    '&:hover': {
+      backgroundColor: theme.colors.info.main,
+      borderColor: theme.colors.info.border,
+      color: theme.colors.info.contrastText,
     },
   },
 

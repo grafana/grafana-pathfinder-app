@@ -1301,6 +1301,7 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
   '& .mb-1': { marginBottom: theme.spacing(0.75) },
   '& .mr-1': { marginRight: theme.spacing(0.75) },
   '& .mx-auto': { marginLeft: 'auto', marginRight: 'auto' },
+  '& .ml-auto': { marginLeft: 'auto' },
   '& .d-flex': { display: 'flex' },
   '& .flex-direction-column': { flexDirection: 'column' },
   '& .flex-direction-row-reverse': {
