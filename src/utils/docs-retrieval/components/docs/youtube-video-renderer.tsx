@@ -35,6 +35,7 @@ export function YouTubeVideoRenderer({
   const viewStartTimeRef = useRef<number | null>(null);
   const totalViewTimeRef = useRef<number>(0);
   const lastPositionRef = useRef<number>(0);
+  const actualVideoTitleRef = useRef<string | null>(null);
 
   // Extract video ID from YouTube URL
   const getVideoId = useCallback((url: string): string | null => {
@@ -51,16 +52,19 @@ export function YouTubeVideoRenderer({
 
       const sourceDocument = tabUrl || contentKey || window.location.pathname || 'unknown';
 
+      // Use actual video title from YouTube API if available, fallback to iframe title, then default
+      const videoTitle = actualVideoTitleRef.current || title || 'YouTube Video';
+
       return {
         source_document: sourceDocument,
         video_url: src,
-        video_title: title || 'YouTube Video',
+        video_title: videoTitle,
       };
     } catch {
       return {
         source_document: 'unknown',
         video_url: src,
-        video_title: title || 'YouTube Video',
+        video_title: actualVideoTitleRef.current || title || 'YouTube Video',
       };
     }
   }, [src, title]);
@@ -136,6 +140,17 @@ export function YouTubeVideoRenderer({
 
       playerRef.current = new window.YT.Player(iframeId, {
         events: {
+          onReady: (event: any) => {
+            // Get the actual video title from YouTube API
+            try {
+              const videoData = event.target.getVideoData();
+              if (videoData && videoData.title) {
+                actualVideoTitleRef.current = videoData.title;
+              }
+            } catch (error) {
+              console.warn('Could not get video title from YouTube API:', error);
+            }
+          },
           onStateChange: (event: any) => {
             const currentTime = Date.now();
 
@@ -243,8 +258,17 @@ export function YouTubeVideoRenderer({
     );
   }
 
-  // Construct YouTube embed URL with API enabled
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
+  // Preserve original URL and simply append enablejsapi=1 if not present
+  const embedUrl = (() => {
+    // Check if enablejsapi is already in the URL
+    if (src.includes('enablejsapi=1')) {
+      return src; // Already has the API enabled
+    }
+
+    // Add enablejsapi=1 to existing URL
+    const separator = src.includes('?') ? '&' : '?';
+    return `${src}${separator}enablejsapi=1`;
+  })();
 
   return (
     <iframe
