@@ -1155,6 +1155,7 @@ const getDocsSpecificStyles = (theme: GrafanaTheme2) => ({
 
     '&.content-image': {
       maxWidth: '100%',
+      margin: 'auto',
     },
   },
 
