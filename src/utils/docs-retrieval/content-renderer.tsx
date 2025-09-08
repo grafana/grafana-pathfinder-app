@@ -428,6 +428,8 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           className={element.props.className}
           title={element.props.title}
           baseUrl={element.props.baseUrl}
+          width={element.props.width}
+          height={element.props.height}
         />
       );
     case 'code-block':
