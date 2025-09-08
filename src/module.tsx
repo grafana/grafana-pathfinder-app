@@ -16,7 +16,6 @@ const LazyMemoizedContextPanel = lazy(() =>
 );
 const LazyAppConfig = lazy(() => import('./components/AppConfig/AppConfig'));
 const LazyTermsAndConditions = lazy(() => import('./components/AppConfig/TermsAndConditions'));
-const LazyCustomDocsConfig = lazy(() => import('./components/AppConfig/CustomDocsConfig'));
 
 const App = (props: AppRootProps) => (
   <Suspense fallback={<LoadingPlaceholder text="" />}>
@@ -35,11 +34,6 @@ const plugin = new AppPlugin<{}>()
     title: 'Recommendations',
     body: LazyTermsAndConditions,
     id: 'recommendations-config',
-  })
-  .addConfigPage({
-    title: 'Custom Docs',
-    body: LazyCustomDocsConfig,
-    id: 'custom-docs-config',
   });
 
 try {

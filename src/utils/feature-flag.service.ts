@@ -167,3 +167,11 @@ export function useFeatureFlag(feature: string): boolean {
 
   return isEnabled;
 }
+
+/**
+ * Check if a feature flag is enabled (synchronous, non-React version)
+ * Useful for non-React contexts like bootstrap
+ */
+export function isFeatureEnabled(feature: string): boolean {
+  return FeatureFlagService.getInstance().isEnabled(feature);
+}
