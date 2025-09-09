@@ -1133,13 +1133,7 @@ const getDocsSpecificStyles = (theme: GrafanaTheme2) => ({
   '& img': {
     maxWidth: '100%',
     height: 'auto',
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
-    margin: `${theme.spacing(2)} auto`,
     display: 'block',
-    boxShadow: theme.shadows.z1,
-    transition: 'all 0.2s ease',
-    cursor: 'zoom-in',
 
     '&:hover': {
       boxShadow: theme.shadows.z2,
@@ -1160,8 +1154,8 @@ const getDocsSpecificStyles = (theme: GrafanaTheme2) => ({
     },
 
     '&.content-image': {
-      width: '100%',
       maxWidth: '100%',
+      margin: 'auto',
     },
   },
 
@@ -1416,6 +1410,12 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
       maxWidth: '120px',
       marginBottom: theme.spacing(1),
     },
+  },
+  '.gap-1': {
+    gap: theme.spacing(1),
+  },
+  '.gap-2': {
+    gap: theme.spacing(2),
   },
 });
 

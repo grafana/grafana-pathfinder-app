@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
-import { Card, TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
+import { Card, TabsBar, Tab, TabContent, Badge, Tooltip, Button, IconButton, Box, Grid } from '@grafana/ui';
 
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
@@ -260,6 +260,10 @@ const allowedUiComponents: Record<string, React.ElementType> = {
   tabcontent: TabContent,
   badge: Badge,
   tooltip: Tooltip,
+  iconbutton: IconButton,
+  box: Box,
+  button: Button,
+  grid: Grid,
 };
 
 // TabsWrapper manages tabs state
@@ -444,6 +448,8 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           className={element.props.className}
           title={element.props.title}
           baseUrl={element.props.baseUrl}
+          width={element.props.width}
+          height={element.props.height}
         />
       );
     case 'code-block':
@@ -516,6 +522,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
             )
             .filter((child: React.ReactNode) => child !== null);
 
+          // Extract custom attributes from the original HTML using DOM parsing
           const uiProps: Record<string, any> = { ...element.props };
           const originalHTML: string | undefined = (element as any).originalHTML;
 
@@ -538,6 +545,36 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
               }
               if (getAttr('isselected')) {
                 uiProps.isSelected = true;
+              }
+
+              // Custom attributes for Box component
+              const backgroundColor = getAttr('backgroundcolor');
+              const borderColor = getAttr('bordercolor');
+              const borderStyle = getAttr('borderstyle');
+              const padding = getAttr('padding');
+
+              // Custom attributes for Grid component
+              const columns = getAttr('columns');
+              const gap = getAttr('gap');
+
+              // Set props if they exist
+              if (backgroundColor) {
+                uiProps.backgroundColor = backgroundColor;
+              }
+              if (borderColor) {
+                uiProps.borderColor = borderColor;
+              }
+              if (borderStyle) {
+                uiProps.borderStyle = borderStyle;
+              }
+              if (padding) {
+                uiProps.padding = parseInt(padding, 10);
+              }
+              if (columns) {
+                uiProps.columns = parseInt(columns, 10);
+              }
+              if (gap) {
+                uiProps.gap = parseInt(gap, 10);
               }
             }
           }
