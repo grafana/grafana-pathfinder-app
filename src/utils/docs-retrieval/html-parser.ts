@@ -71,6 +71,7 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
       colspan: 'colSpan',
       usemap: 'useMap',
       frameborder: 'frameBorder',
+      allowfullscreen: 'allowFullScreen',
     };
 
     // Attributes that should be skipped or handled specially
@@ -121,6 +122,7 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
       'max',
       'step',
       'pattern',
+      'allowfullscreen',
     ]);
 
     // SVG attributes that React accepts (React passes most SVG attributes through)
@@ -361,6 +363,42 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               // Include all other attributes (including data-* attributes)
               ...videoProps,
             },
+            children: [],
+            originalHTML: el.outerHTML,
+          };
+        }
+
+        // YOUTUBE IFRAME: <iframe> with YouTube src
+        if (tag === 'iframe') {
+          const src = el.getAttribute('src') ?? '';
+          const isYouTube = src.includes('youtube.com') || src.includes('youtu.be');
+
+          if (isYouTube) {
+            hasVideos = true;
+            // Get all attributes using the safe mapping function
+            const iframeProps = mapHtmlAttributesToReactProps(el, errorCollector);
+
+            return {
+              type: 'youtube-video',
+              props: {
+                src,
+                width: el.getAttribute('width') ?? undefined,
+                height: el.getAttribute('height') ?? undefined,
+                title: el.getAttribute('title') ?? undefined,
+                className: el.getAttribute('class') ?? undefined,
+                // Include all other attributes (including data-* attributes)
+                ...iframeProps,
+              },
+              children: [],
+              originalHTML: el.outerHTML,
+            };
+          }
+
+          // For non-YouTube iframes, render as regular iframe
+          const iframeProps = mapHtmlAttributesToReactProps(el, errorCollector);
+          return {
+            type: 'iframe',
+            props: iframeProps,
             children: [],
             originalHTML: el.outerHTML,
           };

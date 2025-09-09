@@ -82,11 +82,14 @@ export function reportAppInteraction(
  */
 export interface ScrollTrackingTab {
   type?: 'docs' | 'learning-journey';
-  docsContent?: { url?: string } | null;
   content?: {
     url?: string;
-    currentMilestone?: number;
-    totalMilestones?: number;
+    metadata?: {
+      learningJourney?: {
+        currentMilestone?: number;
+        totalMilestones?: number;
+      };
+    };
   } | null;
   currentUrl?: string;
   baseUrl?: string;
@@ -155,15 +158,22 @@ function determinePageIdentifier(activeTab: ScrollTrackingTab | null, isRecommen
     return 'recommendations';
   }
 
-  if (activeTab?.type === 'docs' && activeTab.docsContent) {
-    return activeTab.docsContent.url || activeTab.currentUrl || activeTab.baseUrl || 'unknown-docs';
+  if (!activeTab) {
+    return null;
   }
 
-  if (activeTab?.type !== 'docs' && activeTab?.content) {
-    return activeTab.content.url || activeTab.currentUrl || activeTab.baseUrl || 'unknown-journey';
+  // For docs tabs, use the content URL or fallback to currentUrl/baseUrl
+  if (activeTab.type === 'docs') {
+    return activeTab.content?.url || activeTab.currentUrl || activeTab.baseUrl || 'unknown-docs';
   }
 
-  return null; // No valid content to track
+  // For learning journey tabs, use the content URL or fallback to currentUrl/baseUrl
+  if (activeTab.type === 'learning-journey' || !activeTab.type) {
+    return activeTab.content?.url || activeTab.currentUrl || activeTab.baseUrl || 'unknown-journey';
+  }
+
+  // Fallback for any other tab types
+  return activeTab.currentUrl || activeTab.baseUrl || 'unknown-tab';
 }
 
 /**
@@ -180,9 +190,9 @@ function buildScrollEventProperties(
   };
 
   // Add additional context for learning journeys
-  if (activeTab?.type !== 'docs' && activeTab?.content) {
-    properties.current_milestone = activeTab.content.currentMilestone || 0;
-    properties.total_milestones = activeTab.content.totalMilestones || 0;
+  if (activeTab?.type === 'learning-journey' && activeTab?.content?.metadata?.learningJourney) {
+    properties.current_milestone = activeTab.content.metadata.learningJourney.currentMilestone || 0;
+    properties.total_milestones = activeTab.content.metadata.learningJourney.totalMilestones || 0;
   }
 
   return properties;
