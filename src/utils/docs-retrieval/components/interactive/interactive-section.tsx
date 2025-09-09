@@ -5,6 +5,7 @@ import { useInteractiveElements } from '../../../interactive.hook';
 import { useStepChecker } from '../../../step-checker.hook';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
+import { reportAppInteraction, UserInteraction } from '../../../../lib/analytics';
 import { INTERACTIVE_CONFIG } from '../../../../constants/interactive-config';
 
 // Shared type definitions
@@ -148,6 +149,27 @@ export function InteractiveSection({
 
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
+
+  // Helper function to get current document name for analytics
+  const getDocumentInfo = useCallback(() => {
+    try {
+      const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
+      const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
+
+      // Use tabUrl first, then contentKey, then fallback to current location
+      const sourceDocument = tabUrl || contentKey || window.location.pathname || 'unknown';
+
+      return {
+        source_document: sourceDocument,
+        step_id: sectionId,
+      };
+    } catch {
+      return {
+        source_document: 'unknown',
+        step_id: sectionId,
+      };
+    }
+  }, [sectionId]);
 
   // Store refs to multistep components for section-level execution
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
@@ -461,6 +483,15 @@ export function InteractiveSection({
       return;
     }
 
+    // Track "Do Section" button click analytics
+    const docInfo = getDocumentInfo();
+    reportAppInteraction(UserInteraction.DoSectionButtonClick, {
+      ...docInfo,
+      section_title: title,
+      total_steps: stepComponents.length,
+      interaction_location: 'interactive_section',
+    });
+
     setIsRunning(true);
 
     isCancelledRef.current = false; // Reset ref as well
@@ -749,6 +780,7 @@ export function InteractiveSection({
     currentStepIndex,
     requirements,
     checkRequirementsFromData,
+    getDocumentInfo,
   ]);
 
   /**

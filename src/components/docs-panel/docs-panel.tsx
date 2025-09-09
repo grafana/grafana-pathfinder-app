@@ -646,13 +646,17 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
   // Scroll tracking
   useEffect(() => {
-    if (activeTab && activeTab.content && contentRef.current) {
-      const cleanup = setupScrollTracking(contentRef.current, activeTab, isRecommendationsTab);
+    // Only set up scroll tracking for actual content tabs (not recommendations)
+    if (!isRecommendationsTab && activeTab && activeTab.content) {
+      // Find the actual scrollable element (the div with overflow: auto)
+      const scrollableElement = document.getElementById('inner-docs-content');
 
-      return cleanup;
+      if (scrollableElement) {
+        const cleanup = setupScrollTracking(scrollableElement, activeTab, isRecommendationsTab);
+        return cleanup;
+      }
     }
 
-    // Return undefined for the else case
     return undefined;
   }, [activeTab, activeTab?.content, isRecommendationsTab]);
 

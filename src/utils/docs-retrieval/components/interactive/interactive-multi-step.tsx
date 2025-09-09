@@ -3,6 +3,7 @@ import { Button } from '@grafana/ui';
 
 import { useInteractiveElements } from '../../../interactive.hook';
 import { useStepChecker } from '../../../step-checker.hook';
+import { reportAppInteraction, UserInteraction } from '../../../../lib/analytics';
 import { INTERACTIVE_CONFIG } from '../../../../constants/interactive-config';
 
 interface InternalAction {
@@ -127,6 +128,27 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
     // Use ref for cancellation to avoid closure issues
     const isCancelledRef = React.useRef(false);
+
+    // Helper function to get current document name for analytics
+    const getDocumentInfo = useCallback(() => {
+      try {
+        const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
+        const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
+
+        // Use tabUrl first, then contentKey, then fallback to current location
+        const sourceDocument = tabUrl || contentKey || window.location.pathname || 'unknown';
+
+        return {
+          source_document: sourceDocument,
+          step_id: stepId || 'unknown',
+        };
+      } catch {
+        return {
+          source_document: 'unknown',
+          step_id: stepId || 'unknown',
+        };
+      }
+    }, [stepId]);
 
     // Handle reset trigger from parent section
     useEffect(() => {
@@ -345,8 +367,27 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         return;
       }
 
+      // Track "Do it" button click analytics for multi-step
+      const docInfo = getDocumentInfo();
+      reportAppInteraction(UserInteraction.DoItButtonClick, {
+        ...docInfo,
+        target_action: 'multistep',
+        ref_target: stepId || 'unknown',
+        interaction_location: 'interactive_multi_step',
+        internal_actions_count: internalActions.length,
+      });
+
       await executeStep();
-    }, [disabled, isExecuting, isCompletedWithObjectives, checker.isEnabled, executeStep]);
+    }, [
+      disabled,
+      isExecuting,
+      isCompletedWithObjectives,
+      checker.isEnabled,
+      executeStep,
+      getDocumentInfo,
+      stepId,
+      internalActions.length,
+    ]);
 
     // Handle individual step reset (redo functionality)
     const handleStepRedo = useCallback(async () => {

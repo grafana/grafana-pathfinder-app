@@ -15,6 +15,7 @@ import {
   ContentParsingError,
   resetInteractiveCounters,
   VideoRenderer,
+  YouTubeVideoRenderer,
 } from './components/interactive-components';
 import { SequentialRequirementsManager } from '../requirements-checker.hook';
 
@@ -436,6 +437,18 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           src={element.props.src}
           baseUrl={element.props.baseUrl}
           onClick={element.props.onClick}
+        />
+      );
+    case 'youtube-video':
+      return (
+        <YouTubeVideoRenderer
+          key={key}
+          src={element.props.src}
+          width={element.props.width}
+          height={element.props.height}
+          title={element.props.title}
+          className={element.props.className}
+          {...element.props}
         />
       );
     case 'image-renderer':
