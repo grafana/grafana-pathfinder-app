@@ -343,11 +343,12 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           }
 
           // Track analytics for side journey clicks
-          reportAppInteraction('docs_link_click' as UserInteraction, {
-            link_url: fullUrl,
-            link_text: linkTitle,
+          reportAppInteraction(UserInteraction.OpenSidepathView, {
+            sidepath_title: linkTitle,
+            sidepath_url: fullUrl,
+            source_journey_title: activeTab?.title || 'unknown',
+            source_journey_url: activeTab?.baseUrl || 'unknown',
             source_page: activeTab?.content?.url || 'unknown',
-            link_type: 'side_journey',
           });
         }
       }
@@ -443,7 +444,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
       };
     }
     return undefined;
-  }, [contentRef, theme, model, activeTab?.content, activeTab?.docsContent]);
+  }, [contentRef, theme, model, activeTab?.content, activeTab?.docsContent, activeTab?.baseUrl, activeTab?.title]);
 }
 
 function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaTheme2) {

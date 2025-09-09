@@ -5,6 +5,7 @@ import { useInteractiveElements } from '../../../interactive.hook';
 import { waitForReactUpdates } from '../../../requirements-checker.hook';
 import { useStepChecker } from '../../../step-checker.hook';
 import { getPostVerifyExplanation } from '../../../requirement-explanations';
+import { reportAppInteraction, UserInteraction } from '../../../../lib/analytics';
 import type { InteractiveStepProps } from './interactive-section';
 
 export const InteractiveStep = forwardRef<
@@ -45,6 +46,27 @@ export const InteractiveStep = forwardRef<
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
+
+    // Helper function to get current document name for analytics
+    const getDocumentInfo = useCallback(() => {
+      try {
+        const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
+        const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
+
+        // Use tabUrl first, then contentKey, then fallback to current location
+        const sourceDocument = tabUrl || contentKey || window.location.pathname || 'unknown';
+
+        return {
+          source_document: sourceDocument,
+          step_id: stepId || 'unknown',
+        };
+      } catch {
+        return {
+          source_document: 'unknown',
+          step_id: stepId || 'unknown',
+        };
+      }
+    }, [stepId]);
 
     // Combined completion state (parent takes precedence for coordination)
     const isCompleted = parentCompleted || isLocallyCompleted;
@@ -190,6 +212,16 @@ export const InteractiveStep = forwardRef<
         return;
       }
 
+      // Track "Show me" button click analytics
+      const docInfo = getDocumentInfo();
+      reportAppInteraction(UserInteraction.ShowMeButtonClick, {
+        ...docInfo,
+        target_action: targetAction,
+        ref_target: refTarget,
+        ...(targetValue && { target_value: targetValue }),
+        interaction_location: 'interactive_step',
+      });
+
       setIsShowRunning(true);
       try {
         await executeInteractiveAction(targetAction, refTarget, targetValue, 'show', targetComment);
@@ -227,6 +259,7 @@ export const InteractiveStep = forwardRef<
       onStepComplete,
       onComplete,
       stepId,
+      getDocumentInfo,
     ]);
 
     // Handle individual "Do it" action (delegates to executeStep)
@@ -234,6 +267,16 @@ export const InteractiveStep = forwardRef<
       if (disabled || isDoRunning || isCompletedWithObjectives || !finalIsEnabled) {
         return;
       }
+
+      // Track "Do it" button click analytics
+      const docInfo = getDocumentInfo();
+      reportAppInteraction(UserInteraction.DoItButtonClick, {
+        ...docInfo,
+        target_action: targetAction,
+        ref_target: refTarget,
+        ...(targetValue && { target_value: targetValue }),
+        interaction_location: 'interactive_step',
+      });
 
       setIsDoRunning(true);
       try {
@@ -243,7 +286,17 @@ export const InteractiveStep = forwardRef<
       } finally {
         setIsDoRunning(false);
       }
-    }, [disabled, isDoRunning, isCompletedWithObjectives, finalIsEnabled, executeStep]);
+    }, [
+      disabled,
+      isDoRunning,
+      isCompletedWithObjectives,
+      finalIsEnabled,
+      executeStep,
+      getDocumentInfo,
+      targetAction,
+      refTarget,
+      targetValue,
+    ]);
 
     // Handle individual step reset (redo functionality)
     const handleStepRedo = useCallback(async () => {
