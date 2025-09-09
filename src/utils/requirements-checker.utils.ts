@@ -607,11 +607,6 @@ async function sectionCompletedCHECK(check: string): Promise<CheckResultError> {
   }
 }
 
-/**
- * ============================================================================
- * NEW REQUIREMENTS IMPLEMENTATIONS
- * ============================================================================
- */
 
 // Plugin enabled status checking - different from has-plugin (checks if enabled)
 async function pluginEnabledCHECK(check: string): Promise<CheckResultError> {
