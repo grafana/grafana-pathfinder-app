@@ -8,7 +8,8 @@
 
 import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
 import { ContextService } from './context';
-import { reftargetExistsCHECK, navmenuOpenCHECK } from './dom-utils';
+import { reftargetExistsCheck, navmenuOpenCheck } from './dom-utils';
+import { isValidRequirement } from '../types/requirements.types';
 
 // Re-export types for convenience
 export interface RequirementsCheckResult {
@@ -49,85 +50,102 @@ interface CheckContext {
 async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<CheckResultError> {
   const { targetAction = 'button', refTarget = '' } = ctx;
 
+  // Type-safe validation with helpful developer feedback
+  if (!isValidRequirement(check)) {
+    console.warn(
+      `⚠️ Unknown requirement type: '${check}'. Check the requirement syntax and ensure it's supported. Allowing step to proceed.`
+    );
+
+    return {
+      requirement: check,
+      pass: true,
+      error: `Warning: Unknown requirement type '${check}' - step allowed to proceed`,
+    };
+  }
+
   // DOM-dependent checks
   if (check === 'exists-reftarget') {
-    return reftargetExistsCHECK(refTarget, targetAction);
+    return reftargetExistsCheck(refTarget, targetAction);
   }
   if (check === 'navmenu-open') {
-    return navmenuOpenCHECK();
+    return navmenuOpenCheck();
   }
 
   // Pure requirement checks
   if (check === 'has-datasources') {
-    return hasDatasourcesCHECK(check);
+    return hasDatasourcesCheck(check);
   }
   if (check === 'is-admin') {
-    return isAdminCHECK(check);
+    return isAdminCheck(check);
   }
   if (check === 'is-logged-in') {
-    return isLoggedInCHECK(check);
+    return isLoggedInCheck(check);
   }
   if (check === 'is-editor') {
-    return isEditorCHECK(check);
+    return isEditorCheck(check);
   }
   if (check.startsWith('has-permission:')) {
-    return hasPermissionCHECK(check);
+    return hasPermissionCheck(check);
   }
   if (check.startsWith('has-role:')) {
-    return hasRoleCHECK(check);
+    return hasRoleCheck(check);
   }
 
   // Data source and plugin checks
   if (check.startsWith('has-datasource:')) {
-    return hasDataSourceCHECK(check);
+    return hasDataSourceCheck(check);
   }
-  if (check === 'datasource-configured') {
-    return datasourceConfiguredCHECK(check);
+  if (check.startsWith('datasource-configured:')) {
+    return datasourceConfiguredCheck(check);
   }
   if (check.startsWith('has-plugin:')) {
-    return hasPluginCHECK(check);
+    return hasPluginCheck(check);
   }
-  if (check === 'plugin-enabled') {
-    return pluginEnabledCHECK(check);
+  if (check.startsWith('plugin-enabled:')) {
+    return pluginEnabledCheck(check);
   }
   if (check.startsWith('has-dashboard-named:')) {
-    return hasDashboardNamedCHECK(check);
+    return hasDashboardNamedCheck(check);
   }
   if (check === 'dashboard-exists') {
-    return dashboardExistsCHECK(check);
+    return dashboardExistsCheck(check);
   }
 
   // Location and navigation checks
   if (check.startsWith('on-page:')) {
-    return onPageCHECK(check);
+    return onPageCheck(check);
   }
 
   // Feature and environment checks
   if (check.startsWith('has-feature:')) {
-    return hasFeatureCHECK(check);
+    return hasFeatureCheck(check);
   }
   if (check.startsWith('in-environment:')) {
-    return inEnvironmentCHECK(check);
+    return inEnvironmentCheck(check);
   }
   if (check.startsWith('min-version:')) {
-    return minVersionCHECK(check);
+    return minVersionCheck(check);
   }
 
   // Section dependency checks
   if (check.startsWith('section-completed:')) {
-    return sectionCompletedCHECK(check);
+    return sectionCompletedCheck(check);
   }
 
   // UI state checks
   if (check === 'form-valid') {
-    return formValidCHECK(check);
+    return formValidCheck(check);
   }
 
-  // Unknown token - this should fail, not pass
+  // This should never be reached due to type validation above, but keeping as fallback
+  console.error(
+    `Unexpected requirement type reached end of router: '${check}'. This indicates a bug in the type validation.`
+  );
+
   return {
     requirement: check,
-    pass: false,
-    error: `Unknown requirement type: '${check}'. Check the requirement syntax and ensure it's supported.`,
+    pass: true,
+    error: `Warning: Unexpected requirement type '${check}' - step allowed to proceed`,
   };
 }
 
@@ -187,7 +205,7 @@ export async function checkPostconditions(options: RequirementsCheckOptions): Pr
  */
 
 // Enhanced permission checking using Grafana's permission system
-async function hasPermissionCHECK(check: string): Promise<CheckResultError> {
+async function hasPermissionCheck(check: string): Promise<CheckResultError> {
   try {
     const permission = check.replace('has-permission:', '');
     const hasAccess = hasPermission(permission);
@@ -207,7 +225,7 @@ async function hasPermissionCHECK(check: string): Promise<CheckResultError> {
 }
 
 // Enhanced user role checking using config.bootData.user
-async function hasRoleCHECK(check: string): Promise<CheckResultError> {
+async function hasRoleCheck(check: string): Promise<CheckResultError> {
   try {
     const user = config.bootData?.user;
     if (!user) {
@@ -224,7 +242,6 @@ async function hasRoleCHECK(check: string): Promise<CheckResultError> {
     switch (requiredRole) {
       case 'admin':
       case 'grafana-admin':
-        // Consistent with isAdminCHECK - check both isGrafanaAdmin and orgRole
         hasRole = user.isGrafanaAdmin === true || user.orgRole === 'Admin';
         break;
       case 'editor':
@@ -261,7 +278,7 @@ async function hasRoleCHECK(check: string): Promise<CheckResultError> {
 }
 
 // Enhanced data source checking using DataSourceSrv
-async function hasDataSourceCHECK(check: string): Promise<CheckResultError> {
+async function hasDataSourceCheck(check: string): Promise<CheckResultError> {
   try {
     const dataSourceSrv = getDataSourceSrv();
     const dsRequirement = check.replace('has-datasource:', '').toLowerCase();
@@ -270,16 +287,11 @@ async function hasDataSourceCHECK(check: string): Promise<CheckResultError> {
     let found = false;
     let matchType = '';
 
-    // Check for exact matches in name, uid, or type
+    // Check for exact matches in name or type
     for (const ds of dataSources) {
       if (ds.name.toLowerCase() === dsRequirement) {
         found = true;
         matchType = 'name';
-        break;
-      }
-      if (ds.uid.toLowerCase() === dsRequirement) {
-        found = true;
-        matchType = 'uid';
         break;
       }
       if (ds.type.toLowerCase() === dsRequirement) {
@@ -292,11 +304,11 @@ async function hasDataSourceCHECK(check: string): Promise<CheckResultError> {
     return {
       requirement: check,
       pass: found,
-      error: found ? undefined : `No data source found with name/uid/type: ${dsRequirement}`,
+      error: found ? undefined : `No data source found with name/type: ${dsRequirement}`,
       context: {
         searched: dsRequirement,
         matchType: found ? matchType : null,
-        available: dataSources.map((ds) => ({ name: ds.name, type: ds.type, uid: ds.uid })),
+        available: dataSources.map((ds) => ({ name: ds.name, type: ds.type, id: ds.id })),
       },
     };
   } catch (error) {
@@ -310,7 +322,7 @@ async function hasDataSourceCHECK(check: string): Promise<CheckResultError> {
 }
 
 // Plugin availability checking using /api/plugins endpoint
-async function hasPluginCHECK(check: string): Promise<CheckResultError> {
+async function hasPluginCheck(check: string): Promise<CheckResultError> {
   try {
     const pluginId = check.replace('has-plugin:', '');
     const plugins = await ContextService.fetchPlugins();
@@ -322,7 +334,12 @@ async function hasPluginCHECK(check: string): Promise<CheckResultError> {
       error: pluginExists ? undefined : `Plugin '${pluginId}' is not installed or enabled`,
       context: {
         searched: pluginId,
-        availablePlugins: plugins.map((p) => p.id).slice(0, 10), // Limit to avoid huge context
+        totalPlugins: plugins.length,
+        // More actionable: tell them how to find what they need
+        suggestion:
+          plugins.length > 0
+            ? `Check your Grafana plugin management page - ${plugins.length} plugins are available`
+            : 'No plugins found - check your Grafana installation',
       },
     };
   } catch (error) {
@@ -336,7 +353,7 @@ async function hasPluginCHECK(check: string): Promise<CheckResultError> {
 }
 
 // Dashboard availability checking using /api/search endpoint
-async function hasDashboardNamedCHECK(check: string): Promise<CheckResultError> {
+async function hasDashboardNamedCheck(check: string): Promise<CheckResultError> {
   try {
     const dashboardName = check.replace('has-dashboard-named:', '');
     const dashboards = await ContextService.fetchDashboardsByName(dashboardName);
@@ -350,7 +367,11 @@ async function hasDashboardNamedCHECK(check: string): Promise<CheckResultError> 
       error: dashboardExists ? undefined : `Dashboard named '${dashboardName}' not found`,
       context: {
         searched: dashboardName,
-        foundDashboards: dashboards.map((d) => d.title).slice(0, 5), // Limit results
+        totalFound: dashboards.length,
+        suggestion:
+          dashboards.length > 0
+            ? `Found ${dashboards.length} dashboards matching search, but none with exact name '${dashboardName}'. Check dashboard names in Grafana.`
+            : `No dashboards found matching '${dashboardName}'. Check if the dashboard exists.`,
       },
     };
   } catch (error) {
@@ -364,7 +385,7 @@ async function hasDashboardNamedCHECK(check: string): Promise<CheckResultError> 
 }
 
 // Location/URL checking using locationService
-async function onPageCHECK(check: string): Promise<CheckResultError> {
+async function onPageCheck(check: string): Promise<CheckResultError> {
   try {
     const location = locationService.getLocation();
     const requiredPath = check.replace('on-page:', '');
@@ -386,7 +407,7 @@ async function onPageCHECK(check: string): Promise<CheckResultError> {
 }
 
 // Feature toggle checking
-async function hasFeatureCHECK(check: string): Promise<CheckResultError> {
+async function hasFeatureCheck(check: string): Promise<CheckResultError> {
   try {
     const featureName = check.replace('has-feature:', '');
     const featureToggles = config.featureToggles as Record<string, boolean> | undefined;
@@ -407,7 +428,7 @@ async function hasFeatureCHECK(check: string): Promise<CheckResultError> {
 }
 
 // Environment checking
-async function inEnvironmentCHECK(check: string): Promise<CheckResultError> {
+async function inEnvironmentCheck(check: string): Promise<CheckResultError> {
   try {
     const requiredEnv = check.replace('in-environment:', '').toLowerCase();
     const currentEnv = config.buildInfo?.env?.toLowerCase() || 'unknown';
@@ -430,7 +451,7 @@ async function inEnvironmentCHECK(check: string): Promise<CheckResultError> {
 }
 
 // Version checking
-async function minVersionCHECK(check: string): Promise<CheckResultError> {
+async function minVersionCheck(check: string): Promise<CheckResultError> {
   try {
     const requiredVersion = check.replace('min-version:', '');
     const currentVersion = config.buildInfo?.version || '0.0.0';
@@ -460,47 +481,20 @@ async function minVersionCHECK(check: string): Promise<CheckResultError> {
   }
 }
 
-// Admin status checking
-async function isAdminCHECK(check: string): Promise<CheckResultError> {
-  try {
-    const user = config.bootData?.user;
-    if (!user) {
-      return {
-        requirement: check,
-        pass: false,
-        error: 'User information not available',
-        context: null,
-      };
-    }
+// Admin status checking - delegates to hasRoleCheck for consistency
+async function isAdminCheck(check: string): Promise<CheckResultError> {
+  // Just call hasRoleCheck with 'has-role:admin' to ensure identical logic
+  const result = await hasRoleCheck('has-role:admin');
 
-    // Check both isGrafanaAdmin and orgRole for comprehensive admin detection
-    const isAdmin = user.isGrafanaAdmin === true || user.orgRole === 'Admin';
-
-    return {
-      requirement: check,
-      pass: isAdmin,
-      error: isAdmin
-        ? undefined
-        : `User role '${user.orgRole || 'none'}' is not admin (isGrafanaAdmin: ${user.isGrafanaAdmin})`,
-      context: {
-        orgRole: user.orgRole,
-        isGrafanaAdmin: user.isGrafanaAdmin,
-        userId: user.id,
-        login: user.login,
-      },
-    };
-  } catch (error) {
-    return {
-      requirement: check,
-      pass: false,
-      error: `Admin check failed: ${error}`,
-      context: { error },
-    };
-  }
+  // Update the requirement field to match the original check
+  return {
+    ...result,
+    requirement: check,
+  };
 }
 
 // Login status checking
-async function isLoggedInCHECK(check: string): Promise<CheckResultError> {
+async function isLoggedInCheck(check: string): Promise<CheckResultError> {
   try {
     const user = config.bootData?.user;
     const isLoggedIn = !!user && !!user.isSignedIn;
@@ -526,7 +520,7 @@ async function isLoggedInCHECK(check: string): Promise<CheckResultError> {
 }
 
 // Editor role checking (specific shorthand for editor permissions)
-async function isEditorCHECK(check: string): Promise<CheckResultError> {
+async function isEditorCheck(check: string): Promise<CheckResultError> {
   try {
     const user = config.bootData?.user;
     if (!user) {
@@ -562,7 +556,7 @@ async function isEditorCHECK(check: string): Promise<CheckResultError> {
 }
 
 // Data sources availability checking
-async function hasDatasourcesCHECK(check: string): Promise<CheckResultError> {
+async function hasDatasourcesCheck(check: string): Promise<CheckResultError> {
   try {
     const dataSources = await ContextService.fetchDataSources();
     return {
@@ -582,7 +576,7 @@ async function hasDatasourcesCHECK(check: string): Promise<CheckResultError> {
 }
 
 // Section completion checking - simple DOM-based approach
-async function sectionCompletedCHECK(check: string): Promise<CheckResultError> {
+async function sectionCompletedCheck(check: string): Promise<CheckResultError> {
   try {
     const sectionId = check.replace('section-completed:', '');
 
@@ -613,24 +607,41 @@ async function sectionCompletedCHECK(check: string): Promise<CheckResultError> {
  * ============================================================================
  */
 
-// Plugin enabled status checking - different from has-plugin (checks if enabled)
-async function pluginEnabledCHECK(check: string): Promise<CheckResultError> {
+// Plugin enabled status checking - checks if a specific plugin is enabled
+async function pluginEnabledCheck(check: string): Promise<CheckResultError> {
   try {
+    const pluginId = check.replace('plugin-enabled:', '');
     const plugins = await ContextService.fetchPlugins();
 
-    // Find plugins that are enabled
-    const enabledPlugins = plugins.filter((plugin) => plugin.enabled);
-    const hasEnabledPlugins = enabledPlugins.length > 0;
+    // Find the specific plugin
+    const plugin = plugins.find((p) => p.id === pluginId);
+
+    if (!plugin) {
+      return {
+        requirement: check,
+        pass: false,
+        error: `Plugin '${pluginId}' not found`,
+        context: {
+          searched: pluginId,
+          totalPlugins: plugins.length,
+          suggestion: `Plugin '${pluginId}' is not installed. Install it first, then enable it.`,
+        },
+      };
+    }
+
+    const isEnabled = plugin.enabled;
 
     return {
       requirement: check,
-      pass: hasEnabledPlugins,
-      error: hasEnabledPlugins ? undefined : 'No enabled plugins found',
+      pass: isEnabled,
+      error: isEnabled ? undefined : `Plugin '${pluginId}' is installed but not enabled`,
       context: {
-        totalPlugins: plugins.length,
-        enabledCount: enabledPlugins.length,
-        disabledCount: plugins.length - enabledPlugins.length,
-        enabledPlugins: enabledPlugins.map((p) => p.id).slice(0, 10), // Limit to avoid huge context
+        searched: pluginId,
+        pluginFound: true,
+        isEnabled: plugin.enabled,
+        suggestion: isEnabled
+          ? undefined
+          : `Plugin '${pluginId}' is installed but disabled. Enable it in Grafana plugin settings.`,
       },
     };
   } catch (error) {
@@ -644,7 +655,7 @@ async function pluginEnabledCHECK(check: string): Promise<CheckResultError> {
 }
 
 // Dashboard exists checking - generic dashboard existence (different from named search)
-async function dashboardExistsCHECK(check: string): Promise<CheckResultError> {
+async function dashboardExistsCheck(check: string): Promise<CheckResultError> {
   try {
     const dashboards = await getBackendSrv().get('/api/search', {
       type: 'dash-db',
@@ -672,43 +683,72 @@ async function dashboardExistsCHECK(check: string): Promise<CheckResultError> {
   }
 }
 
-// Data source configured checking - uses test functionality to verify configuration
-async function datasourceConfiguredCHECK(check: string): Promise<CheckResultError> {
+// Data source configured checking - tests if a specific data source is properly configured
+async function datasourceConfiguredCheck(check: string): Promise<CheckResultError> {
   try {
+    const dsRequirement = check.replace('datasource-configured:', '').toLowerCase();
     const dataSources = await ContextService.fetchDataSources();
 
     if (dataSources.length === 0) {
       return {
         requirement: check,
         pass: false,
-        error: 'No data sources configured',
-        context: { count: 0 },
+        error: 'No data sources available to test',
+        context: {
+          searched: dsRequirement,
+          totalDataSources: 0,
+          suggestion: 'Configure at least one data source first',
+        },
       };
     }
 
-    // Test the first available data source to see if it's properly configured
-    const firstDataSource = dataSources[0];
+    // Find the specific data source to test
+    let targetDataSource = null;
+
+    // Check for exact matches in name or type (same logic as hasDataSourceCheck)
+    for (const ds of dataSources) {
+      if (ds.name.toLowerCase() === dsRequirement || ds.type.toLowerCase() === dsRequirement) {
+        targetDataSource = ds;
+        break;
+      }
+    }
+
+    if (!targetDataSource) {
+      return {
+        requirement: check,
+        pass: false,
+        error: `Data source '${dsRequirement}' not found`,
+        context: {
+          searched: dsRequirement,
+          totalDataSources: dataSources.length,
+          suggestion: `Data source '${dsRequirement}' not found. Check the name/type and ensure it exists.`,
+        },
+      };
+    }
 
     try {
       // Use the data source test API
-      const testResult = await getBackendSrv().post(`/api/datasources/${firstDataSource.id}/test`);
+      const testResult = await getBackendSrv().post(`/api/datasources/${targetDataSource.id}/test`);
 
-      const isConfigured = testResult && (testResult.status === 'success' || testResult.message !== 'error');
+      const isConfigured = testResult && testResult.status === 'success';
 
       return {
         requirement: check,
         pass: isConfigured,
         error: isConfigured
           ? undefined
-          : `Data source '${firstDataSource.name}' test failed: ${testResult?.message || 'Unknown error'}`,
+          : `Data source '${targetDataSource.name}' test failed: ${testResult?.message || 'Unknown error'}`,
         context: {
+          searched: dsRequirement,
           testedDataSource: {
-            id: firstDataSource.id,
-            name: firstDataSource.name,
-            type: firstDataSource.type,
+            id: targetDataSource.id,
+            name: targetDataSource.name,
+            type: targetDataSource.type,
           },
           testResult: testResult?.status || 'unknown',
-          totalDataSources: dataSources.length,
+          suggestion: isConfigured
+            ? undefined
+            : `Data source '${targetDataSource.name}' exists but configuration test failed. Check connection settings.`,
         },
       };
     } catch (testError) {
@@ -718,13 +758,14 @@ async function datasourceConfiguredCHECK(check: string): Promise<CheckResultErro
         pass: false,
         error: `Data source configuration test failed: ${testError}`,
         context: {
+          searched: dsRequirement,
           testedDataSource: {
-            id: firstDataSource.id,
-            name: firstDataSource.name,
-            type: firstDataSource.type,
+            id: targetDataSource.id,
+            name: targetDataSource.name,
+            type: targetDataSource.type,
           },
           testError: String(testError),
-          totalDataSources: dataSources.length,
+          suggestion: `Test API call failed for '${targetDataSource.name}'. Check data source permissions and connectivity.`,
         },
       };
     }
@@ -739,7 +780,7 @@ async function datasourceConfiguredCHECK(check: string): Promise<CheckResultErro
 }
 
 // Form validation checking - generic form validation state
-async function formValidCHECK(check: string): Promise<CheckResultError> {
+async function formValidCheck(check: string): Promise<CheckResultError> {
   try {
     // Look for common form validation indicators in the DOM
     const forms = document.querySelectorAll('form');
