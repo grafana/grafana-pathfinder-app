@@ -686,7 +686,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                   key={tab.id}
                   className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
                   onClick={() => model.setActiveTab(tab.id)}
-                  disabled={tab.isLoading}
                   title={getTranslatedTitle(tab.title)}
                 >
                   <div className={styles.tabContent}>
