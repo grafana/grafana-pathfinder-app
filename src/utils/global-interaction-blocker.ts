@@ -540,8 +540,7 @@ class GlobalInteractionBlocker {
   }
 
   /**
-   * Smart modal detection - detect modals that should trigger full-screen blocking
-   * Includes ARIA dialogs (like save modal) but excludes navigation drawers
+   * Simple modal detection - if any modal/dialog is active, use full-screen blocking
    */
   private isModalActive(): boolean {
     // 1. Detect our own image modal (we control this)
@@ -553,40 +552,22 @@ class GlobalInteractionBlocker {
       }
     }
 
-    // 2. Detect ARIA dialogs (either role="dialog" OR aria-modal="true")
+    // 2. Detect any ARIA dialogs (role="dialog" OR aria-modal="true")
     const ariaDialogs = document.querySelectorAll('[role="dialog"], [aria-modal="true"]');
     for (const dialog of ariaDialogs) {
       const style = window.getComputedStyle(dialog);
       if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
-        // Check if this is a navigation drawer (these should NOT trigger full-screen mode)
-        const isNavigationDrawer =
-          dialog.closest('[class*="nav"]') ||
-          dialog.closest('.rc-drawer') ||
-          dialog.querySelector('[aria-label*="navigation"]') ||
-          dialog.querySelector('[data-testid*="nav"]') ||
-          (dialog.textContent || '').toLowerCase().includes('navigation menu') ||
-          dialog.classList.contains('drawer');
-
-        if (!isNavigationDrawer) {
-          console.warn(
-            'Modal detected:',
-            dialog.getAttribute('role') === 'dialog' ? 'role="dialog"' : 'aria-modal="true"',
-            dialog.getAttribute('aria-labelledby') || dialog.textContent?.substring(0, 50) || 'Unknown dialog'
-          );
-          return true; // This is a real modal (save, settings, data source selector, etc.)
-        }
+        console.warn('Modal detected - switching to full-screen blocking');
+        return true;
       }
     }
 
-    // 3. Also check for overlay containers (common modal pattern)
+    // 3. Check for overlay containers (common modal pattern)
     const overlayContainers = document.querySelectorAll('[data-overlay-container="true"]');
     for (const container of overlayContainers) {
       const style = window.getComputedStyle(container);
       if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
-        console.warn(
-          'Modal detected - overlay container:',
-          container.querySelector('[role="dialog"]')?.getAttribute('aria-labelledby') || 'Unknown overlay modal'
-        );
+        console.warn('Modal detected - switching to full-screen blocking');
         return true;
       }
     }
