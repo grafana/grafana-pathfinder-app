@@ -1,11 +1,11 @@
 import { checkRequirements, RequirementsCheckOptions } from './requirements-checker.utils';
-import { locationService, config, hasPermission, getDataSourceSrv } from '@grafana/runtime';
+import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
 import { ContextService } from './context';
 
 // Mock dom-utils functions
 jest.mock('./dom-utils', () => ({
-  reftargetExistsCHECK: jest.fn(),
-  navmenuOpenCHECK: jest.fn(),
+  reftargetExistsCheck: jest.fn(),
+  navmenuOpenCheck: jest.fn(),
 }));
 
 // Mock Grafana runtime dependencies
@@ -25,6 +25,7 @@ jest.mock('@grafana/runtime', () => ({
   },
   hasPermission: jest.fn(),
   getDataSourceSrv: jest.fn(),
+  getBackendSrv: jest.fn(),
 }));
 
 // Mock ContextService
@@ -37,20 +38,20 @@ jest.mock('./context', () => ({
 }));
 
 describe('requirements-checker.utils', () => {
-  let mockReftargetExistsCHECK: jest.MockedFunction<any>;
-  let mockNavmenuOpenCHECK: jest.MockedFunction<any>;
+  let mockReftargetExistsCheck: jest.MockedFunction<any>;
+  let mockNavmenuOpenCheck: jest.MockedFunction<any>;
 
   beforeEach(() => {
     jest.clearAllMocks();
 
     // Get the mocked functions
     const domUtils = require('./dom-utils');
-    mockReftargetExistsCHECK = domUtils.reftargetExistsCHECK;
-    mockNavmenuOpenCHECK = domUtils.navmenuOpenCHECK;
+    mockReftargetExistsCheck = domUtils.reftargetExistsCheck;
+    mockNavmenuOpenCheck = domUtils.navmenuOpenCheck;
 
     // Setup default mock DOM check functions
-    mockReftargetExistsCHECK.mockResolvedValue({ requirement: 'exists-reftarget', pass: true });
-    mockNavmenuOpenCHECK.mockResolvedValue({ requirement: 'navmenu-open', pass: true });
+    mockReftargetExistsCheck.mockResolvedValue({ requirement: 'exists-reftarget', pass: true });
+    mockNavmenuOpenCheck.mockResolvedValue({ requirement: 'navmenu-open', pass: true });
 
     // Reset Grafana config mock
     (config as any).bootData = { user: null };
@@ -75,8 +76,8 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
-      expect(mockReftargetExistsCHECK).toHaveBeenCalled();
-      expect(mockNavmenuOpenCHECK).toHaveBeenCalled();
+      expect(mockReftargetExistsCheck).toHaveBeenCalled();
+      expect(mockNavmenuOpenCheck).toHaveBeenCalled();
     });
 
     it('should handle DOM-dependent requirements', async () => {
@@ -88,7 +89,7 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
-      expect(mockReftargetExistsCHECK).toHaveBeenCalledWith('button[data-testid="test-button"]', 'button');
+      expect(mockReftargetExistsCheck).toHaveBeenCalledWith('button[data-testid="test-button"]', 'button');
     });
   });
 
@@ -160,6 +161,67 @@ describe('requirements-checker.utils', () => {
     });
   });
 
+  describe('datasourceConfiguredCHECK', () => {
+    beforeEach(() => {
+      // Mock getBackendSrv
+      (getBackendSrv as jest.Mock).mockReturnValue({
+        post: jest.fn(),
+      });
+    });
+
+    it('should test specific data source configuration', async () => {
+      (ContextService.fetchDataSources as jest.Mock).mockResolvedValue([
+        { id: 1, name: 'Prometheus', type: 'prometheus', uid: 'prom-uid' },
+        { id: 2, name: 'Loki', type: 'loki', uid: 'loki-uid' },
+      ]);
+
+      const mockBackend = getBackendSrv();
+      (mockBackend.post as jest.Mock).mockResolvedValue({ status: 'success' });
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'datasource-configured:prometheus',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+      expect(result.error[0].pass).toBe(true);
+      expect(mockBackend.post).toHaveBeenCalledWith('/api/datasources/1/test');
+    });
+
+    it('should fail when data source test fails', async () => {
+      (ContextService.fetchDataSources as jest.Mock).mockResolvedValue([
+        { id: 1, name: 'Prometheus', type: 'prometheus', uid: 'prom-uid' },
+      ]);
+
+      const mockBackend = getBackendSrv();
+      (mockBackend.post as jest.Mock).mockResolvedValue({ status: 'error', message: 'Connection failed' });
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'datasource-configured:prometheus',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].pass).toBe(false);
+      expect(result.error[0].error).toContain('test failed');
+    });
+
+    it('should fail when data source not found', async () => {
+      (ContextService.fetchDataSources as jest.Mock).mockResolvedValue([
+        { id: 1, name: 'Prometheus', type: 'prometheus', uid: 'prom-uid' },
+      ]);
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'datasource-configured:non-existent-ds',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].pass).toBe(false);
+      expect(result.error[0].error).toContain('not found');
+    });
+  });
+
   describe('hasPluginCHECK', () => {
     it('should check for installed plugins', async () => {
       (ContextService.fetchPlugins as jest.Mock).mockResolvedValue([{ id: 'grafana-plugin' }]);
@@ -170,6 +232,54 @@ describe('requirements-checker.utils', () => {
 
       const result = await checkRequirements(options);
       expect(result.pass).toBe(true);
+    });
+  });
+
+  describe('pluginEnabledCHECK', () => {
+    it('should check if specific plugin is enabled', async () => {
+      (ContextService.fetchPlugins as jest.Mock).mockResolvedValue([
+        { id: 'grafana-clock-panel', name: 'Clock Panel', enabled: true },
+        { id: 'grafana-piechart-panel', name: 'Pie Chart Panel', enabled: false },
+      ]);
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'plugin-enabled:grafana-clock-panel',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+      expect(result.error[0].pass).toBe(true);
+    });
+
+    it('should fail when plugin exists but is not enabled', async () => {
+      (ContextService.fetchPlugins as jest.Mock).mockResolvedValue([
+        { id: 'grafana-clock-panel', name: 'Clock Panel', enabled: true },
+        { id: 'grafana-piechart-panel', name: 'Pie Chart Panel', enabled: false },
+      ]);
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'plugin-enabled:grafana-piechart-panel',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].pass).toBe(false);
+      expect(result.error[0].error).toContain('is installed but not enabled');
+    });
+
+    it('should fail when plugin does not exist', async () => {
+      (ContextService.fetchPlugins as jest.Mock).mockResolvedValue([
+        { id: 'grafana-clock-panel', name: 'Clock Panel', enabled: true },
+      ]);
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'plugin-enabled:non-existent-plugin',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].pass).toBe(false);
+      expect(result.error[0].error).toContain('not found');
     });
   });
 
@@ -263,6 +373,194 @@ describe('requirements-checker.utils', () => {
     });
   });
 
+  describe('isLoggedInCHECK', () => {
+    it('should pass when user is logged in', async () => {
+      (config as any).bootData = {
+        user: { isSignedIn: true, id: 1 },
+      };
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'is-logged-in',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+    });
+
+    it('should fail when user is not logged in', async () => {
+      (config as any).bootData = {
+        user: { isSignedIn: false },
+      };
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'is-logged-in',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].error).toContain('not logged in');
+    });
+
+    it('should fail when no user data available', async () => {
+      (config as any).bootData = { user: null };
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'is-logged-in',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+    });
+  });
+
+  describe('isEditorCHECK', () => {
+    it('should pass for editor role', async () => {
+      (config as any).bootData = {
+        user: { orgRole: 'Editor', id: 1 },
+      };
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'is-editor',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+    });
+
+    it('should pass for admin role (higher than editor)', async () => {
+      (config as any).bootData = {
+        user: { orgRole: 'Admin', id: 1 },
+      };
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'is-editor',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+    });
+
+    it('should pass for grafana admin', async () => {
+      (config as any).bootData = {
+        user: { isGrafanaAdmin: true, orgRole: 'Viewer', id: 1 },
+      };
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'is-editor',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+    });
+
+    it('should fail for viewer role', async () => {
+      (config as any).bootData = {
+        user: { orgRole: 'Viewer', id: 1 },
+      };
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'is-editor',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].error).toContain('does not have editor permissions');
+    });
+  });
+
+  describe('dashboardExistsCHECK', () => {
+    beforeEach(() => {
+      (getBackendSrv as jest.Mock).mockReturnValue({
+        get: jest.fn(),
+      });
+    });
+
+    it('should pass when dashboards exist', async () => {
+      const mockBackend = getBackendSrv();
+      (mockBackend.get as jest.Mock).mockResolvedValue([
+        { id: 1, title: 'Dashboard 1' },
+        { id: 2, title: 'Dashboard 2' },
+      ]);
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'dashboard-exists',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+      expect(mockBackend.get).toHaveBeenCalledWith('/api/search', {
+        type: 'dash-db',
+        limit: 1,
+        deleted: false,
+      });
+    });
+
+    it('should fail when no dashboards exist', async () => {
+      const mockBackend = getBackendSrv();
+      (mockBackend.get as jest.Mock).mockResolvedValue([]);
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'dashboard-exists',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].error).toContain('No dashboards found');
+    });
+  });
+
+  describe('formValidCHECK', () => {
+    beforeEach(() => {
+      // Clear DOM before each test
+      document.body.innerHTML = '';
+    });
+
+    it('should pass when forms are valid', async () => {
+      // Create a valid form
+      document.body.innerHTML = `
+        <form>
+          <input type="text" required value="test" />
+          <input type="email" required value="test@example.com" />
+        </form>
+      `;
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'form-valid',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(true);
+    });
+
+    it('should fail when no forms exist', async () => {
+      const options: RequirementsCheckOptions = {
+        requirements: 'form-valid',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].error).toContain('No forms found');
+    });
+
+    it('should fail when forms have validation errors', async () => {
+      // Create a form with validation errors
+      document.body.innerHTML = `
+        <form>
+          <input type="text" required class="error" />
+          <div class="field-error">This field is required</div>
+        </form>
+      `;
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'form-valid',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].error).toContain('Form validation failed');
+    });
+  });
+
   describe('hasDatasourcesCHECK', () => {
     it('should check for any data sources', async () => {
       (ContextService.fetchDataSources as jest.Mock).mockResolvedValue([{ name: 'Test DS' }]);
@@ -288,19 +586,112 @@ describe('requirements-checker.utils', () => {
     });
   });
 
-  describe('section-completed requirement', () => {
-    it('should recognize section-completed requirement format', async () => {
-      // Test that the requirement is recognized and processed
-      // The actual implementation will be tested in integration tests
+  describe('sectionCompletedCHECK', () => {
+    beforeEach(() => {
+      // Clear DOM before each test
+      document.body.innerHTML = '';
+    });
+
+    it('should pass when section is completed', async () => {
+      // Create a completed section
+      document.body.innerHTML = `
+        <div id="setup-datasource" class="completed">
+          <h2>Setup Data Source</h2>
+        </div>
+      `;
+
       const options: RequirementsCheckOptions = {
         requirements: 'section-completed:setup-datasource',
       };
 
       const result = await checkRequirements(options);
-      // Should not throw an error and should have processed the requirement
-      expect(result.requirements).toBe('section-completed:setup-datasource');
+      expect(result.pass).toBe(true);
+    });
+
+    it('should fail when section exists but is not completed', async () => {
+      // Create a section without completed class
+      document.body.innerHTML = `
+        <div id="setup-datasource">
+          <h2>Setup Data Source</h2>
+        </div>
+      `;
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'section-completed:setup-datasource',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].error).toContain('must be completed first');
+    });
+
+    it('should fail when section does not exist', async () => {
+      const options: RequirementsCheckOptions = {
+        requirements: 'section-completed:non-existent-section',
+      };
+
+      const result = await checkRequirements(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].error).toContain('must be completed first');
+    });
+  });
+
+  describe('unknown requirements', () => {
+    it('should pass unknown requirements with warning (fail open approach)', async () => {
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'unknown-requirement-type',
+      };
+
+      const result = await checkRequirements(options);
+
+      expect(result.pass).toBe(true);
       expect(result.error).toHaveLength(1);
-      expect(result.error[0].requirement).toBe('section-completed:setup-datasource');
+      expect(result.error[0].requirement).toBe('unknown-requirement-type');
+      expect(result.error[0].pass).toBe(true);
+      expect(result.error[0].error).toContain('Warning: Unknown requirement type');
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Unknown requirement type: 'unknown-requirement-type'")
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should pass multiple requirements where some are unknown', async () => {
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      // Set up user to pass other requirements
+      (config as any).bootData = {
+        user: {
+          isSignedIn: true,
+          isGrafanaAdmin: true,
+          orgRole: 'Admin',
+          id: 1,
+        },
+      };
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'is-admin,unknown-requirement,is-logged-in',
+      };
+
+      const result = await checkRequirements(options);
+
+      // Should pass overall because all requirements pass (including unknown with warning)
+      expect(result.pass).toBe(true);
+      expect(result.error).toHaveLength(3);
+
+      // Check that the unknown requirement passed with warning
+      const unknownResult = result.error.find((e) => e.requirement === 'unknown-requirement');
+      expect(unknownResult?.pass).toBe(true);
+      expect(unknownResult?.error).toContain('Warning: Unknown requirement type');
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Unknown requirement type: 'unknown-requirement'")
+      );
+
+      consoleSpy.mockRestore();
     });
   });
 });

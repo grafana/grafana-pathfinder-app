@@ -12,7 +12,6 @@ export function mapRequirementToUserFriendlyMessage(requirement: string): string
     // Navigation requirements
     'navmenu-open':
       'The navigation menu needs to be open and docked. Click "Fix this" to automatically open and dock the navigation menu.',
-    'navmenu-closed': 'Please close the navigation menu first.',
 
     // Authentication requirements
     'is-admin': 'You need administrator privileges to perform this action. Please log in as an admin user.',
@@ -24,28 +23,17 @@ export function mapRequirementToUserFriendlyMessage(requirement: string): string
     'plugin-enabled': 'The required plugin needs to be enabled in your Grafana instance.',
 
     // Dashboard requirements
-    'dashboard-exists': 'A dashboard needs to be created or selected first.',
-    'dashboard-edit-mode': 'The dashboard needs to be in edit mode. Look for the "Edit" button.',
-    'panel-selected': 'Please select or create a panel first.',
+    'dashboard-exists': 'At least one dashboard needs to exist in the system.',
 
     // Data source requirements
-    'datasource-configured': 'A data source needs to be configured first.',
-    'datasource-connected': 'Please ensure the data source connection is working.',
+    'datasource-configured': 'A data source needs to be properly configured and tested.',
     'has-datasources': 'At least one data source needs to be configured.',
 
     // Page/URL requirements
     'on-page': 'Navigate to the correct page first.',
-    'correct-url': 'You need to be on the right page to continue.',
 
     // Form requirements
     'form-valid': 'Please fill out all required form fields correctly.',
-    'field-focused': 'Click on the specified form field first.',
-
-    // General state requirements
-    'element-visible': 'The required element needs to be visible on the page.',
-    'element-enabled': 'The required element needs to be available for interaction.',
-    'modal-open': 'A dialog or modal window needs to be open.',
-    'modal-closed': 'Please close any open dialogs first.',
     'exists-reftarget': 'The target element must be visible and available on the page.',
   };
 
