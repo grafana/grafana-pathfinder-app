@@ -46,6 +46,8 @@ jobs:
       argo-workflow-slack-channel: "#pathfinder-app-release"
       auto-merge-environments: dev,ops
       publish-to-catalog-as-pending: true
+      # temp disable while https://github.com/grafana/plugin-actions/pull/118 is being fixed
+      run-playwright: false
 
 
       # TODO: add here any other CI custom inputs you may need:
