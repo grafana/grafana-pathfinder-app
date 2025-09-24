@@ -1,6 +1,7 @@
 import { getBackendSrv, config, locationService, getEchoSrv, EchoEventType } from '@grafana/runtime';
 import { getConfigWithDefaults, isRecommenderEnabled, DocsPluginConfig } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
+import { hashUserData } from '../../lib/hash.util';
 import {
   ContextData,
   DataSource,
@@ -333,15 +334,11 @@ export class ContextService {
 
       const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
 
-      const user_object = config.bootData.user;
-
-      console.warn('user_object', user_object);
-      console.warn('user_object.analytics.identifier', user_object.analytics.identifier);
-      console.warn('user_object.externalUserId', user_object.externalUserId);
-
       // Extract source for cloud users
       const getCloudSource = (): string | undefined => {
-        if (!isCloud) {return 'oss-source';}
+        if (!isCloud) {
+          return 'oss-source';
+        }
         try {
           const hostname = window.location.hostname;
           return hostname;
@@ -352,17 +349,28 @@ export class ContextService {
       };
 
       const cloudSource = getCloudSource();
-      console.warn('Cloud source extracted:', cloudSource);
+
+      // Get user data for hashing
+      const userId = isCloud ? config.bootData.user.analytics.identifier : 'oss-user';
+      const userEmail = isCloud
+        ? config.bootData.user.email || 'unknown@example.com' // Cloud users: use real email or unknown for anonymous
+        : 'oss-user@example.com'; // OSS users: always use generic OSS email
+
+      // Hash sensitive user data
+      const { hashedUserId, hashedEmail } = await hashUserData(userId, userEmail);
 
       const payload: ContextPayload = {
         path: contextData.currentPath,
         datasources: [...new Set(contextData.dataSources.map((ds) => ds.type.toLowerCase()))],
         tags: contextData.tags,
-        user_id: isCloud ? config.bootData.user.analytics.identifier : 'oss-user',
+        user_id: hashedUserId,
+        user_email: hashedEmail,
         user_role: config.bootData.user.orgRole || 'Viewer',
         platform: this.getCurrentPlatform(),
         source: cloudSource,
       };
+
+      console.warn('payload', payload);
 
       const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
         method: 'POST',
