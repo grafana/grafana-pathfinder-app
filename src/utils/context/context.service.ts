@@ -333,6 +333,27 @@ export class ContextService {
 
       const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
 
+      const user_object = config.bootData.user;
+
+      console.warn('user_object', user_object);
+      console.warn('user_object.analytics.identifier', user_object.analytics.identifier);
+      console.warn('user_object.externalUserId', user_object.externalUserId);
+
+      // Extract source for cloud users
+      const getCloudSource = (): string | undefined => {
+        if (!isCloud) {return 'oss-source';}
+        try {
+          const hostname = window.location.hostname;
+          return hostname;
+        } catch (error) {
+          console.warn('Failed to extract cloud source:', error);
+          return undefined;
+        }
+      };
+
+      const cloudSource = getCloudSource();
+      console.warn('Cloud source extracted:', cloudSource);
+
       const payload: ContextPayload = {
         path: contextData.currentPath,
         datasources: [...new Set(contextData.dataSources.map((ds) => ds.type.toLowerCase()))],
@@ -340,6 +361,7 @@ export class ContextService {
         user_id: isCloud ? config.bootData.user.analytics.identifier : 'oss-user',
         user_role: config.bootData.user.orgRole || 'Viewer',
         platform: this.getCurrentPlatform(),
+        source: cloudSource,
       };
 
       const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {

@@ -85,6 +85,7 @@ export interface ContextPayload {
   user_id: string;
   user_role: string;
   platform: string;
+  source?: string; // Cloud instance source
 }
 
 export interface RecommenderResponse {
