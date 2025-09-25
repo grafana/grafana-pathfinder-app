@@ -135,7 +135,7 @@ export function resetValueTracker(targetElement: HTMLElement): void {
  * Includes retry logic for elements that might not exist immediately
  * Enhanced with parent section expansion detection for navigation menu items
  */
-export async function reftargetExistsCHECK(
+export async function reftargetExistsCheck(
   reftarget: string,
   targetAction: string
 ): Promise<{
@@ -238,7 +238,7 @@ export async function reftargetExistsCHECK(
  * Check if the navigation menu is open by trying various selectors
  * Based on Grafana's HTML structure, tries selectors in order of preference
  */
-export async function navmenuOpenCHECK(): Promise<{
+export async function navmenuOpenCheck(): Promise<{
   requirement: string;
   pass: boolean;
   error?: string;

@@ -3,8 +3,8 @@ import {
   extractInteractiveDataFromElement,
   findButtonByText,
   resetValueTracker,
-  reftargetExistsCHECK,
-  navmenuOpenCHECK,
+  reftargetExistsCheck,
+  navmenuOpenCheck,
 } from './dom-utils';
 
 // Mock console methods to avoid noise in tests
@@ -244,7 +244,7 @@ describe('resetValueTracker', () => {
   });
 });
 
-describe('reftargetExistsCHECK', () => {
+describe('reftargetExistsCheck', () => {
   let container: HTMLDivElement;
 
   beforeEach(() => {
@@ -266,7 +266,7 @@ describe('reftargetExistsCHECK', () => {
     button.textContent = 'Click me';
     container.appendChild(button);
 
-    const result = await reftargetExistsCHECK('Click me', 'button');
+    const result = await reftargetExistsCheck('Click me', 'button');
 
     expect(result).toEqual({
       requirement: 'exists-reftarget',
@@ -275,7 +275,7 @@ describe('reftargetExistsCHECK', () => {
   });
 
   it('should fail when button not found for button action', async () => {
-    const result = await reftargetExistsCHECK('Non-existent button', 'button');
+    const result = await reftargetExistsCheck('Non-existent button', 'button');
 
     expect(result).toEqual({
       requirement: 'exists-reftarget',
@@ -289,7 +289,7 @@ describe('reftargetExistsCHECK', () => {
     div.id = 'test-element';
     container.appendChild(div);
 
-    const result = await reftargetExistsCHECK('#test-element', 'highlight');
+    const result = await reftargetExistsCheck('#test-element', 'highlight');
 
     expect(result).toEqual({
       requirement: 'exists-reftarget',
@@ -298,7 +298,7 @@ describe('reftargetExistsCHECK', () => {
   });
 
   it('should fail when CSS selector not found for non-button actions', async () => {
-    const result = await reftargetExistsCHECK('#non-existent', 'highlight');
+    const result = await reftargetExistsCheck('#non-existent', 'highlight');
 
     expect(result).toEqual({
       requirement: 'exists-reftarget',
@@ -312,7 +312,7 @@ describe('reftargetExistsCHECK', () => {
     button.textContent = 'Click me now';
     container.appendChild(button);
 
-    const result = await reftargetExistsCHECK('Click me', 'button');
+    const result = await reftargetExistsCheck('Click me', 'button');
 
     expect(result).toEqual({
       requirement: 'exists-reftarget',
@@ -321,7 +321,7 @@ describe('reftargetExistsCHECK', () => {
   });
 });
 
-describe('navmenuOpenCHECK', () => {
+describe('navmenuOpenCheck', () => {
   let container: HTMLDivElement;
 
   beforeEach(() => {
@@ -343,7 +343,7 @@ describe('navmenuOpenCHECK', () => {
     nav.setAttribute('data-testid', 'data-testid navigation mega-menu');
     container.appendChild(nav);
 
-    const result = await navmenuOpenCHECK();
+    const result = await navmenuOpenCheck();
 
     expect(result).toEqual({
       requirement: 'navmenu-open',
@@ -356,7 +356,7 @@ describe('navmenuOpenCHECK', () => {
     nav.setAttribute('aria-label', 'Navigation');
     container.appendChild(nav);
 
-    const result = await navmenuOpenCHECK();
+    const result = await navmenuOpenCheck();
 
     expect(result).toEqual({
       requirement: 'navmenu-open',
@@ -369,7 +369,7 @@ describe('navmenuOpenCHECK', () => {
     nav.setAttribute('aria-label', 'Navigation');
     container.appendChild(nav);
 
-    const result = await navmenuOpenCHECK();
+    const result = await navmenuOpenCheck();
 
     expect(result).toEqual({
       requirement: 'navmenu-open',
@@ -382,7 +382,7 @@ describe('navmenuOpenCHECK', () => {
     nav.setAttribute('data-testid', 'some navigation menu');
     container.appendChild(nav);
 
-    const result = await navmenuOpenCHECK();
+    const result = await navmenuOpenCheck();
 
     expect(result).toEqual({
       requirement: 'navmenu-open',
@@ -391,7 +391,7 @@ describe('navmenuOpenCHECK', () => {
   });
 
   it('should fail when no navigation menu is found', async () => {
-    const result = await navmenuOpenCHECK();
+    const result = await navmenuOpenCheck();
 
     expect(result).toEqual({
       requirement: 'navmenu-open',
@@ -412,7 +412,7 @@ describe('navmenuOpenCHECK', () => {
     nav2.setAttribute('aria-label', 'Main navigation');
     container.appendChild(nav2);
 
-    const result = await navmenuOpenCHECK();
+    const result = await navmenuOpenCheck();
 
     // Should find the first matching selector (aria-label="Navigation")
     expect(result).toEqual({

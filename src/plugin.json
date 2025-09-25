@@ -22,7 +22,16 @@
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },
-  "includes": [],
+  "includes": [
+    {
+      "type": "page",
+      "name": "Grafana Pathfinder",
+      "path": "/a/grafana-grafanadocsplugin-app",
+      "action": "grafana-grafanadocsplugin-app.docs:read",
+      "addToNav": false,
+      "defaultNav": false
+    }
+  ],
   "extensions": {
     "addedComponents": [
       {
@@ -58,6 +67,24 @@
     "grafanaDependency": ">=12.1.0",
     "plugins": []
   },
+  "roles": [
+    {
+      "grants": ["Viewer"],
+      "role": {
+        "name": "Pathfinder User",
+        "description": "Access to Grafana Pathfinder documentation",
+        "permissions": [
+          {
+            "action": "plugins.app:access",
+            "scope": "plugins:id:grafana-grafanadocsplugin-app"
+          },
+          {
+            "action": "grafana-grafanadocsplugin-app.docs:read"
+          }
+        ]
+      }
+    }
+  ],
   "languages": [
     "en-US",
     "id-ID",
