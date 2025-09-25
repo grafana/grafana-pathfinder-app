@@ -14,7 +14,7 @@ export const TERMS_AND_CONDITIONS_CONTENT = `
 <li><strong>Visualization types</strong> - when creating or editing panels.</li>
 <li><strong>User role</strong> - your organizational role, such as Admin, Editor, or Viewer.</li>
 <li><strong>Grafana instance type</strong> - whether you are using Grafana Cloud, Grafana Enterprise, or open source Grafana.</li>
-<li><strong>User identifier</strong> - for Grafana Cloud, a non-sensitive identifier used for personalization. Grafana Pathfinder doesn't collect a user identifier in open source Grafana.</li>
+<li><strong>User identifier and email</strong> - for Grafana Cloud, a hashed user identifier and email address used for personalization. For open source Grafana, only a generic identifier ('oss-user') and email ('oss-user@example.com') are used. All user data is hashed using SHA-256 before transmission for privacy protection.</li>
 </ul>
 
 <h3>How Grafana uses your data</h3>
@@ -27,8 +27,9 @@ export const TERMS_AND_CONDITIONS_CONTENT = `
 <h3>Data security</h3>
 <ul>
 <li>Grafana Pathfinder transmits all data securely using HTTPS.</li>
-<li>Grafana Pathfinder doesn't collect any sensitive information such as dashboard content, query details, or personal data.</li>
-<li>Grafana only uses the data the purposes described in this notice.</li>
+<li>All user identifiers and email addresses are hashed using SHA-256 before transmission to protect your privacy.</li>
+<li>Grafana Pathfinder doesn't collect any sensitive information such as dashboard content, query details, or other personal data.</li>
+<li>Grafana only uses the data for the purposes described in this notice.</li>
 </ul>
 
 <h3>Your control</h3>
