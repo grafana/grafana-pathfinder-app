@@ -72,7 +72,7 @@
       "grants": ["Viewer"],
       "role": {
         "name": "Pathfinder User",
-        "description": "Access to Grafana Pathfinder documentation",
+        "description": "Access to Grafana Pathfinder",
         "permissions": [
           {
             "action": "plugins.app:access",
