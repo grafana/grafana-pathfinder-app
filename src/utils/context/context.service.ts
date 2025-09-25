@@ -351,7 +351,7 @@ export class ContextService {
       const cloudSource = getCloudSource();
 
       // Get user data for hashing
-      const userId = isCloud ? config.bootData.user.analytics.identifier : 'oss-user';
+      const userId = isCloud ? (config.bootData.user.analytics.identifier || 'unknown') : 'oss-user';
       const userEmail = isCloud
         ? config.bootData.user.email || 'unknown@example.com' // Cloud users: use real email or unknown for anonymous
         : 'oss-user@example.com'; // OSS users: always use generic OSS email
@@ -369,8 +369,6 @@ export class ContextService {
         platform: this.getCurrentPlatform(),
         source: cloudSource,
       };
-
-      console.warn('payload', payload);
 
       const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
         method: 'POST',
