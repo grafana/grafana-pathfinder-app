@@ -59,9 +59,9 @@
         "name": "Pathfinder User",
         "description": "Access to Grafana Pathfinder documentation",
         "permissions": [
-          { 
-            "action": "plugins.app:access", 
-            "scope": "plugins:id:grafana-grafanadocsplugin-app" 
+          {
+            "action": "plugins.app:access",
+            "scope": "plugins:id:grafana-grafanadocsplugin-app"
           },
           {
             "action": "grafana-grafanadocsplugin-app.docs:read"
