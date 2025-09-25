@@ -1,5 +1,6 @@
-import { AppPlugin, type AppRootProps } from '@grafana/data';
+import { AppPlugin, type AppRootProps, PluginExtensionPoints, BusEventWithPayload } from '@grafana/data';
 import { LoadingPlaceholder } from '@grafana/ui';
+import { getAppEvents } from '@grafana/runtime';
 import React, { Suspense, lazy } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
@@ -7,6 +8,25 @@ import pluginJson from './plugin.json';
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
+
+interface OpenExtensionSidebarPayload {
+  props?: Record<string, unknown>;
+  pluginId: string;
+  componentTitle: string;
+}
+
+class OpenExtensionSidebarEvent extends BusEventWithPayload<OpenExtensionSidebarPayload> {
+  static type = 'open-extension-sidebar';
+}
+
+function openExtensionSidebar(pluginId: string, componentTitle: string, props?: Record<string, unknown>) {
+  const event = new OpenExtensionSidebarEvent({
+    pluginId,
+    componentTitle,
+    props,
+  });
+  getAppEvents().publish(event);
+}
 
 const LazyApp = lazy(() => import('./components/App/App'));
 const LazyMemoizedContextPanel = lazy(() =>
@@ -39,18 +59,15 @@ export { plugin };
 plugin.addComponent({
   targets: `grafana/extension-sidebar/v0-alpha`,
   title: 'Grafana Pathfinder',
-  description: 'Opens Documentation App',
+  description: 'Opens Grafana Pathfinder',
   component: function ContextSidebar() {
-    // Track when the sidebar component is mounted and unmounted
     React.useEffect(() => {
-      // Component mounted - sidebar actually opened
       reportAppInteraction(UserInteraction.DocsPanelInteraction, {
         action: 'open',
         source: 'sidebar_mount',
         timestamp: Date.now(),
       });
 
-      // Return cleanup function that runs when component unmounts (sidebar closed)
       return () => {
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
           action: 'close',
@@ -68,21 +85,70 @@ plugin.addComponent({
   },
 });
 
-// This is needed to show the Context Panel in the top navigation
-// If we want to exclude it from certain pages, we can do that in the configure function
+plugin.addLink({
+  title: 'Open Grafana Pathfinder',
+  description: 'Open Grafana Pathfinder',
+  targets: [PluginExtensionPoints.CommandPalette],
+  onClick: () => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'open',
+      source: 'command_palette',
+      timestamp: Date.now(),
+    });
+
+    openExtensionSidebar(pluginJson.id, 'Grafana Pathfinder', {
+      origin: 'command_palette',
+      timestamp: Date.now(),
+    });
+  },
+});
+
+plugin.addLink({
+  title: 'Need help?',
+  description: 'Get help with Grafana',
+  targets: [PluginExtensionPoints.CommandPalette],
+  onClick: () => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'open',
+      source: 'command_palette_help',
+      timestamp: Date.now(),
+    });
+
+    openExtensionSidebar(pluginJson.id, 'Grafana Pathfinder', {
+      origin: 'command_palette_help',
+      timestamp: Date.now(),
+    });
+  },
+});
+
+plugin.addLink({
+  title: 'Learn Grafana',
+  description: 'Learn how to use Grafana',
+  targets: [PluginExtensionPoints.CommandPalette],
+  onClick: () => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'open',
+      source: 'command_palette_learn',
+      timestamp: Date.now(),
+    });
+
+    openExtensionSidebar(pluginJson.id, 'Grafana Pathfinder', {
+      origin: 'command_palette_learn',
+      timestamp: Date.now(),
+    });
+  },
+});
+
 plugin.addLink({
   targets: `grafana/extension-sidebar/v0-alpha`,
   title: 'Documentation-Link',
-  description: 'Opens Documentation App',
+  description: 'Opens Grafana Pathfinder',
   configure: () => {
     return {
       icon: 'question-circle',
-      description: 'Opens Documentation App',
+      description: 'Opens Grafana Pathfinder',
       title: 'Grafana Pathfinder',
     };
   },
-  onClick: () => {
-    // No analytics tracking here since we can't reliably determine if we're opening or closing
-    // Component lifecycle tracking above provides accurate open/close events
-  },
+  onClick: () => {},
 });

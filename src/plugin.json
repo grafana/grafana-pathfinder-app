@@ -6,7 +6,7 @@
   "backend": false,
   "autoEnabled": true,
   "info": {
-    "keywords": ["app"],
+    "keywords": ["app", "documentation", "learning", "command palette", "search"],
     "description": "A learning journey plugin that provides contextual help and interactive learning experiences",
     "screenshots": [
       { "name": "Recommended reading", "path": "img/screenshot_1.png" },
@@ -36,15 +36,30 @@
     "addedComponents": [
       {
         "targets": ["grafana/extension-sidebar/v0-alpha"],
-        "description": "Opens Documentation",
+        "description": "Opens Grafana Pathfinder",
         "title": "Grafana Pathfinder"
       }
     ],
     "addedLinks": [
       {
         "targets": ["grafana/extension-sidebar/v0-alpha"],
-        "description": "Opens Documentation App",
+        "description": "Opens Grafana Pathfinder",
         "title": "Documentation-Link"
+      },
+      {
+        "targets": ["grafana/commandpalette/action"],
+        "description": "Open Grafana Pathfinder",
+        "title": "Open Grafana Pathfinder"
+      },
+      {
+        "targets": ["grafana/commandpalette/action"],
+        "description": "Get help with Grafana",
+        "title": "Need help?"
+      },
+      {
+        "targets": ["grafana/commandpalette/action"],
+        "description": "Learn how to use Grafana",
+        "title": "Learn Grafana"
       }
     ]
   },
