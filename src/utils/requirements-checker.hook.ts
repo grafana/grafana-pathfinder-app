@@ -246,8 +246,8 @@ export function useRequirementsChecker({
       await checkPromiseRef.current;
       checkPromiseRef.current = null;
     },
-    [requirements, targetAction, uniqueId, hints, timeoutManager]
-  ); // eslint-disable-line react-hooks/exhaustive-deps
+    [requirements, targetAction, uniqueId, hints, timeoutManager, checkRequirementsFromData] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const markCompleted = useCallback(() => {
     // PERFORMANCE FIX: Single setState call with manager notification
