@@ -391,6 +391,12 @@ export function useStepChecker({
               skippable
             );
 
+        // Check for fixable errors and extract fix information
+        const fixableError = requirementsResult.error?.find((e: any) => e.canFix);
+        const fixType = fixableError?.fixType || (requirements.includes('navmenu-open') ? 'navigation' : undefined);
+        const targetHref = fixableError?.targetHref;
+        const canFixRequirement = !!fixableError || requirements.includes('navmenu-open');
+
         const requirementsState = {
           isEnabled: requirementsResult.pass,
           isCompleted: false, // Requirements enable, don't auto-complete
@@ -399,10 +405,10 @@ export function useStepChecker({
           completionReason: 'none' as const,
           explanation,
           error: requirementsResult.pass ? undefined : requirementsResult.error?.map((e: any) => e.error).join(', '),
-          canFixRequirement: requirements.includes('navmenu-open'),
+          canFixRequirement,
           canSkip: skippable,
-          fixType: requirements.includes('navmenu-open') ? 'navigation' : undefined,
-          targetHref: undefined,
+          fixType,
+          targetHref,
           retryCount: 0, // Reset retry count after completion
           maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
           isRetrying: false,
@@ -480,8 +486,11 @@ export function useStepChecker({
           }));
           return;
         }
-      } else if (requirements?.includes('navmenu-open') && fixNavigationRequirements) {
+      } else if (state.fixType === 'navigation') {
         // Fix basic navigation requirements (menu open/dock)
+        await fixNavigationRequirements();
+      } else if (requirements?.includes('navmenu-open') && fixNavigationRequirements) {
+        // Only fix navigation requirements if no other specific fix type is available
         await fixNavigationRequirements();
       } else {
         console.warn('Unknown fix type:', state.fixType);

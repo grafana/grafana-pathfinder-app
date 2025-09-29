@@ -609,6 +609,7 @@ export function InteractiveSection({
               if (requirementsResult.error?.some((e: any) => e.canFix)) {
                 const fixableError = requirementsResult.error.find((e: any) => e.canFix);
 
+
                 try {
                   // Try to fix the requirement automatically
                   const { NavigationManager } = await import('../../../navigation-manager');
@@ -616,10 +617,10 @@ export function InteractiveSection({
 
                   if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
                     await navigationManager.expandParentNavigationSection(fixableError.targetHref);
-                  } else if (
-                    fixableError?.fixType === 'navigation' ||
-                    stepInfo.requirements?.includes('navmenu-open')
-                  ) {
+                  } else if (fixableError?.fixType === 'navigation') {
+                    await navigationManager.fixNavigationRequirements();
+                  } else if (stepInfo.requirements?.includes('navmenu-open')) {
+                    // Only fix navigation requirements if no other specific fix type is available
                     await navigationManager.fixNavigationRequirements();
                   }
 

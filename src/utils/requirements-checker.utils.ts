@@ -162,7 +162,9 @@ async function runUnifiedChecks(
     .split(',')
     .map((c) => c.trim())
     .filter(Boolean);
+    
   const results = await Promise.all(checks.map((check) => routeUnifiedCheck(check, ctx)));
+
 
   return {
     requirements: checksString,
