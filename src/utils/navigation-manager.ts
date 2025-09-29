@@ -277,9 +277,6 @@ export class NavigationManager {
    */
   async expandParentNavigationSection(targetHref: string): Promise<boolean> {
     try {
-      // First ensure navigation is open
-      await this.fixNavigationRequirements();
-
       // Check for /a/ pattern (app paths) - immediately expand all sections
       if (targetHref.includes('/a/')) {
         return this.expandAllNavigationSections();

@@ -616,10 +616,10 @@ export function InteractiveSection({
 
                   if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
                     await navigationManager.expandParentNavigationSection(fixableError.targetHref);
-                  } else if (
-                    fixableError?.fixType === 'navigation' ||
-                    stepInfo.requirements?.includes('navmenu-open')
-                  ) {
+                  } else if (fixableError?.fixType === 'navigation') {
+                    await navigationManager.fixNavigationRequirements();
+                  } else if (stepInfo.requirements?.includes('navmenu-open')) {
+                    // Only fix navigation requirements if no other specific fix type is available
                     await navigationManager.fixNavigationRequirements();
                   }
 

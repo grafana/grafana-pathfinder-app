@@ -28,8 +28,8 @@ export const lokiGrafana101Html = `<html>
             data-objectives="has-datasource:loki"> 
             <ul>
               <li class="interactive" 
-                  data-requirements="navmenu-open"
-                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections']"
+                  data-requirements="navmenu-open,exists-reftarget"
+                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections/add-new-connection']"
                   data-targetaction='highlight'>
                 Click on <strong>Connections</strong> in the left menu to manage data sources.
               </li>

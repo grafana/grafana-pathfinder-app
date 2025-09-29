@@ -29,8 +29,8 @@ export const prometheusGrafana101Html = `<html>
             data-objectives="has-datasource:prometheus"> 
             <ul>
               <li class="interactive" 
-                  data-requirements="navmenu-open"
-                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections']"
+                  data-requirements="navmenu-open,exists-reftarget"
+                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections/add-new-connection']"
                   data-targetaction='highlight'>
                 <span class="interactive-comment">The <strong>Connections</strong> section is where you manage all your data sources. This is your central hub for connecting Grafana to various data backends like <code>Prometheus</code>, <code>Loki</code>, <code>InfluxDB</code>, and more.</span>
                 Click on <strong>Connections</strong> in the left menu to manage data sources.
