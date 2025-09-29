@@ -31,7 +31,11 @@ export class SequenceManager {
               await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
               continue;
             } else {
-              break;
+              // Requirements failed after all retries - stop the entire sequence
+              console.warn(
+                `⚠️ Element ${i + 1} requirements failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
+              );
+              return; // Stop the entire sequence
             }
           }
           await this.dispatchInteractiveAction(data, !showMode);
@@ -43,7 +47,11 @@ export class SequenceManager {
           if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
             await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
           } else {
-            break;
+            // Action failed after all retries - stop the entire sequence
+            console.warn(
+              `⚠️ Element ${i + 1} action failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
+            );
+            return; // Stop the entire sequence
           }
         }
       }
@@ -69,7 +77,11 @@ export class SequenceManager {
               await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
               continue;
             } else {
-              break;
+              // Pre-requirements failed after all retries - stop the entire sequence
+              console.warn(
+                `⚠️ Step ${i + 1} pre-requirements failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
+              );
+              return; // Stop the entire sequence
             }
           }
           await this.dispatchInteractiveAction(data, false);
@@ -81,7 +93,11 @@ export class SequenceManager {
               await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
               continue;
             } else {
-              break;
+              // Post-action verification failed after all retries - stop the entire sequence
+              console.warn(
+                `⚠️ Step ${i + 1} post-verification failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
+              );
+              return; // Stop the entire sequence
             }
           }
           await this.dispatchInteractiveAction(data, true);
@@ -95,7 +111,11 @@ export class SequenceManager {
           if (retryCount < INTERACTIVE_CONFIG.maxRetries) {
             await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
           } else {
-            break;
+            // Step execution failed after all retries - stop the entire sequence
+            console.warn(
+              `⚠️ Step ${i + 1} execution failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
+            );
+            return; // Stop the entire sequence
           }
         }
       }

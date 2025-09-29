@@ -451,12 +451,12 @@ export function InteractiveSection({
           stepInfo.targetComment
         );
 
-        // Prefer explicit postVerify over generic requirements for post-checking
-        const postConditions =
-          stepInfo.postVerify && stepInfo.postVerify.trim() !== '' ? stepInfo.postVerify : stepInfo.requirements;
-        if (postConditions && postConditions.trim() !== '') {
+        // Only run post-verification if explicitly specified
+        // Don't use requirements as post-verification fallback since many actions
+        // (like clicking navigation buttons) are expected to make the original element disappear
+        if (stepInfo.postVerify && stepInfo.postVerify.trim() !== '') {
           const result = await verifyStepResult(
-            postConditions,
+            stepInfo.postVerify,
             stepInfo.targetAction || 'button',
             stepInfo.refTarget || '',
             stepInfo.targetValue,
@@ -715,13 +715,15 @@ export function InteractiveSection({
           } // Skip to cancellation check at loop start
         }
 
-        // Then, execute the step
+        // Then, execute the step (verifyStepResult already has retry logic)
         const success = await executeStep(stepInfo);
 
         if (success) {
           // Mark step as completed immediately and persistently
           setCompletedSteps((prev) => {
             const newSet = new Set([...prev, stepInfo.stepId]);
+            // Persist immediately to ensure green state is preserved
+            persistCompletedSteps(newSet);
             return newSet;
           });
 
@@ -739,6 +741,10 @@ export function InteractiveSection({
             }
           }
         } else {
+          // Step execution failed after retries - stop and don't auto-complete remaining steps
+          console.warn(`⚠️ Step ${i + 1} execution failed after retries, stopping section execution`);
+          setCurrentStepIndex(i);
+          stoppedDueToRequirements = true; // Mark as stopped due to failure
           break;
         }
       }
@@ -781,6 +787,7 @@ export function InteractiveSection({
     requirements,
     checkRequirementsFromData,
     getDocumentInfo,
+    persistCompletedSteps,
   ]);
 
   /**

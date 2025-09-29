@@ -128,6 +128,9 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     await waitForReactUpdates();
     if (targetAction === 'button' || targetAction === 'formfill') {
       await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.button));
+    } else if (targetAction === 'highlight') {
+      // Highlight actions in "Do" mode click elements, so need same delay as buttons
+      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.button));
     } else if (targetAction === 'navigate') {
       await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.navigation));
     } else {

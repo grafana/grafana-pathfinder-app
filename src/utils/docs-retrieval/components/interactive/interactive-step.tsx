@@ -369,10 +369,18 @@ export const InteractiveStep = forwardRef<
                 size="sm"
                 variant="secondary"
                 className="interactive-step-show-btn"
-                title={checker.isChecking ? 'Checking requirements...' : hints || `Show me: ${getActionDescription()}`}
+                title={
+                  checker.isChecking
+                    ? checker.isRetrying
+                      ? `Checking requirements... (${checker.retryCount}/${checker.maxRetries})`
+                      : 'Checking requirements...'
+                    : hints || `Show me: ${getActionDescription()}`
+                }
               >
                 {checker.isChecking
-                  ? 'Checking...'
+                  ? checker.isRetrying
+                    ? `Checking... (${checker.retryCount}/${checker.maxRetries})`
+                    : 'Checking...'
                   : isShowRunning
                     ? 'Showing...'
                     : !finalIsEnabled
@@ -391,9 +399,21 @@ export const InteractiveStep = forwardRef<
                 size="sm"
                 variant="primary"
                 className="interactive-step-do-btn"
-                title={checker.isChecking ? 'Checking requirements...' : hints || `Do it: ${getActionDescription()}`}
+                title={
+                  checker.isChecking
+                    ? checker.isRetrying
+                      ? `Checking requirements... (${checker.retryCount}/${checker.maxRetries})`
+                      : 'Checking requirements...'
+                    : hints || `Do it: ${getActionDescription()}`
+                }
               >
-                {checker.isChecking ? 'Checking...' : isDoRunning || isCurrentlyExecuting ? 'Executing...' : 'Do it'}
+                {checker.isChecking
+                  ? checker.isRetrying
+                    ? `Checking... (${checker.retryCount}/${checker.maxRetries})`
+                    : 'Checking...'
+                  : isDoRunning || isCurrentlyExecuting
+                    ? 'Executing...'
+                    : 'Do it'}
               </Button>
             )}
           </div>

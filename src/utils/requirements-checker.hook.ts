@@ -42,6 +42,9 @@ export interface RequirementsState {
   explanation?: string; // User-friendly explanation for why requirements aren't met
   isSkipped?: boolean; // Whether this step was skipped
   completionReason?: 'none' | 'objectives' | 'manual' | 'skipped';
+  retryCount?: number; // Current retry attempt
+  maxRetries?: number; // Maximum retry attempts
+  isRetrying?: boolean; // Whether currently in a retry cycle
 }
 
 export interface RequirementsCheckResultLegacy {
@@ -86,6 +89,9 @@ export function useRequirementsChecker({
     isChecking: false,
     hint: hints,
     explanation: requirements ? getRequirementExplanation(requirements, hints) : undefined,
+    retryCount: 0,
+    maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
+    isRetrying: false,
   });
 
   const timeoutManager = useTimeoutManager();
@@ -104,93 +110,144 @@ export function useRequirementsChecker({
   if (!managerRef.current) {
     managerRef.current = SequentialRequirementsManager.getInstance();
   }
-  const checkRequirements = useCallback(async () => {
-    // Prevent concurrent checks
-    if (checkPromiseRef.current) {
-      return checkPromiseRef.current;
-    }
-
-    if (!requirements || state.isCompleted) {
-      // For completed steps: keep them completed and disabled
-      // For steps without requirements: enable them
-      const newState = state.isCompleted
-        ? { ...state, isEnabled: false, isChecking: false, isCompleted: true } // Preserve completion
-        : { ...state, isEnabled: true, isChecking: false }; // Enable if no requirements
-
-      setState(newState);
-
-      // Directly notify the manager with the new state to avoid timing issues
-      if (managerRef.current) {
-        managerRef.current.updateStep(uniqueId, newState);
+  const checkRequirements = useCallback(
+    async (retryAttempt = 0) => {
+      // Prevent concurrent checks
+      if (checkPromiseRef.current) {
+        return checkPromiseRef.current;
       }
-      return;
-    }
 
-    setState((prev) => ({ ...prev, isChecking: true, error: undefined }));
+      if (!requirements || state.isCompleted) {
+        // For completed steps: keep them completed and disabled
+        // For steps without requirements: enable them
+        const newState = state.isCompleted
+          ? { ...state, isEnabled: false, isChecking: false, isCompleted: true } // Preserve completion
+          : { ...state, isEnabled: true, isChecking: false }; // Enable if no requirements
 
-    async function checkPromise() {
-      // Add timeout to prevent hanging
-      let result: RequirementsCheckResult;
+        setState(newState);
 
-      try {
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(
-            () => reject(new Error('Requirements check timeout')),
-            INTERACTIVE_CONFIG.delays.requirements.checkTimeout
+        // Directly notify the manager with the new state to avoid timing issues
+        if (managerRef.current) {
+          managerRef.current.updateStep(uniqueId, newState);
+        }
+        return;
+      }
+
+      const maxRetries = INTERACTIVE_CONFIG.delays.requirements.maxRetries;
+      const isRetrying = retryAttempt > 0;
+
+      setState((prev) => ({
+        ...prev,
+        isChecking: true,
+        error: undefined,
+        retryCount: retryAttempt,
+        maxRetries,
+        isRetrying,
+      }));
+
+      async function checkPromise() {
+        // Add timeout to prevent hanging
+        let result: RequirementsCheckResult;
+
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(
+              () => reject(new Error('Requirements check timeout')),
+              INTERACTIVE_CONFIG.delays.requirements.checkTimeout
+            );
+          });
+
+          // Create proper InteractiveElementData structure
+          const actionData = {
+            requirements: requirements || '',
+            targetaction: targetAction || 'button',
+            reftarget: 'requirements-check',
+            textContent: uniqueId || 'requirements-check',
+            tagName: 'div',
+          };
+
+          const interactiveResult = await Promise.race([checkRequirementsFromData(actionData), timeoutPromise]);
+
+          // Convert to expected format
+          result = {
+            requirements: interactiveResult.requirements,
+            pass: interactiveResult.pass,
+            error: interactiveResult.error.map((e: any) => ({
+              requirement: e.requirement,
+              pass: e.pass,
+              error: e.error,
+              context: e.context,
+            })),
+          };
+        } catch (timeoutError) {
+          result = {
+            requirements: requirements || '',
+            pass: false,
+            error: [{ requirement: requirements || 'unknown', pass: false, error: 'Requirements check timed out' }],
+          };
+        }
+
+        // If check fails and we haven't exhausted retries, schedule retry
+        if (!result.pass && retryAttempt < maxRetries) {
+          const nextRetryAttempt = retryAttempt + 1;
+
+          // Update state to show retry in progress
+          setState((prev) => ({
+            ...prev,
+            isChecking: true,
+            isRetrying: true,
+            retryCount: nextRetryAttempt,
+            error: `Check failed, retrying... (${nextRetryAttempt}/${maxRetries})`,
+          }));
+
+          // Schedule retry using timeout manager
+          timeoutManager.setTimeout(
+            `requirements-check-retry-${uniqueId}-${nextRetryAttempt}`,
+            async () => {
+              await checkRequirements(nextRetryAttempt);
+            },
+            INTERACTIVE_CONFIG.delays.requirements.retryDelay
           );
-        });
 
-        // Create proper InteractiveElementData structure
-        const actionData = {
-          requirements: requirements || '',
-          targetaction: targetAction || 'button',
-          reftarget: 'requirements-check',
-          textContent: uniqueId || 'requirements-check',
-          tagName: 'div',
-        };
+          return; // Exit early, retry will handle the rest
+        }
 
-        const interactiveResult = await Promise.race([checkRequirementsFromData(actionData), timeoutPromise]);
+        // Final result (success or exhausted retries)
+        const errorMessage = result.pass
+          ? undefined
+          : result.error?.map((e: any) => e.error || e.requirement).join(', ');
+        const explanation = result.pass ? undefined : getRequirementExplanation(requirements, hints, errorMessage);
 
-        // Convert to expected format
-        result = {
-          requirements: interactiveResult.requirements,
-          pass: interactiveResult.pass,
-          error: interactiveResult.error.map((e: any) => ({
-            requirement: e.requirement,
-            pass: e.pass,
-            error: e.error,
-            context: e.context,
-          })),
+        const finalErrorMessage = result.pass
+          ? undefined
+          : retryAttempt >= maxRetries
+            ? `${errorMessage} (failed after ${retryAttempt + 1} attempts)`
+            : errorMessage;
+
+        const newState = {
+          ...state,
+          isEnabled: result.pass,
+          isChecking: false,
+          isRetrying: false,
+          error: finalErrorMessage,
+          explanation,
+          retryCount: retryAttempt,
+          maxRetries,
         };
-      } catch (timeoutError) {
-        result = {
-          requirements: requirements || '',
-          pass: false,
-          error: [{ requirement: requirements || 'unknown', pass: false, error: 'Requirements check timed out' }],
-        };
+        setState(newState);
+
+        // Directly notify the manager with the new state to avoid timing issues
+        if (managerRef.current) {
+          managerRef.current.updateStep(uniqueId, newState);
+        }
       }
 
-      const errorMessage = result.pass ? undefined : result.error?.map((e: any) => e.error || e.requirement).join(', ');
-      const explanation = result.pass ? undefined : getRequirementExplanation(requirements, hints, errorMessage);
-      const newState = {
-        ...state,
-        isEnabled: result.pass,
-        isChecking: false,
-        error: errorMessage,
-        explanation,
-      };
-      setState(newState);
-
-      // Directly notify the manager with the new state to avoid timing issues
-      if (managerRef.current) {
-        managerRef.current.updateStep(uniqueId, newState);
-      }
-    }
-
-    checkPromiseRef.current = checkPromise();
-    await checkPromiseRef.current;
-    checkPromiseRef.current = null;
-  }, [requirements, targetAction, uniqueId, hints]); // eslint-disable-line react-hooks/exhaustive-deps
+      checkPromiseRef.current = checkPromise();
+      await checkPromiseRef.current;
+      checkPromiseRef.current = null;
+    },
+    [requirements, targetAction, uniqueId, hints, timeoutManager]
+  ); // eslint-disable-line react-hooks/exhaustive-deps
 
   const markCompleted = useCallback(() => {
     // PERFORMANCE FIX: Single setState call with manager notification
@@ -232,6 +289,9 @@ export function useRequirementsChecker({
       isChecking: false,
       hint: hints,
       explanation: requirements ? getRequirementExplanation(requirements, hints) : undefined,
+      retryCount: 0,
+      maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
+      isRetrying: false,
     });
   }, [hints, requirements]);
 

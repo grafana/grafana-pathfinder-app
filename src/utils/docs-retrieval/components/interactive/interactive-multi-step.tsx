@@ -426,7 +426,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         return 'Already done!';
       }
       if (checker.isChecking) {
-        return 'Checking...';
+        return checker.isRetrying ? `Checking... (${checker.retryCount}/${checker.maxRetries})` : 'Checking...';
       }
       if (isCompletedWithObjectives) {
         return '✓ Completed';
@@ -451,7 +451,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         return 'Already done!';
       }
       if (checker.isChecking) {
-        return 'Checking requirements...';
+        return checker.isRetrying
+          ? `Checking requirements... (${checker.retryCount}/${checker.maxRetries})`
+          : 'Checking requirements...';
       }
       if (isCompletedWithObjectives) {
         return 'Multi-step completed';

@@ -44,6 +44,8 @@ export const INTERACTIVE_CONFIG = {
     // Requirements checking timing
     requirements: {
       checkTimeout: 3000, // PERFORMANCE FIX: Reduced from 5000ms to 3000ms for faster UX
+      retryDelay: 300, // Delay between retry attempts (reduced from 1000ms for faster UX)
+      maxRetries: 3, // Maximum number of retry attempts
     },
     // Debouncing and state management timing
     debouncing: {

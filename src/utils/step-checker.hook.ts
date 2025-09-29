@@ -15,6 +15,7 @@ import { SequentialRequirementsManager } from './requirements-checker.hook';
 import { useInteractiveElements } from './interactive.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { useTimeoutManager } from './timeout-manager';
+import { checkRequirements } from './requirements-checker.utils';
 
 export interface UseStepCheckerProps {
   requirements?: string;
@@ -33,6 +34,11 @@ export interface UseStepCheckerReturn {
   isCompleted: boolean;
   isChecking: boolean;
   isSkipped?: boolean; // Whether this step was skipped due to failed requirements
+
+  // Retry state
+  retryCount?: number; // Current retry attempt
+  maxRetries?: number; // Maximum retry attempts
+  isRetrying?: boolean; // Whether currently in a retry cycle
 
   // Diagnostics
   completionReason: 'none' | 'objectives' | 'manual' | 'skipped';
@@ -75,11 +81,78 @@ export function useStepChecker({
     canSkip: skippable,
     fixType: undefined as string | undefined,
     targetHref: undefined as string | undefined,
+    retryCount: 0,
+    maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
+    isRetrying: false,
   });
 
   const timeoutManager = useTimeoutManager();
 
   // Requirements checking is now handled by the pure requirements utility
+  const { checkRequirementsFromData } = useInteractiveElements();
+
+  // Custom requirements checker that provides state updates for retry feedback
+  const checkRequirementsWithStateUpdates = useCallback(
+    async (
+      options: { requirements: string; targetAction?: string; refTarget?: string; stepId?: string },
+      onStateUpdate: (retryCount: number, maxRetries: number, isRetrying: boolean) => void
+    ) => {
+      const { requirements, targetAction = 'button', refTarget = '', stepId: optionsStepId } = options;
+      const maxRetries = INTERACTIVE_CONFIG.delays.requirements.maxRetries;
+
+      const attemptCheck = async (retryCount: number): Promise<any> => {
+        // Update state with current retry info
+        onStateUpdate(retryCount, maxRetries, retryCount > 0);
+
+        try {
+          const result = await checkRequirements({
+            requirements,
+            targetAction,
+            refTarget,
+            stepId: optionsStepId,
+            retryCount: 0, // Disable internal retry since we're handling it here
+            maxRetries: 0,
+          });
+
+          // If successful, return result
+          if (result.pass) {
+            return result;
+          }
+
+          // If failed and we have retries left, wait and retry
+          if (retryCount < maxRetries) {
+            await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.requirements.retryDelay));
+            return attemptCheck(retryCount + 1);
+          }
+
+          // No more retries, return failure
+          return result;
+        } catch (error) {
+          // On error, retry if we have attempts left
+          if (retryCount < maxRetries) {
+            await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.requirements.retryDelay));
+            return attemptCheck(retryCount + 1);
+          }
+
+          // No more retries, return error
+          return {
+            requirements: requirements || '',
+            pass: false,
+            error: [
+              {
+                requirement: requirements || 'unknown',
+                pass: false,
+                error: `Requirements check failed after ${maxRetries + 1} attempts: ${error}`,
+              },
+            ],
+          };
+        }
+      };
+
+      return attemptCheck(0);
+    },
+    [] // checkRequirements is an imported function and doesn't need to be in dependencies
+  );
 
   // Manager integration for state propagation
   const managerRef = useRef<SequentialRequirementsManager | null>(null);
@@ -110,7 +183,7 @@ export function useStepChecker({
   );
 
   // Get the interactive elements hook for proper requirements checking
-  const { checkRequirementsFromData, fixNavigationRequirements } = useInteractiveElements();
+  const { fixNavigationRequirements } = useInteractiveElements();
 
   // Import NavigationManager for parent expansion functionality
   const navigationManagerRef = useRef<any>(null);
@@ -127,25 +200,49 @@ export function useStepChecker({
   const checkConditions = useCallback(
     async (conditions: string, type: 'requirements' | 'objectives') => {
       try {
-        // Create proper InteractiveElementData structure
-        const actionData = {
-          requirements: conditions,
-          targetaction: targetAction || 'button',
-          reftarget: refTarget || stepId, // Use actual refTarget if available, fallback to stepId
-          textContent: stepId,
-          tagName: 'div' as const,
-          objectives: type === 'objectives' ? conditions : undefined,
-        };
+        // For objectives, still use the original method since objectives don't need retries
+        if (type === 'objectives') {
+          // Create proper InteractiveElementData structure
+          const actionData = {
+            requirements: conditions,
+            targetaction: targetAction || 'button',
+            reftarget: refTarget || stepId, // Use actual refTarget if available, fallback to stepId
+            textContent: stepId,
+            tagName: 'div' as const,
+            objectives: conditions,
+          };
 
-        // Add timeout to prevent hanging - PERFORMANCE FIX: Reduced timeout for faster UX
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error(`${type} check timeout`)), 3000); // Reduced from 5000ms to 3000ms
+          // Add timeout to prevent hanging
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error(`${type} check timeout`)), 3000);
+          });
+
+          const result = await Promise.race([checkRequirementsFromData(actionData), timeoutPromise]);
+
+          const conditionsMet = result.pass;
+          const errorMessage = conditionsMet
+            ? undefined
+            : result.error?.map((e: any) => e.error || e.requirement).join(', ');
+
+          const fixableError = result.error?.find((e: any) => e.canFix);
+
+          return {
+            pass: conditionsMet,
+            error: errorMessage,
+            canFix: !!fixableError,
+            fixType: fixableError?.fixType,
+            targetHref: fixableError?.targetHref,
+          };
+        }
+
+        // For requirements, use the new retry-enabled checker
+        const result = await checkRequirements({
+          requirements: conditions,
+          targetAction: targetAction || 'button',
+          refTarget: refTarget || stepId,
+          stepId,
         });
 
-        const result = await Promise.race([checkRequirementsFromData(actionData), timeoutPromise]);
-
-        // For objectives: ALL must be met (AND logic as per specification)
-        // For requirements: ALL must be met (same logic)
         const conditionsMet = result.pass;
         const errorMessage = conditionsMet
           ? undefined
@@ -181,7 +278,7 @@ export function useStepChecker({
       return;
     }
 
-    setState((prev) => ({ ...prev, isChecking: true, error: undefined }));
+    setState((prev) => ({ ...prev, isChecking: true, error: undefined, retryCount: 0, isRetrying: false }));
 
     try {
       // STEP 1: Check objectives first (they always win)
@@ -200,6 +297,9 @@ export function useStepChecker({
             canSkip: skippable,
             fixType: undefined,
             targetHref: undefined,
+            retryCount: 0,
+            maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
+            isRetrying: false,
           };
           setState(finalState);
           updateManager(finalState);
@@ -231,6 +331,9 @@ export function useStepChecker({
             canSkip: false, // Never allow skipping for sequential dependencies
             fixType: undefined,
             targetHref: undefined,
+            retryCount: 0,
+            maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
+            isRetrying: false,
           };
           setState(sectionBlockedState);
           updateManager(sectionBlockedState);
@@ -248,6 +351,9 @@ export function useStepChecker({
             canSkip: false, // Never allow skipping for sequential dependencies
             fixType: undefined,
             targetHref: undefined,
+            retryCount: 0,
+            maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
+            isRetrying: false,
           };
           setState(blockedState);
           updateManager(blockedState);
@@ -257,11 +363,33 @@ export function useStepChecker({
 
       // STEP 3: Check requirements (only if objectives not met and eligible)
       if (requirements && requirements.trim() !== '') {
-        const requirementsResult = await checkConditions(requirements, 'requirements');
+        // Use requirements checker with state updates for retry feedback
+        const requirementsResult = await checkRequirementsWithStateUpdates(
+          {
+            requirements,
+            targetAction: targetAction || 'button',
+            refTarget: refTarget || stepId,
+            stepId,
+          },
+          (retryCount, maxRetries, isRetrying) => {
+            setState((prev) => ({
+              ...prev,
+              retryCount,
+              maxRetries,
+              isRetrying,
+              isChecking: true,
+            }));
+          }
+        );
 
         const explanation = requirementsResult.pass
           ? undefined
-          : getRequirementExplanation(requirements, hints, requirementsResult.error, skippable);
+          : getRequirementExplanation(
+              requirements,
+              hints,
+              requirementsResult.error?.map((e: any) => e.error).join(', '),
+              skippable
+            );
 
         const requirementsState = {
           isEnabled: requirementsResult.pass,
@@ -270,11 +398,14 @@ export function useStepChecker({
           isSkipped: false,
           completionReason: 'none' as const,
           explanation,
-          error: requirementsResult.pass ? undefined : requirementsResult.error,
-          canFixRequirement: requirementsResult.canFix || requirements.includes('navmenu-open'),
+          error: requirementsResult.pass ? undefined : requirementsResult.error?.map((e: any) => e.error).join(', '),
+          canFixRequirement: requirements.includes('navmenu-open'),
           canSkip: skippable,
-          fixType: requirementsResult.fixType || (requirements.includes('navmenu-open') ? 'navigation' : undefined),
-          targetHref: requirementsResult.targetHref,
+          fixType: requirements.includes('navmenu-open') ? 'navigation' : undefined,
+          targetHref: undefined,
+          retryCount: 0, // Reset retry count after completion
+          maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
+          isRetrying: false,
         };
 
         setState(requirementsState);
@@ -295,6 +426,9 @@ export function useStepChecker({
         canSkip: skippable,
         fixType: undefined,
         targetHref: undefined,
+        retryCount: 0,
+        maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
+        isRetrying: false,
       };
       setState(enabledState);
       updateManager(enabledState);
@@ -313,6 +447,9 @@ export function useStepChecker({
         canSkip: skippable,
         fixType: undefined,
         targetHref: undefined,
+        retryCount: 0,
+        maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
+        isRetrying: false,
       };
       setState(errorState);
       updateManager(errorState);
@@ -443,6 +580,9 @@ export function useStepChecker({
       canSkip: skippable,
       fixType: undefined,
       targetHref: undefined,
+      retryCount: 0,
+      maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
+      isRetrying: false,
     };
     setState(resetState);
     updateManager(resetState);
