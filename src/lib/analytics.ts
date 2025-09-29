@@ -70,7 +70,11 @@ export function reportAppInteraction(
   type: UserInteraction,
   properties: Record<string, string | number | boolean> = {}
 ): void {
-  reportInteraction(createInteractionName(type), properties);
+  try {
+    reportInteraction(createInteractionName(type), properties);
+  } catch (error) {
+    console.warn('Analytics reporting failed:', error);
+  }
 }
 
 // ============================================================================
