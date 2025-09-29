@@ -10,6 +10,8 @@ import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv
 import { ContextService } from './context';
 import { reftargetExistsCheck, navmenuOpenCheck } from './dom-utils';
 import { isValidRequirement } from '../types/requirements.types';
+import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { TimeoutManager } from './timeout-manager';
 
 // Re-export types for convenience
 export interface RequirementsCheckResult {
@@ -34,6 +36,8 @@ export interface RequirementsCheckOptions {
   refTarget?: string;
   targetValue?: string;
   stepId?: string;
+  retryCount?: number; // Current retry attempt (internal use)
+  maxRetries?: number; // Maximum retry attempts (defaults to config)
 }
 
 /**
@@ -168,7 +172,14 @@ async function runUnifiedChecks(
 }
 
 export async function checkRequirements(options: RequirementsCheckOptions): Promise<RequirementsCheckResult> {
-  const { requirements, targetAction = 'button', refTarget = '' } = options;
+  const {
+    requirements,
+    targetAction = 'button',
+    refTarget = '',
+    retryCount = 0,
+    maxRetries = INTERACTIVE_CONFIG.delays.requirements.maxRetries,
+  } = options;
+
   if (!requirements) {
     return {
       requirements: requirements || '',
@@ -176,7 +187,69 @@ export async function checkRequirements(options: RequirementsCheckOptions): Prom
       error: [],
     };
   }
-  return runUnifiedChecks(requirements, 'pre', { targetAction, refTarget });
+
+  try {
+    const result = await runUnifiedChecks(requirements, 'pre', { targetAction, refTarget });
+
+    // If the check passes, return success
+    if (result.pass) {
+      return result;
+    }
+
+    // If the check fails and we haven't exhausted retries, retry after delay
+    if (retryCount < maxRetries) {
+      const timeoutManager = TimeoutManager.getInstance();
+
+      return new Promise((resolve) => {
+        timeoutManager.setTimeout(
+          `requirements-retry-${requirements}-${retryCount}`,
+          async () => {
+            const retryResult = await checkRequirements({
+              ...options,
+              retryCount: retryCount + 1,
+            });
+            resolve(retryResult);
+          },
+          INTERACTIVE_CONFIG.delays.requirements.retryDelay
+        );
+      });
+    }
+
+    // If we've exhausted retries, return the last failed result
+    return result;
+  } catch (error) {
+    // On error, retry if we haven't exhausted attempts
+    if (retryCount < maxRetries) {
+      const timeoutManager = TimeoutManager.getInstance();
+
+      return new Promise((resolve) => {
+        timeoutManager.setTimeout(
+          `requirements-retry-error-${requirements}-${retryCount}`,
+          async () => {
+            const retryResult = await checkRequirements({
+              ...options,
+              retryCount: retryCount + 1,
+            });
+            resolve(retryResult);
+          },
+          INTERACTIVE_CONFIG.delays.requirements.retryDelay
+        );
+      });
+    }
+
+    // If we've exhausted retries, return error result
+    return {
+      requirements: requirements || '',
+      pass: false,
+      error: [
+        {
+          requirement: requirements || 'unknown',
+          pass: false,
+          error: `Requirements check failed after ${maxRetries + 1} attempts: ${error}`,
+        },
+      ],
+    };
+  }
 }
 
 /**
@@ -186,7 +259,14 @@ export async function checkRequirements(options: RequirementsCheckOptions): Prom
  * Excludes pre-action gating like navmenu-open and existence checks that are about enabling interactions.
  */
 export async function checkPostconditions(options: RequirementsCheckOptions): Promise<RequirementsCheckResult> {
-  const { requirements: verifyString, targetAction = 'button', refTarget = '' } = options;
+  const {
+    requirements: verifyString,
+    targetAction = 'button',
+    refTarget = '',
+    retryCount = 0,
+    maxRetries = INTERACTIVE_CONFIG.delays.requirements.maxRetries,
+  } = options;
+
   if (!verifyString) {
     return {
       requirements: verifyString || '',
@@ -194,7 +274,69 @@ export async function checkPostconditions(options: RequirementsCheckOptions): Pr
       error: [],
     };
   }
-  return runUnifiedChecks(verifyString, 'post', { targetAction, refTarget });
+
+  try {
+    const result = await runUnifiedChecks(verifyString, 'post', { targetAction, refTarget });
+
+    // If the check passes, return success
+    if (result.pass) {
+      return result;
+    }
+
+    // If the check fails and we haven't exhausted retries, retry after delay
+    if (retryCount < maxRetries) {
+      const timeoutManager = TimeoutManager.getInstance();
+
+      return new Promise((resolve) => {
+        timeoutManager.setTimeout(
+          `postconditions-retry-${verifyString}-${retryCount}`,
+          async () => {
+            const retryResult = await checkPostconditions({
+              ...options,
+              retryCount: retryCount + 1,
+            });
+            resolve(retryResult);
+          },
+          INTERACTIVE_CONFIG.delays.requirements.retryDelay
+        );
+      });
+    }
+
+    // If we've exhausted retries, return the last failed result
+    return result;
+  } catch (error) {
+    // On error, retry if we haven't exhausted attempts
+    if (retryCount < maxRetries) {
+      const timeoutManager = TimeoutManager.getInstance();
+
+      return new Promise((resolve) => {
+        timeoutManager.setTimeout(
+          `postconditions-retry-error-${verifyString}-${retryCount}`,
+          async () => {
+            const retryResult = await checkPostconditions({
+              ...options,
+              retryCount: retryCount + 1,
+            });
+            resolve(retryResult);
+          },
+          INTERACTIVE_CONFIG.delays.requirements.retryDelay
+        );
+      });
+    }
+
+    // If we've exhausted retries, return error result
+    return {
+      requirements: verifyString || '',
+      pass: false,
+      error: [
+        {
+          requirement: verifyString || 'unknown',
+          pass: false,
+          error: `Postconditions check failed after ${maxRetries + 1} attempts: ${error}`,
+        },
+      ],
+    };
+  }
 }
 
 /**
