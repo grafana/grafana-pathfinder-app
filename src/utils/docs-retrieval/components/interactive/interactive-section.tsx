@@ -609,7 +609,6 @@ export function InteractiveSection({
               if (requirementsResult.error?.some((e: any) => e.canFix)) {
                 const fixableError = requirementsResult.error.find((e: any) => e.canFix);
 
-
                 try {
                   // Try to fix the requirement automatically
                   const { NavigationManager } = await import('../../../navigation-manager');
