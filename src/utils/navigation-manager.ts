@@ -280,6 +280,11 @@ export class NavigationManager {
       // First ensure navigation is open
       await this.fixNavigationRequirements();
 
+      // Check for /a/ pattern (app paths) - immediately expand all sections
+      if (targetHref.includes('/a/')) {
+        return this.expandAllNavigationSections();
+      }
+
       // Parse the href to find the parent section
       const parentPath = this.getParentPathFromHref(targetHref);
       if (!parentPath) {
@@ -410,9 +415,6 @@ export class NavigationManager {
    */
   async expandAllNavigationSections(): Promise<boolean> {
     try {
-      // First ensure navigation is open
-      await this.fixNavigationRequirements();
-
       // Find all expand buttons in the navigation
       const expandButtons = document.querySelectorAll(
         'button[aria-label*="Expand section"]'
@@ -469,7 +471,9 @@ export class NavigationManager {
     const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
     if (!megaMenuToggle) {
       if (logWarnings) {
-        console.warn('⚠️ Mega menu toggle button not found');
+        console.warn(
+          '⚠️ Mega menu toggle button not found - navigation may already be open or use different structure'
+        );
       }
       return;
     }
