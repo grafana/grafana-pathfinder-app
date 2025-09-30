@@ -3,6 +3,7 @@ import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { resetValueTracker } from '../dom-utils';
+import { querySelectorAllEnhanced } from '../enhanced-selector';
 
 export class FormFillHandler {
   constructor(
@@ -32,7 +33,8 @@ export class FormFillHandler {
   }
 
   private async findTargetElement(selector: string): Promise<HTMLElement> {
-    const targetElements = document.querySelectorAll(selector);
+    const enhancedResult = querySelectorAllEnhanced(selector);
+    const targetElements = enhancedResult.elements;
 
     if (targetElements.length === 0) {
       throw new Error(`No elements found matching selector: ${selector}`);
@@ -42,7 +44,7 @@ export class FormFillHandler {
       console.warn(`Multiple elements found matching selector: ${selector}`);
     }
 
-    const targetElement = targetElements[0] as HTMLElement;
+    const targetElement = targetElements[0];
     return targetElement;
   }
 

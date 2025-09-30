@@ -1,6 +1,7 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
+import { querySelectorAllEnhanced } from '../enhanced-selector';
 
 export class FocusHandler {
   constructor(
@@ -16,13 +17,15 @@ export class FocusHandler {
       // Check if selector should return only one element (contains pseudo-selectors like :first-child, :last-child, etc.)
       const shouldSelectSingle = this.shouldSelectSingleElement(data.reftarget);
 
-      let targetElements: NodeListOf<Element>;
+      let targetElements: HTMLElement[];
       if (shouldSelectSingle) {
-        // Use querySelector to get only the first match for single-element selectors
-        const singleElement = document.querySelector(data.reftarget);
-        targetElements = singleElement ? ([singleElement] as any) : document.querySelectorAll('__no_match__');
+        // Use enhanced selector for single element with complex selector support
+        const enhancedResult = querySelectorAllEnhanced(data.reftarget);
+        targetElements = enhancedResult.elements.length > 0 ? [enhancedResult.elements[0]] : [];
       } else {
-        targetElements = document.querySelectorAll(data.reftarget);
+        // Use enhanced selector for multiple elements with complex selector support
+        const enhancedResult = querySelectorAllEnhanced(data.reftarget);
+        targetElements = enhancedResult.elements;
       }
 
       if (!click) {
@@ -37,23 +40,21 @@ export class FocusHandler {
     }
   }
 
-  private async handleShowMode(targetElements: NodeListOf<Element>, comment?: string): Promise<void> {
+  private async handleShowMode(targetElements: HTMLElement[], comment?: string): Promise<void> {
     // Show mode: ensure visibility and highlight, don't click - NO step completion
     for (const element of targetElements) {
-      const htmlElement = element as HTMLElement;
-      await this.navigationManager.ensureNavigationOpen(htmlElement);
-      await this.navigationManager.ensureElementVisible(htmlElement);
-      await this.navigationManager.highlightWithComment(htmlElement, comment);
+      await this.navigationManager.ensureNavigationOpen(element);
+      await this.navigationManager.ensureElementVisible(element);
+      await this.navigationManager.highlightWithComment(element, comment);
     }
   }
 
-  private async handleDoMode(targetElements: NodeListOf<Element>): Promise<void> {
+  private async handleDoMode(targetElements: HTMLElement[]): Promise<void> {
     // Do mode: ensure visibility then click, don't highlight
     for (const element of targetElements) {
-      const htmlElement = element as HTMLElement;
-      await this.navigationManager.ensureNavigationOpen(htmlElement);
-      await this.navigationManager.ensureElementVisible(htmlElement);
-      htmlElement.click();
+      await this.navigationManager.ensureNavigationOpen(element);
+      await this.navigationManager.ensureElementVisible(element);
+      element.click();
     }
   }
 

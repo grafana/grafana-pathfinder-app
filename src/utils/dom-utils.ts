@@ -1,4 +1,5 @@
 import { InteractiveElementData } from '../types/interactive.types';
+import { querySelectorAllEnhanced } from './enhanced-selector';
 
 /**
  * Recursively get all text content from an element and its descendants
@@ -198,7 +199,9 @@ export async function reftargetExistsCheck(
   const retryDelay = 200;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const targetElement = document.querySelector(reftarget);
+    // Use enhanced selector to support complex selectors like :has() and :contains()
+    const enhancedResult = querySelectorAllEnhanced(reftarget);
+    const targetElement = enhancedResult.elements.length > 0 ? enhancedResult.elements[0] : null;
 
     if (targetElement) {
       return {
