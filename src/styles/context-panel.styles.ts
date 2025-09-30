@@ -161,8 +161,8 @@ export const getRecommendationCardStyles = (theme: GrafanaTheme2) => ({
     minWidth: 0,
     maxWidth: 'calc(100% - 100px)',
     display: '-webkit-box',
-    '-webkit-line-clamp': '2',
-    '-webkit-box-orient': 'vertical',
+    WebkitLineClamp: '2',
+    WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
   }),
   cardActions: css({

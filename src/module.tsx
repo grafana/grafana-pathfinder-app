@@ -1,4 +1,4 @@
-import { AppPlugin, type AppRootProps, PluginExtensionPoints, BusEventWithPayload } from '@grafana/data';
+import { AppPlugin, type AppRootProps, PluginExtensionPoints, BusEventWithPayload, NavModelItem } from '@grafana/data';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 import React, { Suspense, lazy } from 'react';
@@ -56,11 +56,12 @@ const plugin = new AppPlugin<{}>()
 
 export { plugin };
 
+// Expose the main component for the sidebar
 plugin.addComponent({
   targets: `grafana/extension-sidebar/v0-alpha`,
   title: 'Grafana Pathfinder',
   description: 'Opens Grafana Pathfinder',
-  component: function ContextSidebar() {
+  component: function ContextSidebar(props: { helpNode?: NavModelItem }) {
     React.useEffect(() => {
       reportAppInteraction(UserInteraction.DocsPanelInteraction, {
         action: 'open',
@@ -79,7 +80,55 @@ plugin.addComponent({
 
     return (
       <Suspense fallback={<LoadingPlaceholder text="" />}>
-        <LazyMemoizedContextPanel />
+        <LazyMemoizedContextPanel helpNode={props.helpNode} />
+      </Suspense>
+    );
+  },
+});
+
+plugin.addLink({
+  title: 'Grafana Pathfinder',
+  description: 'Open Grafana Pathfinder documentation assistant',
+  targets: ['grafana/topbar/help-button/v1'],
+  // Should be: targets: [PluginExtensionPoints.TopBarHelpButtonV1],
+  onClick: (event, helpers) => {
+    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+      action: 'open',
+      source: 'help_button',
+      timestamp: Date.now(),
+    });
+
+    helpers.openInSidebar('grafana-grafanadocsplugin-app/pathfinder-help/v1', {
+      helpNode: helpers.context?.helpNode,
+    });
+  },
+});
+
+plugin.addComponent({
+  id: 'grafana-grafanadocsplugin-app/pathfinder-help/v1',
+  title: 'Grafana Pathfinder',
+  description: 'Grafana Pathfinder documentation assistant',
+  targets: PluginExtensionPoints.ExtensionSidebar,
+  component: function PathfinderHelpSidebar(props: { helpNode?: NavModelItem }) {
+    React.useEffect(() => {
+      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+        action: 'open',
+        source: 'help_button_sidebar',
+        timestamp: Date.now(),
+      });
+
+      return () => {
+        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+          action: 'close',
+          source: 'help_button_sidebar_unmount',
+          timestamp: Date.now(),
+        });
+      };
+    }, []);
+
+    return (
+      <Suspense fallback={<LoadingPlaceholder text="" />}>
+        <LazyMemoizedContextPanel helpNode={props.helpNode} />
       </Suspense>
     );
   },

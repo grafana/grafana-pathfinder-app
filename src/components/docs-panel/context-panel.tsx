@@ -2,7 +2,7 @@ import React from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, useStyles2, Card } from '@grafana/ui';
-import { usePluginContext } from '@grafana/data';
+import { usePluginContext, NavModelItem } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import logoSvg from '../../img/logo.svg';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -20,6 +20,7 @@ import { getConfigWithDefaults } from '../../constants';
 interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
   onOpenDocsPage?: (url: string, title: string) => void;
+  helpNode?: NavModelItem;
 }
 
 export class ContextPanel extends SceneObjectBase<ContextPanelState> {
@@ -31,11 +32,13 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 
   public constructor(
     onOpenLearningJourney?: (url: string, title: string) => void,
-    onOpenDocsPage?: (url: string, title: string) => void
+    onOpenDocsPage?: (url: string, title: string) => void,
+    helpNode?: NavModelItem
   ) {
     super({
       onOpenLearningJourney,
       onOpenDocsPage,
+      helpNode,
     });
   }
 
@@ -410,8 +413,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
           </div>
         )}
 
-        {/* Help Footer */}
-        <HelpFooter />
+        {/* Help Footer - now receives helpNode */}
+        <HelpFooter helpNode={model.state.helpNode} />
       </div>
     </div>
   );

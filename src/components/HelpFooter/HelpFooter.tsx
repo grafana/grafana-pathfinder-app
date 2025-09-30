@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import { Icon, useTheme2, Modal } from '@grafana/ui';
 import { config } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
+import { NavModelItem } from '@grafana/data';
 import { getHelpFooterStyles } from '../../styles/help-footer.styles';
 
 interface HelpFooterProps {
   className?: string;
+  helpNode?: NavModelItem;
 }
 
-export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
+export const HelpFooter: React.FC<HelpFooterProps> = ({ className, helpNode }) => {
   const theme = useTheme2();
   const styles = getHelpFooterStyles(theme);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
@@ -21,7 +23,8 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
     setIsHelpModalOpen(false);
   };
 
-  const helpButtons = [
+  // Used when helpNode isn't provided.
+  const defaultHelpButtons = [
     {
       key: 'documentation',
       label: t('helpFooter.buttons.documentation', 'Documentation'),
@@ -60,6 +63,22 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
     },
   ];
 
+  const helpButtons = React.useMemo(() => {
+    if (helpNode?.children && helpNode.children.length > 0) {
+      const nodeButtons = helpNode.children
+        .filter((child) => child.text && (child.url || child.onClick))
+        .map((child, index) => ({
+          key: child.id || `help-${index}`,
+          label: child.text || '',
+          icon: (child.icon || 'question-circle') as any,
+          href: child.url,
+          target: child.target,
+          onClick: child.onClick,
+        }));
+    }
+    return defaultHelpButtons;
+  }, [helpNode]);
+
   return (
     <div className={`${styles.helpFooter} ${className || ''}`}>
       <div className={styles.helpButtons}>
@@ -68,7 +87,7 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
           const buttonProps = button.href
             ? {
                 href: button.href,
-                target: '_blank',
+                target: button.target || '_blank',
                 rel: 'noopener noreferrer',
               }
             : {
