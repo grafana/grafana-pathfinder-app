@@ -38,11 +38,6 @@
         "targets": ["grafana/extension-sidebar/v0-alpha"],
         "description": "Opens Grafana Pathfinder",
         "title": "Grafana Pathfinder"
-      },
-      {
-        "targets": ["grafana/extension-sidebar/v0-alpha"],
-        "description": "Grafana Pathfinder documentation assistant",
-        "title": "Grafana Pathfinder"
       }
     ],
     "exposedComponents": [
@@ -59,7 +54,7 @@
         "title": "Documentation-Link"
       },
       {
-        "targets": ["grafana/topbar/help-button/v1"],
+        "targets": ["grafana/app/topbar/help/v1"],
         "description": "Open Grafana Pathfinder documentation assistant",
         "title": "Grafana Pathfinder"
       },

@@ -1,24 +1,14 @@
-import { AppRootProps, NavModelItem } from '@grafana/data';
+import { AppRootProps } from '@grafana/data';
 import React, { useMemo, useEffect } from 'react';
 import { SceneApp } from '@grafana/scenes';
 import { docsPage } from '../../pages/docsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
-import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
-import { usePluginContext } from '@grafana/data';
 
 function getSceneApp() {
   return new SceneApp({
     pages: [docsPage],
   });
-}
-
-export function MemoizedContextPanel({ helpNode }: { helpNode?: NavModelItem }) {
-  const pluginContext = usePluginContext();
-  const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-  const panel = useMemo(() => new CombinedLearningJourneyPanel(config, helpNode), [config, helpNode]);
-
-  return <panel.Component model={panel} />;
 }
 
 function App(props: AppRootProps) {

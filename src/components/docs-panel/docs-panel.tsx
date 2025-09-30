@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2 } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
+import { GrafanaTheme2, NavModelItem } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { getConfigWithDefaults, DocsPluginConfig } from '../../constants';
 
@@ -77,11 +77,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     return true;
   }
 
-  public constructor(pluginConfig: DocsPluginConfig = {}) {
+  public constructor(pluginConfig: DocsPluginConfig = {}, helpNode?: NavModelItem) {
     const restoredTabs = CombinedLearningJourneyPanel.restoreTabsFromStorage();
     const contextPanel = new ContextPanel(
       (url: string, title: string) => this.openLearningJourney(url, title),
-      (url: string, title: string) => this.openDocsPage(url, title)
+      (url: string, title: string) => this.openDocsPage(url, title),
+      helpNode
     );
 
     const activeTabId = CombinedLearningJourneyPanel.restoreActiveTabFromStorage(restoredTabs);
