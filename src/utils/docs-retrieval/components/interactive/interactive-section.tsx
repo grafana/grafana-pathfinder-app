@@ -19,7 +19,7 @@ export interface BaseInteractiveProps {
 }
 
 export interface InteractiveStepProps extends BaseInteractiveProps {
-  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence';
+  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover';
   refTarget: string;
   targetValue?: string;
   postVerify?: string;

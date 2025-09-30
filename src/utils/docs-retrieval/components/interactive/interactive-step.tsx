@@ -336,6 +336,8 @@ export const InteractiveStep = forwardRef<
           return `Fill form with "${targetValue || 'value'}"`;
         case 'navigate':
           return `Navigate to ${refTarget}`;
+        case 'hover':
+          return `Hover over element`;
         case 'sequence':
           return `Run sequence`;
         default:

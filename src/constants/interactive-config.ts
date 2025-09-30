@@ -9,6 +9,7 @@ export const INTERACTIVE_CONFIG = {
     perceptual: {
       base: 800,
       button: 1500,
+      hover: 2000, // Duration to maintain hover state (2 seconds)
       retry: 2000,
     },
     // Technical delays for DOM operations
