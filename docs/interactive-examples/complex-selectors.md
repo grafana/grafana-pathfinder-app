@@ -179,3 +179,145 @@ You can now use advanced selectors for more precise targeting:
 ```
 
 The enhanced selector engine makes interactive tutorials more powerful and precise while maintaining full backward compatibility.
+
+## Hover-Dependent Interactions
+
+Some UI elements only appear when hovering over their parent containers (e.g., Tailwind's `group-hover:` classes or CSS `:hover` states). The `hover` action type triggers these hover states before interacting with the revealed elements.
+
+### Example: Hover to Reveal Buttons
+
+```html
+<div class="interactive-section" data-requirements="exists-reftarget">
+  <h3>Workload Details Actions</h3>
+
+  <!-- Step 1: Hover to reveal buttons -->
+  <div
+    class="interactive"
+    data-targetaction="hover"
+    data-reftarget='div[data-cy="wb-list-item"]:contains("checkoutservice")'
+    data-requirements="exists-reftarget"
+  >
+    Hover over the checkoutservice workload row
+  </div>
+
+  <!-- Step 2: Click the now-visible button -->
+  <div class="interactive" data-targetaction="button" data-reftarget="Dashboard" data-requirements="exists-reftarget">
+    Click the Dashboard button
+  </div>
+</div>
+```
+
+### Multi-Step with Hover
+
+For seamless hover-then-click sequences, use `InteractiveMultiStep`:
+
+```html
+<div class="interactive" data-targetaction="multistep">
+  <!-- Internal action 1: Hover -->
+  <span
+    class="interactive"
+    data-targetaction="hover"
+    data-reftarget='div[data-cy="wb-list-item"]:contains("checkoutservice")'
+    data-requirements="exists-reftarget"
+  ></span>
+
+  <!-- Internal action 2: Click revealed button -->
+  <span
+    class="interactive"
+    data-targetaction="button"
+    data-reftarget="Dashboard"
+    data-requirements="exists-reftarget"
+  ></span>
+
+  Complete workload inspection workflow
+</div>
+```
+
+### How Hover Actions Work
+
+**Show Mode** (Show me button):
+
+- Highlights the element that will be hovered
+- Does not trigger hover events
+- Useful for demonstrating which element to hover over
+
+**Do Mode** (Do it button):
+
+- Dispatches mouse events: `mouseenter`, `mouseover`, `mousemove`
+- Triggers CSS `:hover` pseudo-classes and Tailwind `group-hover:` classes
+- Maintains hover state for 2 seconds (configurable)
+- Allows subsequent actions to interact with revealed elements
+- Does not clean up hover state (natural mouse movement handles this)
+
+### Common Use Cases
+
+#### Hover-Revealed Action Buttons
+
+```html
+<!-- Many UI frameworks hide action buttons until hover -->
+<div class="interactive" data-targetaction="multistep">
+  <span data-targetaction="hover" data-reftarget='tr[data-row-id="user-123"]'></span>
+  <span data-targetaction="button" data-reftarget="Edit"></span>
+  Edit user details
+</div>
+```
+
+#### Hover-Revealed Menus
+
+```html
+<!-- Dropdown menus that appear on hover -->
+<div class="interactive" data-targetaction="multistep">
+  <span data-targetaction="hover" data-reftarget='nav[role="navigation"] > div:contains("Settings")'></span>
+  <span data-targetaction="button" data-reftarget="Preferences"></span>
+  Open preferences from settings menu
+</div>
+```
+
+#### Hover-Revealed Tooltips with Actions
+
+```html
+<!-- Interactive tooltips with clickable elements -->
+<div class="interactive" data-targetaction="multistep">
+  <span data-targetaction="hover" data-reftarget='[data-tooltip-trigger="info"]'></span>
+  <span data-targetaction="button" data-reftarget="Learn more"></span>
+  Access additional information
+</div>
+```
+
+### Timing Configuration
+
+The default hover duration is 2000ms (2 seconds), configured in `INTERACTIVE_CONFIG.delays.perceptual.hover`. This provides enough time for:
+
+- CSS transitions to complete
+- User to observe the hover effect
+- Browser to fully apply hover styles
+- Subsequent actions to execute while hover is active
+
+### Best Practices
+
+1. **Use Complex Selectors**: Combine `:has()` and `:contains()` for precise targeting
+
+   ```html
+   data-reftarget='div[data-cy="list-item"]:has(p:contains("specific-name"))'
+   ```
+
+2. **Sequence Matters**: Always hover before clicking revealed elements
+
+   ```html
+   <!-- Correct: Hover first, then click -->
+   <span data-targetaction="hover" ...></span>
+   <span data-targetaction="button" ...></span>
+   ```
+
+3. **Requirements Check**: Ensure elements exist before hovering
+
+   ```html
+   data-requirements="exists-reftarget"
+   ```
+
+4. **Multi-Step for Atomicity**: Use `multistep` to ensure hover and click happen together
+   ```html
+   <div data-targetaction="multistep">
+     <!-- Hover and click as a single unit -->
+   </div>
+   ```

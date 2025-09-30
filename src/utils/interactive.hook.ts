@@ -8,7 +8,7 @@ import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { SequenceManager } from './sequence-manager';
 import { NavigationManager } from './navigation-manager';
-import { FocusHandler, ButtonHandler, NavigateHandler, FormFillHandler } from './action-handlers';
+import { FocusHandler, ButtonHandler, NavigateHandler, FormFillHandler, HoverHandler } from './action-handlers';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -68,6 +68,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [stateManager, navigationManager]
   );
 
+  const hoverHandler = useMemo(
+    () => new HoverHandler(stateManager, navigationManager, waitForReactUpdates),
+    [stateManager, navigationManager]
+  );
+
   // Initialize global interactive styles
   useEffect(() => {
     addGlobalInteractiveStyles();
@@ -104,6 +109,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [navigateHandler]
   );
 
+  const interactiveHover = useCallback(
+    async (data: InteractiveElementData, performHover: boolean) => {
+      await hoverHandler.execute(data, performHover);
+    },
+    [hoverHandler]
+  );
+
   // Define helper functions using refs to avoid circular dependencies
   const dispatchInteractiveAction = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
@@ -115,9 +127,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         await interactiveFormFill(data, click);
       } else if (data.targetaction === 'navigate') {
         interactiveNavigate(data, click);
+      } else if (data.targetaction === 'hover') {
+        await interactiveHover(data, click);
       }
     },
-    [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate]
+    [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveHover]
   );
 
   /**
@@ -133,6 +147,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.button));
     } else if (targetAction === 'navigate') {
       await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.navigation));
+    } else if (targetAction === 'hover') {
+      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.hover));
     } else {
       await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.base));
     }
@@ -355,6 +371,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             interactiveNavigate(elementData, !isShowMode);
             break;
 
+          case 'hover':
+            await interactiveHover(elementData, !isShowMode);
+            break;
+
           case 'sequence':
             await interactiveSequence(elementData, isShowMode);
             break;
@@ -366,7 +386,15 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);
       }
     },
-    [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveSequence, stateManager]
+    [
+      interactiveFocus,
+      interactiveButton,
+      interactiveFormFill,
+      interactiveNavigate,
+      interactiveHover,
+      interactiveSequence,
+      stateManager,
+    ]
   );
 
   return {
