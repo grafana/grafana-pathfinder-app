@@ -1,0 +1,482 @@
+[
+  {
+    "title": "Home",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/home/",
+    "description": "The Cloud Home app is the landing screen for every stack: it surfaces high-level usage stats, quick links to recent dashboards, and \u201cnext-step\u201d cards that steer new users toward key observability features.",
+    "urlPrefix": "/a/cloud-home-app"
+  },
+  {
+    "title": "Getting Started Guide",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/getting-started/",
+    "description": "This guided workflow installs demo data sources and sample dashboards so newcomers can poke around Grafana Cloud without first instrumenting their own systems.",
+    "urlPrefix": "/a/grafana-setupguide-app/getting-started"
+  },
+  {
+    "title": "Bookmarks",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/manage-dashboard-links/",
+    "description": "Bookmarks let you pin any page\u2014dashboards, Explore, admin views\u2014to a \u201cBookmarks\u201d section that sits at the top of the left-hand nav, solving the \u201cwhere did that page go?\u201d problem as Grafana grows.",
+    "urlPrefix": "/bookmarks"
+  },
+  {
+    "title": "Starred",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/dashboards/search-dashboards/",
+    "description": "Starring puts a \u2b50 on dashboards (or individual visualizations in Explore) and makes them show up under the \u201cStarred\u201d filter, plus in widgets like the Dashboard List panel.",
+    "urlPrefix": "/dashboards?starred"
+  },
+  {
+    "title": "Dashboards",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/dashboards/",
+    "description": "The Dashboards area is where you view, create, and organize Grafana\u2019s famous boards\u2014mixing graphs, logs, traces, and text in one canvas.",
+    "urlPrefix": "/dashboards"
+  },
+  {
+    "title": "Playlists",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/dashboards/playlist/",
+    "description": "Playlists run a set of dashboards in a timed loop\u2014perfect for \u201cNOC wall\u201d monitors or demo kiosks where screens must cycle automatically.",
+    "urlPrefix": "/playlists"
+  },
+  {
+    "title": "Snapshots",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/dashboards/share-dashboard-snapshot/",
+    "description": "A dashboard snapshot freezes the current visual state, strips sensitive queries, and stores the metric data inside the snapshot payload so anyone with the link can explore it\u2014no data-source access required.",
+    "urlPrefix": "/dashboard/snapshots"
+  },
+  {
+    "title": "Library Panels",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/panels/library-panels/",
+    "description": "Library panels are single-source-of-truth visualizations that you save once and reuse across many dashboards; edit the library panel and every instance updates instantly.",
+    "urlPrefix": "/library-panels"
+  },
+  {
+    "title": "Shared Dashboards",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/dashboards/public-dashboards/",
+    "description": "Externally shared (formerly \u201cpublic\u201d) dashboards publish a read-only version to a hard-to-guess URL so stakeholders without Grafana accounts can view live data.",
+    "urlPrefix": "/dashboard/public"
+  },
+  {
+    "title": "Reporting",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/reporting/",
+    "description": "Reporting schedules automated emails that turn any dashboard into a PDF, CSV, or embedded image, complete with variable values and the chosen time range.",
+    "urlPrefix": "/reports"
+  },
+  {
+    "title": "Explore",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/explore/",
+    "description": "Explore is a query workbench for interactive, ad-hoc digging into metrics, logs, or traces without building a full dashboard first.",
+    "urlPrefix": "/explore"
+  },
+  {
+    "title": "Drilldown",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/explore/simplified-exploration/",
+    "description": "Metrics and Logs Drilldown pages take a selected series and open a context-rich view\u2014showing labels, histograms, or correlated traces\u2014so you can peel back layers without leaving Grafana.",
+    "urlPrefix": "/drilldown"
+  },
+  {
+    "title": "Metrics",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/explore/simplified-exploration/metrics/",
+    "description": "This app gives you a fully query-less Prometheus explorer: pick a data source, click through metric names and label values, and Grafana auto-draws graphs, histograms, or heat maps as you drill deeper.",
+    "urlPrefix": "/a/grafana-metricsdrilldown-app"
+  },
+  {
+    "title": "Logs",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/explore/simplified-exploration/logs/",
+    "description": "Logs Drilldown opens a Loki (or other log source) workspace pre-grouped by labels and automatic \u201clog patterns,\u201d so noisy repetitions collapse and the anomalies pop out.",
+    "urlPrefix": "/a/grafana-lokiexplore-app"
+  },
+  {
+    "title": "Traces",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/explore/simplified-exploration/traces/",
+    "description": "This view centres on distributed-trace analysis: a RED-metrics sidebar shows error and latency outliers, while the main panel lists sample traces you can expand into waterfall or flame-chart mode.",
+    "urlPrefix": "/a/grafana-exploretraces-app"
+  },
+  {
+    "title": "Profiles",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/explore/simplified-exploration/profiles/",
+    "description": "Powered by Pyroscope, Profiles Drilldown visualizes CPU, memory, or goroutine profiles as flamegraphs and diff views, letting you spot hot paths or regressions over time.",
+    "urlPrefix": "/a/grafana-pyroscope-app/explore"
+  },
+  {
+    "title": "Alerts & IRM",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/alerting/",
+    "description": "The Alerts & Incident Response Management (IRM) hub unifies alert rules, OnCall schedules, and incident timelines in a single app.",
+    "urlPrefix": "/alerts-and-incidents"
+  },
+  {
+    "title": "Service Center",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/service-center/",
+    "description": "A service-oriented landing page that aggregates everything about each microservice\u2014active alerts, open incidents, recent SLO burn, ownership metadata\u2014so responders have one \u201ccommand deck\u201d per service.",
+    "urlPrefix": "/a/grafana-slo-app/services"
+  },
+  {
+    "title": "Alerting",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/alerting/",
+    "description": "Grafana-managed Alerting lets you build cross-datasource rules, route notifications, and track alert life-cycles\u2014all in one pane instead of juggling Prometheus + Alertmanager silos.",
+    "urlPrefix": "/alerting"
+  },
+  {
+    "title": "Alert Rules",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/alerting/manage-your-alert-rules/",
+    "description": "Define queries + thresholds that evaluate on a schedule and change state (Normal \u2192 Alerting).",
+    "urlPrefix": "/alerting/list"
+  },
+  {
+    "title": "Contact Points",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/alerting/configure-notifications/manage-contact-points/",
+    "description": "Configure where notifications go\u2014Slack, email, Opsgenie, webhooks.",
+    "urlPrefix": "/alerting/notifications?search="
+  },
+  {
+    "title": "Notification Policies",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/alerting/configure-notifications/create-notification-policy/",
+    "description": "Label-based routing tree that decides which contact point handles each alert.",
+    "urlPrefix": "/alerting/routes"
+  },
+  {
+    "title": "Silences",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/alerting/configure-notifications/create-silence/",
+    "description": "Temporary label-matched mutes so maintenance windows don\u2019t page you.",
+    "urlPrefix": "/alerting/silences"
+  },
+  {
+    "title": "Active Notifications",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/alerting/monitor-status/view-active-notifications/",
+    "description": "Real-time list of alert groups currently firing or pending.",
+    "urlPrefix": "/alerting/groups"
+  },
+  {
+    "title": "History",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/alerting/monitor-status/view-alert-state-history/",
+    "description": "Audit log of every state change; great for spotting flappy rules.",
+    "urlPrefix": "/alerting/history"
+  },
+  {
+    "title": "Recently Deleted",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/alerting/monitor-status/view-alert-rules/#permanently-delete-or-restore-deleted-alert-rules",
+    "description": "30-day recycle bin where admins can restore or purge alert rules.",
+    "urlPrefix": "/alerting/recently-deleted"
+  },
+  {
+    "title": "Settings",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/alerting/set-up/configure-alertmanager/",
+    "description": "Cluster-wide knobs: RBAC, state-history retention, default contact point, etc.",
+    "urlPrefix": "/alerting/admin"
+  },
+  {
+    "title": "IRM",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/get-started/",
+    "description": "Grafana IRM (Incident Response Management) merges on-call scheduling, alert routing, and incident coordination.",
+    "urlPrefix": "/a/grafana-irm-app"
+  },
+  {
+    "title": "Alert Groups",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/respond-to-alerts/",
+    "description": "Buckets multiple alert instances into one actionable thread.",
+    "urlPrefix": "/a/grafana-irm-app/alert-groups"
+  },
+  {
+    "title": "Incidents",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/incident-management/",
+    "description": "Lifecycle timeline, chat links, severity, custom fields.",
+    "urlPrefix": "/a/grafana-irm-app/incidents"
+  },
+  {
+    "title": "Tasks",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/incident-management/manage-tasks/",
+    "description": "Checklist of action items inside an incident.",
+    "urlPrefix": "/a/grafana-irm-app/tasks"
+  },
+  {
+    "title": "Schedules",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/manage/on-call-schedules/",
+    "description": "Drag-and-drop on-call rotations, overrides, follow-the-sun support.",
+    "urlPrefix": "/a/grafana-irm-app/schedules"
+  },
+  {
+    "title": "Escalation Chains",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/escalation-routing/escalation-chains/",
+    "description": "Ordered steps (wait x min \u2192 notify team \u2192 page manager).",
+    "urlPrefix": "/a/grafana-irm-app/escalations/"
+  },
+  {
+    "title": "Integrations",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/integrations/",
+    "description": "Webhook & native hooks (Prometheus, Loki, Datadog, etc.).",
+    "urlPrefix": "/a/grafana-irm-app/integrations/monitoring-systems"
+  },
+  {
+    "title": "Users",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/manage/users-and-teams/",
+    "description": "Map Grafana teams to IRM on-call roles & notification rules.",
+    "urlPrefix": "/a/grafana-irm-app/users"
+  },
+  {
+    "title": "Insights",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/manage/insights-and-reporting/alert-insights/",
+    "description": "Built-in dashboards for MTTA/MTTR, paging volume, flakiness.",
+    "urlPrefix": "/a/grafana-irm-app/insights/alerts"
+  },
+  {
+    "title": "Settings",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/",
+    "description": "Org-wide IRM defaults: severities, custom fields, mobile tokens.",
+    "urlPrefix": "/a/grafana-irm-app/settings"
+  },
+  {
+    "title": "SLO",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/introduction/",
+    "description": "Grafana SLO lets you define SLIs, error-budget-based objectives, and burn-rate alerts while giving execs high-level performance reports.",
+    "urlPrefix": "/a/grafana-slo-app/home"
+  },
+  {
+    "title": "Manage SLOs",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/manage/",
+    "description": "CRUD list of all SLOs with filters, tagging, enable/disable.",
+    "urlPrefix": "/a/grafana-slo-app/manage-slos"
+  },
+  {
+    "title": "SLO Performance",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/overviewdashboards/",
+    "description": "Tag-driven dashboard showing error-budget burn by team/service.",
+    "urlPrefix": "/a/grafana-slo-app/slo-performance"
+  },
+  {
+    "title": "Reports",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/reports/",
+    "description": "Auto-generated weekly/monthly PDFs summarizing multiple SLOs.",
+    "urlPrefix": "/a/grafana-slo-app/reports"
+  },
+  {
+    "title": "AI & Machine Learning",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/",
+    "description": "",
+    "urlPrefix": "/a/grafana-ml-app/home"
+  },
+  {
+    "title": "Metrics Forecast",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/dynamic-alerting/forecasting/",
+    "description": "Forecast learns seasonality in a time-series (like QPS) and projects it forward, generating dynamic alert thresholds that adjust to traffic patterns\u2014handy for predicting when you\u2019ll breach 75% CPU next week.",
+    "urlPrefix": "/a/grafana-ml-app/metric-forecast"
+  },
+  {
+    "title": "Outlier Detection",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/dynamic-alerting/outlier-detection/",
+    "description": "Outlier Detection watches a group of series (Kubernetes pods, EC2 instances) and flags any member that deviates from its peers, so you can catch a noisy-neighbor pod burning twice the CPU before customers notice.",
+    "urlPrefix": "/a/grafana-ml-app/outlier-detector"
+  },
+  {
+    "title": "Sift Investigations",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/machine-learning/sift/",
+    "description": "Sift is an ML-powered diagnostic assistant: click \u201cRun investigation\u201d during an incident and it auto-executes checks across metrics, logs, and deployments, surfacing suspicious spikes or recent rollouts in a tidy report\u2014cutting minutes off mean-time-to-root-cause.",
+    "urlPrefix": "/a/grafana-ml-app/investigations"
+  },
+  {
+    "title": "Testing & Synthetics",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/testing/",
+    "description": "This top-level menu groups active checks that simulate user behavior.",
+    "urlPrefix": "/testing-and-synthetics"
+  },
+  {
+    "title": "Performance Testing",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/testing/k6/",
+    "description": "The k6 app runs load tests straight from the cloud, scaling to a million virtual users and correlating the results with Grafana dashboards\u2014ideal for hammering a new API release and watching latency vs.",
+    "urlPrefix": "/a/k6-app"
+  },
+  {
+    "title": "Projects",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/testing/k6/projects-and-users/projects/",
+    "description": "Projects are folders that collect related tests and enforce RBAC\u2014ideal for separating \u201cCheckout\u201d vs.",
+    "urlPrefix": "/a/k6-app/projects"
+  },
+  {
+    "title": "Settings",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/testing/k6/author-run/tokens-and-cli-authentication/",
+    "description": "The Settings screen is where you mint and revoke API tokens, configure static IPs, and toggle private-network test runners.",
+    "urlPrefix": "/a/k6-app/settings/api-token"
+  },
+  {
+    "title": "Learn",
+    "best_doc_url": "https://grafana.com/docs/k6/latest/examples/tutorials/",
+    "description": "Learn is a curated library of k6 tutorials, sample scripts, and \u201ctest-design\u201d playbooks that open in an in-app viewer\u2014great for onboarding teammates who\u2019ve never written a load test before.",
+    "urlPrefix": "/a/k6-app/learn"
+  },
+  {
+    "title": "Synthetic Monitoring",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/",
+    "description": "Synthetic Monitoring is Grafana Cloud\u2019s black-box uptime suite: you define browser journeys, HTTP pings, or gRPC calls, run them from public or private probes, and chart latency and availability like any other metrics in Grafana.",
+    "urlPrefix": "/a/grafana-synthetic-monitoring-app/"
+  },
+  {
+    "title": "Checks",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/create-checks/checks/",
+    "description": "A \u201ccheck\u201d is the executable test object\u2014HTTP, DNS, TCP, browser, or scripted k6\u2014that runs on a schedule and exports Prometheus metrics plus Loki logs.",
+    "urlPrefix": "/a/grafana-synthetic-monitoring-app/checks"
+  },
+  {
+    "title": "Probes",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/create-checks/public-probes/",
+    "description": "Probes are the agents that execute checks.",
+    "urlPrefix": "/a/grafana-synthetic-monitoring-app/probes"
+  },
+  {
+    "title": "Alerts",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/configure-alerts/",
+    "description": "This tab maps check results to Grafana Alerting: toggle built-in latency/availability rules or craft custom policies that route failures to Slack, PagerDuty, or OnCall.",
+    "urlPrefix": "/a/grafana-synthetic-monitoring-app/alerts"
+  },
+  {
+    "title": "Config",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/set-up/",
+    "description": "The Config page houses global settings such as private-probe tokens, default alert labels, and RBAC for who can create or edit checks.",
+    "urlPrefix": "/a/grafana-synthetic-monitoring-app/config"
+  },
+  {
+    "title": "Observability",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/monitor-applications/",
+    "description": "The Observability menu gathers turnkey solutions\u2014Application, Frontend, Kubernetes, Infrastructure monitoring\u2014all powered by the LGTM+ stack (Mimir, Loki, Tempo, Pyroscope).",
+    "urlPrefix": "/observability"
+  },
+  {
+    "title": "Asserts",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/monitor-applications/asserts/get-started/",
+    "description": "Grafana Asserts auto-analyzes Prometheus metrics to surface anomalies and dependency issues, then maps them onto a live topology so engineers can zero-in on failing components without combing through dashboards.",
+    "urlPrefix": "/a/grafana-asserts-app/get-started"
+  },
+  {
+    "title": "Application",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/",
+    "description": "An OpenTelemetry-based APM suite that ingests traces, metrics, and logs, then renders RED-metric dashboards, service maps, and trace waterfalls for every microservice.",
+    "urlPrefix": "/a/grafana-app-observability-app"
+  },
+  {
+    "title": "Cloud Provider",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/",
+    "description": "This app connects to AWS, Azure, and GCP with minimal credentials, auto-discovers resources, and ships cloud-native metrics to Grafana Cloud; it then overlays cost, health, and usage views across multiple accounts.",
+    "urlPrefix": "/a/grafana-csp-app"
+  },
+  {
+    "title": "Kubernetes",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/",
+    "description": "A turnkey Helm or Alloy-based installer that collects cluster metrics, events, and traces, bundling rich dashboards for nodes, workloads, and golden signals.",
+    "urlPrefix": "/a/grafana-k8s-app/"
+  },
+  {
+    "title": "Frontend",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/monitor-applications/frontend-observability/",
+    "description": "Powered by the Faro SDK, Frontend Observability captures real-user monitoring (RUM) data\u2014page loads, Core Web Vitals, JS errors\u2014and correlates it with backend traces for full-stack visibility.",
+    "urlPrefix": "/a/grafana-kowalski-app"
+  },
+  {
+    "title": "Connections",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/connect-externally-hosted/data-sources/",
+    "description": "Connections is the catalog of one-click integrations and Private Data-Source Connect (PDC).",
+    "urlPrefix": "/connections"
+  },
+  {
+    "title": "Add a New Connection",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/datasources/#add-a-data-source",
+    "description": "The \u201cAdd new connection\u201d wizard is the front door to everything Grafana Cloud can ingest: type \u201cPostgres,\u201d \u201cLoki,\u201d or any of 40-plus tiles, and the flow spins up the right data-source object, ships (or re-uses) a Grafana Alloy collector, and autoinstalls starter dashboards and alerts.",
+    "urlPrefix": "/connections/add-new-connection"
+  },
+  {
+    "title": "Collector",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/send-data/fleet-management/manage-fleet/collectors/",
+    "description": "The Collector app (powered by Grafana Alloy/OpenTelemetry Collector) is fleet management for your ingest agents: dashboards show health, version, and throughput, while one-click actions restart or upgrade out-of-date nodes.",
+    "urlPrefix": "/a/grafana-collector-app"
+  },
+  {
+    "title": "Data Sources",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/connect-externally-hosted/data-sources/",
+    "description": "\u201cData sources\u201d lists every configured backend\u2014Prometheus, CloudWatch, BigQuery, and more\u2014plus connection status, quotas, and edit links.",
+    "urlPrefix": "/connections/datasources"
+  },
+  {
+    "title": "Integrations",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/integrations/",
+    "description": "The Integrations catalog bundles exporters, dashboards, and alerts for popular services (Linux node, NGINX, Redis, etc.) behind point-and-click cards.",
+    "urlPrefix": "/connections/infrastructure"
+  },
+  {
+    "title": "Private Datasource Connect",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/connect-externally-hosted/private-data-source-connect/",
+    "description": "PDC creates an outbound-only, encrypted tunnel from your private network to Grafana Cloud, so on-prem SQL servers or self-hosted Prometheus can be queried without opening inbound firewall holes.",
+    "urlPrefix": "/connections/private-data-source-connections"
+  },
+  {
+    "title": "More Apps",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/administration/plugin-management/",
+    "description": "Any installed app plugin that doesn\u2019t fit the core navigation lands under \u201cMore Apps.\u201d Admins can later reposition pages, but by default this keeps niche tools (e.g., a custom billing app) tidy yet discoverable.",
+    "urlPrefix": "/apps"
+  },
+  {
+    "title": "Demo Data Dashboards",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/get-started/#install-demo-data-sources-and-dashboards",
+    "description": "",
+    "urlPrefix": "/a/grafana-demodashboards-app"
+  },
+  {
+    "title": "Administration",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/administration/",
+    "description": "The Administration section handles org-level housekeeping: user and team management, roles & permissions, billing, plugin toggles, and feature flags.",
+    "urlPrefix": "/admin"
+  },
+  {
+    "title": "General",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/administration/organization-management/",
+    "description": "This page centralizes stack-wide preferences such as home dashboard, time zone, default theme, and the brand assets (logo + fav icon) that appear in the UI.",
+    "urlPrefix": "/admin/general"
+  },
+  {
+    "title": "Plugins and Data",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/administration/plugin-management/",
+    "description": "The Plugins panel lists every data source, panel, and app extension that\u2019s installed (or available in the catalog) and lets admins enable, disable, update, or pin versions.",
+    "urlPrefix": "/admin/plugins"
+  },
+  {
+    "title": "Users and Access",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/administration/user-management/",
+    "description": "Here you add users, place them into teams, and fine-tune permissions down to folder or dashboard level.",
+    "urlPrefix": "/admin/access"
+  },
+  {
+    "title": "Authentication",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-authentication/",
+    "description": "This tab wires Grafana to auth providers\u2014LDAP, SAML, OAuth (GitHub, Google, Okta, etc.)\u2014and exposes toggles for sign-up modes, auto-invite, and session hardening.",
+    "urlPrefix": "/admin/authentication"
+  },
+  {
+    "title": "Advisor",
+    "best_doc_url": "https://grafana.com/docs/grafana/latest/administration/grafana-advisor/",
+    "description": "Advisor is a health-check dashboard that scans your instance for red flags\u2014outdated plugins, high cardinality metrics, or missing TLS\u2014and scores overall hygiene.",
+    "urlPrefix": "/a/grafana-advisor-app"
+  },
+  {
+    "title": "Cost Management",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/",
+    "description": "The hub aggregates spend across metrics, logs, traces, and profiles, pairing usage dashboards with optimization tools like Adaptive Metrics and Log Volume Explorer.",
+    "urlPrefix": "/a/grafana-costmanagementui-app/overview"
+  },
+  {
+    "title": "Metrics",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/analyze-costs/metrics-costs/",
+    "description": "Shows active-series counts, DPM trends, and the Adaptive Metrics recommender that can auto-aggregate low-value labels, slashing ingestion by up to 40%.",
+    "urlPrefix": "/a/grafana-costmanagementui-app/metrics"
+  },
+  {
+    "title": "Logs",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/analyze-costs/logs-costs/",
+    "description": "Pivots to Log Volume Explorer where you slice ingestion by label to find the namespace or app exploding your bill.",
+    "urlPrefix": "/a/grafana-costmanagementui-app/logs"
+  },
+  {
+    "title": "Traces",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/traces-costs/",
+    "description": "Highlights GB ingested vs retained and surfaces high-fan-out span attributes; guidance panels link to sampling knobs that trim unnecessary spans before export.",
+    "urlPrefix": "/a/grafana-costmanagementui-app/traces"
+  },
+  {
+    "title": "Profiles",
+    "best_doc_url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/understand-your-invoice/profiles-invoice/",
+    "description": "Highlights GB ingested vs retained and surfaces high-fan-out span attributes; guidance panels link to sampling knobs that trim unnecessary spans before export.",
+    "urlPrefix": "/a/grafana-costmanagementui-app/profiles"
+  }
+]
