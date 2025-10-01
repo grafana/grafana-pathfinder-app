@@ -20,6 +20,7 @@ export const InteractiveStep = forwardRef<
       targetComment,
       postVerify,
       doIt = true, // Default to true - show "Do it" button unless explicitly disabled
+      showMe = true, // Default to true - show "Show me" button unless explicitly disabled
       skippable = false, // Default to false - only skippable if explicitly set
       title,
       description,
@@ -361,8 +362,8 @@ export const InteractiveStep = forwardRef<
 
         <div className="interactive-step-actions">
           <div className="interactive-step-action-buttons">
-            {/* For highlight-only actions, hide "Show me" button when completed - only show when not completed */}
-            {!isCompletedWithObjectives && (
+            {/* Only show "Show me" button when showMe prop is true */}
+            {showMe && !isCompletedWithObjectives && (
               <Button
                 onClick={handleShowAction}
                 disabled={
