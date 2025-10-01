@@ -9,6 +9,7 @@ import {
   InteractiveSection,
   InteractiveStep,
   InteractiveMultiStep,
+  InteractiveGuided,
   CodeBlock,
   ExpandableTable,
   ImageRenderer,
@@ -430,6 +431,23 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
             typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
           )}
         </InteractiveMultiStep>
+      );
+    case 'interactive-guided':
+      return (
+        <InteractiveGuided
+          key={key}
+          internalActions={element.props.internalActions}
+          stepTimeout={element.props.stepTimeout}
+          skippable={element.props.skippable}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          hints={element.props.hints}
+          title={element.props.title}
+        >
+          {element.children.map((child: ParsedElement | string, childIndex: number) =>
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
+          )}
+        </InteractiveGuided>
       );
     case 'video':
       return (

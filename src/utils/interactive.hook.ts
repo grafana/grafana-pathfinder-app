@@ -8,7 +8,14 @@ import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { SequenceManager } from './sequence-manager';
 import { NavigationManager } from './navigation-manager';
-import { FocusHandler, ButtonHandler, NavigateHandler, FormFillHandler, HoverHandler } from './action-handlers';
+import {
+  FocusHandler,
+  ButtonHandler,
+  NavigateHandler,
+  FormFillHandler,
+  HoverHandler,
+  GuidedHandler,
+} from './action-handlers';
 
 export interface InteractiveRequirementsCheck {
   requirements: string;
@@ -73,6 +80,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [stateManager, navigationManager]
   );
 
+  const guidedHandler = useMemo(
+    () => new GuidedHandler(stateManager, navigationManager, waitForReactUpdates),
+    [stateManager, navigationManager]
+  );
+
   // Initialize global interactive styles
   useEffect(() => {
     addGlobalInteractiveStyles();
@@ -116,6 +128,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [hoverHandler]
   );
 
+  const interactiveGuided = useCallback(
+    async (data: InteractiveElementData, performGuided: boolean) => {
+      await guidedHandler.execute(data, performGuided);
+    },
+    [guidedHandler]
+  );
+
   // Define helper functions using refs to avoid circular dependencies
   const dispatchInteractiveAction = useCallback(
     async (data: InteractiveElementData, click: boolean) => {
@@ -129,9 +148,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         interactiveNavigate(data, click);
       } else if (data.targetaction === 'hover') {
         await interactiveHover(data, click);
+      } else if (data.targetaction === 'guided') {
+        await interactiveGuided(data, click);
       }
     },
-    [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveHover]
+    [interactiveFocus, interactiveButton, interactiveFormFill, interactiveNavigate, interactiveHover, interactiveGuided]
   );
 
   /**
@@ -375,6 +396,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             await interactiveHover(elementData, !isShowMode);
             break;
 
+          case 'guided':
+            await interactiveGuided(elementData, !isShowMode);
+            break;
+
           case 'sequence':
             await interactiveSequence(elementData, isShowMode);
             break;
@@ -392,6 +417,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       interactiveFormFill,
       interactiveNavigate,
       interactiveHover,
+      interactiveGuided,
       interactiveSequence,
       stateManager,
     ]

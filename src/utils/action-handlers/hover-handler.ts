@@ -114,33 +114,39 @@ export class HoverHandler {
   private applyProgrammaticHoverState(element: HTMLElement): void {
     // Add a data attribute to track that we've applied hover state
     element.setAttribute('data-interactive-hover', 'true');
-    
+
     // For Tailwind's group pattern: find all children with group-hover classes
     // and manually apply the hover styles
     const groupHoverElements = element.querySelectorAll('[class*="group-hover:"]');
-    
+
     groupHoverElements.forEach((child) => {
       const classList = Array.from(child.classList);
-      
+
       classList.forEach((className) => {
         if (className.startsWith('group-hover:')) {
           // Extract the actual style class (e.g., "flex" from "group-hover:flex")
           const hoverClass = className.replace('group-hover:', '');
-          
+
           // Apply the hover class directly
           child.classList.add(hoverClass);
-          
+
           // Track which classes we added for potential cleanup
           const addedClasses = child.getAttribute('data-interactive-added-classes') || '';
-          child.setAttribute('data-interactive-added-classes', addedClasses ? `${addedClasses},${hoverClass}` : hoverClass);
-          
+          child.setAttribute(
+            'data-interactive-added-classes',
+            addedClasses ? `${addedClasses},${hoverClass}` : hoverClass
+          );
+
           console.warn(`Applied hover class "${hoverClass}" to element with group-hover:${hoverClass}`);
         }
       });
-      
+
       // Also handle group-hover utility classes that hide elements (like group-hover:hidden)
       // We need to remove conflicting base classes
-      if (child.classList.contains('hidden') && classList.some(c => c.includes('group-hover:flex') || c.includes('group-hover:block'))) {
+      if (
+        child.classList.contains('hidden') &&
+        classList.some((c) => c.includes('group-hover:flex') || c.includes('group-hover:block'))
+      ) {
         child.classList.remove('hidden');
         child.setAttribute('data-interactive-removed-hidden', 'true');
         console.warn('Removed "hidden" class to allow group-hover element to display');
@@ -183,9 +189,9 @@ export class HoverHandler {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private removeProgrammaticHoverState(element: HTMLElement): void {
     element.removeAttribute('data-interactive-hover');
-    
+
     const groupHoverElements = element.querySelectorAll('[data-interactive-added-classes]');
-    
+
     groupHoverElements.forEach((child) => {
       const addedClasses = child.getAttribute('data-interactive-added-classes');
       if (addedClasses) {
@@ -194,7 +200,7 @@ export class HoverHandler {
         });
         child.removeAttribute('data-interactive-added-classes');
       }
-      
+
       if (child.getAttribute('data-interactive-removed-hidden') === 'true') {
         child.classList.add('hidden');
         child.removeAttribute('data-interactive-removed-hidden');

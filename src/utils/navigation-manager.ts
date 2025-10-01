@@ -100,6 +100,10 @@ export class NavigationManager {
     await this.ensureNavigationOpen(element);
     await this.ensureElementVisible(element);
 
+    // DOM settling delay after scroll to ensure accurate element positioning
+    // This prevents highlight positioning issues when DOM hasn't fully settled
+    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.domSettlingDelay));
+
     // Add highlight class for better styling
     element.classList.add('interactive-highlighted');
 

@@ -720,6 +720,136 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
           };
         }
 
+        // INTERACTIVE GUIDED (user-performed actions with detection)
+        if (/\binteractive\b/.test(el.className || '') && el.getAttribute('data-targetaction') === 'guided') {
+          hasInteractiveElements = true;
+
+          // Extract internal action spans (same logic as multistep)
+          const internalSpans = el.querySelectorAll('span.interactive');
+          const internalActions: Array<{
+            requirements?: string;
+            targetAction: string;
+            refTarget: string;
+            targetValue?: string;
+            targetComment?: string;
+          }> = [];
+
+          internalSpans.forEach((span, index) => {
+            try {
+              const targetAction = span.getAttribute('data-targetaction');
+              const refTarget = span.getAttribute('data-reftarget');
+
+              // Validate action type for guided (only hover, button, highlight supported)
+              if (targetAction && !['hover', 'button', 'highlight'].includes(targetAction)) {
+                errorCollector.addError(
+                  'element_creation',
+                  `Guided internal action ${index + 1} has unsupported action type: ${targetAction}. Only 'hover', 'button', and 'highlight' are supported.`,
+                  span.outerHTML,
+                  `${currentPath}.guided.action[${index}]`
+                );
+                return;
+              }
+
+              if (!targetAction || !refTarget) {
+                errorCollector.addError(
+                  'element_creation',
+                  `Guided internal action ${
+                    index + 1
+                  } missing required attributes (data-targetaction and data-reftarget)`,
+                  span.outerHTML,
+                  `${currentPath}.guided.action[${index}]`
+                );
+                return;
+              }
+
+              // Extract interactive-comment spans as metadata (same as regular interactive steps)
+              let interactiveComment: string | null = null;
+              const commentSpans = span.querySelectorAll('span.interactive-comment');
+
+              if (commentSpans.length > 0) {
+                // Use the first comment span found and capture its full HTML content
+                interactiveComment = commentSpans[0].innerHTML;
+                // Note: Spans are hidden via CSS rule instead of DOM removal
+              }
+
+              internalActions.push({
+                requirements: span.getAttribute('data-requirements') || undefined,
+                targetAction,
+                refTarget,
+                targetValue: span.getAttribute('data-targetvalue') || undefined,
+                targetComment: interactiveComment || undefined,
+              });
+
+              // Remove the internal span since it's just metadata
+              span.remove();
+            } catch (error) {
+              errorCollector.addError(
+                'element_creation',
+                `Failed to process guided internal action ${index + 1}: ${
+                  error instanceof Error ? error.message : 'Unknown error'
+                }`,
+                span.outerHTML,
+                `${currentPath}.guided.action[${index}]`,
+                error instanceof Error ? error : undefined
+              );
+            }
+          });
+
+          if (internalActions.length === 0) {
+            errorCollector.addError(
+              'element_creation',
+              `Guided element has no valid internal actions`,
+              el.outerHTML,
+              currentPath
+            );
+          }
+
+          // Process remaining children as React components
+          const children: Array<ParsedElement | string> = [];
+          el.childNodes.forEach((child, index) => {
+            try {
+              const walked = walk(child, `${currentPath}.interactive-guided[${index}]`);
+              if (walked) {
+                children.push(walked);
+              }
+            } catch (error) {
+              errorCollector.addError(
+                'children_processing',
+                `Failed to process interactive guided child ${index}: ${
+                  error instanceof Error ? error.message : 'Unknown error'
+                }`,
+                child.nodeType === Node.ELEMENT_NODE
+                  ? (child as Element).outerHTML
+                  : child.textContent?.substring(0, 100),
+                `${currentPath}.interactive-guided[${index}]`,
+                error instanceof Error ? error : undefined
+              );
+            }
+          });
+
+          // Use general attribute mapping to capture ALL data attributes
+          const allProps = mapHtmlAttributesToReactProps(el, errorCollector);
+
+          return {
+            type: 'interactive-guided',
+            props: {
+              // Core guided props
+              internalActions,
+              stepTimeout: parseInt(el.getAttribute('data-step-timeout') || '30000', 10),
+              skippable: el.getAttribute('data-skippable') === 'true',
+              title: undefined,
+              // Specific data attribute mappings
+              requirements: el.getAttribute('data-requirements'),
+              objectives: el.getAttribute('data-objectives'),
+              hints: el.getAttribute('data-hint'),
+              // Include ALL other attributes
+              ...allProps,
+            },
+            children,
+            originalHTML: el.outerHTML,
+          };
+        }
+
         // INTERACTIVE STEP (outside of section)
         if (
           /\binteractive\b/.test(el.className || '') &&

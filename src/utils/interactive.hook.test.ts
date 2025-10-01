@@ -31,6 +31,11 @@ jest.mock('./action-handlers', () => ({
   HoverHandler: jest.fn().mockImplementation(() => ({
     execute: jest.fn().mockResolvedValue(undefined),
   })),
+  GuidedHandler: jest.fn().mockImplementation(() => ({
+    execute: jest.fn().mockResolvedValue(undefined),
+    executeGuidedStep: jest.fn().mockResolvedValue('completed'),
+    cancel: jest.fn(),
+  })),
 }));
 
 // Mock managers
