@@ -179,7 +179,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
         // All steps completed - clear the final highlight
         navManager.clearAllHighlights();
-        
+
         setIsLocallyCompleted(true);
 
         if (onStepComplete && stepId) {
