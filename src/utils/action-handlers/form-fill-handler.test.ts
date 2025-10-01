@@ -21,6 +21,7 @@ const mockNavigationManager = {
   ensureElementVisible: jest.fn().mockResolvedValue(undefined),
   highlight: jest.fn().mockResolvedValue(undefined),
   highlightWithComment: jest.fn().mockResolvedValue(undefined),
+  clearAllHighlights: jest.fn(),
   fixNavigationRequirements: jest.fn().mockResolvedValue(undefined),
   openAndDockNavigation: jest.fn().mockResolvedValue(undefined),
 } as unknown as NavigationManager & {
@@ -28,6 +29,7 @@ const mockNavigationManager = {
   ensureElementVisible: jest.Mock;
   highlight: jest.Mock;
   highlightWithComment: jest.Mock;
+  clearAllHighlights: jest.Mock;
   fixNavigationRequirements: jest.Mock;
   openAndDockNavigation: jest.Mock;
 };

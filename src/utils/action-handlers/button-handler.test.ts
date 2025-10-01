@@ -20,6 +20,7 @@ const mockNavigationManager = {
   ensureElementVisible: jest.fn(),
   highlight: jest.fn(),
   highlightWithComment: jest.fn(),
+  clearAllHighlights: jest.fn(),
 } as unknown as NavigationManager;
 
 const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);

@@ -58,6 +58,9 @@ export class FormFillHandler {
   }
 
   private async handleDoMode(targetElement: HTMLElement, data: InteractiveElementData): Promise<void> {
+    // Clear any existing highlights before performing action
+    this.navigationManager.clearAllHighlights();
+
     const value = data.targetvalue || '';
     const tagName = targetElement.tagName.toLowerCase();
     const inputType = this.getInputType(targetElement);

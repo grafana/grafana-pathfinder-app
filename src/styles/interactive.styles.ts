@@ -709,11 +709,8 @@ export const addGlobalInteractiveStyles = () => {
   style.id = interactiveStyleId;
   // Align highlight animation timing with configured technical highlight delay
   const highlightMs = INTERACTIVE_CONFIG.delays.technical.highlight;
-  // Slower, more readable draw; short hold; erase the remainder
+  // Slower, more readable draw animation (no fade-out since highlights persist)
   const drawMs = Math.max(500, Math.round(highlightMs * 0.65));
-  const holdMs = Math.max(120, Math.round(highlightMs * 0.2));
-  const eraseMs = Math.max(250, Math.max(0, highlightMs - drawMs - holdMs));
-  const fadeDelay = drawMs + holdMs; // ensure fade starts after draw completes + hold
   style.textContent = `
     /* Blocker overlay visuals (used by GlobalInteractionBlocker) */
     #interactive-blocking-overlay {
@@ -798,12 +795,12 @@ export const addGlobalInteractiveStyles = () => {
         linear-gradient(var(--hl-color) 0 0) bottom right / 0 var(--hl-thickness) no-repeat,
         linear-gradient(var(--hl-color) 0 0) bottom left / var(--hl-thickness) 0 no-repeat;
       opacity: 0.95;
-      /* Draw, brief hold, graceful fade — aligned to config highlight delay */
-      animation-name: interactive-draw-border, interactive-fade-out;
-      animation-duration: ${drawMs}ms, ${eraseMs}ms;
-      animation-timing-function: cubic-bezier(0.18, 0.6, 0.2, 1), cubic-bezier(0.4, 0.0, 0.2, 1);
-      animation-delay: 0ms, ${fadeDelay}ms; /* start fade only after draw + hold */
-      animation-fill-mode: forwards, forwards;
+      /* Draw border animation only - no fade out, stays visible */
+      animation-name: interactive-draw-border;
+      animation-duration: ${drawMs}ms;
+      animation-timing-function: cubic-bezier(0.18, 0.6, 0.2, 1);
+      animation-delay: 0ms;
+      animation-fill-mode: forwards;
     }
     /* Subtle variant to reuse animation cadence for blocked areas */
     .interactive-highlight-outline--subtle {
@@ -832,12 +829,6 @@ export const addGlobalInteractiveStyles = () => {
       100% {
         background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100%;
       }
-    }
-
-    /* Graceful fade out without undrawing the stroke */
-    @keyframes interactive-fade-out {
-      0% { opacity: 0.95; }
-      100% { opacity: 0; }
     }
 
     /* Enhanced comment box animations */
@@ -943,6 +934,41 @@ export const addGlobalInteractiveStyles = () => {
       overflow-wrap: break-word;
       max-width: 100%;
       box-sizing: border-box;
+    }
+
+    /* Simple white close button for comment boxes */
+    .interactive-comment-close {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 20px;
+      height: 20px;
+      border: none;
+      background: transparent;
+      color: #ffffff;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: normal;
+      line-height: 1;
+      padding: 0;
+      pointer-events: auto;
+      transition: all 0.2s ease;
+      z-index: 1;
+      opacity: 0.7;
+    }
+
+    .interactive-comment-close:hover {
+      background: rgba(255, 255, 255, 0.15);
+      opacity: 1;
+      transform: scale(1.1);
+    }
+
+    .interactive-comment-close:active {
+      transform: scale(0.95);
     }
 
     /* Orange glow border for comment boxes */

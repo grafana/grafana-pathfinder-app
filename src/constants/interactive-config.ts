@@ -59,6 +59,12 @@ export const INTERACTIVE_CONFIG = {
       reactiveCheck: 150, // Reactive check delay after completions
     },
   },
+  // Smart auto-cleanup configuration for highlights
+  cleanup: {
+    viewportThreshold: 0.1, // Clear when <10% of element is visible
+    viewportMargin: '50px', // Buffer zone before clearing (prevents premature clearing)
+    clickOutsideDelay: 500, // Delay before enabling click-outside detection (ms)
+  },
   // Event-driven settling detection configuration
   settling: {
     useAnimationEvents: true, // Listen for animationend events

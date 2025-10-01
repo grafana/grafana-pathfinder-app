@@ -50,6 +50,9 @@ export class FocusHandler {
   }
 
   private async handleDoMode(targetElements: HTMLElement[]): Promise<void> {
+    // Clear any existing highlights before performing action
+    this.navigationManager.clearAllHighlights();
+
     // Do mode: ensure visibility then click, don't highlight
     for (const element of targetElements) {
       await this.navigationManager.ensureNavigationOpen(element);
