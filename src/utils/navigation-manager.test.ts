@@ -1,5 +1,25 @@
 import { NavigationManager } from './navigation-manager';
 
+// Mock IntersectionObserver
+global.IntersectionObserver = class IntersectionObserver {
+  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {}
+  observe = jest.fn();
+  disconnect = jest.fn();
+  unobserve = jest.fn();
+  takeRecords = jest.fn(() => []);
+  root = null;
+  rootMargin = '';
+  thresholds = [];
+} as any;
+
+// Mock ResizeObserver
+global.ResizeObserver = class ResizeObserver {
+  constructor(callback: ResizeObserverCallback) {}
+  observe = jest.fn();
+  disconnect = jest.fn();
+  unobserve = jest.fn();
+} as any;
+
 // Mock DOM elements
 const mockElement = {
   getBoundingClientRect: jest.fn(() => ({
@@ -51,8 +71,19 @@ document.createElement = jest.fn(
   () =>
     ({
       className: '',
+      innerHTML: '',
       style: {
         setProperty: jest.fn(),
+        position: '',
+        top: '',
+        right: '',
+      },
+      setAttribute: jest.fn(),
+      addEventListener: jest.fn(),
+      appendChild: jest.fn(),
+      classList: {
+        add: jest.fn(),
+        remove: jest.fn(),
       },
     }) as unknown as HTMLElement
 );

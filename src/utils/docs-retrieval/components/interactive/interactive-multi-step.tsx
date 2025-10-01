@@ -220,6 +220,11 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
       isCancelledRef.current = false; // Reset ref as well
 
+      // Clear any existing highlights before starting multi-step execution
+      const { NavigationManager } = await import('../../../navigation-manager');
+      const navigationManager = new NavigationManager();
+      navigationManager.clearAllHighlights();
+
       // Check if we're already in a section blocking state (nested in a section)
       const isNestedInSection = isSectionBlocking();
       const multiStepId = stepId || `multistep-${Date.now()}`;

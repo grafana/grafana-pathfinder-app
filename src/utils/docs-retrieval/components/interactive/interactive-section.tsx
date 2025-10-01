@@ -517,6 +517,11 @@ export function InteractiveSection({
 
     setIsRunning(true);
 
+    // Clear any existing highlights before starting section execution
+    const { NavigationManager } = await import('../../../navigation-manager');
+    const navigationManager = new NavigationManager();
+    navigationManager.clearAllHighlights();
+
     isCancelledRef.current = false; // Reset ref as well
 
     // Use currentStepIndex as the starting point - much more efficient!
@@ -615,7 +620,6 @@ export function InteractiveSection({
         // User must manually click the guided step's "Do it" button
         // Once complete, they can click "Resume" to continue
         if (stepInfo.isGuided) {
-          console.log(`⏸️ Section paused at guided step ${i + 1}. User must manually execute this step.`);
           setCurrentStepIndex(i); // Mark where we stopped
           setIsRunning(false); // Stop the automated loop
           stopSectionBlocking(sectionId); // Remove blocking overlay

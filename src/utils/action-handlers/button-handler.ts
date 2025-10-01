@@ -38,6 +38,9 @@ export class ButtonHandler {
   }
 
   private async handleDoMode(buttons: HTMLElement[]): Promise<void> {
+    // Clear any existing highlights before performing action
+    this.navigationManager.clearAllHighlights();
+
     // Do mode: ensure visibility then click, don't highlight
     for (const button of buttons) {
       await this.navigationManager.ensureNavigationOpen(button);

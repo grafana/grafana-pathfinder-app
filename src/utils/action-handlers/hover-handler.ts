@@ -61,23 +61,15 @@ export class HoverHandler {
   }
 
   private async handleDoMode(targetElement: HTMLElement): Promise<void> {
-    console.warn('🎯 Hover action starting on element:', targetElement);
-    console.warn('Element details:', {
-      tagName: targetElement.tagName,
-      className: targetElement.className,
-      id: targetElement.id,
-      hasTabindex: targetElement.hasAttribute('tabindex'),
-      tabindex: targetElement.getAttribute('tabindex'),
-    });
+    // Clear any existing highlights before performing action
+    this.navigationManager.clearAllHighlights();
 
     // CRITICAL: JavaScript events don't trigger CSS :hover pseudo-classes
     // We need to programmatically apply hover styles for frameworks like Tailwind
     this.applyProgrammaticHoverState(targetElement);
-    console.warn('✅ Applied programmatic hover state for CSS compatibility');
 
     // Also dispatch hover events for JavaScript event listeners
     this.dispatchHoverEvents(targetElement);
-    console.warn('✅ Dispatched hover mouse events');
 
     // If element is focusable (has tabindex), also focus it
     // This triggers tooltips and other focus-based interactions
@@ -89,17 +81,13 @@ export class HoverHandler {
     ) {
       try {
         targetElement.focus();
-        console.warn('✅ Focused element (for tooltip trigger)');
       } catch (error) {
         // Ignore focus errors - element might not be focusable despite attributes
-        console.warn('⚠️ Could not focus element:', error);
       }
     }
 
-    console.warn(`⏱️ Maintaining hover for ${INTERACTIVE_CONFIG.delays.perceptual.hover}ms...`);
     // Maintain hover state for configured duration
     await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.hover));
-    console.warn('✅ Hover action complete');
 
     // Note: We intentionally don't remove hover state to keep elements visible
     // This allows subsequent actions to interact with hover-revealed elements
@@ -136,8 +124,6 @@ export class HoverHandler {
             'data-interactive-added-classes',
             addedClasses ? `${addedClasses},${hoverClass}` : hoverClass
           );
-
-          console.warn(`Applied hover class "${hoverClass}" to element with group-hover:${hoverClass}`);
         }
       });
 
@@ -149,7 +135,6 @@ export class HoverHandler {
       ) {
         child.classList.remove('hidden');
         child.setAttribute('data-interactive-removed-hidden', 'true');
-        console.warn('Removed "hidden" class to allow group-hover element to display');
       }
     });
   }

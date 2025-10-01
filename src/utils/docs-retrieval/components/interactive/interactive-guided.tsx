@@ -150,6 +150,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setCurrentStepIndex(0);
       setCurrentStepStatus('waiting');
 
+      // Clear any existing highlights before starting guided execution
+      const { NavigationManager } = await import('../../../navigation-manager');
+      const navManager = new NavigationManager();
+      navManager.clearAllHighlights();
+
       try {
         // Execute each internal action in sequence, waiting for user
         for (let i = 0; i < internalActions.length; i++) {
@@ -173,7 +178,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           }
         }
 
-        // All steps completed
+        // All steps completed - clear the final highlight
+        navManager.clearAllHighlights();
+
         setIsLocallyCompleted(true);
 
         if (onStepComplete && stepId) {

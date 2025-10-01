@@ -77,8 +77,11 @@ export class GuidedHandler {
       // Wait for user to complete the action
       const result = await this.waitForUserCompletion(action, targetElement, timeout);
 
-      // Clean up highlight after completion
-      this.removeHighlight(targetElement);
+      // Don't remove highlight after completion - let it persist until next action
+      // Highlights will be cleared when:
+      // 1. Next guided step starts (highlightTarget calls navigationManager.highlightWithComment which clears all)
+      // 2. User clicks close button on comment box
+      // 3. Section execution completes
 
       return result;
     } catch (error) {
@@ -150,7 +153,8 @@ export class GuidedHandler {
     const message = customComment || this.getActionMessage(actionType, stepIndex, totalSteps);
 
     // Use existing highlight system with persistent highlight
-    await this.navigationManager.highlightWithComment(element, message);
+    // Disable auto-cleanup for guided mode - highlights should only clear when step completes
+    await this.navigationManager.highlightWithComment(element, message, false);
 
     // Add a persistent highlight class that won't auto-remove
     element.classList.add('interactive-guided-active');
@@ -176,14 +180,6 @@ export class GuidedHandler {
       default:
         return `${stepLabel}: Interact with this element`;
     }
-  }
-
-  /**
-   * Remove highlight from element
-   */
-  private removeHighlight(element: HTMLElement): void {
-    element.classList.remove('interactive-guided-active');
-    element.classList.remove('interactive-highlighted');
   }
 
   /**

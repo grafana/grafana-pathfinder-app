@@ -35,6 +35,9 @@ export class NavigateHandler {
   }
 
   private async handleDoMode(data: InteractiveElementData): Promise<void> {
+    // Note: No need to clear highlights for navigate - user is leaving the page
+    // The page navigation will naturally clean up all DOM elements
+
     // Do mode: actually navigate to the target URL
     // Use Grafana's idiomatic navigation pattern via locationService
     // This handles both internal Grafana routes and external URLs appropriately
