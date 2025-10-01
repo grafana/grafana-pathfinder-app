@@ -71,24 +71,27 @@ export const prometheusGrafana101Html = `<html>
               </li>
 
               <li class="interactive"
-                  data-targetaction="hover"
-                  data-reftarget='.gf-form:has([data-testid="data-testid prometheus type"]) label > svg[tabindex="0"]'
-                  data-requirements="exists-reftarget">
-                <span class="interactive-comment">The <strong>Performance</strong> section contains advanced settings that control how Grafana optimizes queries to your Prometheus server. Hovering over the information icon reveals detailed explanations about each setting.</span>
-                To find more information about the <strong>Prometheus type</strong> setting, hover over its information icon.
-              </li>
-
-              <li class="interactive"
-                  data-reftarget='[data-testid="data-testid prometheus type"]'
-                  data-targetaction='highlight'>
-                <span class="interactive-comment">The <strong>Prometheus type</strong> dropdown lets you specify whether you're connecting to a standard Prometheus server or a compatible service like Cortex or Thanos, which helps Grafana optimize query behavior accordingly.</span>
-                In the <strong>Performance</strong> section, notice the <strong>Prometheus type</strong> dropdown - this controls query optimization settings.
-              </li>
-
-              <li class="interactive"
-                  data-reftarget="Save & test"
-                  data-targetaction="button">
-                Click <strong>Save & test</strong> to create your data source and verify the connection is working.
+                  data-targetaction="guided"
+                  data-step-timeout="45000"
+                  data-skippable="true">
+                <span class="interactive" 
+                      data-targetaction="hover"
+                      data-reftarget='.gf-form:has([data-testid="data-testid prometheus type"]) label > svg[tabindex="0"]'
+                      data-requirements="exists-reftarget">
+                  <span class="interactive-comment">The <strong>Performance</strong> section contains advanced settings that control how Grafana optimizes queries to your Prometheus server. Hovering over the information icon reveals detailed explanations about each setting.</span>
+                </span>
+                <span class="interactive"
+                      data-targetaction="highlight"
+                      data-reftarget='[data-testid="data-testid prometheus type"]'>
+                  <span class="interactive-comment">The <strong>Prometheus type</strong> dropdown lets you specify whether you're connecting to a standard Prometheus server or a compatible service like Cortex or Thanos, which helps Grafana optimize query behavior accordingly.</span>
+                </span>
+                <span class="interactive"
+                      data-targetaction="button"
+                      data-reftarget="Save & test">
+                  <span class="interactive-comment">Click <strong>Save & test</strong> to create your data source and verify the connection is working.</span>
+                </span>
+                
+                Explore Prometheus configuration settings and save your data source.
               </li>
             </ul>
         </span>

@@ -5,6 +5,7 @@ import { useInteractiveElements } from '../../../interactive.hook';
 import { useStepChecker } from '../../../step-checker.hook';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
+import { InteractiveGuided } from './interactive-guided';
 import { reportAppInteraction, UserInteraction } from '../../../../lib/analytics';
 import { INTERACTIVE_CONFIG } from '../../../../constants/interactive-config';
 
@@ -55,8 +56,8 @@ export interface StepInfo {
   stepId: string;
   element: React.ReactElement<InteractiveStepProps> | React.ReactElement<any>;
   index: number;
-  targetAction?: string; // Optional for multi-step
-  refTarget?: string; // Optional for multi-step
+  targetAction?: string; // Optional for multi-step and guided
+  refTarget?: string; // Optional for multi-step and guided
   targetValue?: string;
   targetComment?: string; // Optional comment to show during execution
   requirements?: string;
@@ -64,6 +65,7 @@ export interface StepInfo {
   skippable?: boolean; // Whether this step can be skipped
   showMe?: boolean; // Whether to show the "Show me" button and phase
   isMultiStep: boolean; // Flag to identify component type
+  isGuided: boolean; // Flag to identify guided (user-performed) steps
 }
 
 // Simple counter for sequential section IDs
@@ -219,6 +221,7 @@ export function InteractiveSection({
           skippable: props.skippable,
           showMe: props.showMe,
           isMultiStep: false,
+          isGuided: false,
         });
       } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
         const props = child.props as any; // InteractiveMultiStepProps
@@ -234,6 +237,23 @@ export function InteractiveSection({
           requirements: props.requirements,
           skippable: props.skippable,
           isMultiStep: true,
+          isGuided: false,
+        });
+      } else if (React.isValidElement(child) && (child as any).type === InteractiveGuided) {
+        const props = child.props as any; // InteractiveGuidedProps
+        const stepId = `${sectionId}-guided-${index + 1}`;
+
+        steps.push({
+          stepId,
+          element: child as React.ReactElement<any>,
+          index,
+          targetAction: undefined, // Guided handles internally
+          refTarget: undefined,
+          targetValue: undefined,
+          requirements: props.requirements,
+          skippable: props.skippable,
+          isMultiStep: false,
+          isGuided: true, // Mark as guided step
         });
       }
     });
@@ -590,6 +610,20 @@ export function InteractiveSection({
         }
 
         const stepInfo = stepComponents[i];
+
+        // PAUSE: If this is a guided step, stop automated execution
+        // User must manually click the guided step's "Do it" button
+        // Once complete, they can click "Resume" to continue
+        if (stepInfo.isGuided) {
+          console.log(`⏸️ Section paused at guided step ${i + 1}. User must manually execute this step.`);
+          setCurrentStepIndex(i); // Mark where we stopped
+          setIsRunning(false); // Stop the automated loop
+          stopSectionBlocking(sectionId); // Remove blocking overlay
+
+          // Don't set currentlyExecutingStep - let the guided step handle its own execution
+          return; // Exit the section execution loop
+        }
+
         setCurrentlyExecutingStep(stepInfo.stepId);
 
         // Check step requirements before attempting execution
@@ -901,6 +935,39 @@ export function InteractiveSection({
           onStepReset: handleStepReset, // Add step reset callback
           disabled: disabled || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
           resetTrigger, // Pass reset signal to child multi-steps
+          key: stepInfo.stepId,
+          ref: (
+            ref: {
+              executeStep: () => Promise<boolean>;
+            } | null
+          ) => {
+            if (ref) {
+              multiStepRefs.current.set(stepInfo.stepId, ref);
+            } else {
+              multiStepRefs.current.delete(stepInfo.stepId);
+            }
+          },
+        });
+      } else if (React.isValidElement(child) && (child as any).type === InteractiveGuided) {
+        const stepInfo = stepComponents[index];
+        if (!stepInfo) {
+          return child;
+        }
+
+        const isEligibleForChecking = getStepEligibility(index);
+        const isCompleted = completedSteps.has(stepInfo.stepId);
+        const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
+
+        return React.cloneElement(child as React.ReactElement<any>, {
+          ...(child.props as any),
+          stepId: stepInfo.stepId,
+          isEligibleForChecking,
+          isCompleted,
+          isCurrentlyExecuting,
+          onStepComplete: handleStepComplete,
+          onStepReset: handleStepReset,
+          disabled: disabled || (isRunning && !isCurrentlyExecuting), // Don't disable during section run
+          resetTrigger,
           key: stepInfo.stepId,
           ref: (
             ref: {

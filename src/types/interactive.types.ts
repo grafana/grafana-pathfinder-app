@@ -1,3 +1,13 @@
+export type InteractiveActionType =
+  | 'button'
+  | 'highlight'
+  | 'formfill'
+  | 'navigate'
+  | 'hover'
+  | 'sequence'
+  | 'multistep'
+  | 'guided'; // User-performed actions with detection
+
 export interface InteractiveElementData {
   // Core interactive attributes
   reftarget: string;

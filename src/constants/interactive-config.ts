@@ -37,6 +37,7 @@ export const INTERACTIVE_CONFIG = {
       scrollTimeout: 200, // Scroll completion detection timeout
       scrollFallbackTimeout: 500, // Fallback timeout for scroll operations
       commentExitAnimation: 200, // Comment box exit animation duration
+      domSettlingDelay: 300, // Delay after scroll before highlight positioning for DOM stability
     },
     // Form filling timing (for typing simulation)
     formFill: {

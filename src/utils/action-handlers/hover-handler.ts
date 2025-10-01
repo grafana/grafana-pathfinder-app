@@ -70,7 +70,12 @@ export class HoverHandler {
       tabindex: targetElement.getAttribute('tabindex'),
     });
 
-    // Do mode: dispatch hover events and maintain hover state
+    // CRITICAL: JavaScript events don't trigger CSS :hover pseudo-classes
+    // We need to programmatically apply hover styles for frameworks like Tailwind
+    this.applyProgrammaticHoverState(targetElement);
+    console.warn('✅ Applied programmatic hover state for CSS compatibility');
+
+    // Also dispatch hover events for JavaScript event listeners
     this.dispatchHoverEvents(targetElement);
     console.warn('✅ Dispatched hover mouse events');
 
@@ -96,13 +101,62 @@ export class HoverHandler {
     await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.perceptual.hover));
     console.warn('✅ Hover action complete');
 
-    // Note: We intentionally don't dispatch unhover events to keep the element in hover state
+    // Note: We intentionally don't remove hover state to keep elements visible
     // This allows subsequent actions to interact with hover-revealed elements
-    // The natural mouse movement will trigger mouseout when the user interacts next
+    // The hover state persists until explicitly cleaned up or page changes
   }
 
   /**
-   * Dispatch mouse events to trigger CSS :hover pseudo-classes
+   * Programmatically apply hover state to trigger CSS-based hover effects
+   * Since JavaScript events don't trigger CSS :hover, we need to manually apply styles
+   * This handles Tailwind's group-hover pattern and similar CSS-based hover mechanics
+   */
+  private applyProgrammaticHoverState(element: HTMLElement): void {
+    // Add a data attribute to track that we've applied hover state
+    element.setAttribute('data-interactive-hover', 'true');
+
+    // For Tailwind's group pattern: find all children with group-hover classes
+    // and manually apply the hover styles
+    const groupHoverElements = element.querySelectorAll('[class*="group-hover:"]');
+
+    groupHoverElements.forEach((child) => {
+      const classList = Array.from(child.classList);
+
+      classList.forEach((className) => {
+        if (className.startsWith('group-hover:')) {
+          // Extract the actual style class (e.g., "flex" from "group-hover:flex")
+          const hoverClass = className.replace('group-hover:', '');
+
+          // Apply the hover class directly
+          child.classList.add(hoverClass);
+
+          // Track which classes we added for potential cleanup
+          const addedClasses = child.getAttribute('data-interactive-added-classes') || '';
+          child.setAttribute(
+            'data-interactive-added-classes',
+            addedClasses ? `${addedClasses},${hoverClass}` : hoverClass
+          );
+
+          console.warn(`Applied hover class "${hoverClass}" to element with group-hover:${hoverClass}`);
+        }
+      });
+
+      // Also handle group-hover utility classes that hide elements (like group-hover:hidden)
+      // We need to remove conflicting base classes
+      if (
+        child.classList.contains('hidden') &&
+        classList.some((c) => c.includes('group-hover:flex') || c.includes('group-hover:block'))
+      ) {
+        child.classList.remove('hidden');
+        child.setAttribute('data-interactive-removed-hidden', 'true');
+        console.warn('Removed "hidden" class to allow group-hover element to display');
+      }
+    });
+  }
+
+  /**
+   * Dispatch mouse events to trigger JavaScript event listeners
+   * Note: These events do NOT trigger CSS :hover pseudo-classes
    * Includes mouseenter, mouseover, and mousemove for maximum compatibility
    */
   private dispatchHoverEvents(element: HTMLElement): void {
@@ -123,6 +177,34 @@ export class HoverHandler {
     events.forEach((eventType) => {
       const event = new MouseEvent(eventType, eventOptions);
       element.dispatchEvent(event);
+    });
+  }
+
+  /**
+   * Remove programmatically applied hover state
+   * Currently unused - we keep hover state active for subsequent interactions
+   * Reserved for future use if hover cleanup is needed
+   */
+  // @ts-ignore - Reserved for future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private removeProgrammaticHoverState(element: HTMLElement): void {
+    element.removeAttribute('data-interactive-hover');
+
+    const groupHoverElements = element.querySelectorAll('[data-interactive-added-classes]');
+
+    groupHoverElements.forEach((child) => {
+      const addedClasses = child.getAttribute('data-interactive-added-classes');
+      if (addedClasses) {
+        addedClasses.split(',').forEach((className) => {
+          child.classList.remove(className);
+        });
+        child.removeAttribute('data-interactive-added-classes');
+      }
+
+      if (child.getAttribute('data-interactive-removed-hidden') === 'true') {
+        child.classList.add('hidden');
+        child.removeAttribute('data-interactive-removed-hidden');
+      }
     });
   }
 
