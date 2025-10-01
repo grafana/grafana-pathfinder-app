@@ -95,8 +95,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         if (milestoneUrl && activeTab) {
           // Track analytics for starting journey
           reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
-            journey_title: activeTab.title,
-            journey_url: activeTab.baseUrl,
+            content_title: activeTab.title,
+            content_url: activeTab.baseUrl,
             interaction_location: 'ready_to_begin_button',
             total_milestones: activeTab.content?.metadata?.learningJourney?.totalMilestones || 0,
           });
@@ -109,8 +109,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           if (firstMilestone.url) {
             // Track analytics for fallback case
             reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
-              journey_title: activeTab.title,
-              journey_url: activeTab.baseUrl,
+              content_title: activeTab.title,
+              content_url: activeTab.baseUrl,
               interaction_location: 'ready_to_begin_button_fallback',
               total_milestones: activeTab.content.milestones.length,
             });
@@ -147,11 +147,13 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             } else {
               model.openLearningJourney(href, linkText);
             }
-            reportAppInteraction('docs_link_click' as UserInteraction, {
-              link_url: href,
+            reportAppInteraction(UserInteraction.OpenExtraResource, {
+              content_url: href,
+              content_type: 'docs',
               link_text: linkText,
               source_page: activeTab?.content?.url || 'unknown',
               link_type: 'bundled_interactive',
+              interaction_location: 'bundled_link',
             });
             return;
           }
@@ -208,12 +210,15 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               }
             }
 
-            // Track analytics for docs/tutorials link clicks
-            reportAppInteraction('docs_link_click' as UserInteraction, {
-              link_url: fullUrl,
+            // Track analytics for opening extra resources (docs/tutorials)
+            const contentType = fullUrl.includes('/learning-journeys/') ? 'learning-journey' : 'docs';
+            reportAppInteraction(UserInteraction.OpenExtraResource, {
+              content_url: fullUrl,
+              content_type: contentType,
               link_text: linkText,
               source_page: activeTab?.content?.url || 'unknown',
               link_type: fullUrl.includes('/tutorials/') ? 'tutorial' : 'docs',
+              interaction_location: 'content_link',
             });
           }
           // Handle GitHub links - check if allowed to open in app
@@ -243,11 +248,13 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 }
 
                 // Track analytics for allowed GitHub link attempts
-                reportAppInteraction('docs_link_click' as UserInteraction, {
-                  link_url: unstyledUrl,
+                reportAppInteraction(UserInteraction.OpenExtraResource, {
+                  content_url: unstyledUrl,
+                  content_type: 'docs',
                   link_text: linkText,
                   source_page: activeTab?.content?.url || 'unknown',
                   link_type: 'github_allowed_unstyled',
+                  interaction_location: 'github_link',
                 });
               } else {
                 // Even allowed URLs fallback to opening in app without unstyled
@@ -258,11 +265,13 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 }
 
                 // Track analytics for allowed GitHub direct attempts
-                reportAppInteraction('docs_link_click' as UserInteraction, {
-                  link_url: resolvedUrl,
+                reportAppInteraction(UserInteraction.OpenExtraResource, {
+                  content_url: resolvedUrl,
+                  content_type: 'docs',
                   link_text: linkText,
                   source_page: activeTab?.content?.url || 'unknown',
                   link_type: 'github_allowed_direct',
+                  interaction_location: 'github_link',
                 });
               }
             } else {
@@ -270,11 +279,13 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
 
               // Track analytics for GitHub browser opening
-              reportAppInteraction('docs_link_click' as UserInteraction, {
-                link_url: resolvedUrl,
+              reportAppInteraction(UserInteraction.OpenExtraResource, {
+                content_url: resolvedUrl,
+                content_type: 'docs',
                 link_text: linkText,
                 source_page: activeTab?.content?.url || 'unknown',
                 link_type: 'github_browser_external',
+                interaction_location: 'github_link',
               });
             }
           }
@@ -290,12 +301,14 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             const linkText = anchor.textContent?.trim() || 'External Link';
 
-            // Track analytics for external link clicks
-            reportAppInteraction('docs_link_click' as UserInteraction, {
-              link_url: resolvedUrl,
+            // Track analytics for external link clicks opening in browser
+            reportAppInteraction(UserInteraction.OpenExtraResource, {
+              content_url: resolvedUrl,
+              content_type: 'docs',
               link_text: linkText,
               source_page: activeTab?.content?.url || 'unknown',
               link_type: 'external_browser',
+              interaction_location: 'external_link',
             });
           }
         }
@@ -342,13 +355,14 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             model.openLearningJourney(fullUrl, linkTitle);
           }
 
-          // Track analytics for side journey clicks
-          reportAppInteraction(UserInteraction.OpenSidepathView, {
-            sidepath_title: linkTitle,
-            sidepath_url: fullUrl,
-            source_journey_title: activeTab?.title || 'unknown',
-            source_journey_url: activeTab?.baseUrl || 'unknown',
+          // Track analytics for side journey clicks as extra resource
+          reportAppInteraction(UserInteraction.OpenExtraResource, {
+            content_url: fullUrl,
+            content_type: 'docs',
+            link_text: linkTitle,
             source_page: activeTab?.content?.url || 'unknown',
+            link_type: 'side_journey',
+            interaction_location: 'side_journey_link',
           });
         }
       }
@@ -372,11 +386,13 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           model.openLearningJourney(fullUrl, linkTitle);
 
           // Track analytics for related journey clicks
-          reportAppInteraction('docs_link_click' as UserInteraction, {
-            link_url: fullUrl,
+          reportAppInteraction(UserInteraction.OpenExtraResource, {
+            content_url: fullUrl,
+            content_type: 'learning-journey',
             link_text: linkTitle,
             source_page: activeTab?.content?.url || 'unknown',
             link_type: 'related_journey',
+            interaction_location: 'related_journey_link',
           });
         }
       }
@@ -391,13 +407,32 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         });
 
         const buttonText = bottomNavButton.textContent?.trim().toLowerCase();
+        const activeTab = model.getActiveTab();
 
         if (buttonText?.includes('previous') || buttonText?.includes('prev')) {
           if (model.canNavigatePrevious()) {
+            // Track analytics for bottom navigation previous click
+            reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
+              content_title: activeTab?.title || 'unknown',
+              content_url: activeTab?.baseUrl || 'unknown',
+              current_milestone: activeTab?.content?.metadata.learningJourney?.currentMilestone || 0,
+              total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
+              direction: 'backward',
+              interaction_location: 'bottom_navigation',
+            });
             model.navigateToPreviousMilestone();
           }
         } else if (buttonText?.includes('next')) {
           if (model.canNavigateNext()) {
+            // Track analytics for bottom navigation next click
+            reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
+              content_title: activeTab?.title || 'unknown',
+              content_url: activeTab?.baseUrl || 'unknown',
+              current_milestone: activeTab?.content?.metadata.learningJourney?.currentMilestone || 0,
+              total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
+              direction: 'forward',
+              interaction_location: 'bottom_navigation',
+            });
             model.navigateToNextMilestone();
           }
         }

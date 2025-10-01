@@ -22,7 +22,7 @@ export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = (
   }
 
   const handleEnableRecommender = () => {
-    reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
+    reportAppInteraction(UserInteraction.EnableRecommendationsBanner, {
       interaction_location: 'enable_recommender_banner',
       action: 'navigate_to_recommendations_config',
     });

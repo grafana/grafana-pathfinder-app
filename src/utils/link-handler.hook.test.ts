@@ -7,7 +7,7 @@ jest.mock('../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: {
     StartLearningJourneyClick: 'start_learning_journey_click',
-    docs_link_click: 'docs_link_click',
+    OpenExtraResource: 'open_extra_resource',
   },
 }));
 
@@ -323,8 +323,8 @@ describe('useLinkClickHandler', () => {
       expect(reportAppInteraction).toHaveBeenCalledWith(
         UserInteraction.StartLearningJourneyClick,
         expect.objectContaining({
-          journey_title: 'Test Journey',
-          journey_url: 'https://grafana.com/docs/test-journey',
+          content_title: 'Test Journey',
+          content_url: 'https://grafana.com/docs/test-journey',
           total_milestones: 5,
         })
       );

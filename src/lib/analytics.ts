@@ -6,7 +6,6 @@
  */
 
 import { reportInteraction } from '@grafana/runtime';
-import pluginJson from '../plugin.json';
 
 // ============================================================================
 // USER INTERACTION TYPES
@@ -15,19 +14,19 @@ import pluginJson from '../plugin.json';
 export enum UserInteraction {
   // Core Panel Interactions
   DocsPanelInteraction = 'docs_panel_interaction',
-  DocsPanelScroll = 'docs_panel_scroll',
+  PanelScroll = 'panel_scroll',
   DismissDocsPanel = 'dismiss_docs_panel',
 
   // Navigation & Tab Management
   CloseTabClick = 'close_tab_click',
-  OpenSidepathView = 'open_sidepath_view',
+  OpenExtraResource = 'open_extra_resource',
   OpenExtraResourceTab = 'open_extra_resource_tab',
 
   // Content Interactions
-  LearningJourneySummaryClick = 'learning_journey_summary_click',
+  SummaryClick = 'summary_click',
   JumpIntoMilestoneClick = 'jump_into_milestone_click',
   StartLearningJourneyClick = 'start_learning_journey_click',
-  ViewDocumentationClick = 'view_documentation_click',
+  OpenResourceClick = 'open_resource_click',
   MilestoneArrowInteractionClick = 'milestone_arrow_interaction_click',
   OpenDocumentationButton = 'open_documentation_button',
 
@@ -41,6 +40,7 @@ export enum UserInteraction {
   // Feedback Systems
   GeneralPluginFeedbackButton = 'general_plugin_feedback_button',
   SpecificLearningJourneyFeedbackButton = 'specific_learning_journey_feedback_button',
+  EnableRecommendationsBanner = 'enable_recommendations_banner',
 
   // Interactive Elements (Future Features)
   ShowMeButtonClick = 'show_me_button_click',
@@ -57,7 +57,7 @@ export enum UserInteraction {
  * Creates a properly namespaced interaction name for Grafana analytics
  */
 const createInteractionName = (type: UserInteraction): string => {
-  return `${pluginJson.id.replace(/-/g, '_')}_${type}`;
+  return `pathfinder_${type}`;
 };
 
 /**
@@ -71,7 +71,8 @@ export function reportAppInteraction(
   properties: Record<string, string | number | boolean> = {}
 ): void {
   try {
-    reportInteraction(createInteractionName(type), properties);
+    const interactionName = createInteractionName(type);
+    reportInteraction(interactionName, properties);
   } catch (error) {
     console.warn('Analytics reporting failed:', error);
   }
@@ -140,7 +141,7 @@ export function setupScrollTracking(
       scrolledPages.add(pageIdentifier);
 
       const properties = buildScrollEventProperties(activeTab, isRecommendationsTab, pageIdentifier);
-      reportAppInteraction(UserInteraction.DocsPanelScroll, properties);
+      reportAppInteraction(UserInteraction.PanelScroll, properties);
     }, 150); // 150ms debounce to balance responsiveness and performance
   };
 
@@ -188,9 +189,12 @@ function buildScrollEventProperties(
   isRecommendationsTab: boolean,
   pageIdentifier: string
 ): Record<string, string | number | boolean> {
+  const pageType = isRecommendationsTab ? 'recommendations' : activeTab?.type || 'learning-journey';
+
   const properties: Record<string, string | number | boolean> = {
-    page_type: isRecommendationsTab ? 'recommendations' : activeTab?.type || 'learning-journey',
-    page_url: pageIdentifier,
+    page_type: pageType,
+    content_url: pageIdentifier,
+    content_type: isRecommendationsTab ? '' : activeTab?.type || 'learning-journey',
   };
 
   // Add additional context for learning journeys
