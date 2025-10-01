@@ -936,40 +936,39 @@ export const addGlobalInteractiveStyles = () => {
       box-sizing: border-box;
     }
 
-    /* Close button for highlights - positioned ON the corner of the frame */
-    .interactive-highlight-close {
+    /* Simple white close button for comment boxes */
+    .interactive-comment-close {
       position: absolute;
-      top: -9px;  /* Moved outside the box, on the corner */
-      right: -9px; /* Moved outside the box, on the corner */
-      width: 18px; /* Smaller size */
-      height: 18px; /* Smaller size */
-      border: 2px solid rgba(255, 136, 0, 0.85); /* Match highlight color */
-      background: rgba(255, 136, 0, 0.9); /* Orange background */
-      color: #ffffff; /* White × symbol */
-      border-radius: 50%;
+      top: 6px;
+      right: 6px;
+      width: 20px;
+      height: 20px;
+      border: none;
+      background: transparent;
+      color: #ffffff;
+      border-radius: 4px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 13px;
-      font-weight: bold;
+      font-size: 18px;
+      font-weight: normal;
       line-height: 1;
       padding: 0;
       pointer-events: auto;
       transition: all 0.2s ease;
-      z-index: 10000; /* Above highlight */
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      z-index: 1;
+      opacity: 0.7;
     }
 
-    .interactive-highlight-close:hover {
-      background: rgba(255, 136, 0, 1); /* Brighter orange on hover */
-      border-color: rgba(255, 136, 0, 1);
-      transform: scale(1.2);
-      box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
-    }
-
-    .interactive-highlight-close:active {
+    .interactive-comment-close:hover {
+      background: rgba(255, 255, 255, 0.15);
+      opacity: 1;
       transform: scale(1.1);
+    }
+
+    .interactive-comment-close:active {
+      transform: scale(0.95);
     }
 
     /* Orange glow border for comment boxes */

@@ -309,23 +309,6 @@ export class NavigationManager {
     highlightOutline.style.setProperty('--highlight-width', `${rect.width + 8}px`);
     highlightOutline.style.setProperty('--highlight-height', `${rect.height + 8}px`);
 
-    // Always add close button to highlight outline (positioned ON the corner)
-    const highlightCloseBtn = document.createElement('button');
-    highlightCloseBtn.className = 'interactive-highlight-close';
-    highlightCloseBtn.innerHTML = '×';
-    highlightCloseBtn.setAttribute('aria-label', 'Close highlight');
-    highlightCloseBtn.setAttribute('title', 'Close highlight');
-
-    // Note: Position is set via CSS to be on the corner (top: -8px, right: -8px)
-    // This makes it sit ON the frame corner, not inside the highlighted area
-
-    highlightCloseBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.clearAllHighlights();
-    });
-
-    highlightOutline.appendChild(highlightCloseBtn);
-
     document.body.appendChild(highlightOutline);
 
     // Create comment box if comment is provided
@@ -365,8 +348,19 @@ export class NavigationManager {
     const content = document.createElement('div');
     content.className = 'interactive-comment-content interactive-comment-glow';
 
-    // Note: Close button is now always on the highlight outline corner
-    // No close button in comment box to avoid duplication
+    // Create simple close button in top-right of comment box
+    const closeButton = document.createElement('button');
+    closeButton.className = 'interactive-comment-close';
+    closeButton.innerHTML = '×';
+    closeButton.setAttribute('aria-label', 'Close comment');
+    closeButton.setAttribute('title', 'Close comment');
+
+    closeButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.clearAllHighlights();
+    });
+
+    content.appendChild(closeButton);
 
     // Create logo container
     const logoContainer = document.createElement('div');
