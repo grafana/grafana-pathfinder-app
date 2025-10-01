@@ -7,9 +7,16 @@ import { t } from '@grafana/i18n';
 interface FeedbackButtonProps {
   className?: string;
   variant?: 'primary' | 'secondary';
+  contentUrl?: string;
+  contentType?: string;
 }
 
-export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ className, variant = 'primary' }) => {
+export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
+  className,
+  variant = 'primary',
+  contentUrl = '',
+  contentType = '',
+}) => {
   const theme = useTheme2();
   const styles = getFeedbackButtonStyles(theme);
 
@@ -17,6 +24,8 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({ className, varia
     reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
       interaction_location: 'feedback_button',
       panel_type: 'combined_learning_journey',
+      content_url: contentUrl,
+      content_type: contentType,
     });
     window.open(
       'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
