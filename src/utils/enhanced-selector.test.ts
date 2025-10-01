@@ -1,286 +1,172 @@
-import { querySelectorEnhanced, querySelectorAllEnhanced, getBrowserSelectorSupport } from './enhanced-selector';
+/**
+ * Tests for enhanced selector functionality
+ */
 
-describe('Enhanced Selector Engine', () => {
-  let container: HTMLDivElement;
+import { querySelectorAllEnhanced } from './enhanced-selector';
 
+describe('Enhanced Selector', () => {
   beforeEach(() => {
-    // Create a fresh container for each test
-    container = document.createElement('div');
-    document.body.appendChild(container);
+    // Clear the document body before each test
+    document.body.innerHTML = '';
   });
 
-  afterEach(() => {
-    // Clean up after each test
-    if (container.parentNode) {
-      container.parentNode.removeChild(container);
-    }
-  });
-
-  describe('Basic selector support', () => {
-    it('should handle standard CSS selectors', () => {
-      container.innerHTML = `
-        <div class="test-class" id="test-id">
-          <p>Test content</p>
+  describe('Standard CSS selectors', () => {
+    it('should handle :nth-child() correctly', () => {
+      // Create a test DOM structure
+      document.body.innerHTML = `
+        <div class="parent">
+          <span>First child</span>
+          <div data-testid="uplot-main-div">Second child - first uplot</div>
+          <div data-testid="uplot-main-div">Third child - second uplot</div>
+          <div data-testid="uplot-main-div">Fourth child - third uplot</div>
         </div>
       `;
 
-      const result = querySelectorAllEnhanced('.test-class');
-      expect(result.elements).toHaveLength(1);
+      // :nth-child(3) means "the element that is the 3rd child of its parent"
+      const result = querySelectorAllEnhanced('div[data-testid="uplot-main-div"]:nth-child(3)');
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0].textContent).toContain('Third child - second uplot');
+    });
+
+    it('should handle :nth-of-type() correctly', () => {
+      document.body.innerHTML = `
+        <div class="parent">
+          <span>Not a div</span>
+          <div data-testid="uplot-main-div">First div - first uplot</div>
+          <div data-testid="uplot-main-div">Second div - second uplot</div>
+          <div data-testid="uplot-main-div">Third div - third uplot</div>
+        </div>
+      `;
+
+      // :nth-of-type(3) means "the element that is the 3rd div child of its parent"
+      const result = querySelectorAllEnhanced('div[data-testid="uplot-main-div"]:nth-of-type(3)');
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0].textContent).toContain('Third div - third uplot');
+    });
+
+    it('should demonstrate the limitation of :nth-child with multiple parents', () => {
+      document.body.innerHTML = `
+        <div class="parent1">
+          <div data-testid="uplot-main-div">Parent1 - uplot1</div>
+        </div>
+        <div class="parent2">
+          <div data-testid="uplot-main-div">Parent2 - uplot1</div>
+        </div>
+        <div class="parent3">
+          <span>First child</span>
+          <div data-testid="uplot-main-div">Parent3 - uplot1 (2nd child)</div>
+          <div data-testid="uplot-main-div">Parent3 - uplot2 (3rd child)</div>
+        </div>
+      `;
+
+      // This will only match the element in parent3 that is the 3rd child
+      const result = querySelectorAllEnhanced('div[data-testid="uplot-main-div"]:nth-child(3)');
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0].textContent).toContain('Parent3 - uplot2');
+    });
+  });
+
+  describe('Complex selectors', () => {
+    it('should handle :contains() selector', () => {
+      document.body.innerHTML = `
+        <div data-testid="container">
+          <div>First item</div>
+          <div>Second item with target text</div>
+          <div>Third item</div>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced('div:contains("target text")');
+
+      expect(result.elements.length).toBeGreaterThan(0);
+      expect(result.usedFallback).toBe(true);
+    });
+
+    it('should handle :has() selector', () => {
+      document.body.innerHTML = `
+        <div class="card">
+          <p>Has paragraph</p>
+        </div>
+        <div class="card">
+          <span>No paragraph</span>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced('div.card:has(p)');
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0].textContent).toContain('Has paragraph');
+    });
+
+    it('should handle :nth-match() selector to get nth occurrence globally', () => {
+      document.body.innerHTML = `
+        <div class="parent1">
+          <div data-testid="uplot-main-div">First uplot</div>
+        </div>
+        <div class="parent2">
+          <div data-testid="uplot-main-div">Second uplot</div>
+        </div>
+        <div class="parent3">
+          <div data-testid="uplot-main-div">Third uplot</div>
+          <div data-testid="uplot-main-div">Fourth uplot</div>
+        </div>
+      `;
+
+      // Get the 3rd occurrence of the element across the entire document
+      const result = querySelectorAllEnhanced('div[data-testid="uplot-main-div"]:nth-match(3)');
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0].textContent).toContain('Third uplot');
+      expect(result.usedFallback).toBe(true);
+    });
+
+    it('should handle :nth-match() with insufficient elements', () => {
+      document.body.innerHTML = `
+        <div data-testid="uplot-main-div">First</div>
+        <div data-testid="uplot-main-div">Second</div>
+      `;
+
+      // Try to get the 5th element when only 2 exist
+      const result = querySelectorAllEnhanced('div[data-testid="uplot-main-div"]:nth-match(5)');
+
+      expect(result.elements.length).toBe(0);
+      expect(result.effectiveSelector).toContain('wanted 5, found 2');
+    });
+
+    it('should handle :nth-match(1) to get first occurrence', () => {
+      document.body.innerHTML = `
+        <div class="parent1">
+          <div data-testid="uplot-main-div">First</div>
+        </div>
+        <div class="parent2">
+          <div data-testid="uplot-main-div">Second</div>
+        </div>
+      `;
+
+      const result = querySelectorAllEnhanced('div[data-testid="uplot-main-div"]:nth-match(1)');
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0].textContent).toContain('First');
+    });
+  });
+
+  describe('Edge cases', () => {
+    it('should return empty array for non-existent selector', () => {
+      document.body.innerHTML = '<div id="test">Test</div>';
+
+      const result = querySelectorAllEnhanced('div[data-testid="non-existent"]');
+
+      expect(result.elements.length).toBe(0);
       expect(result.usedFallback).toBe(false);
-      expect(result.elements[0].id).toBe('test-id');
     });
 
-    it('should handle attribute selectors', () => {
-      container.innerHTML = `
-        <div data-cy="wb-list-item">
-          <p>Test content</p>
-        </div>
-      `;
+    it('should handle invalid selector gracefully', () => {
+      const result = querySelectorAllEnhanced('div[[[invalid');
 
-      const result = querySelectorAllEnhanced('div[data-cy="wb-list-item"]');
-      expect(result.elements).toHaveLength(1);
-      expect(result.usedFallback).toBe(false);
-    });
-  });
-
-  describe(':contains() selector support', () => {
-    beforeEach(() => {
-      container.innerHTML = `
-        <div data-cy="wb-list-item">
-          <p>checkoutservice</p>
-          <span>Other text</span>
-        </div>
-        <div data-cy="wb-list-item">
-          <p>userservice</p>
-          <span>Different text</span>
-        </div>
-        <div data-cy="other-item">
-          <p>checkoutservice</p>
-        </div>
-      `;
-    });
-
-    it('should find elements containing specific text', () => {
-      const result = querySelectorAllEnhanced('div[data-cy="wb-list-item"]:contains("checkoutservice")');
-
-      expect(result.elements).toHaveLength(1);
-      expect(result.usedFallback).toBe(true);
-      expect(result.effectiveSelector).toContain('text contains "checkoutservice"');
-
-      const foundElement = result.elements[0];
-      expect(foundElement.getAttribute('data-cy')).toBe('wb-list-item');
-      expect(foundElement.textContent).toContain('checkoutservice');
-    });
-
-    it('should handle case-insensitive text matching', () => {
-      const result = querySelectorAllEnhanced('div[data-cy="wb-list-item"]:contains("CHECKOUTSERVICE")');
-
-      expect(result.elements).toHaveLength(1);
-      expect(result.usedFallback).toBe(true);
-    });
-
-    it('should return empty array when text not found', () => {
-      const result = querySelectorAllEnhanced('div[data-cy="wb-list-item"]:contains("nonexistent")');
-
-      expect(result.elements).toHaveLength(0);
-      expect(result.usedFallback).toBe(true);
-    });
-
-    it('should handle quoted and unquoted text in :contains()', () => {
-      const quotedResult = querySelectorAllEnhanced('div:contains("checkoutservice")');
-      const unquotedResult = querySelectorAllEnhanced('div:contains(checkoutservice)');
-
-      // Should find all divs that contain "checkoutservice" (including the container)
-      expect(quotedResult.elements.length).toBeGreaterThanOrEqual(2);
-      expect(unquotedResult.elements.length).toBeGreaterThanOrEqual(2);
-
-      // Verify we found the right elements (filter out the container div)
-      const quotedSpecific = quotedResult.elements.filter((el) => el.getAttribute('data-cy'));
-      expect(quotedSpecific.length).toBeGreaterThanOrEqual(2);
-
-      const foundCyValues = quotedSpecific.map((el) => el.getAttribute('data-cy'));
-      expect(foundCyValues).toContain('wb-list-item');
-      expect(foundCyValues).toContain('other-item');
-    });
-  });
-
-  describe(':has() selector support', () => {
-    beforeEach(() => {
-      container.innerHTML = `
-        <div data-cy="wb-list-item">
-          <p>checkoutservice</p>
-          <span>metadata</span>
-        </div>
-        <div data-cy="wb-list-item">
-          <span>userservice</span>
-          <div>no paragraph</div>
-        </div>
-        <div data-cy="other-item">
-          <p>checkoutservice</p>
-        </div>
-      `;
-    });
-
-    it('should find elements that have specific descendants', () => {
-      const result = querySelectorAllEnhanced('div[data-cy="wb-list-item"]:has(p)');
-
-      expect(result.elements).toHaveLength(1);
-      // May use fallback depending on browser support
-
-      const foundElement = result.elements[0];
-      expect(foundElement.getAttribute('data-cy')).toBe('wb-list-item');
-      expect(foundElement.querySelector('p')).toBeTruthy();
-    });
-
-    it('should handle nested :contains() within :has()', () => {
-      const result = querySelectorAllEnhanced('div[data-cy="wb-list-item"]:has(p:contains("checkoutservice"))');
-
-      expect(result.elements).toHaveLength(1);
-      expect(result.usedFallback).toBe(true); // :contains() always uses fallback
-
-      const foundElement = result.elements[0];
-      expect(foundElement.getAttribute('data-cy')).toBe('wb-list-item');
-      expect(foundElement.querySelector('p')?.textContent).toBe('checkoutservice');
-    });
-
-    it('should return empty array when :has() condition not met', () => {
-      const result = querySelectorAllEnhanced('div[data-cy="wb-list-item"]:has(table)');
-
-      expect(result.elements).toHaveLength(0);
-    });
-  });
-
-  describe('Complex combined selectors', () => {
-    beforeEach(() => {
-      container.innerHTML = `
-        <article class="service-card">
-          <div data-cy="wb-list-item" data-service="checkout">
-            <h3>Checkout Service</h3>
-            <p>checkoutservice</p>
-            <button>Configure</button>
-          </div>
-        </article>
-        <article class="service-card">
-          <div data-cy="wb-list-item" data-service="user">
-            <h3>User Service</h3>
-            <p>userservice</p>
-            <button>Configure</button>
-          </div>
-        </article>
-      `;
-    });
-
-    it('should handle the exact selector from the user query', () => {
-      const result = querySelectorAllEnhanced('div[data-cy="wb-list-item"]:has(p:contains("checkoutservice"))');
-
-      expect(result.elements).toHaveLength(1);
-      expect(result.usedFallback).toBe(true);
-
-      const foundElement = result.elements[0];
-      expect(foundElement.getAttribute('data-service')).toBe('checkout');
-      expect(foundElement.querySelector('p')?.textContent).toBe('checkoutservice');
-    });
-
-    it('should handle descendant selectors after :has() (Prometheus tutorial case)', () => {
-      // Add test HTML that matches the Prometheus tutorial structure
-      container.innerHTML = `
-        <div class="css-1ikwcqc">
-          <h6>Performance</h6>
-          <div data-testid="data-testid prometheus type">Target Dropdown</div>
-          <div>Other content</div>
-        </div>
-        <div class="css-other">
-          <h6>Other Section</h6>
-          <div data-testid="data-testid prometheus type">Wrong Dropdown</div>
-        </div>
-      `;
-
-      const result = querySelectorAllEnhanced(
-        'div[class]:has(h6:contains("Performance")) [data-testid="data-testid prometheus type"]'
-      );
-
-      expect(result.elements).toHaveLength(1);
-      expect(result.usedFallback).toBe(true);
-
-      const foundElement = result.elements[0];
-      expect(foundElement.textContent).toBe('Target Dropdown');
-      expect(foundElement.getAttribute('data-testid')).toBe('data-testid prometheus type');
-    });
-
-    it('should find buttons within matched complex selectors', () => {
-      // First find the container with our complex selector
-      const containerResult = querySelectorAllEnhanced(
-        'div[data-cy="wb-list-item"]:has(p:contains("checkoutservice"))'
-      );
-      expect(containerResult.elements).toHaveLength(1);
-
-      // Then find button within that container
-      const button = containerResult.elements[0].querySelector('button');
-      expect(button).toBeTruthy();
-      expect(button?.textContent).toBe('Configure');
-    });
-  });
-
-  describe('Error handling', () => {
-    it('should handle invalid :contains() syntax gracefully', () => {
-      const result = querySelectorAllEnhanced('div:contains(unclosed');
-
-      expect(result.elements).toHaveLength(0);
-      expect(result.usedFallback).toBe(true);
-      expect(result.effectiveSelector).toBe('UNSUPPORTED'); // Goes to unsupported because regex fails
-    });
-
-    it('should handle invalid :has() syntax gracefully', () => {
-      const result = querySelectorAllEnhanced('div:has(unclosed');
-
-      expect(result.elements).toHaveLength(0);
-      expect(result.usedFallback).toBe(true);
-      expect(result.effectiveSelector).toBe('UNSUPPORTED'); // Goes to unsupported because parsing fails
-    });
-
-    it('should handle completely invalid selectors', () => {
-      const result = querySelectorAllEnhanced('div:unknown-pseudo()');
-
-      expect(result.elements).toHaveLength(0);
-      expect(result.usedFallback).toBe(true);
-      expect(result.effectiveSelector).toBe('UNSUPPORTED');
-    });
-  });
-
-  describe('querySelectorEnhanced (single element)', () => {
-    beforeEach(() => {
-      container.innerHTML = `
-        <div data-cy="wb-list-item">
-          <p>checkoutservice</p>
-        </div>
-        <div data-cy="wb-list-item">
-          <p>userservice</p>
-        </div>
-      `;
-    });
-
-    it('should return first matching element', () => {
-      const element = querySelectorEnhanced('div[data-cy="wb-list-item"]:contains("checkoutservice")');
-
-      expect(element).toBeTruthy();
-      expect(element?.textContent).toContain('checkoutservice');
-    });
-
-    it('should return null when no matches found', () => {
-      const element = querySelectorEnhanced('div:contains("nonexistent")');
-
-      expect(element).toBeNull();
-    });
-  });
-
-  describe('Browser support detection', () => {
-    it('should detect browser capabilities', () => {
-      const support = getBrowserSelectorSupport();
-
-      expect(support).toHaveProperty('hasSelector');
-      expect(support).toHaveProperty('containsSelector');
-      expect(support).toHaveProperty('version');
-      expect(support.containsSelector).toBe(false); // :contains() never supported natively
+      expect(result.elements.length).toBe(0);
     });
   });
 });

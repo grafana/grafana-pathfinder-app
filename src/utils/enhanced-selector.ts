@@ -63,7 +63,12 @@ export function querySelectorAllEnhanced(selector: string): SelectorResult {
  * Check if selector contains complex pseudo-selectors that need special handling
  */
 function isComplexSelector(selector: string): boolean {
-  return selector.includes(':contains(') || selector.includes(':has(') || selector.includes(':text(');
+  return (
+    selector.includes(':contains(') ||
+    selector.includes(':has(') ||
+    selector.includes(':text(') ||
+    selector.includes(':nth-match(')
+  );
 }
 
 /**
@@ -84,7 +89,12 @@ function tryNativeSelector(selector: string): NodeListOf<Element> | null {
  * Handle complex selectors that need custom parsing
  */
 function handleComplexSelector(selector: string): SelectorResult {
-  // Check for :has() pseudo-selector first (it may contain :contains())
+  // Check for :nth-match() first (custom pseudo-selector for getting nth occurrence globally)
+  if (selector.includes(':nth-match(')) {
+    return handleNthMatchSelector(selector);
+  }
+
+  // Check for :has() pseudo-selector (it may contain :contains())
   // Use a more specific pattern to detect top-level :has()
   if (selector.match(/:has\([^)]*\)/)) {
     return handleHasSelector(selector);
@@ -405,4 +415,97 @@ export function getBrowserSelectorSupport() {
     containsSelector: false, // :contains() is never supported in native CSS
     version: navigator.userAgent,
   };
+}
+
+/**
+ * Custom pseudo-selector :nth-match(n) - selects the nth element matching the selector
+ *
+ * This is different from :nth-child(n) which only matches if the element is the nth child of its parent.
+ * :nth-match(n) finds all elements matching the base selector, then returns the nth one.
+ *
+ * Example: div[data-testid="uplot-main-div"]:nth-match(3) finds the 3rd div with that testid anywhere
+ *
+ * @param selector - Base selector with :nth-match(n) pseudo-selector
+ * @returns SelectorResult with the nth matching element
+ */
+function handleNthMatchSelector(selector: string): SelectorResult {
+  const nthMatchPattern = /^(.+?):nth-match\((\d+)\)(.*)$/;
+  const match = selector.match(nthMatchPattern);
+
+  if (!match) {
+    console.warn(`Invalid :nth-match() syntax: ${selector}`);
+    return {
+      elements: [],
+      usedFallback: true,
+      originalSelector: selector,
+      effectiveSelector: 'INVALID_NTH_MATCH_SYNTAX',
+    };
+  }
+
+  const [, baseSelector, indexStr, afterMatch] = match;
+  const index = parseInt(indexStr, 10);
+
+  if (isNaN(index) || index < 1) {
+    console.warn(`Invalid :nth-match() index: ${indexStr}. Must be a positive integer.`);
+    return {
+      elements: [],
+      usedFallback: true,
+      originalSelector: selector,
+      effectiveSelector: 'INVALID_NTH_MATCH_INDEX',
+    };
+  }
+
+  try {
+    // Find all elements matching the base selector
+    const allElements = document.querySelectorAll(baseSelector);
+
+    if (allElements.length < index) {
+      // Not enough elements found
+      return {
+        elements: [],
+        usedFallback: true,
+        originalSelector: selector,
+        effectiveSelector: `${baseSelector} (wanted ${index}, found ${allElements.length})`,
+      };
+    }
+
+    // Get the nth element (1-indexed)
+    const targetElement = allElements[index - 1] as HTMLElement;
+
+    // If there's a selector after :nth-match(), find elements within the target
+    if (afterMatch && afterMatch.trim()) {
+      try {
+        const nestedElements = targetElement.querySelectorAll(afterMatch.trim());
+        return {
+          elements: Array.from(nestedElements) as HTMLElement[],
+          usedFallback: true,
+          originalSelector: selector,
+          effectiveSelector: `${baseSelector} (${index}th match) ${afterMatch}`,
+        };
+      } catch (nestedError) {
+        console.warn(`Error applying nested selector "${afterMatch}":`, nestedError);
+        return {
+          elements: [targetElement],
+          usedFallback: true,
+          originalSelector: selector,
+          effectiveSelector: `${baseSelector} (${index}th match)`,
+        };
+      }
+    }
+
+    return {
+      elements: [targetElement],
+      usedFallback: true,
+      originalSelector: selector,
+      effectiveSelector: `${baseSelector} (${index}th match)`,
+    };
+  } catch (error) {
+    console.warn(`Error processing :nth-match() selector "${selector}":`, error);
+    return {
+      elements: [],
+      usedFallback: true,
+      originalSelector: selector,
+      effectiveSelector: 'ERROR_IN_NTH_MATCH',
+    };
+  }
 }
