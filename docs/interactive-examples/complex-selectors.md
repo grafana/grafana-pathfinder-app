@@ -1,8 +1,26 @@
 # Complex DOM Selector Support
 
-The enhanced selector engine now supports complex CSS selectors including `:has()` and `:contains()` pseudo-selectors with automatic fallback for older browsers.
+The enhanced selector engine supports complex CSS selectors including `:has()`, `:contains()`, and `:nth-match()` pseudo-selectors with automatic fallback for older browsers.
 
 ## Supported Complex Selectors
+
+### `:nth-match()` Pseudo-Selector (Custom)
+
+Finds the Nth occurrence of an element matching the selector globally. This is different from `:nth-child()` which only works within a parent.
+
+```html
+<!-- Get the 3rd chart on the page, regardless of parent structure -->
+<li class="interactive" data-targetaction="highlight" data-reftarget='div[data-testid="uplot-main-div"]:nth-match(3)'>
+  Highlight the third chart
+</li>
+
+<!-- Get the 2nd save button -->
+<li class="interactive" data-targetaction="button" data-reftarget="button.save-btn:nth-match(2)">
+  Click second save button
+</li>
+```
+
+**Note:** See [nth-selectors.md](./nth-selectors.md) for detailed explanation of `:nth-child()` vs `:nth-match()` differences.
 
 ### `:contains()` Pseudo-Selector
 
