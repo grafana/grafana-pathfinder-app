@@ -168,23 +168,22 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                             >
                               <button
                                 onClick={() => {
-                                  // Track analytics based on content type
+                                  // Track analytics - unified event for opening any resource
+                                  reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                    content_title: recommendation.title,
+                                    content_url: recommendation.url,
+                                    content_type: recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
+                                    interaction_location: 'main_card_button',
+                                    match_accuracy: recommendation.matchAccuracy || 0,
+                                    ...(recommendation.type !== 'docs-page' && {
+                                      total_milestones: recommendation.totalSteps || 0,
+                                    }),
+                                  });
+
+                                  // Open the appropriate content type
                                   if (recommendation.type === 'docs-page') {
-                                    reportAppInteraction(UserInteraction.ViewDocumentationClick, {
-                                      content_title: recommendation.title,
-                                      content_url: recommendation.url,
-                                      interaction_location: 'main_card_button',
-                                      match_accuracy: recommendation.matchAccuracy || 0,
-                                    });
                                     openDocsPage(recommendation.url, recommendation.title);
                                   } else {
-                                    reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
-                                      journey_title: recommendation.title,
-                                      journey_url: recommendation.url,
-                                      interaction_location: 'main_card_button',
-                                      total_milestones: recommendation.totalSteps || 0,
-                                      match_accuracy: recommendation.matchAccuracy || 0,
-                                    });
                                     openLearningJourney(recommendation.url, recommendation.title);
                                   }
                                 }}
@@ -207,14 +206,16 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                 <div className={styles.summaryInfo}>
                                   <button
                                     onClick={() => {
-                                      // Track learning journey summary click analytics
-                                      reportAppInteraction(UserInteraction.LearningJourneySummaryClick, {
-                                        journey_title: recommendation.title,
-                                        journey_url: recommendation.url,
-                                        content_type: recommendation.type || 'learning-journey',
+                                      // Track summary click analytics (for both LJ and docs)
+                                      reportAppInteraction(UserInteraction.SummaryClick, {
+                                        content_title: recommendation.title,
+                                        content_url: recommendation.url,
+                                        content_type: recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
                                         action: recommendation.summaryExpanded ? 'collapse' : 'expand',
                                         match_accuracy: recommendation.matchAccuracy || 0,
-                                        total_milestones: recommendation.totalSteps || 0,
+                                        ...(recommendation.type !== 'docs-page' && {
+                                          total_milestones: recommendation.totalSteps || 0,
+                                        }),
                                       });
 
                                       toggleSummaryExpansion(recommendation.url);
@@ -267,11 +268,11 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                               onClick={() => {
                                                 // Track milestone click analytics
                                                 reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
-                                                  journey_title: recommendation.title,
+                                                  content_title: recommendation.title,
                                                   milestone_title: milestone.title,
                                                   milestone_number: milestone.number,
                                                   milestone_url: milestone.url,
-                                                  journey_url: recommendation.url,
+                                                  content_url: recommendation.url,
                                                   interaction_location: 'milestone_list',
                                                 });
                                                 openLearningJourney(
@@ -300,23 +301,23 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                   <div className={styles.summaryCta}>
                                     <button
                                       onClick={() => {
-                                        // Track analytics for summary CTA buttons
+                                        // Track analytics - unified event for opening any resource
+                                        reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                          content_title: recommendation.title,
+                                          content_url: recommendation.url,
+                                          content_type:
+                                            recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
+                                          interaction_location: 'summary_cta_button',
+                                          match_accuracy: recommendation.matchAccuracy || 0,
+                                          ...(recommendation.type !== 'docs-page' && {
+                                            total_milestones: recommendation.totalSteps || 0,
+                                          }),
+                                        });
+
+                                        // Open the appropriate content type
                                         if (recommendation.type === 'docs-page') {
-                                          reportAppInteraction(UserInteraction.ViewDocumentationClick, {
-                                            content_title: recommendation.title,
-                                            content_url: recommendation.url,
-                                            interaction_location: 'summary_cta_button',
-                                            match_accuracy: recommendation.matchAccuracy || 0,
-                                          });
                                           openDocsPage(recommendation.url, recommendation.title);
                                         } else {
-                                          reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
-                                            journey_title: recommendation.title,
-                                            journey_url: recommendation.url,
-                                            interaction_location: 'summary_cta_button',
-                                            total_milestones: recommendation.totalSteps || 0,
-                                            match_accuracy: recommendation.matchAccuracy || 0,
-                                          });
                                           openLearningJourney(recommendation.url, recommendation.title);
                                         }
                                       }}
@@ -367,23 +368,22 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                               <div className={styles.docContent}>
                                 <button
                                   onClick={() => {
-                                    // Track analytics based on content type
+                                    // Track analytics - unified event for opening any resource
+                                    reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                      content_title: item.title,
+                                      content_url: item.url,
+                                      content_type: item.type === 'docs-page' ? 'docs' : 'learning-journey',
+                                      interaction_location: 'other_docs_list',
+                                      match_accuracy: item.matchAccuracy || 0,
+                                      ...(item.type !== 'docs-page' && {
+                                        total_milestones: item.totalSteps || 0,
+                                      }),
+                                    });
+
+                                    // Open the appropriate content type
                                     if (item.type === 'docs-page') {
-                                      reportAppInteraction(UserInteraction.ViewDocumentationClick, {
-                                        content_title: item.title,
-                                        content_url: item.url,
-                                        interaction_location: 'other_docs_list',
-                                        match_accuracy: item.matchAccuracy || 0,
-                                      });
                                       openDocsPage(item.url, item.title);
                                     } else {
-                                      reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
-                                        journey_title: item.title,
-                                        journey_url: item.url,
-                                        interaction_location: 'other_docs_list',
-                                        total_milestones: item.totalSteps || 0,
-                                        match_accuracy: item.matchAccuracy || 0,
-                                      });
                                       openLearningJourney(item.url, item.title);
                                     }
                                   }}

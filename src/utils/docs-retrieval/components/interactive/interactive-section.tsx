@@ -25,6 +25,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   postVerify?: string;
   targetComment?: string;
   doIt?: boolean; // Control whether "Do it" button appears (defaults to true)
+  showMe?: boolean; // Control whether "Show me" button appears (defaults to true)
   skippable?: boolean; // Whether this step can be skipped if requirements fail
   title?: string;
   description?: string;
@@ -61,6 +62,7 @@ export interface StepInfo {
   requirements?: string;
   postVerify?: string;
   skippable?: boolean; // Whether this step can be skipped
+  showMe?: boolean; // Whether to show the "Show me" button and phase
   isMultiStep: boolean; // Flag to identify component type
 }
 
@@ -215,6 +217,7 @@ export function InteractiveSection({
           requirements: props.requirements,
           postVerify: props.postVerify,
           skippable: props.skippable,
+          showMe: props.showMe,
           isMultiStep: false,
         });
       } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
@@ -692,8 +695,8 @@ export function InteractiveSection({
           }
         }
 
-        // First, show the step (highlight it) - skip for multi-step components
-        if (!stepInfo.isMultiStep) {
+        // First, show the step (highlight it) - skip for multi-step components OR if showMe is false
+        if (!stepInfo.isMultiStep && stepInfo.showMe !== false) {
           await executeInteractiveAction(
             stepInfo.targetAction!,
             stepInfo.refTarget!,

@@ -622,12 +622,13 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   // Auto-launch tutorial detection
   useEffect(() => {
     const handleAutoLaunchTutorial = (event: CustomEvent) => {
-      const { url, title } = event.detail;
+      const { url, title, type } = event.detail;
 
-      // Track auto-launch tutorial analytics
-      reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
-        journey_title: title,
-        journey_url: url,
+      // Track auto-launch analytics - unified event for opening any resource
+      reportAppInteraction(UserInteraction.OpenResourceClick, {
+        content_title: title,
+        content_url: url,
+        content_type: type === 'docs-page' ? 'docs' : 'learning-journey',
         trigger_source: 'auto_launch_tutorial',
         interaction_location: 'docs_panel',
       });
@@ -712,10 +713,10 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         onClick={(e) => {
                           e.stopPropagation();
                           reportAppInteraction(UserInteraction.CloseTabClick, {
-                            tab_type: tab.type || 'learning-journey',
+                            content_type: tab.type || 'learning-journey',
                             tab_title: tab.title,
-                            tab_url: tab.currentUrl || tab.baseUrl,
-                            close_location: 'tab_button',
+                            content_url: tab.currentUrl || tab.baseUrl,
+                            interaction_location: 'tab_button',
                           });
                           model.closeTab(tab.id);
                         }}
@@ -815,9 +816,9 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                           onClick={(e) => {
                             e.stopPropagation();
                             reportAppInteraction(UserInteraction.CloseTabClick, {
-                              tab_type: tab.type || 'learning-journey',
+                              content_type: tab.type || 'learning-journey',
                               tab_title: tab.title,
-                              tab_url: tab.currentUrl || tab.baseUrl,
+                              content_url: tab.currentUrl || tab.baseUrl,
                               close_location: 'dropdown',
                             });
                             model.closeTab(tab.id);
@@ -917,10 +918,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                               className={styles.secondaryActionButton}
                               aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
                               onClick={() => {
-                                reportAppInteraction(UserInteraction.OpenDocumentationButton, {
-                                  content_type: activeTab.type || 'docs',
-                                  content_title: activeTab.title,
+                                reportAppInteraction(UserInteraction.OpenExtraResource, {
                                   content_url: url,
+                                  content_type: activeTab.type || 'docs',
+                                  link_text: activeTab.title,
+                                  source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
+                                  link_type: 'external_browser',
                                   interaction_location: 'docs_content_meta_right',
                                 });
                                 window.open(url, '_blank', 'noopener,noreferrer');
@@ -933,7 +936,11 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         }
                         return null;
                       })()}
-                      <FeedbackButton variant="secondary" />
+                      <FeedbackButton
+                        variant="secondary"
+                        contentUrl={activeTab.content?.url || activeTab.baseUrl}
+                        contentType={activeTab.type || 'learning-journey'}
+                      />
                     </div>
                   </div>
                 )}
@@ -949,8 +956,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                           aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
                           onClick={() => {
                             reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-                              journey_title: activeTab.title,
-                              journey_url: activeTab.baseUrl,
+                              content_title: activeTab.title,
+                              content_url: activeTab.baseUrl,
                               current_milestone: activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
                               total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
                               direction: 'backward',
@@ -976,8 +983,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                           aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
                           onClick={() => {
                             reportAppInteraction(UserInteraction.MilestoneArrowInteractionClick, {
-                              journey_title: activeTab.title,
-                              journey_url: activeTab.baseUrl,
+                              content_title: activeTab.title,
+                              content_url: activeTab.baseUrl,
                               current_milestone: activeTab.content?.metadata.learningJourney?.currentMilestone || 0,
                               total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
                               direction: 'forward',
@@ -1018,10 +1025,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                       onClick={() => {
                         const url = activeTab.content?.url || activeTab.baseUrl;
                         if (url) {
-                          reportAppInteraction(UserInteraction.OpenDocumentationButton, {
-                            content_type: activeTab.type || 'learning-journey',
-                            content_title: activeTab.title,
+                          reportAppInteraction(UserInteraction.OpenExtraResource, {
                             content_url: url,
+                            content_type: activeTab.type || 'learning-journey',
+                            link_text: activeTab.title,
+                            source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
+                            link_type: 'external_browser',
                             interaction_location: 'journey_content_action_bar',
                             ...(activeTab.type !== 'docs' &&
                               activeTab.content?.metadata.learningJourney && {
@@ -1069,7 +1078,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         })()}
       </div>
       {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement */}
-      {!isRecommendationsTab && activeTab?.type !== 'docs' && <FeedbackButton />}
+      {!isRecommendationsTab && activeTab?.type !== 'docs' && (
+        <FeedbackButton
+          contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
+          contentType={activeTab?.type || 'learning-journey'}
+        />
+      )}
     </div>
   );
 }
