@@ -153,6 +153,7 @@ export class GuidedHandler {
     const message = customComment || this.getActionMessage(actionType, stepIndex, totalSteps);
 
     // Use existing highlight system with persistent highlight
+
     // Disable auto-cleanup for guided mode - highlights should only clear when step completes
     await this.navigationManager.highlightWithComment(element, message, false);
 
