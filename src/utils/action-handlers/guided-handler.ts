@@ -291,14 +291,17 @@ export class GuidedHandler {
     preventDefaultClick = false
   ): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
-      const elementRect = element.getBoundingClientRect();
-
       const handleClick = (event: Event) => {
         const mouseEvent = event as MouseEvent;
+        const clickedElement = mouseEvent.target as HTMLElement;
 
-        // Check if click is within or near the highlighted element bounds
-        // Add padding to make it more forgiving (matches highlight padding of 8px)
-        const padding = 12; // Slightly larger than highlight padding for easier clicking
+        // Primary check: Did user click the target element or something inside it (like an SVG)?
+        // This handles buttons with SVG icons where event.target is the SVG, not the button
+        const isTargetOrChild = element === clickedElement || element.contains(clickedElement);
+
+        // Fallback check: Is click within bounds? (Recalculate each time for hover-revealed elements)
+        const elementRect = element.getBoundingClientRect();
+        const padding = 12;
         const clickX = mouseEvent.clientX;
         const clickY = mouseEvent.clientY;
 
@@ -308,11 +311,31 @@ export class GuidedHandler {
           clickY >= elementRect.top - padding &&
           clickY <= elementRect.bottom + padding;
 
-        if (isWithinBounds) {
-          // For guided mode, we want to detect the click but NOT block it
-          // The user should be able to actually interact with the button/element
-          // We use non-capture phase and don't preventDefault to let click work normally
+        // DEBUG: Log every click to see what's happening
+        console.warn('🖱️ Click detected:', {
+          clickedTag: clickedElement.tagName,
+          clickedClass: clickedElement.className,
+          targetTag: element.tagName,
+          targetClass: element.className,
+          clickCoords: { x: clickX, y: clickY },
+          elementBounds: {
+            left: Math.round(elementRect.left),
+            right: Math.round(elementRect.right),
+            top: Math.round(elementRect.top),
+            bottom: Math.round(elementRect.bottom),
+            width: Math.round(elementRect.width),
+            height: Math.round(elementRect.height),
+          },
+          isTargetOrChild,
+          isWithinBounds,
+          willComplete: isTargetOrChild || isWithinBounds,
+        });
+
+        if (isTargetOrChild || isWithinBounds) {
+          console.warn('✅ Click matched! Completing guided step.');
           resolve('completed');
+        } else {
+          console.warn('❌ Click outside target - not completing step');
         }
       };
 
