@@ -457,7 +457,9 @@ function handleNthMatchSelector(selector: string): SelectorResult {
 
   try {
     // Find all elements matching the base selector
-    const allElements = document.querySelectorAll(baseSelector);
+    // Use enhanced selector recursively to support complex selectors like :has() and :contains()
+    const baseSelectorResult = querySelectorAllEnhanced(baseSelector);
+    const allElements = baseSelectorResult.elements;
 
     if (allElements.length < index) {
       // Not enough elements found
@@ -470,7 +472,7 @@ function handleNthMatchSelector(selector: string): SelectorResult {
     }
 
     // Get the nth element (1-indexed)
-    const targetElement = allElements[index - 1] as HTMLElement;
+    const targetElement = allElements[index - 1];
 
     // If there's a selector after :nth-match(), find elements within the target
     if (afterMatch && afterMatch.trim()) {

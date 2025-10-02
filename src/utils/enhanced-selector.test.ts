@@ -151,6 +151,43 @@ describe('Enhanced Selector', () => {
       expect(result.elements.length).toBe(1);
       expect(result.elements[0].textContent).toContain('First');
     });
+
+    it('should handle :nth-match with nested complex selectors like :has() and :contains()', () => {
+      document.body.innerHTML = `
+        <div data-cy="wb-list-item">
+          <p>other-service</p>
+          <button>Button 1</button>
+        </div>
+        <div data-cy="wb-list-item">
+          <p>adaptive-logs-api</p>
+          <button>Button 1</button>
+          <button>Button 2</button>
+          <button>Button 3</button>
+          <button>Button 4</button>
+        </div>
+        <div data-cy="wb-list-item">
+          <p>another-service</p>
+          <button>Button 1</button>
+        </div>
+      `;
+
+      // Test the exact selector from the user's use case
+      const result = querySelectorAllEnhanced(
+        'div[data-cy="wb-list-item"]:has(p:contains("adaptive-logs-api")):nth-match(1)'
+      );
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0].querySelector('p')?.textContent).toBe('adaptive-logs-api');
+      expect(result.usedFallback).toBe(true);
+
+      // Test finding a button within the matched container
+      const buttonResult = querySelectorAllEnhanced(
+        'div[data-cy="wb-list-item"]:has(p:contains("adaptive-logs-api")):nth-match(1) button:nth-of-type(4)'
+      );
+
+      expect(buttonResult.elements.length).toBe(1);
+      expect(buttonResult.elements[0].textContent).toBe('Button 4');
+    });
   });
 
   describe('Edge cases', () => {
