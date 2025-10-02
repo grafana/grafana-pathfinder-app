@@ -9,6 +9,9 @@ interface FeedbackButtonProps {
   variant?: 'primary' | 'secondary';
   contentUrl?: string;
   contentType?: string;
+  interactionLocation?: string; // Specific location identifier for analytics
+  currentMilestone?: number; // For learning journeys - current milestone user is viewing
+  totalMilestones?: number; // For learning journeys - total milestones in journey
 }
 
 export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
@@ -16,22 +19,40 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
   variant = 'primary',
   contentUrl = '',
   contentType = '',
+  interactionLocation = 'feedback_button', // Default fallback
+  currentMilestone,
+  totalMilestones,
 }) => {
   const theme = useTheme2();
   const styles = getFeedbackButtonStyles(theme);
 
   const handleClick = () => {
+    // Calculate completion percentage if we have milestone data
+    const completionPercentage =
+      currentMilestone !== undefined && totalMilestones !== undefined && totalMilestones > 0
+        ? Math.round((currentMilestone / totalMilestones) * 100)
+        : undefined;
+
+    // Track analytics first
     reportAppInteraction(UserInteraction.GeneralPluginFeedbackButton, {
-      interaction_location: 'feedback_button',
+      interaction_location: interactionLocation,
       panel_type: 'combined_learning_journey',
-      content_url: contentUrl,
-      content_type: contentType,
+      ...(contentUrl && { content_url: contentUrl }),
+      ...(contentType && { content_type: contentType }),
+      ...(currentMilestone !== undefined && { current_milestone: currentMilestone }),
+      ...(totalMilestones !== undefined && { total_milestones: totalMilestones }),
+      ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
     });
-    window.open(
-      'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
-      '_blank',
-      'noopener,noreferrer'
-    );
+
+    // Add small delay to ensure analytics event is sent before opening new tab
+    // This prevents the event from being lost when browser opens new tab
+    setTimeout(() => {
+      window.open(
+        'https://docs.google.com/forms/d/e/1FAIpQLSdBvntoRShjQKEOOnRn4_3AWXomKYq03IBwoEaexlwcyjFe5Q/viewform?usp=header',
+        '_blank',
+        'noopener,noreferrer'
+      );
+    }, 100); // 100ms delay - imperceptible to users but ensures event is sent
   };
 
   return (

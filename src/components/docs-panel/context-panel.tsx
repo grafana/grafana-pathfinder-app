@@ -107,7 +107,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                 )}
               </p>
               <div>
-                <FeedbackButton variant="secondary" />
+                <FeedbackButton variant="secondary" interactionLocation="context_panel_feedback_button" />
               </div>
             </div>
 
@@ -177,6 +177,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                     match_accuracy: recommendation.matchAccuracy || 0,
                                     ...(recommendation.type !== 'docs-page' && {
                                       total_milestones: recommendation.totalSteps || 0,
+                                      completion_percentage: recommendation.completionPercentage ?? 0,
                                     }),
                                   });
 
@@ -311,6 +312,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                           match_accuracy: recommendation.matchAccuracy || 0,
                                           ...(recommendation.type !== 'docs-page' && {
                                             total_milestones: recommendation.totalSteps || 0,
+                                            completion_percentage: recommendation.completionPercentage ?? 0,
                                           }),
                                         });
 
@@ -377,6 +379,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                                       match_accuracy: item.matchAccuracy || 0,
                                       ...(item.type !== 'docs-page' && {
                                         total_milestones: item.totalSteps || 0,
+                                        completion_percentage: item.completionPercentage ?? 0,
                                       }),
                                     });
 

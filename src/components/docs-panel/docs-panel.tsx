@@ -631,6 +631,9 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         content_type: type === 'docs-page' ? 'docs' : 'learning-journey',
         trigger_source: 'auto_launch_tutorial',
         interaction_location: 'docs_panel',
+        ...(type === 'learning-journey' && {
+          completion_percentage: 0, // Auto-launch is always starting fresh
+        }),
       });
 
       if (url && title) {
@@ -717,6 +720,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                             tab_title: tab.title,
                             content_url: tab.currentUrl || tab.baseUrl,
                             interaction_location: 'tab_button',
+                            ...(tab.type === 'learning-journey' &&
+                              tab.content && {
+                                completion_percentage: getJourneyProgress(tab.content),
+                                current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
+                                total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
+                              }),
                           });
                           model.closeTab(tab.id);
                         }}
@@ -820,6 +829,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                               tab_title: tab.title,
                               content_url: tab.currentUrl || tab.baseUrl,
                               close_location: 'dropdown',
+                              ...(tab.type === 'learning-journey' &&
+                                tab.content && {
+                                  completion_percentage: getJourneyProgress(tab.content),
+                                  current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
+                                  total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
+                                }),
                             });
                             model.closeTab(tab.id);
                           }}
@@ -926,7 +941,10 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                                   link_type: 'external_browser',
                                   interaction_location: 'docs_content_meta_right',
                                 });
-                                window.open(url, '_blank', 'noopener,noreferrer');
+                                // Delay to ensure analytics event is sent before opening new tab
+                                setTimeout(() => {
+                                  window.open(url, '_blank', 'noopener,noreferrer');
+                                }, 100);
                               }}
                             >
                               <Icon name="external-link-alt" size="sm" />
@@ -940,6 +958,9 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         variant="secondary"
                         contentUrl={activeTab.content?.url || activeTab.baseUrl}
                         contentType={activeTab.type || 'learning-journey'}
+                        interactionLocation="docs_panel_header_feedback_button"
+                        currentMilestone={activeTab.content?.metadata?.learningJourney?.currentMilestone}
+                        totalMilestones={activeTab.content?.metadata?.learningJourney?.totalMilestones}
                       />
                     </div>
                   </div>
@@ -962,6 +983,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                               total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
                               direction: 'backward',
                               interaction_location: 'milestone_progress_bar',
+                              completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
                             });
 
                             model.navigateToPreviousMilestone();
@@ -989,6 +1011,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                               total_milestones: activeTab.content?.metadata.learningJourney?.totalMilestones || 0,
                               direction: 'forward',
                               interaction_location: 'milestone_progress_bar',
+                              completion_percentage: activeTab.content ? getJourneyProgress(activeTab.content) : 0,
                             });
 
                             model.navigateToNextMilestone();
@@ -1036,9 +1059,13 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                               activeTab.content?.metadata.learningJourney && {
                                 current_milestone: activeTab.content.metadata.learningJourney.currentMilestone,
                                 total_milestones: activeTab.content.metadata.learningJourney.totalMilestones,
+                                completion_percentage: getJourneyProgress(activeTab.content),
                               }),
                           });
-                          window.open(url, '_blank', 'noopener,noreferrer');
+                          // Delay to ensure analytics event is sent before opening new tab
+                          setTimeout(() => {
+                            window.open(url, '_blank', 'noopener,noreferrer');
+                          }, 100);
                         }
                       }}
                       tooltip={`Open this journey in new tab`}
@@ -1082,6 +1109,9 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
         <FeedbackButton
           contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
           contentType={activeTab?.type || 'learning-journey'}
+          interactionLocation="docs_panel_footer_feedback_button"
+          currentMilestone={activeTab?.content?.metadata?.learningJourney?.currentMilestone}
+          totalMilestones={activeTab?.content?.metadata?.learningJourney?.totalMilestones}
         />
       )}
     </div>

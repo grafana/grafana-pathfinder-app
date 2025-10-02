@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { safeEventHandler } from './safe-event-handler.util';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
 
 // Allowed GitHub URLs that can open in app tabs (from context.service.ts defaultRecommendations)
 const ALLOWED_GITHUB_URLS = [
@@ -275,9 +276,6 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 });
               }
             } else {
-              // Not in allowed list - open in new browser tab immediately
-              window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
-
               // Track analytics for GitHub browser opening
               reportAppInteraction(UserInteraction.OpenExtraResource, {
                 content_url: resolvedUrl,
@@ -287,6 +285,11 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 link_type: 'github_browser_external',
                 interaction_location: 'github_link',
               });
+
+              // Delay to ensure analytics event is sent before opening new tab
+              setTimeout(() => {
+                window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+              }, 100);
             }
           }
           // For ALL other external links, immediately open in new browser tab
@@ -295,9 +298,6 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               preventDefault: true,
               stopPropagation: true,
             });
-
-            // Open all other external links in new browser tab to keep user in Grafana
-            window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
 
             const linkText = anchor.textContent?.trim() || 'External Link';
 
@@ -310,6 +310,11 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               link_type: 'external_browser',
               interaction_location: 'external_link',
             });
+
+            // Delay to ensure analytics event is sent before opening new tab
+            setTimeout(() => {
+              window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+            }, 100);
           }
         }
       }
@@ -419,6 +424,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
               direction: 'backward',
               interaction_location: 'bottom_navigation',
+              completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
             });
             model.navigateToPreviousMilestone();
           }
@@ -432,6 +438,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               total_milestones: activeTab?.content?.metadata.learningJourney?.totalMilestones || 0,
               direction: 'forward',
               interaction_location: 'bottom_navigation',
+              completion_percentage: activeTab?.content ? getJourneyProgress(activeTab.content) : 0,
             });
             model.navigateToNextMilestone();
           }

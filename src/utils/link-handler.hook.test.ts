@@ -202,6 +202,8 @@ describe('useLinkClickHandler', () => {
     });
 
     it('should open disallowed URLs in new browser tab', () => {
+      jest.useFakeTimers();
+
       renderHook(() =>
         useLinkClickHandler({
           contentRef,
@@ -218,6 +220,9 @@ describe('useLinkClickHandler', () => {
 
       fireEvent.click(disallowedLink);
 
+      // Advance timers to execute the setTimeout delay
+      jest.advanceTimersByTime(100);
+
       // Should open in browser, not in app
       expect(windowOpen).toHaveBeenCalledWith(
         'https://not-whitelisted.com/ExtraContent/README.md',
@@ -226,9 +231,13 @@ describe('useLinkClickHandler', () => {
       );
       expect(mockModel.openDocsPage).not.toHaveBeenCalled();
       expect(mockModel.openLearningJourney).not.toHaveBeenCalled();
+
+      jest.useRealTimers();
     });
 
     it('should open regular github.com URLs in browser if not in raw allowed list', () => {
+      jest.useFakeTimers();
+
       renderHook(() =>
         useLinkClickHandler({
           contentRef,
@@ -245,13 +254,19 @@ describe('useLinkClickHandler', () => {
 
       fireEvent.click(regularGitHubLink);
 
+      // Advance timers to execute the setTimeout delay
+      jest.advanceTimersByTime(100);
+
       expect(windowOpen).toHaveBeenCalledWith('https://github.com/grafana/grafana', '_blank', 'noopener,noreferrer');
       expect(mockModel.openDocsPage).not.toHaveBeenCalled();
+
+      jest.useRealTimers();
     });
   });
 
   describe('External Links', () => {
     it('should open external links in new tab', () => {
+      jest.useFakeTimers();
       // Mock window.open
       const windowOpen = jest.spyOn(window, 'open').mockImplementation();
 
@@ -271,9 +286,13 @@ describe('useLinkClickHandler', () => {
 
       fireEvent.click(externalLink);
 
+      // Advance timers to execute the setTimeout delay
+      jest.advanceTimersByTime(100);
+
       expect(windowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer');
 
       windowOpen.mockRestore();
+      jest.useRealTimers();
     });
   });
 
