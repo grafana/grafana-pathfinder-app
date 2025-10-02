@@ -63,8 +63,13 @@ export class GuidedHandler {
     timeout = 30000
   ): Promise<CompletionResult> {
     try {
-      // Find target element using action-specific logic
-      const targetElement = await this.findTargetElement(action.refTarget, action.targetAction);
+      // Find target element using action-specific logic with retry
+      const targetElement = await this.findTargetElementWithRetry(
+        action.refTarget,
+        action.targetAction,
+        timeout,
+        2000 // Retry every 2 seconds
+      );
 
       // Prepare element (scroll into view, open navigation if needed)
       await this.prepareElement(targetElement);
@@ -88,6 +93,47 @@ export class GuidedHandler {
       console.error(`Guided step ${stepIndex + 1} failed:`, error);
       return 'cancelled';
     }
+  }
+
+  /**
+   * Find target element with retry logic - keeps trying every retryInterval until timeout
+   */
+  private async findTargetElementWithRetry(
+    selector: string,
+    actionType: 'hover' | 'button' | 'highlight',
+    timeout: number,
+    retryInterval: number
+  ): Promise<HTMLElement> {
+    const startTime = Date.now();
+    let attemptCount = 0;
+
+    while (Date.now() - startTime < timeout) {
+      attemptCount++;
+      try {
+        const element = await this.findTargetElement(selector, actionType);
+        if (attemptCount > 1) {
+          console.warn(`✅ Element found after ${attemptCount} attempts (${Date.now() - startTime}ms)`);
+        }
+        return element;
+      } catch (error) {
+        const elapsed = Date.now() - startTime;
+        const remaining = timeout - elapsed;
+
+        if (remaining <= 0) {
+          console.error(`❌ Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
+          throw error;
+        }
+
+        console.warn(
+          `🔄 Element not found (attempt ${attemptCount}), retrying in ${retryInterval}ms... (${Math.round(remaining / 1000)}s remaining)`
+        );
+
+        // Wait before retrying, but don't exceed timeout
+        await new Promise((resolve) => setTimeout(resolve, Math.min(retryInterval, remaining)));
+      }
+    }
+
+    throw new Error(`Timeout finding element: ${selector}`);
   }
 
   /**
@@ -311,31 +357,8 @@ export class GuidedHandler {
           clickY >= elementRect.top - padding &&
           clickY <= elementRect.bottom + padding;
 
-        // DEBUG: Log every click to see what's happening
-        console.warn('🖱️ Click detected:', {
-          clickedTag: clickedElement.tagName,
-          clickedClass: clickedElement.className,
-          targetTag: element.tagName,
-          targetClass: element.className,
-          clickCoords: { x: clickX, y: clickY },
-          elementBounds: {
-            left: Math.round(elementRect.left),
-            right: Math.round(elementRect.right),
-            top: Math.round(elementRect.top),
-            bottom: Math.round(elementRect.bottom),
-            width: Math.round(elementRect.width),
-            height: Math.round(elementRect.height),
-          },
-          isTargetOrChild,
-          isWithinBounds,
-          willComplete: isTargetOrChild || isWithinBounds,
-        });
-
         if (isTargetOrChild || isWithinBounds) {
-          console.warn('✅ Click matched! Completing guided step.');
           resolve('completed');
-        } else {
-          console.warn('❌ Click outside target - not completing step');
         }
       };
 
