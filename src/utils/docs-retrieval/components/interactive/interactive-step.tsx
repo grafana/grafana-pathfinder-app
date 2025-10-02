@@ -39,6 +39,12 @@ export const InteractiveStep = forwardRef<
       onStepComplete,
       resetTrigger,
       onStepReset, // New callback for individual step reset
+
+      // Step position tracking for analytics
+      stepIndex,
+      totalSteps,
+      sectionId,
+      sectionTitle,
     },
     ref
   ) => {
@@ -215,12 +221,24 @@ export const InteractiveStep = forwardRef<
 
       // Track "Show me" button click analytics
       const docInfo = getDocumentInfo();
+
+      // Calculate completion percentage like learning journey milestones
+      const completionPercentage =
+        stepIndex !== undefined && totalSteps !== undefined && totalSteps > 0
+          ? Math.round(((stepIndex + 1) / totalSteps) * 100)
+          : undefined;
+
       reportAppInteraction(UserInteraction.ShowMeButtonClick, {
         ...docInfo,
         target_action: targetAction,
         ref_target: refTarget,
         ...(targetValue && { target_value: targetValue }),
         interaction_location: 'interactive_step',
+        ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
+        ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
+        ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+        ...(sectionId && { section_id: sectionId }),
+        ...(sectionTitle && { section_title: sectionTitle }),
       });
 
       setIsShowRunning(true);
@@ -260,6 +278,10 @@ export const InteractiveStep = forwardRef<
       onStepComplete,
       onComplete,
       stepId,
+      stepIndex,
+      totalSteps,
+      sectionId,
+      sectionTitle,
       getDocumentInfo,
     ]);
 
@@ -271,12 +293,24 @@ export const InteractiveStep = forwardRef<
 
       // Track "Do it" button click analytics
       const docInfo = getDocumentInfo();
+
+      // Calculate completion percentage like learning journey milestones
+      const completionPercentage =
+        stepIndex !== undefined && totalSteps !== undefined && totalSteps > 0
+          ? Math.round(((stepIndex + 1) / totalSteps) * 100)
+          : undefined;
+
       reportAppInteraction(UserInteraction.DoItButtonClick, {
         ...docInfo,
         target_action: targetAction,
         ref_target: refTarget,
         ...(targetValue && { target_value: targetValue }),
         interaction_location: 'interactive_step',
+        ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
+        ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
+        ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+        ...(sectionId && { section_id: sectionId }),
+        ...(sectionTitle && { section_title: sectionTitle }),
       });
 
       setIsDoRunning(true);
@@ -297,6 +331,10 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       targetValue,
+      stepIndex,
+      totalSteps,
+      sectionId,
+      sectionTitle,
     ]);
 
     // Handle individual step reset (redo functionality)

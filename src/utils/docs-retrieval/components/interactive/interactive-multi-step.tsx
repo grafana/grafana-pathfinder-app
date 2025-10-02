@@ -35,6 +35,12 @@ interface InteractiveMultiStepProps {
   onComplete?: () => void;
   skippable?: boolean; // Whether this multi-step can be skipped if requirements fail
 
+  // Step position tracking for analytics (added by section)
+  stepIndex?: number;
+  totalSteps?: number;
+  sectionId?: string;
+  sectionTitle?: string;
+
   // Timing configuration
   stepDelay?: number; // Delay between steps in milliseconds (default: 1800ms)
   resetTrigger?: number; // Signal from parent to reset local completion state
@@ -117,6 +123,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       onComplete,
       stepDelay = INTERACTIVE_CONFIG.delays.multiStep.defaultStepDelay, // Default delay between steps
       resetTrigger,
+      stepIndex,
+      totalSteps,
+      sectionId,
+      sectionTitle,
     },
     ref
   ) => {
@@ -374,12 +384,24 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
       // Track "Do it" button click analytics for multi-step
       const docInfo = getDocumentInfo();
+
+      // Calculate completion percentage like learning journey milestones
+      const completionPercentage =
+        stepIndex !== undefined && totalSteps !== undefined && totalSteps > 0
+          ? Math.round(((stepIndex + 1) / totalSteps) * 100)
+          : undefined;
+
       reportAppInteraction(UserInteraction.DoItButtonClick, {
         ...docInfo,
         target_action: 'multistep',
         ref_target: stepId || 'unknown',
         interaction_location: 'interactive_multi_step',
         internal_actions_count: internalActions.length,
+        ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
+        ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
+        ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+        ...(sectionId && { section_id: sectionId }),
+        ...(sectionTitle && { section_title: sectionTitle }),
       });
 
       await executeStep();
@@ -392,6 +414,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       getDocumentInfo,
       stepId,
       internalActions.length,
+      stepIndex,
+      totalSteps,
+      sectionId,
+      sectionTitle,
     ]);
 
     // Handle individual step reset (redo functionality)

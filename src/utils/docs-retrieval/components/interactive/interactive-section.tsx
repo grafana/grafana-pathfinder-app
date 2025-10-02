@@ -40,6 +40,12 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   onStepComplete?: (stepId: string) => void;
   onStepReset?: (stepId: string) => void; // Signal to parent that step should be reset
   resetTrigger?: number; // Signal from parent to reset local completion state
+
+  // Step position tracking for analytics (added by section)
+  stepIndex?: number; // 0-indexed position in section (0, 1, 2, etc.)
+  totalSteps?: number; // Total number of steps in the section
+  sectionId?: string; // Section identifier for analytics (e.g., "section-setup-datasource")
+  sectionTitle?: string; // Human-readable section title for analytics
 }
 
 export interface InteractiveSectionProps extends BaseInteractiveProps {
@@ -71,9 +77,44 @@ export interface StepInfo {
 // Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;
 
+// Global registry to track all steps across all sections in the document
+const globalStepRegistry: Map<string, number> = new Map(); // sectionId -> number of steps
+let totalDocumentSteps = 0;
+let documentStepOffsets: Map<string, number> = new Map(); // sectionId -> starting offset
+
 // Function to reset counters (can be called when new content loads)
 export function resetInteractiveCounters() {
   interactiveSectionCounter = 0;
+  globalStepRegistry.clear();
+  totalDocumentSteps = 0;
+  documentStepOffsets.clear();
+}
+
+// Register a section's steps in the global registry
+function registerSectionSteps(sectionId: string, stepCount: number): { offset: number; total: number } {
+  // Calculate offset (where this section's steps start in the document)
+  const offset = totalDocumentSteps;
+
+  // Register this section
+  globalStepRegistry.set(sectionId, stepCount);
+  documentStepOffsets.set(sectionId, offset);
+
+  // Update total
+  totalDocumentSteps += stepCount;
+
+  return { offset, total: totalDocumentSteps };
+}
+
+// Get document-wide position for a step within a section
+function getDocumentStepPosition(
+  sectionId: string,
+  sectionStepIndex: number
+): { stepIndex: number; totalSteps: number } {
+  const offset = documentStepOffsets.get(sectionId) || 0;
+  return {
+    stepIndex: offset + sectionStepIndex,
+    totalSteps: totalDocumentSteps,
+  };
 }
 
 export function InteractiveSection({
@@ -885,6 +926,11 @@ export function InteractiveSection({
     });
   }, [disabled, isRunning, getStorageKey, stepComponents, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Register this section's steps in the global registry on mount
+  useEffect(() => {
+    registerSectionSteps(sectionId, stepComponents.length);
+  }, [sectionId, stepComponents.length]);
+
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {
     return React.Children.map(children, (child, index) => {
@@ -898,6 +944,12 @@ export function InteractiveSection({
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
 
+        // Get document-wide step position
+        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+          sectionId,
+          index
+        );
+
         // Enhanced step props with section coordination
 
         return React.cloneElement(child as React.ReactElement<InteractiveStepProps>, {
@@ -907,6 +959,10 @@ export function InteractiveSection({
           isCompleted,
           isCurrentlyExecuting,
           onStepComplete: handleStepComplete,
+          stepIndex: documentStepIndex, // 0-indexed position in ENTIRE DOCUMENT
+          totalSteps: documentTotalSteps, // Total steps in ENTIRE DOCUMENT
+          sectionId: sectionId, // Section identifier for analytics
+          sectionTitle: title, // Section title for analytics
           onStepReset: handleStepReset, // Add step reset callback
           disabled: disabled || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
           resetTrigger, // Pass reset signal to child steps
@@ -929,6 +985,12 @@ export function InteractiveSection({
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
 
+        // Get document-wide step position
+        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+          sectionId,
+          index
+        );
+
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child.props as any),
           stepId: stepInfo.stepId,
@@ -937,6 +999,10 @@ export function InteractiveSection({
           isCurrentlyExecuting,
           onStepComplete: handleStepComplete,
           onStepReset: handleStepReset, // Add step reset callback
+          stepIndex: documentStepIndex,
+          totalSteps: documentTotalSteps,
+          sectionId: sectionId,
+          sectionTitle: title,
           disabled: disabled || (isRunning && !isCurrentlyExecuting), // Don't disable currently executing step
           resetTrigger, // Pass reset signal to child multi-steps
           key: stepInfo.stepId,
@@ -962,6 +1028,12 @@ export function InteractiveSection({
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
 
+        // Get document-wide step position
+        const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
+          sectionId,
+          index
+        );
+
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child.props as any),
           stepId: stepInfo.stepId,
@@ -970,6 +1042,10 @@ export function InteractiveSection({
           isCurrentlyExecuting,
           onStepComplete: handleStepComplete,
           onStepReset: handleStepReset,
+          stepIndex: documentStepIndex,
+          totalSteps: documentTotalSteps,
+          sectionId: sectionId,
+          sectionTitle: title,
           disabled: disabled || (isRunning && !isCurrentlyExecuting), // Don't disable during section run
           resetTrigger,
           key: stepInfo.stepId,
@@ -999,6 +1075,8 @@ export function InteractiveSection({
     disabled,
     isRunning,
     resetTrigger,
+    sectionId,
+    title,
   ]);
 
   return (

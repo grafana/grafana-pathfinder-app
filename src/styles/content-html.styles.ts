@@ -663,6 +663,17 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     border: `1px solid ${theme.colors.border.weak}`,
     textAlign: 'center',
+
+    // Sticky positioning: stays at bottom until user scrolls to it, then settles
+    position: 'sticky',
+    bottom: theme.spacing(2),
+    zIndex: 10,
+
+    // Add shadow when sticky to make it stand out
+    boxShadow: theme.shadows.z3,
+
+    // Smooth transition when settling into place
+    transition: 'all 0.3s ease',
   },
 
   '& .journey-ready-container h3': {
@@ -671,10 +682,10 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '& .journey-ready-button': {
-    display: 'inline-flex',
-    alignItems: 'center',
+    display: 'inline-flex !important',
+    alignItems: 'center !important',
     gap: theme.spacing(1),
-    padding: `${theme.spacing(1.5)} ${theme.spacing(3)}`,
+    padding: `${theme.spacing(1.5)} ${theme.spacing(3)} !important`,
     backgroundColor: theme.colors.primary.main,
     color: theme.colors.primary.contrastText,
     border: 'none',
@@ -683,11 +694,23 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
+    minHeight: '40px',
+    whiteSpace: 'nowrap',
+    overflow: 'visible !important', // Prevent text clipping
+    textOverflow: 'clip',
 
     '&:hover': {
       backgroundColor: theme.colors.primary.shade,
       transform: 'translateY(-1px)',
       boxShadow: theme.shadows.z2,
+    },
+
+    // Ensure inner content doesn't get clipped
+    '& > span': {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      overflow: 'visible',
     },
   },
 
