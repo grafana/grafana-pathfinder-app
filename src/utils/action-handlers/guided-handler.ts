@@ -63,8 +63,13 @@ export class GuidedHandler {
     timeout = 30000
   ): Promise<CompletionResult> {
     try {
-      // Find target element using action-specific logic
-      const targetElement = await this.findTargetElement(action.refTarget, action.targetAction);
+      // Find target element using action-specific logic with retry
+      const targetElement = await this.findTargetElementWithRetry(
+        action.refTarget,
+        action.targetAction,
+        timeout,
+        2000 // Retry every 2 seconds
+      );
 
       // Prepare element (scroll into view, open navigation if needed)
       await this.prepareElement(targetElement);
@@ -88,6 +93,47 @@ export class GuidedHandler {
       console.error(`Guided step ${stepIndex + 1} failed:`, error);
       return 'cancelled';
     }
+  }
+
+  /**
+   * Find target element with retry logic - keeps trying every retryInterval until timeout
+   */
+  private async findTargetElementWithRetry(
+    selector: string,
+    actionType: 'hover' | 'button' | 'highlight',
+    timeout: number,
+    retryInterval: number
+  ): Promise<HTMLElement> {
+    const startTime = Date.now();
+    let attemptCount = 0;
+
+    while (Date.now() - startTime < timeout) {
+      attemptCount++;
+      try {
+        const element = await this.findTargetElement(selector, actionType);
+        if (attemptCount > 1) {
+          console.warn(`✅ Element found after ${attemptCount} attempts (${Date.now() - startTime}ms)`);
+        }
+        return element;
+      } catch (error) {
+        const elapsed = Date.now() - startTime;
+        const remaining = timeout - elapsed;
+
+        if (remaining <= 0) {
+          console.error(`❌ Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
+          throw error;
+        }
+
+        console.warn(
+          `🔄 Element not found (attempt ${attemptCount}), retrying in ${retryInterval}ms... (${Math.round(remaining / 1000)}s remaining)`
+        );
+
+        // Wait before retrying, but don't exceed timeout
+        await new Promise((resolve) => setTimeout(resolve, Math.min(retryInterval, remaining)));
+      }
+    }
+
+    throw new Error(`Timeout finding element: ${selector}`);
   }
 
   /**
@@ -291,14 +337,17 @@ export class GuidedHandler {
     preventDefaultClick = false
   ): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
-      const elementRect = element.getBoundingClientRect();
-
       const handleClick = (event: Event) => {
         const mouseEvent = event as MouseEvent;
+        const clickedElement = mouseEvent.target as HTMLElement;
 
-        // Check if click is within or near the highlighted element bounds
-        // Add padding to make it more forgiving (matches highlight padding of 8px)
-        const padding = 12; // Slightly larger than highlight padding for easier clicking
+        // Primary check: Did user click the target element or something inside it (like an SVG)?
+        // This handles buttons with SVG icons where event.target is the SVG, not the button
+        const isTargetOrChild = element === clickedElement || element.contains(clickedElement);
+
+        // Fallback check: Is click within bounds? (Recalculate each time for hover-revealed elements)
+        const elementRect = element.getBoundingClientRect();
+        const padding = 12;
         const clickX = mouseEvent.clientX;
         const clickY = mouseEvent.clientY;
 
@@ -308,10 +357,7 @@ export class GuidedHandler {
           clickY >= elementRect.top - padding &&
           clickY <= elementRect.bottom + padding;
 
-        if (isWithinBounds) {
-          // For guided mode, we want to detect the click but NOT block it
-          // The user should be able to actually interact with the button/element
-          // We use non-capture phase and don't preventDefault to let click work normally
+        if (isTargetOrChild || isWithinBounds) {
           resolve('completed');
         }
       };
