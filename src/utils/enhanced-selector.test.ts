@@ -188,6 +188,80 @@ describe('Enhanced Selector', () => {
       expect(buttonResult.elements.length).toBe(1);
       expect(buttonResult.elements[0].textContent).toBe('Button 4');
     });
+
+    it('should handle chained :has() selectors with :contains() and :nth-match()', () => {
+      document.body.innerHTML = `
+        <div>
+          <a data-testid="data-testid Nav menu item" href="/other">Other</a>
+          <span>Other Text</span>
+        </div>
+        <div>
+          <a data-testid="data-testid Nav menu item" href="/dashboards">Dashboards Link</a>
+          <span>Dashboards</span>
+          <button>Expand Dashboards</button>
+        </div>
+        <div>
+          <a data-testid="data-testid Nav menu item" href="/alerts">Alerts</a>
+          <span>Alerts</span>
+          <button>Expand Alerts</button>
+        </div>
+      `;
+
+      // Test chained :has() - the exact pattern from the navigation menu
+      const result = querySelectorAllEnhanced(
+        'div:has(a[data-testid="data-testid Nav menu item"]):has(span:contains("Dashboards")):nth-match(1) button'
+      );
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0].textContent).toBe('Expand Dashboards');
+      expect(result.usedFallback).toBe(true);
+    });
+
+    it('should handle the workload pattern: div[data-cy]:has():nth-match() button:nth-of-type()', () => {
+      // Realistic workload UI structure with hover-revealed buttons
+      document.body.innerHTML = `
+        <div data-cy="wb-list-item">
+          <p>other-service-name</p>
+          <div class="hidden group-hover:flex">
+            <button>Close</button>
+            <button>Refresh</button>
+            <button>Trace</button>
+            <button>Dashboard</button>
+          </div>
+        </div>
+        <div data-cy="wb-list-item">
+          <p>adaptive-logs-api</p>
+          <div class="button-container">
+            <button>Close</button>
+            <button>Refresh</button>
+            <button>Trace</button>
+            <button>Dashboard</button>
+          </div>
+        </div>
+        <div data-cy="wb-list-item">
+          <p>another-service</p>
+          <div class="button-container">
+            <button>Close</button>
+          </div>
+        </div>
+      `;
+
+      // The EXACT production selector pattern
+      const result = querySelectorAllEnhanced(
+        'div[data-cy="wb-list-item"]:has(p:contains("adaptive-logs-api")):nth-match(1) button:nth-of-type(4)'
+      );
+
+      expect(result.elements.length).toBe(1);
+      expect(result.elements[0].textContent).toBe('Dashboard');
+      expect(result.usedFallback).toBe(true);
+
+      // Verify it finds the right container first
+      const containerResult = querySelectorAllEnhanced(
+        'div[data-cy="wb-list-item"]:has(p:contains("adaptive-logs-api")):nth-match(1)'
+      );
+      expect(containerResult.elements.length).toBe(1);
+      expect(containerResult.elements[0].querySelector('p')?.textContent).toBe('adaptive-logs-api');
+    });
   });
 
   describe('Edge cases', () => {

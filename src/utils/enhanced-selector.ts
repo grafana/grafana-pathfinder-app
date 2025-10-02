@@ -248,8 +248,14 @@ function handleHasSelector(selector: string): SelectorResult {
 
   const { baseSelector, hasSelector, afterHas } = hasMatch;
 
-  // If there's a selector after :has(), we need to find elements within the matched containers
-  const needsNestedSearch = afterHas && afterHas.trim();
+  // Check if afterHas is another chained pseudo-selector (like :has, :contains, :nth-match)
+  // If so, it's a filter condition, not a descendant selector
+  const isChainedPseudoSelector =
+    afterHas &&
+    (afterHas.startsWith(':has(') || afterHas.startsWith(':contains(') || afterHas.startsWith(':nth-match('));
+
+  // If there's a selector after :has() that's NOT a chained pseudo-selector, it's a descendant selector
+  const needsNestedSearch = afterHas && afterHas.trim() && !isChainedPseudoSelector;
 
   try {
     // Get all elements matching the base selector
@@ -296,21 +302,93 @@ function handleHasSelector(selector: string): SelectorResult {
       }
 
       if (hasDescendant) {
-        // If there's a selector after :has(), find elements within this container
-        if (needsNestedSearch) {
-          try {
-            const nestedElements = element.querySelectorAll(afterHas.trim());
-            matchingElements.push(...(Array.from(nestedElements) as HTMLElement[]));
-          } catch (nestedError) {
-            console.warn(`Error applying nested selector "${afterHas}":`, nestedError);
-            // Fallback to including the container element
-            matchingElements.push(element as HTMLElement);
+        // Store element temporarily - we may need to apply additional filters
+        matchingElements.push(element as HTMLElement);
+      }
+    }
+
+    // If there's a chained pseudo-selector, filter the matched elements through it
+    if (isChainedPseudoSelector) {
+      // For chained :has(), we need to check each element individually to see if it ALSO matches the next condition
+      // Extract the next :has() condition if present
+      if (afterHas.startsWith(':has(')) {
+        const nextHasMatch = parseHasSelector(afterHas);
+        if (nextHasMatch) {
+          const { hasSelector: nextHasSelector, afterHas: remainingSelector } = nextHasMatch;
+          const filteredElements: HTMLElement[] = [];
+
+          for (const element of matchingElements) {
+            // Check if this element ALSO has descendants matching the next :has() condition
+            let alsoHasDescendant = false;
+
+            // Handle :contains() within the next :has()
+            if (nextHasSelector.includes(':contains(')) {
+              const innerContainsResult = handleContainsSelector(nextHasSelector);
+              const matchedDescendants = innerContainsResult.elements.filter(
+                (desc) => element.contains(desc) || element === desc
+              );
+              alsoHasDescendant = matchedDescendants.length > 0;
+            } else {
+              try {
+                const descendants = element.querySelectorAll(nextHasSelector);
+                alsoHasDescendant = descendants.length > 0;
+              } catch (error) {
+                console.warn(`Error checking descendant selector "${nextHasSelector}":`, error);
+              }
+            }
+
+            if (alsoHasDescendant) {
+              filteredElements.push(element);
+            }
           }
-        } else {
-          // No nested selector, include the container element itself
-          matchingElements.push(element as HTMLElement);
+
+          // If there's more selector after the second :has(), process it
+          if (remainingSelector && remainingSelector.trim()) {
+            // Recursively handle remaining selector
+            const finalSelector =
+              baseSelector + ':has(' + hasSelector + ')' + ':has(' + nextHasSelector + ')' + remainingSelector;
+            const finalResult = querySelectorAllEnhanced(finalSelector);
+            return finalResult;
+          }
+
+          return {
+            elements: filteredElements,
+            usedFallback: true,
+            originalSelector: selector,
+            effectiveSelector: `${baseSelector} (has: ${hasSelector}) AND (has: ${nextHasSelector})`,
+          };
         }
       }
+
+      // For other chained selectors (:contains, :nth-match), apply them to the current results
+      // Build a selector that will match the current elements with the chained condition
+      const finalSelector = baseSelector + ':has(' + hasSelector + ')' + afterHas;
+      const finalResult = querySelectorAllEnhanced(finalSelector);
+      return finalResult;
+    }
+
+    // If there's a nested search selector (descendant selector), find elements within containers
+    if (needsNestedSearch) {
+      const nestedElements: HTMLElement[] = [];
+      for (const container of matchingElements) {
+        try {
+          // Use enhanced selector recursively to support complex selectors in afterHas
+          const nestedResult = querySelectorAllEnhanced(afterHas.trim());
+          // Filter to only elements that are descendants of the current container
+          const nestedInContainer = nestedResult.elements.filter(
+            (nested) => container.contains(nested) && container !== nested
+          );
+          nestedElements.push(...nestedInContainer);
+        } catch (nestedError) {
+          console.warn(`Error applying nested selector "${afterHas}":`, nestedError);
+        }
+      }
+      return {
+        elements: nestedElements,
+        usedFallback: true,
+        originalSelector: selector,
+        effectiveSelector: `${baseSelector} (has descendant: ${hasSelector}) ${afterHas}`,
+      };
     }
 
     return {
