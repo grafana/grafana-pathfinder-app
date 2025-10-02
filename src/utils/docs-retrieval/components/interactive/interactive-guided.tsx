@@ -38,6 +38,12 @@ interface InteractiveGuidedProps {
   onComplete?: () => void;
   skippable?: boolean;
 
+  // Step position tracking for analytics (added by section)
+  stepIndex?: number;
+  totalSteps?: number;
+  sectionId?: string;
+  sectionTitle?: string;
+
   // Guided-specific configuration
   stepTimeout?: number; // Timeout per step in milliseconds (default: 30000ms = 30s)
   resetTrigger?: number;
@@ -64,6 +70,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       skippable = false,
       stepTimeout = 30000, // 30 second default timeout per step
       resetTrigger,
+      stepIndex,
+      totalSteps,
+      sectionId,
+      sectionTitle,
     },
     ref
   ) => {
@@ -228,12 +238,24 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
       // Track analytics
       const docInfo = getDocumentInfo();
+
+      // Calculate completion percentage like learning journey milestones
+      const completionPercentage =
+        stepIndex !== undefined && totalSteps !== undefined && totalSteps > 0
+          ? Math.round(((stepIndex + 1) / totalSteps) * 100)
+          : undefined;
+
       reportAppInteraction(UserInteraction.DoItButtonClick, {
         ...docInfo,
         target_action: 'guided',
         ref_target: stepId || 'unknown',
         interaction_location: 'interactive_guided',
         internal_actions_count: internalActions.length,
+        ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
+        ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
+        ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+        ...(sectionId && { section_id: sectionId }),
+        ...(sectionTitle && { section_title: sectionTitle }),
       });
 
       await executeStep();
@@ -246,6 +268,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       getDocumentInfo,
       stepId,
       internalActions.length,
+      stepIndex,
+      totalSteps,
+      sectionId,
+      sectionTitle,
     ]);
 
     // Handle step reset (redo functionality)
