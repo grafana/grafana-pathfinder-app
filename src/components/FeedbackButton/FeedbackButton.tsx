@@ -1,5 +1,5 @@
 import React from 'react';
-import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction, calculateJourneyProgress } from '../../lib/analytics';
 import { getFeedbackButtonStyles } from '../../styles/feedback-button.styles';
 import { useTheme2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
@@ -27,10 +27,18 @@ export const FeedbackButton: React.FC<FeedbackButtonProps> = ({
   const styles = getFeedbackButtonStyles(theme);
 
   const handleClick = () => {
-    // Calculate completion percentage if we have milestone data
+    // Calculate completion percentage using centralized helper
     const completionPercentage =
-      currentMilestone !== undefined && totalMilestones !== undefined && totalMilestones > 0
-        ? Math.round((currentMilestone / totalMilestones) * 100)
+      currentMilestone !== undefined && totalMilestones !== undefined
+        ? calculateJourneyProgress({
+            type: 'learning-journey',
+            metadata: {
+              learningJourney: {
+                currentMilestone,
+                totalMilestones,
+              },
+            },
+          })
         : undefined;
 
     // Track analytics first

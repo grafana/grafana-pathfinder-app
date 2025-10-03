@@ -5,7 +5,7 @@ import { useInteractiveElements } from '../../../interactive.hook';
 import { waitForReactUpdates } from '../../../requirements-checker.hook';
 import { useStepChecker } from '../../../step-checker.hook';
 import { getPostVerifyExplanation } from '../../../requirement-explanations';
-import { reportAppInteraction, UserInteraction } from '../../../../lib/analytics';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../../lib/analytics';
 import type { InteractiveStepProps } from './interactive-section';
 
 export const InteractiveStep = forwardRef<
@@ -53,27 +53,6 @@ export const InteractiveStep = forwardRef<
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
-
-    // Helper function to get current document name for analytics
-    const getDocumentInfo = useCallback(() => {
-      try {
-        const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
-        const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
-
-        // Use tabUrl first, then contentKey, then fallback to current location
-        const sourceDocument = tabUrl || contentKey || window.location.pathname || 'unknown';
-
-        return {
-          source_document: sourceDocument,
-          step_id: stepId || 'unknown',
-        };
-      } catch {
-        return {
-          source_document: 'unknown',
-          step_id: stepId || 'unknown',
-        };
-      }
-    }, [stepId]);
 
     // Combined completion state (parent takes precedence for coordination)
     const isCompleted = parentCompleted || isLocallyCompleted;
@@ -220,26 +199,18 @@ export const InteractiveStep = forwardRef<
       }
 
       // Track "Show me" button click analytics
-      const docInfo = getDocumentInfo();
-
-      // Calculate completion percentage like learning journey milestones
-      const completionPercentage =
-        stepIndex !== undefined && totalSteps !== undefined && totalSteps > 0
-          ? Math.round(((stepIndex + 1) / totalSteps) * 100)
-          : undefined;
-
-      reportAppInteraction(UserInteraction.ShowMeButtonClick, {
-        ...docInfo,
-        target_action: targetAction,
-        ref_target: refTarget,
-        ...(targetValue && { target_value: targetValue }),
-        interaction_location: 'interactive_step',
-        ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
-        ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
-        ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
-        ...(sectionId && { section_id: sectionId }),
-        ...(sectionTitle && { section_title: sectionTitle }),
-      });
+      reportAppInteraction(
+        UserInteraction.ShowMeButtonClick,
+        buildInteractiveStepProperties(
+          {
+            target_action: targetAction,
+            ref_target: refTarget,
+            ...(targetValue && { target_value: targetValue }),
+            interaction_location: 'interactive_step',
+          },
+          { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+        )
+      );
 
       setIsShowRunning(true);
       try {
@@ -282,7 +253,6 @@ export const InteractiveStep = forwardRef<
       totalSteps,
       sectionId,
       sectionTitle,
-      getDocumentInfo,
     ]);
 
     // Handle individual "Do it" action (delegates to executeStep)
@@ -292,26 +262,18 @@ export const InteractiveStep = forwardRef<
       }
 
       // Track "Do it" button click analytics
-      const docInfo = getDocumentInfo();
-
-      // Calculate completion percentage like learning journey milestones
-      const completionPercentage =
-        stepIndex !== undefined && totalSteps !== undefined && totalSteps > 0
-          ? Math.round(((stepIndex + 1) / totalSteps) * 100)
-          : undefined;
-
-      reportAppInteraction(UserInteraction.DoItButtonClick, {
-        ...docInfo,
-        target_action: targetAction,
-        ref_target: refTarget,
-        ...(targetValue && { target_value: targetValue }),
-        interaction_location: 'interactive_step',
-        ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
-        ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
-        ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
-        ...(sectionId && { section_id: sectionId }),
-        ...(sectionTitle && { section_title: sectionTitle }),
-      });
+      reportAppInteraction(
+        UserInteraction.DoItButtonClick,
+        buildInteractiveStepProperties(
+          {
+            target_action: targetAction,
+            ref_target: refTarget,
+            ...(targetValue && { target_value: targetValue }),
+            interaction_location: 'interactive_step',
+          },
+          { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+        )
+      );
 
       setIsDoRunning(true);
       try {
@@ -327,7 +289,7 @@ export const InteractiveStep = forwardRef<
       isCompletedWithObjectives,
       finalIsEnabled,
       executeStep,
-      getDocumentInfo,
+      stepId,
       targetAction,
       refTarget,
       targetValue,

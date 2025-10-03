@@ -215,3 +215,273 @@ function buildScrollEventProperties(
 export function clearScrollTrackingCache(): void {
   scrolledPages.clear();
 }
+
+// ============================================================================
+// LEARNING JOURNEY ANALYTICS HELPERS
+// ============================================================================
+
+/**
+ * Content interface compatible with journey progress calculations
+ */
+export interface JourneyContent {
+  type?: 'learning-journey' | 'docs';
+  metadata?: {
+    learningJourney?: {
+      currentMilestone?: number;
+      totalMilestones?: number;
+    };
+  };
+}
+
+/**
+ * Calculates the completion percentage for a learning journey
+ *
+ * @param content - The content object containing journey metadata
+ * @returns Completion percentage (0-100) or 0 if not a learning journey
+ */
+export function calculateJourneyProgress(content: JourneyContent | null | undefined): number {
+  if (!content || content.type !== 'learning-journey' || !content.metadata?.learningJourney) {
+    return 0;
+  }
+
+  const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
+
+  if (!totalMilestones || totalMilestones === 0) {
+    return 0;
+  }
+
+  return Math.round(((currentMilestone || 0) / totalMilestones) * 100);
+}
+
+/**
+ * Extracts journey metadata properties for analytics events
+ *
+ * @param content - The content object containing journey metadata
+ * @returns Object with journey properties or empty object if not a journey
+ */
+export function getJourneyProperties(content: JourneyContent | null | undefined): Record<string, number> {
+  if (!content || content.type !== 'learning-journey' || !content.metadata?.learningJourney) {
+    return {};
+  }
+
+  const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
+
+  return {
+    completion_percentage: calculateJourneyProgress(content),
+    current_milestone: currentMilestone || 0,
+    total_milestones: totalMilestones || 0,
+  };
+}
+
+/**
+ * Enriches analytics properties with journey context if content is a learning journey
+ *
+ * This is the primary helper for adding journey progress to any analytics event.
+ * It conditionally adds journey properties only when the content is a learning journey.
+ *
+ * @param baseProperties - Base properties for the analytics event
+ * @param content - Optional content object to extract journey data from
+ * @returns Enriched properties object with journey data if applicable
+ *
+ * @example
+ * ```typescript
+ * reportAppInteraction(
+ *   UserInteraction.OpenExtraResource,
+ *   enrichWithJourneyContext({
+ *     content_url: url,
+ *     link_type: 'external',
+ *   }, activeTab?.content)
+ * );
+ * ```
+ */
+export function enrichWithJourneyContext(
+  baseProperties: Record<string, string | number | boolean>,
+  content: JourneyContent | null | undefined
+): Record<string, string | number | boolean> {
+  const journeyProps = getJourneyProperties(content);
+
+  // Only add journey properties if they exist (non-empty object)
+  if (Object.keys(journeyProps).length > 0) {
+    return { ...baseProperties, ...journeyProps };
+  }
+
+  return baseProperties;
+}
+
+// ============================================================================
+// INTERACTIVE STEP ANALYTICS HELPERS
+// ============================================================================
+
+/**
+ * Gets the current source document and step ID from global window variables
+ *
+ * This helper extracts document context that's set by the docs panel for
+ * analytics tracking purposes. It's used across all interactive components.
+ *
+ * @param stepId - Optional step identifier to include in the result
+ * @returns Object with source_document and step_id for analytics
+ */
+export function getSourceDocument(stepId?: string): { source_document: string; step_id: string } {
+  try {
+    const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
+    const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
+    const sourceDocument = tabUrl || contentKey || window.location.pathname || 'unknown';
+
+    return {
+      source_document: sourceDocument,
+      step_id: stepId || 'unknown',
+    };
+  } catch {
+    return {
+      source_document: 'unknown',
+      step_id: stepId || 'unknown',
+    };
+  }
+}
+
+/**
+ * Calculates completion percentage for an interactive step within a document
+ *
+ * Converts 0-indexed step position to 1-indexed for analytics and calculates
+ * percentage progress through the document's total steps.
+ *
+ * @param stepIndex - 0-indexed position of the step in the document
+ * @param totalSteps - Total number of steps in the document
+ * @returns Completion percentage (0-100) or undefined if data is incomplete
+ *
+ * @example
+ * ```typescript
+ * calculateStepCompletion(2, 10) // Returns 30 (step 3 of 10 = 30%)
+ * calculateStepCompletion(9, 10) // Returns 100 (step 10 of 10 = 100%)
+ * ```
+ */
+export function calculateStepCompletion(stepIndex?: number, totalSteps?: number): number | undefined {
+  if (stepIndex === undefined || totalSteps === undefined || totalSteps === 0) {
+    return undefined;
+  }
+
+  // Convert 0-indexed to 1-indexed and calculate percentage
+  return Math.round(((stepIndex + 1) / totalSteps) * 100);
+}
+
+/**
+ * Interface for step context used in analytics
+ */
+export interface StepContext {
+  stepId?: string;
+  stepIndex?: number;
+  totalSteps?: number;
+  sectionId?: string;
+  sectionTitle?: string;
+}
+
+/**
+ * Builds a complete analytics properties object for interactive step interactions
+ *
+ * This is the primary helper for all interactive step analytics (Show me, Do it, etc.).
+ * Centralizes the property building logic used across all interactive components.
+ *
+ * @param baseProperties - Base properties specific to the interaction
+ * @param stepContext - Step position and section context
+ * @returns Complete properties object ready for reportAppInteraction
+ *
+ * @example
+ * ```typescript
+ * reportAppInteraction(
+ *   UserInteraction.DoItButtonClick,
+ *   buildInteractiveStepProperties(
+ *     {
+ *       target_action: 'button',
+ *       ref_target: 'Save',
+ *       interaction_location: 'interactive_step',
+ *     },
+ *     { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+ *   )
+ * );
+ * ```
+ */
+export function buildInteractiveStepProperties(
+  baseProperties: Record<string, string | number | boolean>,
+  stepContext: StepContext
+): Record<string, string | number | boolean> {
+  const { stepId, stepIndex, totalSteps, sectionId, sectionTitle } = stepContext;
+
+  // Get source document info
+  const docInfo = getSourceDocument(stepId);
+
+  // Calculate completion percentage
+  const completionPercentage = calculateStepCompletion(stepIndex, totalSteps);
+
+  // Build complete properties object
+  return {
+    ...docInfo,
+    ...baseProperties,
+    ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
+    ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
+    ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+    ...(sectionId && { section_id: sectionId }),
+    ...(sectionTitle && { section_title: sectionTitle }),
+  };
+}
+
+/**
+ * Gets the current interactive step context from global window variables
+ *
+ * This extracts step position tracking that's set by interactive sections
+ * to provide context about where the user is in an interactive document.
+ *
+ * @returns Step context properties or empty object if not in an interactive document
+ */
+export function getCurrentStepContext(): Record<string, number> {
+  try {
+    const stepIndex = (window as any).__DocsPluginCurrentStepIndex as number | undefined;
+    const totalSteps = (window as any).__DocsPluginTotalSteps as number | undefined;
+
+    if (stepIndex === undefined || totalSteps === undefined) {
+      return {};
+    }
+
+    const completionPercentage = calculateStepCompletion(stepIndex, totalSteps);
+
+    return {
+      current_step: stepIndex + 1, // 1-indexed for analytics
+      total_document_steps: totalSteps,
+      ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Enriches analytics properties with current step context if available
+ *
+ * This helper adds step position information to events like OpenExtraResource
+ * to track what step the user was on when they navigated away or clicked a link.
+ *
+ * @param baseProperties - Base properties for the analytics event
+ * @returns Enriched properties with step context if available
+ *
+ * @example
+ * ```typescript
+ * reportAppInteraction(
+ *   UserInteraction.OpenExtraResource,
+ *   enrichWithStepContext({
+ *     content_url: url,
+ *     link_type: 'external',
+ *   })
+ * );
+ * ```
+ */
+export function enrichWithStepContext(
+  baseProperties: Record<string, string | number | boolean>
+): Record<string, string | number | boolean> {
+  const stepContext = getCurrentStepContext();
+
+  // Only add step context if it exists (non-empty object)
+  if (Object.keys(stepContext).length > 0) {
+    return { ...baseProperties, ...stepContext };
+  }
+
+  return baseProperties;
+}
