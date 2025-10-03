@@ -1,7 +1,12 @@
 import { useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { safeEventHandler } from './safe-event-handler.util';
-import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import {
+  reportAppInteraction,
+  UserInteraction,
+  enrichWithJourneyContext,
+  enrichWithStepContext,
+} from '../lib/analytics';
 import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
 
 // Allowed GitHub URLs that can open in app tabs (from context.service.ts defaultRecommendations)
@@ -148,14 +153,17 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             } else {
               model.openLearningJourney(href, linkText);
             }
-            reportAppInteraction(UserInteraction.OpenExtraResource, {
-              content_url: href,
-              content_type: 'docs',
-              link_text: linkText,
-              source_page: activeTab?.content?.url || 'unknown',
-              link_type: 'bundled_interactive',
-              interaction_location: 'bundled_link',
-            });
+            reportAppInteraction(
+              UserInteraction.OpenExtraResource,
+              enrichWithStepContext({
+                content_url: href,
+                content_type: 'docs',
+                link_text: linkText,
+                source_page: activeTab?.content?.url || 'unknown',
+                link_type: 'bundled_interactive',
+                interaction_location: 'bundled_link',
+              })
+            );
             return;
           }
           // Handle relative fragment links (like #section-name)
@@ -213,14 +221,17 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             // Track analytics for opening extra resources (docs/tutorials)
             const contentType = fullUrl.includes('/learning-journeys/') ? 'learning-journey' : 'docs';
-            reportAppInteraction(UserInteraction.OpenExtraResource, {
-              content_url: fullUrl,
-              content_type: contentType,
-              link_text: linkText,
-              source_page: activeTab?.content?.url || 'unknown',
-              link_type: fullUrl.includes('/tutorials/') ? 'tutorial' : 'docs',
-              interaction_location: 'content_link',
-            });
+            reportAppInteraction(
+              UserInteraction.OpenExtraResource,
+              enrichWithStepContext({
+                content_url: fullUrl,
+                content_type: contentType,
+                link_text: linkText,
+                source_page: activeTab?.content?.url || 'unknown',
+                link_type: fullUrl.includes('/tutorials/') ? 'tutorial' : 'docs',
+                interaction_location: 'content_link',
+              })
+            );
           }
           // Handle GitHub links - check if allowed to open in app
           else if (href.includes('github.com') || href.includes('raw.githubusercontent.com')) {
@@ -249,14 +260,22 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 }
 
                 // Track analytics for allowed GitHub link attempts
-                reportAppInteraction(UserInteraction.OpenExtraResource, {
-                  content_url: unstyledUrl,
-                  content_type: 'docs',
-                  link_text: linkText,
-                  source_page: activeTab?.content?.url || 'unknown',
-                  link_type: 'github_allowed_unstyled',
-                  interaction_location: 'github_link',
-                });
+                reportAppInteraction(
+                  UserInteraction.OpenExtraResource,
+                  enrichWithStepContext(
+                    enrichWithJourneyContext(
+                      {
+                        content_url: unstyledUrl,
+                        content_type: 'docs',
+                        link_text: linkText,
+                        source_page: activeTab?.content?.url || 'unknown',
+                        link_type: 'github_allowed_unstyled',
+                        interaction_location: 'github_link',
+                      },
+                      activeTab?.content
+                    )
+                  )
+                );
               } else {
                 // Even allowed URLs fallback to opening in app without unstyled
                 if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
@@ -266,25 +285,41 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 }
 
                 // Track analytics for allowed GitHub direct attempts
-                reportAppInteraction(UserInteraction.OpenExtraResource, {
-                  content_url: resolvedUrl,
-                  content_type: 'docs',
-                  link_text: linkText,
-                  source_page: activeTab?.content?.url || 'unknown',
-                  link_type: 'github_allowed_direct',
-                  interaction_location: 'github_link',
-                });
+                reportAppInteraction(
+                  UserInteraction.OpenExtraResource,
+                  enrichWithStepContext(
+                    enrichWithJourneyContext(
+                      {
+                        content_url: resolvedUrl,
+                        content_type: 'docs',
+                        link_text: linkText,
+                        source_page: activeTab?.content?.url || 'unknown',
+                        link_type: 'github_allowed_direct',
+                        interaction_location: 'github_link',
+                      },
+                      activeTab?.content
+                    )
+                  )
+                );
               }
             } else {
               // Track analytics for GitHub browser opening
-              reportAppInteraction(UserInteraction.OpenExtraResource, {
-                content_url: resolvedUrl,
-                content_type: 'docs',
-                link_text: linkText,
-                source_page: activeTab?.content?.url || 'unknown',
-                link_type: 'github_browser_external',
-                interaction_location: 'github_link',
-              });
+              reportAppInteraction(
+                UserInteraction.OpenExtraResource,
+                enrichWithStepContext(
+                  enrichWithJourneyContext(
+                    {
+                      content_url: resolvedUrl,
+                      content_type: 'docs',
+                      link_text: linkText,
+                      source_page: activeTab?.content?.url || 'unknown',
+                      link_type: 'github_browser_external',
+                      interaction_location: 'github_link',
+                    },
+                    activeTab?.content
+                  )
+                )
+              );
 
               // Delay to ensure analytics event is sent before opening new tab
               setTimeout(() => {
@@ -302,14 +337,22 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             const linkText = anchor.textContent?.trim() || 'External Link';
 
             // Track analytics for external link clicks opening in browser
-            reportAppInteraction(UserInteraction.OpenExtraResource, {
-              content_url: resolvedUrl,
-              content_type: 'docs',
-              link_text: linkText,
-              source_page: activeTab?.content?.url || 'unknown',
-              link_type: 'external_browser',
-              interaction_location: 'external_link',
-            });
+            reportAppInteraction(
+              UserInteraction.OpenExtraResource,
+              enrichWithStepContext(
+                enrichWithJourneyContext(
+                  {
+                    content_url: resolvedUrl,
+                    content_type: 'docs',
+                    link_text: linkText,
+                    source_page: activeTab?.content?.url || 'unknown',
+                    link_type: 'external_browser',
+                    interaction_location: 'external_link',
+                  },
+                  activeTab?.content
+                )
+              )
+            );
 
             // Delay to ensure analytics event is sent before opening new tab
             setTimeout(() => {
@@ -361,14 +404,22 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           }
 
           // Track analytics for side journey clicks as extra resource
-          reportAppInteraction(UserInteraction.OpenExtraResource, {
-            content_url: fullUrl,
-            content_type: 'docs',
-            link_text: linkTitle,
-            source_page: activeTab?.content?.url || 'unknown',
-            link_type: 'side_journey',
-            interaction_location: 'side_journey_link',
-          });
+          reportAppInteraction(
+            UserInteraction.OpenExtraResource,
+            enrichWithStepContext(
+              enrichWithJourneyContext(
+                {
+                  content_url: fullUrl,
+                  content_type: 'docs',
+                  link_text: linkTitle,
+                  source_page: activeTab?.content?.url || 'unknown',
+                  link_type: 'side_journey',
+                  interaction_location: 'side_journey_link',
+                },
+                activeTab?.content
+              )
+            )
+          );
         }
       }
 
@@ -391,14 +442,22 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           model.openLearningJourney(fullUrl, linkTitle);
 
           // Track analytics for related journey clicks
-          reportAppInteraction(UserInteraction.OpenExtraResource, {
-            content_url: fullUrl,
-            content_type: 'learning-journey',
-            link_text: linkTitle,
-            source_page: activeTab?.content?.url || 'unknown',
-            link_type: 'related_journey',
-            interaction_location: 'related_journey_link',
-          });
+          reportAppInteraction(
+            UserInteraction.OpenExtraResource,
+            enrichWithStepContext(
+              enrichWithJourneyContext(
+                {
+                  content_url: fullUrl,
+                  content_type: 'learning-journey',
+                  link_text: linkTitle,
+                  source_page: activeTab?.content?.url || 'unknown',
+                  link_type: 'related_journey',
+                  interaction_location: 'related_journey_link',
+                },
+                activeTab?.content
+              )
+            )
+          );
         }
       }
 

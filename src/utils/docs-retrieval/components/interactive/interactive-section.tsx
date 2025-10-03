@@ -6,7 +6,7 @@ import { useStepChecker } from '../../../step-checker.hook';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
-import { reportAppInteraction, UserInteraction } from '../../../../lib/analytics';
+import { reportAppInteraction, UserInteraction, getSourceDocument } from '../../../../lib/analytics';
 import { INTERACTIVE_CONFIG } from '../../../../constants/interactive-config';
 
 // Shared type definitions
@@ -90,18 +90,25 @@ export function resetInteractiveCounters() {
   documentStepOffsets.clear();
 }
 
-// Register a section's steps in the global registry
+// Register a section's steps in the global registry (idempotent)
 function registerSectionSteps(sectionId: string, stepCount: number): { offset: number; total: number } {
-  // Calculate offset (where this section's steps start in the document)
-  const offset = totalDocumentSteps;
-
-  // Register this section
+  // Update this section's step count
   globalStepRegistry.set(sectionId, stepCount);
-  documentStepOffsets.set(sectionId, offset);
 
-  // Update total
-  totalDocumentSteps += stepCount;
+  // Recalculate total and offsets from scratch to ensure consistency
+  // This handles re-registration (re-renders) and multiple sections correctly
+  // Use Map's insertion order (document order) instead of sorting alphabetically
+  let runningTotal = 0;
 
+  for (const [secId, count] of globalStepRegistry.entries()) {
+    documentStepOffsets.set(secId, runningTotal);
+    runningTotal += count;
+  }
+
+  totalDocumentSteps = runningTotal;
+
+  // Return this section's offset and the new total
+  const offset = documentStepOffsets.get(sectionId) || 0;
   return { offset, total: totalDocumentSteps };
 }
 
@@ -194,27 +201,6 @@ export function InteractiveSection({
 
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
-
-  // Helper function to get current document name for analytics
-  const getDocumentInfo = useCallback(() => {
-    try {
-      const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
-      const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
-
-      // Use tabUrl first, then contentKey, then fallback to current location
-      const sourceDocument = tabUrl || contentKey || window.location.pathname || 'unknown';
-
-      return {
-        source_document: sourceDocument,
-        step_id: sectionId,
-      };
-    } catch {
-      return {
-        source_document: 'unknown',
-        step_id: sectionId,
-      };
-    }
-  }, [sectionId]);
 
   // Store refs to multistep components for section-level execution
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
@@ -548,7 +534,7 @@ export function InteractiveSection({
     }
 
     // Track "Do Section" button click analytics
-    const docInfo = getDocumentInfo();
+    const docInfo = getSourceDocument(sectionId);
     reportAppInteraction(UserInteraction.DoSectionButtonClick, {
       ...docInfo,
       section_title: title,
@@ -868,7 +854,6 @@ export function InteractiveSection({
     currentStepIndex,
     requirements,
     checkRequirementsFromData,
-    getDocumentInfo,
     persistCompletedSteps,
   ]);
 
@@ -926,10 +911,31 @@ export function InteractiveSection({
     });
   }, [disabled, isRunning, getStorageKey, stepComponents, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Register this section's steps in the global registry on mount
-  useEffect(() => {
+  // Register this section's steps in the global registry BEFORE rendering children
+  // This must happen in useMemo (not useEffect) to ensure totalDocumentSteps is correct
+  // when getDocumentStepPosition is called during the enhancedChildren memo
+  useMemo(() => {
     registerSectionSteps(sectionId, stepComponents.length);
   }, [sectionId, stepComponents.length]);
+
+  // Expose current step context globally for analytics (when section is active)
+  useEffect(() => {
+    try {
+      // Set total steps for the entire document
+      (window as any).__DocsPluginTotalSteps = totalDocumentSteps;
+
+      // Set current step index based on section execution state
+      if (currentlyExecutingStep) {
+        const executingStepInfo = stepComponents.find((s) => s.stepId === currentlyExecutingStep);
+        if (executingStepInfo) {
+          const { stepIndex: documentStepIndex } = getDocumentStepPosition(sectionId, executingStepInfo.index);
+          (window as any).__DocsPluginCurrentStepIndex = documentStepIndex;
+        }
+      }
+    } catch {
+      // no-op
+    }
+  }, [currentlyExecutingStep, stepComponents, sectionId]);
 
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {

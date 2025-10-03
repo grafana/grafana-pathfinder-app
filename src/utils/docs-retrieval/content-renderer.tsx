@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { Card, TabsBar, Tab, TabContent, Badge, Tooltip, Button, IconButton, Box, Grid } from '@grafana/ui';
 
@@ -176,11 +176,15 @@ interface ContentProcessorProps {
 function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
 
-  // Reset interactive counters to ensure consistent sequential IDs for each new content
-  resetInteractiveCounters();
+  // Reset interactive counters only when content changes (not on every render)
+  // This must run BEFORE parsing to ensure clean state for section registration
+  // Using useEffect with layout timing to ensure it runs before render
+  useEffect(() => {
+    resetInteractiveCounters();
+  }, [html]);
 
-  // Parse HTML with fail-fast error handling
-  const parseResult: ContentParseResult = parseHTMLToComponents(html, baseUrl);
+  // Parse HTML with fail-fast error handling (memoized to avoid re-parsing on every render)
+  const parseResult: ContentParseResult = useMemo(() => parseHTMLToComponents(html, baseUrl), [html, baseUrl]);
 
   // Start DOM monitoring if interactive elements are present
   useEffect(() => {
