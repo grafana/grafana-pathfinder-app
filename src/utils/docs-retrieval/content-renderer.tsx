@@ -178,10 +178,14 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
 
   // Reset interactive counters only when content changes (not on every render)
   // This must run BEFORE parsing to ensure clean state for section registration
-  // Using useEffect with layout timing to ensure it runs before render
-  useEffect(() => {
-    resetInteractiveCounters();
-  }, [html]);
+  useMemo(
+    () => {
+      resetInteractiveCounters();
+      return null;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [html]
+  );
 
   // Parse HTML with fail-fast error handling (memoized to avoid re-parsing on every render)
   const parseResult: ContentParseResult = useMemo(() => parseHTMLToComponents(html, baseUrl), [html, baseUrl]);
