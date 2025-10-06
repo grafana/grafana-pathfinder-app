@@ -277,7 +277,7 @@ export function findInteractiveParent(element: HTMLElement): HTMLElement {
  * Check if an element can receive focus
  *
  * Validates that element is both focusable by nature (input, button, link, etc.)
- * and actually visible in the DOM. Inspired by react-joyride's focus management.
+ * and actually visible in the DOM.
  *
  * @param element - The element to check
  * @returns true if element can receive focus, false otherwise
