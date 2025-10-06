@@ -486,6 +486,9 @@ export function useStepChecker({
           }));
           return;
         }
+      } else if (state.fixType === 'location' && state.targetHref && navigationManagerRef.current) {
+        // Fix location requirements by navigating to the expected path
+        await navigationManagerRef.current.fixLocationRequirement(state.targetHref);
       } else if (state.fixType === 'navigation') {
         // Fix basic navigation requirements (menu open/dock)
         await fixNavigationRequirements();

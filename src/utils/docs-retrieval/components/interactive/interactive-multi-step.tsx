@@ -1,10 +1,13 @@
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect } from 'react';
+import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo } from 'react';
 import { Button } from '@grafana/ui';
+import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements } from '../../../interactive.hook';
 import { useStepChecker } from '../../../step-checker.hook';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../../lib/analytics';
-import { INTERACTIVE_CONFIG } from '../../../../constants/interactive-config';
+import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../../constants/interactive-config';
+import { matchesStepAction, type DetectedActionEvent } from '../../../action-matcher';
+import { getConfigWithDefaults } from '../../../../constants';
 
 interface InternalAction {
   targetAction: string;
@@ -136,6 +139,16 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     const [currentActionIndex, setCurrentActionIndex] = useState(-1);
     const [executionError, setExecutionError] = useState<string | null>(null);
 
+    // Track which internal actions have been auto-completed by user
+    const [autoCompletedActions, setAutoCompletedActions] = useState<Set<number>>(new Set());
+
+    // Get plugin configuration for auto-detection settings
+    const pluginContext = usePluginContext();
+    const interactiveConfig = useMemo(() => {
+      const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+      return getInteractiveConfig(config);
+    }, [pluginContext?.meta?.jsonData]);
+
     // Use ref for cancellation to avoid closure issues
     const isCancelledRef = React.useRef(false);
 
@@ -144,6 +157,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       if (resetTrigger && resetTrigger > 0) {
         setIsLocallyCompleted(false);
         setExecutionError(null); // Also clear any execution errors
+        setAutoCompletedActions(new Set()); // Clear auto-completed actions
         isCancelledRef.current = false; // Reset cancellation state
       }
     }, [resetTrigger, stepId]);
@@ -354,6 +368,115 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       }),
       [executeStep]
     );
+
+    // Auto-detection: Listen for user actions and track completion of internal actions
+    useEffect(() => {
+      // Only enable auto-detection if:
+      // 1. Feature is enabled in config
+      // 2. Step is eligible and enabled
+      // 3. Step is not already completed
+      // 4. Step is not currently executing (avoid race conditions)
+      if (
+        !interactiveConfig.autoDetection.enabled ||
+        !checker.isEnabled ||
+        isCompletedWithObjectives ||
+        isCurrentlyExecuting ||
+        disabled
+      ) {
+        return;
+      }
+
+      const handleActionDetected = async (event: Event) => {
+        const customEvent = event as CustomEvent<DetectedActionEvent>;
+        const detectedAction = customEvent.detail;
+
+        // Check which internal action (if any) matches the detected action
+        let matchedActionIndex = -1;
+        for (let i = 0; i < internalActions.length; i++) {
+          const action = internalActions[i];
+          const matches = matchesStepAction(detectedAction, {
+            targetAction: action.targetAction as any,
+            refTarget: action.refTarget || '',
+            targetValue: action.targetValue,
+          });
+
+          if (matches) {
+            matchedActionIndex = i;
+            break;
+          }
+        }
+
+        if (matchedActionIndex === -1) {
+          return; // No match found
+        }
+
+        // Check if this action was already completed
+        if (autoCompletedActions.has(matchedActionIndex)) {
+          return; // Already counted
+        }
+
+        // Mark this action as completed
+        setAutoCompletedActions((prev) => {
+          const newSet = new Set(prev);
+          newSet.add(matchedActionIndex);
+          return newSet;
+        });
+
+        // Check if all actions are now completed
+        const newCompletedCount = autoCompletedActions.size + 1;
+        if (newCompletedCount >= internalActions.length) {
+          // Mark entire multi-step as completed
+          setIsLocallyCompleted(true);
+
+          // Notify parent if we have the callback (section coordination)
+          if (onStepComplete && stepId) {
+            onStepComplete(stepId);
+          }
+
+          // Call the original onComplete callback if provided
+          if (onComplete) {
+            onComplete();
+          }
+
+          // Track auto-completion in analytics
+          reportAppInteraction(
+            UserInteraction.StepAutoCompleted,
+            buildInteractiveStepProperties(
+              {
+                target_action: 'multistep',
+                ref_target: stepId || 'unknown',
+                interaction_location: 'interactive_multi_step_auto',
+                completion_method: 'auto_detected',
+                internal_actions_count: internalActions.length,
+              },
+              { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+            )
+          );
+        }
+      };
+
+      // Subscribe to user-action-detected events
+      document.addEventListener('user-action-detected', handleActionDetected);
+
+      return () => {
+        document.removeEventListener('user-action-detected', handleActionDetected);
+      };
+    }, [
+      interactiveConfig.autoDetection.enabled,
+      checker.isEnabled,
+      isCompletedWithObjectives,
+      isCurrentlyExecuting,
+      disabled,
+      internalActions,
+      autoCompletedActions,
+      stepId,
+      onStepComplete,
+      onComplete,
+      stepIndex,
+      totalSteps,
+      sectionId,
+      sectionTitle,
+    ]);
 
     // Handle "Do it" button click
     const handleDoAction = useCallback(async () => {

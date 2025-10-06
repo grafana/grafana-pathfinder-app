@@ -1,8 +1,10 @@
+import type { DocsPluginConfig } from '../constants';
+
 /**
  * Configuration for interactive delays and timing
  * Replaces magic numbers with named constants for better maintainability
  */
-export const INTERACTIVE_CONFIG = {
+export const INTERACTIVE_CONFIG_DEFAULTS = {
   maxRetries: 3,
   delays: {
     // Perceptual delays for human-readable timing
@@ -79,9 +81,50 @@ export const INTERACTIVE_CONFIG = {
     useScrollEvents: true, // Listen for scroll completion
     fallbackTimeouts: true, // Keep timeouts as fallbacks
   },
+  // Auto-detection configuration for step completion
+  autoDetection: {
+    enabled: false, // Global toggle for auto-detection feature (opt-in, disabled by default)
+    debounceDelay: 100, // Debounce detected actions to prevent rapid-fire matches (ms)
+    verificationDelay: 200, // Delay before running post-verification checks (ms)
+    feedbackDuration: 1500, // Duration to show auto-completion feedback (ms)
+    eventTypes: ['click', 'input', 'change', 'mouseenter'] as const, // DOM events to monitor
+  },
 } as const;
+
+/**
+ * Get interactive configuration with plugin overrides applied
+ *
+ * @param pluginConfig - Optional plugin configuration to override defaults
+ * @returns Complete interactive configuration with user preferences applied
+ */
+export function getInteractiveConfig(pluginConfig?: DocsPluginConfig) {
+  const defaults = INTERACTIVE_CONFIG_DEFAULTS;
+
+  return {
+    ...defaults,
+    autoDetection: {
+      ...defaults.autoDetection,
+      enabled: pluginConfig?.enableAutoDetection ?? false, // Default FALSE (opt-in)
+      debounceDelay: pluginConfig?.autoDetectionDebounce ?? defaults.autoDetection.debounceDelay,
+    },
+    delays: {
+      ...defaults.delays,
+      requirements: {
+        ...defaults.delays.requirements,
+        checkTimeout: pluginConfig?.requirementsCheckTimeout ?? defaults.delays.requirements.checkTimeout,
+      },
+    },
+    // Note: guidedStepTimeout is used directly in components, not here
+  };
+}
+
+/**
+ * Backward compatibility: Export defaults as INTERACTIVE_CONFIG
+ * Components can migrate to getInteractiveConfig() over time
+ */
+export const INTERACTIVE_CONFIG = INTERACTIVE_CONFIG_DEFAULTS;
 
 /**
  * Type-safe access to configuration values
  */
-export type InteractiveConfig = typeof INTERACTIVE_CONFIG;
+export type InteractiveConfig = typeof INTERACTIVE_CONFIG_DEFAULTS;

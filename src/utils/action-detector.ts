@@ -45,8 +45,14 @@ export type DetectedAction = 'highlight' | 'button' | 'formfill' | 'navigate' | 
  */
 export function detectActionType(element: HTMLElement, event?: Event): DetectedAction {
   const tag = element.tagName.toLowerCase();
+  const eventType = event?.type;
 
-  // Form elements always use formfill
+  // Check if this is a hover event - only return 'hover' for mouseenter events
+  if (eventType === 'mouseenter') {
+    return 'hover';
+  }
+
+  // Form elements always use formfill (for input/change events)
   if (tag === 'input' || tag === 'textarea' || tag === 'select') {
     return 'formfill';
   }
@@ -149,4 +155,119 @@ export function shouldCaptureElement(element: HTMLElement): boolean {
   // The selector generator will figure out the best way to reference it.
   // This is a debugging tool - we want to record all user interactions.
   return true;
+}
+
+/**
+ * Extract the most useful selector for an element
+ *
+ * Attempts to find the most stable and useful selector for identifying an element,
+ * useful for action matching and recording.
+ *
+ * Priority order:
+ * 1. data-testid attribute (most stable)
+ * 2. id attribute
+ * 3. aria-label attribute
+ * 4. Button text content (for buttons)
+ * 5. Href attribute (for links)
+ *
+ * @param element - The element to extract selector from
+ * @returns Best available selector string, or undefined if no good selector found
+ *
+ * @example
+ * ```typescript
+ * const selector = extractElementSelector(buttonElement);
+ * // Returns: "data-testid-save-button" or "Save" or undefined
+ * ```
+ */
+export function extractElementSelector(element: HTMLElement): string | undefined {
+  // Try data-testid (most stable)
+  const testId = element.getAttribute('data-testid');
+  if (testId) {
+    return testId;
+  }
+
+  // Try id attribute
+  if (element.id) {
+    return `#${element.id}`;
+  }
+
+  // Try aria-label
+  const ariaLabel = element.getAttribute('aria-label');
+  if (ariaLabel) {
+    return ariaLabel;
+  }
+
+  // For buttons, use text content
+  const tag = element.tagName.toLowerCase();
+  if (tag === 'button' || element.getAttribute('role') === 'button') {
+    const text = element.textContent?.trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  // For links, use href
+  if (tag === 'a') {
+    const href = element.getAttribute('href');
+    if (href) {
+      return href;
+    }
+  }
+
+  // For form inputs, use name attribute
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+    const name = element.getAttribute('name');
+    if (name) {
+      return `[name="${name}"]`;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Find the interactive parent element if clicked element is a child
+ *
+ * When users click on icons or text within buttons/links, we want to identify
+ * the actual interactive parent element (button, link, etc.) rather than the
+ * child element.
+ *
+ * @param element - The clicked element
+ * @returns The interactive parent element, or the original element if no parent found
+ *
+ * @example
+ * ```typescript
+ * // User clicks icon inside button
+ * const icon = document.querySelector('.button-icon');
+ * const button = findInteractiveParent(icon);
+ * // Returns: the parent button element
+ * ```
+ */
+export function findInteractiveParent(element: HTMLElement): HTMLElement {
+  // Check if element itself is interactive
+  const tag = element.tagName.toLowerCase();
+  if (
+    tag === 'button' ||
+    tag === 'a' ||
+    tag === 'input' ||
+    tag === 'textarea' ||
+    tag === 'select' ||
+    element.getAttribute('role') === 'button'
+  ) {
+    return element;
+  }
+
+  // Look for interactive parents
+  const button = element.closest('button, [role="button"]');
+  if (button instanceof HTMLElement) {
+    return button;
+  }
+
+  const link = element.closest('a');
+  if (link instanceof HTMLElement) {
+    return link;
+  }
+
+  // No interactive parent found, return original element
+  return element;
 }

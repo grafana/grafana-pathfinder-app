@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Button } from '@grafana/ui';
+import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements } from '../../../interactive.hook';
 import { useStepChecker } from '../../../step-checker.hook';
@@ -7,7 +8,9 @@ import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
 import { reportAppInteraction, UserInteraction, getSourceDocument } from '../../../../lib/analytics';
-import { INTERACTIVE_CONFIG } from '../../../../constants/interactive-config';
+import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../../constants/interactive-config';
+import { ActionMonitor } from '../../../action-monitor';
+import { getConfigWithDefaults } from '../../../../constants';
 
 // Shared type definitions
 export interface BaseInteractiveProps {
@@ -341,6 +344,33 @@ export function InteractiveSection({
     }
   }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
 
+  // Get plugin configuration to determine if auto-detection is enabled
+  const pluginContext = usePluginContext();
+  const pluginConfig = useMemo(() => {
+    return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+  }, [pluginContext?.meta?.jsonData]);
+
+  // Get runtime interactive config with plugin overrides
+  const interactiveConfig = useMemo(() => {
+    return getInteractiveConfig(pluginConfig);
+  }, [pluginConfig]);
+
+  // Enable action monitor when component mounts (if feature is enabled in config)
+  useEffect(() => {
+    const actionMonitor = ActionMonitor.getInstance();
+
+    // Only enable if user has turned on the feature in plugin config
+    if (interactiveConfig.autoDetection.enabled) {
+      actionMonitor.enable();
+    }
+
+    // Cleanup: disable monitor when component unmounts (optional, but good practice)
+    return () => {
+      // Only disable if no other sections are using it
+      // The monitor is a singleton, so this might be shared across sections
+    };
+  }, [interactiveConfig.autoDetection.enabled]); // Re-run if config changes
+
   // Trigger reactive checks when section completion status changes
   useEffect(() => {
     if (isCompleted && stepComponents.length > 0) {
@@ -466,7 +496,9 @@ export function InteractiveSection({
         setCurrentlyExecutingStep(null);
       }
 
-      // Individual step components handle their own state reset via resetTrigger
+      // CRITICAL: Increment resetTrigger to notify all child steps to clear their local UI state
+      // This ensures green checkmarks are cleared from the UI
+      setResetTrigger((prev) => prev + 1);
     },
     [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps] // eslint-disable-line react-hooks/exhaustive-deps
   );
@@ -544,6 +576,10 @@ export function InteractiveSection({
 
     setIsRunning(true);
 
+    // Disable action monitor during section execution to prevent auto-completion conflicts
+    const actionMonitor = ActionMonitor.getInstance();
+    actionMonitor.disable();
+
     // Clear any existing highlights before starting section execution
     const { NavigationManager } = await import('../../../navigation-manager');
     const navigationManager = new NavigationManager();
@@ -586,6 +622,8 @@ export function InteractiveSection({
 
               if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
                 await navigationManager.expandParentNavigationSection(fixableError.targetHref);
+              } else if (fixableError?.fixType === 'location' && fixableError.targetHref) {
+                await navigationManager.fixLocationRequirement(fixableError.targetHref);
               } else if (requirements.includes('navmenu-open')) {
                 await navigationManager.fixNavigationRequirements();
               }
@@ -597,23 +635,27 @@ export function InteractiveSection({
               if (!sectionRecheckResult.pass) {
                 // Section requirements still not met after fix attempt
                 console.warn('⚠️ Section requirements could not be fixed, stopping execution');
+                ActionMonitor.getInstance().enable(); // Re-enable monitor
                 setIsRunning(false);
                 return;
               }
             } catch (fixError) {
               console.warn('⚠️ Failed to fix section requirements:', fixError);
+              ActionMonitor.getInstance().enable(); // Re-enable monitor
               setIsRunning(false);
               return;
             }
           } else {
             // No fix available for section requirements
             console.warn('⚠️ Section requirements not met and no fix available, stopping execution');
+            ActionMonitor.getInstance().enable(); // Re-enable monitor
             setIsRunning(false);
             return;
           }
         }
       } catch (error) {
         console.warn('⚠️ Section requirements check failed:', error);
+        ActionMonitor.getInstance().enable(); // Re-enable monitor
         setIsRunning(false);
         return;
       }
@@ -647,6 +689,7 @@ export function InteractiveSection({
         // User must manually click the guided step's "Do it" button
         // Once complete, they can click "Resume" to continue
         if (stepInfo.isGuided) {
+          ActionMonitor.getInstance().enable(); // Re-enable monitor for guided mode
           setCurrentStepIndex(i); // Mark where we stopped
           setIsRunning(false); // Stop the automated loop
           stopSectionBlocking(sectionId); // Remove blocking overlay
@@ -684,6 +727,8 @@ export function InteractiveSection({
 
                   if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
                     await navigationManager.expandParentNavigationSection(fixableError.targetHref);
+                  } else if (fixableError?.fixType === 'location' && fixableError.targetHref) {
+                    await navigationManager.fixLocationRequirement(fixableError.targetHref);
                   } else if (fixableError?.fixType === 'navigation') {
                     await navigationManager.fixNavigationRequirements();
                   } else if (stepInfo.requirements?.includes('navmenu-open')) {
@@ -833,6 +878,9 @@ export function InteractiveSection({
     } catch (error) {
       console.error('Error running section sequence:', error);
     } finally {
+      // Re-enable action monitor after section execution completes
+      ActionMonitor.getInstance().enable();
+
       // Stop section-level blocking
       stopSectionBlocking(sectionId);
       setIsRunning(false);

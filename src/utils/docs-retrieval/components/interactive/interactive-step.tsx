@@ -1,5 +1,6 @@
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect } from 'react';
+import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo } from 'react';
 import { Button } from '@grafana/ui';
+import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements } from '../../../interactive.hook';
 import { waitForReactUpdates } from '../../../requirements-checker.hook';
@@ -7,6 +8,10 @@ import { useStepChecker } from '../../../step-checker.hook';
 import { getPostVerifyExplanation } from '../../../requirement-explanations';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../../lib/analytics';
 import type { InteractiveStepProps } from './interactive-section';
+import { matchesStepAction, type DetectedActionEvent } from '../../../action-matcher';
+import { getInteractiveConfig } from '../../../../constants/interactive-config';
+import { checkPostconditions } from '../../../requirements-checker.utils';
+import { getConfigWithDefaults } from '../../../../constants';
 
 export const InteractiveStep = forwardRef<
   { executeStep: () => Promise<boolean>; markSkipped?: () => void },
@@ -53,6 +58,13 @@ export const InteractiveStep = forwardRef<
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
+
+    // Get plugin configuration for auto-detection settings
+    const pluginContext = usePluginContext();
+    const interactiveConfig = useMemo(() => {
+      const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+      return getInteractiveConfig(config);
+    }, [pluginContext?.meta?.jsonData]);
 
     // Combined completion state (parent takes precedence for coordination)
     const isCompleted = parentCompleted || isLocallyCompleted;
@@ -191,6 +203,117 @@ export const InteractiveStep = forwardRef<
       }),
       [executeStep, skippable, checker.markSkipped]
     );
+
+    // Auto-detection: Listen for user actions and complete step automatically
+    useEffect(() => {
+      // Only enable auto-detection if:
+      // 1. Feature is enabled in config
+      // 2. Step is eligible and enabled
+      // 3. Step is not already completed
+      // 4. Step is not currently executing (avoid race conditions with "Do Section")
+      if (
+        !interactiveConfig.autoDetection.enabled ||
+        !finalIsEnabled ||
+        isCompletedWithObjectives ||
+        isCurrentlyExecuting ||
+        disabled
+      ) {
+        return;
+      }
+
+      const handleActionDetected = async (event: Event) => {
+        const customEvent = event as CustomEvent<DetectedActionEvent>;
+        const detectedAction = customEvent.detail;
+
+        // Check if detected action matches this step's configuration
+        const matches = matchesStepAction(detectedAction, {
+          targetAction,
+          refTarget,
+          targetValue,
+        });
+
+        if (!matches) {
+          return; // Not a match for this step
+        }
+
+        // Wait a bit for DOM to settle after the action
+        await new Promise((resolve) => setTimeout(resolve, interactiveConfig.autoDetection.verificationDelay));
+
+        // Run post-verification if specified (same as "Do it" button)
+        if (postVerify && postVerify.trim() !== '') {
+          try {
+            const result = await checkPostconditions({
+              requirements: postVerify,
+              targetAction,
+              refTarget,
+              targetValue,
+              stepId: stepId || 'auto-verify',
+            });
+
+            if (!result.pass) {
+              // Verification failed - don't auto-complete
+              return;
+            }
+          } catch (error) {
+            // Verification error - don't auto-complete
+            return;
+          }
+        }
+
+        // Mark as completed locally and notify parent
+        setIsLocallyCompleted(true);
+
+        // Notify parent if we have the callback (section coordination)
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+
+        // Call the original onComplete callback if provided
+        if (onComplete) {
+          onComplete();
+        }
+
+        // Track auto-completion in analytics
+        reportAppInteraction(
+          UserInteraction.StepAutoCompleted,
+          buildInteractiveStepProperties(
+            {
+              target_action: targetAction,
+              ref_target: refTarget,
+              ...(targetValue && { target_value: targetValue }),
+              interaction_location: 'interactive_step_auto',
+              completion_method: 'auto_detected',
+            },
+            { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+          )
+        );
+      };
+
+      // Subscribe to user-action-detected events
+      document.addEventListener('user-action-detected', handleActionDetected);
+
+      return () => {
+        document.removeEventListener('user-action-detected', handleActionDetected);
+      };
+    }, [
+      interactiveConfig.autoDetection.enabled,
+      interactiveConfig.autoDetection.verificationDelay,
+      finalIsEnabled,
+      isCompletedWithObjectives,
+      isCurrentlyExecuting,
+      disabled,
+      targetAction,
+      refTarget,
+      targetValue,
+      postVerify,
+      stepId,
+      onStepComplete,
+      onComplete,
+      stepIndex,
+      totalSteps,
+      sectionId,
+      sectionTitle,
+    ]);
 
     // Handle individual "Show me" action
     const handleShowAction = useCallback(async () => {

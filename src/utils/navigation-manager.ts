@@ -502,6 +502,17 @@ export class NavigationManager {
   }
 
   /**
+   * Fix location requirements by navigating to the expected path
+   * This function can be called by the "Fix this" button for location requirements
+   */
+  async fixLocationRequirement(targetPath: string): Promise<void> {
+    const { locationService } = await import('@grafana/runtime');
+    locationService.push(targetPath);
+    // Wait for navigation to complete and React to update
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+
+  /**
    * Attempt to expand parent navigation sections for nested menu items
    * This function analyzes the target href to determine the parent section and expands it
    */
