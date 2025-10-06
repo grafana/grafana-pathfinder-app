@@ -16,6 +16,7 @@
  */
 
 import { findButtonByText } from './dom-utils';
+import { isElementVisible } from './element-validator';
 
 export type DetectedAction = 'highlight' | 'button' | 'formfill' | 'navigate' | 'hover';
 
@@ -270,4 +271,60 @@ export function findInteractiveParent(element: HTMLElement): HTMLElement {
 
   // No interactive parent found, return original element
   return element;
+}
+
+/**
+ * Check if an element can receive focus
+ *
+ * Validates that element is both focusable by nature (input, button, link, etc.)
+ * and actually visible in the DOM. Inspired by react-joyride's focus management.
+ *
+ * @param element - The element to check
+ * @returns true if element can receive focus, false otherwise
+ *
+ * @example
+ * ```typescript
+ * const button = document.querySelector('button');
+ * if (canHaveFocus(button)) {
+ *   button.focus(); // Safe to focus
+ * }
+ * ```
+ */
+export function canHaveFocus(element: HTMLElement): boolean {
+  const validTabNodes = /input|select|textarea|button|object/;
+  const nodeName = element.nodeName.toLowerCase();
+
+  const isValid =
+    (validTabNodes.test(nodeName) && !element.getAttribute('disabled')) ||
+    (nodeName === 'a' && !!element.getAttribute('href')) ||
+    element.hasAttribute('tabindex');
+
+  return isValid && isElementVisible(element);
+}
+
+/**
+ * Check if an element can be tabbed to (part of tab order)
+ *
+ * More restrictive than canHaveFocus - element must have non-negative tabIndex
+ * and be focusable. Elements with tabindex="-1" are focusable but not tabbable.
+ *
+ * @param element - The element to check
+ * @returns true if element is in tab order, false otherwise
+ *
+ * @example
+ * ```typescript
+ * const input = document.querySelector('input');
+ * if (canBeTabbed(input)) {
+ *   // Element is part of keyboard navigation flow
+ * }
+ * ```
+ */
+export function canBeTabbed(element: HTMLElement): boolean {
+  const tabIndex = element.tabIndex;
+
+  if (tabIndex === null || tabIndex < 0) {
+    return false;
+  }
+
+  return canHaveFocus(element);
 }

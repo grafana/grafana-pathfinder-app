@@ -156,6 +156,54 @@ export class ActionMonitor {
   }
 
   /**
+   * Check if element is genuinely interactive
+   *
+   * Uses permissive matching to avoid over-filtering, but helps reduce
+   * noise from clicks on purely decorative elements.
+   */
+  private isValidInteractiveElement(element: HTMLElement): boolean {
+    const tag = element.tagName.toLowerCase();
+    const role = element.getAttribute('role');
+
+    // Always allow standard interactive elements
+    if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea' || tag === 'select') {
+      return true;
+    }
+
+    // Allow elements with interactive roles
+    if (
+      role === 'button' ||
+      role === 'link' ||
+      role === 'tab' ||
+      role === 'menuitem' ||
+      role === 'checkbox' ||
+      role === 'radio'
+    ) {
+      return true;
+    }
+
+    // Allow elements with explicit interactivity markers
+    if (
+      element.onclick !== null ||
+      element.hasAttribute('data-testid') ||
+      element.hasAttribute('aria-label') ||
+      element.classList.contains('clickable')
+    ) {
+      return true;
+    }
+
+    // Allow child elements of interactive parents (e.g., icon in button)
+    const interactiveParent = element.closest('button, a, [role="button"], [role="link"], input, select, textarea');
+    if (interactiveParent) {
+      return true;
+    }
+
+    // For permissive behavior, allow other elements by default
+    // This prevents over-filtering while still providing some noise reduction
+    return true;
+  }
+
+  /**
    * Create an event listener for a specific event type
    */
   private createEventListener(eventType: string): EventListener {
@@ -172,6 +220,12 @@ export class ActionMonitor {
 
       // Filter out events we shouldn't capture
       if (!shouldCaptureElement(target)) {
+        return;
+      }
+
+      // Additional validation: prefer genuinely interactive elements
+      // Note: This is permissive and won't filter out most elements
+      if (!this.isValidInteractiveElement(target)) {
         return;
       }
 

@@ -21,6 +21,39 @@ function isBlockerOverlay(element: HTMLElement): boolean {
 }
 
 /**
+ * Enhanced hidden element detection
+ *
+ * More sophisticated than simple display:none check - catches collapsed elements,
+ * zero-size containers, and elements with hidden overflow.
+ *
+ * @param element - The element to check
+ * @returns true if element is hidden, false otherwise
+ */
+function isHidden(element: HTMLElement): boolean {
+  const style = window.getComputedStyle(element);
+  
+  // Check display: none
+  if (style.getPropertyValue('display') === 'none') {
+    return true;
+  }
+  
+  // Only perform advanced size/overflow checks on elements with explicitly set overflow
+  // This avoids false positives on empty test elements or valid containers
+  const overflow = style.getPropertyValue('overflow');
+  if (overflow !== '' && overflow !== 'visible') {
+    const noSize = element.offsetWidth <= 0 && element.offsetHeight <= 0;
+    const hasNoContent = !element.innerHTML;
+    
+    // Zero-size element with no content and hidden overflow is collapsed
+    if (noSize && hasNoContent) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
  * Check if element is actually visible (not just present in DOM)
  * Validates display, visibility, and opacity on element and all parents
  * Excludes global interaction blocker overlays from checks
@@ -50,12 +83,12 @@ export function isElementVisible(element: HTMLElement | null): boolean {
       continue;
     }
 
-    const style = getComputedStyle(current);
-
-    // Check display
-    if (style.display === 'none') {
+    // Use enhanced hidden detection
+    if (isHidden(current)) {
       return false;
     }
+
+    const style = getComputedStyle(current);
 
     // Check visibility
     if (style.visibility === 'hidden') {
