@@ -31,25 +31,25 @@ function isBlockerOverlay(element: HTMLElement): boolean {
  */
 function isHidden(element: HTMLElement): boolean {
   const style = window.getComputedStyle(element);
-  
+
   // Check display: none
   if (style.getPropertyValue('display') === 'none') {
     return true;
   }
-  
+
   // Only perform advanced size/overflow checks on elements with explicitly set overflow
   // This avoids false positives on empty test elements or valid containers
   const overflow = style.getPropertyValue('overflow');
   if (overflow !== '' && overflow !== 'visible') {
     const noSize = element.offsetWidth <= 0 && element.offsetHeight <= 0;
     const hasNoContent = !element.innerHTML;
-    
+
     // Zero-size element with no content and hidden overflow is collapsed
     if (noSize && hasNoContent) {
       return true;
     }
   }
-  
+
   return false;
 }
 
