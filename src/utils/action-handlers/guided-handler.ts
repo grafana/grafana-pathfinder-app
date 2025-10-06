@@ -3,6 +3,7 @@ import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { querySelectorAllEnhanced } from '../enhanced-selector';
 import { findButtonByText } from '../dom-utils';
+import { isElementVisible } from '../element-validator';
 
 interface InternalAction {
   targetAction: 'hover' | 'button' | 'highlight';
@@ -181,6 +182,12 @@ export class GuidedHandler {
    * Prepare element for interaction (scroll, open navigation)
    */
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
+    // Validate visibility before interaction
+    if (!isElementVisible(targetElement)) {
+      console.warn('Target element is not visible:', targetElement);
+      // Continue anyway (non-breaking)
+    }
+
     await this.navigationManager.ensureNavigationOpen(targetElement);
     await this.navigationManager.ensureElementVisible(targetElement);
   }

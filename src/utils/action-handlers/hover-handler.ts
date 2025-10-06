@@ -3,6 +3,7 @@ import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { querySelectorAllEnhanced } from '../enhanced-selector';
+import { isElementVisible } from '../element-validator';
 
 /**
  * Handler for hover actions that simulate mouse hover to trigger CSS :hover states
@@ -51,6 +52,12 @@ export class HoverHandler {
   }
 
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
+    // Validate visibility before interaction
+    if (!isElementVisible(targetElement)) {
+      console.warn('Target element is not visible:', targetElement);
+      // Continue anyway (non-breaking)
+    }
+
     await this.navigationManager.ensureNavigationOpen(targetElement);
     await this.navigationManager.ensureElementVisible(targetElement);
   }

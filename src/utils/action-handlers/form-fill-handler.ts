@@ -4,6 +4,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { resetValueTracker } from '../dom-utils';
 import { querySelectorAllEnhanced } from '../enhanced-selector';
+import { isElementVisible } from '../element-validator';
 
 export class FormFillHandler {
   constructor(
@@ -49,6 +50,12 @@ export class FormFillHandler {
   }
 
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
+    // Validate visibility before interaction
+    if (!isElementVisible(targetElement)) {
+      console.warn('Target element is not visible:', targetElement);
+      // Continue anyway (non-breaking)
+    }
+
     await this.navigationManager.ensureNavigationOpen(targetElement);
     await this.navigationManager.ensureElementVisible(targetElement);
   }
@@ -253,12 +260,25 @@ export class FormFillHandler {
   }
 
   private async triggerMonacoEvents(element: HTMLElement, value: string): Promise<void> {
+    // Fire input event first
     element.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // Wait before firing change to avoid recursive decorations
+    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.formFill.monacoEventDelay));
+
     element.dispatchEvent(new Event('change', { bubbles: true }));
 
+    // Wait again before firing keyboard events
+    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.formFill.monacoEventDelay));
+
+    // Only fire keyboard events if there's a last character
     const lastChar = value.slice(-1);
     if (lastChar) {
       element.dispatchEvent(new KeyboardEvent('keydown', { key: lastChar, bubbles: true }));
+
+      // Small delay between keydown and keyup
+      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.formFill.monacoKeyEventDelay));
+
       element.dispatchEvent(new KeyboardEvent('keyup', { key: lastChar, bubbles: true }));
     }
   }

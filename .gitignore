@@ -45,3 +45,4 @@ ci/
 
 .eslintcache
 .DS_Store
+.hippo

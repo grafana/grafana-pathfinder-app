@@ -2,6 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { findButtonByText } from '../dom-utils';
+import { isElementVisible } from '../element-validator';
 
 export class ButtonHandler {
   constructor(
@@ -31,6 +32,12 @@ export class ButtonHandler {
   private async handleShowMode(buttons: HTMLElement[], comment?: string): Promise<void> {
     // Show mode: ensure visibility and highlight, don't click - NO step completion
     for (const button of buttons) {
+      // Validate visibility before interaction
+      if (!isElementVisible(button)) {
+        console.warn('Target button is not visible:', button);
+        // Continue anyway (non-breaking)
+      }
+
       await this.navigationManager.ensureNavigationOpen(button);
       await this.navigationManager.ensureElementVisible(button);
       await this.navigationManager.highlightWithComment(button, comment);
@@ -43,6 +50,12 @@ export class ButtonHandler {
 
     // Do mode: ensure visibility then click, don't highlight
     for (const button of buttons) {
+      // Validate visibility before interaction
+      if (!isElementVisible(button)) {
+        console.warn('Target button is not visible:', button);
+        // Continue anyway (non-breaking)
+      }
+
       await this.navigationManager.ensureNavigationOpen(button);
       await this.navigationManager.ensureElementVisible(button);
       button.click();

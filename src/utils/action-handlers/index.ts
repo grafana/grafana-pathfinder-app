@@ -7,3 +7,13 @@ export { GuidedHandler } from './guided-handler';
 
 // Enhanced selector support
 export { querySelectorEnhanced, querySelectorAllEnhanced, getBrowserSelectorSupport } from '../enhanced-selector';
+
+// Element validation utilities
+export {
+  isElementVisible,
+  hasFixedPosition,
+  getScrollParent,
+  isInViewport,
+  hasCustomScrollParent,
+  getElementVisibilityInfo,
+} from '../element-validator';

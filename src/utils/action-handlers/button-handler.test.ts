@@ -3,11 +3,13 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { findButtonByText } from '../dom-utils';
+import * as elementValidator from '../element-validator';
 
 // Mock dependencies
 jest.mock('../dom-utils');
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
+jest.mock('../element-validator');
 
 const mockFindButtonByText = findButtonByText as jest.MockedFunction<typeof findButtonByText>;
 const mockStateManager = {
@@ -25,12 +27,20 @@ const mockNavigationManager = {
 
 const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
 
+const mockIsElementVisible = elementValidator.isElementVisible as jest.MockedFunction<
+  typeof elementValidator.isElementVisible
+>;
+
+// Mock console.warn to avoid noise in tests
+const mockConsoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
 describe('ButtonHandler', () => {
   let buttonHandler: ButtonHandler;
   let mockButtons: HTMLButtonElement[];
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsElementVisible.mockReturnValue(true); // Default to visible
 
     // Create mock buttons
     mockButtons = [
@@ -87,5 +97,29 @@ describe('ButtonHandler', () => {
 
       expect(mockStateManager.handleError).toHaveBeenCalledWith(testError, 'ButtonHandler', mockData, false);
     });
+
+    it('should warn when button is not visible but continue execution', async () => {
+      mockIsElementVisible.mockReturnValue(false);
+
+      await buttonHandler.execute(mockData, false);
+
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible:', mockButtons[0]);
+      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalled();
+      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalled();
+    });
+
+    it('should warn when button is not visible in do mode but continue execution', async () => {
+      mockIsElementVisible.mockReturnValue(false);
+
+      await buttonHandler.execute(mockData, true);
+
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible:', mockButtons[0]);
+      expect(mockButtons[0].click).toHaveBeenCalled();
+      expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
+    });
+  });
+
+  afterAll(() => {
+    mockConsoleWarn.mockRestore();
   });
 });
