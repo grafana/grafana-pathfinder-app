@@ -88,6 +88,40 @@ export function matchesStepAction(detected: DetectedActionEvent, stepConfig: Ste
 }
 
 /**
+ * Check if element is non-focusable but still interactive
+ *
+ * Some elements don't receive focus but are legitimately interactive
+ * (e.g., divs with click handlers, elements with ARIA button role).
+ * Uses permissive matching to avoid filtering out valid interactive elements.
+ *
+ * @param element - The element to check
+ * @returns true if element is interactive despite not being focusable
+ *
+ * @example
+ * ```typescript
+ * if (isNonFocusableInteractive(divElement)) {
+ *   // Element is clickable even though it can't receive keyboard focus
+ * }
+ * ```
+ */
+export function isNonFocusableInteractive(element: HTMLElement): boolean {
+  const role = element.getAttribute('role');
+
+  return (
+    role === 'button' ||
+    role === 'link' ||
+    role === 'tab' ||
+    role === 'menuitem' ||
+    role === 'checkbox' ||
+    role === 'radio' ||
+    element.onclick !== null ||
+    element.classList.contains('clickable') ||
+    element.hasAttribute('data-testid') || // Test IDs often indicate interactive elements
+    element.hasAttribute('aria-label') // Labeled elements are usually interactive
+  );
+}
+
+/**
  * Check if detected action type is compatible with target action type
  *
  * Some action types can satisfy multiple target actions (e.g., a button
