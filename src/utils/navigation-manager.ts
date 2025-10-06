@@ -105,10 +105,25 @@ export class NavigationManager {
     // 2. Window resize - handles browser window resizing
     window.addEventListener('resize', updatePosition);
 
+    // 3. CRITICAL FIX: Listen to scroll events on the actual scroll container
+    // Use getScrollParent() to find custom scroll containers (tables, modals, panels, etc.)
+    const scrollParent = getScrollParent(element);
+    if (scrollParent && scrollParent !== document.documentElement) {
+      // Custom scroll container found - listen to its scroll events
+      scrollParent.addEventListener('scroll', updatePosition, { passive: true });
+    }
+    // Also listen to document scroll for cases where element might be in both
+    window.addEventListener('scroll', updatePosition, { passive: true });
+
     // Store cleanup for this tracking
     const trackingCleanup = () => {
       resizeObserver.disconnect();
       window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition);
+      // Clean up custom scroll container listener
+      if (scrollParent && scrollParent !== document.documentElement) {
+        scrollParent.removeEventListener('scroll', updatePosition);
+      }
       if (updateTimeout) {
         clearTimeout(updateTimeout);
       }
