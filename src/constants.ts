@@ -13,6 +13,12 @@ export const DEFAULT_TERMS_ACCEPTED = false;
 export const DEFAULT_TUTORIAL_URL = '';
 export const TERMS_VERSION = '1.0.0';
 
+// Interactive Features defaults
+export const DEFAULT_ENABLE_AUTO_DETECTION = false; // Opt-in feature
+export const DEFAULT_AUTO_DETECTION_DEBOUNCE = 100; // ms
+export const DEFAULT_REQUIREMENTS_CHECK_TIMEOUT = 3000; // ms
+export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
+
 // Configuration interface
 export interface DocsPluginConfig {
   recommenderServiceUrl?: string;
@@ -24,6 +30,11 @@ export interface DocsPluginConfig {
   acceptedTermsAndConditions?: boolean;
   termsVersion?: string;
   devMode?: boolean;
+  // Interactive Features
+  enableAutoDetection?: boolean;
+  autoDetectionDebounce?: number;
+  requirementsCheckTimeout?: number;
+  guidedStepTimeout?: number;
 }
 
 // Helper functions to get configuration values with defaults
@@ -36,6 +47,11 @@ export const getConfigWithDefaults = (config: DocsPluginConfig): Required<DocsPl
   acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? getPlatformSpecificDefault(),
   termsVersion: config.termsVersion || TERMS_VERSION,
   devMode: config.devMode || DEFAULT_DEV_MODE,
+  // Interactive Features
+  enableAutoDetection: config.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
+  autoDetectionDebounce: config.autoDetectionDebounce ?? DEFAULT_AUTO_DETECTION_DEBOUNCE,
+  requirementsCheckTimeout: config.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
+  guidedStepTimeout: config.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
 });
 
 /**

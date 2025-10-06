@@ -47,6 +47,7 @@ export enum UserInteraction {
   ClickedHighlightedContentButton = 'clicked_highlighted_content_button',
   DoItButtonClick = 'do_it_button_click',
   DoSectionButtonClick = 'do_section_button_click',
+  StepAutoCompleted = 'step_auto_completed',
 }
 
 // ============================================================================

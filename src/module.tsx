@@ -34,6 +34,7 @@ const LazyMemoizedContextPanel = lazy(() =>
 );
 const LazyAppConfig = lazy(() => import('./components/AppConfig/AppConfig'));
 const LazyTermsAndConditions = lazy(() => import('./components/AppConfig/TermsAndConditions'));
+const LazyInteractiveFeatures = lazy(() => import('./components/AppConfig/InteractiveFeatures'));
 
 const App = (props: AppRootProps) => (
   <Suspense fallback={<LoadingPlaceholder text="" />}>
@@ -52,6 +53,11 @@ const plugin = new AppPlugin<{}>()
     title: 'Recommendations',
     body: LazyTermsAndConditions,
     id: 'recommendations-config',
+  })
+  .addConfigPage({
+    title: 'Interactive Features',
+    body: LazyInteractiveFeatures,
+    id: 'interactive-features',
   });
 
 export { plugin };

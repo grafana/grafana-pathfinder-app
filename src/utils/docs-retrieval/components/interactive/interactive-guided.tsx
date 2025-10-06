@@ -1,5 +1,6 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo } from 'react';
 import { Button } from '@grafana/ui';
+import { usePluginContext } from '@grafana/data';
 
 import { useStepChecker } from '../../../step-checker.hook';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../../lib/analytics';
@@ -7,6 +8,9 @@ import { GuidedHandler } from '../../../action-handlers/guided-handler';
 import { InteractiveStateManager } from '../../../interactive-state-manager';
 import { NavigationManager } from '../../../navigation-manager';
 import { waitForReactUpdates } from '../../../requirements-checker.hook';
+import { matchesStepAction, type DetectedActionEvent } from '../../../action-matcher';
+import { getInteractiveConfig } from '../../../../constants/interactive-config';
+import { getConfigWithDefaults } from '../../../../constants';
 
 interface InternalAction {
   targetAction: 'hover' | 'button' | 'highlight';
@@ -83,6 +87,13 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
     const [executionError, setExecutionError] = useState<string | null>(null);
+
+    // Get plugin configuration for auto-detection settings
+    const pluginContext = usePluginContext();
+    const interactiveConfig = useMemo(() => {
+      const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+      return getInteractiveConfig(config);
+    }, [pluginContext?.meta?.jsonData]);
 
     // Create guided handler instance
     const guidedHandler = useMemo(() => {
@@ -210,6 +221,91 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         executeStep,
       };
     }, [executeStep]);
+
+    // Auto-detection: Listen for user actions and auto-advance through guided steps
+    useEffect(() => {
+      // Only enable auto-detection if:
+      // 1. Feature is enabled in config
+      // 2. Step is eligible and enabled
+      // 3. Step is not already completed
+      // 4. Step is currently executing (guided mode - waiting for user)
+      if (
+        !interactiveConfig.autoDetection.enabled ||
+        !checker.isEnabled ||
+        isCompletedWithObjectives ||
+        !isExecuting || // Only listen while executing (in guided mode)
+        disabled
+      ) {
+        return;
+      }
+
+      const handleActionDetected = async (event: Event) => {
+        const customEvent = event as CustomEvent<DetectedActionEvent>;
+        const detectedAction = customEvent.detail;
+
+        // Check if the detected action matches the current step
+        const currentAction = internalActions[currentStepIndex];
+        if (!currentAction) {
+          return;
+        }
+
+        const matches = matchesStepAction(detectedAction, {
+          targetAction: currentAction.targetAction as any,
+          refTarget: currentAction.refTarget,
+          targetValue: currentAction.targetValue,
+        });
+
+        if (!matches) {
+          return; // Not a match for current step
+        }
+
+        // Notify the guided handler that user completed the step
+        // The handler is listening for this event to proceed
+        const stepCompletedEvent = new CustomEvent('guided-step-completed', {
+          detail: {
+            stepIndex: currentStepIndex,
+            stepId,
+          },
+        });
+        document.dispatchEvent(stepCompletedEvent);
+
+        // Track auto-completion in analytics
+        reportAppInteraction(
+          UserInteraction.StepAutoCompleted,
+          buildInteractiveStepProperties(
+            {
+              target_action: 'guided',
+              ref_target: stepId || 'unknown',
+              interaction_location: 'interactive_guided_auto',
+              completion_method: 'auto_detected',
+              step_number: currentStepIndex + 1,
+              total_steps: internalActions.length,
+            },
+            { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+          )
+        );
+      };
+
+      // Subscribe to user-action-detected events
+      document.addEventListener('user-action-detected', handleActionDetected);
+
+      return () => {
+        document.removeEventListener('user-action-detected', handleActionDetected);
+      };
+    }, [
+      interactiveConfig.autoDetection.enabled,
+      checker.isEnabled,
+      isCompletedWithObjectives,
+      isExecuting,
+      disabled,
+      currentStepIndex,
+      internalActions,
+      stepId,
+      stepIndex,
+      totalSteps,
+      sectionId,
+      sectionTitle,
+    ]);
 
     // Handle "Do it" button click
     const handleDoAction = useCallback(async () => {

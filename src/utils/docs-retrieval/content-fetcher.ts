@@ -183,34 +183,45 @@ function removeHashFragment(url: string): string {
 async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<string | null> {
   const { useAuth = true, headers = {}, timeout = 10000 } = options;
 
-  // Build fetch options with proper redirect handling
-  const fetchOptions: RequestInit = {
-    method: 'GET',
-    headers: {
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.5',
-      'User-Agent': 'Grafana-Docs-Plugin/1.0',
-      ...headers,
-    },
-    signal: AbortSignal.timeout(timeout),
-    redirect: 'follow', // Explicitly follow redirects (up to 20 by default)
-  };
-
-  // Add auth headers if requested (from existing code)
-  if (useAuth) {
-    const authHeaders = getAuthHeaders();
-    fetchOptions.headers = { ...fetchOptions.headers, ...authHeaders };
-  }
-
   // Handle GitHub URLs proactively to avoid CORS issues
   // Convert tree/blob URLs to raw URLs before attempting fetch
   let actualUrl = url;
-  if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
+  const isGitHubRawUrl = url.includes('raw.githubusercontent.com');
+  const isGitHubUrl = url.includes('github.com');
+
+  if (isGitHubUrl && !isGitHubRawUrl) {
     const githubVariations = generateGitHubVariations(url);
     if (githubVariations.length > 0) {
       // Use the first (most specific) GitHub variation instead of the original URL
       actualUrl = githubVariations[0];
     }
+  }
+
+  // Build fetch options - use minimal headers for GitHub raw URLs to avoid CORS preflight
+  const fetchOptions: RequestInit = {
+    method: 'GET',
+    headers:
+      actualUrl.includes('raw.githubusercontent.com') || isGitHubRawUrl
+        ? {
+            // Minimal headers for GitHub raw URLs - avoid triggering CORS preflight
+            // Only use simple headers that don't require preflight
+            ...headers,
+          }
+        : {
+            // Full headers for other URLs
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'User-Agent': 'Grafana-Docs-Plugin/1.0',
+            ...headers,
+          },
+    signal: AbortSignal.timeout(timeout),
+    redirect: 'follow', // Explicitly follow redirects (up to 20 by default)
+  };
+
+  // Add auth headers if requested (but skip for GitHub raw URLs to avoid CORS)
+  if (useAuth && !actualUrl.includes('raw.githubusercontent.com') && !isGitHubRawUrl) {
+    const authHeaders = getAuthHeaders();
+    fetchOptions.headers = { ...fetchOptions.headers, ...authHeaders };
   }
 
   // Try the actual URL (original or converted GitHub raw URL)
@@ -335,7 +346,18 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
 
   // Log final failure with most relevant error
   if (lastError) {
-    console.error(`Failed to fetch content from ${url}. Last error: ${lastError}`);
+    // Provide specific guidance for GitHub CORS issues
+    if (url.includes('github.com') && lastError.includes('NetworkError')) {
+      console.error(
+        `Failed to fetch content from ${url}. Last error: ${lastError}\n` +
+          `GitHub raw URLs may be blocked due to CORS policies. Consider:\n` +
+          `1. Using bundled content instead (bundled: URLs)\n` +
+          `2. Serving content from a CORS-enabled host\n` +
+          `3. Configuring a docs base URL with proper CORS headers`
+      );
+    } else {
+      console.error(`Failed to fetch content from ${url}. Last error: ${lastError}`);
+    }
   }
 
   return null;

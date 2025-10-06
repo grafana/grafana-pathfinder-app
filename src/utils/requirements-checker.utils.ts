@@ -697,6 +697,9 @@ async function onPageCheck(check: string): Promise<CheckResultError> {
       requirement: check,
       pass: matches,
       error: matches ? undefined : `Current page '${currentPath}' does not match required path '${requiredPath}'`,
+      canFix: !matches,
+      fixType: matches ? undefined : 'location',
+      targetHref: matches ? undefined : requiredPath,
     };
   } catch (error) {
     return {
