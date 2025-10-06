@@ -618,6 +618,16 @@ export const getOtherDocsStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
+// Debug section styles
+export const getDebugStyles = (theme: GrafanaTheme2) => ({
+  debugSection: css({
+    marginTop: theme.spacing(4),
+    padding: theme.spacing(2),
+    borderTop: `1px solid ${theme.colors.border.weak}`,
+    backgroundColor: theme.colors.background.secondary,
+  }),
+});
+
 // Main export combining all styles
 export const getStyles = (theme: GrafanaTheme2) => ({
   ...getContainerStyles(theme),
@@ -629,4 +639,5 @@ export const getStyles = (theme: GrafanaTheme2) => ({
   ...getMilestoneStyles(theme),
   ...getStepsStyles(theme),
   ...getOtherDocsStyles(theme),
+  ...getDebugStyles(theme),
 });

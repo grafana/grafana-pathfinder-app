@@ -9,6 +9,7 @@ import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
+import { SelectorDebugPanel } from '../SelectorDebugPanel';
 import { locationService } from '@grafana/runtime';
 
 // Import refactored context system
@@ -410,6 +411,13 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
               !recommendationsError &&
               recommendations.length > 0 &&
               !configWithDefaults.acceptedTermsAndConditions && <EnableRecommenderBanner />}
+          </div>
+        )}
+
+        {/* Debug Panel - only shown when dev mode is enabled */}
+        {configWithDefaults.devMode && (
+          <div className={styles.debugSection}>
+            <SelectorDebugPanel />
           </div>
         )}
 
