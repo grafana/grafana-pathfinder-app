@@ -3,6 +3,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { resetValueTracker } from '../dom-utils';
+import * as elementValidator from '../element-validator';
 
 // Mock dependencies
 jest.mock('../interactive-state-manager');
@@ -10,6 +11,7 @@ jest.mock('../navigation-manager');
 jest.mock('../dom-utils', () => ({
   resetValueTracker: jest.fn(),
 }));
+jest.mock('../element-validator');
 
 const mockStateManager = {
   setState: jest.fn(),
@@ -36,6 +38,10 @@ const mockNavigationManager = {
 
 const mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
 
+const mockIsElementVisible = elementValidator.isElementVisible as jest.MockedFunction<
+  typeof elementValidator.isElementVisible
+>;
+
 // Mock console methods to avoid noise in tests
 const mockConsoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -51,12 +57,22 @@ const mockSetTimeout = jest.fn().mockImplementation((callback: any) => {
   return 0;
 });
 
+// Mock enhanced selector
+jest.mock('../enhanced-selector', () => ({
+  querySelectorAllEnhanced: jest.fn((selector: string) => ({
+    elements: mockQuerySelectorAll(selector),
+    usedFallback: false,
+    originalSelector: selector,
+  })),
+}));
+
 describe('FormFillHandler', () => {
   let formFillHandler: FormFillHandler;
   let mockElement: HTMLElement;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsElementVisible.mockReturnValue(true); // Default to visible
 
     // Mock global setTimeout
     jest.spyOn(global, 'setTimeout').mockImplementation(mockSetTimeout);

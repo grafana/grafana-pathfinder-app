@@ -1,6 +1,7 @@
 import { waitForReactUpdates } from './requirements-checker.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
+import { isElementVisible, hasFixedPosition, isInViewport, getScrollParent } from './element-validator';
 
 export interface NavigationOptions {
   checkContext?: boolean;
@@ -205,28 +206,68 @@ export class NavigationManager {
    * ```
    */
   async ensureElementVisible(element: HTMLElement): Promise<void> {
-    // Check if element is visible in viewport
-    const rect = element.getBoundingClientRect();
-    const isVisible =
-      rect.top >= 0 &&
-      rect.left >= 0 &&
-      rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-      rect.right <= (window.innerWidth || document.documentElement.clientWidth);
+    // 1. Check if element is visible in DOM (not hidden by CSS)
+    if (!isElementVisible(element)) {
+      console.warn('Element is hidden or not visible:', element);
+      // Continue anyway - element might become visible during interaction
+    }
 
-    if (!isVisible) {
+    // 2. Skip scrolling for fixed/sticky elements already in viewport
+    if (hasFixedPosition(element) && isInViewport(element)) {
+      return; // Already visible, no scroll needed
+    }
+
+    // 3. Check if element is already in viewport
+    if (isInViewport(element)) {
+      return; // Already visible, no scroll needed
+    }
+
+    // 4. Handle custom scroll containers (Grafana panels, modals, nested divs)
+    const scrollContainer = getScrollParent(element);
+
+    if (scrollContainer !== document.documentElement) {
+      // Custom scroll container - use manual scrolling
+      await this.scrollInCustomContainer(element, scrollContainer);
+    } else {
+      // Standard document scrolling
       element.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
         inline: 'center',
       });
 
-      // Wait for scroll animation to complete using DOM settling detection
-      // await waitForReactUpdates();
-      // await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait for scroll animation to complete
       await this.waitForScrollComplete(element);
+    }
 
-      // Add small DOM settling delay after scroll completes to ensure element position is stable
-      await new Promise((resolve) => setTimeout(resolve, 100));
+    // Add small DOM settling delay after scroll completes to ensure element position is stable
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  /**
+   * Scroll element into view within a custom scroll container
+   * Handles nested scrollable containers like Grafana panels or modals
+   *
+   * @param element - The element to scroll into view
+   * @param container - The scrollable container
+   * @returns Promise that resolves when scrolling is complete
+   */
+  private async scrollInCustomContainer(element: HTMLElement, container: HTMLElement): Promise<void> {
+    const containerRect = container.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+
+    // Check if element is outside container viewport
+    if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
+      // Calculate scroll offset to center element in container
+      const scrollOffset = elementRect.top - containerRect.top - (containerRect.height - elementRect.height) / 2;
+
+      container.scrollBy({
+        top: scrollOffset,
+        behavior: 'smooth',
+      });
+
+      // Wait for scroll to complete
+      await this.waitForScrollComplete(container);
     }
   }
 

@@ -18,7 +18,7 @@ export const INTERACTIVE_CONFIG = {
       navigationDock: 200,
       scroll: 500,
       highlight: 2500, // Increased from 1300ms to 2500ms for better readability
-      monacoClear: 100,
+      monacoClear: 200, // Increased from 100ms to 200ms to prevent recursive decoration errors
     },
     // Section sequence timing
     section: {
@@ -42,6 +42,8 @@ export const INTERACTIVE_CONFIG = {
     // Form filling timing (for typing simulation)
     formFill: {
       keystrokeDelay: 50, // Delay between individual keystrokes for realistic typing
+      monacoEventDelay: 150, // Delay between Monaco editor events to prevent recursive decoration updates
+      monacoKeyEventDelay: 50, // Delay between Monaco keydown/keyup events
     },
     // Requirements checking timing
     requirements: {
@@ -57,6 +59,11 @@ export const INTERACTIVE_CONFIG = {
       requirementsRetry: 10000, // Auto-retry for failed requirements
       stateSettling: 100, // General state settling delay
       reactiveCheck: 150, // Reactive check delay after completions
+    },
+    // Element validation timing
+    elementValidation: {
+      visibilityCheckTimeout: 100, // Timeout for visibility checks
+      scrollContainerDetectionDepth: 10, // Max parent levels to check for scroll containers
     },
   },
   // Smart auto-cleanup configuration for highlights

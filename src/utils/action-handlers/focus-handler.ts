@@ -2,6 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { querySelectorAllEnhanced } from '../enhanced-selector';
+import { isElementVisible } from '../element-validator';
 
 export class FocusHandler {
   constructor(
@@ -43,6 +44,12 @@ export class FocusHandler {
   private async handleShowMode(targetElements: HTMLElement[], comment?: string): Promise<void> {
     // Show mode: ensure visibility and highlight, don't click - NO step completion
     for (const element of targetElements) {
+      // Validate visibility before interaction
+      if (!isElementVisible(element)) {
+        console.warn('Target element is not visible:', element);
+        // Continue anyway (non-breaking)
+      }
+
       await this.navigationManager.ensureNavigationOpen(element);
       await this.navigationManager.ensureElementVisible(element);
       await this.navigationManager.highlightWithComment(element, comment);
@@ -55,6 +62,12 @@ export class FocusHandler {
 
     // Do mode: ensure visibility then click, don't highlight
     for (const element of targetElements) {
+      // Validate visibility before interaction
+      if (!isElementVisible(element)) {
+        console.warn('Target element is not visible:', element);
+        // Continue anyway (non-breaking)
+      }
+
       await this.navigationManager.ensureNavigationOpen(element);
       await this.navigationManager.ensureElementVisible(element);
       element.click();

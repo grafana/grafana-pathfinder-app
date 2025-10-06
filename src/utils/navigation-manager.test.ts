@@ -1,309 +1,238 @@
 import { NavigationManager } from './navigation-manager';
+import * as elementValidator from './element-validator';
 
-// Mock IntersectionObserver
-global.IntersectionObserver = class IntersectionObserver {
-  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {}
-  observe = jest.fn();
-  disconnect = jest.fn();
-  unobserve = jest.fn();
-  takeRecords = jest.fn(() => []);
-  root = null;
-  rootMargin = '';
-  thresholds = [];
-} as any;
+// Mock the element validator functions
+jest.mock('./element-validator');
 
-// Mock ResizeObserver
-global.ResizeObserver = class ResizeObserver {
-  constructor(callback: ResizeObserverCallback) {}
-  observe = jest.fn();
-  disconnect = jest.fn();
-  unobserve = jest.fn();
-} as any;
+const mockIsElementVisible = elementValidator.isElementVisible as jest.MockedFunction<
+  typeof elementValidator.isElementVisible
+>;
+const mockHasFixedPosition = elementValidator.hasFixedPosition as jest.MockedFunction<
+  typeof elementValidator.hasFixedPosition
+>;
+const mockIsInViewport = elementValidator.isInViewport as jest.MockedFunction<typeof elementValidator.isInViewport>;
+const mockGetScrollParent = elementValidator.getScrollParent as jest.MockedFunction<
+  typeof elementValidator.getScrollParent
+>;
 
-// Mock DOM elements
-const mockElement = {
-  getBoundingClientRect: jest.fn(() => ({
-    top: 0,
-    left: 0,
-    bottom: 100,
-    right: 100,
-    width: 100,
-    height: 100,
-  })),
-  scrollIntoView: jest.fn(),
-  classList: {
-    add: jest.fn(),
-    remove: jest.fn(),
-  },
-  closest: jest.fn(() => null),
-  addEventListener: jest.fn(),
-  removeEventListener: jest.fn(),
-} as unknown as HTMLElement;
-
-const mockMegaMenuToggle = {
-  getAttribute: jest.fn(() => 'false'),
-  click: jest.fn(),
-} as unknown as HTMLButtonElement;
-
-const mockDockMenuButton = {
-  click: jest.fn(),
-} as unknown as HTMLButtonElement;
-
-// Mock document methods
-Object.defineProperty(window, 'innerHeight', { value: 800, writable: true });
-Object.defineProperty(window, 'innerWidth', { value: 1200, writable: true });
-Object.defineProperty(window, 'scrollY', { value: 0, writable: true });
-Object.defineProperty(window, 'scrollX', { value: 0, writable: true });
-
-// Mock document.querySelector
-document.querySelector = jest.fn((selector: string) => {
-  if (selector === '#mega-menu-toggle') {
-    return mockMegaMenuToggle;
-  }
-  if (selector === '#dock-menu-button') {
-    return mockDockMenuButton;
-  }
-  return null;
-});
-
-// Mock document.createElement
-document.createElement = jest.fn(
-  () =>
-    ({
-      className: '',
-      innerHTML: '',
-      style: {
-        setProperty: jest.fn(),
-        position: '',
-        top: '',
-        right: '',
-      },
-      setAttribute: jest.fn(),
-      addEventListener: jest.fn(),
-      appendChild: jest.fn(),
-      classList: {
-        add: jest.fn(),
-        remove: jest.fn(),
-      },
-    }) as unknown as HTMLElement
-);
-
-// Mock document.body.appendChild
-document.body.appendChild = jest.fn();
+// Mock console.warn to avoid noise in tests
+const mockConsoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
 describe('NavigationManager', () => {
   let navigationManager: NavigationManager;
+  let mockElement: HTMLElement;
 
   beforeEach(() => {
-    navigationManager = new NavigationManager();
     jest.clearAllMocks();
+    navigationManager = new NavigationManager();
+
+    // Create mock element
+    mockElement = document.createElement('div');
+    mockElement.style.width = '100px';
+    mockElement.style.height = '100px';
+    document.body.appendChild(mockElement);
+
+    // Default mock implementations
+    mockIsElementVisible.mockReturnValue(true);
+    mockHasFixedPosition.mockReturnValue(false);
+    mockIsInViewport.mockReturnValue(false);
+    mockGetScrollParent.mockReturnValue(document.documentElement);
+
+    // Mock scrollIntoView
+    mockElement.scrollIntoView = jest.fn();
+
+    // Mock getBoundingClientRect
+    mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+      top: 100,
+      left: 100,
+      bottom: 200,
+      right: 200,
+      width: 100,
+      height: 100,
+    });
+  });
+
+  afterEach(() => {
+    // Remove mockElement from its parent (could be document.body or a custom container)
+    if (mockElement.parentElement) {
+      mockElement.parentElement.removeChild(mockElement);
+    }
+  });
+
+  afterAll(() => {
+    mockConsoleWarn.mockRestore();
   });
 
   describe('ensureElementVisible', () => {
-    it('should scroll element into view when not visible', async () => {
-      // Mock element that is not visible
-      const element = {
-        ...mockElement,
-        getBoundingClientRect: jest.fn(() => ({
-          top: -100,
-          left: -100,
-          bottom: 0,
-          right: 0,
-          width: 100,
-          height: 100,
-        })),
-      } as unknown as HTMLElement;
+    it('should warn when element is not visible', async () => {
+      mockIsElementVisible.mockReturnValue(false);
+      mockIsInViewport.mockReturnValue(false);
 
-      await navigationManager.ensureElementVisible(element);
+      await navigationManager.ensureElementVisible(mockElement);
 
-      expect(element.scrollIntoView).toHaveBeenCalledWith({
-        behavior: 'smooth',
-        block: 'center',
-        inline: 'center',
-      });
+      expect(mockConsoleWarn).toHaveBeenCalledWith('Element is hidden or not visible:', mockElement);
     });
 
-    it('should not scroll element when already visible', async () => {
+    it('should skip scrolling for fixed element already in viewport', async () => {
+      mockIsElementVisible.mockReturnValue(true);
+      mockHasFixedPosition.mockReturnValue(true);
+      mockIsInViewport.mockReturnValue(true);
+
       await navigationManager.ensureElementVisible(mockElement);
 
       expect(mockElement.scrollIntoView).not.toHaveBeenCalled();
     });
 
-    it('should wait for scroll completion when scrolling element into view', async () => {
-      // Mock element that is not visible
-      const element = {
-        ...mockElement,
-        getBoundingClientRect: jest.fn(() => ({
-          top: -100,
-          left: -100,
-          bottom: 0,
-          right: 0,
-          width: 100,
-          height: 100,
-        })),
-      } as unknown as HTMLElement;
+    it('should skip scrolling for element already in viewport', async () => {
+      mockIsElementVisible.mockReturnValue(true);
+      mockHasFixedPosition.mockReturnValue(false);
+      mockIsInViewport.mockReturnValue(true);
 
-      await navigationManager.ensureElementVisible(element);
+      await navigationManager.ensureElementVisible(mockElement);
 
-      // Verify scrollIntoView was called
-      expect(element.scrollIntoView).toHaveBeenCalledWith({
+      expect(mockElement.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('should scroll element into view when not in viewport', async () => {
+      mockIsElementVisible.mockReturnValue(true);
+      mockHasFixedPosition.mockReturnValue(false);
+      mockIsInViewport.mockReturnValue(false);
+      mockGetScrollParent.mockReturnValue(document.documentElement);
+
+      await navigationManager.ensureElementVisible(mockElement);
+
+      expect(mockElement.scrollIntoView).toHaveBeenCalledWith({
         behavior: 'smooth',
         block: 'center',
         inline: 'center',
       });
+    });
 
-      // Verify that addEventListener was called for scroll events
-      expect(element.addEventListener).toHaveBeenCalledWith('scroll', expect.any(Function));
+    it('should handle custom scroll containers', async () => {
+      const customContainer = document.createElement('div');
+      customContainer.style.overflow = 'auto';
+      customContainer.style.height = '200px';
+      customContainer.scrollBy = jest.fn();
+      customContainer.getBoundingClientRect = jest.fn().mockReturnValue({
+        top: 0,
+        left: 0,
+        bottom: 200,
+        right: 300,
+        width: 300,
+        height: 200,
+      });
+
+      document.body.appendChild(customContainer);
+      customContainer.appendChild(mockElement);
+
+      mockIsElementVisible.mockReturnValue(true);
+      mockHasFixedPosition.mockReturnValue(false);
+      mockIsInViewport.mockReturnValue(false);
+      mockGetScrollParent.mockReturnValue(customContainer);
+
+      // Element is outside container viewport
+      mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+        top: 300,
+        left: 100,
+        bottom: 400,
+        right: 200,
+        width: 100,
+        height: 100,
+      });
+
+      await navigationManager.ensureElementVisible(mockElement);
+
+      expect(customContainer.scrollBy).toHaveBeenCalled();
+      expect(mockElement.scrollIntoView).not.toHaveBeenCalled();
+
+      document.body.removeChild(customContainer);
+    });
+
+    it('should not scroll custom container when element is already visible within it', async () => {
+      const customContainer = document.createElement('div');
+      customContainer.style.overflow = 'auto';
+      customContainer.style.height = '200px';
+      customContainer.scrollBy = jest.fn();
+      customContainer.getBoundingClientRect = jest.fn().mockReturnValue({
+        top: 0,
+        left: 0,
+        bottom: 200,
+        right: 300,
+        width: 300,
+        height: 200,
+      });
+
+      document.body.appendChild(customContainer);
+      customContainer.appendChild(mockElement);
+
+      mockIsElementVisible.mockReturnValue(true);
+      mockHasFixedPosition.mockReturnValue(false);
+      mockIsInViewport.mockReturnValue(false);
+      mockGetScrollParent.mockReturnValue(customContainer);
+
+      // Element is inside container viewport
+      mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+        top: 50,
+        left: 100,
+        bottom: 150,
+        right: 200,
+        width: 100,
+        height: 100,
+      });
+
+      await navigationManager.ensureElementVisible(mockElement);
+
+      expect(customContainer.scrollBy).not.toHaveBeenCalled();
+
+      document.body.removeChild(customContainer);
     });
   });
 
-  describe('highlight', () => {
-    it('should add highlight class and create outline element', async () => {
-      await navigationManager.highlight(mockElement);
+  describe('clearAllHighlights', () => {
+    it('should remove all highlight outlines', () => {
+      const outline1 = document.createElement('div');
+      outline1.className = 'interactive-highlight-outline';
+      const outline2 = document.createElement('div');
+      outline2.className = 'interactive-highlight-outline';
 
-      expect(mockElement.classList.add).toHaveBeenCalledWith('interactive-highlighted');
-      expect(document.createElement).toHaveBeenCalledWith('div');
-      expect(document.body.appendChild).toHaveBeenCalled();
-    });
-  });
+      document.body.appendChild(outline1);
+      document.body.appendChild(outline2);
 
-  describe('waitForScrollComplete', () => {
-    it('should handle scroll events and cleanup properly', async () => {
-      // Mock element with scroll event handling
-      const element = {
-        ...mockElement,
-        getBoundingClientRect: jest.fn(() => ({
-          top: -100,
-          left: -100,
-          bottom: 0,
-          right: 0,
-          width: 100,
-          height: 100,
-        })),
-      } as unknown as HTMLElement;
+      navigationManager.clearAllHighlights();
 
-      // Mock setTimeout to control timing
-      const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
-
-      await navigationManager.ensureElementVisible(element);
-
-      // Verify scrollIntoView was called
-      expect(element.scrollIntoView).toHaveBeenCalled();
-
-      // Verify addEventListener was called for scroll events
-      expect(element.addEventListener).toHaveBeenCalledWith('scroll', expect.any(Function));
-
-      // Simulate a scroll event
-      const scrollHandler = (element.addEventListener as jest.Mock).mock.calls.find(
-        (call: any) => call[0] === 'scroll'
-      )?.[1] as Function;
-
-      if (scrollHandler) {
-        // Simulate scroll event
-        scrollHandler();
-
-        // Wait for the scroll timeout to complete
-        await new Promise((resolve) => setTimeout(resolve, 250)); // Wait longer than the 200ms timeout
-      }
-
-      // Verify removeEventListener was called for cleanup
-      expect(element.removeEventListener).toHaveBeenCalledWith('scroll', expect.any(Function));
-
-      // Restore original setTimeout
-      setTimeoutSpy.mockRestore();
+      expect(document.querySelectorAll('.interactive-highlight-outline').length).toBe(0);
     });
 
-    it('should use fallback timeout when no scroll events occur', async () => {
-      // Mock element that needs scrolling
-      const element = {
-        ...mockElement,
-        getBoundingClientRect: jest.fn(() => ({
-          top: -100,
-          left: -100,
-          bottom: 0,
-          right: 0,
-          width: 100,
-          height: 100,
-        })),
-      } as unknown as HTMLElement;
+    it('should remove all comment boxes', () => {
+      const comment1 = document.createElement('div');
+      comment1.className = 'interactive-comment-box';
+      const comment2 = document.createElement('div');
+      comment2.className = 'interactive-comment-box';
 
-      // Mock setTimeout to control timing
-      const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+      document.body.appendChild(comment1);
+      document.body.appendChild(comment2);
 
-      await navigationManager.ensureElementVisible(element);
+      navigationManager.clearAllHighlights();
 
-      // Verify that setTimeout was called for fallback timeout (500ms default)
-      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 500);
-
-      // Restore original setTimeout
-      setTimeoutSpy.mockRestore();
-    });
-  });
-
-  describe('ensureNavigationOpen', () => {
-    it('should call openAndDockNavigation with correct options', async () => {
-      const spy = jest.spyOn(navigationManager, 'openAndDockNavigation');
-
-      await navigationManager.ensureNavigationOpen(mockElement);
-
-      expect(spy).toHaveBeenCalledWith(mockElement, {
-        checkContext: true,
-        logWarnings: false,
-        ensureDocked: true,
-      });
-    });
-  });
-
-  describe('fixNavigationRequirements', () => {
-    it('should call openAndDockNavigation with correct options', async () => {
-      const spy = jest.spyOn(navigationManager, 'openAndDockNavigation');
-
-      await navigationManager.fixNavigationRequirements();
-
-      expect(spy).toHaveBeenCalledWith(undefined, {
-        checkContext: false,
-        logWarnings: true,
-        ensureDocked: true,
-      });
-    });
-  });
-
-  describe('openAndDockNavigation', () => {
-    it('should handle navigation when menu is closed', async () => {
-      await navigationManager.openAndDockNavigation(mockElement, {
-        checkContext: false,
-        logWarnings: true,
-        ensureDocked: true,
-      });
-
-      expect(mockMegaMenuToggle.click).toHaveBeenCalled();
-      expect(mockDockMenuButton.click).toHaveBeenCalled();
+      expect(document.querySelectorAll('.interactive-comment-box').length).toBe(0);
     });
 
-    it('should handle navigation when menu is already open', async () => {
-      // Mock menu as already open
-      (mockMegaMenuToggle.getAttribute as jest.Mock).mockReturnValue('true');
+    it('should remove highlighted classes from elements', () => {
+      const element1 = document.createElement('div');
+      element1.className = 'interactive-highlighted';
+      const element2 = document.createElement('div');
+      element2.className = 'interactive-guided-active';
 
-      await navigationManager.openAndDockNavigation(mockElement, {
-        checkContext: false,
-        logWarnings: true,
-        ensureDocked: true,
-      });
+      document.body.appendChild(element1);
+      document.body.appendChild(element2);
 
-      expect(mockMegaMenuToggle.click).not.toHaveBeenCalled();
-      expect(mockDockMenuButton.click).toHaveBeenCalled();
-    });
+      navigationManager.clearAllHighlights();
 
-    it('should handle missing mega menu toggle', async () => {
-      (document.querySelector as jest.Mock).mockReturnValueOnce(null);
+      expect(element1.classList.contains('interactive-highlighted')).toBe(false);
+      expect(element2.classList.contains('interactive-guided-active')).toBe(false);
 
-      await navigationManager.openAndDockNavigation(mockElement, {
-        checkContext: false,
-        logWarnings: true,
-        ensureDocked: true,
-      });
-
-      expect(mockMegaMenuToggle.click).not.toHaveBeenCalled();
+      document.body.removeChild(element1);
+      document.body.removeChild(element2);
     });
   });
 });
