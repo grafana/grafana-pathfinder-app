@@ -13,6 +13,82 @@ export class NavigationManager {
   private activeCleanupHandlers: Array<() => void> = [];
 
   /**
+   * Calculate optimal position for comment box ensuring it stays fully on screen
+   * Tries positions in order: right, left, bottom, top
+   * Returns the first position that fits without going off-screen
+   */
+  private calculateOptimalCommentPosition(
+    targetRect: DOMRect,
+    scrollTop: number,
+    scrollLeft: number,
+    commentBox: HTMLElement
+  ): { top: number; left: number; arrowPosition: string } {
+    const margin = 16; // Space between target and comment
+    const padding = 8; // Minimum padding from viewport edges
+
+    // Get comment box dimensions (might vary based on content)
+    const commentWidth = 250; // Fixed width from CSS
+    const commentHeight = commentBox.offsetHeight || 100; // Actual height, fallback to 100
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Helper to check if a position is valid (fully on screen)
+    const isValidPosition = (top: number, left: number): boolean => {
+      return (
+        left >= padding &&
+        left + commentWidth <= viewportWidth - padding &&
+        top >= padding &&
+        top + commentHeight <= viewportHeight + scrollTop - padding
+      );
+    };
+
+    // Try position 1: Right side (preferred)
+    let left = targetRect.right + scrollLeft + margin;
+    let top = targetRect.top + scrollTop + (targetRect.height - commentHeight) / 2;
+    if (isValidPosition(top, left)) {
+      return { top: Math.max(padding, top), left, arrowPosition: 'left' };
+    }
+
+    // Try position 2: Left side
+    left = targetRect.left + scrollLeft - commentWidth - margin;
+    top = targetRect.top + scrollTop + (targetRect.height - commentHeight) / 2;
+    if (isValidPosition(top, left)) {
+      return { top: Math.max(padding, top), left: Math.max(padding, left), arrowPosition: 'right' };
+    }
+
+    // Try position 3: Bottom (below target)
+    left = targetRect.left + scrollLeft + (targetRect.width - commentWidth) / 2;
+    top = targetRect.bottom + scrollTop + margin;
+    if (isValidPosition(top, left)) {
+      return {
+        top,
+        left: Math.max(padding, Math.min(left, viewportWidth - commentWidth - padding)),
+        arrowPosition: 'top',
+      };
+    }
+
+    // Try position 4: Top (above target)
+    left = targetRect.left + scrollLeft + (targetRect.width - commentWidth) / 2;
+    top = targetRect.top + scrollTop - commentHeight - margin;
+    if (isValidPosition(top, left)) {
+      return {
+        top: Math.max(padding, top),
+        left: Math.max(padding, Math.min(left, viewportWidth - commentWidth - padding)),
+        arrowPosition: 'bottom',
+      };
+    }
+
+    // Fallback: Force it to fit on right side with adjustments
+    // This ensures we always have a position even if none of the ideal positions work
+    left = Math.min(targetRect.right + scrollLeft + margin, viewportWidth - commentWidth - padding);
+    top = targetRect.top + scrollTop + (targetRect.height - commentHeight) / 2;
+    top = Math.max(padding, Math.min(top, viewportHeight + scrollTop - commentHeight - padding));
+
+    return { top, left, arrowPosition: 'left' };
+  }
+
+  /**
    * Clear all existing highlights and comment boxes from the page
    * Called before showing new highlights to prevent stacking
    */
@@ -60,9 +136,41 @@ export class NavigationManager {
       }
 
       updateTimeout = setTimeout(() => {
+        // Check if element is still connected to DOM
+        if (!element.isConnected) {
+          // Element was removed from DOM - hide highlight
+          highlightOutline.style.display = 'none';
+          if (commentBox) {
+            commentBox.style.display = 'none';
+          }
+          return;
+        }
+
         const rect = element.getBoundingClientRect();
         const scrollTop = window.scrollY || document.documentElement.scrollTop;
         const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
+
+        // Check for invalid positions:
+        // 1. Element has collapsed to 0,0 (disappeared)
+        // 2. Element is at top-left corner (0,0) with no scroll offset
+        // 3. Element has zero or near-zero dimensions
+        const isAtOrigin = rect.top === 0 && rect.left === 0 && scrollTop === 0 && scrollLeft === 0;
+        const hasNoDimensions = rect.width < 1 || rect.height < 1;
+
+        if (isAtOrigin || hasNoDimensions) {
+          // Element is in invalid state - hide highlight
+          highlightOutline.style.display = 'none';
+          if (commentBox) {
+            commentBox.style.display = 'none';
+          }
+          return;
+        }
+
+        // Element is valid - ensure highlight is visible and update position
+        highlightOutline.style.display = '';
+        if (commentBox) {
+          commentBox.style.display = '';
+        }
 
         // Update highlight position
         highlightOutline.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
@@ -72,25 +180,10 @@ export class NavigationManager {
 
         // Update comment box position if it exists
         if (commentBox) {
-          const commentWidth = 250;
-          const margin = 16;
-          let left = rect.right + scrollLeft + margin;
-          let arrowPosition = 'left';
-
-          if (left + commentWidth > window.innerWidth) {
-            left = rect.left + scrollLeft - commentWidth - margin;
-            arrowPosition = 'right';
-          }
-
-          if (left < 0) {
-            left = rect.left + scrollLeft + (rect.width - commentWidth) / 2;
-            arrowPosition = 'bottom';
-          }
-
-          const top = rect.top + scrollTop + (rect.height - 60) / 2;
-          commentBox.style.setProperty('--comment-top', `${Math.max(8, top)}px`);
-          commentBox.style.setProperty('--comment-left', `${Math.max(8, left)}px`);
-          commentBox.style.setProperty('--comment-arrow-position', arrowPosition);
+          const position = this.calculateOptimalCommentPosition(rect, scrollTop, scrollLeft, commentBox);
+          commentBox.style.setProperty('--comment-top', `${position.top}px`);
+          commentBox.style.setProperty('--comment-left', `${position.left}px`);
+          commentBox.style.setProperty('--comment-arrow-position', position.arrowPosition);
         }
       }, 150); // 150ms debounce for smooth updates
     };
@@ -359,6 +452,21 @@ export class NavigationManager {
     const scrollTop = window.scrollY || document.documentElement.scrollTop;
     const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
 
+    // Validate element position and dimensions before creating highlight
+    const isAtOrigin = rect.top === 0 && rect.left === 0 && scrollTop === 0 && scrollLeft === 0;
+    const hasNoDimensions = rect.width < 1 || rect.height < 1;
+
+    if (isAtOrigin || hasNoDimensions) {
+      // Element is in invalid state - don't show highlight
+      console.warn('Cannot highlight element: invalid position or dimensions', {
+        rect,
+        scrollTop,
+        scrollLeft,
+      });
+      // Return early without creating highlight
+      return element;
+    }
+
     // Use CSS custom properties instead of inline styles to avoid CSP violations
     highlightOutline.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
     highlightOutline.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
@@ -451,35 +559,19 @@ export class NavigationManager {
     commentBox.appendChild(content);
     commentBox.appendChild(arrow);
 
-    // Position comment box (to the right of the target, or left if no space)
-    const commentWidth = 250; // Fixed width for consistency
-    const commentHeight = 60; // Estimated height, will be auto-adjusted
-    const margin = 16; // Space between target and comment
+    // Add to DOM first so we can measure its actual height
+    document.body.appendChild(commentBox);
 
-    let left = targetRect.right + scrollLeft + margin;
-    let arrowPosition = 'left';
-
-    // If comment box would go off-screen to the right, position it to the left
-    if (left + commentWidth > window.innerWidth) {
-      left = targetRect.left + scrollLeft - commentWidth - margin;
-      arrowPosition = 'right';
-    }
-
-    // If still off-screen, center it above/below the target
-    if (left < 0) {
-      left = targetRect.left + scrollLeft + (targetRect.width - commentWidth) / 2;
-      arrowPosition = 'bottom';
-      // Position above the target
-      commentBox.style.setProperty('--comment-top', `${targetRect.top + scrollTop - commentHeight - margin}px`);
-    } else {
-      // Vertically center with the target
-      const top = targetRect.top + scrollTop + (targetRect.height - commentHeight) / 2;
-      commentBox.style.setProperty('--comment-top', `${top}px`);
-    }
+    // Use intelligent positioning to keep comment box fully on screen
+    const position = this.calculateOptimalCommentPosition(targetRect, scrollTop, scrollLeft, commentBox);
 
     // Set position using CSS custom properties
-    commentBox.style.setProperty('--comment-left', `${Math.max(8, left)}px`);
-    commentBox.style.setProperty('--comment-arrow-position', arrowPosition);
+    commentBox.style.setProperty('--comment-top', `${position.top}px`);
+    commentBox.style.setProperty('--comment-left', `${position.left}px`);
+    commentBox.style.setProperty('--comment-arrow-position', position.arrowPosition);
+
+    // Remove from DOM - caller will add it back
+    commentBox.remove();
 
     return commentBox;
   }

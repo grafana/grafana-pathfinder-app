@@ -75,13 +75,17 @@ export class GuidedHandler {
       // Prepare element (scroll into view, open navigation if needed)
       await this.prepareElement(targetElement);
 
-      // Highlight the target element with persistent highlight
+      // CRITICAL FIX: Attach listener BEFORE highlighting to avoid race condition
+      // If we highlight first, fast users might click before the listener is ready
+      const completionPromise = this.createCompletionListener(action, targetElement, timeout);
+
+      // Now highlight the target element with persistent highlight
       // Note: highlightTarget uses navigationManager.highlightWithComment which includes
       // the 300ms DOM settling delay after scroll
       await this.highlightTarget(targetElement, action.targetAction, stepIndex, totalSteps, action.targetComment);
 
-      // Wait for user to complete the action
-      const result = await this.waitForUserCompletion(action, targetElement, timeout);
+      // Wait for user to complete the action (listener already attached)
+      const result = await completionPromise;
 
       // Don't remove highlight after completion - let it persist until next action
       // Highlights will be cleared when:
@@ -237,9 +241,10 @@ export class GuidedHandler {
   }
 
   /**
-   * Wait for user to complete the action with timeout
+   * Create completion listener and return promise that resolves when user completes action
+   * Listener is attached immediately to avoid race condition with fast clicks
    */
-  private async waitForUserCompletion(
+  private createCompletionListener(
     action: InternalAction,
     targetElement: HTMLElement,
     timeout: number
@@ -248,7 +253,7 @@ export class GuidedHandler {
     this.currentAbortController = new AbortController();
     const signal = this.currentAbortController.signal;
 
-    // Create completion promise based on action type
+    // Create completion promise based on action type (listener attached immediately)
     const completionPromise = this.attachCompletionListener(action.targetAction, targetElement, signal);
 
     // Create timeout promise
@@ -262,12 +267,11 @@ export class GuidedHandler {
     });
 
     // Race between completion, timeout, and cancellation
-    const result = await Promise.race([completionPromise, timeoutPromise, cancellationPromise]);
-
-    // Clean up listeners
-    this.cleanupListeners();
-
-    return result;
+    return Promise.race([completionPromise, timeoutPromise, cancellationPromise]).then((result) => {
+      // Clean up listeners when promise resolves
+      this.cleanupListeners();
+      return result;
+    });
   }
 
   /**
@@ -337,6 +341,11 @@ export class GuidedHandler {
   /**
    * Wait for user to click element or within its highlighted bounds
    * For guided mode, we detect clicks but let them pass through to the actual element
+   *
+   * IMPROVEMENTS:
+   * - Slightly expanded click zone (16px padding) for better targeting
+   * - Capture phase listening to catch events before they can be stopped
+   * - Better SVG/nested element handling
    */
   private async waitForClick(
     element: HTMLElement,
@@ -344,17 +353,36 @@ export class GuidedHandler {
     preventDefaultClick = false
   ): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
+      // Periodically update rect for dynamic elements (like hover-revealed items)
+      // This ensures we always have fresh bounds for click detection
+      const rectUpdateInterval = setInterval(() => {
+        // Just verify element is still connected - rect is recalculated on each click
+        if (!element.isConnected) {
+          clearInterval(rectUpdateInterval);
+        }
+      }, 100);
+
       const handleClick = (event: Event) => {
         const mouseEvent = event as MouseEvent;
         const clickedElement = mouseEvent.target as HTMLElement;
 
-        // Primary check: Did user click the target element or something inside it (like an SVG)?
-        // This handles buttons with SVG icons where event.target is the SVG, not the button
+        // Primary check: Did user click the target element or something inside it?
+        // This handles:
+        // - Direct clicks on the element
+        // - Clicks on child elements (like SVG icons inside buttons)
+        // - Clicks on deeply nested elements
         const isTargetOrChild = element === clickedElement || element.contains(clickedElement);
 
-        // Fallback check: Is click within bounds? (Recalculate each time for hover-revealed elements)
+        if (isTargetOrChild) {
+          clearInterval(rectUpdateInterval);
+          resolve('completed');
+          return;
+        }
+
+        // Fallback check: Is click within slightly expanded bounds?
+        // Marginally larger padding (16px) provides some forgiveness without being excessive
         const elementRect = element.getBoundingClientRect();
-        const padding = 12;
+        const padding = 16; // Slightly increased from 12px for better targeting
         const clickX = mouseEvent.clientX;
         const clickY = mouseEvent.clientY;
 
@@ -364,20 +392,30 @@ export class GuidedHandler {
           clickY >= elementRect.top - padding &&
           clickY <= elementRect.bottom + padding;
 
-        if (isTargetOrChild || isWithinBounds) {
+        if (isWithinBounds) {
+          clearInterval(rectUpdateInterval);
+          // Click is within bounds - programmatically trigger click on target element
+          // This helps when an overlay or SVG is blocking the actual element
+          element.click();
           resolve('completed');
         }
       };
 
-      // Listen on document level but NOT in capture phase
-      // This lets the click reach the target element first, then we detect it
-      document.addEventListener('click', handleClick, { capture: false });
+      // CRITICAL: Listen in CAPTURE PHASE to catch events before other handlers
+      // This prevents issues where an SVG or overlay stops event propagation
+      // We still let the event continue (don't preventDefault) so the actual click happens
+      document.addEventListener('click', handleClick, { capture: true });
 
       // Store for cleanup
-      this.activeListeners.push({ element: document.body as HTMLElement, type: 'click', handler: handleClick });
+      this.activeListeners.push({
+        element: document.body as HTMLElement,
+        type: 'click',
+        handler: handleClick,
+      });
 
       // Handle cancellation
       signal.addEventListener('abort', () => {
+        clearInterval(rectUpdateInterval);
         resolve('cancelled');
       });
     });
@@ -388,7 +426,12 @@ export class GuidedHandler {
    */
   private cleanupListeners(): void {
     this.activeListeners.forEach(({ element, type, handler }) => {
-      element.removeEventListener(type, handler as EventListener);
+      // Remove with capture: true for click events to match how they were added
+      if (type === 'click') {
+        element.removeEventListener(type, handler as EventListener, { capture: true });
+      } else {
+        element.removeEventListener(type, handler as EventListener);
+      }
     });
     this.activeListeners = [];
   }

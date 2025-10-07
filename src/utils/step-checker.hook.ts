@@ -640,9 +640,11 @@ export function useStepChecker({
     return undefined;
   }, [stepId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Check requirements when step becomes eligible
+  // Check requirements when step eligibility changes (both true and false)
   useEffect(() => {
-    if (isEligibleForChecking && !state.isCompleted && !state.isChecking) {
+    if (!state.isCompleted) {
+      // Always recheck when eligibility changes, whether becoming eligible or ineligible
+      // This ensures steps show the correct "blocked" state when they become ineligible
       checkStepRef.current();
     }
   }, [isEligibleForChecking]); // eslint-disable-line react-hooks/exhaustive-deps
