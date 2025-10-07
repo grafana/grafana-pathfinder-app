@@ -802,6 +802,7 @@ export const addGlobalInteractiveStyles = () => {
       animation-delay: 0ms;
       animation-fill-mode: forwards;
     }
+
     /* Subtle variant to reuse animation cadence for blocked areas */
     .interactive-highlight-outline--subtle {
       border-color: rgba(180, 180, 180, 0.4);
@@ -1072,6 +1073,15 @@ export const addGlobalInteractiveStyles = () => {
       border-left: 8px solid transparent;
       border-right: 8px solid transparent;
       border-top: 8px solid var(--grafana-colors-background-primary, #1f1f23);
+    }
+
+    .interactive-comment-box[style*="--comment-arrow-position: top"] .interactive-comment-arrow {
+      top: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 8px solid var(--grafana-colors-background-primary, #1f1f23);
     }
 
     /* Hide interactive comment spans - they're extracted as metadata */
