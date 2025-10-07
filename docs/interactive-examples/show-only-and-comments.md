@@ -29,6 +29,7 @@ When `data-doit='false'` is set:
   data-reftarget='div[data-testid="uplot-main-div"]:first-of-type'
   data-targetaction="highlight"
   data-doit="false"
+  data-showme-text="Show highlight"
 >
   Examine the metrics visualization panel above the logs.
 </li>

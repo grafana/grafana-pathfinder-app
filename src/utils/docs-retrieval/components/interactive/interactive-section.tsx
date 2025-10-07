@@ -30,6 +30,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   targetComment?: string;
   doIt?: boolean; // Control whether "Do it" button appears (defaults to true)
   showMe?: boolean; // Control whether "Show me" button appears (defaults to true)
+  showMeText?: string; // Optional text override for the "Show me" button
   skippable?: boolean; // Whether this step can be skipped if requirements fail
   title?: string;
   description?: string;

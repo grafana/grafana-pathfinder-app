@@ -27,6 +27,7 @@ export const InteractiveStep = forwardRef<
       doIt = true, // Default to true - show "Do it" button unless explicitly disabled
       showMe = true, // Default to true - show "Show me" button unless explicitly disabled
       skippable = false, // Default to false - only skippable if explicitly set
+      showMeText,
       title,
       description,
       children,
@@ -500,7 +501,7 @@ export const InteractiveStep = forwardRef<
                     ? checker.isRetrying
                       ? `Checking requirements... (${checker.retryCount}/${checker.maxRetries})`
                       : 'Checking requirements...'
-                    : hints || `Show me: ${getActionDescription()}`
+                    : hints || `${showMeText ? `${showMeText}:` : 'Show me:'} ${getActionDescription()}`
                 }
               >
                 {checker.isChecking
@@ -511,7 +512,7 @@ export const InteractiveStep = forwardRef<
                     ? 'Showing...'
                     : !finalIsEnabled
                       ? 'Requirements not met'
-                      : 'Show me'}
+                      : (showMeText || 'Show me')}
               </Button>
             )}
 
