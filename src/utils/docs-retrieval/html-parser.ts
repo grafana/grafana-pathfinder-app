@@ -920,6 +920,8 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
               targetComment: interactiveComment || el.getAttribute('data-targetcomment'), // Prefer extracted comment
               doIt: el.getAttribute('data-doit') !== 'false', // Default to true, only false if explicitly set to 'false'
               showMe: el.getAttribute('data-showme') !== 'false', // Default to true, only false if explicitly set to 'false'
+              // Customizable label for the "Show me" button
+              showMeText: el.getAttribute('data-showme-text') || undefined,
               skippable: el.getAttribute('data-skippable') === 'true', // Default to false, only true if explicitly set to 'true'
               title: undefined, // Remove title - content will be in children
               // Specific data attribute mappings for React prop names
