@@ -413,6 +413,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           targetComment={element.props.targetComment}
           doIt={element.props.doIt}
           showMe={element.props.showMe}
+          showMeText={element.props.showMeText}
           skippable={element.props.skippable}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
