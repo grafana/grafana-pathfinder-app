@@ -297,17 +297,22 @@ export class GuidedHandler {
 
   /**
    * Wait for user to hover over element and dwell for specified time
+   * If mouse is already hovering, counts immediately
    */
   private async waitForHover(element: HTMLElement, signal: AbortSignal): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
       let hoverTimeout: NodeJS.Timeout | null = null;
       const dwellTime = 500; // User must hover for 500ms
 
-      const handleMouseEnter = () => {
+      const startDwellTimer = () => {
         // Start dwell timer
         hoverTimeout = setTimeout(() => {
           resolve('completed');
         }, dwellTime);
+      };
+
+      const handleMouseEnter = () => {
+        startDwellTimer();
       };
 
       const handleMouseLeave = () => {
@@ -327,6 +332,12 @@ export class GuidedHandler {
         { element, type: 'mouseenter', handler: handleMouseEnter },
         { element, type: 'mouseleave', handler: handleMouseLeave }
       );
+
+      // CRITICAL FIX: Check if mouse is already hovering over the element
+      // If the element matches :hover pseudo-class, start the dwell timer immediately
+      if (element.matches(':hover')) {
+        startDwellTimer();
+      }
 
       // Handle cancellation
       signal.addEventListener('abort', () => {
