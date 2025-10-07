@@ -322,4 +322,17 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
     whiteSpace: 'pre-wrap',
     maxWidth: '100%',
   }),
+
+  warningIcon: css({
+    marginLeft: theme.spacing(0.5),
+    color: theme.colors.warning.text,
+    verticalAlign: 'middle',
+  }),
+
+  stepMeta: css({
+    display: 'flex',
+    gap: theme.spacing(0.5),
+    marginTop: theme.spacing(0.5),
+    flexWrap: 'wrap',
+  }),
 });

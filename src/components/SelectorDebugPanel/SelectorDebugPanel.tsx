@@ -18,6 +18,9 @@ interface RecordedStep {
   selector: string;
   value?: string;
   description: string;
+  isUnique?: boolean;
+  matchCount?: number;
+  contextStrategy?: string;
 }
 
 export function SelectorDebugPanel() {
@@ -159,6 +162,7 @@ export function SelectorDebugPanel() {
     method: string;
     isUnique: boolean;
     matchCount: number;
+    contextStrategy?: string;
   } | null>(null);
   const [selectorCopied, setSelectorCopied] = useState(false);
 
@@ -455,6 +459,7 @@ export function SelectorDebugPanel() {
       // Just record the action and let navigation/actions happen
 
       const selector = generateBestSelector(target);
+      const selectorInfo = getSelectorInfo(target);
       const action = detectActionType(target, event);
       const description = getActionDescription(action, target);
 
@@ -475,6 +480,9 @@ export function SelectorDebugPanel() {
           selector,
           value: undefined,
           description,
+          isUnique: selectorInfo.isUnique,
+          matchCount: selectorInfo.matchCount,
+          contextStrategy: selectorInfo.contextStrategy,
         },
       ]);
     };
@@ -503,6 +511,7 @@ export function SelectorDebugPanel() {
       const tracked = recordingElementsRef.current.get(target);
       if (tracked) {
         const selector = generateBestSelector(target);
+        const selectorInfo = getSelectorInfo(target);
         const action = detectActionType(target, event);
         const description = getActionDescription(action, target);
 
@@ -514,6 +523,9 @@ export function SelectorDebugPanel() {
             selector,
             value: tracked.value,
             description,
+            isUnique: selectorInfo.isUnique,
+            matchCount: selectorInfo.matchCount,
+            contextStrategy: selectorInfo.contextStrategy,
           },
         ]);
 
@@ -736,6 +748,9 @@ export function SelectorDebugPanel() {
                         text={selectorInfo.isUnique ? 'Unique' : `${selectorInfo.matchCount} matches`}
                         color={selectorInfo.isUnique ? 'green' : 'orange'}
                       />
+                      {selectorInfo.contextStrategy && (
+                        <Badge text={selectorInfo.contextStrategy} color="purple" />
+                      )}
                     </div>
                   )}
 
@@ -800,10 +815,28 @@ export function SelectorDebugPanel() {
                       <div key={index} className={styles.recordedStep}>
                         <div className={styles.stepNumber}>{index + 1}</div>
                         <div className={styles.stepDetails}>
-                          <div className={styles.stepDescription}>{step.description}</div>
+                          <div className={styles.stepDescription}>
+                            {step.description}
+                            {step.isUnique === false && (
+                              <Icon
+                                name="exclamation-triangle"
+                                size="sm"
+                                className={styles.warningIcon}
+                                title={`Non-unique selector (${step.matchCount} matches)`}
+                              />
+                            )}
+                          </div>
                           <code className={styles.stepCode}>
                             {step.action}|{step.selector}|{step.value || ''}
                           </code>
+                          {(step.contextStrategy || step.isUnique === false) && (
+                            <div className={styles.stepMeta}>
+                              {step.contextStrategy && <Badge text={step.contextStrategy} color="purple" />}
+                              {step.isUnique === false && (
+                                <Badge text={`${step.matchCount} matches`} color="orange" />
+                              )}
+                            </div>
+                          )}
                         </div>
                         <Button
                           variant="secondary"
