@@ -16,7 +16,7 @@ This guide documents the core data-\* attributes used to define interactive acti
 - **data-objectives**: Conditions which, when already true, mark a step or section complete without execution.
 - **data-doit**: Controls button behavior. Set to `'false'` for show-only mode (no "Do it" button, completes after showing). Defaults to `true`.
 - **data-hint**: Tooltip or hint text for UI.
- - **data-showme-text**: Overrides the "Show me" button label for this step.
+- **data-showme-text**: Overrides the "Show me" button label for this step.
 
 ## Special content elements
 

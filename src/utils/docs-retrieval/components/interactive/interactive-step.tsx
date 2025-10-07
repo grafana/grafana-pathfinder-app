@@ -512,7 +512,7 @@ export const InteractiveStep = forwardRef<
                     ? 'Showing...'
                     : !finalIsEnabled
                       ? 'Requirements not met'
-                      : (showMeText || 'Show me')}
+                      : showMeText || 'Show me'}
               </Button>
             )}
 
