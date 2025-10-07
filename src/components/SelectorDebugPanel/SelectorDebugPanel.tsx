@@ -748,9 +748,7 @@ export function SelectorDebugPanel() {
                         text={selectorInfo.isUnique ? 'Unique' : `${selectorInfo.matchCount} matches`}
                         color={selectorInfo.isUnique ? 'green' : 'orange'}
                       />
-                      {selectorInfo.contextStrategy && (
-                        <Badge text={selectorInfo.contextStrategy} color="purple" />
-                      )}
+                      {selectorInfo.contextStrategy && <Badge text={selectorInfo.contextStrategy} color="purple" />}
                     </div>
                   )}
 
@@ -832,9 +830,7 @@ export function SelectorDebugPanel() {
                           {(step.contextStrategy || step.isUnique === false) && (
                             <div className={styles.stepMeta}>
                               {step.contextStrategy && <Badge text={step.contextStrategy} color="purple" />}
-                              {step.isUnique === false && (
-                                <Badge text={`${step.matchCount} matches`} color="orange" />
-                              )}
+                              {step.isUnique === false && <Badge text={`${step.matchCount} matches`} color="orange" />}
                             </div>
                           )}
                         </div>

@@ -151,7 +151,7 @@ function normalizeHref(href: string): string {
     // For URLs with query strings or hashes, strip them
     const hashIndex = href.indexOf('#');
     const queryIndex = href.indexOf('?');
-    
+
     let endIndex = href.length;
     if (hashIndex > 0) {
       endIndex = hashIndex;
@@ -159,7 +159,7 @@ function normalizeHref(href: string): string {
     if (queryIndex > 0 && queryIndex < endIndex) {
       endIndex = queryIndex;
     }
-    
+
     // Return the path portion, preserving relative vs absolute format
     return href.substring(0, endIndex);
   } catch {
@@ -235,12 +235,12 @@ function isUniqueButtonText(text: string): boolean {
  */
 function isCardLikeContainer(element: HTMLElement): boolean {
   const classNames = element.className.toString().toLowerCase();
-  
+
   // Common card patterns in class names
   if (classNames.includes('card')) {
     return true;
   }
-  
+
   // List items with clickable content patterns
   if (element.tagName.toLowerCase() === 'li') {
     // Check if it has card-like structure (multiple child sections)
@@ -249,13 +249,13 @@ function isCardLikeContainer(element: HTMLElement): boolean {
       return true;
     }
   }
-  
+
   // Divs with specific roles that indicate containers
   const role = element.getAttribute('role');
   if (role && ['article', 'group', 'listitem', 'option'].includes(role)) {
     return true;
   }
-  
+
   return false;
 }
 
@@ -307,8 +307,8 @@ function findBestElementInHierarchy(element: HTMLElement, maxDepth = 5): HTMLEle
 
     // For elements NOT inside cards, links/buttons are excellent targets
     if (!cardBoundary) {
-    if (tag === 'a' || tag === 'button' || tag === 'input' || tag === 'textarea' || tag === 'select') {
-      return searchElement;
+      if (tag === 'a' || tag === 'button' || tag === 'input' || tag === 'textarea' || tag === 'select') {
+        return searchElement;
       }
     }
 
@@ -565,16 +565,16 @@ function getDescendantsUpToDepth(element: HTMLElement, maxDepth: number): HTMLEl
  */
 function isLeafTextElement(element: HTMLElement): boolean {
   const tag = element.tagName.toLowerCase();
-  
+
   // These are always leaf elements
   if (['button', 'a', 'span', 'label', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p'].includes(tag)) {
     return true;
   }
-  
+
   // For other elements (div, li, etc.), check if they have semantic children
   // If they have semantic children, they're containers, not leaf elements
   const semanticChildren = element.querySelectorAll('button, a, h1, h2, h3, h4, h5, h6, input, select, textarea');
-  
+
   return semanticChildren.length === 0;
 }
 
@@ -626,11 +626,7 @@ function getUniqueChildIdentifier(child: HTMLElement): string | null {
  * Find unique child context by examining descendants
  * Builds :has() selectors based on distinguishing child elements
  */
-function findUniqueChildContext(
-  element: HTMLElement,
-  baseSelector: string,
-  allMatches: HTMLElement[]
-): string | null {
+function findUniqueChildContext(element: HTMLElement, baseSelector: string, allMatches: HTMLElement[]): string | null {
   // Get descendants up to 2 levels deep
   const descendants = getDescendantsUpToDepth(element, 2);
 

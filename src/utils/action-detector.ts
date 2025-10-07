@@ -30,12 +30,12 @@ function isInsideCardContainer(element: HTMLElement): boolean {
 
   while (current && depth < maxDepth) {
     const classNames = current.className.toString().toLowerCase();
-    
+
     // Common card patterns in class names
     if (classNames.includes('card')) {
       return true;
     }
-    
+
     // List items with clickable content patterns
     if (current.tagName.toLowerCase() === 'li') {
       const childDivs = current.querySelectorAll(':scope > div, :scope > div > div');
@@ -43,17 +43,17 @@ function isInsideCardContainer(element: HTMLElement): boolean {
         return true;
       }
     }
-    
+
     // Divs with specific roles that indicate containers
     const role = current.getAttribute('role');
     if (role && ['article', 'group', 'listitem', 'option'].includes(role)) {
       return true;
     }
-    
+
     current = current.parentElement;
     depth++;
   }
-  
+
   return false;
 }
 
@@ -105,7 +105,7 @@ export function detectActionType(element: HTMLElement, event?: Event): DetectedA
     if (insideCard) {
       return 'highlight'; // Card container is the real target
     }
-    
+
     const text = element.textContent?.trim();
     if (text) {
       const buttons = findButtonByText(text);
