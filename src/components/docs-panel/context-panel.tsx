@@ -78,6 +78,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     onOpenDocsPage: model.state.onOpenDocsPage,
   });
 
+  // Note: Auto-open event listener moved to CombinedPanelRenderer to avoid remounting issues
+  // ContextPanelRenderer remounts when tabs change, causing listener cleanup
+
   const { recommendations, isLoading, recommendationsError } = contextData;
 
   const styles = useStyles2(getStyles);

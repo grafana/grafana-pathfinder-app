@@ -124,6 +124,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       requirements,
       objectives,
       onComplete,
+      skippable = false, // Whether this multi-step can be skipped
       stepDelay = INTERACTIVE_CONFIG.delays.multiStep.defaultStepDelay, // Default delay between steps
       resetTrigger,
       stepIndex,
@@ -618,6 +619,35 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                 title={getButtonTitle()}
               >
                 {getButtonText()}
+              </Button>
+            )}
+
+            {/* Show "Skip" button when multi-step is skippable (always available, not just on error) */}
+            {skippable && !isCompletedWithObjectives && (
+              <Button
+                onClick={async () => {
+                  if (checker.markSkipped) {
+                    await checker.markSkipped();
+
+                    // Mark as completed and notify parent
+                    setIsLocallyCompleted(true);
+
+                    if (onStepComplete && stepId) {
+                      onStepComplete(stepId);
+                    }
+
+                    if (onComplete) {
+                      onComplete();
+                    }
+                  }
+                }}
+                disabled={disabled || isAnyActionRunning}
+                size="sm"
+                variant="secondary"
+                className="interactive-step-skip-btn"
+                title="Skip this multi-step without executing"
+              >
+                Skip
               </Button>
             )}
           </div>

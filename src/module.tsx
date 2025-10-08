@@ -1,10 +1,18 @@
-import { AppPlugin, type AppRootProps, PluginExtensionPoints, BusEventWithPayload } from '@grafana/data';
+import {
+  AppPlugin,
+  type AppRootProps,
+  PluginExtensionPoints,
+  BusEventWithPayload,
+  usePluginContext,
+} from '@grafana/data';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useCallback, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
+import { useGlobalLinkInterceptor } from './utils/global-link-interceptor.hook';
+import { getConfigWithDefaults } from './constants';
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
@@ -67,6 +75,48 @@ plugin.addComponent({
   title: 'Grafana Pathfinder',
   description: 'Opens Grafana Pathfinder',
   component: function ContextSidebar() {
+    // Get plugin configuration
+    const pluginContext = usePluginContext();
+    const config = useMemo(() => {
+      return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+    }, [pluginContext?.meta?.jsonData]);
+
+    // Callback to open docs link in Pathfinder sidebar
+    const handleOpenDocsLink = useCallback((url: string, title: string) => {
+      try {
+        // First, ensure the extension sidebar is open
+        const appEvents = getAppEvents();
+        appEvents.publish({
+          type: 'open-extension-sidebar',
+          payload: {
+            pluginId: pluginJson.id,
+            componentTitle: 'Grafana Pathfinder',
+          },
+        });
+
+        // Then, after a brief delay to ensure sidebar is mounted, dispatch event to open the URL
+        // This ensures the context panel is ready to receive the event
+        setTimeout(() => {
+          const autoOpenEvent = new CustomEvent('pathfinder-auto-open-docs', {
+            detail: {
+              url,
+              title,
+              origin: 'global_link_interceptor',
+            },
+          });
+          document.dispatchEvent(autoOpenEvent);
+        }, 150);
+      } catch (error) {
+        console.error('Failed to open docs link in Pathfinder:', error);
+      }
+    }, []);
+
+    // Enable global link interception if configured
+    useGlobalLinkInterceptor({
+      onOpenDocsLink: handleOpenDocsLink,
+      enabled: config.interceptGlobalDocsLinks,
+    });
+
     React.useEffect(() => {
       reportAppInteraction(UserInteraction.DocsPanelInteraction, {
         action: 'open',

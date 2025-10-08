@@ -1084,6 +1084,35 @@ export const addGlobalInteractiveStyles = () => {
       border-bottom: 8px solid var(--grafana-colors-background-primary, #1f1f23);
     }
 
+    /* Step checklist in guided comment tooltips */
+    .interactive-comment-steps-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--grafana-colors-border-weak, #404040);
+    }
+
+    .interactive-comment-step-item {
+      font-size: 12px;
+      line-height: 1.3;
+      color: var(--grafana-colors-text-secondary, #999999);
+      padding: 2px 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .interactive-comment-step-item.interactive-comment-step-current {
+      color: var(--grafana-colors-text-primary, #d9d9d9);
+      font-weight: 500;
+      background: rgba(255, 193, 7, 0.15);
+      padding: 4px 6px;
+      margin: -2px -4px;
+      border-radius: 3px;
+    }
+
     /* Hide interactive comment spans - they're extracted as metadata */
     span.interactive-comment {
       display: none !important;
