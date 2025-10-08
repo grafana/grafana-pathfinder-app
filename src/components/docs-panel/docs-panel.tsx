@@ -494,6 +494,31 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   React.useEffect(() => {
     addGlobalModalStyles();
   }, []);
+
+  // Listen for auto-open events from global link interceptor
+  // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
+  React.useEffect(() => {
+    const handleAutoOpen = (event: Event) => {
+      const customEvent = event as CustomEvent<{ url: string; title: string; origin: string }>;
+      const { url, title } = customEvent.detail;
+
+      // Always create a new tab for each intercepted link
+      // Call the model method directly to ensure new tabs are created
+      if (url.includes('/learning-journeys/')) {
+        model.openLearningJourney(url, title);
+      } else {
+        model.openDocsPage(url, title);
+      }
+    };
+
+    // Listen for all auto-open events
+    document.addEventListener('pathfinder-auto-open-docs', handleAutoOpen);
+
+    return () => {
+      document.removeEventListener('pathfinder-auto-open-docs', handleAutoOpen);
+    };
+  }, [model]); // Only model as dependency - this component doesn't remount on tab changes
+
   const { tabs, activeTabId, contextPanel } = model.useState();
   // removed — using restored custom overflow state below
 

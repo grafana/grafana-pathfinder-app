@@ -33,6 +33,36 @@ function isSupportedDocsUrl(url: string): boolean {
 }
 
 /**
+ * Extract a meaningful title from a docs URL by using the final path segment
+ * Examples:
+ * - https://grafana.com/docs/grafana/latest/datasources/azuremonitor/ -> "azuremonitor"
+ * - https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/ -> "provision-alerting-resources"
+ */
+function extractTitleFromUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    const pathSegments = urlObj.pathname.split('/').filter(Boolean);
+
+    // Get the last meaningful segment (skip trailing slashes)
+    if (pathSegments.length > 0) {
+      const lastSegment = pathSegments[pathSegments.length - 1];
+
+      // Convert kebab-case to Title Case for better readability
+      const formatted = lastSegment
+        .split('-')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+
+      return formatted || 'Documentation';
+    }
+
+    return 'Documentation';
+  } catch (error) {
+    return 'Documentation';
+  }
+}
+
+/**
  * Global link interceptor that catches documentation links across all of Grafana
  * and opens them in Pathfinder instead of a new browser tab.
  *
@@ -47,7 +77,6 @@ function isSupportedDocsUrl(url: string): boolean {
  */
 export function useGlobalLinkInterceptor({ onOpenDocsLink, enabled = false }: GlobalLinkInterceptorProps) {
   useEffect(() => {
-    // Feature is disabled, don't attach listener
     if (!enabled) {
       return;
     }
@@ -117,19 +146,22 @@ export function useGlobalLinkInterceptor({ onOpenDocsLink, enabled = false }: Gl
           anchor.removeAttribute('target');
         }
 
-        // Extract link text for tab title
-        const linkText = anchor.textContent?.trim() || anchor.getAttribute('aria-label') || 'Documentation';
+        // Extract meaningful title from URL path (not from link text)
+        // This ensures each docs page gets a unique tab name
+        const tabTitle = extractTitleFromUrl(fullUrl);
+        const linkText = anchor.textContent?.trim() || 'Documentation';
 
         // Track analytics for intercepted link
         reportAppInteraction(UserInteraction.GlobalDocsLinkIntercepted, {
           content_url: fullUrl,
           link_text: linkText,
+          tab_title: tabTitle,
           source_location: 'global',
           timestamp: Date.now(),
         });
 
-        // Open in Pathfinder
-        onOpenDocsLink(fullUrl, linkText);
+        // Open in Pathfinder with URL-based title (ensures unique tab names)
+        onOpenDocsLink(fullUrl, tabTitle);
       }
     };
 

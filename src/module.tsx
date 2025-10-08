@@ -84,17 +84,7 @@ plugin.addComponent({
     // Callback to open docs link in Pathfinder sidebar
     const handleOpenDocsLink = useCallback((url: string, title: string) => {
       try {
-        // First, dispatch custom event to tell context panel to open this URL
-        const autoOpenEvent = new CustomEvent('pathfinder-auto-open-docs', {
-          detail: {
-            url,
-            title,
-            origin: 'global_link_interceptor',
-          },
-        });
-        document.dispatchEvent(autoOpenEvent);
-
-        // Then, open the extension sidebar (if not already open)
+        // First, ensure the extension sidebar is open
         const appEvents = getAppEvents();
         appEvents.publish({
           type: 'open-extension-sidebar',
@@ -103,6 +93,19 @@ plugin.addComponent({
             componentTitle: 'Grafana Pathfinder',
           },
         });
+
+        // Then, after a brief delay to ensure sidebar is mounted, dispatch event to open the URL
+        // This ensures the context panel is ready to receive the event
+        setTimeout(() => {
+          const autoOpenEvent = new CustomEvent('pathfinder-auto-open-docs', {
+            detail: {
+              url,
+              title,
+              origin: 'global_link_interceptor',
+            },
+          });
+          document.dispatchEvent(autoOpenEvent);
+        }, 150);
       } catch (error) {
         console.error('Failed to open docs link in Pathfinder:', error);
       }
