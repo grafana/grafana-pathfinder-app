@@ -148,6 +148,7 @@ export function ContentRenderer({ content, onContentReady, className, containerR
     <div
       ref={activeRef}
       className={className}
+      data-pathfinder-content="true"
       style={{
         display: 'flex',
         flexDirection: 'column',

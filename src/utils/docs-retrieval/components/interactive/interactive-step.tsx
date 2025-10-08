@@ -543,6 +543,33 @@ export const InteractiveStep = forwardRef<
                     : 'Do it'}
               </Button>
             )}
+
+            {/* Show "Skip" button when step is skippable (always available, not just on error) */}
+            {skippable && !isCompletedWithObjectives && (
+              <Button
+                onClick={async () => {
+                  if (checker.markSkipped) {
+                    await checker.markSkipped();
+
+                    // Notify parent section of step completion (skipped counts as completed)
+                    if (onStepComplete && stepId) {
+                      onStepComplete(stepId);
+                    }
+
+                    if (onComplete) {
+                      onComplete();
+                    }
+                  }
+                }}
+                disabled={disabled || isAnyActionRunning}
+                size="sm"
+                variant="secondary"
+                className="interactive-step-skip-btn"
+                title="Skip this step without executing"
+              >
+                Skip
+              </Button>
+            )}
           </div>
 
           {isCompletedWithObjectives && (

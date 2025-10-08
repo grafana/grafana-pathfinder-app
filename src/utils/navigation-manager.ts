@@ -426,9 +426,15 @@ export class NavigationManager {
    * @param element - The element to highlight
    * @param comment - Optional comment text to display in a comment box
    * @param enableAutoCleanup - Whether to enable auto-cleanup on scroll/click (default: true, false for guided mode)
+   * @param stepInfo - Optional step progress info for guided interactions
    * @returns Promise that resolves when highlighting is complete
    */
-  async highlightWithComment(element: HTMLElement, comment?: string, enableAutoCleanup = true): Promise<HTMLElement> {
+  async highlightWithComment(
+    element: HTMLElement,
+    comment?: string,
+    enableAutoCleanup = true,
+    stepInfo?: { current: number; total: number; completedSteps: number[] }
+  ): Promise<HTMLElement> {
     // Clear any existing highlights before showing new one
     this.clearAllHighlights();
 
@@ -478,7 +484,7 @@ export class NavigationManager {
     // Create comment box if comment is provided
     let commentBox: HTMLElement | null = null;
     if (comment && comment.trim()) {
-      commentBox = this.createCommentBox(comment, rect, scrollTop, scrollLeft);
+      commentBox = this.createCommentBox(comment, rect, scrollTop, scrollLeft, stepInfo);
       document.body.appendChild(commentBox);
     }
 
@@ -504,7 +510,13 @@ export class NavigationManager {
   /**
    * Create a themed comment box positioned near the highlighted element
    */
-  private createCommentBox(comment: string, targetRect: DOMRect, scrollTop: number, scrollLeft: number): HTMLElement {
+  private createCommentBox(
+    comment: string,
+    targetRect: DOMRect,
+    scrollTop: number,
+    scrollLeft: number,
+    stepInfo?: { current: number; total: number; completedSteps: number[] }
+  ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
 
@@ -540,6 +552,30 @@ export class NavigationManager {
 
     logoContainer.appendChild(logoImg);
 
+    // Create step checklist if stepInfo is provided (for guided interactions)
+    let stepsListContainer: HTMLElement | null = null;
+    if (stepInfo) {
+      stepsListContainer = document.createElement('div');
+      stepsListContainer.className = 'interactive-comment-steps-list';
+
+      for (let i = 0; i < stepInfo.total; i++) {
+        const stepItem = document.createElement('div');
+        stepItem.className = 'interactive-comment-step-item';
+
+        // Add current step class for highlighting
+        if (i === stepInfo.current) {
+          stepItem.classList.add('interactive-comment-step-current');
+        }
+
+        // Use checked or unchecked box
+        const isCompleted = stepInfo.completedSteps.includes(i);
+        const checkbox = isCompleted ? '☑' : '☐';
+        stepItem.textContent = `${checkbox} Step ${i + 1}`;
+
+        stepsListContainer.appendChild(stepItem);
+      }
+    }
+
     // Create text container with HTML support
     const textContainer = document.createElement('div');
     textContainer.className = 'interactive-comment-text';
@@ -549,6 +585,12 @@ export class NavigationManager {
     const contentWrapper = document.createElement('div');
     contentWrapper.className = 'interactive-comment-wrapper';
     contentWrapper.appendChild(logoContainer);
+
+    // Add steps list before the instruction text if available
+    if (stepsListContainer) {
+      contentWrapper.appendChild(stepsListContainer);
+    }
+
     contentWrapper.appendChild(textContainer);
 
     content.appendChild(contentWrapper);

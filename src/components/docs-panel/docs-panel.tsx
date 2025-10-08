@@ -667,7 +667,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   // ContentRenderer renders the content with styling applied via CSS classes
 
   return (
-    <div id="CombinedLearningJourney" className={styles.container}>
+    <div id="CombinedLearningJourney" className={styles.container} data-pathfinder-content="true">
       <div className={styles.topBar}>
         <div className={styles.tabBar}>
           <div className={styles.tabList} ref={tabListRef}>

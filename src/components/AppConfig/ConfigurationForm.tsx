@@ -1,5 +1,5 @@
 import React, { useState, ChangeEvent } from 'react';
-import { Button, Field, Input, useStyles2, FieldSet, SecretInput } from '@grafana/ui';
+import { Button, Field, Input, useStyles2, FieldSet, SecretInput, Switch, Alert, Text } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
@@ -9,6 +9,7 @@ import {
   DEFAULT_DOCS_BASE_URL,
   DEFAULT_DOCS_USERNAME,
   DEFAULT_TUTORIAL_URL,
+  DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 
@@ -29,6 +30,8 @@ type State = {
   tutorialUrl: string;
   // Dev mode enables loading of the components page for testing of proper rendering of components
   devMode: boolean;
+  // Global link interception
+  interceptGlobalDocsLinks: boolean;
 };
 
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -46,6 +49,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     isDocsPasswordSet: Boolean(secureJsonFields && (secureJsonFields as any).docsPassword),
     tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
     devMode: jsonData?.devMode || false,
+    interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -102,6 +106,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
+  const onToggleGlobalLinkInterception = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      interceptGlobalDocsLinks: event.target.checked,
+    });
+  };
+
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSaving(true);
@@ -114,6 +125,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         docsUsername: state.docsUsername,
         tutorialUrl: state.tutorialUrl,
         devMode: state.devMode,
+        interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -227,6 +239,38 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           </Field>
         )}
 
+        {/* Global Link Interception */}
+        <FieldSet label="Global Link Interception" className={s.marginTopXl}>
+          <div className={s.toggleSection}>
+            <Switch
+              id="enable-global-link-interception"
+              value={state.interceptGlobalDocsLinks}
+              onChange={onToggleGlobalLinkInterception}
+            />
+            <div className={s.toggleLabels}>
+              <Text variant="body" weight="medium">
+                Intercept documentation links globally
+              </Text>
+              <Text variant="body" color="secondary">
+                When enabled, clicking Grafana docs links anywhere will open them in Pathfinder instead of a new tab
+              </Text>
+            </div>
+          </div>
+
+          {state.interceptGlobalDocsLinks && (
+            <Alert severity="info" title="Important" className={s.marginTop}>
+              <Text variant="body">
+                <strong>The Pathfinder sidebar must be open</strong> for link interception to work. Once enabled, open
+                the sidebar and keep it open while browsing Grafana.
+                <br />
+                <br />
+                Hold <strong>Ctrl</strong> (Windows/Linux) or <strong>Cmd</strong> (Mac) while clicking any link to open
+                it in a new tab instead of Pathfinder. Middle-click also opens in a new tab.
+              </Text>
+            </Alert>
+          )}
+        </FieldSet>
+
         <div className={s.marginTop}>
           <Button type="submit" data-testid={testIds.appConfig.submit} disabled={isSubmitDisabled || isSaving}>
             {isSaving ? 'Saving...' : 'Save configuration'}
@@ -248,5 +292,17 @@ const getStyles = (theme: GrafanaTheme2) => ({
   `,
   marginTopXl: css`
     margin-top: ${theme.spacing(6)};
+  `,
+  toggleSection: css`
+    display: flex;
+    align-items: flex-start;
+    gap: ${theme.spacing(2)};
+    margin-bottom: ${theme.spacing(2)};
+  `,
+  toggleLabels: css`
+    display: flex;
+    flex-direction: column;
+    gap: ${theme.spacing(0.5)};
+    flex: 1;
   `,
 });

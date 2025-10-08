@@ -23,6 +23,7 @@ type CompletionResult = 'completed' | 'timeout' | 'cancelled';
 export class GuidedHandler {
   private activeListeners: Array<{ element: HTMLElement; type: string; handler: EventListener }> = [];
   private currentAbortController: AbortController | null = null;
+  private completedSteps: number[] = []; // Track completed steps for progress display
 
   constructor(
     private stateManager: InteractiveStateManager,
@@ -51,6 +52,13 @@ export class GuidedHandler {
     } catch (error) {
       this.stateManager.handleError(error as Error, 'GuidedHandler', data, false);
     }
+  }
+
+  /**
+   * Reset completed steps tracking (call before starting new guided sequence)
+   */
+  resetProgress(): void {
+    this.completedSteps = [];
   }
 
   /**
@@ -86,6 +94,11 @@ export class GuidedHandler {
 
       // Wait for user to complete the action (listener already attached)
       const result = await completionPromise;
+
+      // Track completion for progress display
+      if (result === 'completed') {
+        this.completedSteps.push(stepIndex);
+      }
 
       // Don't remove highlight after completion - let it persist until next action
       // Highlights will be cleared when:
@@ -209,10 +222,16 @@ export class GuidedHandler {
     // Use custom comment if provided, otherwise generate default message
     const message = customComment || this.getActionMessage(actionType, stepIndex, totalSteps);
 
-    // Use existing highlight system with persistent highlight
+    // Build step info for progress display in comment tooltip
+    const stepInfo = {
+      current: stepIndex,
+      total: totalSteps,
+      completedSteps: [...this.completedSteps], // Copy to avoid mutations
+    };
 
+    // Use existing highlight system with persistent highlight
     // Disable auto-cleanup for guided mode - highlights should only clear when step completes
-    await this.navigationManager.highlightWithComment(element, message, false);
+    await this.navigationManager.highlightWithComment(element, message, false, stepInfo);
 
     // Add a persistent highlight class that won't auto-remove
     element.classList.add('interactive-guided-active');
@@ -226,17 +245,16 @@ export class GuidedHandler {
     stepIndex: number,
     totalSteps: number
   ): string {
-    const stepLabel = `Step ${stepIndex + 1}/${totalSteps}`;
-
+    // Step number is now shown in checkbox list, so just show the instruction
     switch (actionType) {
       case 'hover':
-        return `${stepLabel}: Hover your mouse over this element`;
+        return 'Hover your mouse over this element';
       case 'button':
-        return `${stepLabel}: Click this element`;
+        return 'Click this element';
       case 'highlight':
-        return `${stepLabel}: Click this element`;
+        return 'Click this element';
       default:
-        return `${stepLabel}: Interact with this element`;
+        return 'Interact with this element';
     }
   }
 

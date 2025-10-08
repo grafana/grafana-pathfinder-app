@@ -87,6 +87,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
     const [executionError, setExecutionError] = useState<string | null>(null);
+    const [wasCancelled, setWasCancelled] = useState(false);
 
     // Get plugin configuration for auto-detection settings
     const pluginContext = usePluginContext();
@@ -109,6 +110,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         setExecutionError(null);
         setCurrentStepIndex(0);
         setCurrentStepStatus('waiting');
+        setWasCancelled(false);
       }
     }, [resetTrigger]);
 
@@ -151,10 +153,14 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setExecutionError(null);
       setCurrentStepIndex(0);
       setCurrentStepStatus('waiting');
+      setWasCancelled(false);
 
       const { NavigationManager } = await import('../../../navigation-manager');
       const navManager = new NavigationManager();
       navManager.clearAllHighlights();
+
+      // Reset progress tracking before starting
+      guidedHandler.resetProgress();
 
       try {
         // Execute each internal action in sequence, waiting for user
@@ -352,6 +358,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setExecutionError(null);
       setCurrentStepIndex(0);
       setCurrentStepStatus('waiting');
+      setWasCancelled(false);
 
       if (onStepReset && stepId) {
         onStepReset(stepId);
@@ -372,12 +379,31 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       }
     }, [stepId, onStepComplete, onComplete]);
 
-    // Handle retry after timeout
+    // Handle retry after timeout or cancellation
     const handleRetry = useCallback(async () => {
       setExecutionError(null);
       setCurrentStepStatus('waiting');
+      setWasCancelled(false);
       await executeStep();
     }, [executeStep]);
+
+    // Handle cancel during guided execution
+    const handleCancel = useCallback(async () => {
+      // Cancel the current guided step
+      guidedHandler.cancel();
+
+      // Clear highlights
+      const { NavigationManager } = await import('../../../navigation-manager');
+      const navManager = new NavigationManager();
+      navManager.clearAllHighlights();
+
+      // Reset to initial state - simply revert to "Start guided interaction" button
+      setIsExecuting(false);
+      setExecutionError(null);
+      setCurrentStepIndex(0);
+      setCurrentStepStatus('waiting');
+      setWasCancelled(false); // Don't show error state - just return to start
+    }, [guidedHandler]);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 
@@ -435,7 +461,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         <div className="interactive-step-actions">
           <div className="interactive-step-action-buttons">
             {/* Show "Start" button when not completed */}
-            {!isCompletedWithObjectives && checker.isEnabled && (
+            {!isCompletedWithObjectives && checker.isEnabled && !isExecuting && (
               <Button
                 onClick={handleDoAction}
                 disabled={disabled || isAnyActionRunning || !checker.isEnabled}
@@ -445,6 +471,49 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                 title={getButtonTitle()}
               >
                 {getButtonText()}
+              </Button>
+            )}
+
+            {/* Show "Cancel" button during execution */}
+            {isExecuting && !executionError && (
+              <Button
+                onClick={handleCancel}
+                disabled={disabled}
+                size="sm"
+                variant="secondary"
+                className="interactive-step-cancel-btn"
+                title="Cancel guided interaction"
+              >
+                Cancel
+              </Button>
+            )}
+
+            {/* Show "Skip" button when guided step is skippable and not executing (always available, not just on error) */}
+            {skippable && !isCompletedWithObjectives && !isExecuting && (
+              <Button
+                onClick={async () => {
+                  if (checker.markSkipped) {
+                    await checker.markSkipped();
+
+                    // Mark as completed and notify parent
+                    setIsLocallyCompleted(true);
+
+                    if (onStepComplete && stepId) {
+                      onStepComplete(stepId);
+                    }
+
+                    if (onComplete) {
+                      onComplete();
+                    }
+                  }
+                }}
+                disabled={disabled || isAnyActionRunning}
+                size="sm"
+                variant="secondary"
+                className="interactive-step-skip-btn"
+                title="Skip this guided interaction without executing"
+              >
+                Skip
               </Button>
             )}
           </div>
@@ -505,13 +574,29 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           </div>
         )}
 
+        {/* Show options after cancellation */}
+        {wasCancelled && !checker.isChecking && !executionError && (
+          <div className="interactive-step-execution-error">
+            Guided interaction was cancelled.
+            <div className="interactive-step-error-buttons">
+              <button className="interactive-error-retry-btn" onClick={handleRetry}>
+                Retry
+              </button>
+              {skippable && (
+                <button className="interactive-requirement-skip-btn" onClick={handleSkipStep}>
+                  Skip
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Show progress indicator when executing */}
         {isExecuting && !executionError && (
           <div className="interactive-guided-progress">
             <div className="interactive-guided-progress-text">
-              Step {currentStepIndex + 1} of {internalActions.length}
-              {currentStepStatus === 'waiting' && ' - Follow the highlighted instruction'}
-              {currentStepStatus === 'completed' && ' - ✓ Moving to next step...'}
+              {currentStepStatus === 'waiting' && 'Follow the highlighted instruction'}
+              {currentStepStatus === 'completed' && '✓ Moving to next step...'}
             </div>
             <div className="interactive-guided-progress-bar">
               <div

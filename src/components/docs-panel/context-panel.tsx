@@ -78,6 +78,27 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     onOpenDocsPage: model.state.onOpenDocsPage,
   });
 
+  // Listen for auto-open events from global link interceptor
+  React.useEffect(() => {
+    const handleAutoOpen = (event: Event) => {
+      const customEvent = event as CustomEvent<{ url: string; title: string; origin: string }>;
+      const { url, title } = customEvent.detail;
+
+      // Determine if it's a learning journey or regular docs page
+      if (url.includes('/learning-journeys/')) {
+        openLearningJourney(url, title);
+      } else {
+        openDocsPage(url, title);
+      }
+    };
+
+    document.addEventListener('pathfinder-auto-open-docs', handleAutoOpen);
+
+    return () => {
+      document.removeEventListener('pathfinder-auto-open-docs', handleAutoOpen);
+    };
+  }, [openLearningJourney, openDocsPage]);
+
   const { recommendations, isLoading, recommendationsError } = contextData;
 
   const styles = useStyles2(getStyles);

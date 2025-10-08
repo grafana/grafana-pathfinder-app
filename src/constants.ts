@@ -19,6 +19,9 @@ export const DEFAULT_AUTO_DETECTION_DEBOUNCE = 100; // ms
 export const DEFAULT_REQUIREMENTS_CHECK_TIMEOUT = 3000; // ms
 export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
 
+// Global Link Interception defaults
+export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = false; // Opt-in feature
+
 // Configuration interface
 export interface DocsPluginConfig {
   recommenderServiceUrl?: string;
@@ -35,6 +38,8 @@ export interface DocsPluginConfig {
   autoDetectionDebounce?: number;
   requirementsCheckTimeout?: number;
   guidedStepTimeout?: number;
+  // Global Link Interception
+  interceptGlobalDocsLinks?: boolean;
 }
 
 // Helper functions to get configuration values with defaults
@@ -52,6 +57,8 @@ export const getConfigWithDefaults = (config: DocsPluginConfig): Required<DocsPl
   autoDetectionDebounce: config.autoDetectionDebounce ?? DEFAULT_AUTO_DETECTION_DEBOUNCE,
   requirementsCheckTimeout: config.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   guidedStepTimeout: config.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
+  // Global Link Interception
+  interceptGlobalDocsLinks: config.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
 });
 
 /**
