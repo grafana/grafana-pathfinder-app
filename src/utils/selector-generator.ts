@@ -143,12 +143,25 @@ function normalizeText(text: string): string {
 }
 
 /**
- * Normalize href to pathname only (strip query strings and hashes)
+ * Normalize href by removing query strings and hashes while preserving relative/absolute path
+ * Keeps the original path format (relative vs absolute) for exact attribute matching
  */
 function normalizeHref(href: string): string {
   try {
-    const url = new URL(href, window.location.href);
-    return url.pathname; // Drop search/hash for stability
+    // For URLs with query strings or hashes, strip them
+    const hashIndex = href.indexOf('#');
+    const queryIndex = href.indexOf('?');
+
+    let endIndex = href.length;
+    if (hashIndex > 0) {
+      endIndex = hashIndex;
+    }
+    if (queryIndex > 0 && queryIndex < endIndex) {
+      endIndex = queryIndex;
+    }
+
+    // Return the path portion, preserving relative vs absolute format
+    return href.substring(0, endIndex);
   } catch {
     return href; // Invalid URL, return as-is
   }
@@ -217,9 +230,40 @@ function isUniqueButtonText(text: string): boolean {
 // which provides better specificity by including parent context
 
 /**
+ * Check if an element is a card-like container
+ * Cards are common UI patterns where the entire container is clickable
+ */
+function isCardLikeContainer(element: HTMLElement): boolean {
+  const classNames = element.className.toString().toLowerCase();
+
+  // Common card patterns in class names
+  if (classNames.includes('card')) {
+    return true;
+  }
+
+  // List items with clickable content patterns
+  if (element.tagName.toLowerCase() === 'li') {
+    // Check if it has card-like structure (multiple child sections)
+    const childDivs = element.querySelectorAll(':scope > div, :scope > div > div');
+    if (childDivs.length >= 2) {
+      return true;
+    }
+  }
+
+  // Divs with specific roles that indicate containers
+  const role = element.getAttribute('role');
+  if (role && ['article', 'group', 'listitem', 'option'].includes(role)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Find the best element in the hierarchy (walk up to find semantic attributes)
  * Often users click on a span/icon inside a button/link - we want the parent
  * Prioritizes elements with strong selectable attributes
+ * Detects card-like patterns to avoid over-prioritizing buttons inside cards
  */
 function findBestElementInHierarchy(element: HTMLElement, maxDepth = 5): HTMLElement {
   let current: HTMLElement | null = element;
@@ -227,10 +271,26 @@ function findBestElementInHierarchy(element: HTMLElement, maxDepth = 5): HTMLEle
   let bestElement = element;
   let bestScore = scoreElement(element);
 
-  // First pass: look for elements with any test ID (highest priority!)
-  // Also look for interactive elements (links, buttons, form controls)
+  // Track if we're inside a card-like container
+  let cardBoundary: HTMLElement | null = null;
+
+  // First pass: Check for card boundaries in the entire hierarchy first
+  // This prevents us from selecting buttons inside cards
   let searchElement: HTMLElement | null = element;
   let searchDepth = 0;
+  while (searchElement && searchDepth < maxDepth) {
+    if (isCardLikeContainer(searchElement)) {
+      cardBoundary = searchElement;
+      break; // Found a card, stop looking for more
+    }
+    searchElement = searchElement.parentElement;
+    searchDepth++;
+  }
+
+  // Second pass: look for elements with any test ID (highest priority!)
+  // Also look for interactive elements, respecting card boundaries
+  searchElement = element;
+  searchDepth = 0;
   while (searchElement && searchDepth < maxDepth) {
     const tag = searchElement.tagName.toLowerCase();
 
@@ -239,9 +299,17 @@ function findBestElementInHierarchy(element: HTMLElement, maxDepth = 5): HTMLEle
       return searchElement;
     }
 
-    // If we find a link, button, or form control, that's also excellent
-    if (tag === 'a' || tag === 'button' || tag === 'input' || tag === 'textarea' || tag === 'select') {
-      return searchElement;
+    // If we're inside a card and at a button/link, return the card instead
+    if (cardBoundary && (tag === 'button' || tag === 'a')) {
+      // The contextual selector builder will make it unique using :has() with the button content
+      return cardBoundary;
+    }
+
+    // For elements NOT inside cards, links/buttons are excellent targets
+    if (!cardBoundary) {
+      if (tag === 'a' || tag === 'button' || tag === 'input' || tag === 'textarea' || tag === 'select') {
+        return searchElement;
+      }
     }
 
     // If we find aria-label on an interactive element (div with role, etc.)
@@ -391,45 +459,24 @@ export function generateBestSelector(element: HTMLElement): string {
     // For links, include normalized href for specificity
     if (tag === 'a' && bestElement.hasAttribute('href')) {
       const href = normalizeHref(bestElement.getAttribute('href')!);
-      return `${tag}[${testIdAttr}="${testId}"][href="${href}"]`;
+      const baseSelector = `${tag}[${testIdAttr}="${testId}"][href="${href}"]`;
+      return buildContextualSelector(bestElement, baseSelector);
     }
 
-    return `${tag}[${testIdAttr}="${testId}"]`;
+    const baseSelector = `${tag}[${testIdAttr}="${testId}"]`;
+    return buildContextualSelector(bestElement, baseSelector);
   }
 
   // 2. Check ID (if not auto-generated)
   if (bestElement.id && !isAutoGeneratedId(bestElement.id)) {
-    return `#${bestElement.id}`;
+    const baseSelector = `#${bestElement.id}`;
+    return buildContextualSelector(bestElement, baseSelector);
   }
 
-  // 3. Check aria-label (semantic and stable)
-  if (bestElement.hasAttribute('aria-label')) {
-    const ariaLabel = bestElement.getAttribute('aria-label');
-    const tag = bestElement.tagName.toLowerCase();
-    return `${tag}[aria-label="${ariaLabel}"]`;
-  }
-
-  // 4. For inputs, check name attribute
-  if (
-    (bestElement.tagName === 'INPUT' || bestElement.tagName === 'TEXTAREA' || bestElement.tagName === 'SELECT') &&
-    bestElement.hasAttribute('name')
-  ) {
-    const name = bestElement.getAttribute('name');
-    const tag = bestElement.tagName.toLowerCase();
-    return `${tag}[name="${name}"]`;
-  }
-
-  // 5. For links with href, use normalized pathname
-  if (bestElement.tagName === 'A' && bestElement.hasAttribute('href')) {
-    const href = normalizeHref(bestElement.getAttribute('href')!);
-    return `a[href="${href}"]`;
-  }
-
-  // 6. For buttons, use parent context with :contains or unique text
+  // 3. For buttons, prioritize visible text over aria-label (users interact with what they see)
   if (bestElement.tagName === 'BUTTON') {
     const text = bestElement.textContent;
     if (text && text.length > 0) {
-      // Use normalizeText utility for consistent text handling
       const cleanText = normalizeText(text);
 
       if (cleanText.length > 0 && cleanText.length < 50) {
@@ -445,14 +492,320 @@ export function generateBestSelector(element: HTMLElement): string {
           return cleanText; // Will use findButtonByText
         }
 
-        // Strategy C: Standalone :contains as fallback
-        return `button:contains("${cleanText}")`;
+        // Strategy C: Standalone :contains as fallback (with validation)
+        const baseSelector = `button:contains("${cleanText}")`;
+        return buildContextualSelector(bestElement, baseSelector);
       }
     }
   }
 
+  // 4. Check aria-label (semantic and stable) - but after button text
+  if (bestElement.hasAttribute('aria-label')) {
+    const ariaLabel = bestElement.getAttribute('aria-label');
+    const tag = bestElement.tagName.toLowerCase();
+    const baseSelector = `${tag}[aria-label="${ariaLabel}"]`;
+    return buildContextualSelector(bestElement, baseSelector);
+  }
+
+  // 5. For inputs, check name attribute
+  if (
+    (bestElement.tagName === 'INPUT' || bestElement.tagName === 'TEXTAREA' || bestElement.tagName === 'SELECT') &&
+    bestElement.hasAttribute('name')
+  ) {
+    const name = bestElement.getAttribute('name');
+    const tag = bestElement.tagName.toLowerCase();
+    const baseSelector = `${tag}[name="${name}"]`;
+    return buildContextualSelector(bestElement, baseSelector);
+  }
+
+  // 6. For links with href, use normalized pathname
+  if (bestElement.tagName === 'A' && bestElement.hasAttribute('href')) {
+    const href = normalizeHref(bestElement.getAttribute('href')!);
+    const baseSelector = `a[href="${href}"]`;
+    return buildContextualSelector(bestElement, baseSelector);
+  }
+
   // 7. Build compound selector with tag + attributes + parent context
-  return buildCompoundSelectorWithContext(bestElement);
+  const compoundSelector = buildCompoundSelectorWithContext(bestElement);
+  return buildContextualSelector(bestElement, compoundSelector);
+}
+
+/**
+ * Get all descendants up to a specified depth using BFS traversal
+ * @param element - Root element to start from
+ * @param maxDepth - Maximum depth to traverse (1 = direct children, 2 = children + grandchildren)
+ * @returns Array of descendant elements up to maxDepth
+ */
+function getDescendantsUpToDepth(element: HTMLElement, maxDepth: number): HTMLElement[] {
+  const descendants: HTMLElement[] = [];
+  const queue: Array<{ element: HTMLElement; depth: number }> = [{ element, depth: 0 }];
+
+  while (queue.length > 0) {
+    const { element: current, depth } = queue.shift()!;
+
+    if (depth >= maxDepth) {
+      continue;
+    }
+
+    // Add children to queue and to results
+    Array.from(current.children).forEach((child) => {
+      if (child instanceof HTMLElement) {
+        descendants.push(child);
+        queue.push({ element: child, depth: depth + 1 });
+      }
+    });
+  }
+
+  return descendants;
+}
+
+/**
+ * Check if an element is a leaf text element (no semantic children, just text)
+ * Used to determine if we should use the element's text content for matching
+ */
+function isLeafTextElement(element: HTMLElement): boolean {
+  const tag = element.tagName.toLowerCase();
+
+  // These are always leaf elements
+  if (['button', 'a', 'span', 'label', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p'].includes(tag)) {
+    return true;
+  }
+
+  // For other elements (div, li, etc.), check if they have semantic children
+  // If they have semantic children, they're containers, not leaf elements
+  const semanticChildren = element.querySelectorAll('button, a, h1, h2, h3, h4, h5, h6, input, select, textarea');
+
+  return semanticChildren.length === 0;
+}
+
+/**
+ * Extract a unique identifier from a child element for use in :has() selector
+ * Returns selector fragment or null if child has no useful identifiers
+ * Prioritizes specific semantic elements over container divs with all text
+ */
+function getUniqueChildIdentifier(child: HTMLElement): string | null {
+  const tag = child.tagName.toLowerCase();
+
+  // Priority 1: Test ID attribute
+  const testId = getAnyTestId(child);
+  if (testId) {
+    const testIdAttr =
+      ['data-testid', 'data-cy', 'data-test-id', 'data-qa', 'data-test-subj'].find((attr) =>
+        child.hasAttribute(attr)
+      ) || 'data-testid';
+    return `${tag}[${testIdAttr}="${testId}"]`;
+  }
+
+  // Priority 2: Non-auto-generated ID
+  if (child.id && !isAutoGeneratedId(child.id)) {
+    return `#${child.id}`;
+  }
+
+  // Priority 3: Text content (ONLY for leaf elements to avoid container divs with all nested text)
+  const textContent = normalizeText(child.textContent || '');
+  if (textContent.length > 0 && textContent.length < 50 && isLeafTextElement(child)) {
+    return `${tag}:contains("${textContent}")`;
+  }
+
+  // Priority 4: aria-label (after text content)
+  if (child.hasAttribute('aria-label')) {
+    const ariaLabel = child.getAttribute('aria-label');
+    return `${tag}[aria-label="${ariaLabel}"]`;
+  }
+
+  // Priority 5: Meaningful classes
+  const meaningfulClasses = getMeaningfulClasses(child);
+  if (meaningfulClasses.length > 0) {
+    return `${tag}.${meaningfulClasses[0]}`;
+  }
+
+  return null;
+}
+
+/**
+ * Find unique child context by examining descendants
+ * Builds :has() selectors based on distinguishing child elements
+ */
+function findUniqueChildContext(element: HTMLElement, baseSelector: string, allMatches: HTMLElement[]): string | null {
+  // Get descendants up to 2 levels deep
+  const descendants = getDescendantsUpToDepth(element, 2);
+
+  // Try single child distinguishers first
+  for (const child of descendants) {
+    const childIdentifier = getUniqueChildIdentifier(child);
+    if (!childIdentifier) {
+      continue;
+    }
+
+    const candidateSelector = `${baseSelector}:has(${childIdentifier})`;
+    try {
+      const result = querySelectorAllEnhanced(candidateSelector);
+
+      // Check if this makes the selector unique and still matches our element
+      if (result.elements.length === 1 && result.elements[0] === element) {
+        return candidateSelector;
+      }
+    } catch (error) {
+      // Selector validation failed, try next child
+      continue;
+    }
+  }
+
+  // Try combining two children for more specificity
+  for (let i = 0; i < descendants.length && i < 5; i++) {
+    const firstChild = descendants[i];
+    const firstIdentifier = getUniqueChildIdentifier(firstChild);
+    if (!firstIdentifier) {
+      continue;
+    }
+
+    for (let j = i + 1; j < descendants.length && j < 5; j++) {
+      const secondChild = descendants[j];
+      const secondIdentifier = getUniqueChildIdentifier(secondChild);
+      if (!secondIdentifier) {
+        continue;
+      }
+
+      const candidateSelector = `${baseSelector}:has(${firstIdentifier}):has(${secondIdentifier})`;
+      try {
+        const result = querySelectorAllEnhanced(candidateSelector);
+
+        if (result.elements.length === 1 && result.elements[0] === element) {
+          return candidateSelector;
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Find unique parent context by traversing up the hierarchy
+ * Combines parent selector with current element selector
+ */
+function findUniqueParentContext(element: HTMLElement, baseSelector: string): string | null {
+  let currentParent = element.parentElement;
+  let depth = 0;
+  const maxDepth = 2;
+
+  while (currentParent && depth < maxDepth) {
+    // Avoid infinite recursion by checking if parent has better attributes than child
+    const parentTestId = getAnyTestId(currentParent);
+    const parentId = currentParent.id && !isAutoGeneratedId(currentParent.id);
+    const parentAriaLabel = currentParent.hasAttribute('aria-label');
+
+    if (parentTestId || parentId || parentAriaLabel) {
+      try {
+        // Generate parent selector (but prevent it from recursively adding context)
+        const parentSelector = generateBestSelectorWithoutContext(currentParent);
+        const candidateSelector = `${parentSelector} ${baseSelector}`;
+
+        const result = querySelectorAllEnhanced(candidateSelector);
+
+        // Check if this makes the selector unique
+        if (result.elements.length === 1 && result.elements[0] === element) {
+          return candidateSelector;
+        }
+      } catch (error) {
+        // Parent selector failed, try next level
+      }
+    }
+
+    currentParent = currentParent.parentElement;
+    depth++;
+  }
+
+  return null;
+}
+
+/**
+ * Add :nth-match() context as last resort for positional selection
+ * Finds element's position among all matches
+ */
+function addNthMatchContext(element: HTMLElement, baseSelector: string, allMatches: HTMLElement[]): string {
+  const index = allMatches.indexOf(element);
+  if (index >= 0) {
+    return `${baseSelector}:nth-match(${index + 1})`;
+  }
+  // If element not found in matches (shouldn't happen), return base selector
+  return baseSelector;
+}
+
+/**
+ * Build contextual selector with validation and hierarchical context
+ * Orchestrates child, parent, and positional context strategies
+ */
+function buildContextualSelector(element: HTMLElement, baseSelector: string): string {
+  // First, validate if base selector is already unique
+  try {
+    const matches = querySelectorAllEnhanced(baseSelector);
+
+    if (matches.elements.length === 1) {
+      // Already unique, no context needed
+      return baseSelector;
+    }
+
+    if (matches.elements.length === 0) {
+      // Selector doesn't match anything, return as-is (might be invalid)
+      return baseSelector;
+    }
+
+    // Strategy 1: Try child distinguishers using :has()
+    const childContext = findUniqueChildContext(element, baseSelector, matches.elements);
+    if (childContext) {
+      return childContext;
+    }
+
+    // Strategy 2: Try parent context
+    const parentContext = findUniqueParentContext(element, baseSelector);
+    if (parentContext) {
+      return parentContext;
+    }
+
+    // Strategy 3: Use :nth-match() as last resort
+    return addNthMatchContext(element, baseSelector, matches.elements);
+  } catch (error) {
+    // If validation fails, return base selector
+    console.warn(`Context validation failed for "${baseSelector}":`, error);
+    return baseSelector;
+  }
+}
+
+/**
+ * Generate selector without contextual validation (used internally to prevent recursion)
+ * This is the original selector generation logic without the validation layer
+ */
+function generateBestSelectorWithoutContext(element: HTMLElement): string {
+  // Use basic selector generation without recursive context building
+  const bestElement = findBestElementInHierarchy(element);
+  const tag = bestElement.tagName.toLowerCase();
+
+  // Priority 1: Test ID
+  const testId = getAnyTestId(bestElement);
+  if (testId) {
+    const testIdAttr =
+      ['data-testid', 'data-cy', 'data-test-id', 'data-qa', 'data-test-subj'].find((attr) =>
+        bestElement.hasAttribute(attr)
+      ) || 'data-testid';
+    return `${tag}[${testIdAttr}="${testId}"]`;
+  }
+
+  // Priority 2: Non-auto-generated ID
+  if (bestElement.id && !isAutoGeneratedId(bestElement.id)) {
+    return `#${bestElement.id}`;
+  }
+
+  // Priority 3: aria-label
+  if (bestElement.hasAttribute('aria-label')) {
+    const ariaLabel = bestElement.getAttribute('aria-label');
+    return `${tag}[aria-label="${ariaLabel}"]`;
+  }
+
+  // Fallback to tag
+  return tag;
 }
 
 /**
@@ -509,7 +862,7 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
     }
   }
 
-  // Strategy 2: Use :contains as fallback for elements with unique text
+  // Strategy 2: Use :contains as fallback for LEAF elements only (buttons/links with short text)
   if ((tag === 'button' || tag === 'a') && element.textContent) {
     const text = normalizeText(element.textContent);
     if (text.length > 0 && text.length < 50) {
@@ -517,22 +870,8 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
     }
   }
 
-  // Strategy 3: For ANY element with text content, use :contains as ultimate fallback
-  if (element.textContent) {
-    const text = normalizeText(element.textContent);
-    // Use first few words if text is long
-    const shortText = text.length > 30 ? text.substring(0, 30) + '...' : text;
-    if (shortText.length > 0) {
-      // If we have a parent with good ID, scope the :contains
-      const parent = element.parentElement;
-      if (parent && (getAnyTestId(parent) || parent.id)) {
-        const parentSelector = generateBestSelector(parent);
-        return `${parentSelector} ${tag}:contains("${shortText}")`;
-      }
-      // Otherwise use standalone :contains
-      return `${tag}:contains("${shortText}")`;
-    }
-  }
+  // Strategy 3 removed - let buildContextualSelector handle text-based context via :has()
+  // This prevents container divs from using their full nested text content
 
   // Strategy 4: Add :nth-of-type with parent context as last resort
   if (element.parentElement) {
@@ -559,7 +898,7 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
  * Returns the selector along with metadata about how it was generated
  *
  * @param element - The DOM element to analyze
- * @returns Object containing selector, generation method, uniqueness, and match count
+ * @returns Object containing selector, generation method, uniqueness, match count, and context strategy
  *
  * @example
  * ```typescript
@@ -567,6 +906,7 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
  * console.log(info.selector); // "button[data-testid='save']"
  * console.log(info.method);   // "data-testid"
  * console.log(info.isUnique); // true
+ * console.log(info.contextStrategy); // "child-has"
  * ```
  */
 export function getSelectorInfo(element: HTMLElement): {
@@ -574,14 +914,13 @@ export function getSelectorInfo(element: HTMLElement): {
   method: string;
   isUnique: boolean;
   matchCount: number;
+  contextStrategy?: string;
 } {
   const selector = generateBestSelector(element);
 
   // Determine which method was used
   let method = 'compound';
-  if (selector.includes(':contains(')) {
-    method = 'contains';
-  } else if (selector.includes('data-testid')) {
+  if (selector.includes('data-testid') || selector.includes('data-cy') || selector.includes('data-test-id')) {
     method = 'data-testid';
   } else if (selector.startsWith('#')) {
     method = 'id';
@@ -595,15 +934,28 @@ export function getSelectorInfo(element: HTMLElement): {
     method = 'button-text';
   } else if (selector.includes(':nth-of-type')) {
     method = 'nth-of-type';
+  } else if (selector.includes(':contains(')) {
+    method = 'contains';
   }
 
-  // Check uniqueness using enhanced selector for :contains() support
+  // Determine context strategy used
+  let contextStrategy: string | undefined;
+  if (selector.includes(':has(')) {
+    contextStrategy = 'child-has';
+  } else if (selector.includes(':nth-match(')) {
+    contextStrategy = 'nth-match';
+  } else if (selector.includes(' ') && !selector.includes(':contains(')) {
+    // Has descendant combinator (space) but not just :contains
+    contextStrategy = 'parent-context';
+  }
+
+  // Check uniqueness using enhanced selector for :contains() and :has() support
   let matchCount = 0;
   try {
     if (method === 'button-text') {
       matchCount = findButtonByText(selector).length;
-    } else if (method === 'contains') {
-      // Use enhanced selector for :contains() support
+    } else if (method === 'contains' || selector.includes(':has(') || selector.includes(':nth-match(')) {
+      // Use enhanced selector for complex pseudo-selectors
       const result = querySelectorAllEnhanced(selector);
       matchCount = result.elements.length;
     } else {
@@ -618,5 +970,6 @@ export function getSelectorInfo(element: HTMLElement): {
     method,
     isUnique: matchCount === 1,
     matchCount,
+    contextStrategy,
   };
 }
