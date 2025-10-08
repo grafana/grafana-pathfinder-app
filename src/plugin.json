@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "app",
   "name": "Grafana Pathfinder",
-  "id": "grafana-grafanadocsplugin-app",
+  "id": "grafana-pathfinder-app",
   "backend": false,
   "autoEnabled": true,
   "info": {
@@ -26,8 +26,8 @@
     {
       "type": "page",
       "name": "Grafana Pathfinder",
-      "path": "/a/grafana-grafanadocsplugin-app",
-      "action": "grafana-grafanadocsplugin-app.docs:read",
+      "path": "/a/grafana-pathfinder-app",
+      "action": "grafana-pathfinder-app.docs:read",
       "addToNav": false,
       "defaultNav": false
     }
@@ -76,10 +76,10 @@
         "permissions": [
           {
             "action": "plugins.app:access",
-            "scope": "plugins:id:grafana-grafanadocsplugin-app"
+            "scope": "plugins:id:grafana-pathfinder-app"
           },
           {
-            "action": "grafana-grafanadocsplugin-app.docs:read"
+            "action": "grafana-pathfinder-app.docs:read"
           }
         ]
       }

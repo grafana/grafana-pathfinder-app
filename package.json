@@ -1,5 +1,5 @@
 {
-  "name": "grafana-docs-plugin",
+  "name": "grafana-pathfinder-app",
   "version": "1.1.31",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
