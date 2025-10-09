@@ -21,51 +21,14 @@ import { isElementVisible } from './element-validator';
 export type DetectedAction = 'highlight' | 'button' | 'formfill' | 'navigate' | 'hover';
 
 /**
- * Check if an element is inside a card-like container
- */
-function isInsideCardContainer(element: HTMLElement): boolean {
-  let current: HTMLElement | null = element;
-  let depth = 0;
-  const maxDepth = 5;
-
-  while (current && depth < maxDepth) {
-    const classNames = current.className.toString().toLowerCase();
-
-    // Common card patterns in class names
-    if (classNames.includes('card')) {
-      return true;
-    }
-
-    // List items with clickable content patterns
-    if (current.tagName.toLowerCase() === 'li') {
-      const childDivs = current.querySelectorAll(':scope > div, :scope > div > div');
-      if (childDivs.length >= 2) {
-        return true;
-      }
-    }
-
-    // Divs with specific roles that indicate containers
-    const role = current.getAttribute('role');
-    if (role && ['article', 'group', 'listitem', 'option'].includes(role)) {
-      return true;
-    }
-
-    current = current.parentElement;
-    depth++;
-  }
-
-  return false;
-}
-
-/**
- * Detect the best action type for an element based on its tag and attributes
+ * Detect the best action type for an element based on its tag and attributes - SIMPLIFIED
  *
- * Analyzes the element to determine what type of interaction makes sense:
- * - Form elements → 'formfill' (captures values)
- * - Buttons with unique text (not in cards) → 'button' (uses text matching)
- * - Buttons in cards → 'highlight' (card is the target)
- * - External links → 'navigate' (opens new pages)
- * - Everything else → 'highlight' (generic click)
+ * Core principle: Keep it simple - use the element's natural behavior
+ * - Form elements → 'formfill' (except radio/checkbox which are 'highlight')
+ * - Buttons with unique text and no testid → 'button' (text matching)
+ * - Buttons with testid → 'highlight' (CSS selector)
+ * - External links → 'navigate'
+ * - Everything else → 'highlight'
  *
  * @param element - The DOM element to analyze
  * @param event - Optional event for additional context
@@ -86,46 +49,58 @@ export function detectActionType(element: HTMLElement, event?: Event): DetectedA
   const tag = element.tagName.toLowerCase();
   const eventType = event?.type;
 
-  // Check if this is a hover event - only return 'hover' for mouseenter events
+  // Hover events
   if (eventType === 'mouseenter') {
     return 'hover';
   }
 
-  // Form elements always use formfill (for input/change events)
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+  // Form elements - radio/checkbox are clicked (highlight), others are filled (formfill)
+  if (tag === 'input') {
+    const inputType = (element as HTMLInputElement).type?.toLowerCase();
+    if (inputType === 'radio' || inputType === 'checkbox') {
+      return 'highlight';
+    }
+    return 'formfill';
+  }
+  if (tag === 'textarea' || tag === 'select') {
     return 'formfill';
   }
 
-  // Check if element is inside a card-like container
-  const insideCard = isInsideCardContainer(element);
-
-  // Buttons inside cards should use highlight (the card is the target)
-  // Standalone buttons use button action if they have unique text
+  // Buttons: Use 'button' action ONLY if unique text and no testid
   if (tag === 'button' || element.getAttribute('role') === 'button') {
-    if (insideCard) {
-      return 'highlight'; // Card container is the real target
+    // If button has testid, use highlight (CSS selector is better)
+    const hasTestId =
+      element.hasAttribute('data-testid') ||
+      element.hasAttribute('data-cy') ||
+      element.hasAttribute('aria-label') ||
+      (element.id && element.id.length > 0);
+
+    if (hasTestId) {
+      return 'highlight';
     }
 
+    // Only use button action if text is unique
     const text = element.textContent?.trim();
     if (text) {
       const buttons = findButtonByText(text);
       if (buttons.length === 1) {
-        return 'button'; // Unique text, use button action
+        return 'button'; // Unique text, use text matching
       }
     }
-    return 'highlight'; // Not unique, use highlight
+
+    return 'highlight'; // Default to highlight
   }
 
-  // Links could be navigate, but typically we use highlight for internal navigation
+  // Links: External → navigate, Internal → highlight
   if (tag === 'a') {
     const href = element.getAttribute('href');
     if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
-      return 'navigate'; // External link
+      return 'navigate';
     }
-    return 'highlight'; // Internal link, use highlight to click
+    return 'highlight';
   }
 
-  // Everything else defaults to highlight (most common action)
+  // Everything else → highlight
   return 'highlight';
 }
 
