@@ -75,8 +75,8 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
       // Scroll to the element with smooth behavior
       targetElement.scrollIntoView({
         behavior: 'smooth',
-        block: 'start',
-        inline: 'nearest',
+        block: 'center',
+        inline: 'center',
       });
 
       // Add highlight effect
