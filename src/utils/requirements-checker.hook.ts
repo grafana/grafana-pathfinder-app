@@ -320,6 +320,7 @@ export class SequentialRequirementsManager {
   private static instance: SequentialRequirementsManager;
   private steps = new Map<string, RequirementsState>();
   private listeners = new Set<() => void>();
+  private navClickListener?: (e: Event) => void;
 
   static getInstance(): SequentialRequirementsManager {
     if (!SequentialRequirementsManager.instance) {
@@ -509,15 +510,33 @@ export class SequentialRequirementsManager {
     this.domObserver = new MutationObserver((mutations) => {
       // Only react to meaningful changes
       const significantChange = mutations.some((mutation) => {
-        // Check for navigation menu changes, plugin list changes, etc.
         const target = mutation.target as Element;
-        return (
+
+        // Expanded navigation-related selectors to better detect nav open/close/dock
+        const isNavRelated =
+          target?.closest?.('div[data-testid*="navigation"]') ||
+          target?.closest?.('nav[aria-label*="Navigation"]') ||
+          target?.closest?.('ul[aria-label*="Navigation"]') ||
+          target?.closest?.('ul[aria-label*="Main navigation"]') ||
+          target?.closest?.('[role="navigation"]');
+
+        const isKnownHotspot =
           target?.closest?.('[data-testid*="nav"]') ||
           target?.closest?.('[data-testid*="plugin"]') ||
           target?.closest?.('[href*="/connections"]') ||
           target?.closest?.('[href*="/dashboards"]') ||
-          target?.closest?.('[href*="/admin"]')
-        );
+          target?.closest?.('[href*="/admin"]');
+
+        // Attribute flips commonly used for nav expansion/collapse
+        const attrFlip =
+          (mutation.type === 'attributes' &&
+            (mutation.attributeName === 'aria-expanded' ||
+              mutation.attributeName === 'class' ||
+              mutation.attributeName === 'data-testid' ||
+              mutation.attributeName === 'aria-label')) ||
+          false;
+
+        return Boolean(isNavRelated || isKnownHotspot || attrFlip);
       });
 
       if (significantChange) {
@@ -536,8 +555,15 @@ export class SequentialRequirementsManager {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-testid', 'aria-label', 'class', 'href'],
+      attributeFilter: ['data-testid', 'aria-label', 'class', 'href', 'aria-expanded', 'role'],
     });
+
+    // Add lightweight click listener to capture nav toggle interactions
+    this.navClickListener = () => {
+      const timeoutManager = TimeoutManager.getInstance();
+      timeoutManager.setDebounced('nav-click-recheck', () => this.triggerSelectiveRecheck(), 250, 'reactiveCheck');
+    };
+    document.addEventListener('click', this.navClickListener, { capture: true });
   }
 
   private startURLMonitoring(): void {
@@ -587,10 +613,16 @@ export class SequentialRequirementsManager {
       this.navigationUnlisten();
       this.navigationUnlisten = undefined;
     }
+    // Remove click listener
+    if (this.navClickListener) {
+      document.removeEventListener('click', this.navClickListener, { capture: true } as any);
+      this.navClickListener = undefined;
+    }
     // Clear any pending timeouts from the timeout manager
     const timeoutManager = TimeoutManager.getInstance();
     timeoutManager.clear('dom-check-throttle');
     timeoutManager.clear('url-check-throttle');
+    timeoutManager.clear('nav-click-recheck');
   }
 
   // Debug helpers

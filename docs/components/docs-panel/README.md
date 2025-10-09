@@ -1,3 +1,13 @@
+### Self-healing interactive steps
+
+Interactive steps now self-heal if users change UI state after a Fix (e.g., closing the navigation menu after it was opened/docked). The system:
+
+- Reacts to nav state changes (mutation observer, URL change, and likely nav clicks)
+- Re-evaluates requirements and reverts steps back to the fix state if prerequisites are no longer met
+- Optionally uses a short, scoped heartbeat window to recheck fragile prerequisites like `navmenu-open` for better resilience
+
+Configuration for the optional heartbeat lives in `INTERACTIVE_CONFIG.requirements.heartbeat` and is disabled by default.
+
 # Docs Panel Components
 
 The core documentation functionality of the plugin, including context-aware recommendations and interactive learning journeys.

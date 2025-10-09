@@ -6,7 +6,7 @@ This comprehensive guide covers all supported requirements for interactive tutor
 
 - **Requirements**: Comma-separated conditions in `data-requirements="requirement1,requirement2"`
 - **Validation**: All requirements must pass for the element to become enabled
-- **Live checking**: Requirements are continuously monitored and re-evaluated
+- **Live checking**: Event-driven rechecks respond to DOM/nav changes and relevant clicks; optional scoped heartbeat can re-validate fragile prerequisites for a short window
 - **User feedback**: Failed requirements show helpful explanations with "Fix this" or "Retry" buttons
 
 ## Navigation and UI State Requirements
@@ -27,6 +27,8 @@ This comprehensive guide covers all supported requirements for interactive tutor
 ```
 
 **Explanation when failed**: "The navigation menu needs to be open and docked. Click 'Fix this' to automatically open and dock the navigation menu."
+
+Note: If a user closes the navigation after a Fix, the system will re-detect the change and revert the step to the fix state. This is done via enhanced nav change detection and, when enabled, a short heartbeat window for fragile prerequisites.
 
 ### `exists-reftarget`
 

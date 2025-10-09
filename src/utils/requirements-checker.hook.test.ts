@@ -1,9 +1,33 @@
-import { renderHook, act } from '@testing-library/react';
 import {
+  SequentialRequirementsManager,
   useRequirementsChecker,
   useSequentialRequirements,
-  SequentialRequirementsManager,
 } from './requirements-checker.hook';
+
+describe('SequentialRequirementsManager DOM monitoring (nav)', () => {
+  it('triggers selective recheck on nav-related mutations', async () => {
+    const manager = SequentialRequirementsManager.getInstance();
+    const spy = jest.spyOn<any, any>(manager as any, 'triggerSelectiveRecheck');
+
+    manager.startDOMMonitoring();
+
+    const nav = document.createElement('nav');
+    nav.setAttribute('aria-label', 'Navigation');
+    document.body.appendChild(nav);
+
+    // Simulate attribute mutation
+    nav.setAttribute('aria-expanded', 'false');
+
+    // Debounced
+    await new Promise((resolve) => setTimeout(resolve, 900));
+
+    expect(spy).toHaveBeenCalled();
+
+    manager.stopDOMMonitoring();
+  });
+});
+
+import { renderHook, act } from '@testing-library/react';
 
 // Mock the interactive hook
 const mockCheckRequirements = jest.fn().mockResolvedValue({
