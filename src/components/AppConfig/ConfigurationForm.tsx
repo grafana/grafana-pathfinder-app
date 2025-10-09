@@ -261,7 +261,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             <Alert severity="info" title="How it works" className={s.marginTop}>
               <Text variant="body">
                 When you click a documentation link anywhere in Grafana, Pathfinder will automatically open the sidebar
-                (if closed) and display the documentation inside. Links are queued if the sidebar hasn&apos;t fully loaded yet.
+                (if closed) and display the documentation inside. Links are queued if the sidebar hasn&apos;t fully
+                loaded yet.
                 <br />
                 <br />
                 Hold <strong>Ctrl</strong> (Windows/Linux) or <strong>Cmd</strong> (Mac) while clicking any link to open

@@ -44,13 +44,7 @@ function initializeGlobalLinkInterceptor() {
     }
 
     // Only intercept left-click without modifiers
-    if (
-      event.button !== 0 ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.shiftKey ||
-      event.altKey
-    ) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
       return;
     }
 
@@ -164,7 +158,7 @@ function initializeGlobalLinkInterceptor() {
 // Function to enable/disable interception
 export function setGlobalLinkInterceptionEnabled(enabled: boolean) {
   isInterceptionEnabled = enabled;
-  
+
   // Initialize interceptor on first enable
   if (enabled && !isInterceptorInitialized) {
     initializeGlobalLinkInterceptor();

@@ -13,14 +13,14 @@ export interface GitHubUrlValidation {
 /**
  * Validates and parses a GitHub tree URL
  * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
- * 
+ *
  * @param url - The GitHub URL to validate
  * @returns Validation result with parsed data or error message
  */
 export function validateAndParseGitHubUrl(url: string): GitHubUrlValidation {
   // Trim whitespace
   const trimmedUrl = url.trim();
-  
+
   if (!trimmedUrl) {
     return {
       isValid: false,
@@ -49,12 +49,13 @@ export function validateAndParseGitHubUrl(url: string): GitHubUrlValidation {
 
   // Parse the path: /{owner}/{repo}/tree/{branch}/{path}
   const pathParts = urlObj.pathname.split('/').filter(Boolean);
-  
+
   // Need at least: owner, repo, tree, branch, path
   if (pathParts.length < 5) {
     return {
       isValid: false,
-      errorMessage: 'URL must be a GitHub tree URL pointing to a directory. Format: github.com/{owner}/{repo}/tree/{branch}/{path}',
+      errorMessage:
+        'URL must be a GitHub tree URL pointing to a directory. Format: github.com/{owner}/{repo}/tree/{branch}/{path}',
     };
   }
 
@@ -83,4 +84,3 @@ export function validateAndParseGitHubUrl(url: string): GitHubUrlValidation {
     cleanedUrl: trimmedUrl,
   };
 }
-
