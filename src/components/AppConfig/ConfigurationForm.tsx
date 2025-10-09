@@ -258,10 +258,10 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           </div>
 
           {state.interceptGlobalDocsLinks && (
-            <Alert severity="info" title="Important" className={s.marginTop}>
+            <Alert severity="info" title="How it works" className={s.marginTop}>
               <Text variant="body">
-                <strong>The Pathfinder sidebar must be open</strong> for link interception to work. Once enabled, open
-                the sidebar and keep it open while browsing Grafana.
+                When you click a documentation link anywhere in Grafana, Pathfinder will automatically open the sidebar
+                (if closed) and display the documentation inside. Links are queued if the sidebar hasn't fully loaded yet.
                 <br />
                 <br />
                 Hold <strong>Ctrl</strong> (Windows/Linux) or <strong>Cmd</strong> (Mac) while clicking any link to open

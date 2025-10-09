@@ -7,15 +7,174 @@ import {
 } from '@grafana/data';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
-import React, { Suspense, lazy, useCallback, useMemo } from 'react';
+import React, { Suspense, lazy, useMemo, useEffect } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { useGlobalLinkInterceptor } from './utils/global-link-interceptor.hook';
 import { getConfigWithDefaults } from './constants';
+
+// Persistent queue for docs links clicked before sidebar opens
+interface QueuedDocsLink {
+  url: string;
+  title: string;
+  timestamp: number;
+}
+
+// Global queue accessible from anywhere
+export const pendingDocsQueue: QueuedDocsLink[] = [];
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
+
+// Global link interceptor state
+let isInterceptorInitialized = false;
+let isInterceptionEnabled = false;
+let isSidebarMounted = false;
+
+// Pure JavaScript global click handler (runs outside React lifecycle)
+function initializeGlobalLinkInterceptor() {
+  if (isInterceptorInitialized) {
+    return;
+  }
+
+  const handleGlobalClick = (event: MouseEvent) => {
+    // Only intercept if feature is enabled
+    if (!isInterceptionEnabled) {
+      return;
+    }
+
+    // Only intercept left-click without modifiers
+    if (
+      event.button !== 0 ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    const anchor = target.closest('a[href]') as HTMLAnchorElement;
+
+    if (!anchor) {
+      return;
+    }
+
+    const href = anchor.getAttribute('href');
+    if (!href) {
+      return;
+    }
+
+    // Skip if link is inside Pathfinder content
+    if (anchor.closest('[data-pathfinder-content]')) {
+      return;
+    }
+
+    // Resolve full URL
+    let fullUrl: string;
+    try {
+      if (href.startsWith('http://') || href.startsWith('https://')) {
+        fullUrl = href;
+      } else if (href.startsWith('/')) {
+        fullUrl = `https://grafana.com${href}`;
+      } else if (href.startsWith('#')) {
+        return;
+      } else {
+        fullUrl = new URL(href, window.location.href).href;
+      }
+    } catch (error) {
+      return;
+    }
+
+    // Check if it's a supported docs URL
+    const isSupportedUrl =
+      fullUrl.includes('grafana.com/docs/') ||
+      fullUrl.includes('grafana.com/tutorials/') ||
+      fullUrl.includes('grafana.com/learning-journeys/');
+
+    if (!isSupportedUrl) {
+      return;
+    }
+
+    // Prevent default and intercept
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    // Extract title from URL
+    const extractTitle = (url: string): string => {
+      try {
+        const urlObj = new URL(url);
+        const pathSegments = urlObj.pathname.split('/').filter(Boolean);
+        if (pathSegments.length > 0) {
+          const lastSegment = pathSegments[pathSegments.length - 1];
+          return lastSegment
+            .split('-')
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+        }
+        return 'Documentation';
+      } catch {
+        return 'Documentation';
+      }
+    };
+
+    const title = extractTitle(fullUrl);
+
+    // If sidebar is already mounted, dispatch immediately
+    if (isSidebarMounted) {
+      const autoOpenEvent = new CustomEvent('pathfinder-auto-open-docs', {
+        detail: {
+          url: fullUrl,
+          title,
+          origin: 'global_link_interceptor_immediate',
+        },
+      });
+      document.dispatchEvent(autoOpenEvent);
+    } else {
+      // Sidebar not mounted - add to queue and open sidebar
+      pendingDocsQueue.push({
+        url: fullUrl,
+        title,
+        timestamp: Date.now(),
+      });
+
+      // Open sidebar
+      try {
+        const appEvents = getAppEvents();
+        appEvents.publish({
+          type: 'open-extension-sidebar',
+          payload: {
+            pluginId: pluginJson.id,
+            componentTitle: 'Grafana Pathfinder',
+          },
+        });
+      } catch (error) {
+        console.error('Failed to open sidebar:', error);
+      }
+    }
+  };
+
+  // Add global listener at document level
+  document.addEventListener('click', handleGlobalClick, { capture: true });
+  isInterceptorInitialized = true;
+}
+
+// Function to enable/disable interception
+export function setGlobalLinkInterceptionEnabled(enabled: boolean) {
+  isInterceptionEnabled = enabled;
+  
+  // Initialize interceptor on first enable
+  if (enabled && !isInterceptorInitialized) {
+    initializeGlobalLinkInterceptor();
+  }
+}
+
+// Function to track sidebar mount state
+export function setSidebarMounted(mounted: boolean) {
+  isSidebarMounted = mounted;
+}
 
 interface OpenExtensionSidebarPayload {
   props?: Record<string, unknown>;
@@ -81,50 +240,47 @@ plugin.addComponent({
       return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
     }, [pluginContext?.meta?.jsonData]);
 
-    // Callback to open docs link in Pathfinder sidebar
-    const handleOpenDocsLink = useCallback((url: string, title: string) => {
-      try {
-        // First, ensure the extension sidebar is open
-        const appEvents = getAppEvents();
-        appEvents.publish({
-          type: 'open-extension-sidebar',
-          payload: {
-            pluginId: pluginJson.id,
-            componentTitle: 'Grafana Pathfinder',
-          },
-        });
+    // Enable/disable global link interception based on config
+    useEffect(() => {
+      setGlobalLinkInterceptionEnabled(config.interceptGlobalDocsLinks);
+    }, [config.interceptGlobalDocsLinks]);
 
-        // Then, after a brief delay to ensure sidebar is mounted, dispatch event to open the URL
-        // This ensures the context panel is ready to receive the event
-        setTimeout(() => {
-          const autoOpenEvent = new CustomEvent('pathfinder-auto-open-docs', {
-            detail: {
-              url,
-              title,
-              origin: 'global_link_interceptor',
-            },
-          });
-          document.dispatchEvent(autoOpenEvent);
-        }, 150);
-      } catch (error) {
-        console.error('Failed to open docs link in Pathfinder:', error);
-      }
-    }, []);
+    // Process queued docs links when sidebar mounts
+    useEffect(() => {
+      // Mark sidebar as mounted
+      setSidebarMounted(true);
 
-    // Enable global link interception if configured
-    useGlobalLinkInterceptor({
-      onOpenDocsLink: handleOpenDocsLink,
-      enabled: config.interceptGlobalDocsLinks,
-    });
-
-    React.useEffect(() => {
+      // Report sidebar opened
       reportAppInteraction(UserInteraction.DocsPanelInteraction, {
         action: 'open',
         source: 'sidebar_mount',
         timestamp: Date.now(),
       });
 
+      // Process any queued docs links after a short delay to ensure panel is ready
+      setTimeout(() => {
+        if (pendingDocsQueue.length > 0) {
+          // Process all queued links
+          while (pendingDocsQueue.length > 0) {
+            const queuedLink = pendingDocsQueue.shift();
+            if (queuedLink) {
+              const autoOpenEvent = new CustomEvent('pathfinder-auto-open-docs', {
+                detail: {
+                  url: queuedLink.url,
+                  title: queuedLink.title,
+                  origin: 'queued_link',
+                },
+              });
+              document.dispatchEvent(autoOpenEvent);
+            }
+          }
+        }
+      }, 200);
+
       return () => {
+        // Mark sidebar as unmounted
+        setSidebarMounted(false);
+
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
           action: 'close',
           source: 'sidebar_unmount',
