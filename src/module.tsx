@@ -7,7 +7,7 @@ import {
 } from '@grafana/data';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
-import React, { Suspense, lazy, useMemo, useEffect } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
@@ -175,6 +175,10 @@ export function setGlobalLinkInterceptionEnabled(enabled: boolean) {
 export function setSidebarMounted(mounted: boolean) {
   isSidebarMounted = mounted;
 }
+
+// Initialize the interceptor immediately at module load
+// It starts disabled and will be enabled when config is loaded
+initializeGlobalLinkInterceptor();
 
 interface OpenExtensionSidebarPayload {
   props?: Record<string, unknown>;

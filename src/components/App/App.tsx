@@ -5,6 +5,7 @@ import { docsPage } from '../../pages/docsPage';
 import { ContextPanelComponent } from '../../utils/docs.utils';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
+import { setGlobalLinkInterceptionEnabled } from '../../module';
 
 function getSceneApp() {
   return new SceneApp({
@@ -21,6 +22,11 @@ function App(props: AppRootProps) {
 
   // Get configuration
   const config = useMemo(() => getConfigWithDefaults(props.meta.jsonData || {}), [props.meta.jsonData]);
+
+  // Enable/disable global link interception based on config
+  useEffect(() => {
+    setGlobalLinkInterceptionEnabled(config.interceptGlobalDocsLinks);
+  }, [config.interceptGlobalDocsLinks]);
 
   // Auto-launch tutorial if configured
   useEffect(() => {

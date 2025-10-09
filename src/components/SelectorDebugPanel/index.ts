@@ -1,4 +1,4 @@
-export { SelectorDebugPanel } from './SelectorDebugPanel';
+export { SelectorDebugPanel, type SelectorDebugPanelProps } from './SelectorDebugPanel';
 export { getDebugPanelStyles } from './debug-panel.styles';
 
 // Re-export utilities for convenience

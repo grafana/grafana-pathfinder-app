@@ -420,7 +420,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
         {/* Debug Panel - only shown when dev mode is enabled */}
         {configWithDefaults.devMode && (
           <div className={styles.debugSection}>
-            <SelectorDebugPanel />
+            <SelectorDebugPanel onOpenDocsPage={openDocsPage} />
           </div>
         )}
 
