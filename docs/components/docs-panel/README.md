@@ -6,7 +6,7 @@ Interactive steps now self-heal if users change UI state after a Fix (e.g., clos
 - Re-evaluates requirements and reverts steps back to the fix state if prerequisites are no longer met
 - Optionally uses a short, scoped heartbeat window to recheck fragile prerequisites like `navmenu-open` for better resilience
 
-Configuration for the optional heartbeat lives in `INTERACTIVE_CONFIG.requirements.heartbeat` and is disabled by default.
+Configuration for the optional heartbeat lives in `INTERACTIVE_CONFIG.requirements.heartbeat` and is enabled by default.
 
 # Docs Panel Components
 
