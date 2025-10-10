@@ -37,6 +37,12 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
+import { Button } from '@grafana/ui';
+import { PresenterControls, AttendeeJoin } from '../LiveSession';
+import { SessionProvider, useSession } from '../../utils/collaboration/session-state';
+import { ActionReplaySystem } from '../../utils/collaboration/action-replay';
+import { ActionCaptureSystem } from '../../utils/collaboration/action-capture';
+import { NavigationManager } from '../../utils/navigation-manager';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -490,10 +496,27 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 }
 
-function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
+function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
   React.useEffect(() => {
     addGlobalModalStyles();
   }, []);
+  
+  // Live session state
+  const [showPresenterControls, setShowPresenterControls] = React.useState(false);
+  const [showAttendeeJoin, setShowAttendeeJoin] = React.useState(false);
+  const { isActive: isSessionActive, sessionRole, sessionInfo, sessionManager, onEvent, endSession } = useSession();
+  
+  // Action replay system for attendees
+  const navigationManagerRef = useRef<NavigationManager | null>(null);
+  const actionReplayRef = useRef<ActionReplaySystem | null>(null);
+  
+  // Action capture system for presenters
+  const actionCaptureRef = useRef<ActionCaptureSystem | null>(null);
+  
+  // Initialize navigation manager once
+  if (!navigationManagerRef.current) {
+    navigationManagerRef.current = new NavigationManager();
+  }
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
@@ -593,6 +616,77 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     theme,
     model,
   });
+
+  // ============================================================================
+  // Live Session Effects (Presenter)
+  // ============================================================================
+  
+  // Initialize ActionCaptureSystem when creating session as presenter
+  useEffect(() => {
+    if (sessionRole === 'presenter' && sessionManager && sessionInfo && !actionCaptureRef.current) {
+      console.log('[DocsPanel] Initializing ActionCaptureSystem for presenter');
+      actionCaptureRef.current = new ActionCaptureSystem(sessionManager, sessionInfo.sessionId);
+      actionCaptureRef.current.startCapture();
+    }
+    
+    // Cleanup when ending session
+    if (sessionRole !== 'presenter' && actionCaptureRef.current) {
+      console.log('[DocsPanel] Cleaning up ActionCaptureSystem');
+      actionCaptureRef.current.stopCapture();
+      actionCaptureRef.current = null;
+    }
+  }, [sessionRole, sessionManager, sessionInfo]);
+  
+  // ============================================================================
+  // Live Session Effects (Attendee)
+  // ============================================================================
+  
+  // Initialize ActionReplaySystem when joining as attendee
+  useEffect(() => {
+    if (sessionRole === 'attendee' && navigationManagerRef.current && !actionReplayRef.current) {
+      console.log('[DocsPanel] Initializing ActionReplaySystem for attendee');
+      actionReplayRef.current = new ActionReplaySystem('guided', navigationManagerRef.current);
+    }
+    
+    // Cleanup when leaving session
+    if (sessionRole !== 'attendee' && actionReplayRef.current) {
+      console.log('[DocsPanel] Cleaning up ActionReplaySystem');
+      actionReplayRef.current = null;
+    }
+  }, [sessionRole]);
+  
+  // Listen for session events and replay them (attendee only)
+  useEffect(() => {
+    if (sessionRole !== 'attendee' || !actionReplayRef.current) {
+      return;
+    }
+    
+    console.log('[DocsPanel] Setting up event listener for attendee');
+    
+    const cleanup = onEvent((event) => {
+      console.log('[DocsPanel] Received event:', event.type);
+      actionReplayRef.current?.handleEvent(event);
+    });
+    
+    return cleanup;
+  }, [sessionRole, onEvent]);
+  
+  // Auto-open tutorial when joining session as attendee
+  useEffect(() => {
+    if (sessionRole === 'attendee' && sessionInfo?.config.tutorialUrl) {
+      console.log('[DocsPanel] Auto-opening tutorial:', sessionInfo.config.tutorialUrl);
+      
+      const url = sessionInfo.config.tutorialUrl;
+      const title = sessionInfo.config.name;
+      
+      // Open the tutorial in a new tab
+      if (url.includes('/learning-journeys/')) {
+        model.openLearningJourney(url, title);
+      } else {
+        model.openDocsPage(url, title);
+      }
+    }
+  }, [sessionRole, sessionInfo, model]);
 
   // Tab persistence is now handled explicitly in the model methods
   // No need for automatic saving here as it's done when tabs are created/modified
@@ -694,6 +788,63 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   return (
     <div id="CombinedLearningJourney" className={styles.container} data-pathfinder-content="true">
       <div className={styles.topBar}>
+        <div className={styles.liveSessionButtons}>
+          {!isSessionActive && (
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="users-alt"
+                onClick={() => setShowPresenterControls(true)}
+                tooltip="Start a live session to broadcast your actions to attendees"
+              >
+                Start Live Session
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="user"
+                onClick={() => setShowAttendeeJoin(true)}
+                tooltip="Join an existing live session"
+              >
+                Join Live Session
+              </Button>
+            </>
+          )}
+          {isSessionActive && sessionRole === 'presenter' && (
+            <Button
+              size="sm"
+              variant="primary"
+              icon="circle"
+              onClick={() => setShowPresenterControls(true)}
+            >
+              Session Active
+            </Button>
+          )}
+          {isSessionActive && sessionRole === 'attendee' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Alert title="" severity="success" style={{ margin: 0, padding: '4px 8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Icon name="check-circle" />
+                  <span>Connected to: {sessionInfo?.config.name || 'Live Session'}</span>
+                </div>
+              </Alert>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="times"
+                onClick={() => {
+                  if (confirm('Leave this live session?')) {
+                    endSession();
+                  }
+                }}
+                tooltip="Leave the live session"
+              >
+                Leave Session
+              </Button>
+            </div>
+          )}
+        </div>
         <div className={styles.tabBar}>
           <div className={styles.tabList} ref={tabListRef}>
             {visibleTabs.map((tab) => {
@@ -1139,7 +1290,101 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
           totalMilestones={activeTab?.content?.metadata?.learningJourney?.totalMilestones}
         />
       )}
+      
+      {/* Live Session Modals */}
+      {showPresenterControls && !isSessionActive && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 10000,
+          background: theme.colors.background.primary,
+          borderRadius: theme.shape.radius.default,
+          boxShadow: theme.shadows.z3,
+          padding: theme.spacing(3),
+          maxWidth: '600px',
+          maxHeight: '90vh',
+          overflow: 'auto'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing(2) }}>
+            <h3 style={{ margin: 0 }}>Live Session</h3>
+            <IconButton
+              name="times"
+              size="lg"
+              onClick={() => setShowPresenterControls(false)}
+              aria-label="Close"
+            />
+          </div>
+          <PresenterControls tutorialUrl={activeTab?.currentUrl || activeTab?.baseUrl || ''} />
+        </div>
+      )}
+      
+      {showPresenterControls && isSessionActive && sessionRole === 'presenter' && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 10000,
+          background: theme.colors.background.primary,
+          borderRadius: theme.shape.radius.default,
+          boxShadow: theme.shadows.z3,
+          padding: theme.spacing(3),
+          maxWidth: '600px',
+          maxHeight: '90vh',
+          overflow: 'auto'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing(2) }}>
+            <h3 style={{ margin: 0 }}>Live Session</h3>
+            <IconButton
+              name="times"
+              size="lg"
+              onClick={() => setShowPresenterControls(false)}
+              aria-label="Close"
+            />
+          </div>
+          <PresenterControls tutorialUrl={activeTab?.currentUrl || activeTab?.baseUrl || ''} />
+        </div>
+      )}
+      
+      <AttendeeJoin
+        isOpen={showAttendeeJoin}
+        onClose={() => setShowAttendeeJoin(false)}
+        onJoined={() => {
+          setShowAttendeeJoin(false);
+          // TODO: Start listening for presenter events
+        }}
+      />
+      
+      {/* Modal backdrop */}
+      {(showPresenterControls || showAttendeeJoin) && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 9999
+          }}
+          onClick={() => {
+            setShowPresenterControls(false);
+            setShowAttendeeJoin(false);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// Wrap the renderer with SessionProvider so it has access to session context
+function CombinedPanelRenderer(props: SceneComponentProps<CombinedLearningJourneyPanel>) {
+  return (
+    <SessionProvider>
+      <CombinedPanelRendererInner {...props} />
+    </SessionProvider>
   );
 }
 
