@@ -673,6 +673,50 @@ export function useStepChecker({
     };
   }, [checkStep, state.isCompleted, requirements, stepId, markSkipped]); // eslint-disable-line react-hooks/exhaustive-deps -- Intentionally minimal dependencies for event listeners
 
+  // Scoped heartbeat recheck for fragile prerequisites
+  useEffect(() => {
+    // Guard: feature flag
+    if (!INTERACTIVE_CONFIG.requirements?.heartbeat?.enabled) {
+      return;
+    }
+
+    // Only run when step is enabled, not completed, and requirements are fragile
+    const req = requirements || '';
+    const isFragile = INTERACTIVE_CONFIG.requirements.heartbeat.onlyForFragile
+      ? req.includes('navmenu-open') || req.includes('exists-reftarget') || req.includes('on-page:')
+      : !!req;
+
+    if (!isFragile || state.isCompleted || !state.isEnabled) {
+      return;
+    }
+
+    const intervalMs = INTERACTIVE_CONFIG.requirements.heartbeat.intervalMs;
+    const watchWindowMs = INTERACTIVE_CONFIG.requirements.heartbeat.watchWindowMs;
+
+    let stopped = false;
+    const start = Date.now();
+
+    const tick = async () => {
+      if (stopped) {
+        return;
+      }
+      await checkStepRef.current();
+      if (watchWindowMs > 0 && Date.now() - start >= watchWindowMs) {
+        stopped = true;
+        return;
+      }
+      // schedule next tick
+      setTimeout(tick, intervalMs);
+    };
+
+    const timeoutId = setTimeout(tick, intervalMs);
+
+    return () => {
+      stopped = true;
+      clearTimeout(timeoutId);
+    };
+  }, [requirements, state.isEnabled, state.isCompleted]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return {
     ...state,
     checkStep,

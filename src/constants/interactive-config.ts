@@ -6,6 +6,16 @@ import type { DocsPluginConfig } from '../constants';
  */
 export const INTERACTIVE_CONFIG_DEFAULTS = {
   maxRetries: 3,
+  // Feature-level configuration
+  requirements: {
+    // Scoped heartbeat recheck for fragile prerequisites (optional, off by default)
+    heartbeat: {
+      enabled: true,
+      intervalMs: 2000,
+      watchWindowMs: 10000,
+      onlyForFragile: true,
+    },
+  },
   delays: {
     // Perceptual delays for human-readable timing
     perceptual: {
@@ -102,6 +112,17 @@ export function getInteractiveConfig(pluginConfig?: DocsPluginConfig) {
 
   return {
     ...defaults,
+    requirements: {
+      ...defaults.requirements,
+      heartbeat: {
+        ...defaults.requirements.heartbeat,
+        // Provide future override hooks via pluginConfig if needed
+        enabled: defaults.requirements.heartbeat.enabled,
+        intervalMs: defaults.requirements.heartbeat.intervalMs,
+        watchWindowMs: defaults.requirements.heartbeat.watchWindowMs,
+        onlyForFragile: defaults.requirements.heartbeat.onlyForFragile,
+      },
+    },
     autoDetection: {
       ...defaults.autoDetection,
       enabled: pluginConfig?.enableAutoDetection ?? false, // Default FALSE (opt-in)
