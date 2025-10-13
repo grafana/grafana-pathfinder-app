@@ -66,9 +66,14 @@ export class SessionManager {
       const peerId = this.generateReadableId();
       
       console.log(`[SessionManager] Creating presenter peer: ${peerId}`);
+      console.log(`[SessionManager] Using local PeerJS server: localhost:9000/pathfinder`);
       
-      // Create peer connection to PeerJS cloud
+      // Create peer connection to local PeerJS server
       this.peer = new Peer(peerId, {
+        host: 'localhost',
+        port: 9000,
+        path: '/pathfinder',
+        key: 'pathfinder',
         debug: 2, // Enable debug logging
       });
       
@@ -224,9 +229,14 @@ export class SessionManager {
       this.sessionId = sessionId;
       
       console.log(`[SessionManager] Joining session: ${sessionId}`);
+      console.log(`[SessionManager] Using local PeerJS server: localhost:9000/pathfinder`);
       
       // Create a peer for this attendee
       this.peer = new Peer({
+        host: 'localhost',
+        port: 9000,
+        path: '/pathfinder',
+        key: 'pathfinder',
         debug: 2,
       });
       
