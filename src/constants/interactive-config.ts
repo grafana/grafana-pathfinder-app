@@ -94,7 +94,6 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
   // Auto-detection configuration for step completion
   autoDetection: {
     enabled: false, // Global toggle for auto-detection feature (opt-in, disabled by default)
-    debounceDelay: 100, // Debounce detected actions to prevent rapid-fire matches (ms)
     verificationDelay: 200, // Delay before running post-verification checks (ms)
     feedbackDuration: 1500, // Duration to show auto-completion feedback (ms)
     eventTypes: ['click', 'input', 'change', 'mouseenter'] as const, // DOM events to monitor
@@ -126,7 +125,6 @@ export function getInteractiveConfig(pluginConfig?: DocsPluginConfig) {
     autoDetection: {
       ...defaults.autoDetection,
       enabled: pluginConfig?.enableAutoDetection ?? false, // Default FALSE (opt-in)
-      debounceDelay: pluginConfig?.autoDetectionDebounce ?? defaults.autoDetection.debounceDelay,
     },
     delays: {
       ...defaults.delays,

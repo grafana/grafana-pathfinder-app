@@ -15,10 +15,10 @@ import { detectActionType, shouldCaptureElement } from './action-detector';
 import type { DetectedActionEvent } from './action-matcher';
 
 /**
- * Default debounce delay for action detection (ms)
- * This prevents rapid-fire event emissions from user interactions
+ * Maximum number of actions to keep in the queue
+ * Oldest actions are removed when queue exceeds this size
  */
-const DEFAULT_DEBOUNCE_DELAY = 100;
+const MAX_QUEUE_SIZE = 10;
 
 /**
  * DOM event types to monitor for user actions
@@ -62,7 +62,7 @@ export class ActionMonitor {
 
   private enabled = false;
   private listeners = new Map<string, EventListener>();
-  private debounceTimers = new Map<string, number>();
+  private actionQueue: DetectedActionEvent[] = [];
 
   private constructor() {
     // Private constructor for singleton pattern
@@ -99,7 +99,7 @@ export class ActionMonitor {
   /**
    * Disable action monitoring
    *
-   * Removes all DOM event listeners and clears debounce timers.
+   * Removes all DOM event listeners and clears action queue.
    * Safe to call multiple times (idempotent).
    */
   disable(): void {
@@ -109,7 +109,7 @@ export class ActionMonitor {
 
     this.enabled = false;
     this.unregisterEventListeners();
-    this.clearDebounceTimers();
+    this.clearQueue();
   }
 
   /**
@@ -146,13 +146,10 @@ export class ActionMonitor {
   }
 
   /**
-   * Clear all active debounce timers
+   * Clear action queue
    */
-  private clearDebounceTimers(): void {
-    for (const timer of this.debounceTimers.values()) {
-      window.clearTimeout(timer);
-    }
-    this.debounceTimers.clear();
+  private clearQueue(): void {
+    this.actionQueue = [];
   }
 
   /**
@@ -253,80 +250,46 @@ export class ActionMonitor {
         value = inputElement.value;
       }
 
+      // Extract coordinates for spatial matching
+      let clientX: number | undefined;
+      let clientY: number | undefined;
+      if (event instanceof MouseEvent) {
+        clientX = event.clientX;
+        clientY = event.clientY;
+      }
+
       // Create detected action event
       const detectedAction: DetectedActionEvent = {
         actionType,
         element: target,
         value,
         timestamp: Date.now(),
+        clientX,
+        clientY,
       };
 
-      // Emit debounced custom event
-      this.emitDebouncedAction(detectedAction);
+      // Add to queue and emit immediately (no debounce)
+      this.addToQueueAndEmit(detectedAction);
     };
   }
 
   /**
-   * Emit a user-action-detected event with debouncing
+   * Add action to queue and emit immediately
    *
-   * Debounces rapid-fire events (e.g., multiple clicks, typing) to prevent
-   * excessive event emissions.
+   * Maintains a FIFO queue with maximum size. When queue is full,
+   * oldest action is removed before adding new one.
    */
-  private emitDebouncedAction(action: DetectedActionEvent): void {
-    const debounceKey = this.getDebounceKey(action);
+  private addToQueueAndEmit(action: DetectedActionEvent): void {
+    // Add to queue
+    this.actionQueue.push(action);
 
-    // Clear existing timer for this action
-    const existingTimer = this.debounceTimers.get(debounceKey);
-    if (existingTimer) {
-      window.clearTimeout(existingTimer);
+    // If queue exceeds max size, remove oldest action (FIFO)
+    if (this.actionQueue.length > MAX_QUEUE_SIZE) {
+      this.actionQueue.shift();
     }
 
-    // Set new debounce timer
-    const timer = window.setTimeout(() => {
-      this.emitAction(action);
-      this.debounceTimers.delete(debounceKey);
-    }, DEFAULT_DEBOUNCE_DELAY);
-
-    this.debounceTimers.set(debounceKey, timer);
-  }
-
-  /**
-   * Generate a unique key for debouncing based on action details
-   */
-  private getDebounceKey(action: DetectedActionEvent): string {
-    const { actionType, element } = action;
-
-    // Use element identity + action type as key
-    // This allows different actions on same element or same action on different elements
-    const elementKey = this.getElementIdentifier(element);
-    return `${actionType}:${elementKey}`;
-  }
-
-  /**
-   * Generate a stable identifier for an element
-   */
-  private getElementIdentifier(element: HTMLElement): string {
-    // Try data-testid first (most stable)
-    const testId = element.getAttribute('data-testid');
-    if (testId) {
-      return `testid:${testId}`;
-    }
-
-    // Try id attribute
-    if (element.id) {
-      return `id:${element.id}`;
-    }
-
-    // Try aria-label
-    const ariaLabel = element.getAttribute('aria-label');
-    if (ariaLabel) {
-      return `aria:${ariaLabel}`;
-    }
-
-    // Fallback to tag name + text content
-    const tag = element.tagName.toLowerCase();
-    const text = element.textContent?.trim().substring(0, 50) || '';
-    return `${tag}:${text}`;
+    // Emit immediately (no debounce delay)
+    this.emitAction(action);
   }
 
   /**
@@ -340,6 +303,20 @@ export class ActionMonitor {
     });
 
     document.dispatchEvent(event);
+  }
+
+  /**
+   * Get current queue size (for debugging)
+   */
+  getQueueSize(): number {
+    return this.actionQueue.length;
+  }
+
+  /**
+   * Get a copy of the current action queue (for debugging)
+   */
+  getQueue(): DetectedActionEvent[] {
+    return [...this.actionQueue];
   }
 
   /**

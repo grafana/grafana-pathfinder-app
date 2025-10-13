@@ -8,6 +8,8 @@ import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties }
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../../constants/interactive-config';
 import { matchesStepAction, type DetectedActionEvent } from '../../../action-matcher';
 import { getConfigWithDefaults } from '../../../../constants';
+import { findButtonByText } from '../../../dom-utils';
+import { querySelectorAllEnhanced } from '../../../enhanced-selector';
 
 interface InternalAction {
   targetAction: string;
@@ -395,11 +397,39 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         let matchedActionIndex = -1;
         for (let i = 0; i < internalActions.length; i++) {
           const action = internalActions[i];
-          const matches = matchesStepAction(detectedAction, {
-            targetAction: action.targetAction as any,
-            refTarget: action.refTarget || '',
-            targetValue: action.targetValue,
-          });
+
+          // Try to find target element for coordinate-based matching
+          // Using synchronous resolution to avoid timing issues with dynamic menus/dropdowns
+          let targetElement: HTMLElement | null = null;
+          try {
+            const actionType = action.targetAction;
+            const selector = action.refTarget || '';
+
+            if (actionType === 'button') {
+              // Use button-specific finder for text matching
+              const buttons = findButtonByText(selector);
+              targetElement = buttons[0] || null;
+            } else if (actionType === 'highlight' || actionType === 'hover') {
+              // Use enhanced selector for other action types
+              const result = querySelectorAllEnhanced(selector);
+              targetElement = result.elements[0] || null;
+            }
+            // Note: formfill and navigate don't use coordinate matching
+          } catch (error) {
+            // Element resolution failed, fall back to selector-based matching
+            console.warn('Failed to resolve target element for coordinate matching:', error);
+          }
+
+          // Check if action matches (with coordinate support)
+          const matches = matchesStepAction(
+            detectedAction,
+            {
+              targetAction: action.targetAction as any,
+              refTarget: action.refTarget || '',
+              targetValue: action.targetValue,
+            },
+            targetElement
+          );
 
           if (matches) {
             matchedActionIndex = i;
