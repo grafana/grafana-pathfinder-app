@@ -21,6 +21,7 @@ export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
 
 // Global Link Interception defaults
 export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = false; // Opt-in feature
+export const DEFAULT_ENABLE_LIVE_SESSIONS = false; // Opt-in feature - disabled by default for stability
 
 // Configuration interface
 export interface DocsPluginConfig {
@@ -40,6 +41,8 @@ export interface DocsPluginConfig {
   guidedStepTimeout?: number;
   // Global Link Interception
   interceptGlobalDocsLinks?: boolean;
+  // Live Sessions (Collaborative Learning)
+  enableLiveSessions?: boolean;
 }
 
 // Helper functions to get configuration values with defaults
@@ -59,6 +62,8 @@ export const getConfigWithDefaults = (config: DocsPluginConfig): Required<DocsPl
   guidedStepTimeout: config.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
   // Global Link Interception
   interceptGlobalDocsLinks: config.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+  // Live Sessions
+  enableLiveSessions: config.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
 });
 
 /**

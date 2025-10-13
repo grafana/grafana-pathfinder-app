@@ -1,10 +1,10 @@
 // Combined Learning Journey and Docs Panel
 // Post-refactoring unified component using new content system only
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2 } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
+import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { getConfigWithDefaults, DocsPluginConfig } from '../../constants';
 
@@ -502,6 +502,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     addGlobalModalStyles();
   }, []);
   
+  // Get plugin configuration to check if live sessions are enabled
+  const pluginContext = usePluginContext();
+  const config = useMemo(() => {
+    return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+  }, [pluginContext?.meta?.jsonData]);
+  const isLiveSessionsEnabled = config.enableLiveSessions;
+  
   // Live session state
   const [showPresenterControls, setShowPresenterControls] = React.useState(false);
   const [showAttendeeJoin, setShowAttendeeJoin] = React.useState(false);
@@ -511,9 +518,20 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has('session')) {
-      setShowAttendeeJoin(true);
+      if (!isLiveSessionsEnabled) {
+        // Show notification that live sessions are disabled
+        getAppEvents().publish({
+          type: 'alert-warning',
+          payload: [
+            'Live Sessions Disabled',
+            'Live sessions are disabled on this Grafana instance. Ask your administrator to enable them in the Pathfinder plugin configuration.'
+          ]
+        });
+      } else {
+        setShowAttendeeJoin(true);
+      }
     }
-  }, []);
+  }, [isLiveSessionsEnabled]);
   
   // Action replay system for attendees
   const navigationManagerRef = useRef<NavigationManager | null>(null);
@@ -820,7 +838,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     <div id="CombinedLearningJourney" className={styles.container} data-pathfinder-content="true">
       <div className={styles.topBar}>
         <div className={styles.liveSessionButtons}>
-          {!isSessionActive && (
+          {!isSessionActive && isLiveSessionsEnabled && (
             <>
               <Button
                 size="sm"

@@ -10,6 +10,7 @@ import {
   DEFAULT_DOCS_USERNAME,
   DEFAULT_TUTORIAL_URL,
   DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+  DEFAULT_ENABLE_LIVE_SESSIONS,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 
@@ -32,6 +33,8 @@ type State = {
   devMode: boolean;
   // Global link interception
   interceptGlobalDocsLinks: boolean;
+  // Live sessions (collaborative learning)
+  enableLiveSessions: boolean;
 };
 
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -50,6 +53,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
     devMode: jsonData?.devMode || false,
     interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+    enableLiveSessions: jsonData?.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -113,6 +117,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
+  const onToggleLiveSessions = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      enableLiveSessions: event.target.checked,
+    });
+  };
+
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSaving(true);
@@ -126,6 +137,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         tutorialUrl: state.tutorialUrl,
         devMode: state.devMode,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
+        enableLiveSessions: state.enableLiveSessions,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -267,6 +279,50 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                 <br />
                 Hold <strong>Ctrl</strong> (Windows/Linux) or <strong>Cmd</strong> (Mac) while clicking any link to open
                 it in a new tab instead of Pathfinder. Middle-click also opens in a new tab.
+              </Text>
+            </Alert>
+          )}
+        </FieldSet>
+
+        {/* Live Sessions (Collaborative Learning) */}
+        <FieldSet label="Live Sessions (Collaborative Learning)" className={s.marginTopXl}>
+          <div className={s.toggleSection}>
+            <Switch
+              id="enable-live-sessions"
+              value={state.enableLiveSessions}
+              onChange={onToggleLiveSessions}
+            />
+            <div className={s.toggleLabels}>
+              <Text variant="body" weight="medium">
+                Enable live collaborative learning sessions
+              </Text>
+              <Text variant="body" color="secondary">
+                Allow presenters to create live sessions where attendees can follow along with interactive tutorials in real-time
+              </Text>
+            </div>
+          </div>
+
+          {state.enableLiveSessions && (
+            <Alert severity="info" title="How it works" className={s.marginTop}>
+              <Text variant="body">
+                <strong>For Presenters:</strong> Click "Start Live Session" to create a session and share the join code with attendees.
+                When you click "Show Me" or "Do It" buttons, attendees will see the same highlights and actions on their screens.
+                <br />
+                <br />
+                <strong>For Attendees:</strong> Click "Join Live Session" and enter the join code from the presenter.
+                Choose between <strong>Guided Mode</strong> (see highlights only) or <strong>Follow Mode</strong> (actions execute automatically).
+                <br />
+                <br />
+                <strong>Note:</strong> This feature uses peer-to-peer connections. Connection reliability may vary depending on network configuration.
+              </Text>
+            </Alert>
+          )}
+
+          {!state.enableLiveSessions && (
+            <Alert severity="warning" title="Feature disabled" className={s.marginTop}>
+              <Text variant="body">
+                Live sessions are currently disabled. Enable this feature to allow collaborative learning experiences where
+                presenters can guide attendees through interactive tutorials in real-time.
               </Text>
             </Alert>
           )}
