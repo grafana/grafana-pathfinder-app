@@ -560,23 +560,23 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
     // Note: chevron button width is already reserved in containerWidth calculation
     const tabSpacing = 4; // Gap between tabs (theme.spacing(0.5))
-    
+
     // Use a more practical minimum: each tab needs at least 100px to be readable
     // With flex layout, tabs will grow to fill available space proportionally
     const minTabWidth = 100; // Minimum readable width per tab
-    
+
     // The containerWidth already has chevron space reserved
     const availableWidth = containerWidth;
-    
+
     // Determine how many tabs can fit
     let maxVisibleTabs = 1; // Always show at least Recommendations
     let widthUsed = minTabWidth; // Start with first tab (Recommendations)
-    
+
     // Try to fit additional tabs
     for (let i = 1; i < tabs.length; i++) {
       const tabWidth = minTabWidth + tabSpacing;
       const spaceNeeded = widthUsed + tabWidth;
-      
+
       if (spaceNeeded <= availableWidth) {
         maxVisibleTabs++;
         widthUsed += tabWidth;
@@ -590,10 +590,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
     if (activeTabIndex >= maxVisibleTabs && maxVisibleTabs > 1) {
       // Swap active tab into visible range
       const visibleTabsArray = [...tabs.slice(0, maxVisibleTabs - 1), tabs[activeTabIndex]];
-      const overflowTabsArray = [
-        ...tabs.slice(maxVisibleTabs - 1, activeTabIndex),
-        ...tabs.slice(activeTabIndex + 1),
-      ];
+      const overflowTabsArray = [...tabs.slice(maxVisibleTabs - 1, activeTabIndex), ...tabs.slice(activeTabIndex + 1)];
       setVisibleTabs(visibleTabsArray);
       setOverflowedTabs(overflowTabsArray);
     } else {
@@ -615,7 +612,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
     // Measure tabBar and reserve space for chevron button
     const chevronWidth = 120; // Approximate width of chevron button + spacing
-    
+
     // Set initial width immediately (ResizeObserver may not fire on initial mount)
     const tabBarWidth = tabBar.getBoundingClientRect().width;
     const availableForTabs = Math.max(0, tabBarWidth - chevronWidth);
