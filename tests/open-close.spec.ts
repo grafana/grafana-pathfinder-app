@@ -7,19 +7,23 @@ test('should open and close docs panel', async ({ page }) => {
   // Wait for the page to load
   await page.waitForLoadState('networkidle');
 
-  // Find the docs panel button using aria-label (should be closed initially)
-  const openButton = page.locator('[aria-label*="Grafana Pathfinder"]:not([aria-label*="Close"])');
+  // Find the Help button that opens the docs panel
+  const helpButton = page.locator('button[aria-label="Help"]');
 
   // Click to open the docs panel
-  await openButton.click();
+  await helpButton.click();
 
-  // Wait for panel to open and verify it's open by checking for the close button
-  const closeButton = page.locator('[aria-label="Close Grafana Pathfinder"]');
-  await expect(closeButton).toBeVisible();
+  // Wait for panel to open and verify it's open by checking for the main heading
+  const recommendedDocsHeading = page.getByRole('heading', { name: 'Recommended Documentation' });
+  await expect(recommendedDocsHeading).toBeVisible();
 
-  // Click to close the docs panel
-  await closeButton.click();
+  // Verify the main panel container is visible
+  const panelContainer = page.locator('[data-pathfinder-content="true"]');
+  await expect(panelContainer).toBeVisible();
 
-  // Verify it's closed (the close button should no longer be visible)
-  await expect(closeButton).not.toBeVisible();
+  // Click the Help button again to close the panel (toggle behavior)
+  await helpButton.click();
+
+  // Verify it's closed (the panel container should no longer be visible)
+  await expect(panelContainer).not.toBeVisible();
 });
