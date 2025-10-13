@@ -532,7 +532,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
 
-  // Tab overflow management - restored simplified approach
+  // Tab overflow management - dynamic calculation based on container width
+  const tabBarRef = useRef<HTMLDivElement>(null); // Measure parent instead of child
   const tabListRef = useRef<HTMLDivElement>(null);
   const [visibleTabs, setVisibleTabs] = useState<LearningJourneyTab[]>(tabs);
   const [overflowedTabs, setOverflowedTabs] = useState<LearningJourneyTab[]>([]);
@@ -540,26 +541,102 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dropdownOpenTimeRef = useRef<number>(0);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
 
+  // Dynamic tab visibility calculation based on container width
   const calculateTabVisibility = useCallback(() => {
     if (tabs.length === 0) {
       setVisibleTabs([]);
       setOverflowedTabs([]);
       return;
     }
-    const maxVisibleTabs = 2; // Recommendations + 1
-    if (tabs.length <= maxVisibleTabs) {
-      setVisibleTabs(tabs);
-      setOverflowedTabs([]);
+
+    // If we don't have container width yet, show minimal tabs
+    if (containerWidth === 0) {
+      setVisibleTabs(tabs.slice(0, 1)); // Just Recommendations
+      setOverflowedTabs(tabs.slice(1));
+      return;
+    }
+
+    // Note: chevron button width is already reserved in containerWidth calculation
+    const tabSpacing = 4; // Gap between tabs (theme.spacing(0.5))
+    
+    // Use a more practical minimum: each tab needs at least 100px to be readable
+    // With flex layout, tabs will grow to fill available space proportionally
+    const minTabWidth = 100; // Minimum readable width per tab
+    
+    // The containerWidth already has chevron space reserved
+    const availableWidth = containerWidth;
+    
+    // Determine how many tabs can fit
+    let maxVisibleTabs = 1; // Always show at least Recommendations
+    let widthUsed = minTabWidth; // Start with first tab (Recommendations)
+    
+    // Try to fit additional tabs
+    for (let i = 1; i < tabs.length; i++) {
+      const tabWidth = minTabWidth + tabSpacing;
+      const spaceNeeded = widthUsed + tabWidth;
+      
+      if (spaceNeeded <= availableWidth) {
+        maxVisibleTabs++;
+        widthUsed += tabWidth;
+      } else {
+        break;
+      }
+    }
+
+    // Ensure active tab is visible if possible
+    const activeTabIndex = tabs.findIndex((t) => t.id === activeTabId);
+    if (activeTabIndex >= maxVisibleTabs && maxVisibleTabs > 1) {
+      // Swap active tab into visible range
+      const visibleTabsArray = [...tabs.slice(0, maxVisibleTabs - 1), tabs[activeTabIndex]];
+      const overflowTabsArray = [
+        ...tabs.slice(maxVisibleTabs - 1, activeTabIndex),
+        ...tabs.slice(activeTabIndex + 1),
+      ];
+      setVisibleTabs(visibleTabsArray);
+      setOverflowedTabs(overflowTabsArray);
     } else {
       setVisibleTabs(tabs.slice(0, maxVisibleTabs));
       setOverflowedTabs(tabs.slice(maxVisibleTabs));
     }
-  }, [tabs]);
+  }, [tabs, containerWidth, activeTabId]);
 
   useEffect(() => {
     calculateTabVisibility();
   }, [calculateTabVisibility]);
+
+  // ResizeObserver to track container width changes
+  useEffect(() => {
+    const tabBar = tabBarRef.current;
+    if (!tabBar) {
+      return;
+    }
+
+    // Measure tabBar and reserve space for chevron button
+    const chevronWidth = 120; // Approximate width of chevron button + spacing
+    
+    // Set initial width immediately (ResizeObserver may not fire on initial mount)
+    const tabBarWidth = tabBar.getBoundingClientRect().width;
+    const availableForTabs = Math.max(0, tabBarWidth - chevronWidth);
+    if (availableForTabs > 0) {
+      setContainerWidth(availableForTabs);
+    }
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const tabBarWidth = entry.contentRect.width;
+        const availableForTabs = Math.max(0, tabBarWidth - chevronWidth);
+        setContainerWidth(availableForTabs);
+      }
+    });
+
+    resizeObserver.observe(tabBar);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   // Content styles are applied at the component level via CSS classes
 
@@ -694,7 +771,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   return (
     <div id="CombinedLearningJourney" className={styles.container} data-pathfinder-content="true">
       <div className={styles.topBar}>
-        <div className={styles.tabBar}>
+        <div className={styles.tabBar} ref={tabBarRef}>
           <div className={styles.tabList} ref={tabListRef}>
             {visibleTabs.map((tab) => {
               const getTranslatedTitle = (title: string) => {
