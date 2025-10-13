@@ -31,13 +31,15 @@ export const lokiGrafana101Html = `<html>
                   data-requirements="navmenu-open,exists-reftarget"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/connections/add-new-connection']"
                   data-targetaction='highlight'>
-                Click on <strong>Connections</strong> in the left menu to manage data sources.
+                <span class="interactive-comment">The <strong>Add new connection</strong> option is where you start adding data sources. You'll use this to add Loki alongside your existing Prometheus data source.</span>
+                Click <strong>Add new connection</strong> in the Connections menu to add data sources.
               </li>
 
               <li class="interactive" 
                   data-reftarget="input[type='text']"
                   data-targetaction='formfill' 
                   data-targetvalue='Loki'>
+                <span class="interactive-comment">Loki is Grafana's log aggregation system, designed to work alongside Prometheus for a complete observability solution.</span>
                 Search for <strong>Loki</strong> in the search bar.
               </li>
 
@@ -64,6 +66,7 @@ export const lokiGrafana101Html = `<html>
                   data-reftarget="input[id='connection-url']"
                   data-targetaction='formfill' 
                   data-targetvalue='http://loki:3100'>
+                <span class="interactive-comment">This URL <code>http://loki:3100</code> is the default endpoint for Loki servers. Port <strong>3100</strong> is the standard Loki port.</span>
                 Set the <strong>URL</strong> to <strong>http://loki:3100</strong> to connect to your Loki server.
               </li>
 
@@ -126,6 +129,7 @@ export const lokiGrafana101Html = `<html>
               <li class="interactive" 
                   data-reftarget='div[data-testid="QueryEditorModeToggle"] label[for^="option-code-radiogroup"]'
                   data-targetaction='highlight'>
+                <span class="interactive-comment">Code mode lets you write raw <strong>LogQL</strong> queries directly, similar to how PromQL works for Prometheus. This gives you full control over your log queries.</span>
                 Switch to <strong>Code</strong> mode by clicking the raw query toggle to write LogQL directly.
               </li>
 
@@ -133,6 +137,7 @@ export const lokiGrafana101Html = `<html>
                   data-reftarget='textarea.inputarea'
                   data-targetaction='formfill' 
                   data-targetvalue='{container="alloy"}'>
+                <span class="interactive-comment">This is <strong>LogQL</strong> (Loki Query Language)! The query <code>{container="alloy"}</code> filters logs from containers named "alloy". The curly braces <code>{}</code> are used for label matching in Loki.</span>
                 Enter this LogQL query:
                 <pre>{container="alloy"}</pre>
               </li>
@@ -140,13 +145,16 @@ export const lokiGrafana101Html = `<html>
               <li class="interactive" 
                   data-reftarget='Refresh'
                   data-targetaction='button'>
+                <span class="interactive-comment">The <strong>Refresh</strong> button executes your LogQL query and displays the log results from your Loki data source.</span>
                 Click the <strong>Refresh</strong> button to execute the query and see your logs.
               </li>
 
               <li class="interactive" data-targetaction="multistep">
                 <span class="interactive"
                   data-reftarget='button[data-testid="data-testid toggle-viz-picker"]'
-                  data-targetaction="highlight"></span>
+                  data-targetaction="highlight">
+                  <span class="interactive-comment">The <strong>Logs</strong> visualization is specifically designed for displaying log data with features like log level highlighting, filtering, and live tailing.</span>
+                </span>
                 <span class="interactive" data-reftarget='div[aria-label="Plugin visualization item Logs"]' data-targetaction="highlight"></span>
                 Change the <strong>Visualization type</strong> to <strong>Logs</strong>.
               </li>
@@ -155,6 +163,7 @@ export const lokiGrafana101Html = `<html>
                   data-reftarget='input[data-testid="data-testid Panel editor option pane field input Title"]'
                   data-targetaction='formfill' 
                   data-targetvalue='Alloy Logs'>
+                <span class="interactive-comment">The <strong>Title</strong> is the name of the panel. It helps identify what logs you're viewing in the dashboard.</span>
                 In the panel options, change the <strong>Title</strong> to <strong>Alloy Logs</strong>.
               </li>
 

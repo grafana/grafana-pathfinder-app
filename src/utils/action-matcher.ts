@@ -21,6 +21,51 @@ export interface DetectedActionEvent {
   element: HTMLElement;
   value?: string;
   timestamp: number;
+  // Coordinates for spatial matching (similar to guided-handler.ts)
+  clientX?: number;
+  clientY?: number;
+}
+
+/**
+ * Check if detected action coordinates fall within element's bounding box
+ * Uses padding similar to guided-handler.ts for forgiveness
+ *
+ * @param detectedAction - The detected action with coordinates
+ * @param targetElement - The target element to check against
+ * @param padding - Padding around element bounds (default: 16px)
+ * @returns true if coordinates fall within padded bounds
+ *
+ * @example
+ * ```typescript
+ * const detected = { clientX: 100, clientY: 200, ... };
+ * const element = document.querySelector('button');
+ * if (matchesElementBounds(detected, element)) {
+ *   // Click was within button bounds
+ * }
+ * ```
+ */
+export function matchesElementBounds(
+  detectedAction: DetectedActionEvent,
+  targetElement: HTMLElement,
+  padding = 16
+): boolean {
+  // Extract coordinates from detected action
+  const { clientX, clientY } = detectedAction;
+
+  if (clientX === undefined || clientY === undefined) {
+    return false; // No coordinates available
+  }
+
+  // Get element bounds
+  const rect = targetElement.getBoundingClientRect();
+
+  // Check if click is within expanded bounds (with padding for forgiveness)
+  return (
+    clientX >= rect.left - padding &&
+    clientX <= rect.right + padding &&
+    clientY >= rect.top - padding &&
+    clientY <= rect.bottom + padding
+  );
 }
 
 /**
@@ -29,8 +74,12 @@ export interface DetectedActionEvent {
  * Compares the detected action (from user interaction) with the step's
  * expected action configuration to determine if they match.
  *
+ * Uses coordinate-based matching as primary check when target element is provided,
+ * falling back to selector-based matching if coordinates unavailable.
+ *
  * @param detected - The detected action event from user interaction
  * @param stepConfig - The step's action configuration
+ * @param targetElement - Optional resolved target element for coordinate matching
  * @returns true if the detected action matches the step's requirements
  *
  * @example
@@ -38,6 +87,8 @@ export interface DetectedActionEvent {
  * const detected = {
  *   actionType: 'button',
  *   element: buttonElement,
+ *   clientX: 100,
+ *   clientY: 200,
  *   timestamp: Date.now()
  * };
  *
@@ -47,12 +98,18 @@ export interface DetectedActionEvent {
  *   targetValue: undefined
  * };
  *
- * if (matchesStepAction(detected, config)) {
+ * const targetElement = document.querySelector('[data-testid="save-button"]');
+ *
+ * if (matchesStepAction(detected, config, targetElement)) {
  *   // User clicked the Save button, mark step complete
  * }
  * ```
  */
-export function matchesStepAction(detected: DetectedActionEvent, stepConfig: StepActionConfig): boolean {
+export function matchesStepAction(
+  detected: DetectedActionEvent,
+  stepConfig: StepActionConfig,
+  targetElement?: HTMLElement | null
+): boolean {
   const { actionType, element, value } = detected;
   const { targetAction, refTarget, targetValue } = stepConfig;
 
@@ -61,22 +118,46 @@ export function matchesStepAction(detected: DetectedActionEvent, stepConfig: Ste
     return false;
   }
 
-  // Dispatch to specific matching logic based on action type
+  // Try coordinate-based matching first if target element and coordinates available
+  if (targetElement && detected.clientX !== undefined && detected.clientY !== undefined) {
+    // For click-based actions (button, highlight, navigate), use coordinate matching
+    if (targetAction === 'button' || targetAction === 'highlight' || targetAction === 'navigate') {
+      const coordMatch = matchesElementBounds(detected, targetElement);
+      if (coordMatch) {
+        return true; // Coordinate match is authoritative
+      }
+      // If coordinate match fails, fall through to selector-based matching
+    }
+
+    // For hover actions, also use coordinate matching
+    if (targetAction === 'hover' && actionType === 'hover') {
+      const coordMatch = matchesElementBounds(detected, targetElement);
+      if (coordMatch) {
+        return true;
+      }
+    }
+  }
+
+  // Fall back to selector-based matching (original behavior)
+  // This handles cases where:
+  // - No target element provided
+  // - No coordinates available
+  // - Coordinate match failed but might still match via selector
   switch (targetAction) {
     case 'button':
-      return matchesButtonAction(element, refTarget);
+      return matchesButtonAction(element, refTarget, targetElement);
 
     case 'formfill':
       return matchesFormfillAction(element, refTarget, targetValue, value);
 
     case 'highlight':
-      return matchesHighlightAction(element, refTarget);
+      return matchesHighlightAction(element, refTarget, targetElement);
 
     case 'navigate':
       return matchesNavigateAction(element, refTarget);
 
     case 'hover':
-      return matchesHoverAction(element, refTarget);
+      return matchesHoverAction(element, refTarget, targetElement);
 
     case 'sequence':
       // Sequence actions are handled at multi-step level, not here
@@ -151,8 +232,17 @@ function isCompatibleActionType(detected: DetectedAction, target: StepActionConf
  *
  * Buttons are identified by their visible text content. This matches
  * the same logic used by findButtonByText in dom-utils.
+ *
+ * @param element - The clicked element
+ * @param buttonText - The button text to match
+ * @param targetElement - Optional target element (already matched via coordinates)
  */
-function matchesButtonAction(element: HTMLElement, buttonText: string): boolean {
+function matchesButtonAction(element: HTMLElement, buttonText: string, targetElement?: HTMLElement | null): boolean {
+  // If we already have a target element from coordinate matching,
+  // just verify the clicked element is within it
+  if (targetElement) {
+    return targetElement === element || targetElement.contains(element);
+  }
   // Check if the element itself matches the button text
   const elementText = element.textContent?.trim() || '';
   if (elementText === buttonText) {
@@ -210,8 +300,18 @@ function matchesFormfillAction(
  * Match highlight action by selector
  *
  * Highlight actions are generic clicks on elements identified by selector.
+ *
+ * @param element - The clicked element
+ * @param selector - The CSS selector or identifier
+ * @param targetElement - Optional target element (already matched via coordinates)
  */
-function matchesHighlightAction(element: HTMLElement, selector: string): boolean {
+function matchesHighlightAction(element: HTMLElement, selector: string, targetElement?: HTMLElement | null): boolean {
+  // If we already have a target element from coordinate matching,
+  // just verify the clicked element is within it
+  if (targetElement) {
+    return targetElement === element || targetElement.contains(element);
+  }
+
   return elementMatchesSelector(element, selector);
 }
 
@@ -241,8 +341,18 @@ function matchesNavigateAction(element: HTMLElement, href: string): boolean {
  * Match hover action by selector
  *
  * Hover actions are mouseenter events on elements identified by selector.
+ *
+ * @param element - The hovered element
+ * @param selector - The CSS selector or identifier
+ * @param targetElement - Optional target element (already matched via coordinates)
  */
-function matchesHoverAction(element: HTMLElement, selector: string): boolean {
+function matchesHoverAction(element: HTMLElement, selector: string, targetElement?: HTMLElement | null): boolean {
+  // If we already have a target element from coordinate matching,
+  // just verify the hovered element is within it
+  if (targetElement) {
+    return targetElement === element || targetElement.contains(element);
+  }
+
   return elementMatchesSelector(element, selector);
 }
 
@@ -299,13 +409,23 @@ function elementMatchesSelector(element: HTMLElement, selector: string): boolean
  * (if any) matches a detected action.
  */
 export class ActionMatcher {
-  private stepConfigs = new Map<string, StepActionConfig>();
+  private stepConfigs = new Map<
+    string,
+    {
+      config: StepActionConfig;
+      elementResolver?: () => HTMLElement | null;
+    }
+  >();
 
   /**
    * Register a step's action configuration
+   *
+   * @param stepId - Unique identifier for the step
+   * @param config - Step action configuration
+   * @param elementResolver - Optional function to resolve target element for coordinate matching
    */
-  registerStep(stepId: string, config: StepActionConfig): void {
-    this.stepConfigs.set(stepId, config);
+  registerStep(stepId: string, config: StepActionConfig, elementResolver?: () => HTMLElement | null): void {
+    this.stepConfigs.set(stepId, { config, elementResolver });
   }
 
   /**
@@ -319,10 +439,23 @@ export class ActionMatcher {
    * Find which registered step (if any) matches the detected action
    *
    * Returns the stepId of the matching step, or null if no match found.
+   * Uses coordinate-based matching when element resolver is provided.
    */
   findMatchingStep(detected: DetectedActionEvent): string | null {
-    for (const [stepId, config] of this.stepConfigs.entries()) {
-      if (matchesStepAction(detected, config)) {
+    for (const [stepId, { config, elementResolver }] of this.stepConfigs.entries()) {
+      // Try to resolve target element for coordinate matching
+      let targetElement: HTMLElement | null = null;
+      if (elementResolver) {
+        try {
+          targetElement = elementResolver();
+        } catch (error) {
+          // Element resolution failed, fall back to selector-based matching
+          console.warn(`Element resolver failed for step ${stepId}:`, error);
+        }
+      }
+
+      // Check if action matches (with optional coordinate support)
+      if (matchesStepAction(detected, config, targetElement)) {
         return stepId;
       }
     }

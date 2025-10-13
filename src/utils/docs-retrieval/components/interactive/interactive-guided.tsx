@@ -11,6 +11,8 @@ import { waitForReactUpdates } from '../../../requirements-checker.hook';
 import { matchesStepAction, type DetectedActionEvent } from '../../../action-matcher';
 import { getInteractiveConfig } from '../../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../../constants';
+import { findButtonByText } from '../../../dom-utils';
+import { querySelectorAllEnhanced } from '../../../enhanced-selector';
 
 interface InternalAction {
   targetAction: 'hover' | 'button' | 'highlight';
@@ -255,11 +257,37 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           return;
         }
 
-        const matches = matchesStepAction(detectedAction, {
-          targetAction: currentAction.targetAction as any,
-          refTarget: currentAction.refTarget,
-          targetValue: currentAction.targetValue,
-        });
+        // Try to find target element for coordinate-based matching
+        // Using synchronous resolution to avoid timing issues with dynamic menus/dropdowns
+        let targetElement: HTMLElement | null = null;
+        try {
+          const actionType = currentAction.targetAction;
+          const selector = currentAction.refTarget;
+
+          if (actionType === 'button') {
+            // Use button-specific finder for text matching
+            const buttons = findButtonByText(selector);
+            targetElement = buttons[0] || null;
+          } else if (actionType === 'highlight' || actionType === 'hover') {
+            // Use enhanced selector for other action types
+            const result = querySelectorAllEnhanced(selector);
+            targetElement = result.elements[0] || null;
+          }
+        } catch (error) {
+          // Element resolution failed, fall back to selector-based matching
+          console.warn('Failed to resolve target element for coordinate matching:', error);
+        }
+
+        // Check if action matches (with coordinate support)
+        const matches = matchesStepAction(
+          detectedAction,
+          {
+            targetAction: currentAction.targetAction as any,
+            refTarget: currentAction.refTarget,
+            targetValue: currentAction.targetValue,
+          },
+          targetElement
+        );
 
         if (!matches) {
           return; // Not a match for current step

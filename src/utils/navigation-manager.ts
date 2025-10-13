@@ -27,8 +27,8 @@ export class NavigationManager {
     const padding = 8; // Minimum padding from viewport edges
 
     // Get comment box dimensions (might vary based on content)
-    const commentWidth = 250; // Fixed width from CSS
-    const commentHeight = commentBox.offsetHeight || 100; // Actual height, fallback to 100
+    const commentWidth = 320; // Fixed width from CSS (increased for better readability with step checklists)
+    const commentHeight = commentBox.offsetHeight || 130; // Actual height, fallback to 130 (increased for larger font/line-height)
 
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;

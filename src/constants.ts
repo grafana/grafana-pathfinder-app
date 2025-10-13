@@ -15,7 +15,6 @@ export const TERMS_VERSION = '1.0.0';
 
 // Interactive Features defaults
 export const DEFAULT_ENABLE_AUTO_DETECTION = false; // Opt-in feature
-export const DEFAULT_AUTO_DETECTION_DEBOUNCE = 100; // ms
 export const DEFAULT_REQUIREMENTS_CHECK_TIMEOUT = 3000; // ms
 export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
 
@@ -35,7 +34,6 @@ export interface DocsPluginConfig {
   devMode?: boolean;
   // Interactive Features
   enableAutoDetection?: boolean;
-  autoDetectionDebounce?: number;
   requirementsCheckTimeout?: number;
   guidedStepTimeout?: number;
   // Global Link Interception
@@ -54,7 +52,6 @@ export const getConfigWithDefaults = (config: DocsPluginConfig): Required<DocsPl
   devMode: config.devMode || DEFAULT_DEV_MODE,
   // Interactive Features
   enableAutoDetection: config.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
-  autoDetectionDebounce: config.autoDetectionDebounce ?? DEFAULT_AUTO_DETECTION_DEBOUNCE,
   requirementsCheckTimeout: config.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   guidedStepTimeout: config.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
   // Global Link Interception
