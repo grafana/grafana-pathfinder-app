@@ -284,8 +284,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           )}
         </FieldSet>
 
-        {/* Live Sessions (Collaborative Learning) */}
-        <FieldSet label="Live Sessions (Collaborative Learning)" className={s.marginTopXl}>
+        {/* Live Sessions (Collaborative Learning) - EXPERIMENTAL */}
+        <FieldSet label="Live Sessions (Collaborative Learning) — Experimental" className={s.marginTopXl}>
           <div className={s.toggleSection}>
             <Switch
               id="enable-live-sessions"
@@ -294,7 +294,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             />
             <div className={s.toggleLabels}>
               <Text variant="body" weight="medium">
-                Enable live collaborative learning sessions
+                Enable live collaborative learning sessions (Experimental)
               </Text>
               <Text variant="body" color="secondary">
                 Allow presenters to create live sessions where attendees can follow along with interactive tutorials in real-time
@@ -303,26 +303,36 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           </div>
 
           {state.enableLiveSessions && (
-            <Alert severity="info" title="How it works" className={s.marginTop}>
-              <Text variant="body">
-                <strong>For Presenters:</strong> Click "Start Live Session" to create a session and share the join code with attendees.
-                When you click "Show Me" or "Do It" buttons, attendees will see the same highlights and actions on their screens.
-                <br />
-                <br />
-                <strong>For Attendees:</strong> Click "Join Live Session" and enter the join code from the presenter.
-                Choose between <strong>Guided Mode</strong> (see highlights only) or <strong>Follow Mode</strong> (actions execute automatically).
-                <br />
-                <br />
-                <strong>Note:</strong> This feature uses peer-to-peer connections. Connection reliability may vary depending on network configuration.
-              </Text>
-            </Alert>
+            <>
+              <Alert severity="warning" title="⚠️ Experimental Feature" className={s.marginTop}>
+                <Text variant="body">
+                  <strong>This feature is experimental and may have stability issues.</strong> Connection reliability depends on
+                  network configuration and the availability of the PeerJS cloud service. Not recommended for production-critical workflows.
+                </Text>
+              </Alert>
+              
+              <Alert severity="info" title="How it works" className={s.marginTop}>
+                <Text variant="body">
+                  <strong>For Presenters:</strong> Click "Start Live Session" to create a session and share the join code with attendees.
+                  When you click "Show Me" or "Do It" buttons, attendees will see the same highlights and actions on their screens.
+                  <br />
+                  <br />
+                  <strong>For Attendees:</strong> Click "Join Live Session" and enter the join code from the presenter.
+                  Choose between <strong>Guided Mode</strong> (see highlights only) or <strong>Follow Mode</strong> (actions execute automatically).
+                </Text>
+              </Alert>
+            </>
           )}
 
           {!state.enableLiveSessions && (
-            <Alert severity="warning" title="Feature disabled" className={s.marginTop}>
+            <Alert severity="warning" title="Experimental feature disabled" className={s.marginTop}>
               <Text variant="body">
-                Live sessions are currently disabled. Enable this feature to allow collaborative learning experiences where
-                presenters can guide attendees through interactive tutorials in real-time.
+                Live sessions are currently disabled. This is an <strong>experimental feature</strong> that enables collaborative learning
+                experiences where presenters can guide attendees through interactive tutorials in real-time.
+                <br />
+                <br />
+                <strong>Note:</strong> This feature uses peer-to-peer connections and may have stability issues depending on network
+                configuration. Enable only if you understand the limitations and have tested it in your environment.
               </Text>
             </Alert>
           )}
