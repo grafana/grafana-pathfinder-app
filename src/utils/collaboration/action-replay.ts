@@ -5,12 +5,15 @@
  * Handles both Guided mode (highlights only) and Follow mode (execute actions).
  */
 
+import { getAppEvents } from '@grafana/runtime';
 import type { NavigationManager } from '../navigation-manager';
+import type { InteractiveElementData } from '../../types/interactive.types';
 import type {
   AttendeeMode,
   AnySessionEvent,
   InteractiveStepEvent,
-  NavigationEvent
+  NavigationEvent,
+  InteractiveAction
 } from '../../types/collaboration.types';
 
 /**
@@ -32,8 +35,10 @@ export class ActionReplaySystem {
    * Update attendee mode
    */
   setMode(mode: AttendeeMode): void {
-    console.log(`[ActionReplay] Mode changed: ${this.mode} → ${mode}`);
-    this.mode = mode;
+    if (this.mode !== mode) {
+      console.log(`[ActionReplay] Mode changed: ${this.mode} → ${mode}`);
+      this.mode = mode;
+    }
   }
   
   /**
@@ -101,6 +106,8 @@ export class ActionReplaySystem {
    * Handle Do It event (behavior depends on mode)
    */
   private async handleDoIt(event: InteractiveStepEvent): Promise<void> {
+    console.log(`[ActionReplay] handleDoIt called - Current mode: ${this.mode}`);
+    
     // Check for duplicate
     if (this.isDuplicateEvent('do_it', event.stepId, event.timestamp)) {
       console.log('[ActionReplay] Skipping duplicate do_it event');
@@ -109,12 +116,14 @@ export class ActionReplaySystem {
     
     if (this.mode === 'guided') {
       // In Guided mode: Show highlight only, don't execute
-      await this.showHighlight(event);
       console.log('[ActionReplay] Guided mode: Showing highlight only for Do It');
+      await this.showHighlight(event);
     } else if (this.mode === 'follow') {
       // In Follow mode: Execute the action
+      console.log('[ActionReplay] Follow mode: Executing action');
       await this.executeAction(event);
-      console.log('[ActionReplay] Follow mode: Executed action');
+    } else {
+      console.warn(`[ActionReplay] Unknown mode: ${this.mode}`);
     }
     
     // Update last event
@@ -181,15 +190,91 @@ export class ActionReplaySystem {
       
       console.log(`[ActionReplay] Executing ${action.targetAction} on ${action.refTarget}`);
       
-      // TODO: Implement action execution using InteractiveStateManager
-      // For now, just show the highlight
-      await this.showHighlight(event);
+      // Find the interactive step element on this page
+      const stepElement = this.findStepElement(event.stepId, action);
       
-      this.showNotification('Action executed', 'success');
+      if (!stepElement) {
+        console.warn('[ActionReplay] Step element not found - attendee may be on different page');
+        this.showNotification('Unable to execute action - please ensure you are on the same page as presenter', 'warning');
+        return;
+      }
+      
+      // Trigger the "Do It" action programmatically by simulating a click on the Do It button
+      const doItButton = this.findDoItButton(stepElement);
+      
+      if (doItButton) {
+        // Click the button to trigger the action
+        doItButton.click();
+        console.log('[ActionReplay] Triggered Do It action for attendee');
+      } else {
+        // Fallback: Dispatch the action event directly
+        console.warn('[ActionReplay] Do It button not found, using fallback execution');
+        await this.executeFallbackAction(action, stepElement);
+      }
+      
     } catch (error) {
       console.error('[ActionReplay] Error executing action:', error);
       this.showNotification('Failed to execute action', 'error');
     }
+  }
+  
+  /**
+   * Find the interactive step element matching the captured action
+   */
+  private findStepElement(stepId: string, action: InteractiveAction): HTMLElement | null {
+    // Try by step ID first
+    const byId = document.querySelector(`[data-step-id="${stepId}"]`) as HTMLElement;
+    if (byId) {
+      return byId;
+    }
+    
+    // Try by action attributes
+    const byAttributes = document.querySelector(
+      `[data-targetaction="${action.targetAction}"][data-reftarget="${action.refTarget}"]`
+    ) as HTMLElement;
+    
+    return byAttributes;
+  }
+  
+  /**
+   * Find the "Do It" button within a step element
+   */
+  private findDoItButton(stepElement: HTMLElement): HTMLButtonElement | null {
+    // Look for buttons with text "Do it" or "Do It"
+    const buttons = stepElement.querySelectorAll('button');
+    for (const button of buttons) {
+      const text = button.textContent?.trim().toLowerCase() || '';
+      if (text.includes('do it') && !text.includes('show')) {
+        return button;
+      }
+    }
+    return null;
+  }
+  
+  /**
+   * Fallback execution when Do It button is not found
+   * Dispatches the action event directly
+   */
+  private async executeFallbackAction(action: InteractiveAction, stepElement: HTMLElement): Promise<void> {
+    // Convert InteractiveAction to InteractiveElementData
+    const data: InteractiveElementData = {
+      reftarget: action.refTarget,
+      targetaction: action.targetAction,
+      targetvalue: action.targetValue,
+      targetcomment: action.targetComment,
+      tagName: stepElement.tagName.toLowerCase(),
+      className: stepElement.className,
+      id: stepElement.id || '',
+      textContent: stepElement.textContent || ''
+    };
+    
+    // Dispatch interactive-action-trigger event (the same event the Do It button would dispatch)
+    const event = new CustomEvent('interactive-action-trigger', {
+      detail: { data, execute: true }
+    });
+    document.dispatchEvent(event);
+    
+    console.log('[ActionReplay] Dispatched fallback action event');
   }
   
   /**
@@ -250,8 +335,11 @@ export class ActionReplaySystem {
    * Show notification to user
    */
   private showNotification(message: string, type: 'success' | 'warning' | 'error'): void {
-    // TODO: Integrate with Grafana's notification system
-    console.log(`[ActionReplay] ${type.toUpperCase()}: ${message}`);
+    const eventType = type === 'success' ? 'alert-success' : type === 'warning' ? 'alert-warning' : 'alert-error';
+    getAppEvents().publish({
+      type: eventType,
+      payload: ['Live Session', message]
+    });
   }
 }
 

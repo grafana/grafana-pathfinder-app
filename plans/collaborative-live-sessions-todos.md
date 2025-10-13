@@ -188,29 +188,30 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
 Goal: Extend to full mirroring where "Do It" actions are replicated to attendees in Follow mode
 
 ### 2.1 Action Capture - Do It
-- [ ] Extend `src/utils/collaboration/action-capture.ts`
-  - [ ] Intercept "Do It" button clicks
-  - [ ] Extract full action details (type, selector, value)
-  - [ ] Create InteractiveStepEvent with type: 'do_it'
-  - [ ] Include targetAction, refTarget, targetValue
-  - [ ] Broadcast to all attendees
-  - [ ] Maintain order of events (Show Me → Do It)
+- [x] Extend `src/utils/collaboration/action-capture.ts`
+  - [x] Intercept "Do It" button clicks (already implemented)
+  - [x] Extract full action details (type, selector, value)
+  - [x] Create InteractiveStepEvent with type: 'do_it'
+  - [x] Include targetAction, refTarget, targetValue
+  - [x] Broadcast to all attendees
+  - [x] Maintain order of events (Show Me → Do It)
 
 ### 2.2 Action Replay - Follow Mode
-- [ ] Extend `src/utils/collaboration/action-replay.ts`
-  - [ ] Add mode parameter to constructor
-  - [ ] Implement `executeAction()` method:
-    - [ ] Accept InteractiveStepEvent
-    - [ ] Extract action details
-    - [ ] Call InteractiveStateManager.executeAction()
-    - [ ] Handle errors gracefully (state divergence)
-  - [ ] Update `handleEvent()`:
-    - [ ] For 'do_it' events:
-      - [ ] If mode === 'guided': Show highlight only
-      - [ ] If mode === 'follow': Execute action
-  - [ ] Add validation before execution
-  - [ ] Show toast on successful execution
-  - [ ] Show toast on failure with reason
+- [x] Extend `src/utils/collaboration/action-replay.ts`
+  - [x] Add mode parameter to constructor (already implemented)
+  - [x] Implement `executeAction()` method:
+    - [x] Accept InteractiveStepEvent
+    - [x] Find interactive step element on attendee's screen
+    - [x] Trigger "Do It" button click programmatically
+    - [x] Fallback to direct event dispatch if button not found
+    - [x] Handle errors gracefully (state divergence)
+  - [x] Update `handleEvent()`:
+    - [x] For 'do_it' events:
+      - [x] If mode === 'guided': Show highlight only
+      - [x] If mode === 'follow': Execute action
+  - [x] Add validation before execution
+  - [x] Show toast on successful execution
+  - [x] Show toast on failure with reason
 
 ### 2.3 State Validation
 - [ ] Create `src/utils/collaboration/state-validator.ts`

@@ -505,7 +505,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Live session state
   const [showPresenterControls, setShowPresenterControls] = React.useState(false);
   const [showAttendeeJoin, setShowAttendeeJoin] = React.useState(false);
-  const { isActive: isSessionActive, sessionRole, sessionInfo, sessionManager, onEvent, endSession } = useSession();
+  const { isActive: isSessionActive, sessionRole, sessionInfo, sessionManager, onEvent, endSession, attendeeMode } = useSession();
   
   // Check for session join URL on mount and auto-open modal
   React.useEffect(() => {
@@ -652,9 +652,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   
   // Initialize ActionReplaySystem when joining as attendee
   useEffect(() => {
-    if (sessionRole === 'attendee' && navigationManagerRef.current && !actionReplayRef.current) {
-      console.log('[DocsPanel] Initializing ActionReplaySystem for attendee');
-      actionReplayRef.current = new ActionReplaySystem('guided', navigationManagerRef.current);
+    if (sessionRole === 'attendee' && navigationManagerRef.current && attendeeMode && !actionReplayRef.current) {
+      console.log(`[DocsPanel] Initializing ActionReplaySystem for attendee in ${attendeeMode} mode`);
+      actionReplayRef.current = new ActionReplaySystem(attendeeMode, navigationManagerRef.current);
+    }
+    
+    // Update mode if it changes
+    if (sessionRole === 'attendee' && actionReplayRef.current && attendeeMode) {
+      actionReplayRef.current.setMode(attendeeMode);
+      console.log(`[DocsPanel] Updated ActionReplaySystem mode to ${attendeeMode}`);
     }
     
     // Cleanup when leaving session
@@ -662,7 +668,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       console.log('[DocsPanel] Cleaning up ActionReplaySystem');
       actionReplayRef.current = null;
     }
-  }, [sessionRole]);
+  }, [sessionRole, attendeeMode]);
   
   // Listen for session events and replay them (attendee only)
   useEffect(() => {

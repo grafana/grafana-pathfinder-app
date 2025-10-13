@@ -28,6 +28,9 @@ interface SessionContextValue {
   // Attendees (presenter only)
   attendees: AttendeeInfo[];
   
+  // Attendee mode (attendee only)
+  attendeeMode: 'guided' | 'follow' | null;
+  
   // Actions
   createSession: (config: SessionConfig) => Promise<SessionInfo>;
   joinSession: (sessionId: string, mode: 'guided' | 'follow', name?: string) => Promise<void>;
@@ -59,6 +62,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [sessionRole, setSessionRole] = useState<SessionRole>(null);
   const [attendees, setAttendees] = useState<AttendeeInfo[]>([]);
+  const [attendeeMode, setAttendeeMode] = useState<'guided' | 'follow' | null>(null);
   const [eventCallbacks, setEventCallbacks] = useState<Set<(event: AnySessionEvent) => void>>(new Set());
   
   // Update attendees list periodically (presenter only)
@@ -133,6 +137,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
     name?: string
   ): Promise<void> => {
     try {
+      // Store the attendee's selected mode
+      setAttendeeMode(mode);
+      
       await sessionManager.joinSession(sessionId, mode, name);
       
       // Wait for session_start event to get full session info
@@ -192,6 +199,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setSessionInfo(null);
     setSessionRole(null);
     setAttendees([]);
+    setAttendeeMode(null);
   }, [sessionManager]);
   
   /**
@@ -215,6 +223,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     sessionRole,
     isActive: sessionManager.isActive(),
     attendees,
+    attendeeMode,
     createSession,
     joinSession,
     endSession,
