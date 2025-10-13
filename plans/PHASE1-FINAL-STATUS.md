@@ -84,53 +84,60 @@ Clicks step 2 "Show Me"    →      Sees step 2 highlighted
 ## 🔧 Testing Checklist
 
 ### Setup
-- [ ] Two browser windows (regular + incognito, or two different browsers)
-- [ ] Both windows: Navigate to Grafana → Pathfinder panel
-- [ ] Both windows: Open browser console (F12)
+- [✅] Two browser windows (regular + incognito, or two different browsers)
+- [✅] Both windows: Navigate to Grafana → Pathfinder panel
+- [✅] Both windows: Open browser console (F12)
 
 ### Test 1: Session Creation & Joining
 
 **Presenter Window:**
-- [ ] Click "Start Live Session"
-- [ ] Enter session name: "Test Workshop 2024"
-- [ ] Click "Create Session"
-- [ ] Verify: Session Active button appears
-- [ ] Copy join URL (not just the 6-char code)
+- [✅] Click "Start Live Session"
+- [✅] Enter session name: "Test Workshop 2024"
+- [✅] Click "Create Session"
+PROBLEM: WITHOUT A TUTORIAL OPEN HERE, TUTORIAL IS BLANK
+- [✅] Verify: Session Active button appears
+- [✅] Copy join URL (not just the 6-char code)
 
 **Attendee Window:**
-- [ ] Click "Join Live Session"
-- [ ] Paste the full URL
-- [ ] **Verify:** Preview shows "Test Workshop 2024"
-- [ ] **Verify:** Preview shows tutorial URL
-- [ ] Select "Guided" mode
-- [ ] Click "Join Session"
-- [ ] **Verify:** Green banner shows "Connected to: Test Workshop 2024"
-- [ ] **Verify:** Tutorial auto-opens in new tab
+- [✅] Click "Join Live Session"
+- [✅] Paste the full URL
+- [✅] **Verify:** Preview shows "Test Workshop 2024"
+- [❌] **Verify:** Preview shows tutorial URL (NO TUTORIAL BECAUSE PRESENTER WASN'T ON ONE)
+- [✅] Select "Guided" mode
+- [✅] Click "Join Session"
+- [✅] **Verify:** Green banner shows "Connected to: Test Workshop 2024"
+- [❌] **Verify:** Tutorial auto-opens in new tab
 
 ### Test 2: Show Me Highlighting
 
 **Presenter Window:**
-- [ ] In the auto-opened tutorial, scroll to any interactive step
-- [ ] Click "Show Me" button
-- [ ] **Console:** `[ActionCapture] Broadcasted show_me event`
+- [✅] In the auto-opened tutorial, scroll to any interactive step
+- [✅] Click "Show Me" button
+- [✅] **Console:** `[ActionCapture] Broadcasted show_me event`
 
 **Attendee Window:**
-- [ ] **Console:** `[DocsPanel] Received event: show_me`
-- [ ] **Console:** `[ActionReplay] Highlighted element: ...`
-- [ ] **Visual:** Orange pulsing border appears around element
-- [ ] **Visual:** Tooltip with comment appears
+- [❌] **Console:** `[DocsPanel] Received event: show_me`
+- [❌] **Console:** `[ActionReplay] Highlighted element: ...`
+- [✅] **Visual:** Orange pulsing border appears around element
+- [✅] **Visual:** Tooltip with comment appears
+
+PROBLEM: Nothing in the console on presenter or attendee browser!
+
+PROBLEM: 
 
 ### Test 3: Interactive Guide Completion
 
 **Attendee Window:**
-- [ ] With highlight visible, click the highlighted element (or fill form, etc.)
-- [ ] **Verify:** The step marks as complete (green checkmark)
-- [ ] **Verify:** Interactive guide advances to next step
-- [ ] Scroll to next step
-- [ ] Wait for presenter to click "Show Me" on step 2
-- [ ] **Verify:** Highlight appears on step 2 element
-- [ ] Perform the action (click/fill/navigate)
-- [ ] **Verify:** Step 2 marks as complete
+- [✅] With highlight visible, click the highlighted element (or fill form, etc.)
+- [❌] **Verify:** The step marks as complete (green checkmark)
+- [❌] **Verify:** Interactive guide advances to next step
+- [✅] Scroll to next step
+- [✅] Wait for presenter to click "Show Me" on step 2
+- [✅] **Verify:** Highlight appears on step 2 element
+- [✅] Perform the action (click/fill/navigate)
+- [❌] **Verify:** Step 2 marks as complete
+
+PROBLEM: Step not marked as complete when manually actioned (clicked). There is a PR open for auto step completion detection so lets ignore this for now.
 
 ### Test 4: Multiple Attendees
 
@@ -139,6 +146,10 @@ Clicks step 2 "Show Me"    →      Sees step 2 highlighted
 - [ ] **Verify:** Both attendees see same highlights
 - [ ] **Verify:** Each attendee's progress is independent
 
+NOT PERFORMED FOR NOW.
+
+
+ADDITIONAL PROBLEM: If attendee leaves session and tries to join again, the Join session button opens the model with the previous session details visible and the join button is disabled with "joining...". If you press "back" button and enter a new code you see the correct session details but joining button is still disabled and shows joining... so you can't actually join a new session.
 ---
 
 ## 🐛 Known Limitations

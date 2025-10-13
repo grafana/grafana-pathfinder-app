@@ -40,6 +40,11 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       return;
     }
     
+    if (!tutorialUrl || tutorialUrl.trim() === '') {
+      setError('Please open a tutorial before creating a session. Open a learning journey or documentation page first.');
+      return;
+    }
+    
     setError(null);
     setIsCreating(true);
     
@@ -212,8 +217,18 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
         
         <div className={styles.formGroup}>
           <label>Tutorial</label>
-          <Input value={tutorialUrl} readOnly disabled />
-          <p className={styles.helpText}>Current tutorial will be used for this session</p>
+          {tutorialUrl ? (
+            <>
+              <Input value={tutorialUrl} readOnly disabled />
+              <p className={styles.helpText}>✓ This tutorial will be used for the session</p>
+            </>
+          ) : (
+            <>
+              <Alert severity="warning" title="" style={{ marginTop: '8px', marginBottom: '8px' }}>
+                No tutorial open. Please open a learning journey or docs page in a tab first.
+              </Alert>
+            </>
+          )}
         </div>
         
         {error && (
@@ -225,7 +240,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
         <Button
           variant="primary"
           onClick={handleCreateSession}
-          disabled={isCreating || !sessionName.trim()}
+          disabled={isCreating || !sessionName.trim() || !tutorialUrl}
         >
           {isCreating ? 'Creating Session...' : 'Create Session'}
         </Button>

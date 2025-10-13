@@ -10,9 +10,7 @@ import type {
   AttendeeMode,
   AnySessionEvent,
   InteractiveStepEvent,
-  NavigationEvent,
-  SessionStartEvent,
-  SessionEndEvent
+  NavigationEvent
 } from '../../types/collaboration.types';
 
 /**

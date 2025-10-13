@@ -35,7 +35,20 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
   const [error, setError] = useState<string | null>(null);
   const [isJoining, setIsJoining] = useState(false);
   
-  // Check for session in URL on mount
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      // Reset all state when modal is closed
+      setJoinCode('');
+      setSessionOffer(null);
+      setError(null);
+      setMode('guided');
+      setName('');
+      setIsJoining(false);
+    }
+  }, [isOpen]);
+  
+  // Check for session in URL when opening
   useEffect(() => {
     if (isOpen) {
       try {
@@ -104,20 +117,17 @@ const handleJoinSession = async () => {
   setError(null);
   setIsJoining(true);
   
-  try {
-    // Join session through context (handles state management)
-    await joinSession(sessionOffer.id, mode, name || undefined);
-    
-    console.log('[AttendeeJoin] Successfully joined session');
-    
-    // Close modal and notify parent
-    onJoined();
-    onClose();
-  } catch (err) {
-    console.error('[AttendeeJoin] Failed to join session:', err);
-    setError('Failed to join session. Please check the session code and try again.');
-    setIsJoining(false);
-  }
+    try {
+      // Join session through context (handles state management)
+      await joinSession(sessionOffer.id, mode, name || undefined);
+      
+      // Close modal and notify parent
+      onJoined();
+      onClose();
+    } catch (err) {
+      setError('Failed to join session. Please check the session code and try again.');
+      setIsJoining(false);
+    }
 };
   
   /**
