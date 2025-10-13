@@ -38,6 +38,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { Button } from '@grafana/ui';
+import { getAppEvents } from '@grafana/runtime';
 import { PresenterControls, AttendeeJoin } from '../LiveSession';
 import { SessionProvider, useSession } from '../../utils/collaboration/session-state';
 import { ActionReplaySystem } from '../../utils/collaboration/action-replay';
@@ -678,7 +679,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       if (event.type === 'session_end') {
         console.log('[DocsPanel] Presenter ended the session');
         endSession();
-        // TODO: Show notification to user that session ended
+        
+        // Show notification to attendee
+        getAppEvents().publish({
+          type: 'alert-warning',
+          payload: ['Session Ended', 'The presenter has ended the live session.']
+        });
+        
         return;
       }
       

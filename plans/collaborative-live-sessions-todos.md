@@ -83,7 +83,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Presenter broadcasts session_end event
   - [x] Attendee receives and handles session_end event
   - [x] Attendee UI clears session state and indicators
-  - [ ] Show notification/toast to attendee that session ended
+  - [x] Show notification/toast to attendee that session ended
 
 - [x] Fix attendee join modal state persistence:
   - [x] Clear session offer when reopening modal without URL params
