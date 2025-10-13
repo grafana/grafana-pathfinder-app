@@ -169,7 +169,15 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Added `joinSession()` method to context
   - [x] Handle `session_start` event for attendees
 
-### 1.10 MVP Testing & Validation
+### 1.10 Configuration & Admin Settings
+- [x] Add live sessions toggle to plugin configuration page
+- [x] Label feature as "Experimental" in configuration
+- [x] Add warning alerts explaining P2P limitations
+- [x] Add technical notes about PeerJS cloud dependency
+- [x] Keep user-facing UI clean (no beta labels on buttons/modals)
+- [x] Admin-gated approach: warnings in config, clean UX for users
+
+### 1.11 MVP Testing & Validation
 - [x] Test: Presenter creates session, gets join code
 - [x] Test: Attendee joins with code, sees session info
 - [x] Test: Attendee loads same tutorial as presenter
@@ -177,7 +185,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
 - [x] Test: Highlight appears in correct location with correct comment
 - [x] Test: Multiple Show Me clicks in sequence work
 - [x] Test: Attendee can leave session cleanly
-- [ ] Test: Presenter can end session, attendees notified
+- [x] Test: Presenter can end session, attendees notified
 - [ ] Test: Connection works through NAT (home networks)
 - [ ] Test: QR code scan works from mobile device
 
@@ -278,16 +286,23 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - [ ] Implement action coalescing (multiple highlights → one)
 
 ### 2.9 Follow Mode Testing & Validation
-- [ ] Test: Attendee in Follow mode receives and executes Do It
-- [ ] Test: Button clicks replicate correctly
+- [x] Test: Attendee in Follow mode receives and executes Do It
+- [x] Test: Button clicks replicate correctly
 - [ ] Test: Form fills work with correct values
 - [ ] Test: Navigation actions work
-- [ ] Test: Complex multi-step sequences execute in order
+- [x] Test: Complex multi-step sequences execute in order
 - [ ] Test: Error handling when state diverges
 - [ ] Test: Mode switching mid-session works smoothly
 - [ ] Test: Follow mode with 5 attendees simultaneously
 - [ ] Test: Network latency doesn't break execution order
 - [ ] Test: Attendee can recover from failed action
+
+### 2.10 Known Issues & Future Improvements
+- [ ] PeerJS cloud reliability: Consider self-hosting PeerJS server for production
+- [ ] Connection retry logic: Add automatic reconnection with exponential backoff
+- [ ] Error handling: Better user-friendly messages for connection failures
+- [ ] Debug logging: Add comprehensive logging for PeerJS events
+- [ ] Alternative STUN/TURN servers: Test and document backup servers
 
 ---
 
