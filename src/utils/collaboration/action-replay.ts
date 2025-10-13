@@ -199,11 +199,17 @@ export class ActionReplaySystem {
         return;
       }
       
+      // Special handling for multistep actions
+      if (action.targetAction === 'multistep') {
+        console.log(`[ActionReplay] Executing multistep with ${action.internalActions?.length || 0} internal actions`);
+      }
+      
       // Trigger the "Do It" action programmatically by simulating a click on the Do It button
       const doItButton = this.findDoItButton(stepElement);
       
       if (doItButton) {
         // Click the button to trigger the action
+        // For multistep, this will execute all internal actions in sequence
         doItButton.click();
         console.log('[ActionReplay] Triggered Do It action for attendee');
       } else {

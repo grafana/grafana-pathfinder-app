@@ -227,12 +227,26 @@ export class ActionCaptureSystem {
       return null;
     }
     
-    return {
+    const action: InteractiveAction = {
       targetAction: targetAction as any,
       refTarget,
       targetValue: targetValue || undefined,
       targetComment: targetComment || undefined
     };
+    
+    // For multistep, parse internal actions
+    if (targetAction === 'multistep') {
+      const internalActionsStr = element.getAttribute('data-internal-actions');
+      if (internalActionsStr) {
+        try {
+          action.internalActions = JSON.parse(internalActionsStr);
+        } catch (err) {
+          console.error('[ActionCapture] Failed to parse internal actions:', err);
+        }
+      }
+    }
+    
+    return action;
   }
   
   /**

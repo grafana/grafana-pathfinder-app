@@ -122,14 +122,21 @@ export interface NavigationEvent extends SessionEvent {
  * Details about an interactive action
  */
 export interface InteractiveAction {
-  /** Type of action (button, highlight, formfill, navigate) */
-  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'hover';
+  /** Type of action (button, highlight, formfill, navigate, multistep) */
+  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'hover' | 'multistep';
   /** CSS selector or button text to target */
   refTarget: string;
   /** Optional value for form fills */
   targetValue?: string;
   /** Optional comment to display in tooltip */
   targetComment?: string;
+  /** For multistep: array of internal actions to execute in sequence */
+  internalActions?: Array<{
+    targetAction: string;
+    refTarget?: string;
+    targetValue?: string;
+    requirements?: string;
+  }>;
 }
 
 /**

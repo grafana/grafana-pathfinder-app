@@ -263,8 +263,11 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - [ ] Test and handle: `targetAction: 'navigate'`
   - [ ] URL navigation replicates
   - [ ] Internal Grafana navigation works
-- [ ] Test and handle: Multi-step sequences
-  - [ ] Sequential actions execute in order
+- [x] Test and handle: Multi-step sequences (`targetAction: 'multistep'`)
+  - [x] Add data attributes to multi-step elements
+  - [x] Capture internal actions array
+  - [x] Trigger multi-step execution on attendee
+  - [ ] Verify sequential actions execute in order
   - [ ] Wait for completion before next action
 
 ### 2.8 Performance Optimization
