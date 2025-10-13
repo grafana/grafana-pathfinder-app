@@ -63,6 +63,11 @@ export class ActionReplaySystem {
           await this.handleNavigation(event as NavigationEvent);
           break;
           
+        case 'session_end':
+          console.log('[ActionReplay] Session ended by presenter');
+          // Session end is handled at the UI level, just log it here
+          break;
+          
         default:
           console.log(`[ActionReplay] Unhandled event type: ${event.type}`);
       }

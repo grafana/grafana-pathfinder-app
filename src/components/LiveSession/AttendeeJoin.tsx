@@ -48,16 +48,24 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
     }
   }, [isOpen]);
   
-  // Check for session in URL when opening
+  // Check for session in URL when opening, or reset to initial state
   useEffect(() => {
     if (isOpen) {
       try {
         const offerFromUrl = parseSessionFromUrl();
         if (offerFromUrl) {
           setSessionOffer(offerFromUrl);
+        } else {
+          // No session in URL - ensure we're at the join code input screen
+          setSessionOffer(null);
+          setJoinCode('');
+          setError(null);
         }
       } catch (err) {
-        // Ignore URL parsing errors - no session in URL is fine
+        // Parsing error - reset to join code input
+        setSessionOffer(null);
+        setJoinCode('');
+        setError(null);
       }
     }
   }, [isOpen]);

@@ -79,6 +79,16 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Add "End Session" button
   - [ ] Add toast notification when attendee joins
 
+- [x] Handle session cleanup when presenter ends session:
+  - [x] Presenter broadcasts session_end event
+  - [x] Attendee receives and handles session_end event
+  - [x] Attendee UI clears session state and indicators
+  - [ ] Show notification/toast to attendee that session ended
+
+- [x] Fix attendee join modal state persistence:
+  - [x] Clear session offer when reopening modal without URL params
+  - [x] Reset to join code input screen after leaving session
+
 - [ ] Create `src/components/LiveSession/SessionToolbar.tsx`
   - [ ] Floating toolbar visible during active session
   - [ ] Show session status: "🔴 LIVE" indicator
@@ -94,6 +104,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Modal for joining:
     - [x] Input: Join code paste box
     - [x] Or: Handle URL parameter `?session=...` for direct links
+    - [x] Auto-open join modal when URL contains session parameter
   - [x] On submit, parse join code
   - [x] Display session preview:
     - [x] Session name
@@ -159,13 +170,13 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Handle `session_start` event for attendees
 
 ### 1.10 MVP Testing & Validation
-- [ ] Test: Presenter creates session, gets join code
-- [ ] Test: Attendee joins with code, sees session info
-- [ ] Test: Attendee loads same tutorial as presenter
-- [ ] Test: Presenter clicks "Show Me", attendee sees highlight
-- [ ] Test: Highlight appears in correct location with correct comment
-- [ ] Test: Multiple Show Me clicks in sequence work
-- [ ] Test: Attendee can leave session cleanly
+- [x] Test: Presenter creates session, gets join code
+- [x] Test: Attendee joins with code, sees session info
+- [x] Test: Attendee loads same tutorial as presenter
+- [x] Test: Presenter clicks "Show Me", attendee sees highlight
+- [x] Test: Highlight appears in correct location with correct comment
+- [x] Test: Multiple Show Me clicks in sequence work
+- [x] Test: Attendee can leave session cleanly
 - [ ] Test: Presenter can end session, attendees notified
 - [ ] Test: Connection works through NAT (home networks)
 - [ ] Test: QR code scan works from mobile device

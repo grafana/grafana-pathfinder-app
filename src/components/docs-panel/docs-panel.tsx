@@ -506,6 +506,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const [showAttendeeJoin, setShowAttendeeJoin] = React.useState(false);
   const { isActive: isSessionActive, sessionRole, sessionInfo, sessionManager, onEvent, endSession } = useSession();
   
+  // Check for session join URL on mount and auto-open modal
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('session')) {
+      setShowAttendeeJoin(true);
+    }
+  }, []);
+  
   // Action replay system for attendees
   const navigationManagerRef = useRef<NavigationManager | null>(null);
   const actionReplayRef = useRef<ActionReplaySystem | null>(null);
@@ -665,11 +673,21 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     
     const cleanup = onEvent((event) => {
       console.log('[DocsPanel] Received event:', event.type);
+      
+      // Handle session end
+      if (event.type === 'session_end') {
+        console.log('[DocsPanel] Presenter ended the session');
+        endSession();
+        // TODO: Show notification to user that session ended
+        return;
+      }
+      
+      // Replay other events
       actionReplayRef.current?.handleEvent(event);
     });
     
     return cleanup;
-  }, [sessionRole, onEvent]);
+  }, [sessionRole, onEvent, endSession]);
   
   // Auto-open tutorial when joining session as attendee
   useEffect(() => {
