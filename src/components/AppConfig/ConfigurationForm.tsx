@@ -219,7 +219,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         {/* Tutorial URL */}
         <Field
           label="Auto-launch tutorial URL"
-          description="Optional: URL of a learning journey or documentation page to automatically open when Grafana starts. Useful for demo scenarios. Can be set via environment variable GF_PLUGINS_GRAFANA_GRAFANADOCSPLUGIN_APP_TUTORIAL_URL"
+          description="Optional: URL of a learning journey or documentation page to automatically open when Grafana starts. Useful for demo scenarios. Can be set via environment variable GF_PLUGINS_GRAFANA_PATHFINDER_APP_TUTORIAL_URL"
           className={s.marginTop}
         >
           <Input
