@@ -6,6 +6,8 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { SessionManager } from './session-manager';
+import { PluginPropsContext } from '../../utils/utils.plugin';
+import { getConfigWithDefaults } from '../../constants';
 import type {
   SessionConfig,
   SessionInfo,
@@ -58,12 +60,26 @@ interface SessionProviderProps {
  * Wrap your app with this to enable session management
  */
 export function SessionProvider({ children }: SessionProviderProps) {
+  const pluginProps = useContext(PluginPropsContext);
   const [sessionManager] = useState(() => new SessionManager());
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [sessionRole, setSessionRole] = useState<SessionRole>(null);
   const [attendees, setAttendees] = useState<AttendeeInfo[]>([]);
   const [attendeeMode, setAttendeeMode] = useState<'guided' | 'follow' | null>(null);
   const [eventCallbacks, setEventCallbacks] = useState<Set<(event: AnySessionEvent) => void>>(new Set());
+  
+  // Get PeerJS config from plugin settings
+  const getPeerjsConfig = useCallback(() => {
+    if (!pluginProps) {
+      return { host: 'localhost', port: 9000, key: 'pathfinder' };
+    }
+    const config = getConfigWithDefaults(pluginProps.meta.jsonData || {});
+    return {
+      host: config.peerjsHost,
+      port: config.peerjsPort,
+      key: config.peerjsKey,
+    };
+  }, [pluginProps]);
   
   // Update attendees list periodically (presenter only)
   useEffect(() => {
@@ -118,7 +134,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
    */
   const createSession = useCallback(async (config: SessionConfig): Promise<SessionInfo> => {
     try {
-      const info = await sessionManager.createSession(config);
+      const peerjsConfig = getPeerjsConfig();
+      const info = await sessionManager.createSession(config, peerjsConfig);
       setSessionInfo(info);
       setSessionRole('presenter');
       return info;
@@ -126,7 +143,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       console.error('[SessionState] Failed to create session:', error);
       throw error;
     }
-  }, [sessionManager]);
+  }, [sessionManager, getPeerjsConfig]);
   
   /**
    * Join an existing session as attendee
@@ -140,7 +157,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
       // Store the attendee's selected mode
       setAttendeeMode(mode);
       
-      await sessionManager.joinSession(sessionId, mode, name);
+      const peerjsConfig = getPeerjsConfig();
+      await sessionManager.joinSession(sessionId, mode, name, peerjsConfig);
       
       // Wait for session_start event to get full session info
       const sessionStartPromise = new Promise<SessionInfo>((resolve) => {

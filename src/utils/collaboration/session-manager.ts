@@ -14,6 +14,12 @@ import type {
   SessionError
 } from '../../types/collaboration.types';
 
+export interface PeerJSConfig {
+  host: string;
+  port: number;
+  key: string;
+}
+
 /**
  * Session Manager class
  * Handles P2P connections and event broadcasting using PeerJS
@@ -55,25 +61,29 @@ export class SessionManager {
    * Create a new session as presenter
    * 
    * @param config - Session configuration
+   * @param peerjsConfig - PeerJS server configuration
    * @returns Session info with join code
    */
-  async createSession(config: SessionConfig): Promise<SessionInfo> {
+  async createSession(config: SessionConfig, peerjsConfig?: PeerJSConfig): Promise<SessionInfo> {
     try {
       this.role = 'presenter';
       this.config = config;
+      
+      // Use provided config or defaults
+      const peerConfig = peerjsConfig || { host: 'localhost', port: 9000, key: 'pathfinder' };
       
       // Create a new peer with a simple readable ID
       const peerId = this.generateReadableId();
       
       console.log(`[SessionManager] Creating presenter peer: ${peerId}`);
-      console.log(`[SessionManager] Using local PeerJS server: localhost:9000/pathfinder`);
+      console.log(`[SessionManager] Using PeerJS server: ${peerConfig.host}:${peerConfig.port}/pathfinder`);
       
-      // Create peer connection to local PeerJS server
+      // Create peer connection to configured PeerJS server
       this.peer = new Peer(peerId, {
-        host: 'localhost',
-        port: 9000,
+        host: peerConfig.host,
+        port: peerConfig.port,
         path: '/pathfinder',
-        key: 'pathfinder',
+        key: peerConfig.key,
         debug: 2, // Enable debug logging
       });
       
@@ -218,25 +228,30 @@ export class SessionManager {
    * @param sessionId - Presenter's peer ID
    * @param mode - Attendee mode (guided or follow)
    * @param name - Optional attendee name
+   * @param peerjsConfig - PeerJS server configuration
    */
   async joinSession(
     sessionId: string,
     mode: 'guided' | 'follow',
-    name?: string
+    name?: string,
+    peerjsConfig?: PeerJSConfig
   ): Promise<void> {
     try {
       this.role = 'attendee';
       this.sessionId = sessionId;
       
+      // Use provided config or defaults
+      const peerConfig = peerjsConfig || { host: 'localhost', port: 9000, key: 'pathfinder' };
+      
       console.log(`[SessionManager] Joining session: ${sessionId}`);
-      console.log(`[SessionManager] Using local PeerJS server: localhost:9000/pathfinder`);
+      console.log(`[SessionManager] Using PeerJS server: ${peerConfig.host}:${peerConfig.port}/pathfinder`);
       
       // Create a peer for this attendee
       this.peer = new Peer({
-        host: 'localhost',
-        port: 9000,
+        host: peerConfig.host,
+        port: peerConfig.port,
         path: '/pathfinder',
-        key: 'pathfinder',
+        key: peerConfig.key,
         debug: 2,
       });
       

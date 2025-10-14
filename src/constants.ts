@@ -23,6 +23,11 @@ export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
 export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = false; // Opt-in feature
 export const DEFAULT_ENABLE_LIVE_SESSIONS = false; // Opt-in feature - disabled by default for stability
 
+// PeerJS Server defaults (for live sessions)
+export const DEFAULT_PEERJS_HOST = 'localhost';
+export const DEFAULT_PEERJS_PORT = 9000;
+export const DEFAULT_PEERJS_KEY = 'pathfinder';
+
 // Configuration interface
 export interface DocsPluginConfig {
   recommenderServiceUrl?: string;
@@ -43,6 +48,9 @@ export interface DocsPluginConfig {
   interceptGlobalDocsLinks?: boolean;
   // Live Sessions (Collaborative Learning)
   enableLiveSessions?: boolean;
+  peerjsHost?: string;
+  peerjsPort?: number;
+  peerjsKey?: string;
 }
 
 // Helper functions to get configuration values with defaults
@@ -64,6 +72,9 @@ export const getConfigWithDefaults = (config: DocsPluginConfig): Required<DocsPl
   interceptGlobalDocsLinks: config.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   // Live Sessions
   enableLiveSessions: config.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
+  peerjsHost: config.peerjsHost || DEFAULT_PEERJS_HOST,
+  peerjsPort: config.peerjsPort ?? DEFAULT_PEERJS_PORT,
+  peerjsKey: config.peerjsKey || DEFAULT_PEERJS_KEY,
 });
 
 /**

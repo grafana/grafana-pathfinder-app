@@ -11,6 +11,9 @@ import {
   DEFAULT_TUTORIAL_URL,
   DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   DEFAULT_ENABLE_LIVE_SESSIONS,
+  DEFAULT_PEERJS_HOST,
+  DEFAULT_PEERJS_PORT,
+  DEFAULT_PEERJS_KEY,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 
@@ -35,6 +38,9 @@ type State = {
   interceptGlobalDocsLinks: boolean;
   // Live sessions (collaborative learning)
   enableLiveSessions: boolean;
+  peerjsHost: string;
+  peerjsPort: number;
+  peerjsKey: string;
 };
 
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -54,6 +60,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     devMode: jsonData?.devMode || false,
     interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
     enableLiveSessions: jsonData?.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
+    peerjsHost: jsonData?.peerjsHost || DEFAULT_PEERJS_HOST,
+    peerjsPort: jsonData?.peerjsPort ?? DEFAULT_PEERJS_PORT,
+    peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -124,6 +133,29 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
+  const onChangePeerjsHost = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      peerjsHost: event.target.value.trim(),
+    });
+  };
+
+  const onChangePeerjsPort = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value.trim();
+    const port = value === '' ? DEFAULT_PEERJS_PORT : parseInt(value, 10);
+    setState({
+      ...state,
+      peerjsPort: isNaN(port) ? DEFAULT_PEERJS_PORT : port,
+    });
+  };
+
+  const onChangePeerjsKey = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      peerjsKey: event.target.value.trim(),
+    });
+  };
+
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSaving(true);
@@ -138,6 +170,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         devMode: state.devMode,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
         enableLiveSessions: state.enableLiveSessions,
+        peerjsHost: state.peerjsHost,
+        peerjsPort: state.peerjsPort,
+        peerjsKey: state.peerjsKey,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -321,6 +356,41 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   Choose between <strong>Guided Mode</strong> (see highlights only) or <strong>Follow Mode</strong> (actions execute automatically).
                 </Text>
               </Alert>
+
+              {/* PeerJS Server Configuration */}
+              <div className={s.marginTop}>
+                <Text variant="h6">Signaling Server Settings</Text>
+                <div style={{ marginTop: '8px', marginBottom: '16px' }}>
+                  <Text variant="body" color="secondary">
+                    Configure the live session signaling server.
+                  </Text>
+                </div>
+
+                <Field label="Server Host" description="Hostname or IP address">
+                  <Input
+                    value={state.peerjsHost}
+                    onChange={onChangePeerjsHost}
+                    placeholder={DEFAULT_PEERJS_HOST}
+                  />
+                </Field>
+
+                <Field label="Server Port" description="Port number">
+                  <Input
+                    type="number"
+                    value={state.peerjsPort}
+                    onChange={onChangePeerjsPort}
+                    placeholder={String(DEFAULT_PEERJS_PORT)}
+                  />
+                </Field>
+
+                <Field label="API Key" description="Authentication key">
+                  <Input
+                    value={state.peerjsKey}
+                    onChange={onChangePeerjsKey}
+                    placeholder={DEFAULT_PEERJS_KEY}
+                  />
+                </Field>
+              </div>
             </>
           )}
 
