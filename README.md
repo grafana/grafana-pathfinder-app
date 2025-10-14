@@ -4,57 +4,72 @@
 
 [![License](https://img.shields.io/github/license/grafana/docs-plugin)](LICENSE)
 
-Grafana Pathfinder brings contextual help and interactive learning directly into Grafana. Open the sidebar, get tailored recommendations, and follow guided learning journeys without leaving your workflow.
+Get help exactly when and where you need it. Grafana Pathfinder brings contextual documentation and interactive tutorials directly into Grafana, so you can learn and build without leaving your workflow.
 
-## What you can do
+## What is Grafana Pathfinder?
 
-- Context-aware recommendations based on where you are in Grafana
-- Interactive learning journeys with milestones and progress
-- Open multiple docs/journeys in tabs; navigate with keyboard shortcuts
-- Quick “View” or “Start” actions from recommendations
-- Optional auto-launch of a tutorial on startup (for demos)
-- Show me and do it wizard experience for new users
+Grafana Pathfinder is your in-app learning companion. It provides:
 
-## How to use
+- **Smart recommendations** – Get relevant docs and tutorials based on what you're working on
+- **Interactive tutorials** – Follow step-by-step guided learning journeys with "Show Me" and "Do It" features
+- **Tab-based navigation** – Open multiple docs and tutorials in tabs, just like a browser
+- **Milestone tracking** – See your progress through learning journeys with clear milestones
+- **Always available** – Access help without switching windows or searching documentation sites
 
-1. Open the sidebar and click “Grafana Pathfinder”.
-2. Review the “Recommended Documentation”.
-3. Click “View” to open a doc tab, or “Start” to launch a learning journey.
-4. Use the bottom navigation (or Alt+Arrow keys) to move between milestones.
-5. Tabs persist while Grafana is open; close tabs from the tab header.
+## How to Access Pathfinder
 
-## Settings (optional)
+1. Look for the **Help** button (?) in the top navigation bar of Grafana
+2. Click the Help button to open the Pathfinder panel
+3. Browse recommended documentation based on your current context
+4. Click **View** to read a doc or **Start** to begin an interactive tutorial
 
-Admins can configure the plugin from the app’s configuration page:
+## Getting Started
 
-- Recommender service URL
-- Docs base URL and credentials (if needed)
-- Auto-launch tutorial URL (opens automatically on startup)
+Once you open Pathfinder:
 
-See: docs → App Configuration.
+1. **Review recommendations** – See docs and tutorials tailored to what you're doing in Grafana
+2. **Open content in tabs** – Click "View" or "Start" to open content in a new tab
+3. **Navigate tutorials** – Use the milestone navigation at the bottom to move through learning journeys
+4. **Try interactive features** – Click "Show Me" to see where things are, or "Do It" to have Pathfinder guide you through actions
+5. **Manage your tabs** – Close tabs you're done with, or keep them open for reference
 
-## Documentation
+## Keyboard Shortcuts
 
-Developer and architecture docs have moved to the docs/ folder:
+- `Alt + Left Arrow` – Previous milestone
+- `Alt + Right Arrow` – Next milestone
 
-- Overview: `docs/overview.md`
-- Components: `docs/components/README.md`
-  - App: `docs/components/App/README.md`
-  - AppConfig: `docs/components/AppConfig/README.md`
-  - Docs Panel: `docs/components/docs-panel/README.md`
-  - Feedback Button: `docs/components/FeedbackButton/README.md`
-- Utils & Hooks: `docs/utils/README.md`
-- Styles: `docs/styles/README.md`
-- Constants: `docs/constants/README.md`
-- Pages & Routing: `docs/pages/README.md`
+## For Administrators
 
-For project architecture, see `ARCHITECTURE.md`.
-For local development, see `docs/LOCAL_DEV.md`.
+### Discovering Pathfinder
+
+Users can find Grafana Pathfinder in multiple ways:
+
+- **Help button** – Click the Help (?) button in the top navigation
+- **Command palette** – Search for "Grafana Pathfinder", "Need help?", or "Learn Grafana" in the command palette (`Cmd+K` or `Ctrl+K`)
+
+### Configuration Options
+
+Admins can configure Pathfinder from the plugin's configuration page in Grafana. The configuration includes three sections:
+
+#### 1. Configuration (Basic Settings)
+
+- **Auto-launch tutorial URL** – Set a specific learning journey or documentation page to automatically open when Grafana starts (useful for demos and onboarding)
+- **Global link interception** – (Experimental) When enabled, clicking documentation links anywhere in Grafana will open them in Pathfinder instead of a new tab
+
+#### 2. Recommendations
+
+- **Context-aware recommendations** – Enable/disable recommendation service that provides personalized documentation based on your current actions in Grafana
+- **Data usage controls** – Review what data is collected and toggle the feature on or off
+
+#### 3. Interactive Features
+
+- **Auto-completion detection** – (Experimental) Enable automatic step completion when users perform actions themselves (without clicking "Do it" buttons)
+- **Timing settings** – Configure timeouts for requirement checks and guided steps to optimize the tutorial experience
 
 ## Contributing
 
-We welcome issues and PRs. Please follow TypeScript + React best practices and our lint/typecheck CI.
+We welcome feedback, issues, and contributions. Visit our [GitHub repository](https://github.com/grafana/grafana-pathfinder-app) to get involved.
 
 ## License
 
-GNU AFFERO GENERAL PUBLIC LICENSE
+See [CHANGELOG.md](./CHANGELOG.md) for details on project changes and license information.

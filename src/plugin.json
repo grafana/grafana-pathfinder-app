@@ -7,10 +7,12 @@
   "autoEnabled": true,
   "info": {
     "keywords": ["app", "documentation", "learning", "command palette", "search"],
-    "description": "A learning journey plugin that provides contextual help and interactive learning experiences",
+    "description": "Get help exactly when and where you need it. Grafana Pathfinder brings contextual documentation and interactive tutorials directly into Grafana, so you can learn and build without leaving your workflow.",
     "screenshots": [
-      { "name": "Recommended reading", "path": "img/screenshot_1.png" },
-      { "name": "Progress through reading", "path": "img/screenshot_2.png" }
+      { "name": "Context-aware recommendations", "path": "img/img_1.png" },
+      { "name": "Interactive tutorials with guided steps", "path": "img/img_2.png" },
+      { "name": "Step-by-step guidance throughout Grafana", "path": "img/img_3.png" },
+      { "name": "Documentation for any Grafana feature", "path": "img/img_4.png" }
     ],
     "author": {
       "name": "Grafana"
@@ -64,7 +66,7 @@
     ]
   },
   "dependencies": {
-    "grafanaDependency": ">=12.1.0",
+    "grafanaDependency": ">=12.3.0",
     "plugins": []
   },
   "roles": [
@@ -86,7 +88,6 @@
     }
   ],
   "languages": [
-    "en-US",
     "id-ID",
     "cs-CZ",
     "de-DE",
