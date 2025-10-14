@@ -1,5 +1,5 @@
 import React from 'react';
-import { Icon, useTheme2 } from '@grafana/ui';
+import { Button, LinkButton, useTheme2 } from '@grafana/ui';
 import { useHelpNavItem } from '@grafana/runtime';
 import { getHelpFooterStyles } from '../../styles/help-footer.styles';
 
@@ -42,25 +42,31 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
     <div className={`${styles.helpFooter} ${className || ''}`}>
       <div className={styles.helpButtons}>
         {helpButtons.map((button) => {
-          const ButtonComponent = button.href ? 'a' : 'button';
-          const buttonProps = button.href
-            ? {
-                href: button.href,
-                target: button.target || '_blank',
-                rel: 'noopener noreferrer',
-              }
-            : {
-                onClick: button.onClick,
-                type: 'button' as const,
-              };
+          if (button.href) {
+            return (
+              <LinkButton
+                key={button.key}
+                variant="secondary"
+                size="sm"
+                icon={button.icon}
+                href={button.href}
+                target={button.target || '_blank'}
+              >
+                {button.label}
+              </LinkButton>
+            );
+          }
 
           return (
-            <ButtonComponent key={button.key} className={styles.helpButton} {...buttonProps}>
-              <div className={styles.helpButtonContent}>
-                <Icon name={button.icon} size="sm" className={styles.helpButtonIcon} />
-                <span className={styles.helpButtonText}>{button.label}</span>
-              </div>
-            </ButtonComponent>
+            <Button
+              key={button.key}
+              variant="secondary"
+              size="sm"
+              icon={button.icon}
+              onClick={button.onClick}
+            >
+              {button.label}
+            </Button>
           );
         })}
       </div>
