@@ -97,6 +97,13 @@ export class ActionCaptureSystem {
       return;
     }
     
+    console.log('[ActionCapture] ✅ Extracted action:', {
+      targetAction: action.targetAction,
+      refTarget: action.refTarget,
+      targetValue: action.targetValue,
+      targetComment: action.targetComment
+    });
+    
     const stepId = stepElement.getAttribute('data-step-id') || this.generateStepId(stepElement);
     
     // Check for duplicate events (debounce)
@@ -122,8 +129,16 @@ export class ActionCaptureSystem {
       coordinates
     };
     
+    console.log(`[ActionCapture] 📡 Broadcasting ${buttonType} event:`, {
+      stepId,
+      actionType: action.targetAction,
+      refTarget: action.refTarget,
+      targetValue: action.targetValue,
+      sessionId: this.sessionId
+    });
+    
     this.sessionManager.broadcastEvent(sessionEvent);
-    console.log(`[ActionCapture] Broadcasted ${buttonType} event for step: ${stepId}`);
+    console.log(`[ActionCapture] ✅ Event broadcasted successfully`);
     
     // Update last event for debouncing
     this.lastEvent = {

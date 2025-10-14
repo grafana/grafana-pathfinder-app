@@ -625,7 +625,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     }
   }, [activeTab?.id, activeTab?.currentUrl, activeTab?.baseUrl]);
 
-  // Initialize interactive elements for the content container (side effects only)
+  // Initialize interactive elements for the content container
   useInteractiveElements({ containerRef: contentRef });
 
   // Use custom hooks for cleaner organization

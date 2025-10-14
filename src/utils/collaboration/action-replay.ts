@@ -7,7 +7,6 @@
 
 import { getAppEvents } from '@grafana/runtime';
 import type { NavigationManager } from '../navigation-manager';
-import type { InteractiveElementData } from '../../types/interactive.types';
 import type {
   AttendeeMode,
   AnySessionEvent,
@@ -53,7 +52,23 @@ export class ActionReplaySystem {
    */
   async handleEvent(event: AnySessionEvent): Promise<void> {
     try {
-      console.log(`[ActionReplay] Handling ${event.type} in ${this.mode} mode`);
+      console.log(`[ActionReplay] 📨 Received event:`, {
+        type: event.type,
+        mode: this.mode,
+        sessionId: event.sessionId,
+        timestamp: event.timestamp
+      });
+      
+      // Log detailed info for interactive events
+      if (event.type === 'show_me' || event.type === 'do_it') {
+        const stepEvent = event as InteractiveStepEvent;
+        console.log(`[ActionReplay] 🎯 Interactive event details:`, {
+          stepId: stepEvent.stepId,
+          actionType: stepEvent.action?.targetAction,
+          refTarget: stepEvent.action?.refTarget,
+          targetValue: stepEvent.action?.targetValue
+        });
+      }
       
       switch (event.type) {
         case 'show_me':
@@ -188,34 +203,45 @@ export class ActionReplaySystem {
     try {
       const { action } = event;
       
-      console.log(`[ActionReplay] Executing ${action.targetAction} on ${action.refTarget}`);
+      console.log(`[ActionReplay] ⚡ Starting execution:`, {
+        targetAction: action.targetAction,
+        refTarget: action.refTarget,
+        targetValue: action.targetValue,
+        stepId: event.stepId
+      });
       
       // Find the interactive step element on this page
       const stepElement = this.findStepElement(event.stepId, action);
       
       if (!stepElement) {
-        console.warn('[ActionReplay] Step element not found - attendee may be on different page');
+        console.error('[ActionReplay] ❌ Step element not found:', {
+          stepId: event.stepId,
+          actionType: action.targetAction,
+          refTarget: action.refTarget
+        });
+        console.warn('[ActionReplay] Attendee may be on different page');
         this.showNotification('Unable to execute action - please ensure you are on the same page as presenter', 'warning');
         return;
       }
+      
+      console.log('[ActionReplay] ✅ Found step element:', stepElement);
       
       // Special handling for multistep actions
       if (action.targetAction === 'multistep') {
         console.log(`[ActionReplay] Executing multistep with ${action.internalActions?.length || 0} internal actions`);
       }
       
-      // Trigger the "Do It" action programmatically by simulating a click on the Do It button
+      // Find and click the "Do It" button - this triggers the normal interactive flow
+      // Note: attendees render the same HTML, so data-targetvalue is already correct
       const doItButton = this.findDoItButton(stepElement);
       
       if (doItButton) {
-        // Click the button to trigger the action
-        // For multistep, this will execute all internal actions in sequence
+        console.log('[ActionReplay] 🖱️ Clicking Do It button');
         doItButton.click();
-        console.log('[ActionReplay] Triggered Do It action for attendee');
+        console.log('[ActionReplay] ✅ Do It button clicked');
       } else {
-        // Fallback: Dispatch the action event directly
-        console.warn('[ActionReplay] Do It button not found, using fallback execution');
-        await this.executeFallbackAction(action, stepElement);
+        // Fallback: should rarely happen
+        console.warn('[ActionReplay] ❌ Do It button not found');
       }
       
     } catch (error) {
@@ -255,32 +281,6 @@ export class ActionReplaySystem {
       }
     }
     return null;
-  }
-  
-  /**
-   * Fallback execution when Do It button is not found
-   * Dispatches the action event directly
-   */
-  private async executeFallbackAction(action: InteractiveAction, stepElement: HTMLElement): Promise<void> {
-    // Convert InteractiveAction to InteractiveElementData
-    const data: InteractiveElementData = {
-      reftarget: action.refTarget,
-      targetaction: action.targetAction,
-      targetvalue: action.targetValue,
-      targetcomment: action.targetComment,
-      tagName: stepElement.tagName.toLowerCase(),
-      className: stepElement.className,
-      id: stepElement.id || '',
-      textContent: stepElement.textContent || ''
-    };
-    
-    // Dispatch interactive-action-trigger event (the same event the Do It button would dispatch)
-    const event = new CustomEvent('interactive-action-trigger', {
-      detail: { data, execute: true }
-    });
-    document.dispatchEvent(event);
-    
-    console.log('[ActionReplay] Dispatched fallback action event');
   }
   
   /**
