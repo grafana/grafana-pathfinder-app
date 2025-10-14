@@ -194,9 +194,7 @@ function openExtensionSidebar(pluginId: string, componentTitle: string, props?: 
 }
 
 const LazyApp = lazy(() => import('./components/App/App'));
-const LazyMemoizedContextPanel = lazy(() =>
-  import('./components/App/App').then((module) => ({ default: module.MemoizedContextPanel }))
-);
+const LazyMemoizedContextPanel = lazy(() => import('./components/App/ContextPanel'));
 const LazyAppConfig = lazy(() => import('./components/AppConfig/AppConfig'));
 const LazyTermsAndConditions = lazy(() => import('./components/AppConfig/TermsAndConditions'));
 const LazyInteractiveFeatures = lazy(() => import('./components/AppConfig/InteractiveFeatures'));
