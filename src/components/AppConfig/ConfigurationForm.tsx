@@ -319,8 +319,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           )}
         </FieldSet>
 
-        {/* Live Sessions (Collaborative Learning) - EXPERIMENTAL */}
-        <FieldSet label="Live Sessions (Collaborative Learning) — Experimental" className={s.marginTopXl}>
+        {/* Live Sessions (Collaborative Learning) */}
+        <FieldSet label="Live Sessions (Collaborative Learning)" className={s.marginTopXl}>
           <div className={s.toggleSection}>
             <Switch
               id="enable-live-sessions"
@@ -342,18 +342,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
               <Alert severity="warning" title="⚠️ Experimental Feature" className={s.marginTop}>
                 <Text variant="body">
                   <strong>This feature is experimental and may have stability issues.</strong> Connection reliability depends on
-                  network configuration and the availability of the PeerJS cloud service. Not recommended for production-critical workflows.
-                </Text>
-              </Alert>
-              
-              <Alert severity="info" title="How it works" className={s.marginTop}>
-                <Text variant="body">
-                  <strong>For Presenters:</strong> Click "Start Live Session" to create a session and share the join code with attendees.
-                  When you click "Show Me" or "Do It" buttons, attendees will see the same highlights and actions on their screens.
-                  <br />
-                  <br />
-                  <strong>For Attendees:</strong> Click "Join Live Session" and enter the join code from the presenter.
-                  Choose between <strong>Guided Mode</strong> (see highlights only) or <strong>Follow Mode</strong> (actions execute automatically).
+                  network configuration and the availability of the PeerJS signaling server. Not recommended for production-critical workflows.
                 </Text>
               </Alert>
 
