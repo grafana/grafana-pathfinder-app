@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Icon, useStyles2 } from '@grafana/ui';
+import { IconButton, Alert, Icon, useStyles2, Button } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { getConfigWithDefaults, DocsPluginConfig } from '../../constants';
@@ -263,27 +263,46 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       const configWithDefaults = getConfigWithDefaults(this.state.pluginConfig);
       const result = await fetchContent(url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
 
-      const finalUpdatedTabs = this.state.tabs.map((t) =>
-        t.id === tabId
-          ? {
-              ...t,
-              content: result.content,
-              isLoading: false,
-              error: null,
-              currentUrl: url, // Ensure currentUrl is set to the actual loaded URL
-            }
-          : t
-      );
-      this.setState({ tabs: finalUpdatedTabs });
+      // Check if fetch succeeded or failed
+      if (result.content) {
+        // Success: set content and clear error
+        const finalUpdatedTabs = this.state.tabs.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                content: result.content,
+                isLoading: false,
+                error: null,
+                currentUrl: url, // Ensure currentUrl is set to the actual loaded URL
+              }
+            : t
+        );
+        this.setState({ tabs: finalUpdatedTabs });
 
-      // Save tabs to storage after content is loaded
-      this.saveTabsToStorage();
+        // Save tabs to storage after content is loaded
+        this.saveTabsToStorage();
 
-      // Update completion percentage for learning journeys
-      const updatedTab = finalUpdatedTabs.find((t) => t.id === tabId);
-      if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
-        const progress = getJourneyProgress(updatedTab.content);
-        setJourneyCompletionPercentage(updatedTab.baseUrl, progress);
+        // Update completion percentage for learning journeys
+        const updatedTab = finalUpdatedTabs.find((t) => t.id === tabId);
+        if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
+          const progress = getJourneyProgress(updatedTab.content);
+          setJourneyCompletionPercentage(updatedTab.baseUrl, progress);
+        }
+      } else {
+        // Fetch failed: set error from result
+        const errorUpdatedTabs = this.state.tabs.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                isLoading: false,
+                error: result.error || 'Failed to load content',
+              }
+            : t
+        );
+        this.setState({ tabs: errorUpdatedTabs });
+
+        // Save tabs to storage even when there's an error
+        this.saveTabsToStorage();
       }
     } catch (error) {
       console.error(`Failed to load journey content for tab ${tabId}:`, error);
@@ -455,21 +474,40 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       const configWithDefaults = getConfigWithDefaults(this.state.pluginConfig);
       const result = await fetchContent(url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
 
-      const finalUpdatedTabs = this.state.tabs.map((t) =>
-        t.id === tabId
-          ? {
-              ...t,
-              content: result.content,
-              isLoading: false,
-              error: null,
-              currentUrl: url,
-            }
-          : t
-      );
-      this.setState({ tabs: finalUpdatedTabs });
+      // Check if fetch succeeded or failed
+      if (result.content) {
+        // Success: set content and clear error
+        const finalUpdatedTabs = this.state.tabs.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                content: result.content,
+                isLoading: false,
+                error: null,
+                currentUrl: url,
+              }
+            : t
+        );
+        this.setState({ tabs: finalUpdatedTabs });
 
-      // Save tabs to storage after content is loaded
-      this.saveTabsToStorage();
+        // Save tabs to storage after content is loaded
+        this.saveTabsToStorage();
+      } else {
+        // Fetch failed: set error from result
+        const errorUpdatedTabs = this.state.tabs.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                isLoading: false,
+                error: result.error || 'Failed to load documentation',
+              }
+            : t
+        );
+        this.setState({ tabs: errorUpdatedTabs });
+
+        // Save tabs to storage even when there's an error
+        this.saveTabsToStorage();
+      }
     } catch (error) {
       console.error(`Failed to load docs content for tab ${tabId}:`, error);
 
@@ -965,12 +1003,44 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
             );
           }
 
-          // Show error state
+          // Show error state with retry option
           if (!isRecommendationsTab && activeTab?.error && !activeTab.isLoading) {
+            const isRetryable =
+              activeTab.error.includes('timeout') ||
+              activeTab.error.includes('Unable to connect') ||
+              activeTab.error.includes('network');
+
             return (
-              <Alert severity="error" title={activeTab.type === 'docs' ? 'Documentation' : 'Learning Journey'}>
-                {activeTab.error}
-              </Alert>
+              <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
+                <Alert
+                  severity="error"
+                  title={`Unable to load ${activeTab.type === 'docs' ? 'documentation' : 'learning journey'}`}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <p>{activeTab.error}</p>
+                    {isRetryable && (
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            if (activeTab.type === 'docs') {
+                              model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                            } else {
+                              model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                            }
+                          }}
+                        >
+                          {t('docsPanel.retry', 'Retry')}
+                        </Button>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          {t('docsPanel.retryHint', 'Check your connection and try again')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </Alert>
+              </div>
             );
           }
 

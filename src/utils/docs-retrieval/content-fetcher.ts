@@ -11,6 +11,14 @@ import {
   SingleDocMetadata,
   Milestone,
 } from './content.types';
+import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../../constants';
+
+// Internal error structure for detailed error handling
+interface FetchError {
+  message: string;
+  errorType: 'not-found' | 'timeout' | 'network' | 'server-error' | 'other';
+  statusCode?: number;
+}
 
 /**
  * Main unified content fetcher
@@ -21,7 +29,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Validate URL
     if (!url || typeof url !== 'string' || url.trim() === '') {
       console.error('fetchContent called with invalid URL:', url);
-      return { content: null, error: 'Invalid URL provided' };
+      return { content: null, error: 'Invalid URL provided', errorType: 'other' };
     }
 
     // Handle bundled interactive content
@@ -36,21 +44,25 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     const hashFragment = parseHashFragment(url);
     const cleanUrl = removeHashFragment(url);
 
-    // Fetch raw HTML
-    const html = await fetchRawHtml(cleanUrl, options);
-    if (!html) {
+    // Fetch raw HTML with structured error handling
+    const fetchResult = await fetchRawHtml(cleanUrl, options);
+    if (!fetchResult.html) {
+      // Generate user-friendly error message based on error type
+      const userFriendlyError = generateUserFriendlyError(fetchResult.error, cleanUrl);
       return {
         content: null,
-        error: `Failed to fetch content from ${cleanUrl}. This may be due to the document being moved or redirected. Check browser console for detailed redirect information.`,
+        error: userFriendlyError,
+        errorType: fetchResult.error?.errorType || 'other',
+        statusCode: fetchResult.error?.statusCode,
       };
     }
 
     // Extract basic metadata without DOM processing
-    const metadata = await extractMetadata(html, cleanUrl, contentType, options.docsBaseUrl);
+    const metadata = await extractMetadata(fetchResult.html, cleanUrl, contentType, options.docsBaseUrl);
 
     // Create unified content object
     const content: RawContent = {
-      html,
+      html: fetchResult.html,
       metadata,
       type: contentType,
       url: cleanUrl,
@@ -64,7 +76,30 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     return {
       content: null,
       error: error instanceof Error ? error.message : 'Unknown error',
+      errorType: 'other',
     };
+  }
+}
+
+/**
+ * Generate user-friendly error messages based on error type
+ */
+function generateUserFriendlyError(error: FetchError | undefined, url: string): string {
+  if (!error) {
+    return 'Failed to load content. Please try again.';
+  }
+
+  switch (error.errorType) {
+    case 'not-found':
+      return 'Document not found. It may have been moved or removed.';
+    case 'timeout':
+      return 'Request timed out. Please check your internet connection and try again.';
+    case 'network':
+      return 'Unable to connect. Please check your internet connection or try again later.';
+    case 'server-error':
+      return 'Server error occurred. Please try again later.';
+    default:
+      return error.message || 'Failed to load content. Please try again.';
   }
 }
 
@@ -179,9 +214,13 @@ function removeHashFragment(url: string): string {
 /**
  * Fetch raw HTML content using multiple strategies
  * Combines logic from both existing fetchers
+ * Returns structured result with HTML and error details
  */
-async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<string | null> {
-  const { useAuth = true, headers = {}, timeout = 10000 } = options;
+async function fetchRawHtml(
+  url: string,
+  options: ContentFetchOptions
+): Promise<{ html: string | null; error?: FetchError }> {
+  const { useAuth = true, headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
 
   // Handle GitHub URLs proactively to avoid CORS issues
   // Convert tree/blob URLs to raw URLs before attempting fetch
@@ -225,7 +264,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
   }
 
   // Try the actual URL (original or converted GitHub raw URL)
-  let lastError: string | null = null;
+  let lastError: FetchError | undefined;
 
   try {
     const response = await fetch(replaceRecommendationBaseUrl(actualUrl, options.docsBaseUrl), fetchOptions);
@@ -264,30 +303,41 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               if (unstyledResponse.ok) {
                 const unstyledHtml = await unstyledResponse.text();
                 if (unstyledHtml && unstyledHtml.trim()) {
-                  return unstyledHtml;
+                  return { html: unstyledHtml };
                 }
               }
               // If unstyled version fails, don't fallback - fail the request
-              lastError = `Cannot load styled Grafana content. Unstyled version required but failed to load: ${finalUnstyledUrl}`;
-              return null;
+              lastError = {
+                message: `Cannot load styled Grafana content. Unstyled version required but failed to load: ${finalUnstyledUrl}`,
+                errorType: unstyledResponse.status === 404 ? 'not-found' : 'other',
+                statusCode: unstyledResponse.status,
+              };
+              return { html: null, error: lastError };
             } catch (unstyledError) {
-              lastError = `Cannot load styled Grafana content. Unstyled version failed: ${
-                unstyledError instanceof Error ? unstyledError.message : 'Unknown error'
-              }`;
-              return null;
+              lastError = {
+                message: `Cannot load styled Grafana content. Unstyled version failed: ${
+                  unstyledError instanceof Error ? unstyledError.message : 'Unknown error'
+                }`,
+                errorType: 'other',
+              };
+              return { html: null, error: lastError };
             }
           }
         }
 
         // Content fetched successfully
-        return html;
+        return { html };
       }
     } else if (response.status >= 300 && response.status < 400) {
       // Handle manual redirect cases
       const location = response.headers.get('Location');
       if (location) {
-        lastError = `Redirect to ${location} (status ${response.status})`;
-        console.warn(`Manual redirect detected from ${url}: ${lastError}`);
+        lastError = {
+          message: `Redirect to ${location} (status ${response.status})`,
+          errorType: 'other',
+          statusCode: response.status,
+        };
+        console.warn(`Manual redirect detected from ${url}:`, lastError.message);
 
         // Try to fetch the redirect target if it's a relative URL
         if (location.startsWith('/')) {
@@ -302,7 +352,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               if (redirectResponse.ok) {
                 const html = await redirectResponse.text();
                 if (html && html.trim()) {
-                  return html;
+                  return { html };
                 }
               }
             } catch (redirectError) {
@@ -311,20 +361,42 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           }
         }
       } else {
-        lastError = `Redirect response (status ${response.status}) but no Location header`;
+        lastError = {
+          message: `Redirect response (status ${response.status}) but no Location header`,
+          errorType: 'other',
+          statusCode: response.status,
+        };
       }
     } else {
-      lastError = `HTTP ${response.status}: ${response.statusText}`;
-      console.warn(`Failed to fetch from ${url}: ${lastError}`);
+      // Categorize HTTP errors by status code
+      const errorType = response.status === 404 ? 'not-found' : response.status >= 500 ? 'server-error' : 'other';
+      lastError = {
+        message: `HTTP ${response.status}: ${response.statusText}`,
+        errorType,
+        statusCode: response.status,
+      };
+      console.warn(`Failed to fetch from ${url}:`, lastError.message);
     }
   } catch (error) {
-    lastError = error instanceof Error ? error.message : 'Unknown error';
+    // Categorize catch errors (network, timeout, etc.)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('aborted');
+    const isNetwork =
+      errorMessage.includes('NetworkError') ||
+      errorMessage.includes('Failed to fetch') ||
+      errorMessage.includes('CORS') ||
+      errorMessage.includes('network');
+
+    lastError = {
+      message: errorMessage,
+      errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
+    };
     console.warn(`Failed to fetch from ${url}:`, error);
   }
 
   // If original URL failed, only try GitHub variations if no docsBaseUrl was configured
   // AND we haven't already converted the URL (to avoid trying the same variations twice)
-  if (!lastError?.includes('Unstyled version required') && !options.docsBaseUrl && actualUrl === url) {
+  if (!lastError?.message.includes('Unstyled version required') && !options.docsBaseUrl && actualUrl === url) {
     // Only try GitHub for URLs that are actually GitHub URLs and when no specific docs base is configured
     const githubVariations = generateGitHubVariations(url);
     if (githubVariations.length > 0) {
@@ -334,7 +406,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           if (githubResponse.ok) {
             const githubHtml = await githubResponse.text();
             if (githubHtml && githubHtml.trim()) {
-              return githubHtml;
+              return { html: githubHtml };
             }
           }
         } catch (githubError) {
@@ -347,20 +419,20 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
   // Log final failure with most relevant error
   if (lastError) {
     // Provide specific guidance for GitHub CORS issues
-    if (url.includes('github.com') && lastError.includes('NetworkError')) {
+    if (url.includes('github.com') && lastError.message.includes('NetworkError')) {
       console.error(
-        `Failed to fetch content from ${url}. Last error: ${lastError}\n` +
+        `Failed to fetch content from ${url}. Last error: ${lastError.message}\n` +
           `GitHub raw URLs may be blocked due to CORS policies. Consider:\n` +
           `1. Using bundled content instead (bundled: URLs)\n` +
           `2. Serving content from a CORS-enabled host\n` +
           `3. Configuring a docs base URL with proper CORS headers`
       );
     } else {
-      console.error(`Failed to fetch content from ${url}. Last error: ${lastError}`);
+      console.error(`Failed to fetch content from ${url}. Last error: ${lastError.message}`);
     }
   }
 
-  return null;
+  return { html: null, error: lastError };
 }
 
 /**
