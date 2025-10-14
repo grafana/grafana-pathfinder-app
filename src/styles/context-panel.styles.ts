@@ -68,6 +68,16 @@ export const getSectionHeaderStyles = (theme: GrafanaTheme2) => ({
     textAlign: 'center',
     borderBottom: `1px solid ${theme.colors.border.weak}`,
     marginBottom: theme.spacing(1),
+    position: 'relative',
+  }),
+  settingsButton: css({
+    position: 'absolute',
+    top: theme.spacing(1),
+    right: theme.spacing(1),
+    color: theme.colors.text.secondary,
+    '&:hover': {
+      color: theme.colors.text.primary,
+    },
   }),
   headerIcon: css({
     color: theme.colors.primary.main,
