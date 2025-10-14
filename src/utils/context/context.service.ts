@@ -1,5 +1,10 @@
 import { getBackendSrv, config, locationService, getEchoSrv, EchoEventType } from '@grafana/runtime';
-import { getConfigWithDefaults, isRecommenderEnabled, DocsPluginConfig } from '../../constants';
+import {
+  getConfigWithDefaults,
+  isRecommenderEnabled,
+  DocsPluginConfig,
+  DEFAULT_RECOMMENDER_TIMEOUT,
+} from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import { hashUserData } from '../../lib/hash.util';
 import {
@@ -370,87 +375,112 @@ export class ContextService {
         source: cloudSource,
       };
 
-      const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      // Add timeout to prevent hanging in air-gapped or slow connection scenarios
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), DEFAULT_RECOMMENDER_TIMEOUT);
 
-      if (!response.ok) {
-        // Handle specific HTTP error codes
-        if (response.status === 404) {
+      try {
+        const response = await fetch(`${configWithDefaults.recommenderServiceUrl}/recommend`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          // Handle specific HTTP error codes
+          if (response.status === 404) {
+            return this.handleRecommenderError(
+              'unavailable',
+              'Recommender service not found',
+              contextData,
+              bundledRecommendations
+            );
+          }
+
+          if (response.status === 429) {
+            return this.handleRecommenderError(
+              'rate-limit',
+              'Recommender service is under strain',
+              contextData,
+              bundledRecommendations
+            );
+          }
+
+          // Handle other HTTP errors
+          return this.handleRecommenderError(
+            'other',
+            `HTTP error! status: ${response.status}`,
+            contextData,
+            bundledRecommendations
+          );
+        }
+
+        const data: RecommenderResponse = await response.json();
+
+        // Map external API recommendations to ensure description field is mapped to summary
+        const mappedExternalRecommendations = (data.recommendations || []).map((rec: any) => {
+          const mappedRec = {
+            ...rec,
+            summary: rec.summary || rec.description || '', // Map description to summary if summary is missing
+          };
+          return mappedRec;
+        });
+
+        const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
+        const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
+
+        // Filter and sort recommendations
+        const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
+        const sortedRecommendations = this.sortRecommendationsByAccuracy(filteredRecommendations);
+
+        // Clear any previous errors on successful call
+        this.lastExternalRecommenderError = null;
+
+        return {
+          recommendations: sortedRecommendations,
+          error: null,
+          errorType: null,
+          usingFallbackRecommendations: false,
+        };
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+
+        // Handle AbortError (timeout)
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
           return this.handleRecommenderError(
             'unavailable',
-            'Recommender service not found',
+            'Recommender service timeout',
             contextData,
             bundledRecommendations
           );
         }
 
-        if (response.status === 429) {
+        // Handle network errors (CORS, network failures, etc.)
+        const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown error';
+
+        // Check if it's a CORS or network error
+        if (
+          errorMessage.includes('CORS') ||
+          errorMessage.includes('NetworkError') ||
+          errorMessage.includes('Failed to fetch')
+        ) {
           return this.handleRecommenderError(
-            'rate-limit',
-            'Recommender service is under strain',
+            'unavailable',
+            'Recommender service unavailable',
             contextData,
             bundledRecommendations
           );
         }
 
-        // Handle other HTTP errors
-        return this.handleRecommenderError(
-          'other',
-          `HTTP error! status: ${response.status}`,
-          contextData,
-          bundledRecommendations
-        );
+        // Handle other errors
+        return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
       }
-
-      const data: RecommenderResponse = await response.json();
-
-      // Map external API recommendations to ensure description field is mapped to summary
-      const mappedExternalRecommendations = (data.recommendations || []).map((rec: any) => {
-        const mappedRec = {
-          ...rec,
-          summary: rec.summary || rec.description || '', // Map description to summary if summary is missing
-        };
-        return mappedRec;
-      });
-
-      const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
-      const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
-
-      // Filter and sort recommendations
-      const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
-      const sortedRecommendations = this.sortRecommendationsByAccuracy(filteredRecommendations);
-
-      // Clear any previous errors on successful call
-      this.lastExternalRecommenderError = null;
-
-      return {
-        recommendations: sortedRecommendations,
-        error: null,
-        errorType: null,
-        usingFallbackRecommendations: false,
-      };
     } catch (error) {
-      // Handle network errors (CORS, network failures, etc.)
+      // Handle outer errors (hashing, payload construction, etc.)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-      // Check if it's a CORS or network error
-      if (
-        errorMessage.includes('CORS') ||
-        errorMessage.includes('NetworkError') ||
-        errorMessage.includes('Failed to fetch')
-      ) {
-        return this.handleRecommenderError(
-          'unavailable',
-          'Recommender service unavailable',
-          contextData,
-          bundledRecommendations
-        );
-      }
-
-      // Handle other errors
       return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
     }
   }

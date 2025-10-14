@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, useStyles2, Card } from '@grafana/ui';
+import { Icon, useStyles2, Card, Badge, Alert } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import logoSvg from '../../img/logo.svg';
@@ -101,9 +101,12 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
           <div className={styles.contextSections}>
             <div className={styles.sectionHeader}>
               <img src={logoSvg} alt="Grafana Pathfinder" className={styles.headerIcon} width={24} height={24} />
-              <h2 className={styles.sectionTitle}>
-                {t('contextPanel.recommendedDocumentation', 'Recommended Documentation')}
-              </h2>
+              <div className={styles.titleContainer}>
+                <h2 className={styles.sectionTitle}>
+                  {t('contextPanel.recommendedDocumentation', 'Recommended Documentation')}
+                </h2>
+                <Badge text="Beta" color="blue" className={styles.betaBadge} />
+              </div>
               <p className={styles.sectionSubtitle}>
                 {t(
                   'contextPanel.subtitle',
@@ -122,14 +125,12 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             )}
 
             {recommendationsError && !isLoadingRecommendations && (
-              <div className={styles.errorContainer}>
-                <Icon name="exclamation-triangle" />
-                <span>
-                  {t('contextPanel.failedToLoad', 'Failed to load recommendations: {{error}}', {
-                    error: recommendationsError,
-                  })}
-                </span>
-              </div>
+              <Alert
+                severity="warning"
+                title={t('contextPanel.recommendationsUnavailable', 'Recommendations unavailable')}
+              >
+                {recommendationsError}
+              </Alert>
             )}
 
             {!isLoadingRecommendations && !recommendationsError && recommendations.length === 0 && (

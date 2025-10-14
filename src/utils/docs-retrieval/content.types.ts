@@ -128,6 +128,12 @@ export interface ContentFetchResult {
 
   /** Error message if fetch failed */
   error?: string;
+
+  /** Error type for better handling */
+  errorType?: 'not-found' | 'timeout' | 'network' | 'server-error' | 'other';
+
+  /** HTTP status code if available */
+  statusCode?: number;
 }
 
 // Parsing error types for fail-fast content rendering

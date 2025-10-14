@@ -8,7 +8,7 @@ export const DEFAULT_DEV_MODE = false;
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
 export const DEFAULT_DOCS_USERNAME = '';
 export const DEFAULT_DOCS_PASSWORD = '';
-export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://recommender.grafana-dev.com';
+export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://recommender.grafana.com';
 export const DEFAULT_TERMS_ACCEPTED = false;
 export const DEFAULT_TUTORIAL_URL = '';
 export const TERMS_VERSION = '1.0.0';
@@ -20,6 +20,10 @@ export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
 
 // Global Link Interception defaults
 export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = false; // Opt-in feature
+
+// Network timeout defaults
+export const DEFAULT_CONTENT_FETCH_TIMEOUT = 10000; // 10 seconds for document retrieval
+export const DEFAULT_RECOMMENDER_TIMEOUT = 5000; // 5 seconds for recommender API
 
 // Configuration interface
 export interface DocsPluginConfig {
