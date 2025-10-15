@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Icon, useStyles2 } from '@grafana/ui';
+import { IconButton, Alert, Icon, useStyles2, ButtonGroup } from '@grafana/ui';
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { getConfigWithDefaults, DocsPluginConfig } from '../../constants';
@@ -44,6 +44,7 @@ import { SessionProvider, useSession } from '../../utils/collaboration/session-s
 import { ActionReplaySystem } from '../../utils/collaboration/action-replay';
 import { ActionCaptureSystem } from '../../utils/collaboration/action-capture';
 import { NavigationManager } from '../../utils/navigation-manager';
+import type { AttendeeMode } from '../../types/collaboration.types';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -512,7 +513,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Live session state
   const [showPresenterControls, setShowPresenterControls] = React.useState(false);
   const [showAttendeeJoin, setShowAttendeeJoin] = React.useState(false);
-  const { isActive: isSessionActive, sessionRole, sessionInfo, sessionManager, onEvent, endSession, attendeeMode } = useSession();
+  const { isActive: isSessionActive, sessionRole, sessionInfo, sessionManager, onEvent, endSession, attendeeMode, setAttendeeMode } = useSession();
   
   // Check for session join URL on mount and auto-open modal
   React.useEffect(() => {
@@ -876,8 +877,77 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Icon name="check-circle" />
                   <span>Connected to: {sessionInfo?.config.name || 'Live Session'}</span>
+                  <span style={{ 
+                    fontSize: '11px', 
+                    opacity: 0.8,
+                    padding: '2px 6px',
+                    background: attendeeMode === 'follow' ? 'rgba(50, 116, 217, 0.2)' : 'rgba(255, 152, 0, 0.2)',
+                    borderRadius: '3px'
+                  }}>
+                    {attendeeMode === 'follow' ? 'Follow Mode' : 'Guided Mode'}
+                  </span>
                 </div>
               </Alert>
+              <ButtonGroup>
+                <Button
+                  size="sm"
+                  variant={attendeeMode === 'guided' ? 'primary' : 'secondary'}
+                  onClick={() => {
+                    if (attendeeMode !== 'guided') {
+                      const newMode: AttendeeMode = 'guided';
+                      // Update session state
+                      setAttendeeMode(newMode);
+                      // Update ActionReplaySystem
+                      if (actionReplayRef.current) {
+                        actionReplayRef.current.setMode(newMode);
+                      }
+                      // Broadcast mode change to presenter
+                      if (sessionManager) {
+                        sessionManager.broadcastEvent({
+                          type: 'mode_change',
+                          sessionId: sessionInfo?.sessionId || '',
+                          timestamp: Date.now(),
+                          senderId: 'attendee',
+                          mode: newMode
+                        } as any);
+                      }
+                      console.log('[DocsPanel] Switched to Guided mode');
+                    }
+                  }}
+                  tooltip="Only see highlights when presenter clicks Show Me"
+                >
+                  Guided
+                </Button>
+                <Button
+                  size="sm"
+                  variant={attendeeMode === 'follow' ? 'primary' : 'secondary'}
+                  onClick={() => {
+                    if (attendeeMode !== 'follow') {
+                      const newMode: AttendeeMode = 'follow';
+                      // Update session state
+                      setAttendeeMode(newMode);
+                      // Update ActionReplaySystem
+                      if (actionReplayRef.current) {
+                        actionReplayRef.current.setMode(newMode);
+                      }
+                      // Broadcast mode change to presenter
+                      if (sessionManager) {
+                        sessionManager.broadcastEvent({
+                          type: 'mode_change',
+                          sessionId: sessionInfo?.sessionId || '',
+                          timestamp: Date.now(),
+                          senderId: 'attendee',
+                          mode: newMode
+                        } as any);
+                      }
+                      console.log('[DocsPanel] Switched to Follow mode');
+                    }
+                  }}
+                  tooltip="Execute actions automatically when presenter clicks Do It"
+                >
+                  Follow
+                </Button>
+              </ButtonGroup>
               <Button
                 size="sm"
                 variant="secondary"

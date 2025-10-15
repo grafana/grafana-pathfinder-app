@@ -130,9 +130,18 @@ export class ActionReplaySystem {
     }
     
     if (this.mode === 'guided') {
-      // In Guided mode: Show highlight only, don't execute
-      console.log('[ActionReplay] Guided mode: Showing highlight only for Do It');
-      await this.showHighlight(event);
+      // In Guided mode: Handle multistep actions specially
+      if (event.action?.targetAction === 'multistep') {
+        console.log('[ActionReplay] Guided mode: Multistep action detected');
+        this.showNotification(
+          'The presenter is performing a multi-step action. You can follow along manually or click "Do It" yourself when ready.',
+          'success'
+        );
+      } else {
+        // For non-multistep: Show highlight
+        console.log('[ActionReplay] Guided mode: Showing highlight only for Do It');
+        await this.showHighlight(event);
+      }
     } else if (this.mode === 'follow') {
       // In Follow mode: Execute the action
       console.log('[ActionReplay] Follow mode: Executing action');

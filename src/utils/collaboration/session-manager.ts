@@ -198,6 +198,20 @@ export class SessionManager {
               config: this.config,
               timestamp: Date.now()
             });
+          } else if (data.type === 'mode_change') {
+            // Handle mode change from attendee
+            const attendee = this.attendees.get(conn.peer);
+            if (attendee) {
+              console.log(`[SessionManager] Attendee ${conn.peer} changed mode to ${data.mode}`);
+              // Create new object to trigger React re-render
+              const updatedAttendee: AttendeeInfo = {
+                ...attendee,
+                mode: data.mode
+              };
+              this.attendees.set(conn.peer, updatedAttendee);
+            }
+            // Forward event to handlers
+            this.eventHandlers.forEach(handler => handler(data));
           } else {
             // Forward other events to handlers
             this.eventHandlers.forEach(handler => handler(data));

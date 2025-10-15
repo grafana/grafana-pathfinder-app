@@ -32,6 +32,7 @@ interface SessionContextValue {
   
   // Attendee mode (attendee only)
   attendeeMode: 'guided' | 'follow' | null;
+  setAttendeeMode: (mode: 'guided' | 'follow') => void;
   
   // Actions
   createSession: (config: SessionConfig) => Promise<SessionInfo>;
@@ -235,6 +236,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
     };
   }, []);
   
+  /**
+   * Update attendee mode
+   */
+  const updateAttendeeMode = useCallback((mode: 'guided' | 'follow') => {
+    console.log(`[SessionState] Updating attendee mode to: ${mode}`);
+    setAttendeeMode(mode);
+  }, []);
+  
   const value: SessionContextValue = {
     sessionManager,
     sessionInfo,
@@ -242,6 +251,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     isActive: sessionManager.isActive(),
     attendees,
     attendeeMode,
+    setAttendeeMode: updateAttendeeMode,
     createSession,
     joinSession,
     endSession,
