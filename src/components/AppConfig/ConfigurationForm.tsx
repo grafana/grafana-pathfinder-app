@@ -53,9 +53,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   });
   const [isSaving, setIsSaving] = useState(false);
 
+  // Show advanced config fields only in dev mode (for Grafana team development)
+  const showAdvancedConfig = state.devMode || showDevModeInput;
+
   // Configuration is now retrieved directly from plugin meta via usePluginContext
 
-  const isSubmitDisabled = Boolean(!state.recommenderServiceUrl || !state.docsBaseUrl);
+  // Only require service URLs when in dev mode, otherwise these are hidden
+  const isSubmitDisabled = showAdvancedConfig ? Boolean(!state.recommenderServiceUrl || !state.docsBaseUrl) : false;
 
   const onResetDocsPassword = () =>
     setState({
@@ -155,68 +159,77 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   return (
     <form onSubmit={onSubmit}>
       <FieldSet label="Plugin Configuration" className={s.marginTopXl}>
-        {/* Recommender Service URL */}
-        <Field
-          label="Recommender service URL"
-          description="The URL of the service that provides documentation recommendations"
-        >
-          <Input
-            width={60}
-            id="recommender-service-url"
-            data-testid={testIds.appConfig.recommenderServiceUrl}
-            value={state.recommenderServiceUrl}
-            placeholder={DEFAULT_RECOMMENDER_SERVICE_URL}
-            onChange={onChangeRecommenderServiceUrl}
-          />
-        </Field>
+        {/* Advanced configuration fields - only shown in dev mode */}
+        {showAdvancedConfig && (
+          <>
+            {/* Recommender Service URL */}
+            <Field
+              label="Recommender service URL"
+              description="The URL of the service that provides documentation recommendations (Dev mode only)"
+            >
+              <Input
+                width={60}
+                id="recommender-service-url"
+                data-testid={testIds.appConfig.recommenderServiceUrl}
+                value={state.recommenderServiceUrl}
+                placeholder={DEFAULT_RECOMMENDER_SERVICE_URL}
+                onChange={onChangeRecommenderServiceUrl}
+              />
+            </Field>
 
-        {/* Docs Base website URL */}
-        <Field label="Docs base URL" description="The base URL for the documentation service" className={s.marginTop}>
-          <Input
-            width={60}
-            id="docs-base-url"
-            data-testid={testIds.appConfig.docsBaseUrl}
-            value={state.docsBaseUrl}
-            placeholder={DEFAULT_DOCS_BASE_URL}
-            onChange={onChangeDocsBaseUrl}
-          />
-        </Field>
+            {/* Docs Base website URL */}
+            <Field
+              label="Docs base URL"
+              description="The base URL for the documentation service (Dev mode only)"
+              className={s.marginTop}
+            >
+              <Input
+                width={60}
+                id="docs-base-url"
+                data-testid={testIds.appConfig.docsBaseUrl}
+                value={state.docsBaseUrl}
+                placeholder={DEFAULT_DOCS_BASE_URL}
+                onChange={onChangeDocsBaseUrl}
+              />
+            </Field>
 
-        {/* Docs Username */}
-        <Field
-          label="Docs username"
-          description="Username for accessing the documentation service (if authentication is required)"
-          className={s.marginTop}
-        >
-          <Input
-            width={60}
-            id="docs-username"
-            data-testid={testIds.appConfig.docsUsername}
-            value={state.docsUsername}
-            placeholder="Enter username (optional)"
-            onChange={onChangeDocsUsername}
-          />
-        </Field>
+            {/* Docs Username */}
+            <Field
+              label="Docs username"
+              description="Username for accessing the documentation service (Dev mode only)"
+              className={s.marginTop}
+            >
+              <Input
+                width={60}
+                id="docs-username"
+                data-testid={testIds.appConfig.docsUsername}
+                value={state.docsUsername}
+                placeholder="Enter username (optional)"
+                onChange={onChangeDocsUsername}
+              />
+            </Field>
 
-        {/* Docs Password */}
-        <Field
-          label="Docs password"
-          description="Password for accessing the documentation service (if authentication is required)"
-          className={s.marginTop}
-        >
-          <SecretInput
-            width={60}
-            data-testid={testIds.appConfig.docsPassword}
-            id="docs-password"
-            value={state.docsPassword}
-            isConfigured={state.isDocsPasswordSet}
-            placeholder="Enter password (optional)"
-            onChange={onChangeDocsPassword}
-            onReset={onResetDocsPassword}
-          />
-        </Field>
+            {/* Docs Password */}
+            <Field
+              label="Docs password"
+              description="Password for accessing the documentation service (Dev mode only)"
+              className={s.marginTop}
+            >
+              <SecretInput
+                width={60}
+                data-testid={testIds.appConfig.docsPassword}
+                id="docs-password"
+                value={state.docsPassword}
+                isConfigured={state.isDocsPasswordSet}
+                placeholder="Enter password (optional)"
+                onChange={onChangeDocsPassword}
+                onReset={onResetDocsPassword}
+              />
+            </Field>
+          </>
+        )}
 
-        {/* Tutorial URL */}
+        {/* Tutorial URL - available to all users */}
         <Field
           label="Auto-launch tutorial URL"
           description="Optional: URL of a learning journey or documentation page to automatically open when Grafana starts. Useful for demo scenarios. Can be set via environment variable GF_PLUGINS_GRAFANA_PATHFINDER_APP_TUTORIAL_URL"

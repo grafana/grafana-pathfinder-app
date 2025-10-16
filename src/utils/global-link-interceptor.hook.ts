@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import { isGrafanaDocsUrl } from '../utils/url-validator';
 
 interface GlobalLinkInterceptorProps {
   onOpenDocsLink: (url: string, title: string) => void;
@@ -8,19 +9,16 @@ interface GlobalLinkInterceptorProps {
 
 /**
  * Determines if a URL is a supported Grafana docs link that can be opened in Pathfinder
+ * Uses proper URL parsing to prevent domain hijacking attacks
  */
 function isSupportedDocsUrl(url: string): boolean {
   try {
-    // Check if it's a Grafana docs, tutorial, or learning journey URL
-    if (
-      url.includes('grafana.com/docs/') ||
-      url.includes('grafana.com/tutorials/') ||
-      url.includes('grafana.com/learning-journeys/')
-    ) {
+    // Use centralized secure validator
+    if (isGrafanaDocsUrl(url)) {
       return true;
     }
 
-    // Also support relative paths that might be Grafana docs
+    // Also support relative paths (these will be resolved to grafana.com in the handler)
     if (url.startsWith('/docs/') || url.startsWith('/tutorials/') || url.startsWith('/learning-journeys/')) {
       return true;
     }

@@ -12,6 +12,7 @@ import {
   Milestone,
 } from './content.types';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../../constants';
+import { parseUrlSafely, isGrafanaDocsUrl } from '../url-validator';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -147,13 +148,14 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       };
     }
 
-    // Extract metadata and treat as single-doc content
-    const metadata = await extractMetadata(html, url, 'single-doc');
+    // Determine content type for bundled content (don't assume single-doc)
+    const contentType = determineContentType(url);
+    const metadata = await extractMetadata(html, url, contentType);
 
     const content: RawContent = {
       html,
       metadata,
-      type: 'single-doc', // Bundled content is treated as single-doc
+      type: contentType, // Use detected type (learning-journey or single-doc)
       url,
       lastFetched: new Date().toISOString(),
       // No hash fragment support for bundled content for now
@@ -173,6 +175,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
 
 /**
  * Determine content type based on URL patterns
+ * Uses proper URL parsing to prevent path injection attacks
  */
 function determineContentType(url: string): ContentType {
   // Handle undefined or empty URL
@@ -181,13 +184,20 @@ function determineContentType(url: string): ContentType {
     return 'single-doc';
   }
 
-  // Learning journeys typically have specific URL patterns
+  // Parse URL safely
+  const parsedUrl = parseUrlSafely(url);
+  if (!parsedUrl) {
+    // Invalid URL, treat as single-doc
+    return 'single-doc';
+  }
+
+  // Check pathname for learning journey indicators
+  const pathname = parsedUrl.pathname;
+
   if (
-    url.includes('/learning-journeys/') ||
-    url.includes('/tutorials/') || // Tutorials are structured like learning journeys
-    url.includes('r-grafana') || // specific pattern from existing code
-    url.includes('prometheus-datasource') ||
-    url.match(/\/milestone-\d+/)
+    pathname.includes('/learning-journeys/') || // Can be /docs/learning-journeys/ or /learning-journeys/
+    pathname.includes('/tutorials/') || // Can be /docs/tutorials/ or /tutorials/
+    pathname.match(/\/milestone-\d+/)
   ) {
     return 'learning-journey';
   }
@@ -227,9 +237,11 @@ async function fetchRawHtml(
 
   // Handle GitHub URLs proactively to avoid CORS issues
   // Convert tree/blob URLs to raw URLs before attempting fetch
+  // Use proper URL parsing to prevent domain hijacking
   let actualUrl = url;
-  const isGitHubRawUrl = url.includes('raw.githubusercontent.com');
-  const isGitHubUrl = url.includes('github.com');
+  const parsedUrl = parseUrlSafely(url);
+  const isGitHubRawUrl = parsedUrl?.hostname === 'raw.githubusercontent.com';
+  const isGitHubUrl = parsedUrl?.hostname === 'github.com';
 
   if (isGitHubUrl && !isGitHubRawUrl) {
     const githubVariations = generateGitHubVariations(url);
@@ -242,26 +254,25 @@ async function fetchRawHtml(
   // Build fetch options - use minimal headers for GitHub raw URLs to avoid CORS preflight
   const fetchOptions: RequestInit = {
     method: 'GET',
-    headers:
-      actualUrl.includes('raw.githubusercontent.com') || isGitHubRawUrl
-        ? {
-            // Minimal headers for GitHub raw URLs - avoid triggering CORS preflight
-            // Only use simple headers that don't require preflight
-            ...headers,
-          }
-        : {
-            // Full headers for other URLs
-            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'User-Agent': 'Grafana-Docs-Plugin/1.0',
-            ...headers,
-          },
+    headers: isGitHubRawUrl
+      ? {
+          // Minimal headers for GitHub raw URLs - avoid triggering CORS preflight
+          // Only use simple headers that don't require preflight
+          ...headers,
+        }
+      : {
+          // Full headers for other URLs
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'User-Agent': 'Grafana-Docs-Plugin/1.0',
+          ...headers,
+        },
     signal: AbortSignal.timeout(timeout),
     redirect: 'follow', // Explicitly follow redirects (up to 20 by default)
   };
 
   // Add auth headers if requested (but skip for GitHub raw URLs to avoid CORS)
-  if (useAuth && !actualUrl.includes('raw.githubusercontent.com') && !isGitHubRawUrl) {
+  if (useAuth && !isGitHubRawUrl) {
     const authHeaders = getAuthHeaders();
     fetchOptions.headers = { ...fetchOptions.headers, ...authHeaders };
   }
@@ -275,27 +286,34 @@ async function fetchRawHtml(
     if (response.ok) {
       const html = await response.text();
       if (html && html.trim()) {
-        // If this is a docs or tutorial URL on the docs host, we MUST get the unstyled version
-        const docsBase = options.docsBaseUrl || '';
-        const isDocsHost = (u: string) => {
-          try {
-            const host = new URL(u).host;
-            if (docsBase) {
-              const baseHost = new URL(docsBase).host;
-              return host === baseHost;
+        // If this is a Grafana docs/tutorial URL, we MUST get the unstyled version
+        // Use proper URL parsing to prevent domain hijacking attacks
+        const shouldFetchUnstyled = (() => {
+          // If custom docsBaseUrl is configured, check against it
+          if (options.docsBaseUrl) {
+            const responseUrl = parseUrlSafely(response.url);
+            const baseUrl = parseUrlSafely(options.docsBaseUrl);
+
+            if (!responseUrl || !baseUrl) {
+              return false;
             }
-            return u.includes('/docs/') || u.includes('/tutorials/') || u.includes('/components/');
-          } catch {
+
+            // Check hostname matches and pathname is docs-related
+            if (responseUrl.hostname === baseUrl.hostname) {
+              return (
+                responseUrl.pathname.includes('/docs/') ||
+                responseUrl.pathname.includes('/tutorials/') ||
+                responseUrl.pathname.includes('/components/')
+              );
+            }
             return false;
           }
-        };
 
-        if (
-          isDocsHost(response.url) &&
-          (response.url.includes('/docs/') ||
-            response.url.includes('/tutorials/') ||
-            response.url.includes('/components/'))
-        ) {
+          // No custom base URL: check if it's a Grafana docs URL
+          return isGrafanaDocsUrl(response.url);
+        })();
+
+        if (shouldFetchUnstyled) {
           const finalUnstyledUrl = getUnstyledContentUrl(response.url);
           if (finalUnstyledUrl !== response.url) {
             try {
@@ -422,7 +440,8 @@ async function fetchRawHtml(
   // Log final failure with most relevant error
   if (lastError) {
     // Provide specific guidance for GitHub CORS issues
-    if (url.includes('github.com') && lastError.message.includes('NetworkError')) {
+    const urlObj = parseUrlSafely(url);
+    if (urlObj?.hostname === 'github.com' && lastError.message.includes('NetworkError')) {
       console.error(
         `Failed to fetch content from ${url}. Last error: ${lastError.message}\n` +
           `GitHub raw URLs may be blocked due to CORS policies. Consider:\n` +
@@ -440,14 +459,24 @@ async function fetchRawHtml(
 
 /**
  * Generate GitHub raw content URL variations to try
+ * Uses proper URL parsing to prevent domain hijacking
  */
 function generateGitHubVariations(url: string): string[] {
   const variations: string[] = [];
 
-  // Only try GitHub variations for GitHub URLs
-  if (url.includes('github.com') || url.includes('raw.githubusercontent.com')) {
+  // Parse URL and validate it's actually GitHub
+  const parsedUrl = parseUrlSafely(url);
+  if (!parsedUrl) {
+    return variations;
+  }
+
+  const isGitHubDomain = parsedUrl.hostname === 'github.com';
+  const isGitHubRawDomain = parsedUrl.hostname === 'raw.githubusercontent.com';
+
+  // Only try GitHub variations for actual GitHub URLs
+  if (isGitHubDomain || isGitHubRawDomain) {
     // If it's a regular GitHub URL, try converting to raw.githubusercontent.com first (more targeted)
-    if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
+    if (isGitHubDomain) {
       // Handle tree URLs (directories) - convert to directory/unstyled.html
       const treeMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
       if (treeMatch) {
@@ -732,25 +761,29 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
 
 /**
  * Find current milestone number from URL - improved version
+ * Handles /unstyled.html suffix added during content fetching
  */
 function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
+  // Strip /unstyled.html suffix for comparison (added during content fetching)
+  const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+
   // Try exact URL match first (with and without trailing slash)
   for (const milestone of milestones) {
-    if (urlsMatch(url, milestone.url)) {
+    if (urlsMatch(cleanUrl, milestone.url)) {
       return milestone.number;
     }
   }
 
   // Legacy pattern matching for milestone URLs
-  const milestoneMatch = url.match(/\/milestone-(\d+)/);
+  const milestoneMatch = cleanUrl.match(/\/milestone-(\d+)/);
   if (milestoneMatch) {
     const milestoneNum = parseInt(milestoneMatch[1], 10);
     return milestoneNum;
   }
 
   // Check if this URL looks like a journey base URL (cover page)
-  const baseUrl = getLearningJourneyBaseUrl(url);
-  if (urlsMatch(url, baseUrl) || urlsMatch(url, baseUrl + '/')) {
+  const baseUrl = getLearningJourneyBaseUrl(cleanUrl);
+  if (urlsMatch(cleanUrl, baseUrl) || urlsMatch(cleanUrl, baseUrl + '/')) {
     return 0;
   }
 

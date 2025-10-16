@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button, Alert } from '@grafana/ui';
 
 import { ParseError } from '../../content.types';
+import { escapeHtml } from '../../html-sanitizer';
 
 export interface ContentParsingErrorProps {
   errors: ParseError[];
@@ -86,7 +87,7 @@ export function ContentParsingError({ errors, warnings, fallbackHtml, onRetry, c
                   <details>
                     <summary>Problem Element</summary>
                     <pre>
-                      <code>{error.element}</code>
+                      <code dangerouslySetInnerHTML={{ __html: escapeHtml(error.element) }} />
                     </pre>
                   </details>
                 )}
@@ -100,13 +101,13 @@ export function ContentParsingError({ errors, warnings, fallbackHtml, onRetry, c
 
             {fallbackHtml && (
               <details>
-                <summary>Original HTML Content</summary>
+                <summary>Original HTML Content (Escaped for Security)</summary>
                 <pre>
-                  <code>{fallbackHtml.substring(0, 1000)}</code>
+                  <code dangerouslySetInnerHTML={{ __html: escapeHtml(fallbackHtml.substring(0, 1000)) }} />
                 </pre>
                 {fallbackHtml.length > 1000 && (
                   <p>
-                    <em>... truncated</em>
+                    <em>... truncated for brevity</em>
                   </p>
                 )}
               </details>

@@ -11,6 +11,7 @@ import { getConfigWithDefaults, DocsPluginConfig } from '../../constants';
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
+import { parseUrlSafely } from '../../utils/url-validator';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -542,7 +543,11 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
       // Always create a new tab for each intercepted link
       // Call the model method directly to ensure new tabs are created
-      if (url.includes('/learning-journeys/')) {
+      // Use proper URL parsing for security (defense in depth)
+      const urlObj = parseUrlSafely(url);
+      const isLearningJourney = urlObj?.pathname.includes('/learning-journeys/');
+
+      if (isLearningJourney) {
         model.openLearningJourney(url, title);
       } else {
         model.openDocsPage(url, title);
@@ -1097,13 +1102,16 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                           isGrafanaDomain = false;
                         }
                         if (url && !isBundled && isGrafanaDomain) {
+                          // Strip /unstyled.html from URL for browser viewing (users want the styled docs page)
+                          const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+
                           return (
                             <button
                               className={styles.secondaryActionButton}
                               aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
                               onClick={() => {
                                 reportAppInteraction(UserInteraction.OpenExtraResource, {
-                                  content_url: url,
+                                  content_url: cleanUrl,
                                   content_type: activeTab.type || 'docs',
                                   link_text: activeTab.title,
                                   source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
@@ -1112,7 +1120,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                                 });
                                 // Delay to ensure analytics event is sent before opening new tab
                                 setTimeout(() => {
-                                  window.open(url, '_blank', 'noopener,noreferrer');
+                                  window.open(cleanUrl, '_blank', 'noopener,noreferrer');
                                 }, 100);
                               }}
                             >

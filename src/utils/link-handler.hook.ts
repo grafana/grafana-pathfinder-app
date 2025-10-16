@@ -8,12 +8,12 @@ import {
   enrichWithStepContext,
 } from '../lib/analytics';
 import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
+import { parseUrlSafely, isGrafanaDocsUrl, isAllowedGitHubRawUrl } from './url-validator';
 
-// Allowed GitHub URLs that can open in app tabs (from context.service.ts defaultRecommendations)
-const ALLOWED_GITHUB_URLS = [
-  'https://raw.githubusercontent.com/moxious/',
-  'https://raw.githubusercontent.com/Jayclifford345/',
-  'https://raw.githubusercontent.com/grafana/',
+// Allowed GitHub repository path - ONLY the single controlled interactive-tutorials repo
+// Meeting commitment: Removed individual user repos for security
+const ALLOWED_GITHUB_REPO_PATHS = [
+  '/grafana/interactive-tutorials/', // Single source of truth for interactive tutorials
 ];
 
 interface LearningJourneyTab {
@@ -193,22 +193,23 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           }
 
           // Handle Grafana docs and tutorials links (including resolved relative links)
-          if (
-            resolvedUrl.includes('grafana.com/docs/') ||
-            resolvedUrl.includes('grafana.com/tutorials/') ||
-            href.startsWith('/docs/') ||
-            href.startsWith('/tutorials/')
-          ) {
+          // Use secure URL validation to prevent domain hijacking
+          const fullUrl = resolvedUrl.startsWith('http') ? resolvedUrl : `https://grafana.com${resolvedUrl}`;
+
+          if (isGrafanaDocsUrl(fullUrl) || href.startsWith('/docs/') || href.startsWith('/tutorials/')) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,
             });
 
-            const fullUrl = resolvedUrl.startsWith('http') ? resolvedUrl : `https://grafana.com${resolvedUrl}`;
             const linkText = anchor.textContent?.trim() || 'Documentation';
 
+            // Parse URL to check pathname (already validated by isGrafanaDocsUrl)
+            const urlObj = parseUrlSafely(fullUrl);
+            const isLearningJourney = urlObj?.pathname.startsWith('/learning-journeys/');
+
             // Determine if it's a learning journey or regular docs/tutorials
-            if (fullUrl.includes('/learning-journeys/')) {
+            if (isLearningJourney) {
               model.openLearningJourney(fullUrl, linkText);
             } else {
               // For regular docs and tutorials, use openDocsPage if available, otherwise openLearningJourney
@@ -220,7 +221,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             }
 
             // Track analytics for opening extra resources (docs/tutorials)
-            const contentType = fullUrl.includes('/learning-journeys/') ? 'learning-journey' : 'docs';
+            const contentType = isLearningJourney ? 'learning-journey' : 'docs';
+            const isTutorial = urlObj?.pathname.startsWith('/tutorials/');
             reportAppInteraction(
               UserInteraction.OpenExtraResource,
               enrichWithStepContext({
@@ -228,13 +230,16 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 content_type: contentType,
                 link_text: linkText,
                 source_page: activeTab?.content?.url || 'unknown',
-                link_type: fullUrl.includes('/tutorials/') ? 'tutorial' : 'docs',
+                link_type: isTutorial ? 'tutorial' : 'docs',
                 interaction_location: 'content_link',
               })
             );
           }
           // Handle GitHub links - check if allowed to open in app
-          else if (href.includes('github.com') || href.includes('raw.githubusercontent.com')) {
+          else if (
+            parseUrlSafely(href)?.hostname === 'github.com' ||
+            parseUrlSafely(href)?.hostname === 'raw.githubusercontent.com'
+          ) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,
@@ -242,10 +247,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             const linkText = anchor.textContent?.trim() || 'GitHub Link';
 
-            // Check if this URL is in the allowed list for app tabs
-            const isAllowedUrl = ALLOWED_GITHUB_URLS.some(
-              (allowedUrl) => resolvedUrl === allowedUrl || resolvedUrl.startsWith(allowedUrl)
-            );
+            // Check if this URL is from an allowed GitHub repository
+            // Uses proper URL parsing to prevent domain hijacking
+            const isAllowedUrl = isAllowedGitHubRawUrl(resolvedUrl, ALLOWED_GITHUB_REPO_PATHS);
 
             if (isAllowedUrl) {
               // This is an allowed URL - try to open in app with unstyled.html fallback

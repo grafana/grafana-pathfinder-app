@@ -1,11 +1,45 @@
 // HTML Parser for React Component Tree Conversion
 // Converts raw HTML into structured data that can be rendered as React components
 // Implements fail-fast principle with proper error propagation
+// SECURITY: All HTML is sanitized with DOMPurify before parsing
 
 import { ParseError, ParseResult, ParsedElement, ParsedContent, ContentParseResult } from './content.types';
+import { sanitizeDocumentationHTML } from './html-sanitizer';
+import { isGrafanaDocsUrl, isAllowedGitHubRawUrl } from '../url-validator';
 
 // Re-export for convenience
 export type { ParsedElement, ParsedContent };
+
+/**
+ * Validate that interactive content comes from trusted sources only
+ * Meeting requirement: Interactive tutorials ONLY from grafana.com or grafana/interactive-tutorials repo
+ *
+ * @param baseUrl - The source URL of the content being parsed
+ * @returns true if source is trusted for interactive content, false otherwise
+ */
+function isTrustedInteractiveSource(baseUrl?: string): boolean {
+  if (!baseUrl) {
+    return false;
+  }
+
+  // Allow bundled content (controlled by team)
+  if (baseUrl.startsWith('bundled:')) {
+    return true;
+  }
+
+  // Allow grafana.com docs (Hugo shortcodes - validated source)
+  if (isGrafanaDocsUrl(baseUrl)) {
+    return true;
+  }
+
+  // Allow ONLY grafana/interactive-tutorials GitHub repo
+  const allowedGitHubPaths = ['/grafana/interactive-tutorials/'];
+  if (isAllowedGitHubRawUrl(baseUrl, allowedGitHubPaths)) {
+    return true;
+  }
+
+  return false;
+}
 
 /**
  * Error collection utility for parsing operations
@@ -49,14 +83,17 @@ class ParsingErrorCollector {
 }
 
 /**
- * Safe attribute mapping for React props
- * Now with proper error collection instead of silent failures
+ * Maps HTML attributes to React props
+ *
+ * SECURITY NOTE: This function assumes HTML has already been sanitized by DOMPurify.
+ * It only handles React-specific transformations (e.g., class → className).
+ * No security validation is performed here - that's DOMPurify's job.
  */
 function mapHtmlAttributesToReactProps(element: Element, errorCollector: ParsingErrorCollector): Record<string, any> {
   const props: Record<string, any> = {};
 
   try {
-    // HTML to React attribute mapping
+    // HTML to React attribute mapping (React-specific naming)
     const attributeMap: Record<string, string> = {
       class: 'className',
       for: 'htmlFor',
@@ -74,156 +111,35 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
       allowfullscreen: 'allowFullScreen',
     };
 
-    // Attributes that should be skipped or handled specially
+    // Attributes that should be skipped (React doesn't need these)
     const skipAttributes = new Set([
-      'style', // Will be handled separately if needed
-      'xmlns', // Not needed in React
+      'style', // Could be handled separately if needed in future
     ]);
-
-    // Valid HTML attributes that React accepts
-    const validAttributes = new Set([
-      'id',
-      'title',
-      'lang',
-      'dir',
-      'role',
-      'aria-label',
-      'aria-describedby',
-      'aria-expanded',
-      'aria-hidden',
-      'aria-live',
-      'aria-atomic',
-      'aria-relevant',
-      'href',
-      'target',
-      'rel',
-      'download',
-      'src',
-      'alt',
-      'width',
-      'height',
-      'type',
-      'name',
-      'value',
-      'placeholder',
-      'disabled',
-      'checked',
-      'selected',
-      'multiple',
-      'size',
-      'accept',
-      'autoComplete',
-      'autoFocus',
-      'required',
-      'rows',
-      'cols',
-      'wrap',
-      'min',
-      'max',
-      'step',
-      'pattern',
-      'allowfullscreen',
-    ]);
-
-    // SVG attributes that React accepts (React passes most SVG attributes through)
-    const validSvgAttributes = new Set([
-      'viewBox',
-      'fill',
-      'stroke',
-      'strokeWidth',
-      'strokeLinecap',
-      'strokeLinejoin',
-      'd',
-      'cx',
-      'cy',
-      'r',
-      'rx',
-      'ry',
-      'x',
-      'y',
-      'x1',
-      'y1',
-      'x2',
-      'y2',
-      'points',
-      'transform',
-      'opacity',
-      'fillOpacity',
-      'strokeOpacity',
-      'clipPath',
-      'mask',
-      'filter',
-      'gradientUnits',
-      'gradientTransform',
-      'patternUnits',
-      'patternTransform',
-      'preserveAspectRatio',
-      'xmlns',
-      'xmlnsXlink',
-      'version',
-      'baseProfile',
-    ]);
-
-    // Check if element is SVG or inside SVG context
-    const isSvgElement =
-      element.tagName.toLowerCase() === 'svg' ||
-      element.closest('svg') !== null ||
-      [
-        'path',
-        'circle',
-        'rect',
-        'line',
-        'ellipse',
-        'polygon',
-        'polyline',
-        'g',
-        'defs',
-        'use',
-        'symbol',
-        'marker',
-        'clipPath',
-        'mask',
-        'pattern',
-        'image',
-        'text',
-        'foreignObject',
-      ].includes(element.tagName.toLowerCase());
 
     for (const attr of element.attributes) {
       try {
         const attrName = attr.name.toLowerCase();
         const attrValue = attr.value;
 
-        // Skip problematic attributes
+        // Skip attributes React doesn't need
         if (skipAttributes.has(attrName)) {
           continue;
         }
 
-        // Handle data-* and aria-* attributes (React accepts these as-is)
+        // data-* and aria-* attributes pass through as-is (React accepts them)
         if (attrName.startsWith('data-') || attrName.startsWith('aria-')) {
           props[attrName] = attrValue;
           continue;
         }
 
-        // Map HTML attributes to React props
+        // Map HTML attribute names to React prop names
         const reactPropName = attributeMap[attrName] || attrName;
 
-        // Check if attribute is valid for this element type
-        const isValidAttribute =
-          validAttributes.has(attrName) || attributeMap[attrName] || (isSvgElement && validSvgAttributes.has(attrName));
-
-        if (isValidAttribute) {
-          // Convert boolean attributes
-          if (attrValue === '' || attrValue === attrName) {
-            props[reactPropName] = true;
-          } else {
-            props[reactPropName] = attrValue;
-          }
+        // Convert boolean attributes for React (e.g., disabled="" → disabled={true})
+        if (attrValue === '' || attrValue === attrName) {
+          props[reactPropName] = true;
         } else {
-          // Only warn for non-SVG elements or truly unknown SVG attributes
-          if (!isSvgElement) {
-            errorCollector.addWarning(`Unknown HTML attribute '${attrName}' on ${element.tagName} element`);
-          }
+          props[reactPropName] = attrValue;
         }
       } catch (error) {
         errorCollector.addError(
@@ -251,13 +167,62 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
 /**
  * Main HTML parser with fail-fast error collection
  * Either succeeds completely or provides meaningful error information
+ *
+ * @param html - HTML string to parse
+ * @param baseUrl - Source URL for security validation
+ * @param bypassSourceValidation - DANGEROUS: Only set true in dev/testing scenarios (debug panel)
  */
-export function parseHTMLToComponents(html: string, baseUrl?: string): ContentParseResult {
+export function parseHTMLToComponents(
+  html: string,
+  baseUrl?: string,
+  bypassSourceValidation = false
+): ContentParseResult {
   const errorCollector = new ParsingErrorCollector();
 
   // Validate input
   if (!html || typeof html !== 'string') {
     errorCollector.addError('html_parsing', 'Invalid HTML input: must be a non-empty string', html);
+    return errorCollector.getResult<ParsedContent>();
+  }
+
+  // SECURITY: Validate source for interactive content (unless explicitly bypassed for testing)
+  // Meeting requirement: Interactive tutorials ONLY from trusted sources
+  if (!bypassSourceValidation) {
+    const allowInteractiveContent = isTrustedInteractiveSource(baseUrl);
+    if (!allowInteractiveContent && html.includes('data-targetaction')) {
+      console.error(
+        '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, ' +
+          'or github.com/grafana/interactive-tutorials/. Source:',
+        baseUrl
+      );
+      errorCollector.addError(
+        'html_sanitization',
+        'Interactive content from untrusted source rejected',
+        `Source: ${baseUrl}`,
+        'isTrustedInteractiveSource'
+      );
+      return errorCollector.getResult<ParsedContent>();
+    }
+  } else {
+    // Testing mode: Source validation bypassed (dev panel only)
+    console.warn('[Parser] Source validation BYPASSED for testing. Source:', baseUrl);
+  }
+
+  // SECURITY: Sanitize HTML before parsing - no fallback on failure
+  // This prevents XSS attacks by removing malicious content before DOM parsing
+  let sanitizedHtml: string;
+  try {
+    sanitizedHtml = sanitizeDocumentationHTML(html);
+  } catch (error) {
+    errorCollector.addError(
+      'html_sanitization',
+      `HTML sanitization failed - content rejected for security reasons: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`,
+      html.substring(0, 200),
+      'sanitizeDocumentationHTML',
+      error instanceof Error ? error : undefined
+    );
     return errorCollector.getResult<ParsedContent>();
   }
 
@@ -267,7 +232,8 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
   try {
     const parser = new DOMParser();
     // Always parse as a fragment (prevents html/body wrapping)
-    doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
+    // Use sanitized HTML instead of raw input
+    doc = parser.parseFromString(`<div>${sanitizedHtml}</div>`, 'text/html');
 
     // Check for parsing errors
     const parserErrors = doc.querySelectorAll('parsererror');
@@ -318,9 +284,11 @@ export function parseHTMLToComponents(html: string, baseUrl?: string): ContentPa
         const tag = el.tagName.toLowerCase();
         const currentPath = `${path}.${tag}`;
 
-        // Skip problematic elements that often cause React issues
+        // Skip elements that don't belong in body content (React compatibility)
+        // SECURITY NOTE: DOMPurify has already stripped dangerous content like <script>
+        // This check is for React rendering compatibility, not security
         if (['script', 'style', 'meta', 'link', 'base'].includes(tag)) {
-          errorCollector.addWarning(`Skipping potentially problematic element: ${tag}`);
+          errorCollector.addWarning(`Skipping ${tag} element (not suitable for content rendering)`);
           return null;
         }
 

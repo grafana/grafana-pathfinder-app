@@ -6,6 +6,7 @@ import { ContextPanelComponent } from '../../utils/docs.utils';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { setGlobalLinkInterceptionEnabled } from '../../module';
+import { parseUrlSafely, isGrafanaDocsUrl } from '../../utils/url-validator';
 
 function getSceneApp() {
   return new SceneApp({
@@ -33,11 +34,19 @@ function App(props: AppRootProps) {
     const tutorialUrl = config.tutorialUrl;
 
     if (tutorialUrl && tutorialUrl.trim()) {
+      // Validate tutorial URL for security (user-configurable setting)
+      // Reject non-Grafana URLs to prevent malicious configuration
+      if (!isGrafanaDocsUrl(tutorialUrl) && !tutorialUrl.startsWith('bundled:')) {
+        console.error('[App] Invalid tutorial URL in configuration (must be Grafana docs or bundled):', tutorialUrl);
+        return;
+      }
+
       // Small delay to ensure the app is fully loaded
       setTimeout(() => {
         try {
-          // Determine if it's a learning journey or docs page
-          const isLearningJourney = tutorialUrl.includes('/learning-journeys/');
+          // Determine if it's a learning journey or docs page using secure URL parsing
+          const urlObj = parseUrlSafely(tutorialUrl);
+          const isLearningJourney = urlObj?.pathname.includes('/learning-journeys/') || false;
 
           // Dispatch a custom event to trigger the docs panel to open and load the tutorial
           const event = new CustomEvent('auto-launch-tutorial', {
