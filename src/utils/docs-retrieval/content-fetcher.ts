@@ -57,15 +57,18 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       };
     }
 
+    // Use the final URL (after redirects) if available, otherwise use the requested URL
+    const finalUrl = fetchResult.finalUrl || cleanUrl;
+
     // Extract basic metadata without DOM processing
-    const metadata = await extractMetadata(fetchResult.html, cleanUrl, contentType, options.docsBaseUrl);
+    const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType, options.docsBaseUrl);
 
     // Create unified content object
     const content: RawContent = {
       html: fetchResult.html,
       metadata,
       type: contentType,
-      url: cleanUrl,
+      url: finalUrl, // Use final URL to correctly resolve relative links
       lastFetched: new Date().toISOString(),
       hashFragment,
     };
@@ -214,12 +217,12 @@ function removeHashFragment(url: string): string {
 /**
  * Fetch raw HTML content using multiple strategies
  * Combines logic from both existing fetchers
- * Returns structured result with HTML and error details
+ * Returns structured result with HTML, final URL (after redirects), and error details
  */
 async function fetchRawHtml(
   url: string,
   options: ContentFetchOptions
-): Promise<{ html: string | null; error?: FetchError }> {
+): Promise<{ html: string | null; finalUrl?: string; error?: FetchError }> {
   const { useAuth = true, headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
 
   // Handle GitHub URLs proactively to avoid CORS issues
@@ -303,7 +306,7 @@ async function fetchRawHtml(
               if (unstyledResponse.ok) {
                 const unstyledHtml = await unstyledResponse.text();
                 if (unstyledHtml && unstyledHtml.trim()) {
-                  return { html: unstyledHtml };
+                  return { html: unstyledHtml, finalUrl: unstyledResponse.url };
                 }
               }
               // If unstyled version fails, don't fallback - fail the request
@@ -325,8 +328,8 @@ async function fetchRawHtml(
           }
         }
 
-        // Content fetched successfully
-        return { html };
+        // Content fetched successfully - use response.url to get final URL after redirects
+        return { html, finalUrl: response.url };
       }
     } else if (response.status >= 300 && response.status < 400) {
       // Handle manual redirect cases
@@ -352,7 +355,7 @@ async function fetchRawHtml(
               if (redirectResponse.ok) {
                 const html = await redirectResponse.text();
                 if (html && html.trim()) {
-                  return { html };
+                  return { html, finalUrl: redirectResponse.url };
                 }
               }
             } catch (redirectError) {
@@ -406,7 +409,7 @@ async function fetchRawHtml(
           if (githubResponse.ok) {
             const githubHtml = await githubResponse.text();
             if (githubHtml && githubHtml.trim()) {
-              return { html: githubHtml };
+              return { html: githubHtml, finalUrl: githubResponse.url };
             }
           }
         } catch (githubError) {
