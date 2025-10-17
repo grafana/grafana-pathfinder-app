@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "1.1.36",
+  "version": "1.1.38",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
     "dev": "webpack -w -c ./.config/webpack/webpack.config.ts --env development",
@@ -76,7 +76,7 @@
     "@emotion/css": "11.10.6",
     "@grafana/data": "^12.2.0",
     "@grafana/i18n": "^12.2.0",
-    "@grafana/runtime": "^12.3.0-18499834804",
+    "@grafana/runtime": "^12.2.0",
     "@grafana/scenes": "^6.10.4",
     "@grafana/schema": "^12.2.0",
     "@grafana/ui": "^12.2.0",

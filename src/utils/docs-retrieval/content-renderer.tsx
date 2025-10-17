@@ -36,9 +36,28 @@ function resolveRelativeUrls(html: string, baseUrl: string): string {
       const elements = doc.querySelectorAll(`[${attr}]:not(img)`);
       elements.forEach((element) => {
         const attrValue = element.getAttribute(attr);
-        if (attrValue && attrValue.startsWith('/') && !attrValue.startsWith('//')) {
-          const resolvedUrl = new URL(attrValue, baseUrlObj).href;
-          element.setAttribute(attr, resolvedUrl);
+        if (attrValue) {
+          // Skip external URLs (http://, https://, //, mailto:, tel:, javascript:, etc.)
+          if (
+            attrValue.startsWith('http://') ||
+            attrValue.startsWith('https://') ||
+            attrValue.startsWith('//') ||
+            attrValue.startsWith('mailto:') ||
+            attrValue.startsWith('tel:') ||
+            attrValue.startsWith('javascript:') ||
+            attrValue.startsWith('#')
+          ) {
+            return; // Skip external/special URLs
+          }
+
+          // Resolve relative URLs (starting with ./, ../, or just a path without /)
+          // and absolute paths (starting with /)
+          try {
+            const resolvedUrl = new URL(attrValue, baseUrlObj).href;
+            element.setAttribute(attr, resolvedUrl);
+          } catch (urlError) {
+            console.warn(`Failed to resolve URL: ${attrValue}`, urlError);
+          }
         }
       });
     });

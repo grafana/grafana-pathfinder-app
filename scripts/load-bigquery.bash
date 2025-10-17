@@ -67,18 +67,24 @@ Updating BigQuery tables in ${project_id}.${dataset}...
 EOF
 
   local remote_index_url='https://raw.githubusercontent.com/grafana/interactive-tutorials/main/index.json'
+  local temp_index_file
+  temp_index_file=$(mktemp)
 
   cat <<EOF
 Fetching and loading remote index.json from ${remote_index_url}...
 EOF
+
+  curl -fsSL "${remote_index_url}" | jq -c '.rules[]' >  "${temp_index_file}"
 
   bq load \
     --project_id="${project_id}" \
     --source_format=NEWLINE_DELIMITED_JSON \
     --replace \
     "${dataset}.interactive_tutorials" \
-    <(curl -fsSL "${remote_index_url}" | jq -c '.rules[]') \
+    "${temp_index_file}" \
     'title:STRING,url:STRING,description:STRING,type:STRING,match:JSON'
+
+  rm -f "${temp_index_file}"
 
   cat <<EOF
 ✓ interactive_tutorials table loaded successfully
@@ -97,13 +103,20 @@ EOF
 Loading app-states.json into app_states table...
 EOF
 
+  local temp_app_states_file
+  temp_app_states_file=$(mktemp)
+
+  jq -c '.[]' "${app_states_file}" > "${temp_app_states_file}"
+
   bq load \
     --project_id="${project_id}" \
     --source_format=NEWLINE_DELIMITED_JSON \
     --replace \
     "${dataset}.app_states" \
-    <(jq -c '.[]' "${app_states_file}") \
+    "${temp_app_states_file}" \
     'title:STRING,best_doc_url:STRING,description:STRING,urlPrefix:STRING'
+
+  rm -f "${temp_app_states_file}"
 
   cat <<EOF
 ✓ app_states table loaded successfully

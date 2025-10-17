@@ -19,7 +19,7 @@ export const DEFAULT_REQUIREMENTS_CHECK_TIMEOUT = 3000; // ms
 export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
 
 // Global Link Interception defaults
-export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = false; // Opt-in feature
+export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = true; // Opt-in feature
 
 // Network timeout defaults
 export const DEFAULT_CONTENT_FETCH_TIMEOUT = 10000; // 10 seconds for document retrieval

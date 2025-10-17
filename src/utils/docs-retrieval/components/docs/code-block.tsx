@@ -1,16 +1,20 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { IconButton } from '@grafana/ui';
-
-// Import Prism.js and common languages
-declare const Prism: any;
+import Prism from 'prismjs';
 
 // Import Prism CSS theme
 import 'prismjs/themes/prism.css';
 
-// Import Prism core and language definitions
+// Import language definitions
 import 'prismjs/components/prism-clike';
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-yaml';
+import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-go';
 import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-sql';
 
 export interface CodeBlockProps {
   code: string;
@@ -22,7 +26,6 @@ export interface CodeBlockProps {
 
 export function CodeBlock({ code, language, showCopy = true, inline = false, className }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
-  const [prismLoaded, setPrismLoaded] = useState(false);
   const codeRef = useRef<HTMLElement>(null);
 
   const handleCopy = useCallback(async () => {
@@ -35,29 +38,16 @@ export function CodeBlock({ code, language, showCopy = true, inline = false, cla
     }
   }, [code]);
 
-  // Load Prism.js if not available
-  useEffect(() => {
-    const loadPrism = async () => {
-      // Check if Prism is already available
-      if ((window as any).Prism) {
-        setPrismLoaded(true);
-        return;
-      }
-    };
-
-    loadPrism();
-  }, []);
-
   // Apply Prism highlighting when component mounts or code/language changes
   useEffect(() => {
-    const prismInstance = (window as any).Prism;
-
-    if (prismInstance && language && codeRef.current) {
-      prismInstance.highlightElement(codeRef?.current);
-    } else {
-      console.warn('Prism not available');
+    if (language && codeRef.current) {
+      try {
+        Prism.highlightElement(codeRef.current);
+      } catch (error) {
+        console.warn('Failed to highlight code with Prism:', error);
+      }
     }
-  }, [code, language, prismLoaded]);
+  }, [code, language]);
 
   if (inline) {
     return (
