@@ -228,6 +228,78 @@ describe('Security: Interactive Content Source Validation', () => {
     expect(result.isValid).toBe(false);
   });
 
+  it('should ALLOW interactive content from localhost in dev mode', () => {
+    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Test">Click</li>';
+    const localhostUrls = [
+      'http://localhost:5500/tutorial/unstyled.html',
+      'http://127.0.0.1:8080/docs/test.html',
+      'http://127.0.0.1/tutorial.html',
+    ];
+
+    // Reimport with mocked dev mode
+    jest.isolateModules(() => {
+      // Mock dev mode as enabled
+      jest.doMock('./dev-mode', () => ({
+        isDevModeEnabled: () => true,
+        enableDevMode: jest.fn(),
+        disableDevMode: jest.fn(),
+        toggleDevMode: jest.fn(),
+      }));
+
+      const { parseHTMLToComponents: parseWithDevMode } = require('./docs-retrieval/html-parser');
+
+      localhostUrls.forEach((url) => {
+        const result = parseWithDevMode(html, url);
+        expect(result.isValid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+    });
+  });
+
+  it('should ALLOW interactive content from any GitHub raw URL in dev mode', () => {
+    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Test">Click</li>';
+    const personalRepoUrls = [
+      'https://raw.githubusercontent.com/Jayclifford345/interactive-tutorials/main/test/unstyled.html',
+      'https://raw.githubusercontent.com/moxious/tutorials/main/demo.html',
+      'https://raw.githubusercontent.com/someuser/somerepo/branch/path/file.html',
+    ];
+
+    // Reimport with mocked dev mode
+    jest.isolateModules(() => {
+      // Mock dev mode as enabled
+      jest.doMock('./dev-mode', () => ({
+        isDevModeEnabled: () => true,
+        enableDevMode: jest.fn(),
+        disableDevMode: jest.fn(),
+        toggleDevMode: jest.fn(),
+      }));
+
+      const { parseHTMLToComponents: parseWithDevMode } = require('./docs-retrieval/html-parser');
+
+      personalRepoUrls.forEach((url) => {
+        const result = parseWithDevMode(html, url);
+        expect(result.isValid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+    });
+  });
+
+  it('should REJECT interactive content from localhost in production mode', () => {
+    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Test">Click</li>';
+    const baseUrl = 'http://localhost:5500/tutorial/unstyled.html';
+
+    // Dev mode is disabled by default in tests
+    const result = parseHTMLToComponents(html, baseUrl);
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        type: 'html_sanitization',
+        message: 'Interactive content from untrusted source rejected',
+      })
+    );
+  });
+
   it('should allow non-interactive content from any source (after DOMPurify)', () => {
     const html = '<p>This is regular content with <strong>formatting</strong></p>';
     const baseUrl = 'https://example.com/some-blog/';

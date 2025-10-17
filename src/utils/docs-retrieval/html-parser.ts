@@ -5,8 +5,9 @@
 
 import { ParseError, ParseResult, ParsedElement, ParsedContent, ContentParseResult } from './content.types';
 import { sanitizeDocumentationHTML } from './html-sanitizer';
-import { isGrafanaDocsUrl, isAllowedGitHubRawUrl } from '../url-validator';
+import { isGrafanaDocsUrl, isAllowedGitHubRawUrl, isLocalhostUrl, isGitHubRawUrl } from '../url-validator';
 import { ALLOWED_GITHUB_REPO_PATHS } from '../../constants';
+import { isDevModeEnabled } from '../dev-mode';
 
 // Re-export for convenience
 export type { ParsedElement, ParsedContent };
@@ -14,6 +15,9 @@ export type { ParsedElement, ParsedContent };
 /**
  * Validate that interactive content comes from trusted sources only
  * Meeting requirement: Interactive tutorials ONLY from grafana.com or grafana/interactive-tutorials repo
+ *
+ * In production: Only Grafana docs, bundled content, and approved GitHub repos
+ * In dev mode: Also allows localhost URLs and any GitHub raw URLs for local testing
  *
  * @param baseUrl - The source URL of the content being parsed
  * @returns true if source is trusted for interactive content, false otherwise
@@ -33,9 +37,21 @@ function isTrustedInteractiveSource(baseUrl?: string): boolean {
     return true;
   }
 
-  // Allow ONLY grafana/interactive-tutorials GitHub repo
+  // Allow ONLY grafana/interactive-tutorials GitHub repo in production
   if (isAllowedGitHubRawUrl(baseUrl, ALLOWED_GITHUB_REPO_PATHS)) {
     return true;
+  }
+
+  // In dev mode, allow localhost URLs and any GitHub raw URLs for local testing
+  if (isDevModeEnabled()) {
+    if (isLocalhostUrl(baseUrl)) {
+      console.log('[DEV MODE] Allowing interactive content from localhost:', baseUrl);
+      return true;
+    }
+    if (isGitHubRawUrl(baseUrl)) {
+      console.log('[DEV MODE] Allowing interactive content from GitHub:', baseUrl);
+      return true;
+    }
   }
 
   return false;
@@ -190,11 +206,11 @@ export function parseHTMLToComponents(
   if (!bypassSourceValidation) {
     const allowInteractiveContent = isTrustedInteractiveSource(baseUrl);
     if (!allowInteractiveContent && html.includes('data-targetaction')) {
-      console.error(
-        '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, ' +
-          'or github.com/grafana/interactive-tutorials/. Source:',
-        baseUrl
-      );
+      const errorMessage = isDevModeEnabled()
+        ? '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, localhost (dev mode), GitHub raw URLs (dev mode), or github.com/grafana/interactive-tutorials/. Source:'
+        : '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, or github.com/grafana/interactive-tutorials/. Source:';
+
+      console.error(errorMessage, baseUrl);
       errorCollector.addError(
         'html_sanitization',
         'Interactive content from untrusted source rejected',
