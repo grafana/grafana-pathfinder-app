@@ -11,7 +11,7 @@ import {
   SingleDocMetadata,
   Milestone,
 } from './content.types';
-import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../../constants';
+import { DEFAULT_CONTENT_FETCH_TIMEOUT, ALLOWED_GITHUB_REPO_PATHS } from '../../constants';
 import { parseUrlSafely, isGrafanaDocsUrl, isGitHubUrl, isGitHubRawUrl, isAllowedGitHubRawUrl } from '../url-validator';
 
 // Internal error structure for detailed error handling
@@ -44,7 +44,6 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     const testingMode = (window as any).__PathfinderTestingMode === true;
 
     if (!testingMode) {
-      const ALLOWED_GITHUB_REPO_PATHS = ['/grafana/interactive-tutorials/'];
       const isTrustedSource =
         isGrafanaDocsUrl(url) || isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPO_PATHS) || isGitHubUrl(url);
 

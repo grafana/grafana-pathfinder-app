@@ -23,6 +23,12 @@ export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = true; // Opt-in feature
 export const DEFAULT_CONTENT_FETCH_TIMEOUT = 10000; // 10 seconds for document retrieval
 export const DEFAULT_RECOMMENDER_TIMEOUT = 5000; // 5 seconds for recommender API
 
+// Security: Allowed GitHub repository paths for interactive tutorials
+// Meeting commitment: ONLY the single controlled interactive-tutorials repo
+export const ALLOWED_GITHUB_REPO_PATHS = [
+  '/grafana/interactive-tutorials/', // Single source of truth for interactive tutorials
+];
+
 // Configuration interface
 export interface DocsPluginConfig {
   recommenderServiceUrl?: string;

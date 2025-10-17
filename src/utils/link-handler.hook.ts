@@ -9,12 +9,7 @@ import {
 } from '../lib/analytics';
 import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
 import { parseUrlSafely, isGrafanaDocsUrl, isAllowedGitHubRawUrl, isAnyGitHubUrl } from './url-validator';
-
-// Allowed GitHub repository path - ONLY the single controlled interactive-tutorials repo
-// Meeting commitment: Removed individual user repos for security
-const ALLOWED_GITHUB_REPO_PATHS = [
-  '/grafana/interactive-tutorials/', // Single source of truth for interactive tutorials
-];
+import { ALLOWED_GITHUB_REPO_PATHS } from '../constants';
 
 interface LearningJourneyTab {
   id: string;

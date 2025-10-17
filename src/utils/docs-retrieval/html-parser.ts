@@ -6,6 +6,7 @@
 import { ParseError, ParseResult, ParsedElement, ParsedContent, ContentParseResult } from './content.types';
 import { sanitizeDocumentationHTML } from './html-sanitizer';
 import { isGrafanaDocsUrl, isAllowedGitHubRawUrl } from '../url-validator';
+import { ALLOWED_GITHUB_REPO_PATHS } from '../../constants';
 
 // Re-export for convenience
 export type { ParsedElement, ParsedContent };
@@ -33,8 +34,7 @@ function isTrustedInteractiveSource(baseUrl?: string): boolean {
   }
 
   // Allow ONLY grafana/interactive-tutorials GitHub repo
-  const allowedGitHubPaths = ['/grafana/interactive-tutorials/'];
-  if (isAllowedGitHubRawUrl(baseUrl, allowedGitHubPaths)) {
+  if (isAllowedGitHubRawUrl(baseUrl, ALLOWED_GITHUB_REPO_PATHS)) {
     return true;
   }
 
