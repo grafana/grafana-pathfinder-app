@@ -8,6 +8,7 @@ export interface URLTesterProps {
 }
 
 export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
+  const styles = useStyles2(getURLTesterStyles);
   const [activeTab, setActiveTab] = useState('github');
 
   return (
@@ -24,7 +25,7 @@ export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
               placeholder="https://github.com/grafana/interactive-tutorials/tree/main/explore-drilldowns-101"
               validator={validateGitHubUrl}
             >
-              <p className={useStyles2(getURLTesterStyles).helpText}>
+              <p className={styles.helpText}>
                 Provide a GitHub tree URL pointing to a tutorial directory.
                 <br />
                 The URL should be in format: github.com/{'{owner}'}/{'{repo}'}/tree/{'{branch}'}/{'{path}'}
@@ -37,7 +38,7 @@ export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
               placeholder="http://127.0.0.1:5500/interactive-tutorials/tree/main/explore-drilldowns-101/unstyled.html"
               validator={validateTutorialUrl}
             >
-              <p className={useStyles2(getURLTesterStyles).helpText}>
+              <p className={styles.helpText}>
                 Provide a URL pointing to a tutorial page. Make sure to include the /unstyled.html suffix.
               </p>
             </URLTesterContent>
@@ -48,13 +49,13 @@ export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
   );
 };
 
-interface URLTesterContent extends PropsWithChildren {
+interface URLTesterContentProps extends PropsWithChildren {
   onOpenDocsPage: (url: string, title: string) => void;
   placeholder?: string;
   validator?: (url: string) => { isValid: boolean; errorMessage?: string };
 }
 
-const URLTesterContent = ({ children, onOpenDocsPage, placeholder, validator }: URLTesterContent) => {
+const URLTesterContent = ({ children, onOpenDocsPage, placeholder, validator }: URLTesterContentProps) => {
   const styles = useStyles2(getURLTesterStyles);
   const [testUrl, setTestUrl] = useState('');
   const [testError, setTestError] = useState<string | null>(null);
@@ -88,7 +89,7 @@ const URLTesterContent = ({ children, onOpenDocsPage, placeholder, validator }: 
       // Reset success state after 2 seconds
       setTimeout(() => setTestSuccess(false), 2000);
     },
-    [testUrl, onOpenDocsPage]
+    [testUrl, onOpenDocsPage, validator]
   );
 
   return (
