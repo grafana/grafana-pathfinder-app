@@ -4,7 +4,6 @@ import { config } from '@grafana/runtime';
 export const PLUGIN_BASE_URL = `/a/${pluginJson.id}`;
 
 // Default configuration values
-export const DEFAULT_DEV_MODE = false;
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
 export const DEFAULT_RECOMMENDER_SERVICE_URL = 'https://recommender.grafana.com';
 export const DEFAULT_TERMS_ACCEPTED = false;
@@ -36,6 +35,8 @@ export interface DocsPluginConfig {
   // Terms and Conditions
   acceptedTermsAndConditions?: boolean;
   termsVersion?: string;
+  // Dev mode is now per-user via localStorage (deprecated in plugin settings)
+  /** @deprecated Dev mode is now stored per-user in localStorage, not in plugin settings */
   devMode?: boolean;
   // Interactive Features
   enableAutoDetection?: boolean;
@@ -51,7 +52,8 @@ export const getConfigWithDefaults = (config: DocsPluginConfig): Required<DocsPl
   tutorialUrl: config.tutorialUrl || DEFAULT_TUTORIAL_URL,
   acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? getPlatformSpecificDefault(),
   termsVersion: config.termsVersion || TERMS_VERSION,
-  devMode: config.devMode || DEFAULT_DEV_MODE,
+  // Dev mode is now per-user via localStorage, not in config
+  devMode: false, // Deprecated: always returns false, use isDevModeEnabled() from utils/dev-mode.ts
   // Interactive Features
   enableAutoDetection: config.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
   requirementsCheckTimeout: config.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
@@ -85,7 +87,12 @@ export const getRecommenderServiceUrl = (config: DocsPluginConfig) =>
 export const getTutorialUrl = (config: DocsPluginConfig) => getConfigWithDefaults(config).tutorialUrl;
 export const getTermsAccepted = (config: DocsPluginConfig) => getConfigWithDefaults(config).acceptedTermsAndConditions;
 export const getTermsVersion = (config: DocsPluginConfig) => getConfigWithDefaults(config).termsVersion;
-export const getDevMode = (config: DocsPluginConfig) => getConfigWithDefaults(config).devMode;
+
+/**
+ * @deprecated Dev mode is now per-user via localStorage. Use isDevModeEnabled() from utils/dev-mode.ts instead.
+ * This function now always returns false for backward compatibility.
+ */
+export const getDevMode = (_config: DocsPluginConfig) => false;
 
 // Legacy exports for backward compatibility
 export const RECOMMENDER_SERVICE_URL = DEFAULT_RECOMMENDER_SERVICE_URL;

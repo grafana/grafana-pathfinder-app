@@ -7,6 +7,7 @@ import {
 } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import { hashUserData } from '../../lib/hash.util';
+import { isDevModeEnabled } from '../dev-mode';
 import {
   ContextData,
   DataSource,
@@ -1093,10 +1094,10 @@ export class ContextService {
     contextData: ContextData,
     pluginConfig: DocsPluginConfig
   ): Recommendation[] {
-    const configWithDefaults = getConfigWithDefaults(pluginConfig);
     const bundledRecommendations: Recommendation[] = [];
 
-    if (configWithDefaults.devMode) {
+    // Dev mode is now per-user via localStorage
+    if (isDevModeEnabled()) {
       bundledRecommendations.push({
         title: 'Components',
         url: 'https://grafana.com/components/',
