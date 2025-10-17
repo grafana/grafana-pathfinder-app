@@ -13,7 +13,7 @@ import { getDebugPanelStyles } from './debug-panel.styles';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { exportStepsToHTML, combineStepsIntoMultistep, type RecordedStep } from '../../utils/tutorial-exporter';
 import { validateAndCleanSelector } from '../../utils/selector-validator';
-import { validateAndParseGitHubUrl } from '../../utils/github-url-validator';
+import { URLTester } from 'components/URLTester';
 import { disableDevMode } from '../../utils/dev-mode';
 
 interface TestResult {
@@ -190,11 +190,6 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   // Multistep Selection State
   const [selectedSteps, setSelectedSteps] = useState<Set<number>>(new Set());
   const [multistepMode, setMultistepMode] = useState(false);
-
-  // GitHub Tutorial Tester State
-  const [githubUrl, setGithubUrl] = useState('');
-  const [githubError, setGithubError] = useState<string | null>(null);
-  const [githubSuccess, setGithubSuccess] = useState(false);
 
   // Simple Selector Tester Handlers
   const handleSimpleShow = useCallback(async () => {
@@ -1141,55 +1136,12 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       {/* GitHub Tutorial Tester */}
       <div className={styles.section}>
         <div className={styles.sectionHeader} onClick={() => setGithubExpanded(!githubExpanded)}>
-          <h4 className={styles.sectionTitle}>GitHub Tutorial Tester</h4>
+          <h4 className={styles.sectionTitle}>Tutorial Tester</h4>
           <Icon name={githubExpanded ? 'angle-up' : 'angle-down'} />
         </div>
-        {githubExpanded && (
+        {githubExpanded && onOpenDocsPage && (
           <div className={styles.sectionContent}>
-            <div className={styles.formGroup}>
-              <label className={styles.label}>GitHub Tree URL</label>
-              <Input
-                className={styles.selectorInput}
-                value={githubUrl}
-                onChange={(e) => {
-                  setGithubUrl(e.currentTarget.value);
-                  setGithubError(null);
-                  setGithubSuccess(false);
-                }}
-                placeholder="https://github.com/grafana/interactive-tutorials/tree/main/explore-drilldowns-101"
-              />
-              <p className={styles.helpText}>
-                Provide a GitHub tree URL pointing to a tutorial directory.
-                <br />
-                The URL should be in format: github.com/{'{owner}'}/{'{repo}'}/tree/{'{branch}'}/{'{path}'}
-              </p>
-
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleTestGithubTutorial}
-                disabled={!githubUrl.trim() || !onOpenDocsPage}
-              >
-                <Icon name="external-link-alt" />
-                Test Tutorial in New Tab
-              </Button>
-
-              {githubError && (
-                <div className={`${styles.resultBox} ${styles.resultError}`}>
-                  <p className={styles.resultText}>
-                    <Icon name="exclamation-triangle" /> {githubError}
-                  </p>
-                </div>
-              )}
-
-              {githubSuccess && (
-                <div className={`${styles.resultBox} ${styles.resultSuccess}`}>
-                  <p className={styles.resultText}>
-                    <Icon name="check" /> Tutorial opened in new tab!
-                  </p>
-                </div>
-              )}
-            </div>
+            <URLTester onOpenDocsPage={onOpenDocsPage} />
           </div>
         )}
       </div>

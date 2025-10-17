@@ -38,6 +38,7 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
+import { isDevModeEnabled } from 'utils/dev-mode';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -528,6 +529,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 }
 
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
+  const isDevMode = isDevModeEnabled();
+
   React.useEffect(() => {
     addGlobalModalStyles();
   }, []);
@@ -1129,6 +1132,21 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         }
                         return null;
                       })()}
+                      {isDevMode && (
+                        <IconButton
+                          tooltip="Refresh tab (dev mode only)"
+                          name="sync"
+                          onClick={() => {
+                            if (activeTab) {
+                              if (activeTab.type === 'docs') {
+                                model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                              } else {
+                                model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                              }
+                            }
+                          }}
+                        />
+                      )}
                       <FeedbackButton
                         variant="secondary"
                         contentUrl={activeTab.content?.url || activeTab.baseUrl}
@@ -1281,13 +1299,15 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       </div>
       {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement */}
       {!isRecommendationsTab && activeTab?.type !== 'docs' && (
-        <FeedbackButton
-          contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
-          contentType={activeTab?.type || 'learning-journey'}
-          interactionLocation="docs_panel_footer_feedback_button"
-          currentMilestone={activeTab?.content?.metadata?.learningJourney?.currentMilestone}
-          totalMilestones={activeTab?.content?.metadata?.learningJourney?.totalMilestones}
-        />
+        <>
+          <FeedbackButton
+            contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
+            contentType={activeTab?.type || 'learning-journey'}
+            interactionLocation="docs_panel_footer_feedback_button"
+            currentMilestone={activeTab?.content?.metadata?.learningJourney?.currentMilestone}
+            totalMilestones={activeTab?.content?.metadata?.learningJourney?.totalMilestones}
+          />
+        </>
       )}
     </div>
   );
