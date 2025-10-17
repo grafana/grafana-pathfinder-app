@@ -13,36 +13,13 @@ export function SkeletonLoader({ type = 'documentation', className }: SkeletonLo
   if (type === 'recommendations') {
     return (
       <div className={`${styles.skeleton} ${className || ''}`}>
-        {/* Section Header */}
-        <div className={styles.section}>
-          <div className={styles.recommendationsHeader}>
-            <div className={styles.headerIcon}></div>
-            <div className={styles.headerContent}>
-              <div className={styles.sectionTitle}></div>
-              <div className={styles.sectionSubtitle}></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Primary Recommendations - Simple bars like table rows */}
+        {/* Primary Recommendations - Single skeleton bar for subtle loading indicator */}
         <div className={styles.section}>
           <div className={styles.recommendationBars}>
-            {[...Array(4)].map((_, index) => (
-              <div key={index} className={styles.recommendationBar}>
-                <div className={styles.barContent}></div>
-                <div className={styles.barButton}></div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Other Documentation Section (collapsed by default, so just show header) */}
-        <div className={styles.section}>
-          <div className={styles.otherDocsHeader}>
-            <div className={styles.otherDocsIcon}></div>
-            <div className={styles.otherDocsTitle}></div>
-            <div className={styles.otherDocsCount}></div>
-            <div className={styles.otherDocsToggle}></div>
+            <div className={styles.recommendationBar}>
+              <div className={styles.barContent}></div>
+              <div className={styles.barButton}></div>
+            </div>
           </div>
         </div>
       </div>
