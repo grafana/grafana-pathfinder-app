@@ -3,6 +3,15 @@
  */
 import { fetchContent } from './content-fetcher';
 
+// Mock AbortSignal.timeout for Node environments that don't support it
+if (!AbortSignal.timeout) {
+  (AbortSignal as any).timeout = jest.fn((ms: number) => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), ms);
+    return controller.signal;
+  });
+}
+
 describe('fetchContent security validation', () => {
   // Clean up testing mode after each test
   afterEach(() => {

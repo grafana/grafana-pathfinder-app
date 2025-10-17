@@ -31,6 +31,38 @@ interface FetchError {
 }
 
 /**
+ * SECURITY: Enforce HTTPS for all external URLs to prevent MITM attacks
+ * Exceptions: localhost in dev mode, test mode
+ */
+function enforceHttps(url: string): boolean {
+  // Allow test mode to bypass for testing purposes
+  // Note: Content is still sanitized with DOMPurify regardless of this flag
+  if ((window as any).__PathfinderTestingMode === true) {
+    return true;
+  }
+
+  // Parse URL safely
+  const parsedUrl = parseUrlSafely(url);
+  if (!parsedUrl) {
+    console.error('[SECURITY] Invalid URL format:', url);
+    return false;
+  }
+
+  // Allow HTTP for localhost in dev mode (for local testing)
+  if (isDevModeEnabled() && isLocalhostUrl(url)) {
+    return true;
+  }
+
+  // Require HTTPS for all other URLs
+  if (parsedUrl.protocol !== 'https:') {
+    console.error('[SECURITY] Only HTTPS URLs are allowed (found:', parsedUrl.protocol, ')', url);
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Main unified content fetcher
  * Determines content type and fetches accordingly
  */
@@ -76,12 +108,21 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       console.log('[DEV MODE] Loading content from localhost:', url);
     }
 
-    // Determine content type based on URL patterns
-    const contentType = determineContentType(url);
-
     // Parse hash fragment from URL
     const hashFragment = parseHashFragment(url);
     const cleanUrl = removeHashFragment(url);
+
+    // SECURITY: Enforce HTTPS to prevent MITM attacks
+    if (!enforceHttps(cleanUrl)) {
+      return {
+        content: null,
+        error: 'Only HTTPS URLs are allowed for security',
+        errorType: 'other',
+      };
+    }
+
+    // Determine content type based on URL patterns
+    const contentType = determineContentType(url);
 
     // Fetch raw HTML with structured error handling
     const fetchResult = await fetchRawHtml(cleanUrl, options);
@@ -271,7 +312,7 @@ async function fetchRawHtml(
   url: string,
   options: ContentFetchOptions
 ): Promise<{ html: string | null; finalUrl?: string; error?: FetchError }> {
-  const { useAuth = true, headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
+  const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
 
   // Handle GitHub URLs proactively to avoid CORS issues
   // Convert tree/blob URLs to raw URLs before attempting fetch
@@ -308,12 +349,6 @@ async function fetchRawHtml(
     redirect: 'follow', // Explicitly follow redirects (up to 20 by default)
   };
 
-  // Add auth headers if requested (but skip for GitHub raw URLs to avoid CORS)
-  if (useAuth && !isGitHubRawUrlCheck) {
-    const authHeaders = getAuthHeaders();
-    fetchOptions.headers = { ...fetchOptions.headers, ...authHeaders };
-  }
-
   // Try the actual URL (original or converted GitHub raw URL)
   let lastError: FetchError | undefined;
 
@@ -323,9 +358,40 @@ async function fetchRawHtml(
     if (response.ok) {
       const html = await response.text();
       if (html && html.trim()) {
+        // SECURITY: Validate redirect target is still trusted
+        // After fetch redirects, check the final URL is still in our trusted domain list
+        const finalUrl = response.url;
+
+        // Re-validate the final URL after redirects
+        const isFinalUrlTrusted =
+          isAllowedContentUrl(finalUrl) ||
+          isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPO_PATHS) ||
+          isGitHubUrl(finalUrl) ||
+          (isDevModeEnabled() && isLocalhostUrl(finalUrl)) ||
+          (window as any).__PathfinderTestingMode === true;
+
+        if (!isFinalUrlTrusted) {
+          console.error('[SECURITY] Redirect to untrusted domain blocked:', finalUrl, 'from:', url);
+          lastError = {
+            message: 'Redirect target is not in trusted domain list',
+            errorType: 'other',
+          };
+          return { html: null, error: lastError };
+        }
+
+        // SECURITY: Enforce HTTPS on redirect target
+        if (!enforceHttps(finalUrl)) {
+          console.error('[SECURITY] Redirect to non-HTTPS URL blocked:', finalUrl);
+          lastError = {
+            message: 'Redirect to non-HTTPS URL blocked for security',
+            errorType: 'other',
+          };
+          return { html: null, error: lastError };
+        }
+
         // If this is a Grafana docs/tutorial URL, we MUST get the unstyled version
         // Use proper URL parsing to prevent domain hijacking attacks
-        const shouldFetchUnstyled = isGrafanaDocsUrl(response.url);
+        const shouldFetchUnstyled = isGrafanaDocsUrl(finalUrl);
 
         if (shouldFetchUnstyled) {
           const finalUnstyledUrl = getUnstyledContentUrl(response.url);
@@ -521,22 +587,6 @@ function getUnstyledContentUrl(url: string): string {
   const hasTrailingSlash = baseUrl.endsWith('/');
 
   return hasTrailingSlash ? `${baseUrl}unstyled.html` : `${baseUrl}/unstyled.html`;
-}
-
-/**
- * Get auth headers (from existing code)
- */
-function getAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-
-  // Add any authentication headers needed
-  // This is a simplified version - expand as needed
-  const token = localStorage.getItem('grafana-auth-token');
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  return headers;
 }
 
 /**

@@ -333,3 +333,27 @@ export function sanitizeDocumentationHTML(html: string): string {
     throw new Error(`HTML sanitization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
+
+/**
+ * Sanitizes text fields from external APIs (e.g., recommender service).
+ * Strips all HTML tags and returns plain text to prevent XSS injection.
+ * Use this for fields like title, summary, description from untrusted sources.
+ *
+ * @param text - Text that may contain HTML tags
+ * @returns Plain text with all HTML stripped
+ */
+export function sanitizeTextForDisplay(text: string): string {
+  if (!text || typeof text !== 'string') {
+    return '';
+  }
+
+  // Use DOMPurify with ALLOWED_TAGS: [] to strip all HTML
+  // This is the recommended approach for text-only sanitization
+  const sanitized = DOMPurify.sanitize(text, {
+    ALLOWED_TAGS: [], // No HTML tags allowed
+    ALLOWED_ATTR: [], // No attributes allowed
+    KEEP_CONTENT: true, // Keep text content
+  });
+
+  return sanitized.trim();
+}

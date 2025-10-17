@@ -4,10 +4,13 @@ import {
   isRecommenderEnabled,
   DocsPluginConfig,
   DEFAULT_RECOMMENDER_TIMEOUT,
+  ALLOWED_RECOMMENDER_DOMAINS,
 } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import { hashUserData } from '../../lib/hash.util';
 import { isDevModeEnabled } from '../dev-mode';
+import { sanitizeTextForDisplay } from '../docs-retrieval/html-sanitizer';
+import { parseUrlSafely } from '../url-validator';
 import {
   ContextData,
   DataSource,
@@ -323,6 +326,47 @@ export class ContextService {
   }
 
   /**
+   * SECURITY: Validate recommender service URL
+   * Ensures the URL is HTTPS and from an approved domain to prevent MITM attacks
+   * In dev mode: Also allows localhost URLs for local testing
+   */
+  private static validateRecommenderUrl(url: string): boolean {
+    const parsedUrl = parseUrlSafely(url);
+
+    if (!parsedUrl) {
+      console.error('[SECURITY] Invalid recommender service URL:', url);
+      return false;
+    }
+
+    // Dev mode exception: Allow localhost URLs for local testing
+    if (
+      isDevModeEnabled() &&
+      (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1' || parsedUrl.hostname === '::1')
+    ) {
+      console.log('[DEV MODE] Allowing localhost recommender service:', url);
+      return true;
+    }
+
+    // Require HTTPS for non-localhost URLs
+    if (parsedUrl.protocol !== 'https:') {
+      console.error('[SECURITY] Recommender service URL must use HTTPS:', url);
+      return false;
+    }
+
+    // Check if domain is in whitelist
+    const isAllowedDomain = ALLOWED_RECOMMENDER_DOMAINS.some((domain) => {
+      return parsedUrl.hostname === domain || parsedUrl.hostname.endsWith(`.${domain}`);
+    });
+
+    if (!isAllowedDomain) {
+      console.error('[SECURITY] Recommender service domain not in whitelist:', parsedUrl.hostname);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
    * Get recommendations from external API service
    */
   private static async getExternalRecommendations(
@@ -337,6 +381,16 @@ export class ContextService {
   }> {
     try {
       const configWithDefaults = getConfigWithDefaults(pluginConfig);
+
+      // SECURITY: Validate recommender service URL before making request
+      if (!this.validateRecommenderUrl(configWithDefaults.recommenderServiceUrl)) {
+        return this.handleRecommenderError(
+          'other',
+          'Recommender service URL failed security validation',
+          contextData,
+          bundledRecommendations
+        );
+      }
 
       const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
 
@@ -421,11 +475,15 @@ export class ContextService {
 
         const data: RecommenderResponse = await response.json();
 
-        // Map external API recommendations to ensure description field is mapped to summary
+        // SECURITY: Sanitize external API recommendations to prevent XSS
+        // Map and sanitize all text fields that could contain malicious content
         const mappedExternalRecommendations = (data.recommendations || []).map((rec: any) => {
           const mappedRec = {
             ...rec,
-            summary: rec.summary || rec.description || '', // Map description to summary if summary is missing
+            // Sanitize text fields to strip any HTML/script tags
+            title: sanitizeTextForDisplay(rec.title || ''),
+            summary: sanitizeTextForDisplay(rec.summary || rec.description || ''),
+            // URL is validated when opened, so keep as-is but don't trust it yet
           };
           return mappedRec;
         });

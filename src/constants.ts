@@ -28,6 +28,10 @@ export const ALLOWED_GITHUB_REPO_PATHS = [
   '/grafana/interactive-tutorials/', // Single source of truth for interactive tutorials
 ];
 
+// Security: Allowed recommender service domains
+// Only these domains are permitted for the recommendation API to prevent MITM attacks
+export const ALLOWED_RECOMMENDER_DOMAINS = ['recommender.grafana.com', 'recommender-staging.grafana.com'];
+
 // Configuration interface
 export interface DocsPluginConfig {
   recommenderServiceUrl?: string;
