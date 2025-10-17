@@ -27,7 +27,6 @@ export function validateTutorialUrl(url: string): URLValidation {
     };
   }
 
-
   const pathParts = urlObj.pathname.split('/').filter(Boolean);
 
   // Need at least: owner, repo, tree, branch, path
