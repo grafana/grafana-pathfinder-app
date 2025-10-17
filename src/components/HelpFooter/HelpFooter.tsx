@@ -58,13 +58,7 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
           }
 
           return (
-            <Button
-              key={button.key}
-              variant="secondary"
-              size="sm"
-              icon={button.icon}
-              onClick={button.onClick}
-            >
+            <Button key={button.key} variant="secondary" size="sm" icon={button.icon} onClick={button.onClick}>
               {button.label}
             </Button>
           );
