@@ -186,7 +186,9 @@ jobs:
           cache: 'npm'
 
       - name: Install dev dependencies
-        run: npm ci
+        # Workaround @grafana/scenes and @grafana/runtime dependency issues until @grafana/runtime#12.3 is released.
+        # The libraries work together at runtime but the use of the canary runtime build doesn't satisfy the @grafana/scenes dependency.
+        run: npm ci --legacy-peer-deps
 
       - name: Start Grafana
         run: |
