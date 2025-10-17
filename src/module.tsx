@@ -12,7 +12,7 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults } from './constants';
-import { isGrafanaDocsUrl } from './utils/url-validator';
+import { isAllowedContentUrl } from './utils/url-validator';
 
 // Persistent queue for docs links clicked before sidebar opens
 interface QueuedDocsLink {
@@ -83,8 +83,9 @@ function initializeGlobalLinkInterceptor() {
     }
 
     // Check if it's a supported docs URL using secure validation
-    // Prevents domain hijacking attacks (e.g., a-grafana.com, grafana.com.evil.com)
-    if (!isGrafanaDocsUrl(fullUrl)) {
+    // In production: Only Grafana docs URLs
+    // In dev mode: Also allows localhost URLs for testing
+    if (!isAllowedContentUrl(fullUrl)) {
       return;
     }
 

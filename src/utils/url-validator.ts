@@ -1,5 +1,4 @@
 /**
-
  * Secure URL Validation Utilities
  *
  * Provides proper URL parsing and domain validation to prevent:
@@ -7,7 +6,11 @@
  * - Path injection (evil.com/grafana.com/docs/)
  * - Subdomain hijacking (grafana.com.evil.com)
  * - Protocol bypasses (file://, data:, javascript:)
+ *
+ * In dev mode, localhost URLs are permitted for local testing.
  */
+
+import { isDevModeEnabled } from './dev-mode';
 
 /**
  * Safely parse a URL string, returning null on failure
@@ -21,6 +24,60 @@ export function parseUrlSafely(urlString: string): URL | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Check if URL is a localhost URL (for dev mode)
+ *
+ * @param urlString - The URL to validate
+ * @returns true if localhost URL, false otherwise
+ */
+export function isLocalhostUrl(urlString: string): boolean {
+  const url = parseUrlSafely(urlString);
+  if (!url) {
+    return false;
+  }
+
+  // Only allow http and https protocols for localhost
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return false;
+  }
+
+  // Check for localhost, 127.0.0.1, or ::1 (IPv6 localhost)
+  return (
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.hostname === '[::1]' ||
+    url.hostname.startsWith('127.') // Allow 127.x.x.x range
+  );
+}
+
+/**
+ * Check if URL is allowed based on security rules and dev mode
+ *
+ * In production: Only Grafana docs and bundled content
+ * In dev mode: Also allows localhost URLs for testing
+ *
+ * @param urlString - The URL to validate
+ * @returns true if URL is allowed, false otherwise
+ */
+export function isAllowedContentUrl(urlString: string): boolean {
+  // Bundled content is always allowed
+  if (urlString.startsWith('bundled:')) {
+    return true;
+  }
+
+  // Grafana docs are always allowed
+  if (isGrafanaDocsUrl(urlString)) {
+    return true;
+  }
+
+  // In dev mode, allow localhost URLs for local testing
+  if (isDevModeEnabled() && isLocalhostUrl(urlString)) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -235,7 +292,9 @@ export function isTrustedDomain(urlString: string, allowedDomains: string[]): bo
 
   // Check if hostname matches any allowed domain (exact match only)
   return allowedDomains.includes(url.hostname);
-=======
+}
+
+/**
  * GitHub URL Validator for Tutorial Testing
  * Validates and parses GitHub tree URLs for tutorial directories
  */
@@ -245,6 +304,14 @@ export interface URLValidation {
   errorMessage?: string;
 }
 
+/**
+ * Validates tutorial URLs for the URL tester component
+ * In dev mode, allows localhost URLs for local testing
+ * Always allows Grafana docs URLs
+ *
+ * @param url - The URL to validate
+ * @returns Validation result with error message if invalid
+ */
 export function validateTutorialUrl(url: string): URLValidation {
   if (!url) {
     return {
@@ -253,29 +320,43 @@ export function validateTutorialUrl(url: string): URLValidation {
     };
   }
 
-  // // Check if it's a valid URL
+  // Check if it's a valid URL
   let urlObj: URL;
   try {
     urlObj = new URL(url);
   } catch {
     return {
       isValid: false,
-      errorMessage: 'Invalid URL format. Please provide a valid GitHub URL.',
+      errorMessage: 'Invalid URL format. Please provide a valid URL.',
     };
   }
 
   const pathParts = urlObj.pathname.split('/').filter(Boolean);
 
-  // Need at least: owner, repo, tree, branch, path
-  if (pathParts[pathParts.length - 1] !== 'unstyled.html') {
+  // In dev mode, allow localhost URLs for testing
+  if (isDevModeEnabled() && isLocalhostUrl(url)) {
+    // Require /unstyled.html suffix for localhost tutorials
+    if (pathParts[pathParts.length - 1] !== 'unstyled.html') {
+      return {
+        isValid: false,
+        errorMessage: 'Localhost tutorial URL must include the /unstyled.html suffix',
+      };
+    }
     return {
-      isValid: false,
-      errorMessage: 'URL must include the /unstyled.html suffix',
+      isValid: true,
+    };
+  }
+
+  // Allow Grafana docs URLs
+  if (isGrafanaDocsUrl(url)) {
+    return {
+      isValid: true,
     };
   }
 
   return {
-    isValid: true,
+    isValid: false,
+    errorMessage: 'URL must be a Grafana docs URL. In dev mode, localhost URLs are also allowed.',
   };
 }
 
@@ -294,7 +375,7 @@ export function validateGitHubUrl(url: string): URLValidation {
     };
   }
 
-  // // Check if it's a valid URL
+  // Check if it's a valid URL
   let urlObj: URL;
   try {
     urlObj = new URL(url);
@@ -346,5 +427,4 @@ export function validateGitHubUrl(url: string): URLValidation {
   return {
     isValid: true,
   };
-
 }

@@ -536,49 +536,6 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     setMultistepMode(!multistepMode);
   }, [multistepMode]);
 
-  // GitHub Tutorial Tester Handler
-  // SECURITY NOTE: This is a dev/testing tool - we ALLOW GitHub URLs here
-  // to let tutorial creators test their work. The HTML parser will still
-  // validate the source when interactive content is parsed in production.
-  const handleTestGithubTutorial = useCallback(() => {
-    const validation = validateAndParseGitHubUrl(githubUrl);
-
-    if (!validation.isValid) {
-      setGithubError(validation.errorMessage || 'Invalid URL format');
-      setGithubSuccess(false);
-      return;
-    }
-
-    if (!onOpenDocsPage) {
-      setGithubError('Tab opening is not available');
-      return;
-    }
-
-    // SECURITY: This bypasses normal source validation for testing purposes
-    // Content will still be sanitized by DOMPurify, but interactive elements
-    // from non-trusted sources will be allowed for testing
-    console.warn(
-      '[Debug Panel] Opening GitHub tutorial for testing (source validation BYPASSED):',
-      validation.cleanedUrl
-    );
-
-    // Set global flag to bypass source validation (dev mode testing only)
-    (window as any).__PathfinderTestingMode = true;
-
-    // Open in new tab with tutorial name as title
-    onOpenDocsPage(validation.cleanedUrl!, validation.tutorialName!);
-
-    // Clear flag after a delay (content should be loaded by then)
-    setTimeout(() => {
-      (window as any).__PathfinderTestingMode = false;
-    }, 5000);
-    setGithubSuccess(true);
-    setGithubError(null);
-
-    // Reset success state after 2 seconds
-    setTimeout(() => setGithubSuccess(false), 2000);
-  }, [githubUrl, onOpenDocsPage]);
-
   // Record Mode event listeners
   useEffect(() => {
     if (!recordMode) {

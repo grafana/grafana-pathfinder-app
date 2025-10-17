@@ -1,7 +1,26 @@
 /**
- * Tests for centralized GitHub URL validation functions
+ * Tests for centralized URL validation functions
  */
-import { isGitHubUrl, isGitHubRawUrl, isAnyGitHubUrl, isGrafanaDocsUrl, isGrafanaDomain } from './url-validator';
+import {
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isAnyGitHubUrl,
+  isGrafanaDocsUrl,
+  isGrafanaDomain,
+  isLocalhostUrl,
+  isAllowedContentUrl,
+  validateTutorialUrl,
+} from './url-validator';
+
+// Mock the dev-mode module
+jest.mock('./dev-mode', () => ({
+  isDevModeEnabled: jest.fn(() => false),
+  enableDevMode: jest.fn(),
+  disableDevMode: jest.fn(),
+  toggleDevMode: jest.fn(),
+}));
+
+import { isDevModeEnabled } from './dev-mode';
 
 describe('Grafana URL validators', () => {
   describe('isGrafanaDomain', () => {
@@ -117,6 +136,140 @@ describe('GitHub URL validators', () => {
     it('should return false for domain hijacking attempts', () => {
       expect(isAnyGitHubUrl('https://github.com.evil.com/fake')).toBe(false);
       expect(isAnyGitHubUrl('https://raw.githubusercontent.com.evil.com/fake')).toBe(false);
+    });
+  });
+});
+
+describe('Localhost URL validators', () => {
+  describe('isLocalhostUrl', () => {
+    it('should return true for localhost URLs', () => {
+      expect(isLocalhostUrl('http://localhost:3000')).toBe(true);
+      expect(isLocalhostUrl('https://localhost:3000')).toBe(true);
+      expect(isLocalhostUrl('http://localhost')).toBe(true);
+    });
+
+    it('should return true for 127.0.0.1 URLs', () => {
+      expect(isLocalhostUrl('http://127.0.0.1:8080')).toBe(true);
+      expect(isLocalhostUrl('https://127.0.0.1:5500')).toBe(true);
+      expect(isLocalhostUrl('http://127.0.0.1')).toBe(true);
+    });
+
+    it('should return true for 127.x.x.x range', () => {
+      expect(isLocalhostUrl('http://127.1.2.3:8080')).toBe(true);
+      expect(isLocalhostUrl('http://127.255.255.255')).toBe(true);
+    });
+
+    it('should return true for IPv6 localhost', () => {
+      expect(isLocalhostUrl('http://[::1]:3000')).toBe(true);
+    });
+
+    it('should return false for non-localhost URLs', () => {
+      expect(isLocalhostUrl('https://grafana.com')).toBe(false);
+      expect(isLocalhostUrl('http://192.168.1.1')).toBe(false);
+      expect(isLocalhostUrl('http://mylocalhost.com')).toBe(false);
+    });
+
+    it('should return false for dangerous protocols', () => {
+      expect(isLocalhostUrl('file://localhost/path')).toBe(false);
+      expect(isLocalhostUrl('javascript:alert("xss")')).toBe(false);
+    });
+
+    it('should return false for invalid URLs', () => {
+      expect(isLocalhostUrl('not a url')).toBe(false);
+      expect(isLocalhostUrl('')).toBe(false);
+    });
+  });
+
+  describe('isAllowedContentUrl', () => {
+    beforeEach(() => {
+      // Reset dev mode mock to disabled by default
+      jest.mocked(isDevModeEnabled).mockReturnValue(false);
+    });
+
+    afterEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should always allow bundled content', () => {
+      expect(isAllowedContentUrl('bundled:welcome-to-grafana')).toBe(true);
+      expect(isAllowedContentUrl('bundled:first-dashboard')).toBe(true);
+    });
+
+    it('should always allow Grafana docs URLs', () => {
+      expect(isAllowedContentUrl('https://grafana.com/docs/grafana/latest/')).toBe(true);
+      expect(isAllowedContentUrl('https://grafana.com/tutorials/getting-started/')).toBe(true);
+    });
+
+    it('should reject localhost URLs in production mode', () => {
+      expect(isAllowedContentUrl('http://localhost:3000/docs')).toBe(false);
+      expect(isAllowedContentUrl('http://127.0.0.1:5500/tutorial.html')).toBe(false);
+    });
+
+    it('should allow localhost URLs in dev mode', () => {
+      jest.mocked(isDevModeEnabled).mockReturnValue(true);
+
+      expect(isAllowedContentUrl('http://localhost:3000/docs')).toBe(true);
+      expect(isAllowedContentUrl('http://127.0.0.1:5500/tutorial.html')).toBe(true);
+    });
+
+    it('should reject non-Grafana URLs in production', () => {
+      expect(isAllowedContentUrl('https://evil.com/fake-docs')).toBe(false);
+      expect(isAllowedContentUrl('https://grafana.com.evil.com/docs')).toBe(false);
+    });
+
+    it('should reject non-Grafana URLs even in dev mode', () => {
+      jest.mocked(isDevModeEnabled).mockReturnValue(true);
+
+      expect(isAllowedContentUrl('https://evil.com/fake-docs')).toBe(false);
+      expect(isAllowedContentUrl('https://malicious.site/tutorial')).toBe(false);
+    });
+  });
+
+  describe('validateTutorialUrl', () => {
+    beforeEach(() => {
+      jest.mocked(isDevModeEnabled).mockReturnValue(false);
+    });
+
+    afterEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should accept Grafana docs URLs', () => {
+      const result = validateTutorialUrl('https://grafana.com/docs/grafana/latest/');
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject localhost URLs in production', () => {
+      const result = validateTutorialUrl('http://localhost:5500/tutorial/unstyled.html');
+      expect(result.isValid).toBe(false);
+      expect(result.errorMessage).toContain('dev mode');
+    });
+
+    it('should accept localhost URLs with /unstyled.html suffix in dev mode', () => {
+      jest.mocked(isDevModeEnabled).mockReturnValue(true);
+
+      const result = validateTutorialUrl('http://localhost:5500/tutorial/unstyled.html');
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject localhost URLs without /unstyled.html suffix in dev mode', () => {
+      jest.mocked(isDevModeEnabled).mockReturnValue(true);
+
+      const result = validateTutorialUrl('http://localhost:5500/tutorial/index.html');
+      expect(result.isValid).toBe(false);
+      expect(result.errorMessage).toContain('unstyled.html');
+    });
+
+    it('should reject empty URLs', () => {
+      const result = validateTutorialUrl('');
+      expect(result.isValid).toBe(false);
+      expect(result.errorMessage).toContain('provide a URL');
+    });
+
+    it('should reject invalid URL formats', () => {
+      const result = validateTutorialUrl('not a valid url');
+      expect(result.isValid).toBe(false);
+      expect(result.errorMessage).toContain('Invalid URL');
     });
   });
 });

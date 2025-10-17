@@ -8,7 +8,7 @@ import {
   enrichWithStepContext,
 } from '../lib/analytics';
 import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
-import { parseUrlSafely, isGrafanaDocsUrl, isAllowedGitHubRawUrl, isAnyGitHubUrl } from './url-validator';
+import { parseUrlSafely, isAllowedContentUrl, isAllowedGitHubRawUrl, isAnyGitHubUrl } from './url-validator';
 import { ALLOWED_GITHUB_REPO_PATHS } from '../constants';
 
 interface LearningJourneyTab {
@@ -205,7 +205,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             }
           }
 
-          if (isGrafanaDocsUrl(fullUrl)) {
+          if (isAllowedContentUrl(fullUrl)) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,
@@ -213,7 +213,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             const linkText = anchor.textContent?.trim() || 'Documentation';
 
-            // Parse URL to check pathname (already validated by isGrafanaDocsUrl)
+            // Parse URL to check pathname (already validated by isAllowedContentUrl)
             const urlObj = parseUrlSafely(fullUrl);
             const isLearningJourney = urlObj?.pathname.startsWith('/learning-journeys/');
 
@@ -422,8 +422,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           }
 
           // Validate the resolved URL before opening
-          if (!isGrafanaDocsUrl(fullUrl)) {
-            console.warn('Side journey link resolved to non-Grafana docs URL, ignoring:', fullUrl);
+          if (!isAllowedContentUrl(fullUrl)) {
+            console.warn('Side journey link resolved to non-allowed URL, ignoring:', fullUrl);
             return;
           }
 
@@ -489,8 +489,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           }
 
           // Validate the resolved URL before opening
-          if (!isGrafanaDocsUrl(fullUrl)) {
-            console.warn('Related journey link resolved to non-Grafana docs URL, ignoring:', fullUrl);
+          if (!isAllowedContentUrl(fullUrl)) {
+            console.warn('Related journey link resolved to non-allowed URL, ignoring:', fullUrl);
             return;
           }
 

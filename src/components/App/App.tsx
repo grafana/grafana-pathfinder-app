@@ -6,7 +6,7 @@ import { ContextPanelComponent } from '../../utils/docs.utils';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { setGlobalLinkInterceptionEnabled } from '../../module';
-import { parseUrlSafely, isGrafanaDocsUrl } from '../../utils/url-validator';
+import { parseUrlSafely, isAllowedContentUrl } from '../../utils/url-validator';
 
 function getSceneApp() {
   return new SceneApp({
@@ -35,9 +35,10 @@ function App(props: AppRootProps) {
 
     if (tutorialUrl && tutorialUrl.trim()) {
       // Validate tutorial URL for security (user-configurable setting)
-      // Reject non-Grafana URLs to prevent malicious configuration
-      if (!isGrafanaDocsUrl(tutorialUrl) && !tutorialUrl.startsWith('bundled:')) {
-        console.error('[App] Invalid tutorial URL in configuration (must be Grafana docs or bundled):', tutorialUrl);
+      // In production: Only Grafana docs and bundled content
+      // In dev mode: Also allows localhost URLs for testing
+      if (!isAllowedContentUrl(tutorialUrl)) {
+        console.error('[App] Invalid tutorial URL in configuration:', tutorialUrl);
         return;
       }
 

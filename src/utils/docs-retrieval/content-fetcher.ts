@@ -12,7 +12,16 @@ import {
   Milestone,
 } from './content.types';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT, ALLOWED_GITHUB_REPO_PATHS } from '../../constants';
-import { parseUrlSafely, isGrafanaDocsUrl, isGitHubUrl, isGitHubRawUrl, isAllowedGitHubRawUrl } from '../url-validator';
+import {
+  parseUrlSafely,
+  isAllowedContentUrl,
+  isGrafanaDocsUrl,
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isAllowedGitHubRawUrl,
+  isLocalhostUrl,
+} from '../url-validator';
+import { isDevModeEnabled } from '../dev-mode';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -40,23 +49,31 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 
     // SECURITY: Validate URL is from a trusted source before fetching
     // Defense-in-depth: Even if callers validate, fetchContent provides final check
-    // Can be bypassed via __PathfinderTestingMode for SelectorDebugPanel testing (dev mode only)
-    const testingMode = (window as any).__PathfinderTestingMode === true;
+    // In production: Only Grafana docs, bundled content, and approved GitHub repos
+    // In dev mode: Also allows localhost URLs for local testing
+    const isTrustedSource =
+      isAllowedContentUrl(url) ||
+      isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPO_PATHS) ||
+      isGitHubUrl(url) ||
+      // Backward compatibility: Support __PathfinderTestingMode for existing tests
+      (window as any).__PathfinderTestingMode === true;
 
-    if (!testingMode) {
-      const isTrustedSource =
-        isGrafanaDocsUrl(url) || isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPO_PATHS) || isGitHubUrl(url);
+    if (!isTrustedSource) {
+      const errorMessage = isDevModeEnabled()
+        ? 'Only Grafana.com documentation, localhost URLs (dev mode), and approved GitHub repositories can be loaded'
+        : 'Only Grafana.com documentation and approved GitHub repositories can be loaded';
 
-      if (!isTrustedSource) {
-        console.error('[SECURITY] fetchContent rejected untrusted URL:', url);
-        return {
-          content: null,
-          error: 'Only Grafana.com documentation and approved GitHub repositories can be loaded',
-          errorType: 'other',
-        };
-      }
-    } else {
-      console.warn('[DEV MODE] Security validation bypassed for testing URL:', url);
+      console.error('[SECURITY] fetchContent rejected untrusted URL:', url);
+      return {
+        content: null,
+        error: errorMessage,
+        errorType: 'other',
+      };
+    }
+
+    // Log when using localhost in dev mode
+    if (isDevModeEnabled() && isLocalhostUrl(url)) {
+      console.log('[DEV MODE] Loading content from localhost:', url);
     }
 
     // Determine content type based on URL patterns
