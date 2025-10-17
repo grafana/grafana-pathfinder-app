@@ -11,8 +11,15 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
   header: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1),
+    justifyContent: 'space-between',
+    gap: theme.spacing(2),
     marginBottom: theme.spacing(2),
+  }),
+
+  headerLeft: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
   }),
 
   title: css({

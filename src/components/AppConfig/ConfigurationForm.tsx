@@ -12,6 +12,7 @@ import {
   DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
+import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 
 type JsonData = DocsPluginConfig;
 
@@ -28,8 +29,6 @@ type State = {
   isDocsPasswordSet: boolean;
   // Auto-launch tutorial URL (for demo scenarios)
   tutorialUrl: string;
-  // Dev mode enables loading of the components page for testing of proper rendering of components
-  devMode: boolean;
   // Global link interception
   interceptGlobalDocsLinks: boolean;
 };
@@ -38,7 +37,8 @@ export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginM
 
 const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const urlParams = new URLSearchParams(window.location.search);
-  const showDevModeInput = urlParams.get('dev') === 'true';
+  // Show dev mode input if URL param is set OR if dev mode is already enabled
+  const showDevModeInput = urlParams.get('dev') === 'true' || isDevModeEnabled();
   const s = useStyles2(getStyles);
   const { enabled, pinned, jsonData, secureJsonFields } = plugin.meta;
   const [state, setState] = useState<State>({
@@ -48,10 +48,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     docsPassword: '',
     isDocsPasswordSet: Boolean(secureJsonFields && (secureJsonFields as any).docsPassword),
     tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
-    devMode: jsonData?.devMode || false,
     interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   });
   const [isSaving, setIsSaving] = useState(false);
+  // Track dev mode state locally to trigger re-renders
+  const [devModeEnabled, setDevModeEnabled] = useState(isDevModeEnabled());
 
   // Configuration is now retrieved directly from plugin meta via usePluginContext
 
@@ -100,10 +101,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   };
 
   const onChangeDevMode = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      devMode: event.target.checked,
-    });
+    // Dev mode is now stored in localStorage per-user, not in plugin settings
+    const newDevModeState = toggleDevMode();
+    setDevModeEnabled(newDevModeState);
   };
 
   const onToggleGlobalLinkInterception = (event: ChangeEvent<HTMLInputElement>) => {
@@ -124,7 +124,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         docsBaseUrl: state.docsBaseUrl,
         docsUsername: state.docsUsername,
         tutorialUrl: state.tutorialUrl,
-        devMode: state.devMode,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
       };
 
@@ -232,11 +231,23 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           />
         </Field>
 
-        {/* Dev Mode */}
+        {/* Dev Mode - Per-User Setting (stored in localStorage) */}
         {showDevModeInput && (
-          <Field label="Dev Mode" description="Enable dev mode" className={s.marginTop}>
-            <Input type="checkbox" id="dev-mode" checked={state.devMode} onChange={onChangeDevMode} />
-          </Field>
+          <>
+            <Field
+              label="Dev Mode (Per-User)"
+              description="Enable developer features like the component debugger. This setting only affects your browser and won't impact other users."
+              className={s.marginTop}
+            >
+              <Input type="checkbox" id="dev-mode" checked={devModeEnabled} onChange={onChangeDevMode} />
+            </Field>
+            {devModeEnabled && (
+              <Alert severity="info" title="Dev mode is active" className={s.marginTop}>
+                The debug panel is now visible in the main docs interface. You can disable dev mode anytime using the
+                &quot;Leave Dev Mode&quot; button in the debug panel or by unchecking this box.
+              </Alert>
+            )}
+          </>
         )}
 
         {/* Global Link Interception */}
