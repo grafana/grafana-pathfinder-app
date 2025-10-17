@@ -205,11 +205,25 @@ describe('Localhost URL validators', () => {
       expect(isAllowedContentUrl('http://127.0.0.1:5500/tutorial.html')).toBe(false);
     });
 
-    it('should allow localhost URLs in dev mode', () => {
+    it('should allow localhost URLs with valid docs paths in dev mode', () => {
       jest.mocked(isDevModeEnabled).mockReturnValue(true);
 
+      // Valid docs paths should be allowed
       expect(isAllowedContentUrl('http://localhost:3000/docs')).toBe(true);
-      expect(isAllowedContentUrl('http://127.0.0.1:5500/tutorial.html')).toBe(true);
+      expect(isAllowedContentUrl('http://localhost:3000/docs/grafana/latest/')).toBe(true);
+      expect(isAllowedContentUrl('http://127.0.0.1:5500/tutorials/getting-started')).toBe(true);
+      expect(isAllowedContentUrl('http://localhost:3000/learning-journeys/intro')).toBe(true);
+    });
+
+    it('should reject localhost URLs without valid docs paths in dev mode', () => {
+      jest.mocked(isDevModeEnabled).mockReturnValue(true);
+
+      // Non-docs paths should be rejected to avoid intercepting menu items
+      expect(isAllowedContentUrl('http://localhost:3000/')).toBe(false);
+      expect(isAllowedContentUrl('http://localhost:3000/dashboard')).toBe(false);
+      expect(isAllowedContentUrl('http://localhost:3000/d/abc123/my-dashboard')).toBe(false);
+      expect(isAllowedContentUrl('http://127.0.0.1:5500/tutorial.html')).toBe(false);
+      expect(isAllowedContentUrl('http://localhost:3000/datasources')).toBe(false);
     });
 
     it('should reject non-Grafana URLs in production', () => {

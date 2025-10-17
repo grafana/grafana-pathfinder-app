@@ -56,7 +56,7 @@ export function isLocalhostUrl(urlString: string): boolean {
  * Check if URL is allowed based on security rules and dev mode
  *
  * In production: Only Grafana docs and bundled content
- * In dev mode: Also allows localhost URLs for testing
+ * In dev mode: Also allows localhost URLs for testing, BUT ONLY if they have valid docs paths
  *
  * @param urlString - The URL to validate
  * @returns true if URL is allowed, false otherwise
@@ -73,8 +73,23 @@ export function isAllowedContentUrl(urlString: string): boolean {
   }
 
   // In dev mode, allow localhost URLs for local testing
+  // IMPORTANT: Must check that localhost URLs have valid docs paths to avoid
+  // intercepting menu items and other UI links that also resolve to localhost
   if (isDevModeEnabled() && isLocalhostUrl(urlString)) {
-    return true;
+    const url = parseUrlSafely(urlString);
+    if (!url) {
+      return false;
+    }
+
+    // Only allow localhost URLs with documentation paths
+    // Note: Check both /docs and /docs/ to handle URLs with and without trailing slashes
+    return (
+      url.pathname === '/docs' ||
+      url.pathname.startsWith('/docs/') ||
+      url.pathname === '/tutorials' ||
+      url.pathname.startsWith('/tutorials/') ||
+      url.pathname.includes('/learning-journeys/')
+    );
   }
 
   return false;
