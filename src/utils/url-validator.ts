@@ -84,8 +84,8 @@ export function isYouTubeDomain(urlString: string): boolean {
     return false;
   }
 
-  // Only allow http and https protocols
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+  // Only allow https protocol
+  if (url.protocol !== 'https:') {
     return false;
   }
 
