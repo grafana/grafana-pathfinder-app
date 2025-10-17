@@ -12,7 +12,7 @@ import {
   Milestone,
 } from './content.types';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../../constants';
-import { parseUrlSafely, isGrafanaDocsUrl, isGitHubUrl, isGitHubRawUrl } from '../url-validator';
+import { parseUrlSafely, isGrafanaDocsUrl, isGitHubUrl, isGitHubRawUrl, isAllowedGitHubRawUrl } from '../url-validator';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -36,6 +36,28 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Handle bundled interactive content
     if (url.startsWith('bundled:')) {
       return await fetchBundledInteractive(url);
+    }
+
+    // SECURITY: Validate URL is from a trusted source before fetching
+    // Defense-in-depth: Even if callers validate, fetchContent provides final check
+    // Can be bypassed via __PathfinderTestingMode for SelectorDebugPanel testing (dev mode only)
+    const testingMode = (window as any).__PathfinderTestingMode === true;
+
+    if (!testingMode) {
+      const ALLOWED_GITHUB_REPO_PATHS = ['/grafana/interactive-tutorials/'];
+      const isTrustedSource =
+        isGrafanaDocsUrl(url) || isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPO_PATHS) || isGitHubUrl(url);
+
+      if (!isTrustedSource) {
+        console.error('[SECURITY] fetchContent rejected untrusted URL:', url);
+        return {
+          content: null,
+          error: 'Only Grafana.com documentation and approved GitHub repositories can be loaded',
+          errorType: 'other',
+        };
+      }
+    } else {
+      console.warn('[DEV MODE] Security validation bypassed for testing URL:', url);
     }
 
     // Determine content type based on URL patterns
