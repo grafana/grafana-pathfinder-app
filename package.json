@@ -76,7 +76,7 @@
     "@emotion/css": "11.10.6",
     "@grafana/data": "^12.2.0",
     "@grafana/i18n": "^12.2.0",
-    "@grafana/runtime": "^12.2.0",
+    "@grafana/runtime": "^12.3.0-18562067081",
     "@grafana/scenes": "^6.10.4",
     "@grafana/schema": "^12.2.0",
     "@grafana/ui": "^12.2.0",
