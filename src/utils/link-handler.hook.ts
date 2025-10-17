@@ -8,13 +8,8 @@ import {
   enrichWithStepContext,
 } from '../lib/analytics';
 import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
-
-// Allowed GitHub URLs that can open in app tabs (from context.service.ts defaultRecommendations)
-const ALLOWED_GITHUB_URLS = [
-  'https://raw.githubusercontent.com/moxious/',
-  'https://raw.githubusercontent.com/Jayclifford345/',
-  'https://raw.githubusercontent.com/grafana/',
-];
+import { parseUrlSafely, isAllowedContentUrl, isAllowedGitHubRawUrl, isAnyGitHubUrl } from './url-validator';
+import { ALLOWED_GITHUB_REPO_PATHS } from '../constants';
 
 interface LearningJourneyTab {
   id: string;
@@ -193,22 +188,37 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           }
 
           // Handle Grafana docs and tutorials links (including resolved relative links)
-          if (
-            resolvedUrl.includes('grafana.com/docs/') ||
-            resolvedUrl.includes('grafana.com/tutorials/') ||
-            href.startsWith('/docs/') ||
-            href.startsWith('/tutorials/')
-          ) {
+          // Use secure URL validation to prevent domain hijacking
+          // Resolve any remaining relative paths against the current page's base URL
+          let fullUrl: string;
+          if (resolvedUrl.startsWith('http')) {
+            fullUrl = resolvedUrl;
+          } else {
+            // Absolute path like "/docs/something" - resolve against current page base
+            const baseUrl = activeTab?.content?.url || 'https://grafana.com';
+            try {
+              fullUrl = new URL(resolvedUrl, baseUrl).href;
+            } catch (error) {
+              console.warn('Failed to resolve URL against base:', resolvedUrl, baseUrl, error);
+              // Fallback to grafana.com only if resolution fails
+              fullUrl = `https://grafana.com${resolvedUrl}`;
+            }
+          }
+
+          if (isAllowedContentUrl(fullUrl)) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,
             });
 
-            const fullUrl = resolvedUrl.startsWith('http') ? resolvedUrl : `https://grafana.com${resolvedUrl}`;
             const linkText = anchor.textContent?.trim() || 'Documentation';
 
+            // Parse URL to check pathname (already validated by isAllowedContentUrl)
+            const urlObj = parseUrlSafely(fullUrl);
+            const isLearningJourney = urlObj?.pathname.startsWith('/learning-journeys/');
+
             // Determine if it's a learning journey or regular docs/tutorials
-            if (fullUrl.includes('/learning-journeys/')) {
+            if (isLearningJourney) {
               model.openLearningJourney(fullUrl, linkText);
             } else {
               // For regular docs and tutorials, use openDocsPage if available, otherwise openLearningJourney
@@ -220,7 +230,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             }
 
             // Track analytics for opening extra resources (docs/tutorials)
-            const contentType = fullUrl.includes('/learning-journeys/') ? 'learning-journey' : 'docs';
+            const contentType = isLearningJourney ? 'learning-journey' : 'docs';
+            const isTutorial = urlObj?.pathname.startsWith('/tutorials/');
             reportAppInteraction(
               UserInteraction.OpenExtraResource,
               enrichWithStepContext({
@@ -228,13 +239,13 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 content_type: contentType,
                 link_text: linkText,
                 source_page: activeTab?.content?.url || 'unknown',
-                link_type: fullUrl.includes('/tutorials/') ? 'tutorial' : 'docs',
+                link_type: isTutorial ? 'tutorial' : 'docs',
                 interaction_location: 'content_link',
               })
             );
           }
           // Handle GitHub links - check if allowed to open in app
-          else if (href.includes('github.com') || href.includes('raw.githubusercontent.com')) {
+          else if (isAnyGitHubUrl(href)) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,
@@ -242,10 +253,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             const linkText = anchor.textContent?.trim() || 'GitHub Link';
 
-            // Check if this URL is in the allowed list for app tabs
-            const isAllowedUrl = ALLOWED_GITHUB_URLS.some(
-              (allowedUrl) => resolvedUrl === allowedUrl || resolvedUrl.startsWith(allowedUrl)
-            );
+            // Check if this URL is from an allowed GitHub repository
+            // Uses proper URL parsing to prevent domain hijacking
+            const isAllowedUrl = isAllowedGitHubRawUrl(resolvedUrl, ALLOWED_GITHUB_REPO_PATHS);
 
             if (isAllowedUrl) {
               // This is an allowed URL - try to open in app with unstyled.html fallback
@@ -393,7 +403,29 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
         if (linkUrl) {
           // Convert relative URLs to full URLs
-          const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
+          // Side journey links come from metadata and should resolve against the journey base
+          let fullUrl: string;
+          if (linkUrl.startsWith('http')) {
+            fullUrl = linkUrl;
+          } else {
+            // Resolve against current learning journey's base URL
+            const baseUrl = activeTab?.content?.metadata?.learningJourney?.baseUrl || 'https://grafana.com';
+            try {
+              fullUrl = new URL(linkUrl, baseUrl).href;
+            } catch (error) {
+              console.warn('Failed to resolve side journey URL:', linkUrl, error);
+              // Fallback to grafana.com only if resolution fails
+              fullUrl = linkUrl.startsWith('/')
+                ? `https://grafana.com${linkUrl}`
+                : `https://grafana.com/docs/${linkUrl}`;
+            }
+          }
+
+          // Validate the resolved URL before opening
+          if (!isAllowedContentUrl(fullUrl)) {
+            console.warn('Side journey link resolved to non-allowed URL, ignoring:', fullUrl);
+            return;
+          }
 
           // Open side journey links in new app tabs (as docs pages)
           if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
@@ -437,8 +469,31 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         const linkTitle = relatedJourneyLink.textContent?.trim() || 'Related Journey';
 
         if (linkUrl) {
-          // Related journey links open in new app tabs (learning journeys)
-          const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
+          // Convert relative URLs to full URLs
+          // Related journey links come from metadata and should resolve against the journey base
+          let fullUrl: string;
+          if (linkUrl.startsWith('http')) {
+            fullUrl = linkUrl;
+          } else {
+            // Resolve against current learning journey's base URL
+            const baseUrl = activeTab?.content?.metadata?.learningJourney?.baseUrl || 'https://grafana.com';
+            try {
+              fullUrl = new URL(linkUrl, baseUrl).href;
+            } catch (error) {
+              console.warn('Failed to resolve related journey URL:', linkUrl, error);
+              // Fallback to grafana.com only if resolution fails
+              fullUrl = linkUrl.startsWith('/')
+                ? `https://grafana.com${linkUrl}`
+                : `https://grafana.com/docs/${linkUrl}`;
+            }
+          }
+
+          // Validate the resolved URL before opening
+          if (!isAllowedContentUrl(fullUrl)) {
+            console.warn('Related journey link resolved to non-allowed URL, ignoring:', fullUrl);
+            return;
+          }
+
           model.openLearningJourney(fullUrl, linkTitle);
 
           // Track analytics for related journey clicks

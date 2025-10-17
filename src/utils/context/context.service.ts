@@ -558,8 +558,7 @@ export class ContextService {
       recommendations.map(async (rec) => {
         if (rec.type === 'learning-journey' || !rec.type) {
           try {
-            const configWithDefaults = getConfigWithDefaults(pluginConfig || {});
-            const result = await fetchContent(rec.url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
+            const result = await fetchContent(rec.url);
             const completionPercentage = getJourneyCompletionPercentage(rec.url);
 
             // Extract learning journey data from the unified content
