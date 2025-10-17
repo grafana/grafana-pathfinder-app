@@ -1,13 +1,11 @@
 import React, { useState, ChangeEvent } from 'react';
-import { Button, Field, Input, useStyles2, FieldSet, SecretInput, Switch, Alert, Text } from '@grafana/ui';
+import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
 import {
   DocsPluginConfig,
   DEFAULT_RECOMMENDER_SERVICE_URL,
-  DEFAULT_DOCS_BASE_URL,
-  DEFAULT_DOCS_USERNAME,
   DEFAULT_TUTORIAL_URL,
   DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
 } from '../../constants';
@@ -18,14 +16,6 @@ type JsonData = DocsPluginConfig;
 type State = {
   // The URL to reach the recommender service
   recommenderServiceUrl: string;
-  // The base URL for the docs website service
-  docsBaseUrl: string;
-  // Username for docs authentication
-  docsUsername: string;
-  // Password for docs authentication
-  docsPassword: string;
-  // Tells us if the docs password secret is set (from secureJsonFields)
-  isDocsPasswordSet: boolean;
   // Auto-launch tutorial URL (for demo scenarios)
   tutorialUrl: string;
   // Dev mode enables loading of the components page for testing of proper rendering of components
@@ -40,13 +30,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const urlParams = new URLSearchParams(window.location.search);
   const showDevModeInput = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
-  const { enabled, pinned, jsonData, secureJsonFields } = plugin.meta;
+  const { enabled, pinned, jsonData } = plugin.meta;
   const [state, setState] = useState<State>({
     recommenderServiceUrl: jsonData?.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
-    docsBaseUrl: jsonData?.docsBaseUrl || DEFAULT_DOCS_BASE_URL,
-    docsUsername: jsonData?.docsUsername || DEFAULT_DOCS_USERNAME,
-    docsPassword: '',
-    isDocsPasswordSet: Boolean(secureJsonFields && (secureJsonFields as any).docsPassword),
     tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
     devMode: jsonData?.devMode || false,
     interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
@@ -59,40 +45,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   // Configuration is now retrieved directly from plugin meta via usePluginContext
 
   // Only require service URLs when in dev mode, otherwise these are hidden
-  const isSubmitDisabled = showAdvancedConfig ? Boolean(!state.recommenderServiceUrl || !state.docsBaseUrl) : false;
-
-  const onResetDocsPassword = () =>
-    setState({
-      ...state,
-      docsPassword: '',
-      isDocsPasswordSet: false,
-    });
-
-  const onChangeDocsPassword = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      docsPassword: event.target.value.trim(),
-    });
-  };
+  const isSubmitDisabled = showAdvancedConfig ? Boolean(!state.recommenderServiceUrl) : false;
 
   const onChangeRecommenderServiceUrl = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
       ...state,
       recommenderServiceUrl: event.target.value.trim(),
-    });
-  };
-
-  const onChangeDocsBaseUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      docsBaseUrl: event.target.value.trim(),
-    });
-  };
-
-  const onChangeDocsUsername = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      docsUsername: event.target.value.trim(),
     });
   };
 
@@ -125,8 +83,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       const newJsonData = {
         ...jsonData, // Preserve existing fields
         recommenderServiceUrl: state.recommenderServiceUrl,
-        docsBaseUrl: state.docsBaseUrl,
-        docsUsername: state.docsUsername,
         tutorialUrl: state.tutorialUrl,
         devMode: state.devMode,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
@@ -136,8 +92,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         enabled,
         pinned,
         jsonData: newJsonData,
-        // Only include secureJsonData if password was changed
-        secureJsonData: state.isDocsPasswordSet ? undefined : { docsPassword: state.docsPassword },
       });
 
       // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh
@@ -174,56 +128,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                 value={state.recommenderServiceUrl}
                 placeholder={DEFAULT_RECOMMENDER_SERVICE_URL}
                 onChange={onChangeRecommenderServiceUrl}
-              />
-            </Field>
-
-            {/* Docs Base website URL */}
-            <Field
-              label="Docs base URL"
-              description="The base URL for the documentation service (Dev mode only)"
-              className={s.marginTop}
-            >
-              <Input
-                width={60}
-                id="docs-base-url"
-                data-testid={testIds.appConfig.docsBaseUrl}
-                value={state.docsBaseUrl}
-                placeholder={DEFAULT_DOCS_BASE_URL}
-                onChange={onChangeDocsBaseUrl}
-              />
-            </Field>
-
-            {/* Docs Username */}
-            <Field
-              label="Docs username"
-              description="Username for accessing the documentation service (Dev mode only)"
-              className={s.marginTop}
-            >
-              <Input
-                width={60}
-                id="docs-username"
-                data-testid={testIds.appConfig.docsUsername}
-                value={state.docsUsername}
-                placeholder="Enter username (optional)"
-                onChange={onChangeDocsUsername}
-              />
-            </Field>
-
-            {/* Docs Password */}
-            <Field
-              label="Docs password"
-              description="Password for accessing the documentation service (Dev mode only)"
-              className={s.marginTop}
-            >
-              <SecretInput
-                width={60}
-                data-testid={testIds.appConfig.docsPassword}
-                id="docs-password"
-                value={state.docsPassword}
-                isConfigured={state.isDocsPasswordSet}
-                placeholder="Enter password (optional)"
-                onChange={onChangeDocsPassword}
-                onReset={onResetDocsPassword}
               />
             </Field>
           </>

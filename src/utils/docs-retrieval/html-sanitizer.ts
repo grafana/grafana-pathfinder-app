@@ -333,23 +333,3 @@ export function sanitizeDocumentationHTML(html: string): string {
     throw new Error(`HTML sanitization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
-
-/**
- * Simple HTML escaping utility for displaying HTML as text in error messages.
- * Converts HTML special characters to their entity equivalents.
- *
- * @param html - HTML string to escape
- * @returns Escaped string safe for display in text context
- */
-export function escapeHtml(html: string): string {
-  if (!html) {
-    return '';
-  }
-
-  return String(html)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}

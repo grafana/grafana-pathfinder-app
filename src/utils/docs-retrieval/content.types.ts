@@ -113,13 +113,6 @@ export interface ContentFetchOptions {
 
   /** Whether to follow redirects */
   followRedirects?: boolean;
-
-  /**
-   * Base URL for documentation host. When provided, enables special handling
-   * for docs/tutorial pages (e.g., fetching unstyled content variants) and
-   * helps build absolute URLs from relative metadata.
-   */
-  docsBaseUrl?: string;
 }
 
 export interface ContentFetchResult {

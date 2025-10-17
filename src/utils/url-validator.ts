@@ -150,6 +150,81 @@ export function isGrafanaDomain(urlString: string): boolean {
 }
 
 /**
+ * Check if URL is a github.com URL (not raw.githubusercontent.com)
+ *
+ * Security: Validates hostname is exactly github.com
+ *
+ * @param urlString - The URL to validate
+ * @returns true if hostname is github.com, false otherwise
+ *
+ * @example
+ * isGitHubUrl('https://github.com/grafana/grafana') // true
+ * isGitHubUrl('https://raw.githubusercontent.com/...') // false
+ * isGitHubUrl('https://github.com.evil.com/...') // false
+ */
+export function isGitHubUrl(urlString: string): boolean {
+  const url = parseUrlSafely(urlString);
+  if (!url) {
+    return false;
+  }
+
+  // Only allow https protocol for GitHub
+  if (url.protocol !== 'https:') {
+    return false;
+  }
+
+  // Exact hostname match only (prevents subdomain hijacking)
+  return url.hostname === 'github.com';
+}
+
+/**
+ * Check if URL is a raw.githubusercontent.com URL
+ *
+ * Security: Validates hostname is exactly raw.githubusercontent.com
+ * Note: This does NOT check if the repo is in the allowlist - use isAllowedGitHubRawUrl for that
+ *
+ * @param urlString - The URL to validate
+ * @returns true if hostname is raw.githubusercontent.com, false otherwise
+ *
+ * @example
+ * isGitHubRawUrl('https://raw.githubusercontent.com/grafana/...') // true
+ * isGitHubRawUrl('https://github.com/grafana/grafana') // false
+ * isGitHubRawUrl('https://raw.githubusercontent.com.evil.com/...') // false
+ */
+export function isGitHubRawUrl(urlString: string): boolean {
+  const url = parseUrlSafely(urlString);
+  if (!url) {
+    return false;
+  }
+
+  // Only allow https protocol for GitHub
+  if (url.protocol !== 'https:') {
+    return false;
+  }
+
+  // Exact hostname match only (prevents subdomain hijacking)
+  return url.hostname === 'raw.githubusercontent.com';
+}
+
+/**
+ * Check if URL is any GitHub URL (github.com or raw.githubusercontent.com)
+ *
+ * Security: Validates hostname is exactly one of the known GitHub domains
+ * Note: This does NOT check if the repo is in the allowlist - use isAllowedGitHubRawUrl for that
+ *
+ * @param urlString - The URL to validate
+ * @returns true if hostname is github.com or raw.githubusercontent.com, false otherwise
+ *
+ * @example
+ * isAnyGitHubUrl('https://github.com/grafana/grafana') // true
+ * isAnyGitHubUrl('https://raw.githubusercontent.com/grafana/...') // true
+ * isAnyGitHubUrl('https://github.com.evil.com/...') // false
+ */
+export function isAnyGitHubUrl(urlString: string): boolean {
+  return isGitHubUrl(urlString) || isGitHubRawUrl(urlString);
+}
+
+/**
  * Generic trusted domain validator
  *
  * @param urlString - The URL to validate

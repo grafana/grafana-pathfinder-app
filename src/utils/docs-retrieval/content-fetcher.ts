@@ -12,7 +12,7 @@ import {
   Milestone,
 } from './content.types';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../../constants';
-import { parseUrlSafely, isGrafanaDocsUrl } from '../url-validator';
+import { parseUrlSafely, isGrafanaDocsUrl, isGitHubUrl, isGitHubRawUrl } from '../url-validator';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -62,7 +62,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     const finalUrl = fetchResult.finalUrl || cleanUrl;
 
     // Extract basic metadata without DOM processing
-    const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType, options.docsBaseUrl);
+    const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType);
 
     // Create unified content object
     const content: RawContent = {
@@ -239,11 +239,10 @@ async function fetchRawHtml(
   // Convert tree/blob URLs to raw URLs before attempting fetch
   // Use proper URL parsing to prevent domain hijacking
   let actualUrl = url;
-  const parsedUrl = parseUrlSafely(url);
-  const isGitHubRawUrl = parsedUrl?.hostname === 'raw.githubusercontent.com';
-  const isGitHubUrl = parsedUrl?.hostname === 'github.com';
+  const isGitHubRawUrlCheck = isGitHubRawUrl(url);
+  const isGitHubUrlCheck = isGitHubUrl(url);
 
-  if (isGitHubUrl && !isGitHubRawUrl) {
+  if (isGitHubUrlCheck && !isGitHubRawUrlCheck) {
     const githubVariations = generateGitHubVariations(url);
     if (githubVariations.length > 0) {
       // Use the first (most specific) GitHub variation instead of the original URL
@@ -254,7 +253,7 @@ async function fetchRawHtml(
   // Build fetch options - use minimal headers for GitHub raw URLs to avoid CORS preflight
   const fetchOptions: RequestInit = {
     method: 'GET',
-    headers: isGitHubRawUrl
+    headers: isGitHubRawUrlCheck
       ? {
           // Minimal headers for GitHub raw URLs - avoid triggering CORS preflight
           // Only use simple headers that don't require preflight
@@ -272,7 +271,7 @@ async function fetchRawHtml(
   };
 
   // Add auth headers if requested (but skip for GitHub raw URLs to avoid CORS)
-  if (useAuth && !isGitHubRawUrl) {
+  if (useAuth && !isGitHubRawUrlCheck) {
     const authHeaders = getAuthHeaders();
     fetchOptions.headers = { ...fetchOptions.headers, ...authHeaders };
   }
@@ -281,46 +280,20 @@ async function fetchRawHtml(
   let lastError: FetchError | undefined;
 
   try {
-    const response = await fetch(replaceRecommendationBaseUrl(actualUrl, options.docsBaseUrl), fetchOptions);
+    const response = await fetch(actualUrl, fetchOptions);
 
     if (response.ok) {
       const html = await response.text();
       if (html && html.trim()) {
         // If this is a Grafana docs/tutorial URL, we MUST get the unstyled version
         // Use proper URL parsing to prevent domain hijacking attacks
-        const shouldFetchUnstyled = (() => {
-          // If custom docsBaseUrl is configured, check against it
-          if (options.docsBaseUrl) {
-            const responseUrl = parseUrlSafely(response.url);
-            const baseUrl = parseUrlSafely(options.docsBaseUrl);
-
-            if (!responseUrl || !baseUrl) {
-              return false;
-            }
-
-            // Check hostname matches and pathname is docs-related
-            if (responseUrl.hostname === baseUrl.hostname) {
-              return (
-                responseUrl.pathname.includes('/docs/') ||
-                responseUrl.pathname.includes('/tutorials/') ||
-                responseUrl.pathname.includes('/components/')
-              );
-            }
-            return false;
-          }
-
-          // No custom base URL: check if it's a Grafana docs URL
-          return isGrafanaDocsUrl(response.url);
-        })();
+        const shouldFetchUnstyled = isGrafanaDocsUrl(response.url);
 
         if (shouldFetchUnstyled) {
           const finalUnstyledUrl = getUnstyledContentUrl(response.url);
           if (finalUnstyledUrl !== response.url) {
             try {
-              const unstyledResponse = await fetch(
-                replaceRecommendationBaseUrl(finalUnstyledUrl, options.docsBaseUrl),
-                fetchOptions
-              );
+              const unstyledResponse = await fetch(finalUnstyledUrl, fetchOptions);
               if (unstyledResponse.ok) {
                 const unstyledHtml = await unstyledResponse.text();
                 if (unstyledHtml && unstyledHtml.trim()) {
@@ -366,10 +339,7 @@ async function fetchRawHtml(
           if (baseUrlMatch) {
             const fullRedirectUrl = baseUrlMatch[1] + location;
             try {
-              const redirectResponse = await fetch(
-                replaceRecommendationBaseUrl(fullRedirectUrl, options.docsBaseUrl),
-                fetchOptions
-              );
+              const redirectResponse = await fetch(fullRedirectUrl, fetchOptions);
               if (redirectResponse.ok) {
                 const html = await redirectResponse.text();
                 if (html && html.trim()) {
@@ -415,10 +385,9 @@ async function fetchRawHtml(
     console.warn(`Failed to fetch from ${url}:`, error);
   }
 
-  // If original URL failed, only try GitHub variations if no docsBaseUrl was configured
-  // AND we haven't already converted the URL (to avoid trying the same variations twice)
-  if (!lastError?.message.includes('Unstyled version required') && !options.docsBaseUrl && actualUrl === url) {
-    // Only try GitHub for URLs that are actually GitHub URLs and when no specific docs base is configured
+  // If original URL failed and we haven't already converted the URL (to avoid trying the same variations twice)
+  if (!lastError?.message.includes('Unstyled version required') && actualUrl === url) {
+    // Only try GitHub for URLs that are actually GitHub URLs
     const githubVariations = generateGitHubVariations(url);
     if (githubVariations.length > 0) {
       for (const githubUrl of githubVariations) {
@@ -439,9 +408,8 @@ async function fetchRawHtml(
 
   // Log final failure with most relevant error
   if (lastError) {
-    // Provide specific guidance for GitHub CORS issues
-    const urlObj = parseUrlSafely(url);
-    if (urlObj?.hostname === 'github.com' && lastError.message.includes('NetworkError')) {
+    // Provide specific guidance for GitHub CORS issues (using centralized validator)
+    if (isGitHubUrl(url) && lastError.message.includes('NetworkError')) {
       console.error(
         `Failed to fetch content from ${url}. Last error: ${lastError.message}\n` +
           `GitHub raw URLs may be blocked due to CORS policies. Consider:\n` +
@@ -464,14 +432,9 @@ async function fetchRawHtml(
 function generateGitHubVariations(url: string): string[] {
   const variations: string[] = [];
 
-  // Parse URL and validate it's actually GitHub
-  const parsedUrl = parseUrlSafely(url);
-  if (!parsedUrl) {
-    return variations;
-  }
-
-  const isGitHubDomain = parsedUrl.hostname === 'github.com';
-  const isGitHubRawDomain = parsedUrl.hostname === 'raw.githubusercontent.com';
+  // Parse URL and validate it's actually GitHub (using centralized validators)
+  const isGitHubDomain = isGitHubUrl(url);
+  const isGitHubRawDomain = isGitHubRawUrl(url);
 
   // Only try GitHub variations for actual GitHub URLs
   if (isGitHubDomain || isGitHubRawDomain) {
@@ -542,16 +505,11 @@ function getAuthHeaders(): Record<string, string> {
  * Extract metadata from HTML without DOM processing
  * Uses simple string parsing instead of DOM manipulation
  */
-async function extractMetadata(
-  html: string,
-  url: string,
-  contentType: ContentType,
-  docsBaseUrl?: string
-): Promise<ContentMetadata> {
+async function extractMetadata(html: string, url: string, contentType: ContentType): Promise<ContentMetadata> {
   const title = extractTitle(html);
 
   if (contentType === 'learning-journey') {
-    const learningJourney = await extractLearningJourneyMetadata(html, url, docsBaseUrl);
+    const learningJourney = await extractLearningJourneyMetadata(html, url);
     return { title, learningJourney };
   } else {
     const singleDoc = extractSingleDocMetadata(html);
@@ -584,12 +542,8 @@ function extractTitle(html: string): string {
  * Extract learning journey metadata using simple parsing
  * Replaces complex DOM processing with string-based extraction
  */
-async function extractLearningJourneyMetadata(
-  html: string,
-  url: string,
-  docsBaseUrl?: string
-): Promise<LearningJourneyMetadata> {
-  const baseUrl = getLearningJourneyBaseUrl(url, docsBaseUrl);
+async function extractLearningJourneyMetadata(html: string, url: string): Promise<LearningJourneyMetadata> {
+  const baseUrl = getLearningJourneyBaseUrl(url);
 
   // Extract milestones from index.json metadata file
   const milestones = await fetchLearningJourneyMetadataFromJson(baseUrl);
@@ -669,7 +623,7 @@ function extractDocSummary(html: string): string {
  * Learning journey specific functions
  * These are simplified versions that focus on data extraction only
  */
-function getLearningJourneyBaseUrl(url: string, docsBaseUrl?: string): string {
+function getLearningJourneyBaseUrl(url: string): string {
   // Handle cases like:
   // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
   // https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
@@ -684,17 +638,6 @@ function getLearningJourneyBaseUrl(url: string, docsBaseUrl?: string): string {
   if (tutorialMatch) {
     return tutorialMatch[1];
   }
-
-  // If docsBaseUrl is provided and the URL is relative to it, normalize to that base
-  try {
-    if (docsBaseUrl) {
-      const baseHost = new URL(docsBaseUrl).host;
-      const urlHost = new URL(url).host;
-      if (baseHost === urlHost) {
-        return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
-      }
-    }
-  } catch {}
 
   return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
 }
@@ -796,11 +739,4 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
 function urlsMatch(url1: string, url2: string): boolean {
   const normalize = (u: string) => u.replace(/\/$/, '').toLowerCase();
   return normalize(url1) === normalize(url2);
-}
-
-/**
- * replace recommendation base url with the base url from the config
- */
-function replaceRecommendationBaseUrl(url: string, docsBaseUrl: string | undefined): string {
-  return url.replace('https://grafana.com', docsBaseUrl || '');
 }

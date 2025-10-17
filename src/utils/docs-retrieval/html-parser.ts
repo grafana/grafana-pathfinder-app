@@ -423,15 +423,37 @@ export function parseHTMLToComponents(
         // EXPANDABLE TABLE: <div class="expand-table-wrapper">
         if (tag === 'div' && /\bexpand-table-wrapper\b/.test(el.className || '')) {
           hasExpandableTables = true;
-          const table = el.querySelector('table');
+
+          // Parse children as React components instead of raw HTML
+          const children: Array<ParsedElement | string> = [];
+          el.childNodes.forEach((child, index) => {
+            try {
+              const walked = walk(child, `${currentPath}.expand-table-wrapper[${index}]`);
+              if (walked) {
+                children.push(walked);
+              }
+            } catch (error) {
+              errorCollector.addError(
+                'children_processing',
+                `Failed to process expandable table child ${index}: ${
+                  error instanceof Error ? error.message : 'Unknown error'
+                }`,
+                child.nodeType === Node.ELEMENT_NODE
+                  ? (child as Element).outerHTML
+                  : child.textContent?.substring(0, 100),
+                `${currentPath}.expand-table-wrapper[${index}]`,
+                error instanceof Error ? error : undefined
+              );
+            }
+          });
+
           return {
             type: 'expandable-table',
             props: {
-              content: table ? table.outerHTML : el.innerHTML,
               defaultCollapsed: false,
               toggleText: undefined,
             },
-            children: [],
+            children,
             originalHTML: el.outerHTML,
           };
         }

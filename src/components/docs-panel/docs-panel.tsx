@@ -6,7 +6,7 @@ import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana
 import { IconButton, Alert, Icon, useStyles2, Button } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { getConfigWithDefaults, DocsPluginConfig } from '../../constants';
+import { DocsPluginConfig } from '../../constants';
 
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
@@ -261,8 +261,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      const configWithDefaults = getConfigWithDefaults(this.state.pluginConfig);
-      const result = await fetchContent(url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
+      const result = await fetchContent(url);
 
       // Check if fetch succeeded or failed
       if (result.content) {
@@ -472,8 +471,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      const configWithDefaults = getConfigWithDefaults(this.state.pluginConfig);
-      const result = await fetchContent(url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
+      const result = await fetchContent(url);
 
       // Check if fetch succeeded or failed
       if (result.content) {

@@ -522,7 +522,6 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
       return (
         <ExpandableTable
           key={key}
-          content={element.props.content}
           defaultCollapsed={element.props.defaultCollapsed}
           toggleText={element.props.toggleText}
           className={element.props.className}

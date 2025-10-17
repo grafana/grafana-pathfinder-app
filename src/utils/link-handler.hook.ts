@@ -8,7 +8,7 @@ import {
   enrichWithStepContext,
 } from '../lib/analytics';
 import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
-import { parseUrlSafely, isGrafanaDocsUrl, isAllowedGitHubRawUrl } from './url-validator';
+import { parseUrlSafely, isGrafanaDocsUrl, isAllowedGitHubRawUrl, isAnyGitHubUrl } from './url-validator';
 
 // Allowed GitHub repository path - ONLY the single controlled interactive-tutorials repo
 // Meeting commitment: Removed individual user repos for security
@@ -236,10 +236,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             );
           }
           // Handle GitHub links - check if allowed to open in app
-          else if (
-            parseUrlSafely(href)?.hostname === 'github.com' ||
-            parseUrlSafely(href)?.hostname === 'raw.githubusercontent.com'
-          ) {
+          else if (isAnyGitHubUrl(href)) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,

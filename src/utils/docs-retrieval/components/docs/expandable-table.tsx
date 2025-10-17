@@ -2,16 +2,14 @@ import React, { useState } from 'react';
 import { Button } from '@grafana/ui';
 
 export interface ExpandableTableProps {
-  content?: string; // DEPRECATED: Use children instead. Content prop is unsafe and will be removed.
   defaultCollapsed?: boolean;
   toggleText?: string;
   className?: string;
-  children?: React.ReactNode; // Preferred: Pass pre-parsed React components as children
+  children?: React.ReactNode;
   isCollapseSection?: boolean; // Flag to identify collapse sections
 }
 
 export function ExpandableTable({
-  content,
   defaultCollapsed = false,
   toggleText,
   className,
@@ -19,16 +17,6 @@ export function ExpandableTable({
   isCollapseSection = false,
 }: ExpandableTableProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
-
-  // SECURITY: content prop is deprecated and unsafe - only use children
-  if (content && !children) {
-    console.error(
-      '[SECURITY] ExpandableTable: content prop is deprecated and unsafe. ' +
-        'All HTML must be parsed through the React component system. ' +
-        'Use children prop with pre-parsed React components instead.'
-    );
-    return null;
-  }
 
   // If this is a collapse section, render with the proper CSS structure
   if (isCollapseSection) {
