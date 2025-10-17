@@ -29,6 +29,7 @@ interface SessionContextValue {
   
   // Attendees (presenter only)
   attendees: AttendeeInfo[];
+  refreshAttendees: () => void;
   
   // Attendee mode (attendee only)
   attendeeMode: 'guided' | 'follow' | null;
@@ -244,12 +245,32 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setAttendeeMode(mode);
   }, []);
   
+  /**
+   * Manually refresh attendees list (presenter only)
+   */
+  const refreshAttendees = useCallback(() => {
+    if (sessionRole === 'presenter' && sessionManager) {
+      console.log('[SessionState] Manually refreshing attendees list');
+      const updatedAttendees = sessionManager.getAttendees();
+      console.log('[SessionState] Current attendees before refresh:', attendees);
+      console.log('[SessionState] Updated attendees from manager:', updatedAttendees);
+      setAttendees(updatedAttendees);
+      console.log('[SessionState] setAttendees called with:', updatedAttendees);
+    } else {
+      console.log('[SessionState] refreshAttendees called but conditions not met:', {
+        sessionRole,
+        hasSessionManager: !!sessionManager
+      });
+    }
+  }, [sessionRole, sessionManager, attendees]);
+  
   const value: SessionContextValue = {
     sessionManager,
     sessionInfo,
     sessionRole,
     isActive: sessionManager.isActive(),
     attendees,
+    refreshAttendees,
     attendeeMode,
     setAttendeeMode: updateAttendeeMode,
     createSession,

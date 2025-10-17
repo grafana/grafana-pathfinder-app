@@ -513,7 +513,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Live session state
   const [showPresenterControls, setShowPresenterControls] = React.useState(false);
   const [showAttendeeJoin, setShowAttendeeJoin] = React.useState(false);
-  const { isActive: isSessionActive, sessionRole, sessionInfo, sessionManager, onEvent, endSession, attendeeMode, setAttendeeMode } = useSession();
+  const { isActive: isSessionActive, sessionRole, sessionInfo, sessionManager, onEvent, endSession, attendeeMode, setAttendeeMode, refreshAttendees } = useSession();
   
   // Check for session join URL on mount and auto-open modal
   React.useEffect(() => {
@@ -664,6 +664,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       actionCaptureRef.current = null;
     }
   }, [sessionRole, sessionManager, sessionInfo]);
+  
+  // Refresh attendees list when presenter opens session controls
+  useEffect(() => {
+    if (showPresenterControls && sessionRole === 'presenter') {
+      console.log('[DocsPanel] Presenter controls opened, refreshing attendees');
+      refreshAttendees();
+    }
+  }, [showPresenterControls, sessionRole, refreshAttendees]);
   
   // ============================================================================
   // Live Session Effects (Attendee)

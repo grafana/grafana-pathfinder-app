@@ -244,6 +244,8 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [x] Update mode when attendee switches (handle mode_change events in SessionManager)
 - [x] Fix mode sync reactivity issue
   - [x] Create new AttendeeInfo object in SessionManager to trigger React re-renders
+  - [x] Add refreshAttendees() function to manually refresh attendee list
+  - [x] Call refreshAttendees() when presenter opens session controls modal
 - [x] Handle multistep actions in guided mode
   - [x] Show informational toast instead of error when presenter triggers multistep in guided mode
 

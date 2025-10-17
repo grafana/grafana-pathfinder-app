@@ -438,7 +438,10 @@ export class SessionManager {
    * Get list of attendees (presenter only)
    */
   getAttendees(): AttendeeInfo[] {
-    return Array.from(this.attendees.values());
+    const attendeeList = Array.from(this.attendees.values());
+    console.log('[SessionManager] getAttendees() called, returning:', attendeeList);
+    console.log('[SessionManager] Internal attendees Map size:', this.attendees.size);
+    return attendeeList;
   }
   
   // ============================================================================
