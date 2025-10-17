@@ -36,24 +36,14 @@ export function parseUrlSafely(urlString: string): URL | null {
  * isGrafanaDocsUrl('https://grafana.com.evil.com/docs/') // false (subdomain hijacking)
  */
 export function isGrafanaDocsUrl(urlString: string): boolean {
+  // Use centralized domain validator to avoid duplication
+  if (!isGrafanaDomain(urlString)) {
+    return false;
+  }
+
+  // Parse URL to check pathname (already validated by isGrafanaDomain)
   const url = parseUrlSafely(urlString);
   if (!url) {
-    return false;
-  }
-
-  // Only allow http and https protocols
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    return false;
-  }
-
-  // Check hostname is exactly grafana.com or a proper subdomain
-  // ✅ grafana.com
-  // ✅ www.grafana.com
-  // ✅ docs.grafana.com
-  // ❌ a-grafana.com (not grafana.com)
-  // ❌ grafana.com.evil.com (not a subdomain of grafana.com)
-  const isGrafanaDomain = url.hostname === 'grafana.com' || url.hostname.endsWith('.grafana.com');
-  if (!isGrafanaDomain) {
     return false;
   }
 

@@ -71,11 +71,11 @@ function initializeGlobalLinkInterceptor() {
     try {
       if (href.startsWith('http://') || href.startsWith('https://')) {
         fullUrl = href;
-      } else if (href.startsWith('/')) {
-        fullUrl = `https://grafana.com${href}`;
       } else if (href.startsWith('#')) {
         return;
       } else {
+        // Absolute path (starts with /) or relative path - resolve against current location
+        // This ensures self-hosted instances resolve to their own domain, not grafana.com
         fullUrl = new URL(href, window.location.href).href;
       }
     } catch (error) {

@@ -317,16 +317,6 @@ If not, I initialize it and set up the tasks needed to process the request.
 
 ## File Creation Policy
 
-**CRITICAL RULE**: Do NOT create summary .md files unless explicitly requested by the user.
-
-- ❌ NEVER create summary files after completing work (e.g., "IMPLEMENTATION_SUMMARY.md", "CLEANUP_SUMMARY.md")
-- ❌ NEVER create proactive documentation files in docs/ or elsewhere
-- ❌ NEVER create .md files to document what was implemented
-- ✅ ONLY create .md files when the user explicitly asks: "create documentation" or "write a .md file"
-- ✅ Communicate all summaries, explanations, and completion status directly in responses
-
-**Rationale**: Summary .md files waste tokens and credits. They are not useful. All communication should happen in chat responses.
-
 # Style
 
 Here's my style to coding:

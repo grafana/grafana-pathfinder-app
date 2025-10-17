@@ -10,20 +10,13 @@ interface GlobalLinkInterceptorProps {
 /**
  * Determines if a URL is a supported Grafana docs link that can be opened in Pathfinder
  * Uses proper URL parsing to prevent domain hijacking attacks
+ *
+ * Note: Only validates full URLs. Relative paths should be resolved first before validation.
  */
 function isSupportedDocsUrl(url: string): boolean {
   try {
-    // Use centralized secure validator
-    if (isGrafanaDocsUrl(url)) {
-      return true;
-    }
-
-    // Also support relative paths (these will be resolved to grafana.com in the handler)
-    if (url.startsWith('/docs/') || url.startsWith('/tutorials/') || url.startsWith('/learning-journeys/')) {
-      return true;
-    }
-
-    return false;
+    // Use centralized secure validator (only validates full URLs)
+    return isGrafanaDocsUrl(url);
   } catch (error) {
     console.warn('Error checking if URL is supported:', error);
     return false;
@@ -116,14 +109,12 @@ export function useGlobalLinkInterceptor({ onOpenDocsLink, enabled = false }: Gl
         if (href.startsWith('http://') || href.startsWith('https://')) {
           // Already a full URL
           fullUrl = href;
-        } else if (href.startsWith('/')) {
-          // Absolute path - assume it's on grafana.com domain
-          fullUrl = `https://grafana.com${href}`;
         } else if (href.startsWith('#')) {
           // Fragment link - skip it (let browser handle)
           return;
         } else {
-          // Relative path - resolve against current location
+          // Absolute path (starts with /) or relative path - resolve against current location
+          // This ensures self-hosted instances resolve to their own domain, not grafana.com
           fullUrl = new URL(href, window.location.href).href;
         }
       } catch (error) {

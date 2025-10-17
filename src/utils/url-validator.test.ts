@@ -1,7 +1,54 @@
 /**
  * Tests for centralized GitHub URL validation functions
  */
-import { isGitHubUrl, isGitHubRawUrl, isAnyGitHubUrl } from './url-validator';
+import { isGitHubUrl, isGitHubRawUrl, isAnyGitHubUrl, isGrafanaDocsUrl, isGrafanaDomain } from './url-validator';
+
+describe('Grafana URL validators', () => {
+  describe('isGrafanaDomain', () => {
+    it('should return true for grafana.com URLs', () => {
+      expect(isGrafanaDomain('https://grafana.com')).toBe(true);
+      expect(isGrafanaDomain('https://grafana.com/anything')).toBe(true);
+    });
+
+    it('should return true for grafana.com subdomains', () => {
+      expect(isGrafanaDomain('https://www.grafana.com')).toBe(true);
+      expect(isGrafanaDomain('https://docs.grafana.com')).toBe(true);
+    });
+
+    it('should return false for domain hijacking attempts', () => {
+      expect(isGrafanaDomain('https://a-grafana.com')).toBe(false);
+      expect(isGrafanaDomain('https://grafana.com.evil.com')).toBe(false);
+    });
+
+    it('should return false for invalid URLs', () => {
+      expect(isGrafanaDomain('not a url')).toBe(false);
+      expect(isGrafanaDomain('')).toBe(false);
+    });
+  });
+
+  describe('isGrafanaDocsUrl', () => {
+    it('should return true for valid Grafana docs URLs', () => {
+      expect(isGrafanaDocsUrl('https://grafana.com/docs/grafana/latest/')).toBe(true);
+      expect(isGrafanaDocsUrl('https://grafana.com/tutorials/getting-started/')).toBe(true);
+      expect(isGrafanaDocsUrl('https://grafana.com/docs/learning-journeys/drilldown-logs/')).toBe(true);
+    });
+
+    it('should return false for grafana.com URLs that are not docs', () => {
+      expect(isGrafanaDocsUrl('https://grafana.com/pricing')).toBe(false);
+      expect(isGrafanaDocsUrl('https://grafana.com/blog')).toBe(false);
+    });
+
+    it('should return false for domain hijacking attempts', () => {
+      expect(isGrafanaDocsUrl('https://grafana.com.evil.com/docs/')).toBe(false);
+      expect(isGrafanaDocsUrl('https://a-grafana.com/docs/')).toBe(false);
+    });
+
+    it('should return false for invalid URLs', () => {
+      expect(isGrafanaDocsUrl('not a url')).toBe(false);
+      expect(isGrafanaDocsUrl('')).toBe(false);
+    });
+  });
+});
 
 describe('GitHub URL validators', () => {
   describe('isGitHubUrl', () => {
