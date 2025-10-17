@@ -104,11 +104,7 @@ export function ContentParsingError({ errors, warnings, fallbackHtml, onRetry, c
                 <pre>
                   <code>{fallbackHtml.substring(0, 1000)}</code>
                 </pre>
-                {fallbackHtml.length > 1000 && (
-                  <p>
-                    <em>... truncated for brevity</em>
-                  </p>
-                )}
+                {fallbackHtml.length > 1000}
               </details>
             )}
           </details>
