@@ -16,6 +16,28 @@ export function validateTutorialUrl(url: string): URLValidation {
     };
   }
 
+  // // Check if it's a valid URL
+  let urlObj: URL;
+  try {
+    urlObj = new URL(url);
+  } catch {
+    return {
+      isValid: false,
+      errorMessage: 'Invalid URL format. Please provide a valid GitHub URL.',
+    };
+  }
+
+
+  const pathParts = urlObj.pathname.split('/').filter(Boolean);
+
+  // Need at least: owner, repo, tree, branch, path
+  if (pathParts[pathParts.length - 1] !== 'unstyled.html') {
+    return {
+      isValid: false,
+      errorMessage: 'URL must include the /unstyled.html suffix',
+    };
+  }
+
   return {
     isValid: true,
   };
