@@ -3,11 +3,22 @@
  * Validates and parses GitHub tree URLs for tutorial directories
  */
 
-export interface GitHubUrlValidation {
+export interface URLValidation {
   isValid: boolean;
-  tutorialName?: string;
-  cleanedUrl?: string;
   errorMessage?: string;
+}
+
+export function validateTutorialUrl(url: string): URLValidation {
+  if (!url) {
+    return {
+      isValid: false,
+      errorMessage: 'Please provide a URL',
+    };
+  }
+
+  return {
+    isValid: true,
+  };
 }
 
 /**
@@ -17,21 +28,18 @@ export interface GitHubUrlValidation {
  * @param url - The GitHub URL to validate
  * @returns Validation result with parsed data or error message
  */
-export function validateAndParseGitHubUrl(url: string): GitHubUrlValidation {
-  // Trim whitespace
-  const trimmedUrl = url.trim();
-
-  if (!trimmedUrl) {
+export function validateGitHubUrl(url: string): URLValidation {
+  if (!url) {
     return {
       isValid: false,
       errorMessage: 'Please provide a URL',
     };
   }
 
-  // Check if it's a valid URL
+  // // Check if it's a valid URL
   let urlObj: URL;
   try {
-    urlObj = new URL(trimmedUrl);
+    urlObj = new URL(url);
   } catch {
     return {
       isValid: false,
@@ -77,10 +85,7 @@ export function validateAndParseGitHubUrl(url: string): GitHubUrlValidation {
     };
   }
 
-  // The cleaned URL is the original URL (we'll let content-fetcher handle conversion to raw.githubusercontent.com)
   return {
     isValid: true,
-    tutorialName,
-    cleanedUrl: trimmedUrl,
   };
 }

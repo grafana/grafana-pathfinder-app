@@ -17,6 +17,7 @@ import { getStyles } from '../../styles/context-panel.styles';
 import { useContextPanel } from '../../utils/context';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getConfigWithDefaults } from '../../constants';
+import { useIsDevMode } from 'hooks/useIsDevMode';
 
 interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
@@ -62,6 +63,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   // Get plugin configuration with proper defaults applied
   const pluginContext = usePluginContext();
+  const isDevMode = useIsDevMode();
   const configWithDefaults = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
 
   // Use the simplified context hook
@@ -434,7 +436,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
         )}
 
         {/* Debug Panel - only shown when dev mode is enabled */}
-        {configWithDefaults.devMode && (
+        {isDevMode && (
           <div className={styles.debugSection}>
             <SelectorDebugPanel onOpenDocsPage={openDocsPage} />
           </div>
