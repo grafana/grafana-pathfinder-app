@@ -41,7 +41,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const [devModeEnabled, setDevModeEnabled] = useState(isDevModeEnabled());
 
   // Show advanced config fields only in dev mode (for Grafana team development)
-  const showAdvancedConfig = state.devMode || showDevModeInput;
+  const showAdvancedConfig = devModeEnabled || showDevModeInput;
 
   // Configuration is now retrieved directly from plugin meta via usePluginContext
 
