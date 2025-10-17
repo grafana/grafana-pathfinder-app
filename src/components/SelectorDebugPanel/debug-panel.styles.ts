@@ -11,15 +11,8 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
   header: css({
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing(2),
-    marginBottom: theme.spacing(2),
-  }),
-
-  headerLeft: css({
-    display: 'flex',
-    alignItems: 'center',
     gap: theme.spacing(1),
+    marginBottom: theme.spacing(1),
   }),
 
   title: css({
@@ -31,6 +24,14 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
 
   badge: css({
     fontSize: theme.typography.bodySmall.fontSize,
+  }),
+
+  leaveDevModeRow: css({
+    display: 'flex',
+    justifyContent: 'center',
+    marginBottom: theme.spacing(2),
+    paddingBottom: theme.spacing(2),
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
   }),
 
   section: css({

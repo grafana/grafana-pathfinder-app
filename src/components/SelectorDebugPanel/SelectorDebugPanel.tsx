@@ -42,10 +42,8 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
   // Handle leaving dev mode
   const handleLeaveDevMode = useCallback(() => {
-    if (window.confirm('Exit dev mode? The debug panel will be hidden until you re-enable it in settings.')) {
-      disableDevMode();
-      window.location.reload(); // Reload to apply the change
-    }
+    disableDevMode();
+    window.location.reload(); // Reload to apply the change
   }, []);
 
   // Simple Selector Tester State
@@ -754,12 +752,14 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <Icon name="bug" size="lg" />
-          <h3 className={styles.title}>DOM Selector Debug</h3>
-          <Badge text="Dev Mode" color="orange" className={styles.badge} />
-        </div>
-        <Button variant="secondary" size="sm" onClick={handleLeaveDevMode} icon="times">
+        <Icon name="bug" size="lg" />
+        <h3 className={styles.title}>DOM Selector Debug</h3>
+        <Badge text="Dev Mode" color="orange" className={styles.badge} />
+      </div>
+
+      {/* Leave Dev Mode button in its own row */}
+      <div className={styles.leaveDevModeRow}>
+        <Button variant="secondary" size="sm" onClick={handleLeaveDevMode} icon="times" fill="outline">
           Leave Dev Mode
         </Button>
       </div>

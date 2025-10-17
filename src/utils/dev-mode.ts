@@ -9,18 +9,9 @@ const DEV_MODE_KEY = 'grafana-pathfinder-dev-mode';
 
 /**
  * Check if dev mode is enabled for the current user
- * Can be enabled via:
- * 1. localStorage setting (persistent per-user)
- * 2. URL parameter ?dev=true (temporary)
+ * Only checks localStorage - the toggle in config is the ONLY way to enable/disable
  */
 export const isDevModeEnabled = (): boolean => {
-  // Check URL parameter first (temporary override)
-  const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('dev') === 'true') {
-    return true;
-  }
-
-  // Check localStorage (persistent per-user setting)
   try {
     return localStorage.getItem(DEV_MODE_KEY) === 'true';
   } catch (e) {
@@ -53,6 +44,7 @@ export const disableDevMode = (): void => {
 
 /**
  * Toggle dev mode for the current user
+ * @returns The new state of dev mode
  */
 export const toggleDevMode = (): boolean => {
   const newValue = !isDevModeEnabled();
@@ -63,4 +55,3 @@ export const toggleDevMode = (): boolean => {
   }
   return newValue;
 };
-

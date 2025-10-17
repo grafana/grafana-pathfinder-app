@@ -243,8 +243,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             </Field>
             {devModeEnabled && (
               <Alert severity="info" title="Dev mode is active" className={s.marginTop}>
-                The debug panel is now visible in the main docs interface. You can disable dev mode anytime using the
-                &quot;Leave Dev Mode&quot; button in the debug panel or by unchecking this box.
+                The debug panel is now visible in the main docs interface on all pages. Uncheck this box to disable dev
+                mode. You can also click &quot;Leave Dev Mode&quot; in the debug panel to quickly disable it.
               </Alert>
             )}
           </>
