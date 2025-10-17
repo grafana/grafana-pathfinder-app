@@ -14,6 +14,7 @@ import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { exportStepsToHTML, combineStepsIntoMultistep, type RecordedStep } from '../../utils/tutorial-exporter';
 import { validateAndCleanSelector } from '../../utils/selector-validator';
 import { validateAndParseGitHubUrl } from '../../utils/github-url-validator';
+import { disableDevMode } from '../../utils/dev-mode';
 
 interface TestResult {
   success: boolean;
@@ -38,6 +39,12 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   const [watchExpanded, setWatchExpanded] = useState(false);
   const [recordExpanded, setRecordExpanded] = useState(false);
   const [githubExpanded, setGithubExpanded] = useState(false);
+
+  // Handle leaving dev mode
+  const handleLeaveDevMode = useCallback(() => {
+    disableDevMode();
+    window.location.reload(); // Reload to apply the change
+  }, []);
 
   // Simple Selector Tester State
   const [simpleSelector, setSimpleSelector] = useState('');
@@ -767,6 +774,13 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         <Icon name="bug" size="lg" />
         <h3 className={styles.title}>DOM Selector Debug</h3>
         <Badge text="Dev Mode" color="orange" className={styles.badge} />
+      </div>
+
+      {/* Leave Dev Mode button in its own row */}
+      <div className={styles.leaveDevModeRow}>
+        <Button variant="secondary" size="sm" onClick={handleLeaveDevMode} icon="times" fill="outline">
+          Leave Dev Mode
+        </Button>
       </div>
 
       {/* Simple Selector Tester */}
