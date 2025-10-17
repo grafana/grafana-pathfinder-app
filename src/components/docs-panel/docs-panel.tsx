@@ -37,7 +37,7 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { useIsDevMode } from 'hooks/useIsDevMode';
+import { isDevModeEnabled } from 'utils/dev-mode';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -530,7 +530,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 }
 
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
-  const isDevMode = useIsDevMode();
+  const isDevMode = isDevModeEnabled();
 
   React.useEffect(() => {
     addGlobalModalStyles();
