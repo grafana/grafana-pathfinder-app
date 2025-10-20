@@ -201,13 +201,11 @@ describe('Security: Recommender Service URL Validation', () => {
         searchParams: {},
       };
 
-      // Static domain list for testing - should match production allowed domains
-      // recommender.grafana.com and recommender.grafana-dev.com are the allowed domains
-      const validUrls = [
-        'https://recommender.grafana.com/recommend',
-        'https://recommender.grafana-dev.com/recommend',
-        'https://api.recommender.grafana.com/recommend', // Subdomain of allowed domain
-      ];
+      // Static domain list for testing - EXACT matches only (no subdomains)
+      // Only these domains from ALLOWED_RECOMMENDER_DOMAINS are allowed:
+      // - recommender.grafana.com
+      // - recommender.grafana-dev.com
+      const validUrls = ['https://recommender.grafana.com/recommend', 'https://recommender.grafana-dev.com/recommend'];
 
       for (const url of validUrls) {
         jest.clearAllMocks();
@@ -253,6 +251,8 @@ describe('Security: Recommender Service URL Validation', () => {
         'https://grafana.com.evil.com/recommend', // Domain hijacking attempt
         'https://api.malicious.com/recommend',
         'https://recommender-staging.grafana.com/recommend', // Not in allowlist
+        'https://api.recommender.grafana.com/recommend', // Subdomain not allowed
+        'https://test.recommender.grafana-dev.com/recommend', // Subdomain not allowed
       ];
 
       for (const url of invalidUrls) {

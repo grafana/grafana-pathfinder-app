@@ -353,9 +353,9 @@ export class ContextService {
       return false;
     }
 
-    // Check if domain is in allowlist
+    // Check if domain is in allowlist (exact match only, no subdomains)
     const isAllowedDomain = ALLOWED_RECOMMENDER_DOMAINS.some((domain) => {
-      return parsedUrl.hostname === domain || parsedUrl.hostname.endsWith(`.${domain}`);
+      return parsedUrl.hostname === domain;
     });
 
     if (!isAllowedDomain) {
