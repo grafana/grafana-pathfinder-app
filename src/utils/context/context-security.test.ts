@@ -56,6 +56,10 @@ jest.mock('../../lib/hash.util', () => ({
     hashedUserId: 'hashed-user',
     hashedEmail: 'hashed-email',
   }),
+  hashString: jest.fn((input: string) => {
+    // Mock SHA-256 hash - simulate a 64-character hex string
+    return Promise.resolve('a'.repeat(64)); // Simplified mock hash
+  }),
 }));
 
 // Mock fetch globally
@@ -585,6 +589,185 @@ describe('Security: Recommender Service URL Validation', () => {
       expect(result.error).toBeTruthy();
       // Should still have some recommendations (bundled/static)
       expect(Array.isArray(result.recommendations)).toBe(true);
+    });
+  });
+
+  describe('Source Hostname Privacy', () => {
+    it('should leave play.grafana.org unhashed for OSS users', async () => {
+      // Mock window.location.hostname
+      Object.defineProperty(window, 'location', {
+        value: { hostname: 'play.grafana.org' },
+        writable: true,
+      });
+
+      // Mock as OSS (not Cloud)
+      const originalConfig = (require('@grafana/runtime') as any).config;
+      (require('@grafana/runtime') as any).config = {
+        ...originalConfig,
+        bootData: {
+          ...originalConfig.bootData,
+          settings: {
+            buildInfo: {
+              versionString: 'Grafana v10.0.0', // OSS version (no "Cloud" prefix)
+            },
+          },
+        },
+      };
+
+      let capturedPayload: any = null;
+      (global.fetch as jest.Mock).mockImplementation(async (url, options) => {
+        capturedPayload = JSON.parse(options.body);
+        return {
+          ok: true,
+          json: () => Promise.resolve({ recommendations: [] }),
+        };
+      });
+
+      const mockContextData = {
+        currentPath: '/dashboards',
+        currentUrl: 'http://localhost:3000/dashboards',
+        pathSegments: ['dashboards'],
+        dataSources: [],
+        dashboardInfo: null,
+        recommendations: [],
+        tags: [],
+        isLoading: false,
+        recommendationsError: null,
+        recommendationsErrorType: null,
+        usingFallbackRecommendations: false,
+        visualizationType: null,
+        grafanaVersion: '10.0.0',
+        theme: 'dark',
+        timestamp: new Date().toISOString(),
+        searchParams: {},
+      };
+
+      await ContextService.fetchRecommendations(mockContextData, {
+        recommenderServiceUrl: 'https://recommender.grafana.com',
+        acceptedTermsAndConditions: true,
+      });
+
+      expect(capturedPayload).toBeDefined();
+      expect(capturedPayload.source).toBe('play.grafana.org');
+    });
+
+    it('should hash cloud hostnames for privacy', async () => {
+      // Mock window.location.hostname with customer-specific domain
+      Object.defineProperty(window, 'location', {
+        value: { hostname: 'acme-corp.grafana.net' },
+        writable: true,
+      });
+
+      // Mock as Cloud
+      const originalConfig = (require('@grafana/runtime') as any).config;
+      (require('@grafana/runtime') as any).config = {
+        ...originalConfig,
+        bootData: {
+          ...originalConfig.bootData,
+          settings: {
+            buildInfo: {
+              versionString: 'Grafana Cloud v10.0.0',
+            },
+          },
+        },
+      };
+
+      let capturedPayload: any = null;
+      (global.fetch as jest.Mock).mockImplementation(async (url, options) => {
+        capturedPayload = JSON.parse(options.body);
+        return {
+          ok: true,
+          json: () => Promise.resolve({ recommendations: [] }),
+        };
+      });
+
+      const mockContextData = {
+        currentPath: '/dashboards',
+        currentUrl: 'http://localhost:3000/dashboards',
+        pathSegments: ['dashboards'],
+        dataSources: [],
+        dashboardInfo: null,
+        recommendations: [],
+        tags: [],
+        isLoading: false,
+        recommendationsError: null,
+        recommendationsErrorType: null,
+        usingFallbackRecommendations: false,
+        visualizationType: null,
+        grafanaVersion: '10.0.0',
+        theme: 'dark',
+        timestamp: new Date().toISOString(),
+        searchParams: {},
+      };
+
+      await ContextService.fetchRecommendations(mockContextData, {
+        recommenderServiceUrl: 'https://recommender.grafana.com',
+        acceptedTermsAndConditions: true,
+      });
+
+      expect(capturedPayload).toBeDefined();
+      // Source should be hashed (SHA-256 hex string, not the original hostname)
+      expect(capturedPayload.source).not.toBe('acme-corp.grafana.net');
+      expect(capturedPayload.source).toBeDefined();
+      expect(capturedPayload.source.length).toBe(64); // SHA-256 produces 64 hex characters
+    });
+
+    it('should use oss-source for OSS users not on play.grafana.org', async () => {
+      // Mock window.location.hostname
+      Object.defineProperty(window, 'location', {
+        value: { hostname: 'localhost' },
+        writable: true,
+      });
+
+      // Mock as OSS
+      const originalConfig = (require('@grafana/runtime') as any).config;
+      (require('@grafana/runtime') as any).config = {
+        ...originalConfig,
+        bootData: {
+          ...originalConfig.bootData,
+          settings: {
+            buildInfo: {
+              versionString: 'Grafana v10.0.0',
+            },
+          },
+        },
+      };
+
+      let capturedPayload: any = null;
+      (global.fetch as jest.Mock).mockImplementation(async (url, options) => {
+        capturedPayload = JSON.parse(options.body);
+        return {
+          ok: true,
+          json: () => Promise.resolve({ recommendations: [] }),
+        };
+      });
+
+      const mockContextData = {
+        currentPath: '/dashboards',
+        currentUrl: 'http://localhost:3000/dashboards',
+        pathSegments: ['dashboards'],
+        dataSources: [],
+        dashboardInfo: null,
+        recommendations: [],
+        tags: [],
+        isLoading: false,
+        recommendationsError: null,
+        recommendationsErrorType: null,
+        usingFallbackRecommendations: false,
+        visualizationType: null,
+        grafanaVersion: '10.0.0',
+        theme: 'dark',
+        timestamp: new Date().toISOString(),
+        searchParams: {},
+      };
+
+      await ContextService.fetchRecommendations(mockContextData, {
+        recommenderServiceUrl: 'https://recommender.grafana.com',
+        acceptedTermsAndConditions: true,
+      });
+
+      expect(capturedPayload).toBeDefined();
+      expect(capturedPayload.source).toBe('oss-source');
     });
   });
 });

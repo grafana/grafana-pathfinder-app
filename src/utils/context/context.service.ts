@@ -7,7 +7,7 @@ import {
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
-import { hashUserData } from '../../lib/hash.util';
+import { hashUserData, hashString } from '../../lib/hash.util';
 import { isDevModeEnabled } from '../dev-mode';
 import { sanitizeTextForDisplay } from '../docs-retrieval/html-sanitizer';
 import { parseUrlSafely } from '../url-validator';
@@ -394,21 +394,33 @@ export class ContextService {
 
       const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
 
-      // Extract source for cloud users
-      const getCloudSource = (): string | undefined => {
-        if (!isCloud) {
-          return 'oss-source';
-        }
+      // Extract and hash source hostname for privacy
+      // OSS play.grafana.org is left unhashed (public demo site)
+      const getHashedSource = async (): Promise<string | undefined> => {
         try {
           const hostname = window.location.hostname;
-          return hostname;
+
+          // OSS users on Grafana Play - public demo site, no need to hash
+          if (!isCloud && hostname === 'play.grafana.org') {
+            return 'play.grafana.org';
+          }
+
+          // OSS users on other hostnames - use generic identifier
+          if (!isCloud) {
+            return 'oss-source';
+          }
+
+          // Cloud users - hash hostname for privacy (could contain customer/company name)
+          // Example: mycompany.grafana.net contains PII
+          const hashedHostname = await hashString(hostname);
+          return hashedHostname;
         } catch (error) {
-          console.warn('Failed to extract cloud source:', error);
+          console.warn('Failed to extract/hash source:', error);
           return undefined;
         }
       };
 
-      const cloudSource = getCloudSource();
+      const hashedSource = await getHashedSource();
 
       // Get user data for hashing
       const userId = isCloud ? config.bootData.user.analytics.identifier || 'unknown' : 'oss-user';
@@ -427,7 +439,7 @@ export class ContextService {
         user_email: hashedEmail,
         user_role: config.bootData.user.orgRole || 'Viewer',
         platform: this.getCurrentPlatform(),
-        source: cloudSource,
+        source: hashedSource,
       };
 
       // Add timeout to prevent hanging in air-gapped or slow connection scenarios
