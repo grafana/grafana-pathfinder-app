@@ -487,15 +487,18 @@ export class ContextService {
 
         const data: RecommenderResponse = await response.json();
 
-        // SECURITY: Sanitize external API recommendations to prevent XSS
-        // Map and sanitize all text fields that could contain malicious content
+        // SECURITY: Sanitize external API recommendations to prevent XSS and prototype pollution
+        // Use explicit allowlist instead of spread operator to prevent malicious properties
         const mappedExternalRecommendations = (data.recommendations || []).map((rec: any) => {
-          const mappedRec = {
-            ...rec,
-            // Sanitize text fields to strip any HTML/script tags
+          // SECURITY: Explicit property allowlist - prevents prototype pollution and injection
+          const mappedRec: Recommendation = {
             title: sanitizeTextForDisplay(rec.title || ''),
+            url: typeof rec.url === 'string' ? rec.url : '', // Validated when opened
             summary: sanitizeTextForDisplay(rec.summary || rec.description || ''),
-            // URL is validated when opened, so keep as-is but don't trust it yet
+            type: rec.type === 'docs-page' || rec.type === 'learning-journey' ? rec.type : 'docs-page',
+            matchAccuracy: typeof rec.matchAccuracy === 'number' ? rec.matchAccuracy : 0.5,
+            // Explicitly DO NOT spread ...rec to prevent prototype pollution attacks
+            // Properties like __proto__, constructor, onClick, dangerouslySetInnerHTML are blocked
           };
           return mappedRec;
         });

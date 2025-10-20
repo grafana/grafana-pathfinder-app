@@ -2,6 +2,7 @@ import { waitForReactUpdates } from './requirements-checker.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
 import { isElementVisible, hasFixedPosition, isInViewport, getScrollParent } from './element-validator';
+import { sanitizeDocumentationHTML } from './docs-retrieval/html-sanitizer';
 
 export interface NavigationOptions {
   checkContext?: boolean;
@@ -579,7 +580,8 @@ export class NavigationManager {
     // Create text container with HTML support
     const textContainer = document.createElement('div');
     textContainer.className = 'interactive-comment-text';
-    textContainer.innerHTML = comment; // Use innerHTML to support rich HTML content
+    // SECURITY: Sanitize comment HTML before insertion to prevent XSS
+    textContainer.innerHTML = sanitizeDocumentationHTML(comment || '');
 
     // Create content wrapper
     const contentWrapper = document.createElement('div');

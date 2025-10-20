@@ -11,7 +11,7 @@ import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../../constant
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
-import { parseUrlSafely } from '../../utils/url-validator';
+import { parseUrlSafely, isAllowedContentUrl } from '../../utils/url-validator';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -71,6 +71,7 @@ interface CombinedPanelState extends SceneObjectState {
 
 const STORAGE_KEY = 'grafana-docs-plugin-tabs';
 const ACTIVE_TAB_STORAGE_KEY = 'grafana-docs-plugin-active-tab';
+const MAX_PERSISTED_TABS = 50; // SECURITY: Limit to prevent localStorage quota exhaustion
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public static Component = CombinedPanelRenderer;
@@ -121,7 +122,26 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const parsedData: PersistedTabData[] = JSON.parse(stored);
+        let parsedData: PersistedTabData[];
+
+        // SECURITY: Catch JSON.parse attacks (malformed JSON)
+        try {
+          parsedData = JSON.parse(stored);
+        } catch (parseError) {
+          console.error('[SECURITY] Corrupted localStorage data detected:', parseError);
+          // Return default tabs instead of crashing
+          return [
+            {
+              id: 'recommendations',
+              title: 'Recommendations',
+              baseUrl: '',
+              currentUrl: '',
+              content: null,
+              isLoading: false,
+              error: null,
+            },
+          ];
+        }
 
         const tabs: LearningJourneyTab[] = [
           {
@@ -136,6 +156,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         ];
 
         parsedData.forEach((data) => {
+          // SECURITY: Validate URLs before restoring from localStorage
+          // This prevents XSS attacks via localStorage injection
+          const isValidBase = isAllowedContentUrl(data.baseUrl);
+          const isValidCurrent = !data.currentUrl || isAllowedContentUrl(data.currentUrl);
+
+          if (!isValidBase || !isValidCurrent) {
+            console.warn('[SECURITY] Rejected malicious URL from localStorage:', data);
+            return; // Skip this tab
+          }
+
           tabs.push({
             id: data.id,
             title: data.title,
@@ -195,6 +225,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     try {
       const tabsToSave: PersistedTabData[] = this.state.tabs
         .filter((tab) => tab.id !== 'recommendations')
+        .slice(-MAX_PERSISTED_TABS) // SECURITY: Keep only most recent tabs to prevent quota exhaustion
         .map((tab) => ({
           id: tab.id,
           title: tab.title,
@@ -206,7 +237,30 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(tabsToSave));
       localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(this.state.activeTabId));
     } catch (error) {
-      console.error('Failed to save tabs to storage:', error);
+      // SECURITY: Handle QuotaExceededError gracefully
+      if (error instanceof Error && error.name === 'QuotaExceededError') {
+        console.warn('[SECURITY] localStorage quota exceeded, clearing oldest tabs');
+        // Remove oldest half of tabs and retry
+        const reducedTabs = this.state.tabs
+          .filter((tab) => tab.id !== 'recommendations')
+          .slice(-Math.floor(MAX_PERSISTED_TABS / 2))
+          .map((tab) => ({
+            id: tab.id,
+            title: tab.title,
+            baseUrl: tab.baseUrl,
+            currentUrl: tab.currentUrl,
+            type: tab.type,
+          }));
+
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(reducedTabs));
+          localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(this.state.activeTabId));
+        } catch (retryError) {
+          console.error('[SECURITY] Failed to save tabs even after reduction:', retryError);
+        }
+      } else {
+        console.error('Failed to save tabs to storage:', error);
+      }
     }
   }
 
