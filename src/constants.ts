@@ -30,7 +30,11 @@ export const ALLOWED_GITHUB_REPO_PATHS = [
 
 // Security: Allowed recommender service domains
 // Only these domains are permitted for the recommendation API to prevent MITM attacks
-export const ALLOWED_RECOMMENDER_DOMAINS = ['recommender.grafana.com', 'recommender-staging.grafana.com'];
+export const ALLOWED_RECOMMENDER_DOMAINS = ['recommender.grafana.com', 'recommender.grafana-dev.com'];
+
+// Security: Allowed Grafana documentation hostnames (exact match only, no wildcards)
+// These are the only hostnames permitted for fetching documentation content
+export const ALLOWED_GRAFANA_DOCS_HOSTNAMES = ['grafana.com'];
 
 // Configuration interface
 export interface DocsPluginConfig {

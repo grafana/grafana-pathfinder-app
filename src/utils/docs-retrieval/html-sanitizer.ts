@@ -11,7 +11,7 @@ import { isYouTubeDomain } from '../url-validator';
  * while preventing XSS attacks.
  *
  * Security features:
- * - Whitelists custom documentation elements
+ * - Allowlists custom documentation elements
  * - Preserves data-* attributes for interactive functionality
  * - YouTube iframes: allowed with enablejsapi
  * - Other iframes: forced sandbox attributes
@@ -134,7 +134,7 @@ export function sanitizeDocumentationHTML(html: string): string {
       'badge-tooltip',
     ],
 
-    // Whitelist attributes - strict list of actually used attributes
+    // Allowlist of attributes - strict list of actually used attributes
     ALLOWED_ATTR: [
       // Standard HTML attributes
       'id',
@@ -211,7 +211,7 @@ export function sanitizeDocumentationHTML(html: string): string {
       'sandbox',
       'referrerpolicy',
       'loading',
-      // ALL data-* attributes used in the codebase (explicit whitelist approach)
+      // ALL data-* attributes used in the codebase (explicit allowlist approach)
       // Interactive step/section attributes
       'data-targetaction',
       'data-reftarget',

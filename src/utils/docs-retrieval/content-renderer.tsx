@@ -208,12 +208,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
   );
 
   // Parse HTML with fail-fast error handling (memoized to avoid re-parsing on every render)
-  // Check if we're in testing mode (debug panel only, requires dev mode)
-  const bypassSourceValidation = (window as any).__PathfinderTestingMode === true;
-  const parseResult: ContentParseResult = useMemo(
-    () => parseHTMLToComponents(html, baseUrl, bypassSourceValidation),
-    [html, baseUrl, bypassSourceValidation]
-  );
+  const parseResult: ContentParseResult = useMemo(() => parseHTMLToComponents(html, baseUrl), [html, baseUrl]);
 
   // Start DOM monitoring if interactive elements are present
   useEffect(() => {

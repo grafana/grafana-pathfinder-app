@@ -13,11 +13,6 @@ if (!AbortSignal.timeout) {
 }
 
 describe('fetchContent security validation', () => {
-  // Clean up testing mode after each test
-  afterEach(() => {
-    (window as any).__PathfinderTestingMode = false;
-  });
-
   describe('URL validation at entry point', () => {
     it('should allow grafana.com docs URLs', async () => {
       // Note: This will fail to fetch (no network in tests), but should pass validation
@@ -64,18 +59,6 @@ describe('fetchContent security validation', () => {
       const result = await fetchContent('https://raw.githubusercontent.com/evil-user/malicious-repo/main/test.html');
       expect(result.content).toBeNull();
       expect(result.error).toContain('Only Grafana.com documentation and approved GitHub repositories can be loaded');
-    });
-
-    it('should bypass validation when __PathfinderTestingMode is enabled', async () => {
-      // Enable testing mode (used by SelectorDebugPanel)
-      (window as any).__PathfinderTestingMode = true;
-
-      // This would normally be rejected, but should pass in testing mode
-      const result = await fetchContent('https://raw.githubusercontent.com/test-user/test-repo/main/test.html');
-
-      // Should not reject with security error
-      expect(result.error).not.toContain('Only Grafana.com documentation and approved GitHub repositories');
-      // Will still fail to fetch (no network), but shouldn't be blocked by security
     });
   });
 });
