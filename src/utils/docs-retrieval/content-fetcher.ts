@@ -11,13 +11,49 @@ import {
   SingleDocMetadata,
   Milestone,
 } from './content.types';
-import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../../constants';
+import { DEFAULT_CONTENT_FETCH_TIMEOUT, ALLOWED_GITHUB_REPO_PATHS } from '../../constants';
+import {
+  parseUrlSafely,
+  isAllowedContentUrl,
+  isGrafanaDocsUrl,
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isAllowedGitHubRawUrl,
+  isLocalhostUrl,
+} from '../url-validator';
+import { isDevModeEnabled } from '../dev-mode';
 
 // Internal error structure for detailed error handling
 interface FetchError {
   message: string;
   errorType: 'not-found' | 'timeout' | 'network' | 'server-error' | 'other';
   statusCode?: number;
+}
+
+/**
+ * SECURITY: Enforce HTTPS for all external URLs to prevent MITM attacks
+ * Exceptions: localhost in dev mode
+ */
+function enforceHttps(url: string): boolean {
+  // Parse URL safely
+  const parsedUrl = parseUrlSafely(url);
+  if (!parsedUrl) {
+    console.error('[SECURITY] Invalid URL format:', url);
+    return false;
+  }
+
+  // Allow HTTP for localhost in dev mode (for local testing)
+  if (isDevModeEnabled() && isLocalhostUrl(url)) {
+    return true;
+  }
+
+  // Require HTTPS for all other URLs
+  if (parsedUrl.protocol !== 'https:') {
+    console.error('[SECURITY] Only HTTPS URLs are allowed (found:', parsedUrl.protocol, ')', url);
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -37,12 +73,46 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       return await fetchBundledInteractive(url);
     }
 
-    // Determine content type based on URL patterns
-    const contentType = determineContentType(url);
+    // SECURITY: Validate URL is from a trusted source before fetching
+    // Defense-in-depth: Even if callers validate, fetchContent provides final check
+    // In production: Only Grafana docs, bundled content, and approved GitHub repos
+    // In dev mode: Also allows localhost URLs for local testing
+    const isTrustedSource =
+      isAllowedContentUrl(url) || isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPO_PATHS) || isGitHubUrl(url);
+
+    if (!isTrustedSource) {
+      const errorMessage = isDevModeEnabled()
+        ? 'Only Grafana.com documentation, localhost URLs (dev mode), and approved GitHub repositories can be loaded'
+        : 'Only Grafana.com documentation and approved GitHub repositories can be loaded';
+
+      console.error('[SECURITY] fetchContent rejected untrusted URL:', url);
+      return {
+        content: null,
+        error: errorMessage,
+        errorType: 'other',
+      };
+    }
+
+    // Log when using localhost in dev mode
+    if (isDevModeEnabled() && isLocalhostUrl(url)) {
+      console.log('[DEV MODE] Loading content from localhost:', url);
+    }
 
     // Parse hash fragment from URL
     const hashFragment = parseHashFragment(url);
     const cleanUrl = removeHashFragment(url);
+
+    // SECURITY: Enforce HTTPS to prevent MITM attacks
+    if (!enforceHttps(cleanUrl)) {
+      return {
+        content: null,
+        error: 'Only HTTPS URLs are allowed for security',
+        errorType: 'other',
+      };
+    }
+
+    // Determine content type based on URL patterns
+    const contentType = determineContentType(url);
 
     // Fetch raw HTML with structured error handling
     const fetchResult = await fetchRawHtml(cleanUrl, options);
@@ -61,7 +131,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     const finalUrl = fetchResult.finalUrl || cleanUrl;
 
     // Extract basic metadata without DOM processing
-    const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType, options.docsBaseUrl);
+    const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType);
 
     // Create unified content object
     const content: RawContent = {
@@ -147,13 +217,14 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       };
     }
 
-    // Extract metadata and treat as single-doc content
-    const metadata = await extractMetadata(html, url, 'single-doc');
+    // Determine content type for bundled content (don't assume single-doc)
+    const contentType = determineContentType(url);
+    const metadata = await extractMetadata(html, url, contentType);
 
     const content: RawContent = {
       html,
       metadata,
-      type: 'single-doc', // Bundled content is treated as single-doc
+      type: contentType, // Use detected type (learning-journey or single-doc)
       url,
       lastFetched: new Date().toISOString(),
       // No hash fragment support for bundled content for now
@@ -173,6 +244,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
 
 /**
  * Determine content type based on URL patterns
+ * Uses proper URL parsing to prevent path injection attacks
  */
 function determineContentType(url: string): ContentType {
   // Handle undefined or empty URL
@@ -181,13 +253,20 @@ function determineContentType(url: string): ContentType {
     return 'single-doc';
   }
 
-  // Learning journeys typically have specific URL patterns
+  // Parse URL safely
+  const parsedUrl = parseUrlSafely(url);
+  if (!parsedUrl) {
+    // Invalid URL, treat as single-doc
+    return 'single-doc';
+  }
+
+  // Check pathname for learning journey indicators
+  const pathname = parsedUrl.pathname;
+
   if (
-    url.includes('/learning-journeys/') ||
-    url.includes('/tutorials/') || // Tutorials are structured like learning journeys
-    url.includes('r-grafana') || // specific pattern from existing code
-    url.includes('prometheus-datasource') ||
-    url.match(/\/milestone-\d+/)
+    pathname.includes('/learning-journeys/') || // Can be /docs/learning-journeys/ or /learning-journeys/
+    pathname.includes('/tutorials/') || // Can be /docs/tutorials/ or /tutorials/
+    pathname.match(/\/milestone-\d+/)
   ) {
     return 'learning-journey';
   }
@@ -223,15 +302,16 @@ async function fetchRawHtml(
   url: string,
   options: ContentFetchOptions
 ): Promise<{ html: string | null; finalUrl?: string; error?: FetchError }> {
-  const { useAuth = true, headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
+  const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
 
   // Handle GitHub URLs proactively to avoid CORS issues
   // Convert tree/blob URLs to raw URLs before attempting fetch
+  // Use proper URL parsing to prevent domain hijacking
   let actualUrl = url;
-  const isGitHubRawUrl = url.includes('raw.githubusercontent.com');
-  const isGitHubUrl = url.includes('github.com');
+  const isGitHubRawUrlCheck = isGitHubRawUrl(url);
+  const isGitHubUrlCheck = isGitHubUrl(url);
 
-  if (isGitHubUrl && !isGitHubRawUrl) {
+  if (isGitHubUrlCheck && !isGitHubRawUrlCheck) {
     const githubVariations = generateGitHubVariations(url);
     if (githubVariations.length > 0) {
       // Use the first (most specific) GitHub variation instead of the original URL
@@ -242,67 +322,71 @@ async function fetchRawHtml(
   // Build fetch options - use minimal headers for GitHub raw URLs to avoid CORS preflight
   const fetchOptions: RequestInit = {
     method: 'GET',
-    headers:
-      actualUrl.includes('raw.githubusercontent.com') || isGitHubRawUrl
-        ? {
-            // Minimal headers for GitHub raw URLs - avoid triggering CORS preflight
-            // Only use simple headers that don't require preflight
-            ...headers,
-          }
-        : {
-            // Full headers for other URLs
-            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'User-Agent': 'Grafana-Docs-Plugin/1.0',
-            ...headers,
-          },
+    headers: isGitHubRawUrlCheck
+      ? {
+          // Minimal headers for GitHub raw URLs - avoid triggering CORS preflight
+          // Only use simple headers that don't require preflight
+          ...headers,
+        }
+      : {
+          // Full headers for other URLs
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'User-Agent': 'Grafana-Docs-Plugin/1.0',
+          ...headers,
+        },
     signal: AbortSignal.timeout(timeout),
     redirect: 'follow', // Explicitly follow redirects (up to 20 by default)
   };
-
-  // Add auth headers if requested (but skip for GitHub raw URLs to avoid CORS)
-  if (useAuth && !actualUrl.includes('raw.githubusercontent.com') && !isGitHubRawUrl) {
-    const authHeaders = getAuthHeaders();
-    fetchOptions.headers = { ...fetchOptions.headers, ...authHeaders };
-  }
 
   // Try the actual URL (original or converted GitHub raw URL)
   let lastError: FetchError | undefined;
 
   try {
-    const response = await fetch(replaceRecommendationBaseUrl(actualUrl, options.docsBaseUrl), fetchOptions);
+    const response = await fetch(actualUrl, fetchOptions);
 
     if (response.ok) {
       const html = await response.text();
       if (html && html.trim()) {
-        // If this is a docs or tutorial URL on the docs host, we MUST get the unstyled version
-        const docsBase = options.docsBaseUrl || '';
-        const isDocsHost = (u: string) => {
-          try {
-            const host = new URL(u).host;
-            if (docsBase) {
-              const baseHost = new URL(docsBase).host;
-              return host === baseHost;
-            }
-            return u.includes('/docs/') || u.includes('/tutorials/') || u.includes('/components/');
-          } catch {
-            return false;
-          }
-        };
+        // SECURITY: Validate redirect target is still trusted
+        // After fetch redirects, check the final URL is still in our trusted domain list
+        const finalUrl = response.url;
 
-        if (
-          isDocsHost(response.url) &&
-          (response.url.includes('/docs/') ||
-            response.url.includes('/tutorials/') ||
-            response.url.includes('/components/'))
-        ) {
+        // Re-validate the final URL after redirects
+        const isFinalUrlTrusted =
+          isAllowedContentUrl(finalUrl) ||
+          isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPO_PATHS) ||
+          isGitHubUrl(finalUrl) ||
+          (isDevModeEnabled() && isLocalhostUrl(finalUrl));
+
+        if (!isFinalUrlTrusted) {
+          console.error('[SECURITY] Redirect to untrusted domain blocked:', finalUrl, 'from:', url);
+          lastError = {
+            message: 'Redirect target is not in trusted domain list',
+            errorType: 'other',
+          };
+          return { html: null, error: lastError };
+        }
+
+        // SECURITY: Enforce HTTPS on redirect target
+        if (!enforceHttps(finalUrl)) {
+          console.error('[SECURITY] Redirect to non-HTTPS URL blocked:', finalUrl);
+          lastError = {
+            message: 'Redirect to non-HTTPS URL blocked for security',
+            errorType: 'other',
+          };
+          return { html: null, error: lastError };
+        }
+
+        // If this is a Grafana docs/tutorial URL, we MUST get the unstyled version
+        // Use proper URL parsing to prevent domain hijacking attacks
+        const shouldFetchUnstyled = isGrafanaDocsUrl(finalUrl);
+
+        if (shouldFetchUnstyled) {
           const finalUnstyledUrl = getUnstyledContentUrl(response.url);
           if (finalUnstyledUrl !== response.url) {
             try {
-              const unstyledResponse = await fetch(
-                replaceRecommendationBaseUrl(finalUnstyledUrl, options.docsBaseUrl),
-                fetchOptions
-              );
+              const unstyledResponse = await fetch(finalUnstyledUrl, fetchOptions);
               if (unstyledResponse.ok) {
                 const unstyledHtml = await unstyledResponse.text();
                 if (unstyledHtml && unstyledHtml.trim()) {
@@ -348,10 +432,7 @@ async function fetchRawHtml(
           if (baseUrlMatch) {
             const fullRedirectUrl = baseUrlMatch[1] + location;
             try {
-              const redirectResponse = await fetch(
-                replaceRecommendationBaseUrl(fullRedirectUrl, options.docsBaseUrl),
-                fetchOptions
-              );
+              const redirectResponse = await fetch(fullRedirectUrl, fetchOptions);
               if (redirectResponse.ok) {
                 const html = await redirectResponse.text();
                 if (html && html.trim()) {
@@ -397,10 +478,9 @@ async function fetchRawHtml(
     console.warn(`Failed to fetch from ${url}:`, error);
   }
 
-  // If original URL failed, only try GitHub variations if no docsBaseUrl was configured
-  // AND we haven't already converted the URL (to avoid trying the same variations twice)
-  if (!lastError?.message.includes('Unstyled version required') && !options.docsBaseUrl && actualUrl === url) {
-    // Only try GitHub for URLs that are actually GitHub URLs and when no specific docs base is configured
+  // If original URL failed and we haven't already converted the URL (to avoid trying the same variations twice)
+  if (!lastError?.message.includes('Unstyled version required') && actualUrl === url) {
+    // Only try GitHub for URLs that are actually GitHub URLs
     const githubVariations = generateGitHubVariations(url);
     if (githubVariations.length > 0) {
       for (const githubUrl of githubVariations) {
@@ -421,8 +501,8 @@ async function fetchRawHtml(
 
   // Log final failure with most relevant error
   if (lastError) {
-    // Provide specific guidance for GitHub CORS issues
-    if (url.includes('github.com') && lastError.message.includes('NetworkError')) {
+    // Provide specific guidance for GitHub CORS issues (using centralized validator)
+    if (isGitHubUrl(url) && lastError.message.includes('NetworkError')) {
       console.error(
         `Failed to fetch content from ${url}. Last error: ${lastError.message}\n` +
           `GitHub raw URLs may be blocked due to CORS policies. Consider:\n` +
@@ -440,14 +520,19 @@ async function fetchRawHtml(
 
 /**
  * Generate GitHub raw content URL variations to try
+ * Uses proper URL parsing to prevent domain hijacking
  */
 function generateGitHubVariations(url: string): string[] {
   const variations: string[] = [];
 
-  // Only try GitHub variations for GitHub URLs
-  if (url.includes('github.com') || url.includes('raw.githubusercontent.com')) {
+  // Parse URL and validate it's actually GitHub (using centralized validators)
+  const isGitHubDomain = isGitHubUrl(url);
+  const isGitHubRawDomain = isGitHubRawUrl(url);
+
+  // Only try GitHub variations for actual GitHub URLs
+  if (isGitHubDomain || isGitHubRawDomain) {
     // If it's a regular GitHub URL, try converting to raw.githubusercontent.com first (more targeted)
-    if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
+    if (isGitHubDomain) {
       // Handle tree URLs (directories) - convert to directory/unstyled.html
       const treeMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
       if (treeMatch) {
@@ -494,35 +579,14 @@ function getUnstyledContentUrl(url: string): string {
 }
 
 /**
- * Get auth headers (from existing code)
- */
-function getAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-
-  // Add any authentication headers needed
-  // This is a simplified version - expand as needed
-  const token = localStorage.getItem('grafana-auth-token');
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  return headers;
-}
-
-/**
  * Extract metadata from HTML without DOM processing
  * Uses simple string parsing instead of DOM manipulation
  */
-async function extractMetadata(
-  html: string,
-  url: string,
-  contentType: ContentType,
-  docsBaseUrl?: string
-): Promise<ContentMetadata> {
+async function extractMetadata(html: string, url: string, contentType: ContentType): Promise<ContentMetadata> {
   const title = extractTitle(html);
 
   if (contentType === 'learning-journey') {
-    const learningJourney = await extractLearningJourneyMetadata(html, url, docsBaseUrl);
+    const learningJourney = await extractLearningJourneyMetadata(html, url);
     return { title, learningJourney };
   } else {
     const singleDoc = extractSingleDocMetadata(html);
@@ -555,12 +619,8 @@ function extractTitle(html: string): string {
  * Extract learning journey metadata using simple parsing
  * Replaces complex DOM processing with string-based extraction
  */
-async function extractLearningJourneyMetadata(
-  html: string,
-  url: string,
-  docsBaseUrl?: string
-): Promise<LearningJourneyMetadata> {
-  const baseUrl = getLearningJourneyBaseUrl(url, docsBaseUrl);
+async function extractLearningJourneyMetadata(html: string, url: string): Promise<LearningJourneyMetadata> {
+  const baseUrl = getLearningJourneyBaseUrl(url);
 
   // Extract milestones from index.json metadata file
   const milestones = await fetchLearningJourneyMetadataFromJson(baseUrl);
@@ -640,7 +700,7 @@ function extractDocSummary(html: string): string {
  * Learning journey specific functions
  * These are simplified versions that focus on data extraction only
  */
-function getLearningJourneyBaseUrl(url: string, docsBaseUrl?: string): string {
+function getLearningJourneyBaseUrl(url: string): string {
   // Handle cases like:
   // https://grafana.com/docs/learning-journeys/drilldown-logs/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
   // https://grafana.com/docs/learning-journeys/drilldown-logs/milestone-1/ -> https://grafana.com/docs/learning-journeys/drilldown-logs
@@ -655,17 +715,6 @@ function getLearningJourneyBaseUrl(url: string, docsBaseUrl?: string): string {
   if (tutorialMatch) {
     return tutorialMatch[1];
   }
-
-  // If docsBaseUrl is provided and the URL is relative to it, normalize to that base
-  try {
-    if (docsBaseUrl) {
-      const baseHost = new URL(docsBaseUrl).host;
-      const urlHost = new URL(url).host;
-      if (baseHost === urlHost) {
-        return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
-      }
-    }
-  } catch {}
 
   return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
 }
@@ -732,25 +781,29 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
 
 /**
  * Find current milestone number from URL - improved version
+ * Handles /unstyled.html suffix added during content fetching
  */
 function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): number {
+  // Strip /unstyled.html suffix for comparison (added during content fetching)
+  const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+
   // Try exact URL match first (with and without trailing slash)
   for (const milestone of milestones) {
-    if (urlsMatch(url, milestone.url)) {
+    if (urlsMatch(cleanUrl, milestone.url)) {
       return milestone.number;
     }
   }
 
   // Legacy pattern matching for milestone URLs
-  const milestoneMatch = url.match(/\/milestone-(\d+)/);
+  const milestoneMatch = cleanUrl.match(/\/milestone-(\d+)/);
   if (milestoneMatch) {
     const milestoneNum = parseInt(milestoneMatch[1], 10);
     return milestoneNum;
   }
 
   // Check if this URL looks like a journey base URL (cover page)
-  const baseUrl = getLearningJourneyBaseUrl(url);
-  if (urlsMatch(url, baseUrl) || urlsMatch(url, baseUrl + '/')) {
+  const baseUrl = getLearningJourneyBaseUrl(cleanUrl);
+  if (urlsMatch(cleanUrl, baseUrl) || urlsMatch(cleanUrl, baseUrl + '/')) {
     return 0;
   }
 
@@ -763,11 +816,4 @@ function findCurrentMilestoneFromUrl(url: string, milestones: Milestone[]): numb
 function urlsMatch(url1: string, url2: string): boolean {
   const normalize = (u: string) => u.replace(/\/$/, '').toLowerCase();
   return normalize(url1) === normalize(url2);
-}
-
-/**
- * replace recommendation base url with the base url from the config
- */
-function replaceRecommendationBaseUrl(url: string, docsBaseUrl: string | undefined): string {
-  return url.replace('https://grafana.com', docsBaseUrl || '');
 }

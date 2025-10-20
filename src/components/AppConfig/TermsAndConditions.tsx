@@ -80,6 +80,9 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
             : "If you enable this feature, contextual data from your Grafana instance will be sent to Grafana's hosted recommendation service. Please review the data usage details below before enabling."}
         </Alert>
 
+        {/* SECURITY NOTE: TERMS_AND_CONDITIONS_CONTENT is a static constant defined in terms-content.ts
+            and controlled by the development team. It is trusted content, but we use dangerouslySetInnerHTML
+            here for backwards compatibility. Consider migrating to React components in the future. */}
         <div
           data-testid={testIds.termsAndConditions.termsContent}
           className={styles.termsContent}

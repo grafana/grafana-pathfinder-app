@@ -116,12 +116,11 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       const currentUrl = window.location.href;
       const currentSearchParams = window.location.search;
 
-      // Only check location/URL changes - EchoSrv handles datasource/viz detection
+      // Only check pathname changes - EchoSrv handles datasource/viz detection
+      // This prevents unnecessary updates when URL params or hash change
       const hasLocationChanged = lastLocationRef.current.path !== currentPath;
-      const hasUrlChanged = lastLocationRef.current.url !== currentUrl;
-      const hasSearchParamsChanged = lastLocationRef.current.searchParams !== currentSearchParams;
 
-      if (hasLocationChanged || hasUrlChanged || hasSearchParamsChanged) {
+      if (hasLocationChanged) {
         // Get current EchoSrv state for tracking (but don't trigger on changes)
         const currentVizType = ContextService.getDetectedVisualizationType();
         const currentSelectedDatasource = ContextService.getDetectedDatasourceType();

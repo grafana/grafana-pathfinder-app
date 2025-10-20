@@ -12,6 +12,7 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults } from './constants';
+import { isAllowedContentUrl } from './utils/url-validator';
 
 // Persistent queue for docs links clicked before sidebar opens
 interface QueuedDocsLink {
@@ -70,24 +71,21 @@ function initializeGlobalLinkInterceptor() {
     try {
       if (href.startsWith('http://') || href.startsWith('https://')) {
         fullUrl = href;
-      } else if (href.startsWith('/')) {
-        fullUrl = `https://grafana.com${href}`;
       } else if (href.startsWith('#')) {
         return;
       } else {
+        // Absolute path (starts with /) or relative path - resolve against current location
+        // This ensures self-hosted instances resolve to their own domain, not grafana.com
         fullUrl = new URL(href, window.location.href).href;
       }
     } catch (error) {
       return;
     }
 
-    // Check if it's a supported docs URL
-    const isSupportedUrl =
-      fullUrl.includes('grafana.com/docs/') ||
-      fullUrl.includes('grafana.com/tutorials/') ||
-      fullUrl.includes('grafana.com/learning-journeys/');
-
-    if (!isSupportedUrl) {
+    // Check if it's a supported docs URL using secure validation
+    // In production: Only Grafana docs URLs
+    // In dev mode: Also allows localhost URLs for testing
+    if (!isAllowedContentUrl(fullUrl)) {
       return;
     }
 

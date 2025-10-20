@@ -113,13 +113,6 @@ export interface ContentFetchOptions {
 
   /** Whether to follow redirects */
   followRedirects?: boolean;
-
-  /**
-   * Base URL for documentation host. When provided, enables special handling
-   * for docs/tutorial pages (e.g., fetching unstyled content variants) and
-   * helps build absolute URLs from relative metadata.
-   */
-  docsBaseUrl?: string;
 }
 
 export interface ContentFetchResult {
@@ -138,7 +131,7 @@ export interface ContentFetchResult {
 
 // Parsing error types for fail-fast content rendering
 export interface ParseError {
-  type: 'html_parsing' | 'element_creation' | 'attribute_mapping' | 'children_processing';
+  type: 'html_parsing' | 'html_sanitization' | 'element_creation' | 'attribute_mapping' | 'children_processing';
   message: string;
   element?: string; // HTML snippet that caused the error
   location?: string; // Where in the parsing process the error occurred

@@ -4,9 +4,13 @@ import {
   isRecommenderEnabled,
   DocsPluginConfig,
   DEFAULT_RECOMMENDER_TIMEOUT,
+  ALLOWED_RECOMMENDER_DOMAINS,
 } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
-import { hashUserData } from '../../lib/hash.util';
+import { hashUserData, hashString } from '../../lib/hash.util';
+import { isDevModeEnabled } from '../dev-mode';
+import { sanitizeTextForDisplay } from '../docs-retrieval/html-sanitizer';
+import { parseUrlSafely } from '../url-validator';
 import {
   ContextData,
   DataSource,
@@ -322,6 +326,47 @@ export class ContextService {
   }
 
   /**
+   * SECURITY: Validate recommender service URL
+   * Ensures the URL is HTTPS and from an approved domain to prevent MITM attacks
+   * In dev mode: Also allows localhost URLs for local testing
+   */
+  private static validateRecommenderUrl(url: string): boolean {
+    const parsedUrl = parseUrlSafely(url);
+
+    if (!parsedUrl) {
+      console.error('[SECURITY] Invalid recommender service URL:', url);
+      return false;
+    }
+
+    // Dev mode exception: Allow localhost URLs for local testing
+    if (
+      isDevModeEnabled() &&
+      (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1' || parsedUrl.hostname === '::1')
+    ) {
+      console.log('[DEV MODE] Allowing localhost recommender service:', url);
+      return true;
+    }
+
+    // Require HTTPS for non-localhost URLs
+    if (parsedUrl.protocol !== 'https:') {
+      console.error('[SECURITY] Recommender service URL must use HTTPS:', url);
+      return false;
+    }
+
+    // Check if domain is in allowlist (exact match only, no subdomains)
+    const isAllowedDomain = ALLOWED_RECOMMENDER_DOMAINS.some((domain) => {
+      return parsedUrl.hostname === domain;
+    });
+
+    if (!isAllowedDomain) {
+      console.error('[SECURITY] Recommender service domain not in allowlist:', parsedUrl.hostname);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
    * Get recommendations from external API service
    */
   private static async getExternalRecommendations(
@@ -337,23 +382,45 @@ export class ContextService {
     try {
       const configWithDefaults = getConfigWithDefaults(pluginConfig);
 
+      // SECURITY: Validate recommender service URL before making request
+      if (!this.validateRecommenderUrl(configWithDefaults.recommenderServiceUrl)) {
+        return this.handleRecommenderError(
+          'other',
+          'Recommender service URL failed security validation',
+          contextData,
+          bundledRecommendations
+        );
+      }
+
       const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
 
-      // Extract source for cloud users
-      const getCloudSource = (): string | undefined => {
-        if (!isCloud) {
-          return 'oss-source';
-        }
+      // Extract and hash source hostname for privacy
+      // OSS play.grafana.org is left unhashed (public demo site)
+      const getHashedSource = async (): Promise<string | undefined> => {
         try {
           const hostname = window.location.hostname;
-          return hostname;
+
+          // OSS users on Grafana Play - public demo site, no need to hash
+          if (!isCloud && hostname === 'play.grafana.org') {
+            return 'play.grafana.org';
+          }
+
+          // OSS users on other hostnames - use generic identifier
+          if (!isCloud) {
+            return 'oss-source';
+          }
+
+          // Cloud users - hash hostname for privacy (could contain customer/company name)
+          // Example: mycompany.grafana.net contains PII
+          const hashedHostname = await hashString(hostname);
+          return hashedHostname;
         } catch (error) {
-          console.warn('Failed to extract cloud source:', error);
+          console.warn('Failed to extract/hash source:', error);
           return undefined;
         }
       };
 
-      const cloudSource = getCloudSource();
+      const hashedSource = await getHashedSource();
 
       // Get user data for hashing
       const userId = isCloud ? config.bootData.user.analytics.identifier || 'unknown' : 'oss-user';
@@ -372,7 +439,7 @@ export class ContextService {
         user_email: hashedEmail,
         user_role: config.bootData.user.orgRole || 'Viewer',
         platform: this.getCurrentPlatform(),
-        source: cloudSource,
+        source: hashedSource,
       };
 
       // Add timeout to prevent hanging in air-gapped or slow connection scenarios
@@ -420,11 +487,15 @@ export class ContextService {
 
         const data: RecommenderResponse = await response.json();
 
-        // Map external API recommendations to ensure description field is mapped to summary
+        // SECURITY: Sanitize external API recommendations to prevent XSS
+        // Map and sanitize all text fields that could contain malicious content
         const mappedExternalRecommendations = (data.recommendations || []).map((rec: any) => {
           const mappedRec = {
             ...rec,
-            summary: rec.summary || rec.description || '', // Map description to summary if summary is missing
+            // Sanitize text fields to strip any HTML/script tags
+            title: sanitizeTextForDisplay(rec.title || ''),
+            summary: sanitizeTextForDisplay(rec.summary || rec.description || ''),
+            // URL is validated when opened, so keep as-is but don't trust it yet
           };
           return mappedRec;
         });
@@ -557,8 +628,7 @@ export class ContextService {
       recommendations.map(async (rec) => {
         if (rec.type === 'learning-journey' || !rec.type) {
           try {
-            const configWithDefaults = getConfigWithDefaults(pluginConfig || {});
-            const result = await fetchContent(rec.url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
+            const result = await fetchContent(rec.url);
             const completionPercentage = getJourneyCompletionPercentage(rec.url);
 
             // Extract learning journey data from the unified content
@@ -1094,10 +1164,10 @@ export class ContextService {
     contextData: ContextData,
     pluginConfig: DocsPluginConfig
   ): Recommendation[] {
-    const configWithDefaults = getConfigWithDefaults(pluginConfig);
     const bundledRecommendations: Recommendation[] = [];
 
-    if (configWithDefaults.devMode) {
+    // Dev mode is now per-user via localStorage
+    if (isDevModeEnabled()) {
       bundledRecommendations.push({
         title: 'Components',
         url: 'https://grafana.com/components/',
