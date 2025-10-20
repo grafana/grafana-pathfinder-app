@@ -12,6 +12,7 @@ import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
 import { parseUrlSafely, isAllowedContentUrl } from '../../utils/url-validator';
+import { sanitizeObjectForLogging } from '../../utils/log-sanitizer';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -162,7 +163,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
           const isValidCurrent = !data.currentUrl || isAllowedContentUrl(data.currentUrl);
 
           if (!isValidBase || !isValidCurrent) {
-            console.warn('[SECURITY] Rejected malicious URL from localStorage:', data);
+            console.warn('[SECURITY] Rejected malicious URL from localStorage:', sanitizeObjectForLogging(data));
             return; // Skip this tab
           }
 

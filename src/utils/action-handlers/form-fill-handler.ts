@@ -185,6 +185,12 @@ export class FormFillHandler {
       return;
     }
 
+    // SECURITY: Prevent ReDoS attacks with length limit
+    if (fullValue.length > 1000) {
+      console.warn('[SECURITY] Input too long for combobox, truncating to 1000 chars');
+      fullValue = fullValue.substring(0, 1000);
+    }
+
     // Tokenization strategy:
     // 1) If spaces exist, split on spaces but keep quoted substrings intact.
     // 2) If no spaces, split by common operators (!=, =~, !~, =) into [key, op, value].
@@ -207,7 +213,8 @@ export class FormFillHandler {
       tokens = matches;
     } else {
       // Try to split by operator if present
-      const opMatch = fullValue.match(/^(.*?)(!=|=~|!~|=)(.*)$/);
+      // SECURITY: Safe regex - [^!=~]* prevents backtracking (no nested quantifiers)
+      const opMatch = fullValue.match(/^([^!=~]*)(!=|=~|!~|=)(.*)$/);
       if (opMatch) {
         const key = opMatch[1].trim();
         const op = opMatch[2].trim();

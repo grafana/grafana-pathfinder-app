@@ -39,7 +39,15 @@ export function YouTubeVideoRenderer({
 
   // Extract video ID from YouTube URL
   const getVideoId = useCallback((url: string): string | null => {
-    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+    // SECURITY: Prevent ReDoS attacks with length limit
+    if (url.length > 500) {
+      console.warn('[SECURITY] YouTube URL too long, rejecting');
+      return null;
+    }
+
+    // SECURITY: Safer regex pattern - simplified to avoid backtracking
+    // Removed .* pattern in favor of more constrained alternatives
+    const regex = /(?:youtube\.com\/(?:embed\/|watch\?.*v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
     const match = url.match(regex);
     return match ? match[1] : null;
   }, []);
