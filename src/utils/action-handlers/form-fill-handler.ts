@@ -1,7 +1,7 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
+import { INTERACTIVE_CONFIG, CLEAR_COMMAND } from '../../constants/interactive-config';
 import { resetValueTracker } from '../dom-utils';
 import { querySelectorAllEnhanced } from '../enhanced-selector';
 import { isElementVisible } from '../element-validator';
@@ -69,21 +69,30 @@ export class FormFillHandler {
     this.navigationManager.clearAllHighlights();
 
     const value = data.targetvalue || '';
+    const { shouldClear, remainingValue } = this.parseClearCommand(value);
+
     const tagName = targetElement.tagName.toLowerCase();
     const inputType = this.getInputType(targetElement);
     const isMonacoEditor = this.isMonacoEditor(targetElement);
 
-    // Special handling for Grafana's combobox label filter inputs
+    // Clear element if command detected
+    if (shouldClear) {
+      await this.clearElement(targetElement, tagName, isMonacoEditor);
+    }
+
+    // Process remaining value (if any)
     const isCombobox = this.isAriaCombobox(targetElement);
     if (isCombobox) {
-      await this.fillComboboxStaged(targetElement, value);
+      await this.fillComboboxStaged(targetElement, remainingValue);
       // Combobox flow handles its own events/enters; still dispatch final blur/change to settle state
       await this.dispatchEvents(targetElement, tagName, false);
       await this.markAsCompleted(data);
       return;
     }
 
-    await this.setElementValue(targetElement, value, tagName, inputType, isMonacoEditor);
+    // For non-combobox elements, set value and dispatch events
+    // Always dispatch events even if remainingValue is empty to maintain backward compatibility
+    await this.setElementValue(targetElement, remainingValue, tagName, inputType, isMonacoEditor);
     await this.dispatchEvents(targetElement, tagName, isMonacoEditor);
     await this.markAsCompleted(data);
   }
@@ -101,6 +110,45 @@ export class FormFillHandler {
     const ariaAutocomplete = element.getAttribute('aria-autocomplete');
     // Prefer ARIA role detection as it is stable across themes/classes
     return role === 'combobox' && (ariaAutocomplete === 'list' || ariaAutocomplete === 'both');
+  }
+
+  private parseClearCommand(value: string): { shouldClear: boolean; remainingValue: string } {
+    const trimmedValue = value.trim();
+
+    if (trimmedValue === CLEAR_COMMAND) {
+      return { shouldClear: true, remainingValue: '' };
+    }
+
+    if (trimmedValue.startsWith(CLEAR_COMMAND)) {
+      const remaining = trimmedValue.slice(CLEAR_COMMAND.length).trim();
+      return { shouldClear: true, remainingValue: remaining };
+    }
+
+    return { shouldClear: false, remainingValue: value };
+  }
+
+  private async clearElement(element: HTMLElement, tagName: string, isMonacoEditor: boolean): Promise<void> {
+    if (isMonacoEditor) {
+      await this.clearMonacoEditor(element);
+      return;
+    }
+
+    if (tagName === 'input' || tagName === 'textarea') {
+      // Clear using native setter to ensure React detects the change
+      if (tagName === 'input') {
+        this.setNativeInputValue(element, '');
+      } else {
+        this.setNativeTextareaValue(element, '');
+      }
+      // Fire events to notify frameworks
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    } else if (tagName === 'select') {
+      (element as HTMLSelectElement).selectedIndex = 0;
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    } else {
+      element.textContent = '';
+    }
   }
 
   private async setElementValue(
@@ -122,6 +170,21 @@ export class FormFillHandler {
   }
 
   private async fillComboboxStaged(element: HTMLElement, fullValue: string): Promise<void> {
+    // Ensure focused
+    element.focus();
+    element.dispatchEvent(new Event('focus', { bubbles: true }));
+
+    // Clear any existing text
+    this.setNativeInputValue(element, '');
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // If no value to fill, just clear and exit
+    if (!fullValue || fullValue.trim() === '') {
+      element.blur();
+      element.dispatchEvent(new Event('blur', { bubbles: true }));
+      return;
+    }
+
     // Tokenization strategy:
     // 1) If spaces exist, split on spaces but keep quoted substrings intact.
     // 2) If no spaces, split by common operators (!=, =~, !~, =) into [key, op, value].
@@ -166,14 +229,6 @@ export class FormFillHandler {
       element.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
     };
-
-    // Ensure focused
-    element.focus();
-    element.dispatchEvent(new Event('focus', { bubbles: true }));
-
-    // Clear any existing text
-    this.setNativeInputValue(element, '');
-    element.dispatchEvent(new Event('input', { bubbles: true }));
 
     const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     const stageDelay = INTERACTIVE_CONFIG.delays.perceptual.base;
