@@ -18,7 +18,10 @@ export function initializeContextServices(): void {
 
 /**
  * Plugin lifecycle hook - call this when plugin starts
+ * SECURITY: Dev mode is now lazily initialized when user visits config with ?dev=true
  */
 export function onPluginStart(): void {
+  // Initialize context services only
+  // Dev mode is lazily initialized to avoid unnecessary API calls for anonymous users
   initializeContextServices();
 }

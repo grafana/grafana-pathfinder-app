@@ -14,7 +14,6 @@ import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { exportStepsToHTML, combineStepsIntoMultistep, type RecordedStep } from '../../utils/tutorial-exporter';
 import { validateAndCleanSelector } from '../../utils/selector-validator';
 import { URLTester } from 'components/URLTester';
-import { disableDevMode } from '../../utils/dev-mode';
 
 interface TestResult {
   success: boolean;
@@ -41,9 +40,32 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   const [githubExpanded, setGithubExpanded] = useState(false);
 
   // Handle leaving dev mode
-  const handleLeaveDevMode = useCallback(() => {
-    disableDevMode();
-    window.location.reload(); // Reload to apply the change
+  const handleLeaveDevMode = useCallback(async () => {
+    try {
+      // Get current user ID and user list from global config
+      const globalConfig = (window as any).__pathfinderPluginConfig;
+      const currentUserId = (window as any).grafanaBootData?.user?.id;
+      const currentUserIds = globalConfig?.devModeUserIds ?? [];
+
+      // Import dynamically to avoid circular dependency
+      const { disableDevModeForUser } = await import('../../utils/dev-mode');
+
+      if (currentUserId) {
+        await disableDevModeForUser(currentUserId, currentUserIds);
+      } else {
+        // Fallback: disable for all if can't determine user
+        const { disableDevMode } = await import('../../utils/dev-mode');
+        await disableDevMode();
+      }
+
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to disable dev mode:', error);
+
+      // Show user-friendly error message
+      const errorMessage = error instanceof Error ? error.message : 'Failed to disable dev mode. Please try again.';
+      alert(errorMessage);
+    }
   }, []);
 
   // Simple Selector Tester State

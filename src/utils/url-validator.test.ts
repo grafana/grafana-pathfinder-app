@@ -16,12 +16,13 @@ import {
 // Mock the dev-mode module
 jest.mock('./dev-mode', () => ({
   isDevModeEnabled: jest.fn(() => false),
+  isDevModeEnabledGlobal: jest.fn(() => false),
   enableDevMode: jest.fn(),
   disableDevMode: jest.fn(),
   toggleDevMode: jest.fn(),
 }));
 
-import { isDevModeEnabled } from './dev-mode';
+import { isDevModeEnabledGlobal } from './dev-mode';
 
 describe('Grafana URL validators', () => {
   describe('isGrafanaDomain', () => {
@@ -339,7 +340,7 @@ describe('Localhost URL validators', () => {
   describe('isAllowedContentUrl', () => {
     beforeEach(() => {
       // Reset dev mode mock to disabled by default
-      jest.mocked(isDevModeEnabled).mockReturnValue(false);
+      jest.mocked(isDevModeEnabledGlobal).mockReturnValue(false);
     });
 
     afterEach(() => {
@@ -362,7 +363,7 @@ describe('Localhost URL validators', () => {
     });
 
     it('should allow localhost URLs with valid docs paths in dev mode', () => {
-      jest.mocked(isDevModeEnabled).mockReturnValue(true);
+      jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
 
       // Valid docs paths should be allowed
       expect(isAllowedContentUrl('http://localhost:3000/docs')).toBe(true);
@@ -372,7 +373,7 @@ describe('Localhost URL validators', () => {
     });
 
     it('should reject localhost URLs without valid docs paths in dev mode', () => {
-      jest.mocked(isDevModeEnabled).mockReturnValue(true);
+      jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
 
       // Non-docs paths should be rejected to avoid intercepting menu items
       expect(isAllowedContentUrl('http://localhost:3000/')).toBe(false);
@@ -388,7 +389,7 @@ describe('Localhost URL validators', () => {
     });
 
     it('should reject non-Grafana URLs even in dev mode', () => {
-      jest.mocked(isDevModeEnabled).mockReturnValue(true);
+      jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
 
       expect(isAllowedContentUrl('https://evil.com/fake-docs')).toBe(false);
       expect(isAllowedContentUrl('https://malicious.site/tutorial')).toBe(false);
@@ -397,7 +398,7 @@ describe('Localhost URL validators', () => {
 
   describe('validateTutorialUrl', () => {
     beforeEach(() => {
-      jest.mocked(isDevModeEnabled).mockReturnValue(false);
+      jest.mocked(isDevModeEnabledGlobal).mockReturnValue(false);
     });
 
     afterEach(() => {
@@ -416,14 +417,14 @@ describe('Localhost URL validators', () => {
     });
 
     it('should accept localhost URLs with /unstyled.html suffix in dev mode', () => {
-      jest.mocked(isDevModeEnabled).mockReturnValue(true);
+      jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
 
       const result = validateTutorialUrl('http://localhost:5500/tutorial/unstyled.html');
       expect(result.isValid).toBe(true);
     });
 
     it('should reject localhost URLs without /unstyled.html suffix in dev mode', () => {
-      jest.mocked(isDevModeEnabled).mockReturnValue(true);
+      jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
 
       const result = validateTutorialUrl('http://localhost:5500/tutorial/index.html');
       expect(result.isValid).toBe(false);

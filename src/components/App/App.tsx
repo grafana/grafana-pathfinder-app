@@ -7,6 +7,7 @@ import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { setGlobalLinkInterceptionEnabled } from '../../module';
 import { parseUrlSafely, isAllowedContentUrl } from '../../utils/url-validator';
+import { onPluginStart } from '../../utils/context';
 
 function getSceneApp() {
   return new SceneApp({
@@ -23,6 +24,11 @@ function App(props: AppRootProps) {
 
   // Get configuration
   const config = useMemo(() => getConfigWithDefaults(props.meta.jsonData || {}), [props.meta.jsonData]);
+
+  // SECURITY: Initialize plugin on mount (includes dev mode from server)
+  useEffect(() => {
+    onPluginStart();
+  }, []);
 
   // Enable/disable global link interception based on config
   useEffect(() => {

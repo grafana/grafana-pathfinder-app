@@ -12,11 +12,12 @@
  */
 
 import { ContextService } from './context.service';
-import { isDevModeEnabled } from '../dev-mode';
+import { isDevModeEnabledGlobal } from '../dev-mode';
 
 // Mock dependencies
 jest.mock('../dev-mode', () => ({
   isDevModeEnabled: jest.fn(() => false),
+  isDevModeEnabledGlobal: jest.fn(() => false),
 }));
 
 jest.mock('@grafana/runtime', () => ({
@@ -77,7 +78,7 @@ if (!AbortSignal.timeout) {
 describe('Security: Recommender Service URL Validation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(false);
   });
 
   describe('HTTPS Requirement', () => {
@@ -306,7 +307,7 @@ describe('Security: Recommender Service URL Validation', () => {
 
   describe('Dev Mode Localhost Support', () => {
     it('should allow localhost in dev mode', async () => {
-      (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+      (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(true);
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ recommendations: [] }),
@@ -341,7 +342,7 @@ describe('Security: Recommender Service URL Validation', () => {
     });
 
     it('should allow 127.0.0.1 in dev mode', async () => {
-      (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+      (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(true);
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ recommendations: [] }),
@@ -376,7 +377,7 @@ describe('Security: Recommender Service URL Validation', () => {
     });
 
     it('should reject localhost in production mode', async () => {
-      (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+      (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(false);
 
       const mockContextData = {
         currentPath: '/dashboards',

@@ -27,6 +27,9 @@ export const pendingDocsQueue: QueuedDocsLink[] = [];
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
 
+// SECURITY: Dev mode is initialized lazily when user visits config with ?dev=true
+// This avoids unnecessary API calls for anonymous users who can't use dev mode anyway
+
 // Global link interceptor state
 let isInterceptorInitialized = false;
 let isInterceptionEnabled = false;

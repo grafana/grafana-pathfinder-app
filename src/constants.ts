@@ -46,6 +46,10 @@ export const ALLOWED_RECOMMENDER_DOMAINS = ['recommender.grafana.com', 'recommen
 // These are the only hostnames permitted for fetching documentation content
 export const ALLOWED_GRAFANA_DOCS_HOSTNAMES = ['grafana.com', 'docs.grafana.com', 'play.grafana.com'];
 
+// Dev mode defaults
+export const DEFAULT_DEV_MODE = false;
+export const DEFAULT_DEV_MODE_USER_IDS: number[] = [];
+
 // Configuration interface
 export interface DocsPluginConfig {
   recommenderServiceUrl?: string;
@@ -53,9 +57,10 @@ export interface DocsPluginConfig {
   // Terms and Conditions
   acceptedTermsAndConditions?: boolean;
   termsVersion?: string;
-  // Dev mode is now per-user via localStorage (deprecated in plugin settings)
-  /** @deprecated Dev mode is now stored per-user in localStorage, not in plugin settings */
-  devMode?: boolean;
+  // Dev mode - SECURITY: Hybrid approach (instance-wide storage, per-user scoping)
+  // Stored in plugin jsonData (server-side, admin-only) but scoped to specific user IDs
+  devMode?: boolean; // Whether dev mode is enabled for the instance
+  devModeUserIds?: number[]; // Array of user IDs who have dev mode access (only they see dev features)
   // Interactive Features
   enableAutoDetection?: boolean;
   requirementsCheckTimeout?: number;
@@ -65,13 +70,17 @@ export interface DocsPluginConfig {
 }
 
 // Helper functions to get configuration values with defaults
-export const getConfigWithDefaults = (config: DocsPluginConfig): Required<DocsPluginConfig> => ({
+// Note: devModeUserIds remains as array (empty when dev mode is disabled)
+export const getConfigWithDefaults = (
+  config: DocsPluginConfig
+): Omit<Required<DocsPluginConfig>, 'devModeUserIds'> & { devModeUserIds: number[] } => ({
   recommenderServiceUrl: config.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
   tutorialUrl: config.tutorialUrl || DEFAULT_TUTORIAL_URL,
   acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? getPlatformSpecificDefault(),
   termsVersion: config.termsVersion || TERMS_VERSION,
-  // Dev mode is now per-user via localStorage, not in config
-  devMode: false, // Deprecated: always returns false, use isDevModeEnabled() from utils/dev-mode.ts
+  // Dev mode - SECURITY: Hybrid approach (stored server-side, scoped per-user)
+  devMode: config.devMode ?? DEFAULT_DEV_MODE,
+  devModeUserIds: config.devModeUserIds ?? DEFAULT_DEV_MODE_USER_IDS,
   // Interactive Features
   enableAutoDetection: config.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
   requirementsCheckTimeout: config.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
@@ -106,11 +115,9 @@ export const getTutorialUrl = (config: DocsPluginConfig) => getConfigWithDefault
 export const getTermsAccepted = (config: DocsPluginConfig) => getConfigWithDefaults(config).acceptedTermsAndConditions;
 export const getTermsVersion = (config: DocsPluginConfig) => getConfigWithDefaults(config).termsVersion;
 
-/**
- * @deprecated Dev mode is now per-user via localStorage. Use isDevModeEnabled() from utils/dev-mode.ts instead.
- * This function now always returns false for backward compatibility.
- */
-export const getDevMode = (_config: DocsPluginConfig) => false;
+// Get dev mode setting from config
+export const getDevMode = (config: DocsPluginConfig) => config.devMode ?? DEFAULT_DEV_MODE;
+export const getDevModeUserIds = (config: DocsPluginConfig) => config.devModeUserIds ?? DEFAULT_DEV_MODE_USER_IDS;
 
 // Legacy exports for backward compatibility
 export const RECOMMENDER_SERVICE_URL = DEFAULT_RECOMMENDER_SERVICE_URL;

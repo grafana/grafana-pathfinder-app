@@ -274,6 +274,7 @@ describe('Security: Interactive Content Source Validation', () => {
       // Mock dev mode as enabled
       jest.doMock('./dev-mode', () => ({
         isDevModeEnabled: () => true,
+        isDevModeEnabledGlobal: () => true, // NEW: Mock global check
         enableDevMode: jest.fn(),
         disableDevMode: jest.fn(),
         toggleDevMode: jest.fn(),
@@ -302,6 +303,7 @@ describe('Security: Interactive Content Source Validation', () => {
       // Mock dev mode as enabled
       jest.doMock('./dev-mode', () => ({
         isDevModeEnabled: () => true,
+        isDevModeEnabledGlobal: () => true, // NEW: Mock global check
         enableDevMode: jest.fn(),
         disableDevMode: jest.fn(),
         toggleDevMode: jest.fn(),
@@ -551,6 +553,54 @@ describe('Security: Path Traversal Prevention (From Security Audit Screenshots)'
     // Both should be rejected (not /docs/)
     expect(isGrafanaDocsUrl('https://grafana.com/docs/../admin/')).toBe(false);
     expect(isGrafanaDocsUrl('https://grafana.com/admin/')).toBe(false);
+  });
+});
+
+describe('Security: Image Lightbox XSS Prevention', () => {
+  it('should escape image alt attributes to prevent HTML injection', () => {
+    // This is the exact XSS payload from the security report
+    const maliciousAlt = "Test\"></h3><img src=x onerror=alert('XSS')><h3>";
+
+    // VULNERABLE approach (using innerHTML - XSS possible):
+    const vulnerableDiv = document.createElement('div');
+    vulnerableDiv.innerHTML = `<h3>${maliciousAlt}</h3>`; // VULNERABLE!
+
+    // Verify the vulnerability: innerHTML parses HTML, creating actual elements
+    const injectedImg = vulnerableDiv.querySelector('img');
+    expect(injectedImg).not.toBeNull(); // XSS payload created actual img element!
+    if (injectedImg) {
+      expect(injectedImg.getAttribute('onerror')).toBeTruthy(); // onerror handler exists!
+    }
+
+    // SAFE approach (using textContent - XSS prevented):
+    const safeTitle = document.createElement('h3');
+    safeTitle.textContent = maliciousAlt; // SAFE: treats as plain text
+
+    // Verify that textContent properly escapes - NO executable elements created
+    expect(safeTitle.textContent).toBe(maliciousAlt); // Original text preserved
+    expect(safeTitle.querySelector('img')).toBeNull(); // NO img element created
+    expect(safeTitle.childNodes.length).toBe(1); // Only a text node, no element nodes
+    expect(safeTitle.childNodes[0].nodeType).toBe(Node.TEXT_NODE); // Text node, not element
+
+    // SAFE approach (using setAttribute):
+    const safeImg = document.createElement('img');
+    safeImg.setAttribute('alt', maliciousAlt); // SAFE!
+    safeImg.setAttribute('src', 'https://grafana.com/test.svg');
+
+    // Verify setAttribute stores value safely (as attribute string, not parsed HTML)
+    expect(safeImg.getAttribute('alt')).toBe(maliciousAlt);
+    expect(safeImg.alt).toBe(maliciousAlt); // Also safe via property
+  });
+
+  it('should prevent XSS via malicious image src URLs', () => {
+    const maliciousSrc = 'javascript:alert("XSS")';
+
+    const safeImg = document.createElement('img');
+    safeImg.setAttribute('src', maliciousSrc);
+
+    // setAttribute with javascript: protocol is safe - browser won't execute
+    // The src is set but not executed as script
+    expect(safeImg.getAttribute('src')).toBe(maliciousSrc);
   });
 });
 

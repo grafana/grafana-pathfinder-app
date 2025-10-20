@@ -8,7 +8,7 @@ import {
 } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import { hashUserData, hashString } from '../../lib/hash.util';
-import { isDevModeEnabled } from '../dev-mode';
+import { isDevModeEnabledGlobal } from '../dev-mode';
 import { sanitizeTextForDisplay } from '../docs-retrieval/html-sanitizer';
 import { parseUrlSafely } from '../url-validator';
 import { sanitizeForLogging } from '../log-sanitizer';
@@ -341,7 +341,7 @@ export class ContextService {
 
     // Dev mode exception: Allow localhost URLs for local testing
     if (
-      isDevModeEnabled() &&
+      isDevModeEnabledGlobal() &&
       (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1' || parsedUrl.hostname === '::1')
     ) {
       return true;
@@ -1169,8 +1169,8 @@ export class ContextService {
   ): Recommendation[] {
     const bundledRecommendations: Recommendation[] = [];
 
-    // Dev mode is now per-user via localStorage
-    if (isDevModeEnabled()) {
+    // Dev mode - add extra recommendations for debugging
+    if (isDevModeEnabledGlobal()) {
       bundledRecommendations.push({
         title: 'Components',
         url: 'https://grafana.com/components/',

@@ -10,7 +10,7 @@
  * In dev mode, localhost URLs are permitted for local testing.
  */
 
-import { isDevModeEnabled } from './dev-mode';
+import { isDevModeEnabledGlobal } from './dev-mode';
 import { ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../constants';
 
 /**
@@ -76,7 +76,7 @@ export function isAllowedContentUrl(urlString: string): boolean {
   // In dev mode, allow localhost URLs for local testing
   // IMPORTANT: Must check that localhost URLs have valid docs paths to avoid
   // intercepting menu items and other UI links that also resolve to localhost
-  if (isDevModeEnabled() && isLocalhostUrl(urlString)) {
+  if (isDevModeEnabledGlobal() && isLocalhostUrl(urlString)) {
     const url = parseUrlSafely(urlString);
     if (!url) {
       return false;
@@ -381,7 +381,7 @@ export function validateTutorialUrl(url: string): URLValidation {
   const pathParts = urlObj.pathname.split('/').filter(Boolean);
 
   // In dev mode, allow localhost URLs for testing
-  if (isDevModeEnabled() && isLocalhostUrl(url)) {
+  if (isDevModeEnabledGlobal() && isLocalhostUrl(url)) {
     // Require /unstyled.html suffix for localhost tutorials
     if (pathParts[pathParts.length - 1] !== 'unstyled.html') {
       return {
