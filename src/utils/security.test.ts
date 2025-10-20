@@ -135,34 +135,59 @@ describe('Security: URL Validation - Domain Hijacking Prevention', () => {
   });
 
   describe('isAllowedGitHubRawUrl', () => {
-    const allowedPaths = ['/grafana/interactive-tutorials/'];
+    const allowedRepos = [
+      {
+        repo: '/grafana/interactive-tutorials/',
+        allowedRefs: ['main'], // SECURITY: Only main branch allowed
+      },
+    ];
 
-    it('should accept URLs from allowed repository', () => {
+    it('should accept URLs from allowed repository and branch', () => {
       const validUrl = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.html';
-      expect(isAllowedGitHubRawUrl(validUrl, allowedPaths)).toBe(true);
+      expect(isAllowedGitHubRawUrl(validUrl, allowedRepos)).toBe(true);
     });
 
     it('should REJECT URLs from other repositories', () => {
       const otherRepo = 'https://raw.githubusercontent.com/evil/repo/main/tutorial.html';
-      expect(isAllowedGitHubRawUrl(otherRepo, allowedPaths)).toBe(false);
+      expect(isAllowedGitHubRawUrl(otherRepo, allowedRepos)).toBe(false);
     });
 
     it('should REJECT individual user repositories (meeting requirement)', () => {
       const userRepo1 = 'https://raw.githubusercontent.com/moxious/tutorials/main/test.html';
       const userRepo2 = 'https://raw.githubusercontent.com/Jayclifford345/tutorials/main/test.html';
 
-      expect(isAllowedGitHubRawUrl(userRepo1, allowedPaths)).toBe(false);
-      expect(isAllowedGitHubRawUrl(userRepo2, allowedPaths)).toBe(false);
+      expect(isAllowedGitHubRawUrl(userRepo1, allowedRepos)).toBe(false);
+      expect(isAllowedGitHubRawUrl(userRepo2, allowedRepos)).toBe(false);
     });
 
     it('should REJECT non-GitHub domains', () => {
       const nonGithub = 'https://evil.com/grafana/interactive-tutorials/main/test.html';
-      expect(isAllowedGitHubRawUrl(nonGithub, allowedPaths)).toBe(false);
+      expect(isAllowedGitHubRawUrl(nonGithub, allowedRepos)).toBe(false);
     });
 
     it('should require https protocol', () => {
       const httpUrl = 'http://raw.githubusercontent.com/grafana/interactive-tutorials/main/test.html';
-      expect(isAllowedGitHubRawUrl(httpUrl, allowedPaths)).toBe(false);
+      expect(isAllowedGitHubRawUrl(httpUrl, allowedRepos)).toBe(false);
+    });
+
+    it('should REJECT PR branches (SECURITY FIX)', () => {
+      const prBranch =
+        'https://raw.githubusercontent.com/grafana/interactive-tutorials/attacker-pr-branch/exploit.html';
+      expect(isAllowedGitHubRawUrl(prBranch, allowedRepos)).toBe(false);
+    });
+
+    it('should REJECT arbitrary commit hashes (SECURITY FIX)', () => {
+      const commitHash =
+        'https://raw.githubusercontent.com/grafana/interactive-tutorials/45eae82874d8f9d3899dbf6345759d9ae23f7815/exploit.html';
+      expect(isAllowedGitHubRawUrl(commitHash, allowedRepos)).toBe(false);
+    });
+
+    it('should REJECT develop/staging branches (SECURITY FIX)', () => {
+      const developBranch = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/develop/tutorial.html';
+      const stagingBranch = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/staging/tutorial.html';
+
+      expect(isAllowedGitHubRawUrl(developBranch, allowedRepos)).toBe(false);
+      expect(isAllowedGitHubRawUrl(stagingBranch, allowedRepos)).toBe(false);
     });
   });
 });
@@ -390,34 +415,64 @@ describe('Security: URL Parsing (not string matching)', () => {
 });
 
 describe('Security: Meeting Compliance - GitHub Repository Restriction', () => {
-  it('should ONLY allow grafana/interactive-tutorials repository', () => {
-    const allowedPaths = ['/grafana/interactive-tutorials/'];
+  const allowedRepos = [
+    {
+      repo: '/grafana/interactive-tutorials/',
+      allowedRefs: ['main'], // SECURITY: Only main branch allowed
+    },
+  ];
 
-    // This should be the ONLY accepted GitHub repo
+  it('should ONLY allow grafana/interactive-tutorials repository with main branch', () => {
+    // This should be the ONLY accepted GitHub repo + branch combination
     const validUrl = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.html';
-    expect(isAllowedGitHubRawUrl(validUrl, allowedPaths)).toBe(true);
+    expect(isAllowedGitHubRawUrl(validUrl, allowedRepos)).toBe(true);
   });
 
   it('should REJECT individual user repositories (meeting commitment)', () => {
-    const allowedPaths = ['/grafana/interactive-tutorials/'];
-
     // These were explicitly removed per meeting commitment
     const moxiousRepo = 'https://raw.githubusercontent.com/moxious/tutorials/main/test.html';
     const jaycliffRepo = 'https://raw.githubusercontent.com/Jayclifford345/tutorials/main/test.html';
 
-    expect(isAllowedGitHubRawUrl(moxiousRepo, allowedPaths)).toBe(false);
-    expect(isAllowedGitHubRawUrl(jaycliffRepo, allowedPaths)).toBe(false);
+    expect(isAllowedGitHubRawUrl(moxiousRepo, allowedRepos)).toBe(false);
+    expect(isAllowedGitHubRawUrl(jaycliffRepo, allowedRepos)).toBe(false);
   });
 
   it('should REJECT other grafana repositories', () => {
-    const allowedPaths = ['/grafana/interactive-tutorials/'];
-
     // Even other grafana repos should be rejected
     const grafanaMain = 'https://raw.githubusercontent.com/grafana/grafana/main/README.md';
     const grafanaOther = 'https://raw.githubusercontent.com/grafana/other-repo/main/file.html';
 
-    expect(isAllowedGitHubRawUrl(grafanaMain, allowedPaths)).toBe(false);
-    expect(isAllowedGitHubRawUrl(grafanaOther, allowedPaths)).toBe(false);
+    expect(isAllowedGitHubRawUrl(grafanaMain, allowedRepos)).toBe(false);
+    expect(isAllowedGitHubRawUrl(grafanaOther, allowedRepos)).toBe(false);
+  });
+
+  it('should REJECT PR branch attacks on allowed repository (CRITICAL SECURITY FIX)', () => {
+    // The exact attack vector reported by the user:
+    // https://github.com/grafana/interactive-tutorials/blob/45eae82874d8f9d3899dbf6345759d9ae23f7815/README.md
+    // Attacker opens a PR with malicious content, then uses that PR's commit hash
+
+    const prBranchAttack =
+      'https://raw.githubusercontent.com/grafana/interactive-tutorials/attacker-pr-branch/exploit.html';
+    const commitHashAttack =
+      'https://raw.githubusercontent.com/grafana/interactive-tutorials/45eae82874d8f9d3899dbf6345759d9ae23f7815/exploit.html';
+    const featureBranchAttack =
+      'https://raw.githubusercontent.com/grafana/interactive-tutorials/feature/malicious/exploit.html';
+
+    expect(isAllowedGitHubRawUrl(prBranchAttack, allowedRepos)).toBe(false);
+    expect(isAllowedGitHubRawUrl(commitHashAttack, allowedRepos)).toBe(false);
+    expect(isAllowedGitHubRawUrl(featureBranchAttack, allowedRepos)).toBe(false);
+  });
+
+  it('should only allow explicitly whitelisted branches/tags', () => {
+    // Even legitimate-sounding branches should be rejected if not in allowedRefs
+    const developBranch = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/develop/tutorial.html';
+    const stagingBranch = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/staging/tutorial.html';
+    const releaseBranch =
+      'https://raw.githubusercontent.com/grafana/interactive-tutorials/release/v1.0.0/tutorial.html';
+
+    expect(isAllowedGitHubRawUrl(developBranch, allowedRepos)).toBe(false);
+    expect(isAllowedGitHubRawUrl(stagingBranch, allowedRepos)).toBe(false);
+    expect(isAllowedGitHubRawUrl(releaseBranch, allowedRepos)).toBe(false);
   });
 });
 

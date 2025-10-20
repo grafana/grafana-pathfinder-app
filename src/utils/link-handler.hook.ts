@@ -9,7 +9,7 @@ import {
 } from '../lib/analytics';
 import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
 import { parseUrlSafely, isAllowedContentUrl, isAllowedGitHubRawUrl, isAnyGitHubUrl } from './url-validator';
-import { ALLOWED_GITHUB_REPO_PATHS } from '../constants';
+import { ALLOWED_GITHUB_REPOS } from '../constants';
 
 interface LearningJourneyTab {
   id: string;
@@ -255,7 +255,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             // Check if this URL is from an allowed GitHub repository
             // Uses proper URL parsing to prevent domain hijacking
-            const isAllowedUrl = isAllowedGitHubRawUrl(resolvedUrl, ALLOWED_GITHUB_REPO_PATHS);
+            const isAllowedUrl = isAllowedGitHubRawUrl(resolvedUrl, ALLOWED_GITHUB_REPOS);
 
             if (isAllowedUrl) {
               // This is an allowed URL - try to open in app with unstyled.html fallback

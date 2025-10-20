@@ -338,7 +338,7 @@ export function setJourneyCompletionPercentage(journeyBaseUrl: string, percentag
   } catch (error) {
     // SECURITY: Handle QuotaExceededError gracefully
     if (error instanceof Error && error.name === 'QuotaExceededError') {
-      console.warn('[SECURITY] localStorage quota exceeded, clearing old journey data');
+      console.warn('localStorage quota exceeded, clearing old journey data');
       cleanupOldCompletions();
       // Retry after cleanup
       try {
@@ -346,7 +346,7 @@ export function setJourneyCompletionPercentage(journeyBaseUrl: string, percentag
         completionData[journeyBaseUrl] = Math.max(0, Math.min(100, percentage));
         localStorage.setItem(COMPLETION_STORAGE_KEY, JSON.stringify(completionData));
       } catch (retryError) {
-        console.error('[SECURITY] Failed to save journey completion after cleanup:', retryError);
+        console.error('Failed to save journey completion after cleanup:', retryError);
       }
     } else {
       console.warn('Failed to save journey completion percentage:', error);

@@ -57,7 +57,7 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
   // Type-safe validation with helpful developer feedback
   if (!isValidRequirement(check)) {
     console.warn(
-      `⚠️ Unknown requirement type: '${check}'. Check the requirement syntax and ensure it's supported. Allowing step to proceed.`
+      `Unknown requirement type: '${check}'. Check the requirement syntax and ensure it's supported. Allowing step to proceed.`
     );
 
     return {

@@ -54,7 +54,7 @@ export class InteractiveStateManager {
     }
 
     const errorMessage = typeof error === 'string' ? error : error.message;
-    console.error(`❌ ${context}: ${errorMessage}`, data);
+    console.error(`${context}: ${errorMessage}`, data);
   }
 
   /**

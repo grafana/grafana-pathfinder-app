@@ -24,8 +24,18 @@ export const DEFAULT_RECOMMENDER_TIMEOUT = 5000; // 5 seconds for recommender AP
 
 // Security: Allowed GitHub repository paths for interactive tutorials
 // Meeting commitment: ONLY the single controlled interactive-tutorials repo
-export const ALLOWED_GITHUB_REPO_PATHS = [
-  '/grafana/interactive-tutorials/', // Single source of truth for interactive tutorials
+// Format: { repo: '/owner/repo/', allowedRefs: ['main', 'v1.0.0'] }
+// Only specified branches/tags are allowed to prevent PR/commit-based attacks
+export interface AllowedGitHubRepo {
+  repo: string; // e.g., '/grafana/interactive-tutorials/'
+  allowedRefs: string[]; // e.g., ['main', 'production'] - branches or tags
+}
+
+export const ALLOWED_GITHUB_REPOS: AllowedGitHubRepo[] = [
+  {
+    repo: '/grafana/interactive-tutorials/',
+    allowedRefs: ['main'], // ONLY main branch - blocks PR/arbitrary commit attacks
+  },
 ];
 
 // Security: Allowed recommender service domains

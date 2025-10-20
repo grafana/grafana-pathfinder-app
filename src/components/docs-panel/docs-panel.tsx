@@ -12,7 +12,6 @@ import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
 import { parseUrlSafely, isAllowedContentUrl } from '../../utils/url-validator';
-import { sanitizeObjectForLogging } from '../../utils/log-sanitizer';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -129,7 +128,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         try {
           parsedData = JSON.parse(stored);
         } catch (parseError) {
-          console.error('[SECURITY] Corrupted localStorage data detected:', parseError);
+          console.error('Corrupted localStorage data detected:', parseError);
           // Return default tabs instead of crashing
           return [
             {
@@ -163,7 +162,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
           const isValidCurrent = !data.currentUrl || isAllowedContentUrl(data.currentUrl);
 
           if (!isValidBase || !isValidCurrent) {
-            console.warn('[SECURITY] Rejected malicious URL from localStorage:', sanitizeObjectForLogging(data));
+            console.warn('Rejected potentially unsafe URL from localStorage:');
             return; // Skip this tab
           }
 
@@ -240,7 +239,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     } catch (error) {
       // SECURITY: Handle QuotaExceededError gracefully
       if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('[SECURITY] localStorage quota exceeded, clearing oldest tabs');
+        console.warn('localStorage quota exceeded, clearing oldest tabs');
         // Remove oldest half of tabs and retry
         const reducedTabs = this.state.tabs
           .filter((tab) => tab.id !== 'recommendations')
@@ -257,7 +256,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(reducedTabs));
           localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(this.state.activeTabId));
         } catch (retryError) {
-          console.error('[SECURITY] Failed to save tabs even after reduction:', retryError);
+          console.error('Failed to save tabs even after reduction:', retryError);
         }
       } else {
         console.error('Failed to save tabs to storage:', error);

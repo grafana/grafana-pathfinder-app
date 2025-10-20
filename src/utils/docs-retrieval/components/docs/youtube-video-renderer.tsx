@@ -41,7 +41,6 @@ export function YouTubeVideoRenderer({
   const getVideoId = useCallback((url: string): string | null => {
     // SECURITY: Prevent ReDoS attacks with length limit
     if (url.length > 500) {
-      console.warn('[SECURITY] YouTube URL too long, rejecting');
       return null;
     }
 

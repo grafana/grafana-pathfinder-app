@@ -38,7 +38,7 @@ function App(props: AppRootProps) {
       // In production: Only Grafana docs and bundled content
       // In dev mode: Also allows localhost URLs for testing
       if (!isAllowedContentUrl(tutorialUrl)) {
-        console.error('[App] Invalid tutorial URL in configuration:', tutorialUrl);
+        console.error('Invalid tutorial URL in configuration:', tutorialUrl);
         return;
       }
 

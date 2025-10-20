@@ -231,7 +231,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
 
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
-    console.error('[DocsPlugin] Content parsing failed:', parseResult.errors);
+    console.error('Content parsing failed:', parseResult.errors);
     return (
       <div ref={ref}>
         <ContentParsingError
@@ -239,8 +239,6 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
           warnings={parseResult.warnings}
           fallbackHtml={html}
           onRetry={() => {
-            // In a real implementation, this could trigger a re-parse or content refetch
-            console.log('Retry parsing requested');
             window.location.reload();
           }}
         />
@@ -365,7 +363,7 @@ function TabContentRenderer({ html }: { html: string }) {
 
   if (!parseResult.isValid || !parseResult.data) {
     // SECURITY: No dangerouslySetInnerHTML fallback - return null on parse failure
-    console.error('[SECURITY] TabContentRenderer: Failed to parse content, rendering nothing for security');
+    console.error('TabContentRenderer: Failed to parse content.');
     return null;
   }
 
@@ -529,7 +527,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
       );
     case 'raw-html':
       // SECURITY: raw-html type is removed - all HTML must go through the parser
-      console.error('[SECURITY] raw-html element type encountered - this should have been caught during parsing');
+      console.error('raw-html element type encountered - this should have been caught during parsing');
       return null;
     default:
       // Handle tabs root
@@ -584,7 +582,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
 
       // Standard HTML elements - strict validation
       if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
-        console.error('[DocsPlugin] Invalid element type for parsed element:', element);
+        console.error('Invalid element type for parsed element:', element);
         throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
       }
 
