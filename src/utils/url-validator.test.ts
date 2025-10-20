@@ -29,12 +29,18 @@ describe('Grafana URL validators', () => {
       expect(isGrafanaDomain('https://grafana.com/anything')).toBe(true);
     });
 
-    it('should reject all subdomains (strict allowlist)', () => {
-      // Only exact grafana.com is allowed - NO subdomains
+    it('should accept allowlisted Grafana subdomains', () => {
+      // Allowlisted official Grafana domains
+      expect(isGrafanaDomain('https://docs.grafana.com')).toBe(true);
+      expect(isGrafanaDomain('https://play.grafana.com')).toBe(true);
+    });
+
+    it('should reject non-allowlisted subdomains (strict allowlist)', () => {
+      // Only allowlisted domains are permitted - reject others
       expect(isGrafanaDomain('https://www.grafana.com')).toBe(false);
-      expect(isGrafanaDomain('https://docs.grafana.com')).toBe(false);
       expect(isGrafanaDomain('https://evil.grafana.com')).toBe(false);
       expect(isGrafanaDomain('https://attacker.grafana.com')).toBe(false);
+      expect(isGrafanaDomain('https://malicious.grafana.com')).toBe(false);
     });
 
     it('should return false for domain hijacking attempts', () => {

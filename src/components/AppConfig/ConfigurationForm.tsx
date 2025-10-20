@@ -1,5 +1,5 @@
 import React, { useState, ChangeEvent } from 'react';
-import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text } from '@grafana/ui';
+import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
@@ -153,22 +153,41 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           <>
             <Field
               label="Dev Mode (Per-User)"
-              description="Enable developer features like the component debugger. This setting only affects your browser and won't impact other users."
+              description="⚠️ WARNING: Disables security protections. Only enable in isolated development environments."
               className={s.marginTop}
             >
               <Input type="checkbox" id="dev-mode" checked={devModeEnabled} onChange={onChangeDevMode} />
             </Field>
             {devModeEnabled && (
-              <Alert severity="info" title="Dev mode is active" className={s.marginTop}>
-                The debug panel is now visible in the main docs interface on all pages. Uncheck this box to disable dev
-                mode. You can also click &quot;Leave Dev Mode&quot; in the debug panel to quickly disable it.
+              <Alert severity="error" title="⚠️ Dev mode security warning" className={s.marginTop}>
+                <Text variant="body" weight="bold">
+                  Dev mode disables critical security protections:
+                </Text>
+                <ul style={{ marginTop: '8px', marginBottom: '8px' }}>
+                  <li>Allows loading content from ANY GitHub repository</li>
+                  <li>Allows loading content from ANY localhost URL</li>
+                  <li>Exposes debug tools that can manipulate the Grafana DOM</li>
+                  <li>Bypasses source validation for interactive content</li>
+                </ul>
+                <Text variant="body" weight="bold" color="error">
+                  Only enable dev mode in isolated development environments. Never enable when viewing untrusted content
+                  or in production.
+                </Text>
               </Alert>
             )}
           </>
         )}
 
         {/* Global Link Interception */}
-        <FieldSet label="Global Link Interception" className={s.marginTopXl}>
+        <FieldSet
+          label={
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Global Link Interception
+              <Badge text="Experimental" color="orange" />
+            </div>
+          }
+          className={s.marginTopXl}
+        >
           <div className={s.toggleSection}>
             <Switch
               id="enable-global-link-interception"

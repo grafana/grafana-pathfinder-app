@@ -298,6 +298,7 @@ function appendBottomNavigationToContent(content: string, currentMilestone: numb
  * These functions manage progress state in localStorage
  */
 const COMPLETION_STORAGE_KEY = 'grafana-docs-plugin-journey-completion';
+const MAX_JOURNEY_COMPLETIONS = 100; // SECURITY: Limit to prevent localStorage quota exhaustion
 
 export function getJourneyCompletionPercentage(journeyBaseUrl: string): number {
   try {
@@ -308,13 +309,48 @@ export function getJourneyCompletionPercentage(journeyBaseUrl: string): number {
   }
 }
 
+/**
+ * SECURITY: Cleanup old journey completions to prevent localStorage quota exhaustion
+ */
+function cleanupOldCompletions(): void {
+  try {
+    const completionData = JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
+    const entries = Object.entries(completionData);
+
+    if (entries.length > MAX_JOURNEY_COMPLETIONS) {
+      // Keep only the most recent 100 journeys
+      const reduced = Object.fromEntries(entries.slice(-MAX_JOURNEY_COMPLETIONS));
+      localStorage.setItem(COMPLETION_STORAGE_KEY, JSON.stringify(reduced));
+    }
+  } catch (error) {
+    console.warn('Failed to cleanup journey completions:', error);
+  }
+}
+
 export function setJourneyCompletionPercentage(journeyBaseUrl: string, percentage: number): void {
   try {
     const completionData = JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
     completionData[journeyBaseUrl] = Math.max(0, Math.min(100, percentage));
     localStorage.setItem(COMPLETION_STORAGE_KEY, JSON.stringify(completionData));
+
+    // SECURITY: Cleanup old completions to prevent quota exhaustion
+    cleanupOldCompletions();
   } catch (error) {
-    console.warn('Failed to save journey completion percentage:', error);
+    // SECURITY: Handle QuotaExceededError gracefully
+    if (error instanceof Error && error.name === 'QuotaExceededError') {
+      console.warn('[SECURITY] localStorage quota exceeded, clearing old journey data');
+      cleanupOldCompletions();
+      // Retry after cleanup
+      try {
+        const completionData = JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
+        completionData[journeyBaseUrl] = Math.max(0, Math.min(100, percentage));
+        localStorage.setItem(COMPLETION_STORAGE_KEY, JSON.stringify(completionData));
+      } catch (retryError) {
+        console.error('[SECURITY] Failed to save journey completion after cleanup:', retryError);
+      }
+    } else {
+      console.warn('Failed to save journey completion percentage:', error);
+    }
   }
 }
 
