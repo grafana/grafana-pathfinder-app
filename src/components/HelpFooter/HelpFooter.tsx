@@ -13,14 +13,8 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
   const styles = getHelpFooterStyles(theme);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
-  let helpNode = null;
-  let useHelpNavItemAvailable = true;
-
-  try {
-    helpNode = useHelpNavItem();
-  } catch (error) {
-    useHelpNavItemAvailable = false;
-  }
+  const helpNode = useHelpNavItem === undefined ? () => null : useHelpNavItem;
+  const useHelpNavItemAvailable = useHelpNavItem !== undefined;
 
   const helpButtons = React.useMemo(() => {
     if (useHelpNavItemAvailable && helpNode?.children && helpNode.children.length > 0) {
