@@ -221,7 +221,7 @@ describe('useLinkClickHandler', () => {
       );
 
       const disallowedLink = document.createElement('a');
-      disallowedLink.href = 'https://not-whitelisted.com/ExtraContent/README.md';
+      disallowedLink.href = 'https://not-allowed.com/ExtraContent/README.md';
       disallowedLink.textContent = 'Disallowed Link';
       contentDiv.appendChild(disallowedLink);
 
@@ -232,7 +232,7 @@ describe('useLinkClickHandler', () => {
 
       // Should open in browser, not in app
       expect(windowOpen).toHaveBeenCalledWith(
-        'https://not-whitelisted.com/ExtraContent/README.md',
+        'https://not-allowed.com/ExtraContent/README.md',
         '_blank',
         'noopener,noreferrer'
       );

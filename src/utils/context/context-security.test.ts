@@ -167,8 +167,8 @@ describe('Security: Recommender Service URL Validation', () => {
     });
   });
 
-  describe('Domain Whitelist', () => {
-    it('should accept whitelisted Grafana domains', async () => {
+  describe('Domain Allowlist', () => {
+    it('should accept allowlisted Grafana domains', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ recommendations: [] }),
@@ -215,7 +215,7 @@ describe('Security: Recommender Service URL Validation', () => {
       }
     });
 
-    it('should reject non-whitelisted domains', async () => {
+    it('should reject non-allowlisted domains', async () => {
       const mockContextData = {
         currentPath: '/dashboards',
         currentUrl: 'http://localhost:3000/dashboards',
