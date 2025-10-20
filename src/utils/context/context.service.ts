@@ -11,6 +11,7 @@ import { hashUserData, hashString } from '../../lib/hash.util';
 import { isDevModeEnabled } from '../dev-mode';
 import { sanitizeTextForDisplay } from '../docs-retrieval/html-sanitizer';
 import { parseUrlSafely } from '../url-validator';
+import { sanitizeForLogging } from '../log-sanitizer';
 import {
   ContextData,
   DataSource,
@@ -334,7 +335,7 @@ export class ContextService {
     const parsedUrl = parseUrlSafely(url);
 
     if (!parsedUrl) {
-      console.error('[SECURITY] Invalid recommender service URL:', url);
+      console.error('[SECURITY] Invalid recommender service URL:', sanitizeForLogging(url));
       return false;
     }
 
@@ -349,7 +350,7 @@ export class ContextService {
 
     // Require HTTPS for non-localhost URLs
     if (parsedUrl.protocol !== 'https:') {
-      console.error('[SECURITY] Recommender service URL must use HTTPS:', url);
+      console.error('[SECURITY] Recommender service URL must use HTTPS:', sanitizeForLogging(url));
       return false;
     }
 
@@ -359,7 +360,7 @@ export class ContextService {
     });
 
     if (!isAllowedDomain) {
-      console.error('[SECURITY] Recommender service domain not in allowlist:', parsedUrl.hostname);
+      console.error('[SECURITY] Recommender service domain not in allowlist:', sanitizeForLogging(parsedUrl.hostname));
       return false;
     }
 
@@ -646,7 +647,7 @@ export class ContextService {
               completionPercentage,
             };
           } catch (error) {
-            console.warn(`Failed to fetch journey data for ${rec.title}:`, error);
+            console.warn(`Failed to fetch journey data for ${sanitizeForLogging(rec.title)}:`, error);
             return {
               ...rec,
               totalSteps: 0,

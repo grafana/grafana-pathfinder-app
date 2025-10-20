@@ -22,6 +22,7 @@ import {
   isLocalhostUrl,
 } from '../url-validator';
 import { isDevModeEnabled } from '../dev-mode';
+import { sanitizeForLogging } from '../log-sanitizer';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -38,7 +39,7 @@ function enforceHttps(url: string): boolean {
   // Parse URL safely
   const parsedUrl = parseUrlSafely(url);
   if (!parsedUrl) {
-    console.error('[SECURITY] Invalid URL format:', url);
+    console.error('[SECURITY] Invalid URL format:', sanitizeForLogging(url));
     return false;
   }
 
@@ -49,7 +50,7 @@ function enforceHttps(url: string): boolean {
 
   // Require HTTPS for all other URLs
   if (parsedUrl.protocol !== 'https:') {
-    console.error('[SECURITY] Only HTTPS URLs are allowed (found:', parsedUrl.protocol, ')', url);
+    console.error('[SECURITY] Only HTTPS URLs are allowed (found:', parsedUrl.protocol, ')', sanitizeForLogging(url));
     return false;
   }
 
@@ -85,7 +86,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         ? 'Only Grafana.com documentation, localhost URLs (dev mode), and approved GitHub repositories can be loaded'
         : 'Only Grafana.com documentation and approved GitHub repositories can be loaded';
 
-      console.error('[SECURITY] fetchContent rejected untrusted URL:', url);
+      console.error('[SECURITY] fetchContent rejected untrusted URL:', sanitizeForLogging(url));
       return {
         content: null,
         error: errorMessage,
@@ -360,7 +361,12 @@ async function fetchRawHtml(
           (isDevModeEnabled() && isLocalhostUrl(finalUrl));
 
         if (!isFinalUrlTrusted) {
-          console.error('[SECURITY] Redirect to untrusted domain blocked:', finalUrl, 'from:', url);
+          console.error(
+            '[SECURITY] Redirect to untrusted domain blocked:',
+            sanitizeForLogging(finalUrl),
+            'from:',
+            sanitizeForLogging(url)
+          );
           lastError = {
             message: 'Redirect target is not in trusted domain list',
             errorType: 'other',
@@ -370,7 +376,7 @@ async function fetchRawHtml(
 
         // SECURITY: Enforce HTTPS on redirect target
         if (!enforceHttps(finalUrl)) {
-          console.error('[SECURITY] Redirect to non-HTTPS URL blocked:', finalUrl);
+          console.error('[SECURITY] Redirect to non-HTTPS URL blocked:', sanitizeForLogging(finalUrl));
           lastError = {
             message: 'Redirect to non-HTTPS URL blocked for security',
             errorType: 'other',
