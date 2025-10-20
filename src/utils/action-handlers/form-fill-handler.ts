@@ -187,7 +187,7 @@ export class FormFillHandler {
 
     // SECURITY: Prevent ReDoS attacks with length limit
     if (fullValue.length > 1000) {
-      console.warn('[SECURITY] Input too long for combobox, truncating to 1000 chars');
+      console.warn('Input too long for combobox, truncating to 1000 chars');
       fullValue = fullValue.substring(0, 1000);
     }
 

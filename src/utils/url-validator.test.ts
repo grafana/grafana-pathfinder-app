@@ -9,6 +9,7 @@ import {
   isGrafanaDomain,
   isLocalhostUrl,
   isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
   validateTutorialUrl,
 } from './url-validator';
 
@@ -145,6 +146,152 @@ describe('GitHub URL validators', () => {
     it('should return false for domain hijacking attempts', () => {
       expect(isAnyGitHubUrl('https://github.com.evil.com/fake')).toBe(false);
       expect(isAnyGitHubUrl('https://raw.githubusercontent.com.evil.com/fake')).toBe(false);
+    });
+  });
+
+  describe('isAllowedGitHubRawUrl - SECURITY TESTS', () => {
+    const allowedRepos = [
+      {
+        repo: '/grafana/interactive-tutorials/',
+        allowedRefs: ['main', 'v1.0.0'], // Only main branch and v1.0.0 tag
+      },
+      {
+        repo: '/grafana/test-repo/',
+        allowedRefs: ['production'], // Only production branch
+      },
+    ];
+
+    describe('✅ Allowed URLs (legitimate content)', () => {
+      it('should allow URLs from main branch', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(true);
+      });
+
+      it('should allow URLs from allowed tag', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/v1.0.0/tutorial.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(true);
+      });
+
+      it('should allow URLs with nested paths', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/advanced/tutorial.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(true);
+      });
+
+      it('should allow URLs from second allowed repo', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/test-repo/production/file.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(true);
+      });
+    });
+
+    describe('🔴 BLOCKED: PR Branch Attacks', () => {
+      it('should block PR branch URLs', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/attacker-pr-branch/exploit.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+
+      it('should block URLs from feature branches', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/feature/evil-feature/exploit.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+
+      it('should block URLs from develop branch', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/develop/tutorial.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+    });
+
+    describe('🔴 BLOCKED: Commit Hash Attacks', () => {
+      it('should block arbitrary commit hash URLs', () => {
+        const url =
+          'https://raw.githubusercontent.com/grafana/interactive-tutorials/45eae82874d8f9d3899dbf6345759d9ae23f7815/exploit.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+
+      it('should block short commit hash URLs', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/45eae82/exploit.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+    });
+
+    describe('🔴 BLOCKED: Wrong Repository', () => {
+      it('should block URLs from non-allowed repositories', () => {
+        const url = 'https://raw.githubusercontent.com/attacker/malicious-repo/main/exploit.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+
+      it('should block URLs from forked repositories', () => {
+        const url = 'https://raw.githubusercontent.com/attacker/interactive-tutorials/main/exploit.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+
+      it('should block URLs from grafana org but different repo', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/grafana/main/file.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+    });
+
+    describe('🔴 BLOCKED: Wrong Branch in Allowed Repo', () => {
+      it('should block wrong branch even in allowed repo', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/test-repo/main/file.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false); // Only 'production' is allowed
+      });
+
+      it('should block staging branch in test-repo', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/test-repo/staging/file.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+    });
+
+    describe('🔴 BLOCKED: Protocol and Domain Validation', () => {
+      it('should block HTTP URLs (require HTTPS)', () => {
+        const url = 'http://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+
+      it('should block domain hijacking attempts', () => {
+        const url = 'https://raw.githubusercontent.com.evil.com/grafana/interactive-tutorials/main/tutorial.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+
+      it('should block wrong hostname', () => {
+        const url = 'https://github.com/grafana/interactive-tutorials/blob/main/tutorial.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+    });
+
+    describe('🔴 BLOCKED: Malformed URLs', () => {
+      it('should block URLs with insufficient path parts', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+
+      it('should block invalid URL strings', () => {
+        expect(isAllowedGitHubRawUrl('not a url', allowedRepos)).toBe(false);
+        expect(isAllowedGitHubRawUrl('', allowedRepos)).toBe(false);
+      });
+
+      it('should block URLs without ref', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false);
+      });
+    });
+
+    describe('Edge Cases', () => {
+      it('should handle empty allowed repos array', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.md';
+        expect(isAllowedGitHubRawUrl(url, [])).toBe(false);
+      });
+
+      it('should handle repo with no allowed refs', () => {
+        const noRefsAllowed = [{ repo: '/grafana/interactive-tutorials/', allowedRefs: [] }];
+        const url = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.md';
+        expect(isAllowedGitHubRawUrl(url, noRefsAllowed)).toBe(false);
+      });
+
+      it('should be case-sensitive for branch names', () => {
+        const url = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/Main/tutorial.md';
+        expect(isAllowedGitHubRawUrl(url, allowedRepos)).toBe(false); // 'Main' != 'main'
+      });
     });
   });
 });

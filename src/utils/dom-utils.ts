@@ -56,7 +56,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
 
   // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
   if (reftarget && textContent && reftarget === textContent && reftarget.length > 5) {
-    console.warn(`⚠️ reftarget "${reftarget}" matches element text - check data-reftarget attribute`);
+    console.warn(`reftarget "${reftarget}" matches element text - check data-reftarget attribute`);
   }
 
   return {

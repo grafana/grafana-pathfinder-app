@@ -168,11 +168,17 @@ export function isYouTubeDomain(urlString: string): boolean {
 /**
  * Check if URL is a valid GitHub raw content URL from allowed repositories
  *
+ * SECURITY: Validates both repository AND branch/ref to prevent PR/commit-based attacks
+ * Format: https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}
+ *
  * @param urlString - The URL to validate
- * @param allowedPaths - Array of allowed pathname prefixes (e.g., ['/grafana/', '/moxious/'])
- * @returns true if valid GitHub URL from allowed repo, false otherwise
+ * @param allowedRepos - Array of allowed repos with specific branches/refs
+ * @returns true if valid GitHub URL from allowed repo AND ref, false otherwise
  */
-export function isAllowedGitHubRawUrl(urlString: string, allowedPaths: string[]): boolean {
+export function isAllowedGitHubRawUrl(
+  urlString: string,
+  allowedRepos: Array<{ repo: string; allowedRefs: string[] }>
+): boolean {
   const url = parseUrlSafely(urlString);
   if (!url) {
     return false;
@@ -188,8 +194,30 @@ export function isAllowedGitHubRawUrl(urlString: string, allowedPaths: string[])
     return false;
   }
 
-  // Check if pathname starts with any allowed path
-  return allowedPaths.some((allowedPath) => url.pathname.startsWith(allowedPath));
+  // Parse pathname: /{owner}/{repo}/{ref}/{path...}
+  // Example: /grafana/interactive-tutorials/main/tutorial.md
+  const pathParts = url.pathname.split('/').filter(Boolean);
+
+  if (pathParts.length < 3) {
+    // Need at least: owner, repo, ref
+    return false;
+  }
+
+  const owner = pathParts[0];
+  const repo = pathParts[1];
+  const ref = pathParts[2];
+  const repoPath = `/${owner}/${repo}/`;
+
+  // Find matching allowed repository
+  const allowedRepo = allowedRepos.find((allowed) => allowed.repo === repoPath);
+
+  if (!allowedRepo) {
+    return false;
+  }
+
+  // CRITICAL SECURITY CHECK: Validate the ref (branch/tag/commit)
+  // This prevents attackers from using PR branches or malicious commits
+  return allowedRepo.allowedRefs.includes(ref);
 }
 
 /**

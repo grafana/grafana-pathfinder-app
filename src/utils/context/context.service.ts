@@ -75,7 +75,7 @@ export class ContextService {
       try {
         listener();
       } catch (error) {
-        console.error('@context/ Error in context change listener:', error);
+        console.error('Error in context change listener:', error);
       }
     });
   }
@@ -204,7 +204,7 @@ export class ContextService {
 
       this.echoLoggingInitialized = true;
     } catch (error) {
-      console.error('@context/ Failed to initialize EchoSrv logging:', error);
+      console.error('Failed to initialize EchoSrv logging:', error);
     }
   }
 
@@ -335,7 +335,7 @@ export class ContextService {
     const parsedUrl = parseUrlSafely(url);
 
     if (!parsedUrl) {
-      console.error('[SECURITY] Invalid recommender service URL:', sanitizeForLogging(url));
+      console.error('Invalid recommender service URL');
       return false;
     }
 
@@ -344,13 +344,12 @@ export class ContextService {
       isDevModeEnabled() &&
       (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1' || parsedUrl.hostname === '::1')
     ) {
-      console.log('[DEV MODE] Allowing localhost recommender service:', url);
       return true;
     }
 
     // Require HTTPS for non-localhost URLs
     if (parsedUrl.protocol !== 'https:') {
-      console.error('[SECURITY] Recommender service URL must use HTTPS:', sanitizeForLogging(url));
+      console.error('Recommender service URL must use HTTPS');
       return false;
     }
 
@@ -360,7 +359,7 @@ export class ContextService {
     });
 
     if (!isAllowedDomain) {
-      console.error('[SECURITY] Recommender service domain not in allowlist:', sanitizeForLogging(parsedUrl.hostname));
+      console.error('Recommender service domain not in allowlist');
       return false;
     }
 

@@ -12,7 +12,7 @@ export function initializeContextServices(): void {
     // Initialize from any recent events that might have been cached
     ContextService.initializeFromRecentEvents();
   } catch (error) {
-    console.error('@context/ Failed to initialize context services:', error);
+    console.error('Failed to initialize context services:', error);
   }
 }
 

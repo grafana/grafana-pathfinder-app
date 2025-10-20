@@ -860,9 +860,7 @@ export class NavigationManager {
     const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
     if (!megaMenuToggle) {
       if (logWarnings) {
-        console.warn(
-          '⚠️ Mega menu toggle button not found - navigation may already be open or use different structure'
-        );
+        console.warn('Mega menu toggle button not found - navigation may already be open or use different structure');
       }
       return;
     }
@@ -884,7 +882,7 @@ export class NavigationManager {
         return;
       } else {
         if (logWarnings) {
-          console.warn('⚠️ Dock menu button not found, navigation will remain in modal mode');
+          console.warn('Dock menu button not found, navigation will remain in modal mode');
         }
         return;
       }

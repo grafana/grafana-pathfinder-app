@@ -33,7 +33,7 @@ export class SequenceManager {
             } else {
               // Requirements failed after all retries - stop the entire sequence
               console.warn(
-                `⚠️ Element ${i + 1} requirements failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
+                `Element ${i + 1} requirements failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
               );
               return; // Stop the entire sequence
             }
@@ -49,7 +49,7 @@ export class SequenceManager {
           } else {
             // Action failed after all retries - stop the entire sequence
             console.warn(
-              `⚠️ Element ${i + 1} action failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
+              `Element ${i + 1} action failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
             );
             return; // Stop the entire sequence
           }
@@ -79,7 +79,7 @@ export class SequenceManager {
             } else {
               // Pre-requirements failed after all retries - stop the entire sequence
               console.warn(
-                `⚠️ Step ${i + 1} pre-requirements failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
+                `Step ${i + 1} pre-requirements failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
               );
               return; // Stop the entire sequence
             }
@@ -95,7 +95,7 @@ export class SequenceManager {
             } else {
               // Post-action verification failed after all retries - stop the entire sequence
               console.warn(
-                `⚠️ Step ${i + 1} post-verification failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
+                `Step ${i + 1} post-verification failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
               );
               return; // Stop the entire sequence
             }
@@ -113,7 +113,7 @@ export class SequenceManager {
           } else {
             // Step execution failed after all retries - stop the entire sequence
             console.warn(
-              `⚠️ Step ${i + 1} execution failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
+              `Step ${i + 1} execution failed after ${INTERACTIVE_CONFIG.maxRetries} retries, stopping sequence`
             );
             return; // Stop the entire sequence
           }

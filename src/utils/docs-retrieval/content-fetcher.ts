@@ -11,7 +11,7 @@ import {
   SingleDocMetadata,
   Milestone,
 } from './content.types';
-import { DEFAULT_CONTENT_FETCH_TIMEOUT, ALLOWED_GITHUB_REPO_PATHS } from '../../constants';
+import { DEFAULT_CONTENT_FETCH_TIMEOUT, ALLOWED_GITHUB_REPOS } from '../../constants';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -22,7 +22,6 @@ import {
   isLocalhostUrl,
 } from '../url-validator';
 import { isDevModeEnabled } from '../dev-mode';
-import { sanitizeForLogging } from '../log-sanitizer';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -39,7 +38,7 @@ function enforceHttps(url: string): boolean {
   // Parse URL safely
   const parsedUrl = parseUrlSafely(url);
   if (!parsedUrl) {
-    console.error('[SECURITY] Invalid URL format:', sanitizeForLogging(url));
+    console.error('Invalid URL format:');
     return false;
   }
 
@@ -50,7 +49,7 @@ function enforceHttps(url: string): boolean {
 
   // Require HTTPS for all other URLs
   if (parsedUrl.protocol !== 'https:') {
-    console.error('[SECURITY] Only HTTPS URLs are allowed (found:', parsedUrl.protocol, ')', sanitizeForLogging(url));
+    console.error('Only HTTPS URLs are allowed');
     return false;
   }
 
@@ -79,24 +78,18 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // In production: Only Grafana docs, bundled content, and approved GitHub repos
     // In dev mode: Also allows localhost URLs for local testing
     const isTrustedSource =
-      isAllowedContentUrl(url) || isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPO_PATHS) || isGitHubUrl(url);
+      isAllowedContentUrl(url) || isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) || isGitHubUrl(url);
 
     if (!isTrustedSource) {
       const errorMessage = isDevModeEnabled()
         ? 'Only Grafana.com documentation, localhost URLs (dev mode), and approved GitHub repositories can be loaded'
         : 'Only Grafana.com documentation and approved GitHub repositories can be loaded';
 
-      console.error('[SECURITY] fetchContent rejected untrusted URL:', sanitizeForLogging(url));
       return {
         content: null,
         error: errorMessage,
         errorType: 'other',
       };
-    }
-
-    // Log when using localhost in dev mode
-    if (isDevModeEnabled() && isLocalhostUrl(url)) {
-      console.log('[DEV MODE] Loading content from localhost:', url);
     }
 
     // Parse hash fragment from URL
@@ -356,17 +349,11 @@ async function fetchRawHtml(
         // Re-validate the final URL after redirects
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
-          isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPO_PATHS) ||
+          isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPOS) ||
           isGitHubUrl(finalUrl) ||
           (isDevModeEnabled() && isLocalhostUrl(finalUrl));
 
         if (!isFinalUrlTrusted) {
-          console.error(
-            '[SECURITY] Redirect to untrusted domain blocked:',
-            sanitizeForLogging(finalUrl),
-            'from:',
-            sanitizeForLogging(url)
-          );
           lastError = {
             message: 'Redirect target is not in trusted domain list',
             errorType: 'other',
@@ -376,7 +363,6 @@ async function fetchRawHtml(
 
         // SECURITY: Enforce HTTPS on redirect target
         if (!enforceHttps(finalUrl)) {
-          console.error('[SECURITY] Redirect to non-HTTPS URL blocked:', sanitizeForLogging(finalUrl));
           lastError = {
             message: 'Redirect to non-HTTPS URL blocked for security',
             errorType: 'other',

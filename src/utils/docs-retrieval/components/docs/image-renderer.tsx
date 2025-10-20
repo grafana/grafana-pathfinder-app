@@ -37,7 +37,6 @@ export function ImageRenderer({
       return undefined;
     }
     if (!baseUrl) {
-      console.warn('ImageRenderer: No baseUrl provided, using relative URL', { imgSrc });
       return imgSrc;
     }
     if (imgSrc.startsWith('/') && !imgSrc.startsWith('//')) {

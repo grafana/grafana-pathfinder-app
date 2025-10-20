@@ -36,7 +36,7 @@
 export function safeRegexMatch(input: string, pattern: RegExp, maxLength = 10000): RegExpMatchArray | null {
   // SECURITY: Quick length check to prevent ReDoS
   if (input.length > maxLength) {
-    console.warn('[SECURITY] Input too long for regex matching:', input.length, 'chars (max:', maxLength, ')');
+    console.warn('Input too long for regex matching');
     return null;
   }
 
@@ -45,7 +45,7 @@ export function safeRegexMatch(input: string, pattern: RegExp, maxLength = 10000
     const result = input.match(pattern);
     return result;
   } catch (error) {
-    console.error('[SECURITY] Regex execution failed:', error);
+    console.error('Regex execution failed:', error);
     return null;
   }
 }
@@ -61,14 +61,14 @@ export function safeRegexMatch(input: string, pattern: RegExp, maxLength = 10000
 export function safeRegexTest(input: string, pattern: RegExp, maxLength = 10000): boolean {
   // SECURITY: Quick length check to prevent ReDoS
   if (input.length > maxLength) {
-    console.warn('[SECURITY] Input too long for regex test:', input.length, 'chars (max:', maxLength, ')');
+    console.warn('Input too long for regex test');
     return false;
   }
 
   try {
     return pattern.test(input);
   } catch (error) {
-    console.error('[SECURITY] Regex test failed:', error);
+    console.error('Regex test failed:', error);
     return false;
   }
 }

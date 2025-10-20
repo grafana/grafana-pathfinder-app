@@ -515,11 +515,11 @@ export function InteractiveSection({
           try {
             return await multiStepRef.executeStep();
           } catch (error) {
-            console.error(`❌ Multi-step execution failed: ${stepInfo.stepId}`, error);
+            console.error(`Multi-step execution failed: ${stepInfo.stepId}`, error);
             return false;
           }
         } else {
-          console.error(`❌ Multi-step ref not found for: ${stepInfo.stepId}`);
+          console.error(`Multi-step ref not found for: ${stepInfo.stepId}`);
           return false;
         }
       }
@@ -546,14 +546,14 @@ export function InteractiveSection({
             stepInfo.stepId
           );
           if (!result.pass) {
-            console.warn(`⛔ Post-verify failed for ${stepInfo.stepId}:`, result.error);
+            console.warn(`Post-verify failed for ${stepInfo.stepId}:`, result.error);
             return false;
           }
         }
 
         return true;
       } catch (error) {
-        console.error(`❌ Step execution failed: ${stepInfo.stepId}`, error);
+        console.error(`Step execution failed: ${stepInfo.stepId}`, error);
         return false;
       }
     },
@@ -635,27 +635,27 @@ export function InteractiveSection({
 
               if (!sectionRecheckResult.pass) {
                 // Section requirements still not met after fix attempt
-                console.warn('⚠️ Section requirements could not be fixed, stopping execution');
+                console.warn('Section requirements could not be fixed, stopping execution');
                 ActionMonitor.getInstance().enable(); // Re-enable monitor
                 setIsRunning(false);
                 return;
               }
             } catch (fixError) {
-              console.warn('⚠️ Failed to fix section requirements:', fixError);
+              console.warn('Failed to fix section requirements:', fixError);
               ActionMonitor.getInstance().enable(); // Re-enable monitor
               setIsRunning(false);
               return;
             }
           } else {
             // No fix available for section requirements
-            console.warn('⚠️ Section requirements not met and no fix available, stopping execution');
+            console.warn('Section requirements not met and no fix available, stopping execution');
             ActionMonitor.getInstance().enable(); // Re-enable monitor
             setIsRunning(false);
             return;
           }
         }
       } catch (error) {
-        console.warn('⚠️ Section requirements check failed:', error);
+        console.warn('Section requirements check failed:', error);
         ActionMonitor.getInstance().enable(); // Re-enable monitor
         setIsRunning(false);
         return;
@@ -761,7 +761,7 @@ export function InteractiveSection({
                   }
                   // If recheck passed, continue with normal execution below
                 } catch (fixError) {
-                  console.warn(`⚠️ Failed to fix requirements for step ${i + 1}:`, fixError);
+                  console.warn(`Failed to fix requirements for step ${i + 1}:`, fixError);
 
                   // Fix failed - check if step is skippable
                   if (stepInfo.skippable) {
@@ -799,7 +799,7 @@ export function InteractiveSection({
               }
             }
           } catch (error) {
-            console.warn(`⚠️ Step ${i + 1} requirements check failed, stopping section execution:`, error);
+            console.warn(`Step ${i + 1} requirements check failed, stopping section execution:`, error);
             setCurrentStepIndex(i);
             stoppedDueToRequirements = true;
             break;
@@ -856,7 +856,7 @@ export function InteractiveSection({
           }
         } else {
           // Step execution failed after retries - stop and don't auto-complete remaining steps
-          console.warn(`⚠️ Step ${i + 1} execution failed after retries, stopping section execution`);
+          console.warn(`Step ${i + 1} execution failed after retries, stopping section execution`);
           setCurrentStepIndex(i);
           stoppedDueToRequirements = true; // Mark as stopped due to failure
           break;
