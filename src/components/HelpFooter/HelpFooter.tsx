@@ -13,12 +13,12 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
   const styles = getHelpFooterStyles(theme);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
-  const helpNode = useHelpNavItem === undefined ? () => null : useHelpNavItem;
   const useHelpNavItemAvailable = useHelpNavItem !== undefined;
+  const helpNode = useHelpNavItem !== undefined ? useHelpNavItem() : null;
 
   const helpButtons = React.useMemo(() => {
     if (useHelpNavItemAvailable && helpNode?.children && helpNode.children.length > 0) {
-      return helpNode.children.map((child) => ({
+      return helpNode.children.map((child: any) => ({
         key: child.id || child.text.toLowerCase().replace(/\s+/g, '-'),
         label: child.text,
         icon: (child.icon || 'question-circle') as any,
@@ -260,7 +260,7 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
   return (
     <div className={`${styles.helpFooter} ${className || ''}`}>
       <div className={styles.helpButtons}>
-        {helpButtons.map((button) => {
+        {helpButtons.map((button: any) => {
           if (button.href) {
             return (
               <LinkButton
