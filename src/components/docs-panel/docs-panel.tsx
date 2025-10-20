@@ -4,9 +4,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2, Button } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
+import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../../constants';
+import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES, getConfigWithDefaults } from '../../constants';
 
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
@@ -39,6 +39,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { isDevModeEnabled } from 'utils/dev-mode';
+import { config } from '@grafana/runtime';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -583,7 +584,18 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 }
 
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
-  const isDevMode = isDevModeEnabled();
+  // Get plugin configuration for dev mode check
+  const pluginContext = usePluginContext();
+  const pluginConfig = React.useMemo(() => {
+    return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+  }, [pluginContext?.meta?.jsonData]);
+
+  // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
+  const currentUserId = config.bootData.user?.id;
+  const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
+
+  // Set global config for utility functions that can't access React context
+  (window as any).__pathfinderPluginConfig = pluginConfig;
 
   React.useEffect(() => {
     addGlobalModalStyles();

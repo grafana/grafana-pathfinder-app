@@ -10,7 +10,7 @@ import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
 import { SelectorDebugPanel } from '../SelectorDebugPanel';
-import { locationService } from '@grafana/runtime';
+import { locationService, config } from '@grafana/runtime';
 
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
@@ -389,6 +389,13 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const pluginContext = usePluginContext();
   const configWithDefaults = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
 
+  // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
+  const currentUserId = config.bootData.user?.id;
+  const devModeEnabled = isDevModeEnabled(configWithDefaults, currentUserId);
+
+  // Set global config for utility functions that can't access React context
+  (window as any).__pathfinderPluginConfig = configWithDefaults;
+
   // Use the simplified context hook
   const {
     contextData,
@@ -470,8 +477,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
           />
         </div>
 
-        {/* Debug Panel - only shown when dev mode is enabled (per-user setting) */}
-        {isDevModeEnabled() && (
+        {/* Debug Panel - only shown when dev mode is enabled (hybrid: server-side storage, per-user scoping) */}
+        {devModeEnabled && (
           <div className={styles.debugSection}>
             <SelectorDebugPanel onOpenDocsPage={openDocsPage} />
           </div>

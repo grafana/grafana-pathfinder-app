@@ -21,7 +21,7 @@ import {
   isAllowedGitHubRawUrl,
   isLocalhostUrl,
 } from '../url-validator';
-import { isDevModeEnabled } from '../dev-mode';
+import { isDevModeEnabledGlobal } from '../dev-mode';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -43,7 +43,7 @@ function enforceHttps(url: string): boolean {
   }
 
   // Allow HTTP for localhost in dev mode (for local testing)
-  if (isDevModeEnabled() && isLocalhostUrl(url)) {
+  if (isDevModeEnabledGlobal() && isLocalhostUrl(url)) {
     return true;
   }
 
@@ -76,13 +76,17 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // SECURITY: Validate URL is from a trusted source before fetching
     // Defense-in-depth: Even if callers validate, fetchContent provides final check
     // In production: Only Grafana docs, bundled content, and approved GitHub repos
-    // In dev mode: Also allows localhost URLs for local testing
+    // In dev mode: Also allows any GitHub raw URL and localhost for local testing
+    const isDevMode = isDevModeEnabledGlobal();
     const isTrustedSource =
-      isAllowedContentUrl(url) || isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) || isGitHubUrl(url);
+      isAllowedContentUrl(url) ||
+      isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
+      isGitHubUrl(url) ||
+      (isDevMode && (isGitHubRawUrl(url) || isLocalhostUrl(url)));
 
     if (!isTrustedSource) {
-      const errorMessage = isDevModeEnabled()
-        ? 'Only Grafana.com documentation, localhost URLs (dev mode), and approved GitHub repositories can be loaded'
+      const errorMessage = isDevMode
+        ? 'Only Grafana.com documentation, any GitHub repositories (dev mode), localhost URLs (dev mode), and approved GitHub repositories can be loaded'
         : 'Only Grafana.com documentation and approved GitHub repositories can be loaded';
 
       return {
@@ -347,11 +351,12 @@ async function fetchRawHtml(
         const finalUrl = response.url;
 
         // Re-validate the final URL after redirects
+        // In dev mode: Allow any GitHub raw URL and localhost
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
           isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPOS) ||
           isGitHubUrl(finalUrl) ||
-          (isDevModeEnabled() && isLocalhostUrl(finalUrl));
+          (isDevModeEnabledGlobal() && (isLocalhostUrl(finalUrl) || isGitHubRawUrl(finalUrl)));
 
         if (!isFinalUrlTrusted) {
           lastError = {

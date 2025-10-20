@@ -11,6 +11,7 @@ import {
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
+import { config } from '@grafana/runtime';
 
 type JsonData = DocsPluginConfig;
 
@@ -27,8 +28,7 @@ export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginM
 
 const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const urlParams = new URLSearchParams(window.location.search);
-  // Show dev mode input if URL param is set OR if dev mode is already enabled
-  const showDevModeInput = urlParams.get('dev') === 'true' || isDevModeEnabled();
+  const hasDevParam = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
   const { enabled, pinned, jsonData } = plugin.meta;
   const [state, setState] = useState<State>({
@@ -37,11 +37,21 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   });
   const [isSaving, setIsSaving] = useState(false);
-  // Track dev mode state locally to trigger re-renders
-  const [devModeEnabled, setDevModeEnabled] = useState(isDevModeEnabled());
+
+  // SECURITY: Dev mode - hybrid approach (jsonData storage, multi-user ID scoping)
+  // Get current user ID for scoping
+  const currentUserId = config.bootData.user?.id;
+  const devModeUserIds = jsonData?.devModeUserIds ?? [];
+
+  // Check if dev mode is enabled for THIS user (synchronous)
+  const devModeEnabledForUser = isDevModeEnabled(jsonData || {}, currentUserId);
+  const [devModeToggling, setDevModeToggling] = useState<boolean>(false);
+
+  // Show dev mode input if URL param is set OR if dev mode is already enabled for this user
+  const showDevModeInput = hasDevParam || devModeEnabledForUser;
 
   // Show advanced config fields only in dev mode (for Grafana team development)
-  const showAdvancedConfig = devModeEnabled || showDevModeInput;
+  const showAdvancedConfig = devModeEnabledForUser || showDevModeInput;
 
   // Configuration is now retrieved directly from plugin meta via usePluginContext
 
@@ -62,10 +72,31 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
-  const onChangeDevMode = (event: ChangeEvent<HTMLInputElement>) => {
-    // Dev mode is now stored in localStorage per-user, not in plugin settings
-    const newDevModeState = toggleDevMode();
-    setDevModeEnabled(newDevModeState);
+  const onChangeDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!currentUserId) {
+      alert('Cannot determine current user. Please refresh the page and try again.');
+      return;
+    }
+
+    // SECURITY: Dev mode is now stored in plugin jsonData (server-side, admin-controlled)
+    setDevModeToggling(true);
+    try {
+      await toggleDevMode(currentUserId, devModeEnabledForUser, devModeUserIds);
+
+      // Reload page to refresh plugin config and apply changes globally
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.error('Failed to toggle dev mode:', error);
+
+      // Show user-friendly error message
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to toggle dev mode. You may need admin permissions.';
+      alert(errorMessage);
+
+      setDevModeToggling(false);
+    }
   };
 
   const onToggleGlobalLinkInterception = (event: ChangeEvent<HTMLInputElement>) => {
@@ -148,23 +179,32 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           />
         </Field>
 
-        {/* Dev Mode - Per-User Setting (stored in localStorage) */}
+        {/* Dev Mode - Per-User Setting (stored server-side in Grafana user preferences) */}
         {showDevModeInput && (
           <>
             <Field
-              label="Dev Mode (Per-User)"
-              description="⚠️ WARNING: Disables security protections. Only enable in isolated development environments."
+              label="Dev Mode"
+              description="⚠️ WARNING: Disables security protections. Only enable in isolated development environments. Requires admin permissions to change. Only visible to the user who enabled it."
               className={s.marginTop}
             >
-              <Input type="checkbox" id="dev-mode" checked={devModeEnabled} onChange={onChangeDevMode} />
+              <div className={s.devModeField}>
+                <Input
+                  type="checkbox"
+                  id="dev-mode"
+                  checked={devModeEnabledForUser}
+                  onChange={onChangeDevMode}
+                  disabled={devModeToggling}
+                />
+                {devModeToggling && <span className={s.updateText}>Saving to server and reloading...</span>}
+              </div>
             </Field>
-            {devModeEnabled && (
-              <Alert severity="error" title="⚠️ Dev mode security warning" className={s.marginTop}>
+            {devModeEnabledForUser && (
+              <Alert severity="warning" title="⚠️ Dev mode security warning" className={s.marginTop}>
                 <Text variant="body" weight="bold">
                   Dev mode disables critical security protections:
                 </Text>
                 <ul style={{ marginTop: '8px', marginBottom: '8px' }}>
-                  <li>Allows loading content from ANY GitHub repository</li>
+                  <li>Allows loading content from ANY GitHub repository (bypasses branch validation)</li>
                   <li>Allows loading content from ANY localhost URL</li>
                   <li>Exposes debug tools that can manipulate the Grafana DOM</li>
                   <li>Bypasses source validation for interactive content</li>
@@ -252,5 +292,17 @@ const getStyles = (theme: GrafanaTheme2) => ({
     flex-direction: column;
     gap: ${theme.spacing(0.5)};
     flex: 1;
+  `,
+  devModeField: css`
+    display: flex;
+    align-items: center;
+    gap: ${theme.spacing(1)};
+  `,
+  updateText: css`
+    color: ${theme.colors.text.secondary};
+    font-size: ${theme.typography.bodySmall.fontSize};
+  `,
+  marginTopSmall: css`
+    margin-top: ${theme.spacing(1)};
   `,
 });

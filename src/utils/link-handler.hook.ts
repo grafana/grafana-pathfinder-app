@@ -608,28 +608,62 @@ function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaT
   if (document.querySelector('.journey-image-modal')) {
     return;
   }
+
+  // SECURITY: Use DOM methods instead of innerHTML to prevent XSS
+  // Building the modal structure safely using createElement and textContent
+
   const imageModal = document.createElement('div');
   imageModal.className = 'journey-image-modal';
 
-  // Modal HTML, no inline styles, all sizing is CSS!
-  imageModal.innerHTML = `
-    <div class="journey-image-modal-backdrop">
-      <div class="journey-image-modal-container">
-        <div class="journey-image-modal-header">
-          <h3 class="journey-image-modal-title">${imageAlt}</h3>
-          <button class="journey-image-modal-close" aria-label="Close image">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        <div class="journey-image-modal-content">
-          <img src="${imageSrc}" alt="${imageAlt}" class="journey-image-modal-image" />
-        </div>
-      </div>
-    </div>
+  const backdrop = document.createElement('div');
+  backdrop.className = 'journey-image-modal-backdrop';
+
+  const container = document.createElement('div');
+  container.className = 'journey-image-modal-container';
+
+  // Header section
+  const header = document.createElement('div');
+  header.className = 'journey-image-modal-header';
+
+  // Title - SECURITY: Use textContent to prevent HTML injection
+  const title = document.createElement('h3');
+  title.className = 'journey-image-modal-title';
+  title.textContent = imageAlt; // Safe: textContent escapes HTML
+
+  // Close button
+  const closeButton = document.createElement('button');
+  closeButton.className = 'journey-image-modal-close';
+  closeButton.setAttribute('aria-label', 'Close image');
+
+  // SVG close icon (safe - no user input)
+  closeButton.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
   `;
+
+  header.appendChild(title);
+  header.appendChild(closeButton);
+
+  // Content section
+  const content = document.createElement('div');
+  content.className = 'journey-image-modal-content';
+
+  // Image - SECURITY: Use setAttribute to safely set src and alt
+  const image = document.createElement('img');
+  image.className = 'journey-image-modal-image';
+  image.setAttribute('src', imageSrc); // Safe: setAttribute escapes
+  image.setAttribute('alt', imageAlt); // Safe: setAttribute escapes
+
+  content.appendChild(image);
+
+  // Assemble modal structure
+  container.appendChild(header);
+  container.appendChild(content);
+  backdrop.appendChild(container);
+  imageModal.appendChild(backdrop);
+
   document.body.appendChild(imageModal);
 
   // Close modal utility
@@ -638,15 +672,15 @@ function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaT
     document.body.style.overflow = '';
   };
 
-  // Close on backdrop click
-  imageModal.querySelector('.journey-image-modal-backdrop')?.addEventListener('click', (e) => {
+  // Close on backdrop click - use direct reference instead of querySelector
+  backdrop.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) {
       closeModal();
     }
   });
 
-  // Close on close button click
-  imageModal.querySelector('.journey-image-modal-close')?.addEventListener('click', closeModal);
+  // Close on close button click - use direct reference instead of querySelector
+  closeButton.addEventListener('click', closeModal);
 
   // Close on Escape key
   const handleEscape = (e: KeyboardEvent) => {

@@ -7,11 +7,12 @@
 
 import { fetchContent } from './docs-retrieval/content-fetcher';
 import { sanitizeTextForDisplay } from './docs-retrieval/html-sanitizer';
-import { isDevModeEnabled } from './dev-mode';
+import { isDevModeEnabledGlobal } from './dev-mode';
 
 // Mock the dev-mode module
 jest.mock('./dev-mode', () => ({
   isDevModeEnabled: jest.fn(() => false),
+  isDevModeEnabledGlobal: jest.fn(() => false),
 }));
 
 // Mock fetch globally
@@ -29,7 +30,7 @@ if (!AbortSignal.timeout) {
 describe('Security: HTTPS Enforcement', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(false);
   });
 
   describe('Content Fetcher HTTPS Validation', () => {
@@ -55,7 +56,7 @@ describe('Security: HTTPS Enforcement', () => {
     });
 
     it('should allow HTTP localhost in dev mode', async () => {
-      (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+      (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(true);
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         url: 'http://localhost:3000/docs/test',
@@ -89,7 +90,7 @@ describe('Security: HTTPS Enforcement', () => {
 describe('Security: Redirect Chain Validation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(false);
   });
 
   it('should accept redirects to trusted domains', async () => {
@@ -300,7 +301,7 @@ describe('Security: Dev Mode Localhost Handling', () => {
   });
 
   it('should allow localhost in dev mode for content URLs', async () => {
-    (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+    (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(true);
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       url: 'http://localhost:8080/docs/test',
@@ -313,7 +314,7 @@ describe('Security: Dev Mode Localhost Handling', () => {
   });
 
   it('should allow 127.0.0.1 in dev mode', async () => {
-    (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+    (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(true);
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       url: 'http://127.0.0.1:8080/docs/test',
@@ -326,7 +327,7 @@ describe('Security: Dev Mode Localhost Handling', () => {
   });
 
   it('should reject localhost in production mode', async () => {
-    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(false);
 
     const result = await fetchContent('http://localhost:8080/docs/test');
 
@@ -336,7 +337,7 @@ describe('Security: Dev Mode Localhost Handling', () => {
   });
 
   it('should allow localhost for any path in dev mode for testing', async () => {
-    (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+    (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(true);
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       url: 'http://127.0.0.1:8080/docs/test',
@@ -353,7 +354,7 @@ describe('Security: Dev Mode Localhost Handling', () => {
 describe('Security: Protocol Validation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(false);
   });
 
   it('should reject javascript: protocol', async () => {
