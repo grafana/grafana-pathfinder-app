@@ -353,13 +353,13 @@ export class ContextService {
       return false;
     }
 
-    // Check if domain is in whitelist
+    // Check if domain is in allowlist
     const isAllowedDomain = ALLOWED_RECOMMENDER_DOMAINS.some((domain) => {
       return parsedUrl.hostname === domain || parsedUrl.hostname.endsWith(`.${domain}`);
     });
 
     if (!isAllowedDomain) {
-      console.error('[SECURITY] Recommender service domain not in whitelist:', parsedUrl.hostname);
+      console.error('[SECURITY] Recommender service domain not in allowlist:', parsedUrl.hostname);
       return false;
     }
 
