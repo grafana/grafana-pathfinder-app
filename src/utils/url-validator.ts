@@ -11,6 +11,7 @@
  */
 
 import { isDevModeEnabled } from './dev-mode';
+import { ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../constants';
 
 /**
  * Safely parse a URL string, returning null on failure
@@ -194,8 +195,11 @@ export function isAllowedGitHubRawUrl(urlString: string, allowedPaths: string[])
 /**
  * Check if URL is a valid Grafana domain (for general use, not just docs)
  *
+ * Security: Uses exact hostname matching from ALLOWED_GRAFANA_DOCS_HOSTNAMES
+ * NO wildcard subdomains to prevent subdomain takeover attacks
+ *
  * @param urlString - The URL to validate
- * @returns true if hostname is grafana.com or proper subdomain
+ * @returns true if hostname is in the allowlist
  */
 export function isGrafanaDomain(urlString: string): boolean {
   const url = parseUrlSafely(urlString);
@@ -208,8 +212,8 @@ export function isGrafanaDomain(urlString: string): boolean {
     return false;
   }
 
-  // Check hostname is exactly grafana.com or a proper subdomain
-  return url.hostname === 'grafana.com' || url.hostname.endsWith('.grafana.com');
+  // Check hostname is in allowlist (exact match only, no subdomains)
+  return ALLOWED_GRAFANA_DOCS_HOSTNAMES.includes(url.hostname);
 }
 
 /**

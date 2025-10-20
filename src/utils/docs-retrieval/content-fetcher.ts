@@ -32,15 +32,9 @@ interface FetchError {
 
 /**
  * SECURITY: Enforce HTTPS for all external URLs to prevent MITM attacks
- * Exceptions: localhost in dev mode, test mode
+ * Exceptions: localhost in dev mode
  */
 function enforceHttps(url: string): boolean {
-  // Allow test mode to bypass for testing purposes
-  // Note: Content is still sanitized with DOMPurify regardless of this flag
-  if ((window as any).__PathfinderTestingMode === true) {
-    return true;
-  }
-
   // Parse URL safely
   const parsedUrl = parseUrlSafely(url);
   if (!parsedUrl) {
@@ -84,11 +78,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // In production: Only Grafana docs, bundled content, and approved GitHub repos
     // In dev mode: Also allows localhost URLs for local testing
     const isTrustedSource =
-      isAllowedContentUrl(url) ||
-      isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPO_PATHS) ||
-      isGitHubUrl(url) ||
-      // Backward compatibility: Support __PathfinderTestingMode for existing tests
-      (window as any).__PathfinderTestingMode === true;
+      isAllowedContentUrl(url) || isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPO_PATHS) || isGitHubUrl(url);
 
     if (!isTrustedSource) {
       const errorMessage = isDevModeEnabled()
@@ -367,8 +357,7 @@ async function fetchRawHtml(
           isAllowedContentUrl(finalUrl) ||
           isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPO_PATHS) ||
           isGitHubUrl(finalUrl) ||
-          (isDevModeEnabled() && isLocalhostUrl(finalUrl)) ||
-          (window as any).__PathfinderTestingMode === true;
+          (isDevModeEnabled() && isLocalhostUrl(finalUrl));
 
         if (!isFinalUrlTrusted) {
           console.error('[SECURITY] Redirect to untrusted domain blocked:', finalUrl, 'from:', url);

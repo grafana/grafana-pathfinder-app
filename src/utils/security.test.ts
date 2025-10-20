@@ -72,9 +72,11 @@ describe('Security: URL Validation - Domain Hijacking Prevention', () => {
       expect(isGrafanaDocsUrl('https://grafana.com/docs/learning-journeys/linux/')).toBe(true);
     });
 
-    it('should accept Grafana subdomains', () => {
-      expect(isGrafanaDocsUrl('https://www.grafana.com/docs/')).toBe(true);
-      expect(isGrafanaDocsUrl('https://docs.grafana.com/docs/')).toBe(true);
+    it('should REJECT all subdomains (strict allowlist)', () => {
+      // Only exact grafana.com allowed - NO subdomains including www
+      expect(isGrafanaDocsUrl('https://www.grafana.com/docs/')).toBe(false);
+      expect(isGrafanaDocsUrl('https://docs.grafana.com/docs/')).toBe(false);
+      expect(isGrafanaDocsUrl('https://evil.grafana.com/docs/')).toBe(false);
     });
 
     it('should REJECT domain hijacking attempts', () => {

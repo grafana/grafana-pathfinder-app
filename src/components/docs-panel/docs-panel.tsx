@@ -6,7 +6,7 @@ import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana
 import { IconButton, Alert, Icon, useStyles2, Button } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { DocsPluginConfig } from '../../constants';
+import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../../constants';
 
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
@@ -1096,8 +1096,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         try {
                           if (url && typeof url === 'string') {
                             const parsed = new URL(url);
-                            isGrafanaDomain =
-                              parsed.hostname === 'grafana.com' || parsed.hostname.endsWith('.grafana.com');
+                            // Security: Use exact hostname matching from allowlist (no subdomains)
+                            isGrafanaDomain = ALLOWED_GRAFANA_DOCS_HOSTNAMES.includes(parsed.hostname);
                           }
                         } catch {
                           isGrafanaDomain = false;

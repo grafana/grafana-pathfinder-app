@@ -30,7 +30,6 @@ describe('Security: HTTPS Enforcement', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
-    delete (window as any).__PathfinderTestingMode;
   });
 
   describe('Content Fetcher HTTPS Validation', () => {
@@ -69,19 +68,6 @@ describe('Security: HTTPS Enforcement', () => {
       expect(global.fetch).toHaveBeenCalled();
     });
 
-    it('should allow HTTP in test mode', async () => {
-      (window as any).__PathfinderTestingMode = true;
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        url: 'http://test.example.com/docs/test',
-        text: () => Promise.resolve('<html><body>Test Content</body></html>'),
-      });
-
-      const result = await fetchContent('http://test.example.com/docs/test');
-
-      expect(result.content).not.toBeNull();
-    });
-
     it('should reject FTP protocol', async () => {
       const result = await fetchContent('ftp://grafana.com/docs/test');
 
@@ -104,7 +90,6 @@ describe('Security: Redirect Chain Validation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
-    delete (window as any).__PathfinderTestingMode;
   });
 
   it('should accept redirects to trusted domains', async () => {
@@ -312,7 +297,6 @@ describe('Security: Text Sanitization for External APIs', () => {
 describe('Security: Dev Mode Localhost Handling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    delete (window as any).__PathfinderTestingMode;
   });
 
   it('should allow localhost in dev mode for content URLs', async () => {
@@ -370,7 +354,6 @@ describe('Security: Protocol Validation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
-    delete (window as any).__PathfinderTestingMode;
   });
 
   it('should reject javascript: protocol', async () => {
@@ -404,51 +387,6 @@ describe('Security: Protocol Validation', () => {
     const result = await fetchContent('https://grafana.com/docs/test');
 
     expect(result.content).not.toBeNull();
-  });
-});
-
-describe('Security: Test Mode Behavior', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
-  });
-
-  it('should allow test mode to bypass URL validation', async () => {
-    (window as any).__PathfinderTestingMode = true;
-    (global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      url: 'http://test.example.com/docs',
-      text: () => Promise.resolve('<html><body>Test Content</body></html>'),
-    });
-
-    const result = await fetchContent('http://test.example.com/docs');
-
-    expect(result.content).not.toBeNull();
-  });
-
-  it('should still sanitize content in test mode', async () => {
-    (window as any).__PathfinderTestingMode = true;
-    (global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      url: 'http://test.example.com/docs',
-      text: () => Promise.resolve('<html><body><script>alert("XSS")</script>Test Content</body></html>'),
-    });
-
-    const result = await fetchContent('http://test.example.com/docs');
-
-    // Content should be fetched but sanitized
-    expect(result.content).not.toBeNull();
-    // DOMPurify sanitization happens in html-parser.ts, not in content-fetcher
-    // This test validates the content is fetched; sanitization is tested in security.test.ts
-  });
-
-  it('should disable test mode correctly', async () => {
-    (window as any).__PathfinderTestingMode = false;
-
-    const result = await fetchContent('http://test.example.com/docs');
-
-    expect(result.content).toBeNull();
-    expect(result.error).toBeTruthy();
   });
 });
 

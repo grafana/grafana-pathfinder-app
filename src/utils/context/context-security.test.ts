@@ -3,6 +3,12 @@
  *
  * Tests for security features that validate recommender service URLs
  * and protect against MITM attacks on the recommendation API.
+ *
+ * Note: This test suite uses static domain lists rather than importing
+ * from the code to avoid coupling tests to implementation details.
+ * The valid domains should match ALLOWED_RECOMMENDER_DOMAINS from constants.ts:
+ * - recommender.grafana.com
+ * - recommender.grafana-dev.com
  */
 
 import { ContextService } from './context.service';
@@ -168,6 +174,8 @@ describe('Security: Recommender Service URL Validation', () => {
   });
 
   describe('Domain Allowlist', () => {
+    // Static list of valid domains for testing (matches ALLOWED_RECOMMENDER_DOMAINS from constants)
+    // Using static list to avoid coupling tests to code implementation
     it('should accept allowlisted Grafana domains', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
@@ -193,10 +201,11 @@ describe('Security: Recommender Service URL Validation', () => {
         searchParams: {},
       };
 
-      const validUrls = [
-        'https://recommender.grafana.com/recommend',
-        'https://recommender-staging.grafana.com/recommend',
-      ];
+      // Static domain list for testing - EXACT matches only (no subdomains)
+      // Only these domains from ALLOWED_RECOMMENDER_DOMAINS are allowed:
+      // - recommender.grafana.com
+      // - recommender.grafana-dev.com
+      const validUrls = ['https://recommender.grafana.com/recommend', 'https://recommender.grafana-dev.com/recommend'];
 
       for (const url of validUrls) {
         jest.clearAllMocks();
@@ -235,11 +244,15 @@ describe('Security: Recommender Service URL Validation', () => {
         searchParams: {},
       };
 
+      // Static list of invalid domains for testing - these should always be rejected
       const invalidUrls = [
         'https://evil.com/recommend',
-        'https://recommender-grafana.com/recommend', // Prefix attack
-        'https://grafana.com.evil.com/recommend', // Suffix attack
+        'https://recommender-grafana.com/recommend', // Similar name but not in allowlist
+        'https://grafana.com.evil.com/recommend', // Domain hijacking attempt
         'https://api.malicious.com/recommend',
+        'https://recommender-staging.grafana.com/recommend', // Not in allowlist
+        'https://api.recommender.grafana.com/recommend', // Subdomain not allowed
+        'https://test.recommender.grafana-dev.com/recommend', // Subdomain not allowed
       ];
 
       for (const url of invalidUrls) {
