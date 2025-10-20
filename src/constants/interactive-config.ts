@@ -144,6 +144,12 @@ export function getInteractiveConfig(pluginConfig?: DocsPluginConfig) {
 export const INTERACTIVE_CONFIG = INTERACTIVE_CONFIG_DEFAULTS;
 
 /**
+ * Clear command constant for form fill operations
+ * Use @@CLEAR@@ at the start of targetvalue to clear before filling
+ */
+export const CLEAR_COMMAND = '@@CLEAR@@' as const;
+
+/**
  * Type-safe access to configuration values
  */
 export type InteractiveConfig = typeof INTERACTIVE_CONFIG_DEFAULTS;
