@@ -13,8 +13,38 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
   const styles = getHelpFooterStyles(theme);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
+  let helpNode = null;
+  let useHelpNavItemAvailable = true;
+
+  try {
+    helpNode = useHelpNavItem();
+  } catch (error) {
+    useHelpNavItemAvailable = false;
+  }
+
+  const helpButtons = React.useMemo(() => {
+    if (useHelpNavItemAvailable && helpNode?.children && helpNode.children.length > 0) {
+      return helpNode.children.map((child) => ({
+        key: child.id || child.text.toLowerCase().replace(/\s+/g, '-'),
+        label: child.text,
+        icon: (child.icon || 'question-circle') as any,
+        href: child.url,
+        target: child.target,
+        onClick: child.onClick,
+      }));
+    }
+    return [];
+  }, [useHelpNavItemAvailable, helpNode]);
+
+  const versionInfo = React.useMemo(() => {
+    if (useHelpNavItemAvailable && helpNode?.subTitle) {
+      return helpNode.subTitle;
+    }
+    return null;
+  }, [useHelpNavItemAvailable, helpNode]);
+
   // Check if useHelpNavItem is available for backwards compatibility
-  if (typeof useHelpNavItem === 'undefined') {
+  if (!useHelpNavItemAvailable) {
     // Old implementation for backwards compatibility
     const handleKeyboardShortcuts = () => {
       setIsHelpModalOpen(true);
@@ -166,7 +196,9 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
               </div>
 
               <div style={{ marginBottom: '16px' }}>
-                <h3 style={{ marginBottom: '8px' }}>{t('helpFooter.modal.dashboardShortcuts', 'Dashboard Shortcuts')}</h3>
+                <h3 style={{ marginBottom: '8px' }}>
+                  {t('helpFooter.modal.dashboardShortcuts', 'Dashboard Shortcuts')}
+                </h3>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '8px', fontSize: '14px' }}>
                   <div>
                     <kbd
@@ -226,29 +258,6 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
   }
 
   // New implementation using useHelpNavItem
-  const helpNode = useHelpNavItem();
-
-  const helpButtons = React.useMemo(() => {
-    if (helpNode?.children && helpNode.children.length > 0) {
-      return helpNode.children.map((child) => ({
-        key: child.id || child.text.toLowerCase().replace(/\s+/g, '-'),
-        label: child.text,
-        icon: (child.icon || 'question-circle') as any,
-        href: child.url,
-        target: child.target,
-        onClick: child.onClick,
-      }));
-    }
-
-    return [];
-  }, [helpNode]);
-
-  const versionInfo = React.useMemo(() => {
-    if (helpNode?.subTitle) {
-      return helpNode.subTitle;
-    }
-    return null;
-  }, [helpNode]);
 
   if (helpButtons.length === 0) {
     return null;
