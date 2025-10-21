@@ -1,0 +1,169 @@
+---
+title: Frontend Security Rule
+description: Unified frontend security rule covering frontend code and AI agent behavior.
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.js"
+  - "**/*.jsx"
+alwaysApply: true
+---
+
+# Frontend Security Rules
+
+## F1 — Avoid Untrusted SVGs
+Do **not** use dynamically generated or user-supplied SVGs directly, as they can cause XSS vulnerabilities.  
+If you must render a non-static SVG, sanitize it first using **DOMPurify**.
+
+**Do**
+```tsx
+import DOMPurify from 'dompurify';
+const clean = DOMPurify.sanitize(untrustedSvg, { USE_PROFILES: { svg: true } });
+return <div dangerouslySetInnerHTML={{ __html: clean }} />;
+```
+
+**Don’t**
+```tsx
+return <div dangerouslySetInnerHTML={{ __html: untrustedSvg }} />;
+```
+
+**Agent behavior**  
+If SVG data originates from user input, remote URLs, or uploads, **always** sanitize with DOMPurify or prefer a React-based icon component instead.
+
+---
+
+## F2 — Use Safe React Data Bindings
+React data bindings (`{}`) automatically escape values and prevent XSS.  
+Always prefer these for inserting dynamic text.
+
+**Do**
+```tsx
+return <li>{data}</li>;
+```
+
+**Don’t**
+```tsx
+return <li dangerouslySetInnerHTML={{ __html: data }} />;
+```
+
+**Agent behavior**  
+Prefer `{}` over `dangerouslySetInnerHTML`. Only allow `dangerouslySetInnerHTML` when absolutely required **and** when properly sanitized (see F4).
+
+---
+
+## F3 — Don’t Treat URLs as Strings
+Always use a proper URL parsing/handling API — e.g., the native **`URL`** constructor, **`URLSearchParams`**, or safe utilities provided by your framework.  
+Prefer the URL Web API directly instead of string concatenation.
+
+**Don’t**
+```ts
+// Unsafe string concatenation
+const endpoint = apiBase + '/users?id=' + userId;
+fetch(endpoint);
+
+const redirectUrl = '/redirect?target=' + location.href;
+window.location.href = redirectUrl;
+```
+
+**Do**
+```ts
+// Safe construction with URL and URLSearchParams
+const url = new URL('/users', apiBase);
+url.searchParams.set('id', userId);
+await fetch(url.toString());
+
+// Validate redirects
+const nextUrl = new URL(userInputUrl, window.location.origin);
+if (nextUrl.origin === window.location.origin) {
+  window.location.href = nextUrl.toString();
+} else {
+  console.error('Blocked potential open redirect');
+}
+```
+
+**Agent behavior**
+- Never build URLs through string concatenation.  
+- Always use `new URL()` or an equivalent safe API.  
+- For user-supplied URLs:
+  - Validate origin and protocol before using or redirecting.
+  - Reject `javascript:` or `data:` URLs.
+  - Apply `textUtil.sanitizeUrl()` when in doubt.
+- Prefer explicit accessors (`url.hostname`, `url.pathname`, `url.searchParams`) over string slicing or regex.
+
+---
+
+## F4 — Sanitize HTML and URLs
+Avoid `dangerouslySetInnerHTML` unless you sanitize first.  
+Always sanitize HTML and URLs before rendering or linking.
+
+**Do**
+```tsx
+import { textUtil } from '@grafana/data';
+
+// Sanitize HTML:
+return <div dangerouslySetInnerHTML={{ __html: textUtil.sanitize(data) }} />;
+
+// Sanitize URLs:
+const safeHref = textUtil.sanitizeUrl(url);
+return <a href={safeHref}>{label}</a>;
+```
+
+**Don’t**
+```tsx
+return <div dangerouslySetInnerHTML={{ __html: data }} />;
+<a href={url}>{label}</a>;
+```
+
+**Agent behavior**  
+If suggesting `dangerouslySetInnerHTML`, ensure it is paired with `textUtil.sanitize`.  
+Add a clear comment, for example:
+// SECURITY: sanitized HTML before injection (F4)
+
+---
+
+## F5 — Avoid Insecure DOM APIs
+Avoid unsafe DOM APIs that can inject malicious content.
+
+**Forbidden**
+- `element.innerHTML`
+- `element.outerHTML`
+- `insertAdjacentHTML`
+- dynamic `script.src` assignments
+
+**Do**
+```ts
+const el = document.createElement('div');
+el.textContent = userInput; // safe text insertion
+```
+
+**Don’t**
+```ts
+el.innerHTML = userInput;
+const script = document.createElement('script');
+script.src = dynamicUrl;
+```
+
+**Agent behavior**  
+Use `document.createElement`, `textContent`, and safe attribute APIs for dynamic content.  
+If HTML is needed, apply F4 sanitization first.
+
+---
+
+## F6 — Global URL & Link Validation
+- Reject or sanitize dangerous URL schemes (`javascript:`, `data:`, etc.).  
+- Always pass URLs through `textUtil.sanitizeUrl(url)` before use (this wraps a hardened sanitizer).  
+- Never build anchors or images with unvalidated external input.
+
+---
+
+## Agent Conduct
+- When uncertain about sanitization or trust level, **pause and request review**.  
+- Prefer removing unsafe code over leaving TODOs.  
+- Annotate security-relevant changes:
+```tsx
+// SECURITY: sanitized SVG (F1)
+// SECURITY: used safe React binding (F2)
+// SECURITY: constructed URL with URL API (F3)
+// SECURITY: sanitized HTML/URL (F4)
+// SECURITY: avoided unsafe DOM API (F5)
+```
