@@ -7,7 +7,7 @@ import {
   ALLOWED_RECOMMENDER_DOMAINS,
 } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
-import { hashUserData, hashString } from '../../lib/hash.util';
+import { hashUserData } from '../../lib/hash.util';
 import { isDevModeEnabledGlobal } from '../dev-mode';
 import { sanitizeTextForDisplay } from '../docs-retrieval/html-sanitizer';
 import { parseUrlSafely } from '../url-validator';
@@ -410,10 +410,7 @@ export class ContextService {
             return 'oss-source';
           }
 
-          // Cloud users - hash hostname for privacy (could contain customer/company name)
-          // Example: mycompany.grafana.net contains PII
-          const hashedHostname = await hashString(hostname);
-          return hashedHostname;
+          return hostname;
         } catch (error) {
           console.warn('Failed to extract/hash source:', error);
           return undefined;
