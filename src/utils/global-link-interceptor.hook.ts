@@ -1,6 +1,14 @@
 import { useEffect } from 'react';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
-import { isAllowedContentUrl } from '../utils/url-validator';
+import {
+  isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isLocalhostUrl,
+} from '../utils/url-validator';
+import { ALLOWED_GITHUB_REPOS } from '../constants';
+import { isDevModeEnabledGlobal } from './dev-mode';
 
 interface GlobalLinkInterceptorProps {
   onOpenDocsLink: (url: string, title: string) => void;
@@ -11,15 +19,21 @@ interface GlobalLinkInterceptorProps {
  * Determines if a URL is a supported docs link that can be opened in Pathfinder
  * Uses proper URL parsing to prevent domain hijacking attacks
  *
- * In production: Only Grafana docs URLs
- * In dev mode: Also allows localhost URLs for testing
+ * SECURITY (F6): Must match the same validation as content-fetcher, docs-panel, and link-handler
+ * In production: Grafana docs URLs and approved GitHub repos
+ * In dev mode: Also allows any GitHub URLs and localhost URLs for testing
  *
  * Note: Only validates full URLs. Relative paths should be resolved first before validation.
  */
 function isSupportedDocsUrl(url: string): boolean {
   try {
-    // Use centralized secure validator with dev mode support
-    return isAllowedContentUrl(url);
+    // SECURITY: Validate URL is from a trusted source (F6)
+    return (
+      isAllowedContentUrl(url) ||
+      isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
+      isGitHubUrl(url) ||
+      (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url)))
+    );
   } catch (error) {
     console.warn('Error checking if URL is supported:', error);
     return false;

@@ -3,7 +3,7 @@
 // for interactive documentation features
 
 import DOMPurify from 'dompurify';
-import { isYouTubeDomain } from '../url-validator';
+import { isYouTubeDomain, isVimeoDomain } from '../url-validator';
 
 /**
  * Sanitizes HTML content for documentation rendering.
@@ -13,8 +13,8 @@ import { isYouTubeDomain } from '../url-validator';
  * Security features:
  * - Allowlists custom documentation elements
  * - Preserves data-* attributes for interactive functionality
- * - YouTube iframes: allowed with enablejsapi
- * - Other iframes: forced sandbox attributes
+ * - Video platform iframes (YouTube, Vimeo): allowed without sandbox, browser default referrer policy
+ * - Other iframes: forced sandbox="" (maximum restrictions) and no-referrer policy
  * - Enforces rel="noopener noreferrer" on target="_blank" links
  *
  * @param html - Raw HTML string from documentation source
@@ -295,20 +295,31 @@ export function sanitizeDocumentationHTML(html: string): string {
         return;
       }
 
-      // Validate YouTube domains using proper URL parsing
+      // Validate video platform domains using proper URL parsing
       // This prevents domain hijacking attacks like youtube.com.evil.com
-      if (isYouTubeDomain(src)) {
-        // YouTube iframes: Trusted source, allow with API access for analytics
-        // Add enablejsapi parameter if not present
-        if (!src.includes('enablejsapi=1')) {
-          const separator = src.includes('?') ? '&' : '?';
-          node.setAttribute('src', `${src}${separator}enablejsapi=1`);
+      const isYouTube = isYouTubeDomain(src);
+      const isVimeo = isVimeoDomain(src);
+
+      if (isYouTube || isVimeo) {
+        // SECURITY: Trusted video platforms - allow without sandbox restrictions
+        // These platforms need scripts to function (video player, analytics, etc.)
+
+        if (isYouTube) {
+          // YouTube iframes: Add enablejsapi parameter for analytics if not present
+          if (!src.includes('enablejsapi=1')) {
+            const separator = src.includes('?') ? '&' : '?';
+            node.setAttribute('src', `${src}${separator}enablejsapi=1`);
+          }
         }
-        // Still enforce no-referrer policy even for YouTube
-        node.setAttribute('referrerpolicy', 'no-referrer');
+        // Note: Vimeo iframes work as-is, no special parameters needed
+
+        // SECURITY: Don't set referrerpolicy for video platforms - let browser use default
+        // Setting no-referrer causes playback errors (YouTube error 153, Vimeo similar)
+        // Browser default (usually strict-origin-when-cross-origin) is sufficient
       } else {
-        // Non-YouTube iframes: Maximum security restrictions (Grafana pattern)
-        // Empty sandbox = most restrictive (no scripts, no forms, no plugins, etc.)
+        // Non-video platform iframes: Maximum security restrictions (Grafana pattern)
+        // SECURITY: Empty sandbox="" = most restrictive (no scripts, no forms, no plugins, etc.)
+        // Note: The HTML parser preserves this empty string value correctly for React rendering
         node.setAttribute('sandbox', '');
         node.setAttribute('referrerpolicy', 'no-referrer');
       }

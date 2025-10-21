@@ -6,12 +6,25 @@ import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana
 import { IconButton, Alert, Icon, useStyles2, Button } from '@grafana/ui';
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES, getConfigWithDefaults } from '../../constants';
+import {
+  DocsPluginConfig,
+  ALLOWED_GRAFANA_DOCS_HOSTNAMES,
+  ALLOWED_GITHUB_REPOS,
+  getConfigWithDefaults,
+} from '../../constants';
 
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
-import { parseUrlSafely, isAllowedContentUrl } from '../../utils/url-validator';
+import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+import {
+  parseUrlSafely,
+  isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isLocalhostUrl,
+} from '../../utils/url-validator';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -159,11 +172,26 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         parsedData.forEach((data) => {
           // SECURITY: Validate URLs before restoring from localStorage
           // This prevents XSS attacks via localStorage injection
-          const isValidBase = isAllowedContentUrl(data.baseUrl);
-          const isValidCurrent = !data.currentUrl || isAllowedContentUrl(data.currentUrl);
+          // Must match the same validation as content-fetcher (lines 81-85)
+          const validateUrl = (url: string): boolean => {
+            return (
+              isAllowedContentUrl(url) ||
+              isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
+              isGitHubUrl(url) ||
+              (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url)))
+            );
+          };
+
+          const isValidBase = validateUrl(data.baseUrl);
+          const isValidCurrent = !data.currentUrl || validateUrl(data.currentUrl);
 
           if (!isValidBase || !isValidCurrent) {
-            console.warn('Rejected potentially unsafe URL from localStorage:');
+            console.warn('Rejected potentially unsafe URL from localStorage:', {
+              baseUrl: data.baseUrl,
+              currentUrl: data.currentUrl,
+              isValidBase,
+              isValidCurrent,
+            });
             return; // Skip this tab
           }
 

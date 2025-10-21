@@ -4,10 +4,18 @@ import { SceneApp } from '@grafana/scenes';
 import { docsPage } from '../../pages/docsPage';
 import { ContextPanelComponent } from '../../utils/docs.utils';
 import { PluginPropsContext } from '../../utils/utils.plugin';
-import { getConfigWithDefaults } from '../../constants';
+import { getConfigWithDefaults, ALLOWED_GITHUB_REPOS } from '../../constants';
 import { setGlobalLinkInterceptionEnabled } from '../../module';
-import { parseUrlSafely, isAllowedContentUrl } from '../../utils/url-validator';
+import {
+  parseUrlSafely,
+  isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isLocalhostUrl,
+} from '../../utils/url-validator';
 import { onPluginStart } from '../../utils/context';
+import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 
 function getSceneApp() {
   return new SceneApp({
@@ -40,10 +48,17 @@ function App(props: AppRootProps) {
     const tutorialUrl = config.tutorialUrl;
 
     if (tutorialUrl && tutorialUrl.trim()) {
-      // Validate tutorial URL for security (user-configurable setting)
-      // In production: Only Grafana docs and bundled content
-      // In dev mode: Also allows localhost URLs for testing
-      if (!isAllowedContentUrl(tutorialUrl)) {
+      // SECURITY (F6): Validate tutorial URL for security (user-configurable setting)
+      // Must match the same validation as content-fetcher, docs-panel, link-handler, global-link-interceptor, and module
+      // In production: Grafana docs, bundled content, and approved GitHub repos
+      // In dev mode: Also allows any GitHub URLs and localhost URLs for testing
+      const isValidUrl =
+        isAllowedContentUrl(tutorialUrl) ||
+        isAllowedGitHubRawUrl(tutorialUrl, ALLOWED_GITHUB_REPOS) ||
+        isGitHubUrl(tutorialUrl) ||
+        (isDevModeEnabledGlobal() && (isLocalhostUrl(tutorialUrl) || isGitHubRawUrl(tutorialUrl)));
+
+      if (!isValidUrl) {
         console.error('Invalid tutorial URL in configuration:', tutorialUrl);
         return;
       }

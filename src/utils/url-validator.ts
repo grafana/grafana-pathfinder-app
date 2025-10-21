@@ -166,6 +166,41 @@ export function isYouTubeDomain(urlString: string): boolean {
 }
 
 /**
+ * Check if URL is a valid Vimeo domain
+ *
+ * Security: Validates hostname is an exact match to known Vimeo domains
+ *
+ * @param urlString - The URL to validate
+ * @returns true if valid Vimeo URL, false otherwise
+ *
+ * @example
+ * isVimeoDomain('https://player.vimeo.com/video/123456') // true
+ * isVimeoDomain('https://vimeo.com.evil.com/video/') // false
+ */
+export function isVimeoDomain(urlString: string): boolean {
+  const url = parseUrlSafely(urlString);
+  if (!url) {
+    return false;
+  }
+
+  // Only allow https protocol
+  if (url.protocol !== 'https:') {
+    return false;
+  }
+
+  // Exact hostname matching (no subdomain wildcards)
+  const allowedHosts = [
+    'player.vimeo.com',
+    'vimeo.com',
+    'www.vimeo.com',
+    'vimeocdn.com', // CDN domain for Vimeo scripts
+    'f.vimeocdn.com', // Froogaloop API domain
+  ];
+
+  return allowedHosts.includes(url.hostname);
+}
+
+/**
  * Check if URL is a valid GitHub raw content URL from allowed repositories
  *
  * SECURITY: Validates both repository AND branch/ref to prevent PR/commit-based attacks

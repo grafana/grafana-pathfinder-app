@@ -151,8 +151,14 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
         // Map HTML attribute names to React prop names
         const reactPropName = attributeMap[attrName] || attrName;
 
+        // SECURITY (F6): Preserve empty string for sandbox attribute
+        // Empty sandbox="" means maximum restrictions, not a boolean true
+        // Other enumerated attributes that use empty strings meaningfully
+        const preserveEmptyString = new Set(['sandbox']);
+
         // Convert boolean attributes for React (e.g., disabled="" → disabled={true})
-        if (attrValue === '' || attrValue === attrName) {
+        // But preserve empty strings for attributes where they have specific meaning
+        if ((attrValue === '' || attrValue === attrName) && !preserveEmptyString.has(attrName)) {
           props[reactPropName] = true;
         } else {
           props[reactPropName] = attrValue;

@@ -7,7 +7,13 @@
 
 import { sanitizeDocumentationHTML } from './docs-retrieval/html-sanitizer';
 import { parseHTMLToComponents } from './docs-retrieval/html-parser';
-import { parseUrlSafely, isGrafanaDocsUrl, isYouTubeDomain, isAllowedGitHubRawUrl } from './url-validator';
+import {
+  parseUrlSafely,
+  isGrafanaDocsUrl,
+  isYouTubeDomain,
+  isVimeoDomain,
+  isAllowedGitHubRawUrl,
+} from './url-validator';
 
 describe('Security: XSS Prevention with DOMPurify', () => {
   it('should strip script tags', () => {
@@ -131,6 +137,27 @@ describe('Security: URL Validation - Domain Hijacking Prevention', () => {
     it('should REJECT dangerous protocols', () => {
       expect(isYouTubeDomain('javascript:youtube.com')).toBe(false);
       expect(isYouTubeDomain('data:text/html,youtube.com')).toBe(false);
+    });
+  });
+
+  describe('isVimeoDomain', () => {
+    it('should accept valid Vimeo domains', () => {
+      expect(isVimeoDomain('https://player.vimeo.com/video/123456')).toBe(true);
+      expect(isVimeoDomain('https://vimeo.com/123456')).toBe(true);
+      expect(isVimeoDomain('https://www.vimeo.com/123456')).toBe(true);
+      expect(isVimeoDomain('https://f.vimeocdn.com/p/3.0/api/player.js')).toBe(true);
+    });
+
+    it('should REJECT Vimeo domain hijacking', () => {
+      expect(isVimeoDomain('https://vimeo.com.evil.com/video/')).toBe(false);
+      expect(isVimeoDomain('https://a-vimeo.com/video/')).toBe(false);
+      expect(isVimeoDomain('https://evil.com/vimeo.com/video/')).toBe(false);
+    });
+
+    it('should REJECT dangerous protocols', () => {
+      expect(isVimeoDomain('javascript:vimeo.com')).toBe(false);
+      expect(isVimeoDomain('data:text/html,vimeo.com')).toBe(false);
+      expect(isVimeoDomain('http://vimeo.com/video/')).toBe(false); // Only HTTPS
     });
   });
 
@@ -364,10 +391,24 @@ describe('Security: YouTube Iframe Validation', () => {
     expect(result).toContain('<iframe');
     expect(result).toContain('youtube.com');
     expect(result).toContain('enablejsapi=1'); // Should be added automatically
-    expect(result).toContain('referrerpolicy="no-referrer"');
+    // YouTube iframes should NOT have referrerpolicy set - browser default is sufficient
+    // Setting no-referrer causes YouTube playback error 153
+    expect(result).not.toContain('referrerpolicy');
   });
 
-  it('should sandbox non-YouTube iframes', () => {
+  it('should accept valid Vimeo iframes without sandbox restrictions', () => {
+    const iframe = '<iframe src="https://player.vimeo.com/video/123456"></iframe>';
+    const result = sanitizeDocumentationHTML(iframe);
+
+    expect(result).toContain('<iframe');
+    expect(result).toContain('player.vimeo.com');
+    // Vimeo should NOT be sandboxed (needs scripts to work)
+    expect(result).not.toContain('sandbox');
+    // Vimeo should NOT have referrerpolicy set (uses browser default)
+    expect(result).not.toContain('referrerpolicy');
+  });
+
+  it('should sandbox non-video platform iframes', () => {
     const iframe = '<iframe src="https://example.com/embed/"></iframe>';
     const result = sanitizeDocumentationHTML(iframe);
 

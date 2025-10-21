@@ -425,20 +425,50 @@ async function fetchRawHtml(
 
         // Try to fetch the redirect target if it's a relative URL
         if (location.startsWith('/')) {
-          const baseUrlMatch = url.match(/^(https?:\/\/[^\/]+)/);
-          if (baseUrlMatch) {
-            const fullRedirectUrl = baseUrlMatch[1] + location;
-            try {
-              const redirectResponse = await fetch(fullRedirectUrl, fetchOptions);
-              if (redirectResponse.ok) {
-                const html = await redirectResponse.text();
-                if (html && html.trim()) {
-                  return { html, finalUrl: redirectResponse.url };
+          try {
+            // SECURITY (F3): Use URL constructor instead of string concatenation
+            // Parse original URL to get origin
+            const originalUrl = new URL(url);
+            const redirectUrl = new URL(location, originalUrl.origin);
+
+            // SECURITY (F6): Validate redirect stays within same origin
+            if (redirectUrl.origin !== originalUrl.origin) {
+              console.warn(`Blocked redirect to different origin: ${redirectUrl.origin}`);
+              lastError = {
+                message: `Cross-origin redirect blocked for security: ${redirectUrl.origin}`,
+                errorType: 'other',
+              };
+            } else {
+              // SECURITY: Re-validate the redirect URL is still trusted
+              // Must match the same validation as the main fetch (lines 350-359)
+              const isRedirectTrusted =
+                isAllowedContentUrl(redirectUrl.href) ||
+                isAllowedGitHubRawUrl(redirectUrl.href, ALLOWED_GITHUB_REPOS) ||
+                isGitHubUrl(redirectUrl.href) ||
+                (isDevModeEnabledGlobal() && (isLocalhostUrl(redirectUrl.href) || isGitHubRawUrl(redirectUrl.href)));
+
+              if (!isRedirectTrusted) {
+                console.warn(`Redirect target not in trusted domain list: ${redirectUrl.href}`);
+                lastError = {
+                  message: 'Redirect target is not in trusted domain list',
+                  errorType: 'other',
+                };
+              } else {
+                const redirectResponse = await fetch(redirectUrl.href, fetchOptions);
+                if (redirectResponse.ok) {
+                  const html = await redirectResponse.text();
+                  if (html && html.trim()) {
+                    return { html, finalUrl: redirectResponse.url };
+                  }
                 }
               }
-            } catch (redirectError) {
-              console.warn(`Failed to fetch redirect target ${fullRedirectUrl}:`, redirectError);
             }
+          } catch (redirectError) {
+            console.warn(`Failed to fetch redirect target:`, redirectError);
+            lastError = {
+              message: redirectError instanceof Error ? redirectError.message : 'Redirect failed',
+              errorType: 'other',
+            };
           }
         }
       } else {
@@ -534,7 +564,10 @@ function generateGitHubVariations(url: string): string[] {
       const treeMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
       if (treeMatch) {
         const [_fullMatch, owner, repo, branch, path] = treeMatch;
-        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/refs/heads/${branch}/${path}/unstyled.html`;
+        // SECURITY (F3): Use URL constructor instead of template literal
+        // Note: raw.githubusercontent.com URLs use /{owner}/{repo}/{branch}/{path} format
+        // NOT /{owner}/{repo}/refs/heads/{branch}/{path}
+        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/unstyled.html`;
         variations.push(rawUrl);
       }
 
