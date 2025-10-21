@@ -11,8 +11,15 @@ import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { getConfigWithDefaults } from './constants';
-import { isAllowedContentUrl } from './utils/url-validator';
+import { getConfigWithDefaults, ALLOWED_GITHUB_REPOS } from './constants';
+import {
+  isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isLocalhostUrl,
+} from './utils/url-validator';
+import { isDevModeEnabledGlobal } from './utils/dev-mode';
 
 // Persistent queue for docs links clicked before sidebar opens
 interface QueuedDocsLink {
@@ -85,10 +92,17 @@ function initializeGlobalLinkInterceptor() {
       return;
     }
 
-    // Check if it's a supported docs URL using secure validation
-    // In production: Only Grafana docs URLs
-    // In dev mode: Also allows localhost URLs for testing
-    if (!isAllowedContentUrl(fullUrl)) {
+    // SECURITY (F6): Check if it's a supported docs URL using secure validation
+    // Must match the same validation as content-fetcher, docs-panel, link-handler, and global-link-interceptor
+    // In production: Grafana docs URLs and approved GitHub repos
+    // In dev mode: Also allows any GitHub URLs and localhost URLs for testing
+    const isValidUrl =
+      isAllowedContentUrl(fullUrl) ||
+      isAllowedGitHubRawUrl(fullUrl, ALLOWED_GITHUB_REPOS) ||
+      isGitHubUrl(fullUrl) ||
+      (isDevModeEnabledGlobal() && (isLocalhostUrl(fullUrl) || isGitHubRawUrl(fullUrl)));
+
+    if (!isValidUrl) {
       return;
     }
 

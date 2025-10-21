@@ -8,8 +8,15 @@ import {
   enrichWithStepContext,
 } from '../lib/analytics';
 import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
-import { parseUrlSafely, isAllowedContentUrl, isAllowedGitHubRawUrl, isAnyGitHubUrl } from './url-validator';
+import {
+  parseUrlSafely,
+  isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
+  isAnyGitHubUrl,
+  isLocalhostUrl,
+} from './url-validator';
 import { ALLOWED_GITHUB_REPOS } from '../constants';
+import { isDevModeEnabledGlobal } from './dev-mode';
 
 interface LearningJourneyTab {
   id: string;
@@ -39,36 +46,29 @@ interface UseLinkClickHandlerProps {
 }
 
 /**
+ * SECURITY: Validate URL is from a trusted Grafana source (NOT GitHub)
+ * GitHub URLs are handled separately in the link handler with specialized logic
+ * This function is only for Grafana.com docs and localhost (dev mode)
+ */
+function isValidGrafanaContentUrl(url: string): boolean {
+  return isAllowedContentUrl(url) || (isDevModeEnabledGlobal() && isLocalhostUrl(url));
+}
+
+/**
  * Attempts to construct an unstyled.html URL for external content
  * This is used to try to embed external documentation in our app
  */
 function tryConstructUnstyledUrl(originalUrl: string): string | null {
   try {
-    // Common patterns for unstyled content
-    const unstyledPatterns = [
-      // Add /unstyled.html to the path
-      () => {
-        const newUrl = new URL(originalUrl);
-        newUrl.pathname = newUrl.pathname.replace(/\/$/, '') + '/unstyled.html';
-        return newUrl.href;
-      },
-      // Replace .html with /unstyled.html
-      () => {
-        if (originalUrl.endsWith('.html')) {
-          return originalUrl.replace(/\.html$/, '/unstyled.html');
-        }
-        return null;
-      },
-      // Add unstyled query parameter
-      () => {
-        const newUrl = new URL(originalUrl);
-        newUrl.searchParams.set('unstyled', 'true');
-        return newUrl.href;
-      },
-    ];
+    // For files ending in .html, replace with /unstyled.html
+    if (originalUrl.endsWith('.html')) {
+      return originalUrl.replace(/\.html$/, '/unstyled.html');
+    }
 
-    // Try the first pattern (most common)
-    return unstyledPatterns[0]();
+    // For directory URLs, append /unstyled.html
+    const newUrl = new URL(originalUrl);
+    newUrl.pathname = newUrl.pathname.replace(/\/$/, '') + '/unstyled.html';
+    return newUrl.href;
   } catch (error) {
     console.warn('Failed to construct unstyled URL for:', originalUrl, error);
     return null;
@@ -205,7 +205,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             }
           }
 
-          if (isAllowedContentUrl(fullUrl)) {
+          if (isValidGrafanaContentUrl(fullUrl)) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,
@@ -213,7 +213,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             const linkText = anchor.textContent?.trim() || 'Documentation';
 
-            // Parse URL to check pathname (already validated by isAllowedContentUrl)
+            // Parse URL to check pathname (already validated by isValidGrafanaContentUrl)
             const urlObj = parseUrlSafely(fullUrl);
             const isLearningJourney = urlObj?.pathname.startsWith('/learning-journeys/');
 
@@ -422,7 +422,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           }
 
           // Validate the resolved URL before opening
-          if (!isAllowedContentUrl(fullUrl)) {
+          if (!isValidGrafanaContentUrl(fullUrl)) {
             console.warn('Side journey link resolved to non-allowed URL, ignoring:', fullUrl);
             return;
           }
@@ -489,7 +489,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           }
 
           // Validate the resolved URL before opening
-          if (!isAllowedContentUrl(fullUrl)) {
+          if (!isValidGrafanaContentUrl(fullUrl)) {
             console.warn('Related journey link resolved to non-allowed URL, ignoring:', fullUrl);
             return;
           }
