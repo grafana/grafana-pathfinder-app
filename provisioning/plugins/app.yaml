@@ -7,5 +7,5 @@ apps:
     disabled: false
     jsonData:
       # Docs Base URL - can be overridden with environment variable
-      docsBaseUrl: ${GF_PLUGINS_GRAFANA_PATHFINDER_APP_DOCS_URL:https://grafana.com}
+      openPanelOnLaunch: ${GRAFANA_INTERACTIVE_LEARNING_OPEN_PANEL_ON_LAUNCH:true}
       # Auto-launch tutorial URL (for demo scenarios)

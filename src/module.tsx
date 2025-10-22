@@ -156,7 +156,7 @@ function initializeGlobalLinkInterceptor() {
           type: 'open-extension-sidebar',
           payload: {
             pluginId: pluginJson.id,
-            componentTitle: 'Grafana Pathfinder',
+            componentTitle: 'Interactive learning',
           },
         });
       } catch (error) {
@@ -188,6 +188,55 @@ export function setSidebarMounted(mounted: boolean) {
 // Initialize the interceptor immediately at module load
 // It starts disabled and will be enabled when config is loaded
 initializeGlobalLinkInterceptor();
+
+// Auto-open panel on launch (only once per session)
+// Similar to global link interceptor, this runs at module load
+function initializeAutoOpenPanel() {
+  // Check if already opened in this session
+  const sessionKey = 'grafana-interactive-learning-panel-auto-opened';
+  const hasAutoOpened = sessionStorage.getItem(sessionKey);
+
+  if (hasAutoOpened) {
+    return;
+  }
+
+  // Mark as opened for this session
+  sessionStorage.setItem(sessionKey, 'true');
+
+  // Wait for config to be available and check if feature is enabled
+  // Use a short delay to ensure Grafana and config are loaded
+  setTimeout(() => {
+    try {
+      // Get config from window (similar to how dev-mode checks config globally)
+      const globalConfig = (window as any).__pathfinderPluginConfig;
+      
+      if (!globalConfig?.openPanelOnLaunch) {
+        // Feature not enabled, remove session marker so we can try again on next load
+        sessionStorage.removeItem(sessionKey);
+        return;
+      }
+
+      // Open the sidebar
+      const appEvents = getAppEvents();
+      appEvents.publish({
+        type: 'open-extension-sidebar',
+        payload: {
+          pluginId: pluginJson.id,
+          componentTitle: 'Interactive learning',
+        },
+      });
+      
+      console.warn('[Interactive learning] Panel auto-opened on launch');
+    } catch (error) {
+      console.error('[Interactive learning] Failed to auto-open panel:', error);
+      // Remove marker so we can retry on next load
+      sessionStorage.removeItem(sessionKey);
+    }
+  }, 1000);
+}
+
+// Initialize auto-open at module load
+initializeAutoOpenPanel();
 
 interface OpenExtensionSidebarPayload {
   props?: Record<string, unknown>;
@@ -244,14 +293,19 @@ export { plugin };
 
 plugin.addComponent({
   targets: `grafana/extension-sidebar/v0-alpha`,
-  title: 'Grafana Pathfinder',
-  description: 'Opens Grafana Pathfinder',
+  title: 'Interactive learning',
+  description: 'Opens Interactive learning',
   component: function ContextSidebar() {
     // Get plugin configuration
     const pluginContext = usePluginContext();
     const config = useMemo(() => {
       return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
     }, [pluginContext?.meta?.jsonData]);
+
+    // Set global config for utility functions (including auto-open logic)
+    useEffect(() => {
+      (window as any).__pathfinderPluginConfig = config;
+    }, [config]);
 
     // Enable/disable global link interception based on config
     useEffect(() => {
@@ -311,8 +365,8 @@ plugin.addComponent({
 });
 
 plugin.addLink({
-  title: 'Open Grafana Pathfinder',
-  description: 'Open Grafana Pathfinder',
+  title: 'Open Interactive learning',
+  description: 'Open Interactive learning',
   targets: [PluginExtensionPoints.CommandPalette],
   onClick: () => {
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
@@ -321,7 +375,7 @@ plugin.addLink({
       timestamp: Date.now(),
     });
 
-    openExtensionSidebar(pluginJson.id, 'Grafana Pathfinder', {
+    openExtensionSidebar(pluginJson.id, 'Interactive learning', {
       origin: 'command_palette',
       timestamp: Date.now(),
     });
@@ -339,7 +393,7 @@ plugin.addLink({
       timestamp: Date.now(),
     });
 
-    openExtensionSidebar(pluginJson.id, 'Grafana Pathfinder', {
+    openExtensionSidebar(pluginJson.id, 'Interactive learning', {
       origin: 'command_palette_help',
       timestamp: Date.now(),
     });
@@ -357,7 +411,7 @@ plugin.addLink({
       timestamp: Date.now(),
     });
 
-    openExtensionSidebar(pluginJson.id, 'Grafana Pathfinder', {
+    openExtensionSidebar(pluginJson.id, 'Interactive learning', {
       origin: 'command_palette_learn',
       timestamp: Date.now(),
     });
@@ -367,12 +421,12 @@ plugin.addLink({
 plugin.addLink({
   targets: `grafana/extension-sidebar/v0-alpha`,
   title: 'Documentation-Link',
-  description: 'Opens Grafana Pathfinder',
+  description: 'Opens Interactive learning',
   configure: () => {
     return {
       icon: 'question-circle',
-      description: 'Opens Grafana Pathfinder',
-      title: 'Grafana Pathfinder',
+      description: 'Opens Interactive learning',
+      title: 'Interactive learning',
     };
   },
   onClick: () => {},
