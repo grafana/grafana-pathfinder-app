@@ -28,16 +28,6 @@ export const getHelpFooterStyles = (theme: GrafanaTheme2) => ({
       },
       textDecoration: 'none',
       minHeight: '32px',
-
-      // Override the default secondary button hover to be more subtle
-      '&:hover:not(:disabled)': {
-        backgroundColor: theme.colors.action.hover,
-        borderColor: theme.colors.border.medium,
-        transform: 'translateY(-1px)',
-        boxShadow: theme.shadows.z1,
-        textDecoration: 'none',
-        color: theme.colors.text.primary,
-      },
     },
   ]),
   helpButtonContent: css({

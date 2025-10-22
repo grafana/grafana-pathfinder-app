@@ -2,7 +2,6 @@ import { AppRootProps } from '@grafana/data';
 import React, { useMemo, useEffect } from 'react';
 import { SceneApp } from '@grafana/scenes';
 import { docsPage } from '../../pages/docsPage';
-import { ContextPanelComponent } from '../../utils/docs.utils';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults, ALLOWED_GITHUB_REPOS } from '../../constants';
 import { setGlobalLinkInterceptionEnabled } from '../../module';
@@ -21,10 +20,6 @@ function getSceneApp() {
   return new SceneApp({
     pages: [docsPage],
   });
-}
-
-export function MemoizedContextPanel() {
-  return <ContextPanelComponent />;
 }
 
 function App(props: AppRootProps) {
