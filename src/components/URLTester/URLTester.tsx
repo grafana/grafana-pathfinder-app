@@ -116,7 +116,7 @@ const URLTesterContent = ({ children, onOpenDocsPage, placeholder, validator }: 
         disabled={!testUrl.trim() || !onOpenDocsPage}
         icon="external-link-alt"
       >
-        Test Tutorial in New Pathfinder Tab
+        Test Tutorial in New Tab
       </Button>
 
       {testError && (

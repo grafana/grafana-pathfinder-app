@@ -209,7 +209,7 @@ function initializeAutoOpenPanel() {
     try {
       // Get config from window (similar to how dev-mode checks config globally)
       const globalConfig = (window as any).__pathfinderPluginConfig;
-      
+
       if (!globalConfig?.openPanelOnLaunch) {
         // Feature not enabled, remove session marker so we can try again on next load
         sessionStorage.removeItem(sessionKey);
@@ -225,7 +225,7 @@ function initializeAutoOpenPanel() {
           componentTitle: 'Interactive learning',
         },
       });
-      
+
       console.warn('[Interactive learning] Panel auto-opened on launch');
     } catch (error) {
       console.error('[Interactive learning] Failed to auto-open panel:', error);

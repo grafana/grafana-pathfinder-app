@@ -293,8 +293,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                 Automatically open Interactive learning panel when Grafana loads
               </Text>
               <Text variant="body" color="secondary">
-                When enabled, the Interactive learning sidebar will automatically open when you first load Grafana
-                (only on initial load, not on every page navigation)
+                When enabled, the Interactive learning sidebar will automatically open when you first load Grafana (only
+                on initial load, not on every page navigation)
               </Text>
             </div>
           </div>
