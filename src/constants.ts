@@ -18,6 +18,9 @@ export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
 // Global Link Interception defaults
 export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = false; // Experimental opt-in feature
 
+// Open Panel on Launch defaults
+export const DEFAULT_OPEN_PANEL_ON_LAUNCH = false; // Experimental opt-in feature
+
 // Network timeout defaults
 export const DEFAULT_CONTENT_FETCH_TIMEOUT = 10000; // 10 seconds for document retrieval
 export const DEFAULT_RECOMMENDER_TIMEOUT = 5000; // 5 seconds for recommender API
@@ -67,6 +70,8 @@ export interface DocsPluginConfig {
   guidedStepTimeout?: number;
   // Global Link Interception
   interceptGlobalDocsLinks?: boolean;
+  // Open Panel on Launch
+  openPanelOnLaunch?: boolean;
 }
 
 // Helper functions to get configuration values with defaults
@@ -87,6 +92,8 @@ export const getConfigWithDefaults = (
   guidedStepTimeout: config.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
   // Global Link Interception
   interceptGlobalDocsLinks: config.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+  // Open Panel on Launch
+  openPanelOnLaunch: config.openPanelOnLaunch ?? DEFAULT_OPEN_PANEL_ON_LAUNCH,
 });
 
 /**

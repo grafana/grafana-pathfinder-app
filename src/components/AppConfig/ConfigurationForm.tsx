@@ -8,6 +8,7 @@ import {
   DEFAULT_RECOMMENDER_SERVICE_URL,
   DEFAULT_TUTORIAL_URL,
   DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+  DEFAULT_OPEN_PANEL_ON_LAUNCH,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
@@ -22,6 +23,8 @@ type State = {
   tutorialUrl: string;
   // Global link interception
   interceptGlobalDocsLinks: boolean;
+  // Open panel on launch
+  openPanelOnLaunch: boolean;
 };
 
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -35,6 +38,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     recommenderServiceUrl: jsonData?.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
     tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
     interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+    openPanelOnLaunch: jsonData?.openPanelOnLaunch ?? DEFAULT_OPEN_PANEL_ON_LAUNCH,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -106,6 +110,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
+  const onToggleOpenPanelOnLaunch = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      openPanelOnLaunch: event.target.checked,
+    });
+  };
+
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSaving(true);
@@ -116,6 +127,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         recommenderServiceUrl: state.recommenderServiceUrl,
         tutorialUrl: state.tutorialUrl,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
+        openPanelOnLaunch: state.openPanelOnLaunch,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -166,7 +178,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         {/* Tutorial URL - available to all users */}
         <Field
           label="Auto-launch tutorial URL"
-          description="Optional: URL of a learning journey or documentation page to automatically open when Grafana starts. Useful for demo scenarios. Can be set via environment variable GF_PLUGINS_GRAFANA_PATHFINDER_APP_TUTORIAL_URL"
+          description="Optional: URL of a learning journey or documentation page to automatically open when the Interactive learning panel opens. Useful for demo scenarios. Can be set via environment variable GRAFANA_INTERACTIVE_LEARNING_TUTORIAL_URL"
           className={s.marginTop}
         >
           <Input
@@ -239,7 +251,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                 Intercept documentation links globally
               </Text>
               <Text variant="body" color="secondary">
-                When enabled, clicking Grafana docs links anywhere will open them in Pathfinder instead of a new tab
+                When enabled, clicking Grafana docs links anywhere will open them in Interactive learning instead of a
+                new tab
               </Text>
             </div>
           </div>
@@ -247,13 +260,51 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           {state.interceptGlobalDocsLinks && (
             <Alert severity="info" title="How it works" className={s.marginTop}>
               <Text variant="body">
-                When you click a documentation link anywhere in Grafana, Pathfinder will automatically open the sidebar
-                (if closed) and display the documentation inside. Links are queued if the sidebar hasn&apos;t fully
-                loaded yet.
+                When you click a documentation link anywhere in Grafana, Interactive learning will automatically open
+                the sidebar (if closed) and display the documentation inside. Links are queued if the sidebar
+                hasn&apos;t fully loaded yet.
                 <br />
                 <br />
                 Hold <strong>Ctrl</strong> (Windows/Linux) or <strong>Cmd</strong> (Mac) while clicking any link to open
-                it in a new tab instead of Pathfinder. Middle-click also opens in a new tab.
+                it in a new tab instead of Interactive learning. Middle-click also opens in a new tab.
+              </Text>
+            </Alert>
+          )}
+        </FieldSet>
+
+        {/* Open Panel on Launch */}
+        <FieldSet
+          label={
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Open Panel on Launch
+              <Badge text="Experimental" color="orange" />
+            </div>
+          }
+          className={s.marginTopXl}
+        >
+          <div className={s.toggleSection}>
+            <Switch
+              id="enable-open-panel-on-launch"
+              value={state.openPanelOnLaunch}
+              onChange={onToggleOpenPanelOnLaunch}
+            />
+            <div className={s.toggleLabels}>
+              <Text variant="body" weight="medium">
+                Automatically open Interactive learning panel when Grafana loads
+              </Text>
+              <Text variant="body" color="secondary">
+                When enabled, the Interactive learning sidebar will automatically open when you first load Grafana (only
+                on initial load, not on every page navigation)
+              </Text>
+            </div>
+          </div>
+
+          {state.openPanelOnLaunch && (
+            <Alert severity="info" title="How it works" className={s.marginTop}>
+              <Text variant="body">
+                The Interactive learning sidebar will automatically open when Grafana loads for the first time in your
+                browser session. It will not reopen on subsequent page navigations within Grafana. The panel will reset
+                to auto-open behavior when you refresh the entire page or start a new browser session.
               </Text>
             </Alert>
           )}

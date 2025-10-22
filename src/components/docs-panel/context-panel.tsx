@@ -445,7 +445,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
               className={styles.settingsButton}
               aria-label={t('contextPanel.settings', 'Plugin settings')}
             />
-            <img src={logoSvg} alt="Grafana Pathfinder" className={styles.headerIcon} width={24} height={24} />
+            <img src={logoSvg} alt="Interactive learning" className={styles.headerIcon} width={24} height={24} />
             <div className={styles.titleContainer}>
               <h2 className={styles.sectionTitle}>
                 {t('contextPanel.recommendedDocumentation', 'Recommended Documentation')}
