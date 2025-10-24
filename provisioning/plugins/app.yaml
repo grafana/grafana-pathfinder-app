@@ -5,7 +5,3 @@ apps:
     org_id: 1
     org_name: 'grafanalabs'
     disabled: false
-    jsonData:
-      # Docs Base URL - can be overridden with environment variable
-      openPanelOnLaunch: ${GRAFANA_INTERACTIVE_LEARNING_OPEN_PANEL_ON_LAUNCH:true}
-      # Auto-launch tutorial URL (for demo scenarios)

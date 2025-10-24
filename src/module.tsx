@@ -203,20 +203,29 @@ function initializeAutoOpenPanel() {
   // Mark as opened for this session
   sessionStorage.setItem(sessionKey, 'true');
 
-  // Wait for config to be available and check if feature is enabled
-  // Use a short delay to ensure Grafana and config are loaded
-  setTimeout(() => {
+  // Wait for config to be available - retry multiple times since ContextSidebar component loads asynchronously
+  let retryCount = 0;
+  const maxRetries = 10; // Try up to 10 times over 5 seconds
+  const retryInterval = 500; // Check every 500ms
+
+  const attemptAutoOpen = () => {
+    retryCount++;
+
     try {
       // Get config from window (similar to how dev-mode checks config globally)
       const globalConfig = (window as any).__pathfinderPluginConfig;
 
       if (!globalConfig?.openPanelOnLaunch) {
-        // Feature not enabled, remove session marker so we can try again on next load
-        sessionStorage.removeItem(sessionKey);
+        // Feature not enabled or config not ready yet
+        if (retryCount < maxRetries) {
+          setTimeout(attemptAutoOpen, retryInterval);
+        } else {
+          sessionStorage.removeItem(sessionKey);
+        }
         return;
       }
 
-      // Open the sidebar
+      // Config is ready and openPanelOnLaunch is true - open the sidebar
       const appEvents = getAppEvents();
       appEvents.publish({
         type: 'open-extension-sidebar',
@@ -226,13 +235,34 @@ function initializeAutoOpenPanel() {
         },
       });
 
-      console.warn('[Interactive learning] Panel auto-opened on launch');
+      // If tutorialUrl is configured, dispatch it after a delay to ensure panel is ready
+      if (globalConfig.tutorialUrl) {
+        setTimeout(() => {
+          // Determine type from URL
+          const isBundled = globalConfig.tutorialUrl.startsWith('bundled:');
+          const isLearningJourney = globalConfig.tutorialUrl.includes('/learning-journeys/') || isBundled;
+
+          const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+            detail: {
+              url: globalConfig.tutorialUrl,
+              title: 'Auto-launched Tutorial',
+              type: isLearningJourney ? 'learning-journey' : 'docs-page',
+            },
+          });
+          document.dispatchEvent(autoLaunchEvent);
+        }, 2000); // Wait for panel to mount and render
+      }
     } catch (error) {
-      console.error('[Interactive learning] Failed to auto-open panel:', error);
-      // Remove marker so we can retry on next load
-      sessionStorage.removeItem(sessionKey);
+      if (retryCount < maxRetries) {
+        setTimeout(attemptAutoOpen, retryInterval);
+      } else {
+        sessionStorage.removeItem(sessionKey);
+      }
     }
-  }, 1000);
+  };
+
+  // Start the first attempt after a short delay to ensure Grafana is ready
+  setTimeout(attemptAutoOpen, 1000);
 }
 
 // Initialize auto-open at module load
@@ -297,7 +327,10 @@ plugin.addComponent({
     // Get plugin configuration
     const pluginContext = usePluginContext();
     const config = useMemo(() => {
-      return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+      const rawJsonData = pluginContext?.meta?.jsonData || {};
+      const configWithDefaults = getConfigWithDefaults(rawJsonData);
+
+      return configWithDefaults;
     }, [pluginContext?.meta?.jsonData]);
 
     // Set global config for utility functions (including auto-open logic)

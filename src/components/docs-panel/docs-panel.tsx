@@ -777,6 +777,10 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
   const contentRef = useRef<HTMLDivElement>(null);
 
+  // Scroll position preservation by tab/URL
+  const scrollPositionRef = useRef<Record<string, number>>({});
+  const lastContentUrlRef = useRef<string>('');
+
   // Expose current active tab id/url globally for interactive persistence keys
   useEffect(() => {
     try {
@@ -786,6 +790,60 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       // no-op
     }
   }, [activeTab?.id, activeTab?.currentUrl, activeTab?.baseUrl]);
+
+  // Save scroll position before content changes
+  const saveScrollPosition = useCallback(() => {
+    const scrollableElement = document.getElementById('inner-docs-content');
+    if (scrollableElement && lastContentUrlRef.current) {
+      scrollPositionRef.current[lastContentUrlRef.current] = scrollableElement.scrollTop;
+    }
+  }, []);
+
+  // Restore scroll position when content loads
+  const restoreScrollPosition = useCallback(() => {
+    const contentUrl = activeTab?.currentUrl || activeTab?.baseUrl || '';
+    if (contentUrl && contentUrl !== lastContentUrlRef.current) {
+      lastContentUrlRef.current = contentUrl;
+
+      // Restore saved position if available
+      const savedPosition = scrollPositionRef.current[contentUrl];
+      if (typeof savedPosition === 'number') {
+        const scrollableElement = document.getElementById('inner-docs-content');
+        if (scrollableElement) {
+          // Use requestAnimationFrame to ensure DOM is ready
+          requestAnimationFrame(() => {
+            scrollableElement.scrollTop = savedPosition;
+          });
+        }
+      } else {
+        // New content - scroll to top
+        const scrollableElement = document.getElementById('inner-docs-content');
+        if (scrollableElement) {
+          requestAnimationFrame(() => {
+            scrollableElement.scrollTop = 0;
+          });
+        }
+      }
+    }
+  }, [activeTab?.currentUrl, activeTab?.baseUrl]);
+
+  // Track scroll position continuously
+  useEffect(() => {
+    const scrollableElement = document.getElementById('inner-docs-content');
+    if (!scrollableElement) {
+      return;
+    }
+
+    const handleScroll = () => {
+      saveScrollPosition();
+    };
+
+    scrollableElement.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      scrollableElement.removeEventListener('scroll', handleScroll);
+      saveScrollPosition();
+    };
+  }, [saveScrollPosition]);
 
   // Initialize interactive elements for the content container (side effects only)
   useInteractiveElements({ containerRef: contentRef });
@@ -1379,7 +1437,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         activeTab.content.type === 'learning-journey' ? journeyStyles : docsStyles
                       } ${interactiveStyles} ${prismStyles}`}
                       onContentReady={() => {
-                        // Content is ready - any additional setup can go here
+                        // Restore scroll position after content is ready
+                        restoreScrollPosition();
                       }}
                     />
                   )}

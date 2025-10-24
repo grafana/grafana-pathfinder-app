@@ -5,8 +5,11 @@ import { getConfigWithDefaults } from '../../constants';
 
 export default function MemoizedContextPanel() {
   const pluginContext = usePluginContext();
-  const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-  const panel = useMemo(() => new CombinedLearningJourneyPanel(config), [config]);
+
+  const panel = useMemo(() => {
+    const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+    return new CombinedLearningJourneyPanel(config);
+  }, [pluginContext?.meta?.jsonData]);
 
   return <panel.Component model={panel} />;
 }

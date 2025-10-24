@@ -600,7 +600,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
       };
     }
     return undefined;
-  }, [contentRef, theme, model, activeTab?.content, activeTab?.docsContent, activeTab?.baseUrl, activeTab?.title]);
+  }, [contentRef, theme, activeTab?.content, activeTab?.docsContent, activeTab?.baseUrl, activeTab?.title, model]);
 }
 
 function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaTheme2) {

@@ -26,7 +26,6 @@ export const prometheusGrafana101Html = `<html>
             data-targetaction="sequence" 
             data-reftarget="span#setup-datasource"
             data-requirements="navmenu-open"
-            data-objectives="has-datasource:prometheus"> 
             <ul>
               <li class="interactive" 
                   data-requirements="navmenu-open,exists-reftarget"
