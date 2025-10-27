@@ -20,7 +20,7 @@ cards:
       height: 24
     - title: Administrators reference
       description: Learn about Interactive learning administrators features. 
-      href: data-analysis/
+      href: administrators-reference/
       height: 24
   title_class: pt-0 lh-1
 weight: 1
@@ -41,11 +41,11 @@ hero:
 
 Interactive learning brings contextual documentation and interactive tutorials directly into Grafana, so you can learn and build without leaving your workflow:
 
-- Smart recommendations – Get relevant docs and tutorials based on what you're working on
-- Interactive tutorials – Follow step-by-step guided learning journeys with "Show Me" and "Do It" features
-- Tab-based navigation – Open multiple docs and tutorials in tabs, just like a browser
-- Milestone tracking – See your progress through learning journeys with clear milestones
-- Always available – Access help without switching windows or searching documentation sites
+- **Smart recommendations** - Get relevant docs and tutorials based on what you're working on.
+- **Interactive tutorials** - Follow step-by-step guided learning journeys with Show me and Do it features.
+- **Tab-based navigation** - Open multiple docs and tutorials in tabs, just like a browser.
+- **Milestone tracking** - See your progress through learning journeys with clear milestones.
+- **Always available** - Access help without switching windows or searching documentation sites.
 
 Interactive learning is currently available in public preview for Grafana OSS and will soon be arriving to Grafana Cloud.
 
