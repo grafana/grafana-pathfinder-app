@@ -48,7 +48,7 @@ Alternatively, you can install Interactive learning as a plugin from the Grafana
 **Using the Grafana UI:**
 
 1. Navigate to **Administration** > **Plugins and data** > **Plugins**.
-1. Search for "Interactive learning".
+1. Search for `Interactive learning`.
 1. Click on the plugin card to open the plugin details page.
 1. Click **Install** to install the plugin.
 
@@ -66,15 +66,15 @@ After enabling Interactive learning, you can start using it by clicking the **He
 
 ![Interactive learning sidebar](/media/docs/pathfinder/getting-started-panel-open.png)
 
-You can also use the command palette to open the Interactive learning sidebar. Search for "Interactive learning", "Need help?", or "Learn Grafana" in the command palette by pressing `Cmd+K` on macOS or `Ctrl+K` on Windows and Linux.
+You can also use the command palette to open the Interactive learning sidebar. Search for `Interactive learning`, `Need help?`, or `Learn Grafana` in the command palette by pressing **Cmd+K** on macOS or **Ctrl+K** on Windows and Linux.
 
 ## Try out an interactive tutorial
 
-If you're new to Grafana and want to learn where everything is located, try the "Welcome to Grafana" tutorial. This tutorial guides you through the main areas of Grafana and helps you get familiar with the interface. To start this tutorial, click **View** on the "Welcome to Grafana" recommendation.
+If you're new to Grafana and want to learn where everything is located, try the **Welcome to Grafana** tutorial. This tutorial guides you through the main areas of Grafana and helps you get familiar with the interface. To start this tutorial, click **View** on the **Welcome to Grafana** recommendation.
 
 ![Recommendation card](/media/docs/pathfinder/welcome-to-grafana-recommendation.png)
 
-This opens the "Welcome to Grafana" tutorial in a new tab. You can then follow the steps in the tutorial by clicking the **Show me** button to see each step.
+This opens the **Welcome to Grafana** tutorial in a new tab. You can then follow the steps in the tutorial by clicking the **Show me** button to see each step.
 
 ### Interactive elements
 
@@ -95,7 +95,7 @@ The **Do it** button executes the action of the current step in the tutorial. Se
 - **Highlight/button** - Interacts with the highlighted element using a mouse click.
 - **Form fill** - Interacts with a form fill element by setting the value of the element.
 - **Navigate** - Navigates to a new page.
-- **Multistep** - Executes a sequence of actions in a specific order. These are shown as "do it" only buttons.
+- **Multistep** - Executes a sequence of actions in a specific order. These are shown as **Do it** only buttons.
 - **Guided** - Requests that you perform the action manually using a series of highlighted elements.
 
 ![Example of a do it button](/media/docs/pathfinder/doit.png)

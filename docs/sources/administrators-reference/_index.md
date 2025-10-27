@@ -103,7 +103,7 @@ Interactive tutorials include auto-completion detection and timing parameters th
 
 #### Auto-completion detection (Experimental)
 
-Auto-completion detection automatically marks tutorial steps as complete when users perform actions themselves without clicking "Do it" buttons.
+Auto-completion detection automatically marks tutorial steps as complete when users perform actions themselves without clicking **Do it** buttons.
 
 {{< admonition type="warning" >}}
 This is an experimental feature.
