@@ -31,6 +31,14 @@
       "filename": "loki-grafana-101.ts",
       "exportName": "lokiGrafana101Html",
       "url": ["/"]
+    },
+    {
+      "id": "first-dashboard",
+      "title": "Create your first dashboard",
+      "summary": "Learn to create a dashboard in Grafana. Covering features such as Explore, dashboard creation, visualizations and more",
+      "filename": "first-dashboard.ts",
+      "exportName": "firstDashboardHtml",
+      "url": ["/"]
     }
   ]
 }
