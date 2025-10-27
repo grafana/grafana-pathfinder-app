@@ -22,7 +22,7 @@
       "summary": "Learn to use Prometheus and Grafana to monitor your infrastructure. Perfect for getting started and understanding where everything is located.",
       "filename": "prometheus-grafana-101.ts",
       "exportName": "prometheusGrafana101Html",
-      "url": ["/"]
+      "url": ["/connections"]
     },
     {
       "id": "loki-grafana-101",
@@ -30,7 +30,7 @@
       "summary": "Continue from the Prometheus tutorial: configure Loki and add a logs panel to your existing dashboard.",
       "filename": "loki-grafana-101.ts",
       "exportName": "lokiGrafana101Html",
-      "url": ["/"]
+      "url": ["/connections"]
     },
     {
       "id": "first-dashboard",
