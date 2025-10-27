@@ -306,7 +306,7 @@ export function useStepChecker({
           return;
         } else if (objectivesResult.error) {
           // Objectives check failed - log error but continue to requirements (per spec)
-          console.error(`⚠️ Objectives check failed for ${stepId}:`, objectivesResult.error);
+          console.warn(`Objectives check failed for ${stepId}:`, objectivesResult.error);
         }
       }
 
@@ -439,7 +439,7 @@ export function useStepChecker({
       setState(enabledState);
       updateManager(enabledState);
     } catch (error) {
-      console.error(`❌ Step checking failed for ${stepId}:`, error);
+      console.warn(`Step checking failed for ${stepId}:`, error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to check step conditions';
       const errorState = {
         isEnabled: false,

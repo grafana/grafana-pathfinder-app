@@ -1,14 +1,14 @@
-# Grafana Pathfinder
+# Interactive learning Plugin
 
-![Grafana Pathfinder](https://raw.githubusercontent.com/grafana/docs-plugin/refs/heads/main/src/img/logo.svg)
+![Interactive learning](https://raw.githubusercontent.com/grafana/docs-plugin/refs/heads/main/src/img/logo.svg)
 
 [![License](https://img.shields.io/github/license/grafana/docs-plugin)](LICENSE)
 
-Get help exactly when and where you need it. Grafana Pathfinder brings contextual documentation and interactive tutorials directly into Grafana, so you can learn and build without leaving your workflow.
+Get help exactly when and where you need it. Interactive learning brings contextual documentation and interactive tutorials directly into Grafana, so you can learn and build without leaving your workflow.
 
-## What is Grafana Pathfinder?
+## What is Interactive learning?
 
-Grafana Pathfinder is your in-app learning companion. It provides:
+Interactive learning is your in-app learning companion. It provides:
 
 - **Smart recommendations** – Get relevant docs and tutorials based on what you're working on
 - **Interactive tutorials** – Follow step-by-step guided learning journeys with "Show Me" and "Do It" features
@@ -16,21 +16,21 @@ Grafana Pathfinder is your in-app learning companion. It provides:
 - **Milestone tracking** – See your progress through learning journeys with clear milestones
 - **Always available** – Access help without switching windows or searching documentation sites
 
-## How to Access Pathfinder
+## How to Access Interactive learning
 
 1. Look for the **Help** button (?) in the top navigation bar of Grafana
-2. Click the Help button to open the Pathfinder panel
+2. Click the Help button to open the Interactive learning panel
 3. Browse recommended documentation based on your current context
 4. Click **View** to read a doc or **Start** to begin an interactive tutorial
 
 ## Getting Started
 
-Once you open Pathfinder:
+Once you open Interactive learning:
 
 1. **Review recommendations** – See docs and tutorials tailored to what you're doing in Grafana
 2. **Open content in tabs** – Click "View" or "Start" to open content in a new tab
 3. **Navigate tutorials** – Use the milestone navigation at the bottom to move through learning journeys
-4. **Try interactive features** – Click "Show Me" to see where things are, or "Do It" to have Pathfinder guide you through actions
+4. **Try interactive features** – Click "Show Me" to see where things are, or "Do It" to have Interactive learning guide you through actions
 5. **Manage your tabs** – Close tabs you're done with, or keep them open for reference
 
 ## Keyboard Shortcuts
@@ -40,21 +40,21 @@ Once you open Pathfinder:
 
 ## For Administrators
 
-### Discovering Pathfinder
+### Discovering Interactive learning
 
-Users can find Grafana Pathfinder in multiple ways:
+Users can find Interactive learning in multiple ways:
 
 - **Help button** – Click the Help (?) button in the top navigation
-- **Command palette** – Search for "Grafana Pathfinder", "Need help?", or "Learn Grafana" in the command palette (`Cmd+K` or `Ctrl+K`)
+- **Command palette** – Search for "Interactive learning", "Need help?", or "Learn Grafana" in the command palette (`Cmd+K` or `Ctrl+K`)
 
 ### Configuration Options
 
-Admins can configure Pathfinder from the plugin's configuration page in Grafana. The configuration includes three sections:
+Admins can configure Interactive learning from the plugin's configuration page in Grafana. The configuration includes three sections:
 
 #### 1. Configuration (Basic Settings)
 
 - **Auto-launch tutorial URL** – Set a specific learning journey or documentation page to automatically open when Grafana starts (useful for demos and onboarding)
-- **Global link interception** – (Experimental) When enabled, clicking documentation links anywhere in Grafana will open them in Pathfinder instead of a new tab
+- **Global link interception** – (Experimental) When enabled, clicking documentation links anywhere in Grafana will open them in Interactive learning instead of a new tab
 
 #### 2. Recommendations
 

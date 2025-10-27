@@ -182,7 +182,7 @@ describe('useLinkClickHandler', () => {
       windowOpen.mockRestore();
     });
 
-    it('should open allowed Grafana GitHub URLs in app tabs', () => {
+    it('should open allowed GitHub tutorial URLs in app tabs', () => {
       renderHook(() =>
         useLinkClickHandler({
           contentRef,
@@ -192,15 +192,19 @@ describe('useLinkClickHandler', () => {
         })
       );
 
+      // Updated to use the ONLY allowed repo: grafana/interactive-tutorials
       const grafanaLink = document.createElement('a');
-      grafanaLink.href = 'https://raw.githubusercontent.com/grafana/grafana/main/README.md';
-      grafanaLink.textContent = 'Grafana README';
+      grafanaLink.href = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.html';
+      grafanaLink.textContent = 'Interactive Tutorial';
       contentDiv.appendChild(grafanaLink);
 
       fireEvent.click(grafanaLink);
 
       // Should try to open in app with unstyled URL
-      expect(mockModel.openDocsPage).toHaveBeenCalledWith(expect.stringContaining('unstyled.html'), 'Grafana README');
+      expect(mockModel.openDocsPage).toHaveBeenCalledWith(
+        expect.stringContaining('unstyled.html'),
+        'Interactive Tutorial'
+      );
       expect(windowOpen).not.toHaveBeenCalled();
     });
 
@@ -217,7 +221,7 @@ describe('useLinkClickHandler', () => {
       );
 
       const disallowedLink = document.createElement('a');
-      disallowedLink.href = 'https://not-whitelisted.com/ExtraContent/README.md';
+      disallowedLink.href = 'https://not-allowed.com/ExtraContent/README.md';
       disallowedLink.textContent = 'Disallowed Link';
       contentDiv.appendChild(disallowedLink);
 
@@ -228,7 +232,7 @@ describe('useLinkClickHandler', () => {
 
       // Should open in browser, not in app
       expect(windowOpen).toHaveBeenCalledWith(
-        'https://not-whitelisted.com/ExtraContent/README.md',
+        'https://not-allowed.com/ExtraContent/README.md',
         '_blank',
         'noopener,noreferrer'
       );

@@ -4,9 +4,14 @@ import {
   isRecommenderEnabled,
   DocsPluginConfig,
   DEFAULT_RECOMMENDER_TIMEOUT,
+  ALLOWED_RECOMMENDER_DOMAINS,
 } from '../../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import { hashUserData } from '../../lib/hash.util';
+import { isDevModeEnabledGlobal } from '../dev-mode';
+import { sanitizeTextForDisplay } from '../docs-retrieval/html-sanitizer';
+import { parseUrlSafely } from '../url-validator';
+import { sanitizeForLogging } from '../log-sanitizer';
 import {
   ContextData,
   DataSource,
@@ -70,7 +75,7 @@ export class ContextService {
       try {
         listener();
       } catch (error) {
-        console.error('@context/ Error in context change listener:', error);
+        console.error('Error in context change listener:', error);
       }
     });
   }
@@ -199,7 +204,7 @@ export class ContextService {
 
       this.echoLoggingInitialized = true;
     } catch (error) {
-      console.error('@context/ Failed to initialize EchoSrv logging:', error);
+      console.error('Failed to initialize EchoSrv logging:', error);
     }
   }
 
@@ -322,6 +327,46 @@ export class ContextService {
   }
 
   /**
+   * SECURITY: Validate recommender service URL
+   * Ensures the URL is HTTPS and from an approved domain to prevent MITM attacks
+   * In dev mode: Also allows localhost URLs for local testing
+   */
+  private static validateRecommenderUrl(url: string): boolean {
+    const parsedUrl = parseUrlSafely(url);
+
+    if (!parsedUrl) {
+      console.error('Invalid recommender service URL');
+      return false;
+    }
+
+    // Dev mode exception: Allow localhost URLs for local testing
+    if (
+      isDevModeEnabledGlobal() &&
+      (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1' || parsedUrl.hostname === '::1')
+    ) {
+      return true;
+    }
+
+    // Require HTTPS for non-localhost URLs
+    if (parsedUrl.protocol !== 'https:') {
+      console.error('Recommender service URL must use HTTPS');
+      return false;
+    }
+
+    // Check if domain is in allowlist (exact match only, no subdomains)
+    const isAllowedDomain = ALLOWED_RECOMMENDER_DOMAINS.some((domain) => {
+      return parsedUrl.hostname === domain;
+    });
+
+    if (!isAllowedDomain) {
+      console.error('Recommender service domain not in allowlist');
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
    * Get recommendations from external API service
    */
   private static async getExternalRecommendations(
@@ -337,23 +382,42 @@ export class ContextService {
     try {
       const configWithDefaults = getConfigWithDefaults(pluginConfig);
 
+      // SECURITY: Validate recommender service URL before making request
+      if (!this.validateRecommenderUrl(configWithDefaults.recommenderServiceUrl)) {
+        return this.handleRecommenderError(
+          'other',
+          'Recommender service URL failed security validation',
+          contextData,
+          bundledRecommendations
+        );
+      }
+
       const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
 
-      // Extract source for cloud users
-      const getCloudSource = (): string | undefined => {
-        if (!isCloud) {
-          return 'oss-source';
-        }
+      // Extract and hash source hostname for privacy
+      // OSS play.grafana.org is left unhashed (public demo site)
+      const getHashedSource = async (): Promise<string | undefined> => {
         try {
           const hostname = window.location.hostname;
+
+          // OSS users on Grafana Play - public demo site, no need to hash
+          if (!isCloud && hostname === 'play.grafana.org') {
+            return 'play.grafana.org';
+          }
+
+          // OSS users on other hostnames - use generic identifier
+          if (!isCloud) {
+            return 'oss-source';
+          }
+
           return hostname;
         } catch (error) {
-          console.warn('Failed to extract cloud source:', error);
+          console.warn('Failed to extract/hash source:', error);
           return undefined;
         }
       };
 
-      const cloudSource = getCloudSource();
+      const hashedSource = await getHashedSource();
 
       // Get user data for hashing
       const userId = isCloud ? config.bootData.user.analytics.identifier || 'unknown' : 'oss-user';
@@ -372,7 +436,7 @@ export class ContextService {
         user_email: hashedEmail,
         user_role: config.bootData.user.orgRole || 'Viewer',
         platform: this.getCurrentPlatform(),
-        source: cloudSource,
+        source: hashedSource,
       };
 
       // Add timeout to prevent hanging in air-gapped or slow connection scenarios
@@ -420,11 +484,18 @@ export class ContextService {
 
         const data: RecommenderResponse = await response.json();
 
-        // Map external API recommendations to ensure description field is mapped to summary
+        // SECURITY: Sanitize external API recommendations to prevent XSS and prototype pollution
+        // Use explicit allowlist instead of spread operator to prevent malicious properties
         const mappedExternalRecommendations = (data.recommendations || []).map((rec: any) => {
-          const mappedRec = {
-            ...rec,
-            summary: rec.summary || rec.description || '', // Map description to summary if summary is missing
+          // SECURITY: Explicit property allowlist - prevents prototype pollution and injection
+          const mappedRec: Recommendation = {
+            title: sanitizeTextForDisplay(rec.title || ''),
+            url: typeof rec.url === 'string' ? rec.url : '', // Validated when opened
+            summary: sanitizeTextForDisplay(rec.summary || rec.description || ''),
+            type: rec.type === 'docs-page' || rec.type === 'learning-journey' ? rec.type : 'docs-page',
+            matchAccuracy: typeof rec.matchAccuracy === 'number' ? rec.matchAccuracy : 0.5,
+            // Explicitly DO NOT spread ...rec to prevent prototype pollution attacks
+            // Properties like __proto__, constructor, onClick, dangerouslySetInnerHTML are blocked
           };
           return mappedRec;
         });
@@ -557,8 +628,7 @@ export class ContextService {
       recommendations.map(async (rec) => {
         if (rec.type === 'learning-journey' || !rec.type) {
           try {
-            const configWithDefaults = getConfigWithDefaults(pluginConfig || {});
-            const result = await fetchContent(rec.url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
+            const result = await fetchContent(rec.url);
             const completionPercentage = getJourneyCompletionPercentage(rec.url);
 
             // Extract learning journey data from the unified content
@@ -573,7 +643,7 @@ export class ContextService {
               completionPercentage,
             };
           } catch (error) {
-            console.warn(`Failed to fetch journey data for ${rec.title}:`, error);
+            console.warn(`Failed to fetch journey data for ${sanitizeForLogging(rec.title)}:`, error);
             return {
               ...rec,
               totalSteps: 0,
@@ -1094,10 +1164,10 @@ export class ContextService {
     contextData: ContextData,
     pluginConfig: DocsPluginConfig
   ): Recommendation[] {
-    const configWithDefaults = getConfigWithDefaults(pluginConfig);
     const bundledRecommendations: Recommendation[] = [];
 
-    if (configWithDefaults.devMode) {
+    // Dev mode - add extra recommendations for debugging
+    if (isDevModeEnabledGlobal()) {
       bundledRecommendations.push({
         title: 'Components',
         url: 'https://grafana.com/components/',

@@ -8,13 +8,15 @@ import {
   enrichWithStepContext,
 } from '../lib/analytics';
 import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
-
-// Allowed GitHub URLs that can open in app tabs (from context.service.ts defaultRecommendations)
-const ALLOWED_GITHUB_URLS = [
-  'https://raw.githubusercontent.com/moxious/',
-  'https://raw.githubusercontent.com/Jayclifford345/',
-  'https://raw.githubusercontent.com/grafana/',
-];
+import {
+  parseUrlSafely,
+  isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
+  isAnyGitHubUrl,
+  isLocalhostUrl,
+} from './url-validator';
+import { ALLOWED_GITHUB_REPOS } from '../constants';
+import { isDevModeEnabledGlobal } from './dev-mode';
 
 interface LearningJourneyTab {
   id: string;
@@ -44,36 +46,29 @@ interface UseLinkClickHandlerProps {
 }
 
 /**
+ * SECURITY: Validate URL is from a trusted Grafana source (NOT GitHub)
+ * GitHub URLs are handled separately in the link handler with specialized logic
+ * This function is only for Grafana.com docs and localhost (dev mode)
+ */
+function isValidGrafanaContentUrl(url: string): boolean {
+  return isAllowedContentUrl(url) || (isDevModeEnabledGlobal() && isLocalhostUrl(url));
+}
+
+/**
  * Attempts to construct an unstyled.html URL for external content
  * This is used to try to embed external documentation in our app
  */
 function tryConstructUnstyledUrl(originalUrl: string): string | null {
   try {
-    // Common patterns for unstyled content
-    const unstyledPatterns = [
-      // Add /unstyled.html to the path
-      () => {
-        const newUrl = new URL(originalUrl);
-        newUrl.pathname = newUrl.pathname.replace(/\/$/, '') + '/unstyled.html';
-        return newUrl.href;
-      },
-      // Replace .html with /unstyled.html
-      () => {
-        if (originalUrl.endsWith('.html')) {
-          return originalUrl.replace(/\.html$/, '/unstyled.html');
-        }
-        return null;
-      },
-      // Add unstyled query parameter
-      () => {
-        const newUrl = new URL(originalUrl);
-        newUrl.searchParams.set('unstyled', 'true');
-        return newUrl.href;
-      },
-    ];
+    // For files ending in .html, replace with /unstyled.html
+    if (originalUrl.endsWith('.html')) {
+      return originalUrl.replace(/\.html$/, '/unstyled.html');
+    }
 
-    // Try the first pattern (most common)
-    return unstyledPatterns[0]();
+    // For directory URLs, append /unstyled.html
+    const newUrl = new URL(originalUrl);
+    newUrl.pathname = newUrl.pathname.replace(/\/$/, '') + '/unstyled.html';
+    return newUrl.href;
   } catch (error) {
     console.warn('Failed to construct unstyled URL for:', originalUrl, error);
     return null;
@@ -193,22 +188,37 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           }
 
           // Handle Grafana docs and tutorials links (including resolved relative links)
-          if (
-            resolvedUrl.includes('grafana.com/docs/') ||
-            resolvedUrl.includes('grafana.com/tutorials/') ||
-            href.startsWith('/docs/') ||
-            href.startsWith('/tutorials/')
-          ) {
+          // Use secure URL validation to prevent domain hijacking
+          // Resolve any remaining relative paths against the current page's base URL
+          let fullUrl: string;
+          if (resolvedUrl.startsWith('http')) {
+            fullUrl = resolvedUrl;
+          } else {
+            // Absolute path like "/docs/something" - resolve against current page base
+            const baseUrl = activeTab?.content?.url || 'https://grafana.com';
+            try {
+              fullUrl = new URL(resolvedUrl, baseUrl).href;
+            } catch (error) {
+              console.warn('Failed to resolve URL against base:', resolvedUrl, baseUrl, error);
+              // Fallback to grafana.com only if resolution fails
+              fullUrl = `https://grafana.com${resolvedUrl}`;
+            }
+          }
+
+          if (isValidGrafanaContentUrl(fullUrl)) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,
             });
 
-            const fullUrl = resolvedUrl.startsWith('http') ? resolvedUrl : `https://grafana.com${resolvedUrl}`;
             const linkText = anchor.textContent?.trim() || 'Documentation';
 
+            // Parse URL to check pathname (already validated by isValidGrafanaContentUrl)
+            const urlObj = parseUrlSafely(fullUrl);
+            const isLearningJourney = urlObj?.pathname.startsWith('/learning-journeys/');
+
             // Determine if it's a learning journey or regular docs/tutorials
-            if (fullUrl.includes('/learning-journeys/')) {
+            if (isLearningJourney) {
               model.openLearningJourney(fullUrl, linkText);
             } else {
               // For regular docs and tutorials, use openDocsPage if available, otherwise openLearningJourney
@@ -220,7 +230,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             }
 
             // Track analytics for opening extra resources (docs/tutorials)
-            const contentType = fullUrl.includes('/learning-journeys/') ? 'learning-journey' : 'docs';
+            const contentType = isLearningJourney ? 'learning-journey' : 'docs';
+            const isTutorial = urlObj?.pathname.startsWith('/tutorials/');
             reportAppInteraction(
               UserInteraction.OpenExtraResource,
               enrichWithStepContext({
@@ -228,13 +239,13 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
                 content_type: contentType,
                 link_text: linkText,
                 source_page: activeTab?.content?.url || 'unknown',
-                link_type: fullUrl.includes('/tutorials/') ? 'tutorial' : 'docs',
+                link_type: isTutorial ? 'tutorial' : 'docs',
                 interaction_location: 'content_link',
               })
             );
           }
           // Handle GitHub links - check if allowed to open in app
-          else if (href.includes('github.com') || href.includes('raw.githubusercontent.com')) {
+          else if (isAnyGitHubUrl(href)) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,
@@ -242,10 +253,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             const linkText = anchor.textContent?.trim() || 'GitHub Link';
 
-            // Check if this URL is in the allowed list for app tabs
-            const isAllowedUrl = ALLOWED_GITHUB_URLS.some(
-              (allowedUrl) => resolvedUrl === allowedUrl || resolvedUrl.startsWith(allowedUrl)
-            );
+            // Check if this URL is from an allowed GitHub repository
+            // Uses proper URL parsing to prevent domain hijacking
+            const isAllowedUrl = isAllowedGitHubRawUrl(resolvedUrl, ALLOWED_GITHUB_REPOS);
 
             if (isAllowedUrl) {
               // This is an allowed URL - try to open in app with unstyled.html fallback
@@ -393,7 +403,29 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
         if (linkUrl) {
           // Convert relative URLs to full URLs
-          const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
+          // Side journey links come from metadata and should resolve against the journey base
+          let fullUrl: string;
+          if (linkUrl.startsWith('http')) {
+            fullUrl = linkUrl;
+          } else {
+            // Resolve against current learning journey's base URL
+            const baseUrl = activeTab?.content?.metadata?.learningJourney?.baseUrl || 'https://grafana.com';
+            try {
+              fullUrl = new URL(linkUrl, baseUrl).href;
+            } catch (error) {
+              console.warn('Failed to resolve side journey URL:', linkUrl, error);
+              // Fallback to grafana.com only if resolution fails
+              fullUrl = linkUrl.startsWith('/')
+                ? `https://grafana.com${linkUrl}`
+                : `https://grafana.com/docs/${linkUrl}`;
+            }
+          }
+
+          // Validate the resolved URL before opening
+          if (!isValidGrafanaContentUrl(fullUrl)) {
+            console.warn('Side journey link resolved to non-allowed URL, ignoring:', fullUrl);
+            return;
+          }
 
           // Open side journey links in new app tabs (as docs pages)
           if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
@@ -437,8 +469,31 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         const linkTitle = relatedJourneyLink.textContent?.trim() || 'Related Journey';
 
         if (linkUrl) {
-          // Related journey links open in new app tabs (learning journeys)
-          const fullUrl = linkUrl.startsWith('http') ? linkUrl : `https://grafana.com${linkUrl}`;
+          // Convert relative URLs to full URLs
+          // Related journey links come from metadata and should resolve against the journey base
+          let fullUrl: string;
+          if (linkUrl.startsWith('http')) {
+            fullUrl = linkUrl;
+          } else {
+            // Resolve against current learning journey's base URL
+            const baseUrl = activeTab?.content?.metadata?.learningJourney?.baseUrl || 'https://grafana.com';
+            try {
+              fullUrl = new URL(linkUrl, baseUrl).href;
+            } catch (error) {
+              console.warn('Failed to resolve related journey URL:', linkUrl, error);
+              // Fallback to grafana.com only if resolution fails
+              fullUrl = linkUrl.startsWith('/')
+                ? `https://grafana.com${linkUrl}`
+                : `https://grafana.com/docs/${linkUrl}`;
+            }
+          }
+
+          // Validate the resolved URL before opening
+          if (!isValidGrafanaContentUrl(fullUrl)) {
+            console.warn('Related journey link resolved to non-allowed URL, ignoring:', fullUrl);
+            return;
+          }
+
           model.openLearningJourney(fullUrl, linkTitle);
 
           // Track analytics for related journey clicks
@@ -545,7 +600,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
       };
     }
     return undefined;
-  }, [contentRef, theme, model, activeTab?.content, activeTab?.docsContent, activeTab?.baseUrl, activeTab?.title]);
+  }, [contentRef, theme, activeTab?.content, activeTab?.docsContent, activeTab?.baseUrl, activeTab?.title, model]);
 }
 
 function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaTheme2) {
@@ -553,28 +608,62 @@ function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaT
   if (document.querySelector('.journey-image-modal')) {
     return;
   }
+
+  // SECURITY: Use DOM methods instead of innerHTML to prevent XSS
+  // Building the modal structure safely using createElement and textContent
+
   const imageModal = document.createElement('div');
   imageModal.className = 'journey-image-modal';
 
-  // Modal HTML, no inline styles, all sizing is CSS!
-  imageModal.innerHTML = `
-    <div class="journey-image-modal-backdrop">
-      <div class="journey-image-modal-container">
-        <div class="journey-image-modal-header">
-          <h3 class="journey-image-modal-title">${imageAlt}</h3>
-          <button class="journey-image-modal-close" aria-label="Close image">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        <div class="journey-image-modal-content">
-          <img src="${imageSrc}" alt="${imageAlt}" class="journey-image-modal-image" />
-        </div>
-      </div>
-    </div>
+  const backdrop = document.createElement('div');
+  backdrop.className = 'journey-image-modal-backdrop';
+
+  const container = document.createElement('div');
+  container.className = 'journey-image-modal-container';
+
+  // Header section
+  const header = document.createElement('div');
+  header.className = 'journey-image-modal-header';
+
+  // Title - SECURITY: Use textContent to prevent HTML injection
+  const title = document.createElement('h3');
+  title.className = 'journey-image-modal-title';
+  title.textContent = imageAlt; // Safe: textContent escapes HTML
+
+  // Close button
+  const closeButton = document.createElement('button');
+  closeButton.className = 'journey-image-modal-close';
+  closeButton.setAttribute('aria-label', 'Close image');
+
+  // SVG close icon (safe - no user input)
+  closeButton.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
   `;
+
+  header.appendChild(title);
+  header.appendChild(closeButton);
+
+  // Content section
+  const content = document.createElement('div');
+  content.className = 'journey-image-modal-content';
+
+  // Image - SECURITY: Use setAttribute to safely set src and alt
+  const image = document.createElement('img');
+  image.className = 'journey-image-modal-image';
+  image.setAttribute('src', imageSrc); // Safe: setAttribute escapes
+  image.setAttribute('alt', imageAlt); // Safe: setAttribute escapes
+
+  content.appendChild(image);
+
+  // Assemble modal structure
+  container.appendChild(header);
+  container.appendChild(content);
+  backdrop.appendChild(container);
+  imageModal.appendChild(backdrop);
+
   document.body.appendChild(imageModal);
 
   // Close modal utility
@@ -583,15 +672,15 @@ function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaT
     document.body.style.overflow = '';
   };
 
-  // Close on backdrop click
-  imageModal.querySelector('.journey-image-modal-backdrop')?.addEventListener('click', (e) => {
+  // Close on backdrop click - use direct reference instead of querySelector
+  backdrop.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) {
       closeModal();
     }
   });
 
-  // Close on close button click
-  imageModal.querySelector('.journey-image-modal-close')?.addEventListener('click', closeModal);
+  // Close on close button click - use direct reference instead of querySelector
+  closeButton.addEventListener('click', closeModal);
 
   // Close on Escape key
   const handleEscape = (e: KeyboardEvent) => {

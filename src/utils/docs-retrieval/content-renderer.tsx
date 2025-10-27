@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useMemo } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
-import { Card, TabsBar, Tab, TabContent, Badge, Tooltip, Button, IconButton, Box, Grid } from '@grafana/ui';
+import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
 
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
@@ -36,9 +36,28 @@ function resolveRelativeUrls(html: string, baseUrl: string): string {
       const elements = doc.querySelectorAll(`[${attr}]:not(img)`);
       elements.forEach((element) => {
         const attrValue = element.getAttribute(attr);
-        if (attrValue && attrValue.startsWith('/') && !attrValue.startsWith('//')) {
-          const resolvedUrl = new URL(attrValue, baseUrlObj).href;
-          element.setAttribute(attr, resolvedUrl);
+        if (attrValue) {
+          // Skip external URLs (http://, https://, //, mailto:, tel:, javascript:, etc.)
+          if (
+            attrValue.startsWith('http://') ||
+            attrValue.startsWith('https://') ||
+            attrValue.startsWith('//') ||
+            attrValue.startsWith('mailto:') ||
+            attrValue.startsWith('tel:') ||
+            attrValue.startsWith('javascript:') ||
+            attrValue.startsWith('#')
+          ) {
+            return; // Skip external/special URLs
+          }
+
+          // Resolve relative URLs (starting with ./, ../, or just a path without /)
+          // and absolute paths (starting with /)
+          try {
+            const resolvedUrl = new URL(attrValue, baseUrlObj).href;
+            element.setAttribute(attr, resolvedUrl);
+          } catch (urlError) {
+            console.warn(`Failed to resolve URL: ${attrValue}`, urlError);
+          }
         }
       });
     });
@@ -212,7 +231,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
 
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
-    console.error('[DocsPlugin] Content parsing failed:', parseResult.errors);
+    console.error('Content parsing failed:', parseResult.errors);
     return (
       <div ref={ref}>
         <ContentParsingError
@@ -220,8 +239,6 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
           warnings={parseResult.warnings}
           fallbackHtml={html}
           onRetry={() => {
-            // In a real implementation, this could trigger a re-parse or content refetch
-            console.log('Retry parsing requested');
             window.location.reload();
           }}
         />
@@ -258,23 +275,12 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
   );
 }
 
-// Whitelisted @grafana/ui React components by tag name
+// Legacy: Grafana UI components were previously supported as custom HTML elements
+// but are no longer used. Kept mapping for backward compatibility if needed in future.
 const allowedUiComponents: Record<string, React.ElementType> = {
-  card: Card,
-  'card.heading': Card.Heading,
-  'card.description': Card.Description,
-  'card.meta': Card.Meta,
-  'card.actions': Card.Actions,
-  'card.secondaryactions': Card.SecondaryActions,
-  tab: Tab,
-  tabsbar: TabsBar,
-  tabcontent: TabContent,
+  // Note: These are never used in current HTML but kept for potential future use
   badge: Badge,
   tooltip: Tooltip,
-  iconbutton: IconButton,
-  box: Box,
-  button: Button,
-  grid: Grid,
 };
 
 // TabsWrapper manages tabs state
@@ -350,14 +356,15 @@ function TabsWrapper({ element }: { element: ParsedElement }) {
 }
 
 // Convert tab-content <pre> elements to CodeBlock components
-// while keeping other content as raw HTML
+// SECURITY: All content goes through parser - no raw HTML fallback
 function TabContentRenderer({ html }: { html: string }) {
   // Parse the HTML to find <pre> elements and convert them to CodeBlock components
   const parseResult = parseHTMLToComponents(html);
 
   if (!parseResult.isValid || !parseResult.data) {
-    // Fallback to raw HTML if parsing fails
-    return <div dangerouslySetInnerHTML={{ __html: html }} />;
+    // SECURITY: No dangerouslySetInnerHTML fallback - return null on parse failure
+    console.error('TabContentRenderer: Failed to parse content.');
+    return null;
   }
 
   // Render the parsed content using the existing component system
@@ -508,7 +515,6 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
       return (
         <ExpandableTable
           key={key}
-          content={element.props.content}
           defaultCollapsed={element.props.defaultCollapsed}
           toggleText={element.props.toggleText}
           className={element.props.className}
@@ -520,8 +526,9 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
         </ExpandableTable>
       );
     case 'raw-html':
-      // This should only be used for specific known-safe content
-      return <div key={key} dangerouslySetInnerHTML={{ __html: element.props.html }} />;
+      // SECURITY: raw-html type is removed - all HTML must go through the parser
+      console.error('raw-html element type encountered - this should have been caught during parsing');
+      return null;
     default:
       // Handle tabs root
       if (element.props?.['data-element'] === 'tabs') {
@@ -553,7 +560,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
         return null;
       }
 
-      // Whitelisted @grafana/ui components mapping
+      // Legacy Grafana UI components mapping (rarely used but kept for compatibility)
       if (typeof element.type === 'string') {
         const lowerType = element.type.toLowerCase();
         const comp = allowedUiComponents[lowerType];
@@ -564,70 +571,18 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
             )
             .filter((child: React.ReactNode) => child !== null);
 
-          // Extract custom attributes from the original HTML using DOM parsing
-          const uiProps: Record<string, any> = { ...element.props };
-          const originalHTML: string | undefined = (element as any).originalHTML;
-
-          if (typeof originalHTML === 'string') {
-            // Parse the original HTML to extract attributes
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = originalHTML;
-            const tempElement = tempDiv.firstElementChild;
-
-            if (tempElement) {
-              // Helper function to get attribute value
-              const getAttr = (name: string) => tempElement.getAttribute(name);
-
-              // Boolean attributes
-              if (getAttr('nomargin')) {
-                uiProps.noMargin = true;
-              }
-              if (getAttr('nopadding')) {
-                uiProps.noPadding = true;
-              }
-              if (getAttr('isselected')) {
-                uiProps.isSelected = true;
-              }
-
-              // Custom attributes for Box component
-              const backgroundColor = getAttr('backgroundcolor');
-              const borderColor = getAttr('bordercolor');
-              const borderStyle = getAttr('borderstyle');
-              const padding = getAttr('padding');
-
-              // Custom attributes for Grid component
-              const columns = getAttr('columns');
-              const gap = getAttr('gap');
-
-              // Set props if they exist
-              if (backgroundColor) {
-                uiProps.backgroundColor = backgroundColor;
-              }
-              if (borderColor) {
-                uiProps.borderColor = borderColor;
-              }
-              if (borderStyle) {
-                uiProps.borderStyle = borderStyle;
-              }
-              if (padding) {
-                uiProps.padding = parseInt(padding, 10);
-              }
-              if (columns) {
-                uiProps.columns = parseInt(columns, 10);
-              }
-              if (gap) {
-                uiProps.gap = parseInt(gap, 10);
-              }
-            }
-          }
-
-          return React.createElement(comp, { key, ...uiProps }, ...(children && children.length > 0 ? children : []));
+          // Use props as-is (no custom attribute extraction needed for badge/tooltip)
+          return React.createElement(
+            comp,
+            { key, ...element.props },
+            ...(children && children.length > 0 ? children : [])
+          );
         }
       }
 
       // Standard HTML elements - strict validation
       if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
-        console.error('[DocsPlugin] Invalid element type for parsed element:', element);
+        console.error('Invalid element type for parsed element:', element);
         throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
       }
 

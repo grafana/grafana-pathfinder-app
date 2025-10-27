@@ -6,6 +6,7 @@ import { testIds } from '../testIds';
 import { DocsPluginConfig, TERMS_VERSION, getConfigWithDefaults } from '../../constants';
 import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
 import { updatePluginSettings } from '../../utils/utils.plugin';
+import { sanitizeDocumentationHTML } from '../../utils/docs-retrieval/html-sanitizer';
 
 type JsonData = DocsPluginConfig & {
   isDocsPasswordSet?: boolean;
@@ -80,10 +81,12 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
             : "If you enable this feature, contextual data from your Grafana instance will be sent to Grafana's hosted recommendation service. Please review the data usage details below before enabling."}
         </Alert>
 
+        {/* SECURITY: TERMS_AND_CONDITIONS_CONTENT is a static constant controlled by the dev team.
+            Sanitized with DOMPurify as defense-in-depth against supply chain attacks. */}
         <div
           data-testid={testIds.termsAndConditions.termsContent}
           className={styles.termsContent}
-          dangerouslySetInnerHTML={{ __html: TERMS_AND_CONDITIONS_CONTENT }}
+          dangerouslySetInnerHTML={{ __html: sanitizeDocumentationHTML(TERMS_AND_CONDITIONS_CONTENT) }}
         />
 
         <div className={styles.toggleSection}>

@@ -2,6 +2,7 @@ import { waitForReactUpdates } from './requirements-checker.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
 import { isElementVisible, hasFixedPosition, isInViewport, getScrollParent } from './element-validator';
+import { sanitizeDocumentationHTML } from './docs-retrieval/html-sanitizer';
 
 export interface NavigationOptions {
   checkContext?: boolean;
@@ -579,7 +580,8 @@ export class NavigationManager {
     // Create text container with HTML support
     const textContainer = document.createElement('div');
     textContainer.className = 'interactive-comment-text';
-    textContainer.innerHTML = comment; // Use innerHTML to support rich HTML content
+    // SECURITY: Sanitize comment HTML before insertion to prevent XSS
+    textContainer.innerHTML = sanitizeDocumentationHTML(comment || '');
 
     // Create content wrapper
     const contentWrapper = document.createElement('div');
@@ -858,9 +860,7 @@ export class NavigationManager {
     const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
     if (!megaMenuToggle) {
       if (logWarnings) {
-        console.warn(
-          '⚠️ Mega menu toggle button not found - navigation may already be open or use different structure'
-        );
+        console.warn('Mega menu toggle button not found - navigation may already be open or use different structure');
       }
       return;
     }
@@ -882,7 +882,7 @@ export class NavigationManager {
         return;
       } else {
         if (logWarnings) {
-          console.warn('⚠️ Dock menu button not found, navigation will remain in modal mode');
+          console.warn('Dock menu button not found, navigation will remain in modal mode');
         }
         return;
       }

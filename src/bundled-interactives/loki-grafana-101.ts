@@ -24,8 +24,7 @@ export const lokiGrafana101Html = `<html>
             class="interactive" 
             data-targetaction="sequence" 
             data-reftarget="span#setup-datasource"
-            data-requirements="navmenu-open,has-datasource:prometheus"
-            data-objectives="has-datasource:loki"> 
+            data-requirements="navmenu-open,has-datasource:prometheus" 
             <ul>
               <li class="interactive" 
                   data-requirements="navmenu-open,exists-reftarget"

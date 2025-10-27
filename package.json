@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "1.1.37",
+  "version": "1.1.48",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
     "dev": "webpack -w -c ./.config/webpack/webpack.config.ts --env development",
@@ -54,14 +54,14 @@
     "jest-environment-jsdom": "^29.5.0",
     "prettier": "3.6.2",
     "replace-in-file-webpack-plugin": "^1.0.6",
-    "sass": "1.63.2",
+    "sass": "1.93.2",
     "sass-loader": "13.3.1",
     "semver": "^7.6.3",
     "style-loader": "3.3.3",
     "swc-loader": "^0.2.3",
     "terser-webpack-plugin": "^5.3.10",
     "ts-node": "^10.9.2",
-    "typescript": "5.5.4",
+    "typescript": "5.9.3",
     "webpack": "^5.94.0",
     "webpack-cli": "^5.1.4",
     "webpack-livereload-plugin": "^3.0.2",
@@ -76,15 +76,18 @@
     "@emotion/css": "11.10.6",
     "@grafana/data": "^12.2.0",
     "@grafana/i18n": "^12.2.0",
-    "@grafana/runtime": "^12.2.0",
     "@grafana/scenes": "^6.10.4",
     "@grafana/schema": "^12.2.0",
     "@grafana/ui": "^12.2.0",
+    "dompurify": "^3.3.0",
     "prismjs": "1.30.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-router-dom": "^6.22.0",
     "rxjs": "7.8.2"
+  },
+  "overrides": {
+    "@grafana/runtime": "^12.3.0-18562067081"
   },
   "packageManager": "npm@11.4.1"
 }

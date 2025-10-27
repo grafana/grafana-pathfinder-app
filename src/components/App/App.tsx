@@ -2,10 +2,19 @@ import { AppRootProps } from '@grafana/data';
 import React, { useMemo, useEffect } from 'react';
 import { SceneApp } from '@grafana/scenes';
 import { docsPage } from '../../pages/docsPage';
-import { ContextPanelComponent } from '../../utils/docs.utils';
 import { PluginPropsContext } from '../../utils/utils.plugin';
-import { getConfigWithDefaults } from '../../constants';
+import { getConfigWithDefaults, ALLOWED_GITHUB_REPOS } from '../../constants';
 import { setGlobalLinkInterceptionEnabled } from '../../module';
+import {
+  parseUrlSafely,
+  isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isLocalhostUrl,
+} from '../../utils/url-validator';
+import { onPluginStart } from '../../utils/context';
+import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 
 function getSceneApp() {
   return new SceneApp({
@@ -13,15 +22,21 @@ function getSceneApp() {
   });
 }
 
-export function MemoizedContextPanel() {
-  return <ContextPanelComponent />;
-}
-
 function App(props: AppRootProps) {
   const scene = useMemo(() => getSceneApp(), []);
 
   // Get configuration
   const config = useMemo(() => getConfigWithDefaults(props.meta.jsonData || {}), [props.meta.jsonData]);
+
+  // Set global config early for module-level utilities
+  useEffect(() => {
+    (window as any).__pathfinderPluginConfig = config;
+  }, [config]);
+
+  // SECURITY: Initialize plugin on mount (includes dev mode from server)
+  useEffect(() => {
+    onPluginStart();
+  }, []);
 
   // Enable/disable global link interception based on config
   useEffect(() => {
@@ -33,11 +48,27 @@ function App(props: AppRootProps) {
     const tutorialUrl = config.tutorialUrl;
 
     if (tutorialUrl && tutorialUrl.trim()) {
+      // SECURITY (F6): Validate tutorial URL for security (user-configurable setting)
+      // Must match the same validation as content-fetcher, docs-panel, link-handler, global-link-interceptor, and module
+      // In production: Grafana docs, bundled content, and approved GitHub repos
+      // In dev mode: Also allows any GitHub URLs and localhost URLs for testing
+      const isValidUrl =
+        isAllowedContentUrl(tutorialUrl) ||
+        isAllowedGitHubRawUrl(tutorialUrl, ALLOWED_GITHUB_REPOS) ||
+        isGitHubUrl(tutorialUrl) ||
+        (isDevModeEnabledGlobal() && (isLocalhostUrl(tutorialUrl) || isGitHubRawUrl(tutorialUrl)));
+
+      if (!isValidUrl) {
+        console.error('Invalid tutorial URL in configuration:', tutorialUrl);
+        return;
+      }
+
       // Small delay to ensure the app is fully loaded
       setTimeout(() => {
         try {
-          // Determine if it's a learning journey or docs page
-          const isLearningJourney = tutorialUrl.includes('/learning-journeys/');
+          // Determine if it's a learning journey or docs page using secure URL parsing
+          const urlObj = parseUrlSafely(tutorialUrl);
+          const isLearningJourney = urlObj?.pathname.includes('/learning-journeys/') || false;
 
           // Dispatch a custom event to trigger the docs panel to open and load the tutorial
           const event = new CustomEvent('auto-launch-tutorial', {

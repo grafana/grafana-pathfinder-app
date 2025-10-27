@@ -4,13 +4,27 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2, Button } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
+import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { getConfigWithDefaults, DocsPluginConfig } from '../../constants';
+import {
+  DocsPluginConfig,
+  ALLOWED_GRAFANA_DOCS_HOSTNAMES,
+  ALLOWED_GITHUB_REPOS,
+  getConfigWithDefaults,
+} from '../../constants';
 
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
+import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+import {
+  parseUrlSafely,
+  isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isLocalhostUrl,
+} from '../../utils/url-validator';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -37,6 +51,8 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
+import { isDevModeEnabled } from 'utils/dev-mode';
+import { config } from '@grafana/runtime';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -69,6 +85,7 @@ interface CombinedPanelState extends SceneObjectState {
 
 const STORAGE_KEY = 'grafana-docs-plugin-tabs';
 const ACTIVE_TAB_STORAGE_KEY = 'grafana-docs-plugin-active-tab';
+const MAX_PERSISTED_TABS = 50; // SECURITY: Limit to prevent localStorage quota exhaustion
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public static Component = CombinedPanelRenderer;
@@ -119,7 +136,26 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const parsedData: PersistedTabData[] = JSON.parse(stored);
+        let parsedData: PersistedTabData[];
+
+        // SECURITY: Catch JSON.parse attacks (malformed JSON)
+        try {
+          parsedData = JSON.parse(stored);
+        } catch (parseError) {
+          console.error('Corrupted localStorage data detected:', parseError);
+          // Return default tabs instead of crashing
+          return [
+            {
+              id: 'recommendations',
+              title: 'Recommendations',
+              baseUrl: '',
+              currentUrl: '',
+              content: null,
+              isLoading: false,
+              error: null,
+            },
+          ];
+        }
 
         const tabs: LearningJourneyTab[] = [
           {
@@ -134,6 +170,31 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         ];
 
         parsedData.forEach((data) => {
+          // SECURITY: Validate URLs before restoring from localStorage
+          // This prevents XSS attacks via localStorage injection
+          // Must match the same validation as content-fetcher (lines 81-85)
+          const validateUrl = (url: string): boolean => {
+            return (
+              isAllowedContentUrl(url) ||
+              isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
+              isGitHubUrl(url) ||
+              (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url)))
+            );
+          };
+
+          const isValidBase = validateUrl(data.baseUrl);
+          const isValidCurrent = !data.currentUrl || validateUrl(data.currentUrl);
+
+          if (!isValidBase || !isValidCurrent) {
+            console.warn('Rejected potentially unsafe URL from localStorage:', {
+              baseUrl: data.baseUrl,
+              currentUrl: data.currentUrl,
+              isValidBase,
+              isValidCurrent,
+            });
+            return; // Skip this tab
+          }
+
           tabs.push({
             id: data.id,
             title: data.title,
@@ -193,6 +254,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     try {
       const tabsToSave: PersistedTabData[] = this.state.tabs
         .filter((tab) => tab.id !== 'recommendations')
+        .slice(-MAX_PERSISTED_TABS) // SECURITY: Keep only most recent tabs to prevent quota exhaustion
         .map((tab) => ({
           id: tab.id,
           title: tab.title,
@@ -204,7 +266,30 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(tabsToSave));
       localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(this.state.activeTabId));
     } catch (error) {
-      console.error('Failed to save tabs to storage:', error);
+      // SECURITY: Handle QuotaExceededError gracefully
+      if (error instanceof Error && error.name === 'QuotaExceededError') {
+        console.warn('localStorage quota exceeded, clearing oldest tabs');
+        // Remove oldest half of tabs and retry
+        const reducedTabs = this.state.tabs
+          .filter((tab) => tab.id !== 'recommendations')
+          .slice(-Math.floor(MAX_PERSISTED_TABS / 2))
+          .map((tab) => ({
+            id: tab.id,
+            title: tab.title,
+            baseUrl: tab.baseUrl,
+            currentUrl: tab.currentUrl,
+            type: tab.type,
+          }));
+
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(reducedTabs));
+          localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(this.state.activeTabId));
+        } catch (retryError) {
+          console.error('Failed to save tabs even after reduction:', retryError);
+        }
+      } else {
+        console.error('Failed to save tabs to storage:', error);
+      }
     }
   }
 
@@ -260,8 +345,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      const configWithDefaults = getConfigWithDefaults(this.state.pluginConfig);
-      const result = await fetchContent(url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
+      const result = await fetchContent(url);
 
       // Check if fetch succeeded or failed
       if (result.content) {
@@ -471,8 +555,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      const configWithDefaults = getConfigWithDefaults(this.state.pluginConfig);
-      const result = await fetchContent(url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
+      const result = await fetchContent(url);
 
       // Check if fetch succeeded or failed
       if (result.content) {
@@ -529,6 +612,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 }
 
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
+  // Get plugin configuration for dev mode check
+  const pluginContext = usePluginContext();
+  const pluginConfig = React.useMemo(() => {
+    return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+  }, [pluginContext?.meta?.jsonData]);
+
+  // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
+  const currentUserId = config.bootData.user?.id;
+  const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
+
+  // Set global config for utility functions that can't access React context
+  (window as any).__pathfinderPluginConfig = pluginConfig;
+
   React.useEffect(() => {
     addGlobalModalStyles();
   }, []);
@@ -542,7 +638,11 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
       // Always create a new tab for each intercepted link
       // Call the model method directly to ensure new tabs are created
-      if (url.includes('/learning-journeys/')) {
+      // Use proper URL parsing for security (defense in depth)
+      const urlObj = parseUrlSafely(url);
+      const isLearningJourney = urlObj?.pathname.includes('/learning-journeys/');
+
+      if (isLearningJourney) {
         model.openLearningJourney(url, title);
       } else {
         model.openDocsPage(url, title);
@@ -677,6 +777,10 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
   const contentRef = useRef<HTMLDivElement>(null);
 
+  // Scroll position preservation by tab/URL
+  const scrollPositionRef = useRef<Record<string, number>>({});
+  const lastContentUrlRef = useRef<string>('');
+
   // Expose current active tab id/url globally for interactive persistence keys
   useEffect(() => {
     try {
@@ -686,6 +790,60 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       // no-op
     }
   }, [activeTab?.id, activeTab?.currentUrl, activeTab?.baseUrl]);
+
+  // Save scroll position before content changes
+  const saveScrollPosition = useCallback(() => {
+    const scrollableElement = document.getElementById('inner-docs-content');
+    if (scrollableElement && lastContentUrlRef.current) {
+      scrollPositionRef.current[lastContentUrlRef.current] = scrollableElement.scrollTop;
+    }
+  }, []);
+
+  // Restore scroll position when content loads
+  const restoreScrollPosition = useCallback(() => {
+    const contentUrl = activeTab?.currentUrl || activeTab?.baseUrl || '';
+    if (contentUrl && contentUrl !== lastContentUrlRef.current) {
+      lastContentUrlRef.current = contentUrl;
+
+      // Restore saved position if available
+      const savedPosition = scrollPositionRef.current[contentUrl];
+      if (typeof savedPosition === 'number') {
+        const scrollableElement = document.getElementById('inner-docs-content');
+        if (scrollableElement) {
+          // Use requestAnimationFrame to ensure DOM is ready
+          requestAnimationFrame(() => {
+            scrollableElement.scrollTop = savedPosition;
+          });
+        }
+      } else {
+        // New content - scroll to top
+        const scrollableElement = document.getElementById('inner-docs-content');
+        if (scrollableElement) {
+          requestAnimationFrame(() => {
+            scrollableElement.scrollTop = 0;
+          });
+        }
+      }
+    }
+  }, [activeTab?.currentUrl, activeTab?.baseUrl]);
+
+  // Track scroll position continuously
+  useEffect(() => {
+    const scrollableElement = document.getElementById('inner-docs-content');
+    if (!scrollableElement) {
+      return;
+    }
+
+    const handleScroll = () => {
+      saveScrollPosition();
+    };
+
+    scrollableElement.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      scrollableElement.removeEventListener('scroll', handleScroll);
+      saveScrollPosition();
+    };
+  }, [saveScrollPosition]);
 
   // Initialize interactive elements for the content container (side effects only)
   useInteractiveElements({ containerRef: contentRef });
@@ -1090,20 +1248,23 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         try {
                           if (url && typeof url === 'string') {
                             const parsed = new URL(url);
-                            isGrafanaDomain =
-                              parsed.hostname === 'grafana.com' || parsed.hostname.endsWith('.grafana.com');
+                            // Security: Use exact hostname matching from allowlist (no subdomains)
+                            isGrafanaDomain = ALLOWED_GRAFANA_DOCS_HOSTNAMES.includes(parsed.hostname);
                           }
                         } catch {
                           isGrafanaDomain = false;
                         }
                         if (url && !isBundled && isGrafanaDomain) {
+                          // Strip /unstyled.html from URL for browser viewing (users want the styled docs page)
+                          const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+
                           return (
                             <button
                               className={styles.secondaryActionButton}
                               aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
                               onClick={() => {
                                 reportAppInteraction(UserInteraction.OpenExtraResource, {
-                                  content_url: url,
+                                  content_url: cleanUrl,
                                   content_type: activeTab.type || 'docs',
                                   link_text: activeTab.title,
                                   source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
@@ -1112,7 +1273,7 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                                 });
                                 // Delay to ensure analytics event is sent before opening new tab
                                 setTimeout(() => {
-                                  window.open(url, '_blank', 'noopener,noreferrer');
+                                  window.open(cleanUrl, '_blank', 'noopener,noreferrer');
                                 }, 100);
                               }}
                             >
@@ -1123,6 +1284,21 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         }
                         return null;
                       })()}
+                      {isDevMode && (
+                        <IconButton
+                          tooltip="Refresh tab (dev mode only)"
+                          name="sync"
+                          onClick={() => {
+                            if (activeTab) {
+                              if (activeTab.type === 'docs') {
+                                model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                              } else {
+                                model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                              }
+                            }
+                          }}
+                        />
+                      )}
                       <FeedbackButton
                         variant="secondary"
                         contentUrl={activeTab.content?.url || activeTab.baseUrl}
@@ -1261,7 +1437,8 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                         activeTab.content.type === 'learning-journey' ? journeyStyles : docsStyles
                       } ${interactiveStyles} ${prismStyles}`}
                       onContentReady={() => {
-                        // Content is ready - any additional setup can go here
+                        // Restore scroll position after content is ready
+                        restoreScrollPosition();
                       }}
                     />
                   )}
@@ -1275,13 +1452,15 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       </div>
       {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement */}
       {!isRecommendationsTab && activeTab?.type !== 'docs' && (
-        <FeedbackButton
-          contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
-          contentType={activeTab?.type || 'learning-journey'}
-          interactionLocation="docs_panel_footer_feedback_button"
-          currentMilestone={activeTab?.content?.metadata?.learningJourney?.currentMilestone}
-          totalMilestones={activeTab?.content?.metadata?.learningJourney?.totalMilestones}
-        />
+        <>
+          <FeedbackButton
+            contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
+            contentType={activeTab?.type || 'learning-journey'}
+            interactionLocation="docs_panel_footer_feedback_button"
+            currentMilestone={activeTab?.content?.metadata?.learningJourney?.currentMilestone}
+            totalMilestones={activeTab?.content?.metadata?.learningJourney?.totalMilestones}
+          />
+        </>
       )}
     </div>
   );

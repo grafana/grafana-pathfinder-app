@@ -177,7 +177,7 @@ export const InteractiveStep = forwardRef<
 
         return true;
       } catch (error) {
-        console.error(`❌ Step execution failed: ${stepId}`, error);
+        console.error(`Step execution failed: ${stepId}`, error);
         setPostVerifyError(error instanceof Error ? error.message : 'Execution failed');
         return false;
       }
