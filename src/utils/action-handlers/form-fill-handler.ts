@@ -108,8 +108,30 @@ export class FormFillHandler {
   private isAriaCombobox(element: HTMLElement): boolean {
     const role = element.getAttribute('role');
     const ariaAutocomplete = element.getAttribute('aria-autocomplete');
-    // Prefer ARIA role detection as it is stable across themes/classes
-    return role === 'combobox' && (ariaAutocomplete === 'list' || ariaAutocomplete === 'both');
+
+    // Primary: ARIA role detection (most reliable)
+    if (role === 'combobox' && (ariaAutocomplete === 'list' || ariaAutocomplete === 'both')) {
+      return true;
+    }
+
+    // Secondary: Check for Grafana's custom combobox pattern
+    // Many Grafana inputs have dropdown suffix but lack role="combobox"
+    // Look for parent wrapper with SVG dropdown icon (chevron-down)
+    const parent = element.parentElement;
+    if (parent && element.tagName.toLowerCase() === 'input') {
+      // Check if parent contains an SVG with a chevron-down path (dropdown indicator)
+      // This is more stable than CSS class names which are auto-generated
+      const svg = parent.querySelector('svg');
+      if (svg) {
+        // Look for the characteristic chevron-down path used in Grafana dropdowns
+        const path = svg.querySelector('path[d*="17,9.17"]');
+        if (path) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   private parseClearCommand(value: string): { shouldClear: boolean; remainingValue: string } {
