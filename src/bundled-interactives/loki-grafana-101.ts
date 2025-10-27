@@ -8,7 +8,23 @@ export const lokiGrafana101Html = `<html>
         <title>Loki + Grafana 101</title>
     </head>
     <body>
-        <p><strong>Prerequisite:</strong> Complete <a href="bundled:prometheus-grafana-101">Prometheus + Grafana 101</a> first.</p>
+        <div class="admonition admonition-note">
+            <blockquote>
+                <p class="title text-uppercase">Prerequisites</p>
+                <ol>
+                    <li>Complete the <a href="bundled:prometheus-grafana-101">Prometheus + Grafana 101</a> tutorial first.</li>
+                    <li>Have a local development environment with Grafana, Prometheus, Loki, and Grafana Alloy running.</li>
+                </ol>
+                <p>To set up the required environment, refer to the <a href="https://github.com/grafana/alloy-scenarios/tree/main/self-monitoring" target="_blank">Grafana Alloy self-monitoring scenario</a> which includes a Docker Compose setup with all necessary services including Loki.</p>
+                <p><strong>You'll need:</strong></p>
+                <ul>
+                    <li>The "Alloy Self Monitoring" dashboard from the previous tutorial</li>
+                    <li>Loki service running and collecting logs from Docker containers</li>
+                    <li>Grafana Alloy forwarding logs to Loki</li>
+                </ul>
+            </blockquote>
+        </div>
+
         <h1>Loki + Grafana 101</h1>
 
         <p>This tutorial continues from <a href="bundled:prometheus-grafana-101">Prometheus + Grafana 101</a>. You'll configure a Loki data source and add a Loki panel to the dashboard you created previously.</p>

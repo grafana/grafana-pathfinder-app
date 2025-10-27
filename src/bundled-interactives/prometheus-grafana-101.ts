@@ -8,6 +8,20 @@ export const prometheusGrafana101Html = `<html>
         <title>Prometheus + Grafana 101</title>
     </head>
     <body>
+        <div class="admonition admonition-note">
+            <blockquote>
+                <p class="title text-uppercase">Prerequisites</p>
+                <p>This tutorial requires a local development environment with Grafana, Prometheus, and Grafana Alloy running.</p>
+                <p>To set up the required environment, refer to the <a href="https://github.com/grafana/alloy-scenarios/tree/main/self-monitoring" target="_blank">Grafana Alloy self-monitoring scenario</a> which includes a Docker Compose setup with all necessary services.</p>
+                <p><strong>You'll need:</strong></p>
+                <ul>
+                    <li>Docker and Docker Compose installed</li>
+                    <li>Grafana Alloy running with self-monitoring enabled</li>
+                    <li>Prometheus receiving metrics from Alloy</li>
+                </ul>
+            </blockquote>
+        </div>
+
         <h1>Prometheus + Grafana 101</h1>
 
         <p>Welcome to your Prometheus monitoring with Grafana journey! In this interactive tutorial, we'll take you on a tour of key locations in Grafana and help you set up your first Prometheus data source. By the end, you'll be familiar with:</p>
