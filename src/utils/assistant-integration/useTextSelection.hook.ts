@@ -6,6 +6,7 @@ export interface SelectionPosition {
   left: number;
   width: number;
   height: number;
+  buttonPlacement: 'top' | 'bottom';
 }
 
 export interface TextSelectionState {
@@ -72,13 +73,27 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
       const range = selection.getRangeAt(0);
       const rect = range.getBoundingClientRect();
 
+      // Determine button placement (top or bottom based on space)
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      const BUTTON_HEIGHT = 40;
+      let buttonPlacement: 'top' | 'bottom' = 'top';
+
+      if (containerRect) {
+        const spaceAbove = rect.top - containerRect.top;
+        // If not enough space above, place at bottom
+        if (spaceAbove < BUTTON_HEIGHT) {
+          buttonPlacement = 'bottom';
+        }
+      }
+
       setSelectionState({
         selectedText: selectedText.trim(),
         position: {
           top: rect.top + window.scrollY,
           left: rect.left + window.scrollX + rect.width / 2,
           width: rect.width,
-          height: rect.height, // Capture actual height for multi-line selections
+          height: rect.height,
+          buttonPlacement,
         },
         isValid: true,
       });

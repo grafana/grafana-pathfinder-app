@@ -180,34 +180,34 @@ export function ContentRenderer({ content, onContentReady, className, containerR
   }, [processedContent, onContentReady]);
 
   return (
-    <>
-      <div
-        ref={activeRef}
-        className={`${className} ${hideSelectionStyle}`}
-        data-pathfinder-content="true"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          minHeight: 0,
-          overflow: 'visible',
-        }}
-      >
-        <ContentProcessor
-          html={processedContent}
-          contentType={content.type}
-          baseUrl={content.url}
-          onReady={onContentReady}
-        />
-      </div>
-      {/* Assistant selection popover - only renders when text is selected and assistant is available */}
+    <div
+      ref={activeRef}
+      className={`${className} ${hideSelectionStyle}`}
+      data-pathfinder-content="true"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        overflow: 'visible',
+        position: 'relative', // Positioning context for assistant popover
+      }}
+    >
+      <ContentProcessor
+        html={processedContent}
+        contentType={content.type}
+        baseUrl={content.url}
+        onReady={onContentReady}
+      />
+      {/* Assistant selection popover - rendered inside container so it scrolls with content */}
       {selectionState.isValid && (
         <AssistantSelectionPopover
           selectedText={selectionState.selectedText}
           position={selectionState.position}
           context={documentContext}
+          containerRef={activeRef}
         />
       )}
-    </>
+    </div>
   );
 }
 
