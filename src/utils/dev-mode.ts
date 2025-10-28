@@ -182,3 +182,45 @@ export const isDevModeEnabledGlobal = (): boolean => {
     return false;
   }
 };
+
+/**
+ * Check if assistant dev mode is enabled for the current user
+ *
+ * This allows testing the assistant integration in OSS environments by mocking
+ * the assistant availability and logging prompts instead of opening the real assistant.
+ *
+ * @param pluginConfig - Plugin configuration from jsonData
+ * @param currentUserId - Current user's ID (optional, will auto-detect if not provided)
+ * @returns true if assistant dev mode is enabled for this user
+ */
+export const isAssistantDevModeEnabled = (pluginConfig: DocsPluginConfig, currentUserId?: number): boolean => {
+  // First check if regular dev mode is enabled for this user
+  const devModeEnabled = isDevModeEnabled(pluginConfig, currentUserId);
+
+  if (!devModeEnabled) {
+    return false;
+  }
+
+  // Then check if assistant dev mode is specifically enabled
+  return pluginConfig.enableAssistantDevMode ?? false;
+};
+
+/**
+ * Global check for assistant dev mode (for use outside React components)
+ *
+ * @returns true if assistant dev mode is enabled for current user, false otherwise
+ */
+export const isAssistantDevModeEnabledGlobal = (): boolean => {
+  try {
+    const globalConfig = (window as any).__pathfinderPluginConfig as DocsPluginConfig | undefined;
+    const userId = config.bootData.user?.id;
+
+    if (!globalConfig) {
+      return false;
+    }
+
+    return isAssistantDevModeEnabled(globalConfig, userId);
+  } catch (e) {
+    return false;
+  }
+};

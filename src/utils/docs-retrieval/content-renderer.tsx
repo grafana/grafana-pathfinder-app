@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useMemo } from 'react';
+import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
 
@@ -19,6 +20,7 @@ import {
   YouTubeVideoRenderer,
 } from './components/interactive-components';
 import { SequentialRequirementsManager } from '../requirements-checker.hook';
+import { useTextSelection, AssistantSelectionPopover, buildDocumentContext } from '../assistant-integration';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
   try {
@@ -120,9 +122,23 @@ interface ContentRendererProps {
   containerRef?: React.RefObject<HTMLDivElement>;
 }
 
+// Style to hide default browser selection highlight
+const hideSelectionStyle = css`
+  ::selection {
+    background-color: transparent;
+    color: inherit;
+  }
+`;
+
 export function ContentRenderer({ content, onContentReady, className, containerRef }: ContentRendererProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
+
+  // Text selection tracking for assistant integration
+  const selectionState = useTextSelection(activeRef);
+
+  // Build document context for assistant
+  const documentContext = React.useMemo(() => buildDocumentContext(content), [content]);
 
   // Expose current content key globally for interactive persistence
   useEffect(() => {
@@ -164,24 +180,34 @@ export function ContentRenderer({ content, onContentReady, className, containerR
   }, [processedContent, onContentReady]);
 
   return (
-    <div
-      ref={activeRef}
-      className={className}
-      data-pathfinder-content="true"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 0,
-        overflow: 'visible',
-      }}
-    >
-      <ContentProcessor
-        html={processedContent}
-        contentType={content.type}
-        baseUrl={content.url}
-        onReady={onContentReady}
-      />
-    </div>
+    <>
+      <div
+        ref={activeRef}
+        className={`${className} ${hideSelectionStyle}`}
+        data-pathfinder-content="true"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'visible',
+        }}
+      >
+        <ContentProcessor
+          html={processedContent}
+          contentType={content.type}
+          baseUrl={content.url}
+          onReady={onContentReady}
+        />
+      </div>
+      {/* Assistant selection popover - only renders when text is selected and assistant is available */}
+      {selectionState.isValid && (
+        <AssistantSelectionPopover
+          selectedText={selectionState.selectedText}
+          position={selectionState.position}
+          context={documentContext}
+        />
+      )}
+    </>
   );
 }
 

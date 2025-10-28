@@ -51,6 +51,10 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const devModeEnabledForUser = isDevModeEnabled(jsonData || {}, currentUserId);
   const [devModeToggling, setDevModeToggling] = useState<boolean>(false);
 
+  // Assistant dev mode state
+  const assistantDevModeEnabled = jsonData?.enableAssistantDevMode ?? false;
+  const [assistantDevModeToggling, setAssistantDevModeToggling] = useState<boolean>(false);
+
   // Show dev mode input if URL param is set OR if dev mode is already enabled for this user
   const showDevModeInput = hasDevParam || devModeEnabledForUser;
 
@@ -100,6 +104,35 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       alert(errorMessage);
 
       setDevModeToggling(false);
+    }
+  };
+
+  const onChangeAssistantDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
+    setAssistantDevModeToggling(true);
+    try {
+      const newValue = event.target.checked;
+
+      await updatePluginSettings(plugin.meta.id, {
+        enabled,
+        pinned,
+        jsonData: {
+          ...jsonData,
+          enableAssistantDevMode: newValue,
+        },
+      });
+
+      // Reload page to refresh plugin config and apply changes globally
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.error('Failed to toggle assistant dev mode:', error);
+
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to toggle assistant dev mode. You may need admin permissions.';
+      alert(errorMessage);
+
+      setAssistantDevModeToggling(false);
     }
   };
 
@@ -210,6 +243,27 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                 {devModeToggling && <span className={s.updateText}>Saving to server and reloading...</span>}
               </div>
             </Field>
+
+            {/* Assistant Dev Mode - Only show when main dev mode is enabled */}
+            {devModeEnabledForUser && (
+              <Field
+                label="Enable Assistant (Dev Mode)"
+                description="Mock the Grafana Assistant in OSS environments for testing. When enabled, the assistant popover will appear on text selection and log prompts to console instead of opening the real assistant."
+                className={s.marginTop}
+              >
+                <div className={s.devModeField}>
+                  <Input
+                    type="checkbox"
+                    id="assistant-dev-mode"
+                    checked={assistantDevModeEnabled}
+                    onChange={onChangeAssistantDevMode}
+                    disabled={assistantDevModeToggling}
+                  />
+                  {assistantDevModeToggling && <span className={s.updateText}>Saving to server and reloading...</span>}
+                </div>
+              </Field>
+            )}
+
             {devModeEnabledForUser && (
               <Alert severity="warning" title="⚠️ Dev mode security warning" className={s.marginTop}>
                 <Text variant="body" weight="bold">

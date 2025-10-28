@@ -64,6 +64,8 @@ export interface DocsPluginConfig {
   // Stored in plugin jsonData (server-side, admin-only) but scoped to specific user IDs
   devMode?: boolean; // Whether dev mode is enabled for the instance
   devModeUserIds?: number[]; // Array of user IDs who have dev mode access (only they see dev features)
+  // Assistant Dev Mode - for testing assistant integration in OSS environments
+  enableAssistantDevMode?: boolean; // Whether to mock assistant availability for testing
   // Interactive Features
   enableAutoDetection?: boolean;
   requirementsCheckTimeout?: number;
@@ -86,6 +88,8 @@ export const getConfigWithDefaults = (
   // Dev mode - SECURITY: Hybrid approach (stored server-side, scoped per-user)
   devMode: config.devMode ?? DEFAULT_DEV_MODE,
   devModeUserIds: config.devModeUserIds ?? DEFAULT_DEV_MODE_USER_IDS,
+  // Assistant dev mode
+  enableAssistantDevMode: config.enableAssistantDevMode ?? false,
   // Interactive Features
   enableAutoDetection: config.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
   requirementsCheckTimeout: config.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
