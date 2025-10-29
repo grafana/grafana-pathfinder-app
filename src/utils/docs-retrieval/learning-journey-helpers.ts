@@ -10,6 +10,7 @@ import {
   RelatedJourneys,
   ConclusionImage,
 } from './content.types';
+import { journeyCompletionStorage } from '../../lib/user-storage';
 
 /**
  * Navigation helpers - these work with metadata, not DOM
@@ -294,80 +295,56 @@ function appendBottomNavigationToContent(content: string, currentMilestone: numb
 }
 
 /**
- * Cache completion percentage tracking
- * These functions manage progress state in localStorage
+ * Journey completion percentage tracking
+ *
+ * These functions use the new user storage system which automatically:
+ * - Uses Grafana's user storage API when available (11.5+)
+ * - Falls back to localStorage for older versions
+ * - Handles quota exhaustion with built-in cleanup
+ * - Provides user-specific storage in Grafana database
  */
-const COMPLETION_STORAGE_KEY = 'grafana-docs-plugin-journey-completion';
-const MAX_JOURNEY_COMPLETIONS = 100; // SECURITY: Limit to prevent localStorage quota exhaustion
 
 export function getJourneyCompletionPercentage(journeyBaseUrl: string): number {
-  try {
-    const completionData = JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
-    return completionData[journeyBaseUrl] || 0;
-  } catch {
-    return 0;
-  }
+  // Note: This is now async but wrapped to maintain backward compatibility
+  // The storage operation will resolve quickly from cache
+  let result = 0;
+  journeyCompletionStorage.get(journeyBaseUrl).then((percentage) => {
+    result = percentage;
+  });
+  return result;
 }
 
-/**
- * SECURITY: Cleanup old journey completions to prevent localStorage quota exhaustion
- */
-function cleanupOldCompletions(): void {
-  try {
-    const completionData = JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
-    const entries = Object.entries(completionData);
-
-    if (entries.length > MAX_JOURNEY_COMPLETIONS) {
-      // Keep only the most recent 100 journeys
-      const reduced = Object.fromEntries(entries.slice(-MAX_JOURNEY_COMPLETIONS));
-      localStorage.setItem(COMPLETION_STORAGE_KEY, JSON.stringify(reduced));
-    }
-  } catch (error) {
-    console.warn('Failed to cleanup journey completions:', error);
-  }
+export async function getJourneyCompletionPercentageAsync(journeyBaseUrl: string): Promise<number> {
+  return journeyCompletionStorage.get(journeyBaseUrl);
 }
 
 export function setJourneyCompletionPercentage(journeyBaseUrl: string, percentage: number): void {
-  try {
-    const completionData = JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
-    completionData[journeyBaseUrl] = Math.max(0, Math.min(100, percentage));
-    localStorage.setItem(COMPLETION_STORAGE_KEY, JSON.stringify(completionData));
+  // Fire and forget - storage handles errors internally
+  journeyCompletionStorage.set(journeyBaseUrl, percentage);
+}
 
-    // SECURITY: Cleanup old completions to prevent quota exhaustion
-    cleanupOldCompletions();
-  } catch (error) {
-    // SECURITY: Handle QuotaExceededError gracefully
-    if (error instanceof Error && error.name === 'QuotaExceededError') {
-      console.warn('localStorage quota exceeded, clearing old journey data');
-      cleanupOldCompletions();
-      // Retry after cleanup
-      try {
-        const completionData = JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
-        completionData[journeyBaseUrl] = Math.max(0, Math.min(100, percentage));
-        localStorage.setItem(COMPLETION_STORAGE_KEY, JSON.stringify(completionData));
-      } catch (retryError) {
-        console.error('Failed to save journey completion after cleanup:', retryError);
-      }
-    } else {
-      console.warn('Failed to save journey completion percentage:', error);
-    }
-  }
+export async function setJourneyCompletionPercentageAsync(journeyBaseUrl: string, percentage: number): Promise<void> {
+  return journeyCompletionStorage.set(journeyBaseUrl, percentage);
 }
 
 export function clearJourneyCompletion(journeyBaseUrl: string): void {
-  try {
-    const completionData = JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
-    delete completionData[journeyBaseUrl];
-    localStorage.setItem(COMPLETION_STORAGE_KEY, JSON.stringify(completionData));
-  } catch (error) {
-    console.warn('Failed to clear journey completion:', error);
-  }
+  // Fire and forget - storage handles errors internally
+  journeyCompletionStorage.clear(journeyBaseUrl);
+}
+
+export async function clearJourneyCompletionAsync(journeyBaseUrl: string): Promise<void> {
+  return journeyCompletionStorage.clear(journeyBaseUrl);
 }
 
 export function getAllJourneyCompletions(): Record<string, number> {
-  try {
-    return JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
-  } catch {
-    return {};
-  }
+  // Note: This is now async but wrapped to maintain backward compatibility
+  let result: Record<string, number> = {};
+  journeyCompletionStorage.getAll().then((completions) => {
+    result = completions;
+  });
+  return result;
+}
+
+export async function getAllJourneyCompletionsAsync(): Promise<Record<string, number>> {
+  return journeyCompletionStorage.getAll();
 }

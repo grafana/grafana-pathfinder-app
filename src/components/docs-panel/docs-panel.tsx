@@ -27,6 +27,7 @@ import {
 } from '../../utils/url-validator';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { tabStorage } from '../../lib/user-storage';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
@@ -83,10 +84,6 @@ interface CombinedPanelState extends SceneObjectState {
   pluginConfig: DocsPluginConfig;
 }
 
-const STORAGE_KEY = 'grafana-docs-plugin-tabs';
-const ACTIVE_TAB_STORAGE_KEY = 'grafana-docs-plugin-active-tab';
-const MAX_PERSISTED_TABS = 50; // SECURITY: Limit to prevent localStorage quota exhaustion
-
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public static Component = CombinedPanelRenderer;
 
@@ -95,19 +92,42 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public constructor(pluginConfig: DocsPluginConfig = {}) {
-    const restoredTabs = CombinedLearningJourneyPanel.restoreTabsFromStorage();
+    // Initialize with default tabs first
+    const defaultTabs: LearningJourneyTab[] = [
+      {
+        id: 'recommendations',
+        title: 'Recommendations',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+      },
+    ];
+
     const contextPanel = new ContextPanel(
       (url: string, title: string) => this.openLearningJourney(url, title),
       (url: string, title: string) => this.openDocsPage(url, title)
     );
 
-    const activeTabId = CombinedLearningJourneyPanel.restoreActiveTabFromStorage(restoredTabs);
-
     super({
-      tabs: restoredTabs,
-      activeTabId,
+      tabs: defaultTabs,
+      activeTabId: 'recommendations',
       contextPanel,
       pluginConfig,
+    });
+
+    // Restore tabs asynchronously after initialization
+    this.restoreTabsAsync();
+  }
+
+  private async restoreTabsAsync(): Promise<void> {
+    const restoredTabs = await CombinedLearningJourneyPanel.restoreTabsFromStorage();
+    const activeTabId = await CombinedLearningJourneyPanel.restoreActiveTabFromStorage(restoredTabs);
+
+    this.setState({
+      tabs: restoredTabs,
+      activeTabId,
     });
 
     // Initialize the active tab if needed
@@ -132,35 +152,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     }
   }
 
-  private static restoreTabsFromStorage(): LearningJourneyTab[] {
+  private static async restoreTabsFromStorage(): Promise<LearningJourneyTab[]> {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        let parsedData: PersistedTabData[];
+      const parsedData = await tabStorage.getTabs<PersistedTabData>();
 
-        // SECURITY: Catch JSON.parse attacks (malformed JSON)
-        try {
-          parsedData = JSON.parse(stored);
-        } catch (parseError) {
-          console.error('Corrupted localStorage data detected:', parseError);
-          // Return default tabs instead of crashing
-          return [
-            {
-              id: 'recommendations',
-              title: 'Recommendations',
-              baseUrl: '',
-              currentUrl: '',
-              content: null,
-              isLoading: false,
-              error: null,
-            },
-          ];
-        }
-
-        const tabs: LearningJourneyTab[] = [
+      if (!parsedData || parsedData.length === 0) {
+        // Return default tabs if no stored data
+        return [
           {
             id: 'recommendations',
-            title: 'Recommendations', // Will be translated in renderer
+            title: 'Recommendations',
             baseUrl: '',
             currentUrl: '',
             content: null,
@@ -168,78 +169,79 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
             error: null,
           },
         ];
-
-        parsedData.forEach((data) => {
-          // SECURITY: Validate URLs before restoring from localStorage
-          // This prevents XSS attacks via localStorage injection
-          // Must match the same validation as content-fetcher (lines 81-85)
-          const validateUrl = (url: string): boolean => {
-            return (
-              isAllowedContentUrl(url) ||
-              isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
-              isGitHubUrl(url) ||
-              (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url)))
-            );
-          };
-
-          const isValidBase = validateUrl(data.baseUrl);
-          const isValidCurrent = !data.currentUrl || validateUrl(data.currentUrl);
-
-          if (!isValidBase || !isValidCurrent) {
-            console.warn('Rejected potentially unsafe URL from localStorage:', {
-              baseUrl: data.baseUrl,
-              currentUrl: data.currentUrl,
-              isValidBase,
-              isValidCurrent,
-            });
-            return; // Skip this tab
-          }
-
-          tabs.push({
-            id: data.id,
-            title: data.title,
-            baseUrl: data.baseUrl,
-            currentUrl: data.currentUrl || data.baseUrl,
-            content: null, // Will be loaded when tab becomes active
-            isLoading: false,
-            error: null,
-            type: data.type || 'learning-journey',
-          });
-        });
-
-        return tabs;
       }
-    } catch (error) {
-      console.error('Failed to restore tabs from storage:', error);
-    }
 
-    return [
-      {
-        id: 'recommendations',
-        title: 'Recommendations',
-        baseUrl: '',
-        currentUrl: '',
-        content: null,
-        isLoading: false,
-        error: null,
-      },
-    ];
-  }
+      const tabs: LearningJourneyTab[] = [
+        {
+          id: 'recommendations',
+          title: 'Recommendations', // Will be translated in renderer
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+        },
+      ];
 
-  private static restoreActiveTabFromStorage(tabs: LearningJourneyTab[]): string {
-    try {
-      const stored = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-      if (stored) {
-        let activeTabId: string;
+      parsedData.forEach((data) => {
+        // SECURITY: Validate URLs before restoring from storage
+        // This prevents XSS attacks via storage injection
+        const validateUrl = (url: string): boolean => {
+          return (
+            isAllowedContentUrl(url) ||
+            isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
+            isGitHubUrl(url) ||
+            (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url)))
+          );
+        };
 
-        // Handle both JSON string and raw string cases
-        try {
-          activeTabId = JSON.parse(stored);
-        } catch {
-          // If JSON.parse fails, treat it as a raw string
-          activeTabId = stored;
+        const isValidBase = validateUrl(data.baseUrl);
+        const isValidCurrent = !data.currentUrl || validateUrl(data.currentUrl);
+
+        if (!isValidBase || !isValidCurrent) {
+          console.warn('Rejected potentially unsafe URL from storage:', {
+            baseUrl: data.baseUrl,
+            currentUrl: data.currentUrl,
+            isValidBase,
+            isValidCurrent,
+          });
+          return; // Skip this tab
         }
 
+        tabs.push({
+          id: data.id,
+          title: data.title,
+          baseUrl: data.baseUrl,
+          currentUrl: data.currentUrl || data.baseUrl,
+          content: null, // Will be loaded when tab becomes active
+          isLoading: false,
+          error: null,
+          type: data.type || 'learning-journey',
+        });
+      });
+
+      return tabs;
+    } catch (error) {
+      console.error('Failed to restore tabs from storage:', error);
+      return [
+        {
+          id: 'recommendations',
+          title: 'Recommendations',
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+        },
+      ];
+    }
+  }
+
+  private static async restoreActiveTabFromStorage(tabs: LearningJourneyTab[]): Promise<string> {
+    try {
+      const activeTabId = await tabStorage.getActiveTab();
+
+      if (activeTabId) {
         const tabExists = tabs.some((t) => t.id === activeTabId);
         return tabExists ? activeTabId : 'recommendations';
       }
@@ -250,11 +252,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     return 'recommendations';
   }
 
-  private saveTabsToStorage(): void {
+  private async saveTabsToStorage(): Promise<void> {
     try {
       const tabsToSave: PersistedTabData[] = this.state.tabs
         .filter((tab) => tab.id !== 'recommendations')
-        .slice(-MAX_PERSISTED_TABS) // SECURITY: Keep only most recent tabs to prevent quota exhaustion
         .map((tab) => ({
           id: tab.id,
           title: tab.title,
@@ -263,40 +264,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
           type: tab.type,
         }));
 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(tabsToSave));
-      localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(this.state.activeTabId));
+      // Save both tabs and active tab
+      await Promise.all([tabStorage.setTabs(tabsToSave), tabStorage.setActiveTab(this.state.activeTabId)]);
     } catch (error) {
-      // SECURITY: Handle QuotaExceededError gracefully
-      if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('localStorage quota exceeded, clearing oldest tabs');
-        // Remove oldest half of tabs and retry
-        const reducedTabs = this.state.tabs
-          .filter((tab) => tab.id !== 'recommendations')
-          .slice(-Math.floor(MAX_PERSISTED_TABS / 2))
-          .map((tab) => ({
-            id: tab.id,
-            title: tab.title,
-            baseUrl: tab.baseUrl,
-            currentUrl: tab.currentUrl,
-            type: tab.type,
-          }));
-
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(reducedTabs));
-          localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(this.state.activeTabId));
-        } catch (retryError) {
-          console.error('Failed to save tabs even after reduction:', retryError);
-        }
-      } else {
-        console.error('Failed to save tabs to storage:', error);
-      }
+      console.error('Failed to save tabs to storage:', error);
     }
   }
 
-  public static clearPersistedTabs(): void {
+  public static async clearPersistedTabs(): Promise<void> {
     try {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
+      await tabStorage.clear();
     } catch (error) {
       console.error('Failed to clear persisted tabs:', error);
     }
@@ -442,23 +419,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.saveTabsToStorage();
 
     // Clear any persisted interactive completion state for this tab
-    try {
-      const tab = currentTabs.find((t) => t.id === tabId);
-      if (tab) {
-        // Remove all keys matching this content key prefix
-        const prefix = `docsPlugin:completedSteps:${tab.baseUrl}`;
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith(prefix)) {
-            localStorage.removeItem(key);
-            // Adjust index due to removal
-            i--;
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
+    // Note: Interactive step completion is now handled by interactiveStepStorage
+    // which uses a different key format and is managed within interactive components
+    // This cleanup is now handled automatically when interactive sections are unmounted
   }
 
   public setActiveTab(tabId: string) {

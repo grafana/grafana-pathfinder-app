@@ -8,6 +8,7 @@ import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
 import { reportAppInteraction, UserInteraction, getSourceDocument } from '../../../../lib/analytics';
+import { interactiveStepStorage } from '../../../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../../constants/interactive-config';
 import { ActionMonitor } from '../../../action-monitor';
 import { getConfigWithDefaults } from '../../../../constants';
@@ -184,23 +185,13 @@ export function InteractiveSection({
     return typeof window !== 'undefined' ? window.location.pathname : 'unknown';
   }, []);
 
-  const getStorageKey = useCallback(() => {
-    const contentKey = getContentKey();
-    return `docsPlugin:completedSteps:${contentKey}:${sectionId}`;
-  }, [getContentKey, sectionId]);
-
-  // Load persisted completed steps on mount/section change (declared after stepComponents)
-
+  // Persist completed steps using new user storage system
   const persistCompletedSteps = useCallback(
     (ids: Set<string>) => {
-      try {
-        const key = getStorageKey();
-        localStorage.setItem(key, JSON.stringify(Array.from(ids)));
-      } catch {
-        // ignore persistence errors
-      }
+      const contentKey = getContentKey();
+      interactiveStepStorage.setCompleted(contentKey, sectionId, ids);
     },
-    [getStorageKey]
+    [getContentKey, sectionId]
   );
 
   // Use ref for cancellation to avoid closure issues
@@ -294,26 +285,23 @@ export function InteractiveSection({
 
   // Load persisted completed steps on mount/section change (declared after stepComponents)
   useEffect(() => {
-    try {
-      const key = getStorageKey();
-      const raw = localStorage.getItem(key);
-      if (raw) {
-        const parsed: string[] = JSON.parse(raw);
+    const contentKey = getContentKey();
+
+    interactiveStepStorage.getCompleted(contentKey, sectionId).then((restored) => {
+      if (restored.size > 0) {
         // Only keep steps that exist in current content
         const validIds = new Set(stepComponents.map((s) => s.stepId));
-        const filtered = parsed.filter((id) => validIds.has(id));
+        const filtered = Array.from(restored).filter((id) => validIds.has(id));
         if (filtered.length > 0) {
-          const restored = new Set(filtered);
-          setCompletedSteps(restored);
+          const restoredSet = new Set(filtered);
+          setCompletedSteps(restoredSet);
           // Move index to next uncompleted
-          const nextIdx = stepComponents.findIndex((s) => !restored.has(s.stepId));
+          const nextIdx = stepComponents.findIndex((s) => !restoredSet.has(s.stepId));
           setCurrentStepIndex(nextIdx === -1 ? stepComponents.length : nextIdx);
         }
       }
-    } catch {
-      // ignore persistence errors
-    }
-  }, [getStorageKey, stepComponents]);
+    });
+  }, [getContentKey, sectionId, stepComponents]);
 
   // Objectives checking is handled by the step checker hook
 
@@ -923,12 +911,9 @@ export function InteractiveSection({
     // Signal all child steps to reset their local state
     setResetTrigger((prev) => prev + 1);
 
-    // Clear localStorage persistence
-    try {
-      localStorage.removeItem(getStorageKey());
-    } catch {
-      // ignore
-    }
+    // Clear storage persistence
+    const contentKey = getContentKey();
+    interactiveStepStorage.clear(contentKey, sectionId);
 
     // Reset all step states in the global manager
     import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
@@ -958,7 +943,7 @@ export function InteractiveSection({
         }, 100);
       }, 200);
     });
-  }, [disabled, isRunning, getStorageKey, stepComponents, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [disabled, isRunning, getContentKey, stepComponents, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Register this section's steps in the global registry BEFORE rendering children
   // This must happen in useMemo (not useEffect) to ensure totalDocumentSteps is correct
