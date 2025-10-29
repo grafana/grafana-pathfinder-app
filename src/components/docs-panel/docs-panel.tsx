@@ -27,7 +27,7 @@ import {
 } from '../../utils/url-validator';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { tabStorage } from '../../lib/user-storage';
+import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
@@ -117,11 +117,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       pluginConfig,
     });
 
-    // Restore tabs asynchronously after initialization
-    this.restoreTabsAsync();
+    // Note: Tab restoration now happens from React component after storage is initialized
+    // to avoid race condition with useUserStorage hook
   }
 
-  private async restoreTabsAsync(): Promise<void> {
+  public async restoreTabsAsync(): Promise<void> {
     const restoredTabs = await CombinedLearningJourneyPanel.restoreTabsFromStorage();
     const activeTabId = await CombinedLearningJourneyPanel.restoreActiveTabFromStorage(restoredTabs);
 
@@ -575,6 +575,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 }
 
 function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
+  // Initialize user storage (sets up global storage for standalone helpers)
+  // This MUST be called before any storage operations to ensure Grafana user storage is used
+  useUserStorage();
+
   // Get plugin configuration for dev mode check
   const pluginContext = usePluginContext();
   const pluginConfig = React.useMemo(() => {
@@ -588,9 +592,20 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   // Set global config for utility functions that can't access React context
   (window as any).__pathfinderPluginConfig = pluginConfig;
 
+  const { tabs, activeTabId, contextPanel } = model.useState();
+
   React.useEffect(() => {
     addGlobalModalStyles();
   }, []);
+
+  // Restore tabs after storage is initialized (fixes race condition)
+  React.useEffect(() => {
+    // Only restore if we haven't loaded tabs yet (tabs length === 1 means only recommendations tab)
+    if (tabs.length === 1 && tabs[0].id === 'recommendations') {
+      model.restoreTabsAsync();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run once after mount, tabs checked at mount time
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
@@ -619,8 +634,6 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
       document.removeEventListener('pathfinder-auto-open-docs', handleAutoOpen);
     };
   }, [model]); // Only model as dependency - this component doesn't remount on tab changes
-
-  const { tabs, activeTabId, contextPanel } = model.useState();
   // removed — using restored custom overflow state below
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
