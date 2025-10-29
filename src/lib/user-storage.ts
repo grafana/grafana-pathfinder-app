@@ -61,7 +61,28 @@ export type StorageBackend = 'user-storage' | 'local-storage';
 // ============================================================================
 
 /**
- * Creates a localStorage-based storage instance
+ * Global storage instance that can be initialized from React components
+ * This allows non-React code to use Grafana's user storage when available
+ */
+let globalStorageInstance: UserStorage | null = null;
+let storageInitialized = false;
+
+/**
+ * Sets the global storage instance (called from React components with access to Grafana storage)
+ */
+export function setGlobalStorage(storage: UserStorage): void {
+  const wasInitialized = storageInitialized;
+  globalStorageInstance = storage;
+  storageInitialized = true;
+
+  // Only log once when first initialized
+  if (!wasInitialized) {
+    // Migration will be triggered separately
+  }
+}
+
+/**
+ * Gets the global storage instance, falling back to localStorage if not initialized
  *
  * This is used by all standalone (non-React) storage helpers.
  * For React components, use the useUserStorage hook which can leverage Grafana's user storage.
@@ -69,7 +90,7 @@ export type StorageBackend = 'user-storage' | 'local-storage';
  * @returns UserStorage - Storage interface with async operations
  */
 function createUserStorage(): UserStorage {
-  return createLocalStorage();
+  return globalStorageInstance || createLocalStorage();
 }
 
 /**
@@ -177,19 +198,26 @@ export function useUserStorage(): UserStorage {
 
   // Initialize storage on mount based on availability
   useEffect(() => {
+    let storage: UserStorage;
+
     try {
       // Check if Grafana storage is actually available and functional
       if (grafanaStorage && typeof grafanaStorage.getItem === 'function') {
         // Create wrapper for Grafana storage
-        storageRef.current = {
+        storage = {
           async getItem<T>(key: string): Promise<T | null> {
             try {
               const value = await grafanaStorage.getItem(key);
-              if (value === null || value === undefined) {
+
+              // Handle null, undefined, and empty string (all mean "not found")
+              if (value === null || value === undefined || value === '') {
                 return null;
               }
+
+              // Try to parse as JSON
               try {
-                return JSON.parse(value) as T;
+                const parsed = JSON.parse(value) as T;
+                return parsed;
               } catch {
                 return value as unknown as T;
               }
@@ -222,13 +250,21 @@ export function useUserStorage(): UserStorage {
             console.warn('Clear operation not fully supported for Grafana user storage');
           },
         };
+        storageRef.current = storage;
+
+        // Set global storage so standalone helpers can use it
+        setGlobalStorage(storage);
       } else {
         // Fall back to localStorage
-        storageRef.current = createLocalStorage();
+        storage = createLocalStorage();
+        storageRef.current = storage;
+        setGlobalStorage(storage);
       }
     } catch {
       // If anything fails, fall back to localStorage
-      storageRef.current = createLocalStorage();
+      storage = createLocalStorage();
+      storageRef.current = storage;
+      setGlobalStorage(storage);
     }
   }, [grafanaStorage]);
 

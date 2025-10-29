@@ -4,7 +4,7 @@ services:
       file: .config/docker-compose-base.yaml
       service: grafana
     environment:
-      GF_FEATURE_TOGGLES_ENABLE: appSidecar,extensionSidebar,localizationForPlugins,UserStorage
+      GF_FEATURE_TOGGLES_ENABLE: appSidecar,extensionSidebar,localizationForPlugins
 
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION:-v3.5.0}
