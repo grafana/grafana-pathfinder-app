@@ -64,6 +64,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 interface RecommendationsSectionProps {
   recommendations: Recommendation[];
   isLoadingRecommendations: boolean;
+  isLoadingContext: boolean;
   recommendationsError: string | null;
   otherDocsExpanded: boolean;
   showEnableRecommenderBanner: boolean;
@@ -76,6 +77,7 @@ interface RecommendationsSectionProps {
 const RecommendationsSection = memo(function RecommendationsSection({
   recommendations,
   isLoadingRecommendations,
+  isLoadingContext,
   recommendationsError,
   otherDocsExpanded,
   showEnableRecommenderBanner,
@@ -93,7 +95,8 @@ const RecommendationsSection = memo(function RecommendationsSection({
   // Secondary recommendations: all remaining items go to "Other Documentation"
   const secondaryDocs = recommendations.slice(4);
 
-  if (isLoadingRecommendations) {
+  // Show loading state while context is loading OR recommendations are loading
+  if (isLoadingRecommendations || isLoadingContext) {
     return (
       <div className={styles.recommendationsContainer}>
         <SkeletonLoader type="recommendations" />
@@ -101,7 +104,8 @@ const RecommendationsSection = memo(function RecommendationsSection({
     );
   }
 
-  if (recommendationsError) {
+  // If there's an error but no recommendations, show only the error
+  if (recommendationsError && recommendations.length === 0) {
     return (
       <Alert severity="warning" title={t('contextPanel.recommendationsUnavailable', 'Recommendations unavailable')}>
         {recommendationsError}
@@ -109,6 +113,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
     );
   }
 
+  // If there are no recommendations and no error, show empty state
   if (recommendations.length === 0) {
     return (
       <>
@@ -121,8 +126,16 @@ const RecommendationsSection = memo(function RecommendationsSection({
     );
   }
 
+  // If we have recommendations (with or without error), render them
   return (
     <>
+      {/* Show error banner when using fallback recommendations */}
+      {recommendationsError && (
+        <Alert severity="warning" title={t('contextPanel.recommendationsUnavailable', 'Recommendations unavailable')}>
+          {recommendationsError}
+        </Alert>
+      )}
+
       <div className={styles.recommendationsContainer}>
         {/* Primary Recommendations Section (High-Confidence Items, sorted by accuracy) */}
         {finalPrimaryRecommendations.length > 0 && (
@@ -467,6 +480,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
           <RecommendationsSection
             recommendations={recommendations}
             isLoadingRecommendations={isLoadingRecommendations}
+            isLoadingContext={contextData.isLoading}
             recommendationsError={recommendationsError}
             otherDocsExpanded={otherDocsExpanded}
             showEnableRecommenderBanner={showEnableRecommenderBanner}
