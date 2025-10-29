@@ -87,6 +87,7 @@ export interface ContextPayload {
   user_role: string;
   platform: string;
   source?: string; // Cloud instance source
+  language?: string; // User's preferred language/locale
 }
 
 export interface RecommenderResponse {

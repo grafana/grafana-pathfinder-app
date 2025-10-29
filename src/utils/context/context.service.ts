@@ -437,6 +437,7 @@ export class ContextService {
         user_role: config.bootData.user.orgRole || 'Viewer',
         platform: this.getCurrentPlatform(),
         source: hashedSource,
+        language: this.getCurrentLanguage(),
       };
 
       // Add timeout to prevent hanging in air-gapped or slow connection scenarios
@@ -663,6 +664,21 @@ export class ContextService {
    */
   private static getCurrentPlatform(): string {
     return config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud') ? 'cloud' : 'oss';
+  }
+
+  /**
+   * Get current language/locale
+   * Returns user's regional format preference (e.g., 'en-US', 'es-ES', 'fr-FR')
+   * This is used for locale-specific features like date formatting
+   */
+  private static getCurrentLanguage(): string {
+    try {
+      const language = config.bootData.user.language;
+      return language;
+    } catch (error) {
+      console.warn('Failed to get current language:', error);
+      return 'en-US';
+    }
   }
 
   /**
