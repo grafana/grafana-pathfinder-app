@@ -409,7 +409,20 @@ export class FormFillHandler {
   }
 
   private async markAsCompleted(data: InteractiveElementData): Promise<void> {
+    // Wait for React to process all form events and state updates
     await this.waitForReactUpdates();
+
+    // Additional settling time for complex form operations and reactive checks
+    // This ensures the sequential requirements system has time to:
+    // 1. Process form state changes
+    // 2. Re-evaluate next step requirements
+    // 3. Trigger component re-renders and unlock the next step
+    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck));
+
+    // Mark as completed after state has settled
     this.stateManager.setState(data, 'completed');
+
+    // Final wait to ensure completion state propagates
+    await this.waitForReactUpdates();
   }
 }
