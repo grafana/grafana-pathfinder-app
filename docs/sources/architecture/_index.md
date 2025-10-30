@@ -17,7 +17,7 @@ Interactive learning has three main components:
 - Documentation rendering - Renders the selected documentation or tutorial.
 - Interactive engine - Facilitates the interactive features within the documentation or tutorial.
 
-![Interactive Learning architecture](/media/pathfinder/architecture.png)
+![Interactive Learning architecture](/media/docs/pathfinder/architecture.png)
 
 ## Context retrieval
 
