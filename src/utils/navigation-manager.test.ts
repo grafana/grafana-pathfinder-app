@@ -41,6 +41,13 @@ describe('NavigationManager', () => {
     // Mock scrollIntoView
     mockElement.scrollIntoView = jest.fn();
 
+    // Mock window.innerHeight for viewport calculations
+    Object.defineProperty(window, 'innerHeight', {
+      writable: true,
+      configurable: true,
+      value: 768,
+    });
+
     // Mock getBoundingClientRect
     mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
       top: 100,
@@ -73,41 +80,21 @@ describe('NavigationManager', () => {
       expect(mockConsoleWarn).toHaveBeenCalledWith('Element is hidden or not visible:', mockElement);
     });
 
-    it('should always call scrollIntoView (browser handles optimization)', async () => {
-      mockIsElementVisible.mockReturnValue(true);
-      mockHasFixedPosition.mockReturnValue(true);
-      mockIsInViewport.mockReturnValue(true);
-
-      await navigationManager.ensureElementVisible(mockElement);
-
-      // New approach: always call scrollIntoView, let browser optimize
-      expect(mockElement.scrollIntoView).toHaveBeenCalledWith({
-        behavior: 'smooth',
-        block: 'start',
-        inline: 'nearest',
-      });
-    });
-
-    it('should always call scrollIntoView even when element appears in viewport', async () => {
-      mockIsElementVisible.mockReturnValue(true);
-      mockHasFixedPosition.mockReturnValue(false);
-      mockIsInViewport.mockReturnValue(true);
-
-      await navigationManager.ensureElementVisible(mockElement);
-
-      // New approach: always call scrollIntoView, let browser optimize
-      expect(mockElement.scrollIntoView).toHaveBeenCalledWith({
-        behavior: 'smooth',
-        block: 'start',
-        inline: 'nearest',
-      });
-    });
-
     it('should scroll element into view when not in viewport', async () => {
       mockIsElementVisible.mockReturnValue(true);
       mockHasFixedPosition.mockReturnValue(false);
       mockIsInViewport.mockReturnValue(false);
       mockGetScrollParent.mockReturnValue(document.documentElement);
+
+      // Element is outside viewport (below the fold)
+      mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+        top: 2000, // Way below viewport
+        left: 100,
+        bottom: 2100,
+        right: 200,
+        width: 100,
+        height: 100,
+      });
 
       await navigationManager.ensureElementVisible(mockElement);
 
@@ -142,7 +129,7 @@ describe('NavigationManager', () => {
 
       // Element is outside container viewport
       mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
-        top: 300,
+        top: 300, // Outside container (container bottom is 200)
         left: 100,
         bottom: 400,
         right: 200,
@@ -152,8 +139,12 @@ describe('NavigationManager', () => {
 
       await navigationManager.ensureElementVisible(mockElement);
 
-      // Now we use scrollIntoView on the element within custom containers
-      expect(mockElement.scrollIntoView).toHaveBeenCalled();
+      // Should scroll with smooth behavior
+      expect(mockElement.scrollIntoView).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        block: 'start',
+        inline: 'nearest',
+      });
 
       document.body.removeChild(customContainer);
     });

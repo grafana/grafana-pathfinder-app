@@ -208,55 +208,12 @@ export function getStickyHeaderOffset(element: HTMLElement | null): number {
     return 0;
   }
 
-  let maxOffset = 0;
-  const scrollParent = getScrollParent(element);
-  const scrollParentRect = scrollParent.getBoundingClientRect();
-  const elementRect = element.getBoundingClientRect();
+  // Simple solution: Use a reasonable fixed offset for sticky headers
+  // Most sticky headers (Grafana, navigation bars, etc.) are 60-80px tall
+  // This avoids expensive DOM scanning and is fast and reliable
+  const TYPICAL_HEADER_HEIGHT = 70;
 
-  // Determine the effective top boundary of the scroll container
-  const scrollContainerTop = scrollParent === document.documentElement ? 0 : scrollParentRect.top;
-
-  // CRITICAL FIX: Scan ALL elements within scroll container for sticky/fixed elements
-  // Not just ancestors - sticky headers are often siblings or in different DOM branches
-  const containerToSearch = scrollParent === document.documentElement ? document.body : scrollParent;
-  const allElements = containerToSearch.querySelectorAll('*');
-
-  allElements.forEach((el) => {
-    const style = getComputedStyle(el);
-    const position = style.position;
-
-    // Only check sticky or fixed elements
-    if (position !== 'sticky' && position !== 'fixed') {
-      return;
-    }
-
-    const rect = el.getBoundingClientRect();
-    const top = parseFloat(style.top);
-
-    // Check if this element is:
-    // 1. Positioned at the top (top value is 0-100px)
-    // 2. Currently stuck at/near the scroll container top
-    // 3. Above the target element (would obstruct it)
-    const isStuckAtTop = !isNaN(top) && top >= 0 && top < 100;
-    const isAtContainerTop = rect.top <= scrollContainerTop + 50; // 50px tolerance
-    const isAboveTarget = rect.bottom <= elementRect.top;
-
-    // Only count if it would actually obstruct the target element
-    if (isStuckAtTop && isAtContainerTop) {
-      // Use the element's bottom position relative to the scroll container
-      const offsetFromContainerTop = rect.bottom - scrollContainerTop;
-
-      console.warn(
-        `Found sticky/fixed element at top (${position}):`,
-        el,
-        `Offset: ${offsetFromContainerTop}px, IsAboveTarget: ${isAboveTarget}`
-      );
-
-      maxOffset = Math.max(maxOffset, offsetFromContainerTop);
-    }
-  });
-
-  return maxOffset;
+  return TYPICAL_HEADER_HEIGHT;
 }
 
 /**
