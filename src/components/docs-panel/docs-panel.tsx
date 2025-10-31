@@ -54,7 +54,8 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { isDevModeEnabled } from 'utils/dev-mode';
-import { config } from '@grafana/runtime';
+import { config, getAppEvents, locationService } from '@grafana/runtime';
+import logoSvg from '../../img/logo.svg';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -941,6 +942,45 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
 
   return (
     <div id="CombinedLearningJourney" className={styles.container} data-pathfinder-content="true">
+      <div className={styles.headerBar}>
+        <img src={logoSvg} alt="" width={20} height={20} />
+        <div className={styles.headerRight}>
+          <IconButton
+            name="cog"
+            size="sm"
+            tooltip={t('docsPanel.settings', 'Plugin settings')}
+            onClick={() => {
+              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                action: 'navigate_to_config',
+                source: 'header_settings_button',
+                timestamp: Date.now(),
+              });
+              locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
+            }}
+            aria-label={t('docsPanel.settings', 'Plugin settings')}
+          />
+          <div className={styles.headerDivider} />
+          <IconButton
+            name="times"
+            size="sm"
+            tooltip={t('docsPanel.closeSidebar', 'Close sidebar')}
+            onClick={() => {
+              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                action: 'close_sidebar',
+                source: 'header_close_button',
+                timestamp: Date.now(),
+              });
+              // Close the extension sidebar
+              const appEvents = getAppEvents();
+              appEvents.publish({
+                type: 'close-extension-sidebar',
+                payload: {},
+              });
+            }}
+            aria-label="Close sidebar"
+          />
+        </div>
+      </div>
       <div className={styles.topBar}>
         <div className={styles.tabBar} ref={tabBarRef}>
           <div className={styles.tabList} ref={tabListRef}>

@@ -622,9 +622,36 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
+export const getHeaderBarStyles = (theme: GrafanaTheme2) => ({
+  headerBar: css({
+    label: 'docs-panel-header-bar',
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: theme.spacing(1, 1.5),
+    backgroundColor: theme.colors.background.canvas,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+  }),
+  headerRight: css({
+    label: 'docs-panel-header-right',
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+  }),
+  headerDivider: css({
+    label: 'docs-panel-header-divider',
+    width: '1px',
+    height: '20px',
+    backgroundColor: theme.colors.border.weak,
+  }),
+});
+
 // Combine all styles
 export const getStyles = (theme: GrafanaTheme2) => ({
   ...getContainerStyles(theme),
+  ...getHeaderBarStyles(theme),
   ...getTopBarStyles(theme),
   ...getTabStyles(theme),
   ...getContentStyles(theme),
