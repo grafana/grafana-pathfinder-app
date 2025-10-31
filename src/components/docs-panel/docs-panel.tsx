@@ -21,6 +21,7 @@ import {
   parseUrlSafely,
   isAllowedContentUrl,
   isAllowedGitHubRawUrl,
+  isAllowedJsDelivrUrl,
   isGitHubUrl,
   isGitHubRawUrl,
   isLocalhostUrl,
@@ -190,6 +191,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
           return (
             isAllowedContentUrl(url) ||
             isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
+            isAllowedJsDelivrUrl(url, ALLOWED_GITHUB_REPOS) || // SECURITY: Strict validation
             isGitHubUrl(url) ||
             (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url)))
           );

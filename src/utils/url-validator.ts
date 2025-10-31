@@ -76,8 +76,8 @@ export function isAllowedContentUrl(urlString: string): boolean {
   // In dev mode, allow localhost URLs for local testing
   // IMPORTANT: Must check that localhost URLs have valid docs paths to avoid
   // intercepting menu items and other UI links that also resolve to localhost
+  const url = parseUrlSafely(urlString);
   if (isDevModeEnabledGlobal() && isLocalhostUrl(urlString)) {
-    const url = parseUrlSafely(urlString);
     if (!url) {
       return false;
     }
@@ -253,6 +253,104 @@ export function isAllowedGitHubRawUrl(
   // CRITICAL SECURITY CHECK: Validate the ref (branch/tag/commit)
   // This prevents attackers from using PR branches or malicious commits
   return allowedRepo.allowedRefs.includes(ref);
+}
+
+/**
+ * Check if a jsDelivr CDN URL is allowed based on GitHub repository allowlist
+ *
+ * SECURITY: jsDelivr URLs must map to the same approved GitHub repos as raw.githubusercontent.com
+ * This prevents using jsDelivr as a backdoor to bypass GitHub repo restrictions
+ *
+ * Format: https://cdn.jsdelivr.net/gh/{owner}/{repo}@{ref}/{path}
+ *
+ * @param urlString - The jsDelivr URL to validate
+ * @param allowedRepos - Array of allowed GitHub repositories with permitted refs
+ * @returns true if jsDelivr URL maps to an allowed GitHub repo/ref, false otherwise
+ */
+export function isAllowedJsDelivrUrl(
+  urlString: string,
+  allowedRepos: Array<{ repo: string; allowedRefs: string[] }>
+): boolean {
+  const url = parseUrlSafely(urlString);
+  if (!url) {
+    return false;
+  }
+
+  // SECURITY (F3): Only allow https protocol
+  if (url.protocol !== 'https:') {
+    return false;
+  }
+
+  // SECURITY: Check hostname is exactly cdn.jsdelivr.net
+  if (url.hostname !== 'cdn.jsdelivr.net') {
+    return false;
+  }
+
+  // SECURITY: Only allow GitHub content (/gh/ prefix)
+  // This blocks npm packages, WordPress plugins, etc.
+  if (!url.pathname.startsWith('/gh/')) {
+    return false;
+  }
+
+  // Parse pathname: /gh/{owner}/{repo}@{ref}/{path...}
+  // Example: /gh/grafana/interactive-tutorials@main/tutorial.md
+  const pathWithoutPrefix = url.pathname.slice(4); // Remove '/gh/'
+  const pathParts = pathWithoutPrefix.split('/').filter(Boolean);
+
+  if (pathParts.length < 2) {
+    // Need at least: owner, repo@ref
+    return false;
+  }
+
+  const owner = pathParts[0]; // 'grafana'
+  const repoAndRef = pathParts[1]; // 'interactive-tutorials@main'
+
+  // Split by '@' to get repo and ref
+  const atIndex = repoAndRef.indexOf('@');
+  if (atIndex === -1) {
+    return false; // Must have @ref
+  }
+
+  const repo = repoAndRef.slice(0, atIndex); // 'interactive-tutorials'
+  const ref = repoAndRef.slice(atIndex + 1); // 'main'
+
+  const repoPath = `/${owner}/${repo}/`; // '/grafana/interactive-tutorials/'
+
+  // Find matching allowed repository
+  const allowedRepo = allowedRepos.find((allowed) => allowed.repo === repoPath);
+
+  if (!allowedRepo) {
+    return false;
+  }
+
+  // CRITICAL SECURITY CHECK: Validate the ref (branch/tag) same as raw GitHub
+  // This prevents attackers from using PR branches or malicious commits via jsDelivr
+  return allowedRepo.allowedRefs.includes(ref);
+}
+
+/**
+ * Detect if current browser needs CORS proxy for GitHub raw content
+ *
+ * Chrome: Works with raw.githubusercontent.com (no CORS issues)
+ * Firefox/Safari: Need jsDelivr CDN for CORS headers
+ *
+ * @returns true if browser needs CORS proxy (Firefox/Safari), false otherwise (Chrome)
+ */
+export function browserNeedsCorsProxy(): boolean {
+  const userAgent = navigator.userAgent.toLowerCase();
+
+  // Detect Firefox
+  if (userAgent.includes('firefox')) {
+    return true;
+  }
+
+  // Detect Safari (but not Chrome, which also contains 'safari' in UA)
+  if (userAgent.includes('safari') && !userAgent.includes('chrome') && !userAgent.includes('chromium')) {
+    return true;
+  }
+
+  // Chrome and Chromium-based browsers don't need proxy
+  return false;
 }
 
 /**

@@ -5,7 +5,13 @@
 
 import { ParseError, ParseResult, ParsedElement, ParsedContent, ContentParseResult } from './content.types';
 import { sanitizeDocumentationHTML } from './html-sanitizer';
-import { isGrafanaDocsUrl, isAllowedGitHubRawUrl, isLocalhostUrl, isGitHubRawUrl } from '../url-validator';
+import {
+  isGrafanaDocsUrl,
+  isAllowedGitHubRawUrl,
+  isAllowedJsDelivrUrl,
+  isLocalhostUrl,
+  isGitHubRawUrl,
+} from '../url-validator';
 import { ALLOWED_GITHUB_REPOS } from '../../constants';
 import { isDevModeEnabledGlobal } from '../dev-mode';
 
@@ -18,6 +24,7 @@ export type { ParsedElement, ParsedContent };
  *
  * In production: Only Grafana docs, bundled content, and approved GitHub repos
  * In dev mode: Also allows localhost URLs and any GitHub raw URLs for local testing
+ * jsDelivr: Allowed ONLY if it maps to approved GitHub repos (same security as raw GitHub)
  *
  * @param baseUrl - The source URL of the content being parsed
  * @returns true if source is trusted for interactive content, false otherwise
@@ -39,6 +46,12 @@ function isTrustedInteractiveSource(baseUrl?: string): boolean {
 
   // Allow ONLY grafana/interactive-tutorials GitHub repo in production
   if (isAllowedGitHubRawUrl(baseUrl, ALLOWED_GITHUB_REPOS)) {
+    return true;
+  }
+
+  // SECURITY: Allow jsDelivr CDN ONLY for approved GitHub repos
+  // This provides CORS headers for Firefox/Safari while maintaining same security
+  if (isAllowedJsDelivrUrl(baseUrl, ALLOWED_GITHUB_REPOS)) {
     return true;
   }
 

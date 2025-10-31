@@ -19,7 +19,9 @@ import {
   isGitHubUrl,
   isGitHubRawUrl,
   isAllowedGitHubRawUrl,
+  isAllowedJsDelivrUrl,
   isLocalhostUrl,
+  browserNeedsCorsProxy,
 } from '../url-validator';
 import { isDevModeEnabledGlobal } from '../dev-mode';
 
@@ -77,10 +79,12 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Defense-in-depth: Even if callers validate, fetchContent provides final check
     // In production: Only Grafana docs, bundled content, and approved GitHub repos
     // In dev mode: Also allows any GitHub raw URL and localhost for local testing
+    // jsDelivr: Only allowed if it maps to an approved GitHub repo (strict validation)
     const isDevMode = isDevModeEnabledGlobal();
     const isTrustedSource =
       isAllowedContentUrl(url) ||
       isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
+      isAllowedJsDelivrUrl(url, ALLOWED_GITHUB_REPOS) || // SECURITY: Same strict validation as raw GitHub
       isGitHubUrl(url) ||
       (isDevMode && (isGitHubRawUrl(url) || isLocalhostUrl(url)));
 
@@ -317,12 +321,16 @@ async function fetchRawHtml(
     }
   }
 
-  // Build fetch options - use minimal headers for GitHub raw URLs to avoid CORS preflight
+  // Check if this is a GitHub raw URL or jsDelivr URL to use minimal headers
+  const isJsDelivrUrl = actualUrl.includes('cdn.jsdelivr.net');
+  const useMinimalHeaders = isGitHubRawUrlCheck || isJsDelivrUrl;
+
+  // Build fetch options - use minimal headers for GitHub raw URLs and jsDelivr to avoid CORS preflight
   const fetchOptions: RequestInit = {
     method: 'GET',
-    headers: isGitHubRawUrlCheck
+    headers: useMinimalHeaders
       ? {
-          // Minimal headers for GitHub raw URLs - avoid triggering CORS preflight
+          // Minimal headers for GitHub raw URLs and jsDelivr - avoid triggering CORS preflight
           // Only use simple headers that don't require preflight
           ...headers,
         }
@@ -352,13 +360,25 @@ async function fetchRawHtml(
 
         // Re-validate the final URL after redirects
         // In dev mode: Allow any GitHub raw URL and localhost
+        // jsDelivr: Only allowed if it maps to an approved GitHub repo
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
           isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPOS) ||
+          isAllowedJsDelivrUrl(finalUrl, ALLOWED_GITHUB_REPOS) || // SECURITY: Strict validation
           isGitHubUrl(finalUrl) ||
           (isDevModeEnabledGlobal() && (isLocalhostUrl(finalUrl) || isGitHubRawUrl(finalUrl)));
 
         if (!isFinalUrlTrusted) {
+          console.warn(
+            `Redirect target not in trusted domain list.\n` +
+              `Original URL: ${actualUrl}\n` +
+              `Final URL: ${finalUrl}\n` +
+              `Checks:\n` +
+              `  - isAllowedContentUrl: ${isAllowedContentUrl(finalUrl)}\n` +
+              `  - isAllowedGitHubRawUrl: ${isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPOS)}\n` +
+              `  - isAllowedJsDelivrUrl: ${isAllowedJsDelivrUrl(finalUrl, ALLOWED_GITHUB_REPOS)}\n` +
+              `  - isGitHubUrl: ${isGitHubUrl(finalUrl)}`
+          );
           lastError = {
             message: 'Redirect target is not in trusted domain list',
             errorType: 'other',
@@ -440,10 +460,11 @@ async function fetchRawHtml(
               };
             } else {
               // SECURITY: Re-validate the redirect URL is still trusted
-              // Must match the same validation as the main fetch (lines 350-359)
+              // Must match the same validation as the main fetch
               const isRedirectTrusted =
                 isAllowedContentUrl(redirectUrl.href) ||
                 isAllowedGitHubRawUrl(redirectUrl.href, ALLOWED_GITHUB_REPOS) ||
+                isAllowedJsDelivrUrl(redirectUrl.href, ALLOWED_GITHUB_REPOS) || // SECURITY: Strict validation
                 isGitHubUrl(redirectUrl.href) ||
                 (isDevModeEnabledGlobal() && (isLocalhostUrl(redirectUrl.href) || isGitHubRawUrl(redirectUrl.href)));
 
@@ -532,10 +553,11 @@ async function fetchRawHtml(
     if (isGitHubUrl(url) && lastError.message.includes('NetworkError')) {
       console.error(
         `Failed to fetch content from ${url}. Last error: ${lastError.message}\n` +
-          `GitHub raw URLs may be blocked due to CORS policies. Consider:\n` +
-          `1. Using bundled content instead (bundled: URLs)\n` +
-          `2. Serving content from a CORS-enabled host\n` +
-          `3. Configuring a docs base URL with proper CORS headers`
+          `GitHub raw URLs may be blocked due to CORS policies. System automatically tries:\n` +
+          `1. jsDelivr CDN (CORS-enabled, Firefox/Safari only)\n` +
+          `2. raw.githubusercontent.com (Chrome or fallback)\n` +
+          `3. Unstyled HTML variations\n` +
+          `Consider using bundled content (bundled: URLs) for guaranteed availability.`
       );
     } else {
       console.error(`Failed to fetch content from ${url}. Last error: ${lastError.message}`);
@@ -546,8 +568,29 @@ async function fetchRawHtml(
 }
 
 /**
+ * Convert GitHub URL to jsDelivr CDN URL
+ * jsDelivr provides CORS headers, solving Firefox/Safari CORS issues
+ * Format: https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}
+ *
+ * @param owner - GitHub repository owner
+ * @param repo - GitHub repository name
+ * @param branch - Branch name
+ * @param path - File path
+ * @returns jsDelivr CDN URL
+ */
+function convertToJsDelivrUrl(owner: string, repo: string, branch: string, path: string): string {
+  // SECURITY (F3): Use proper URL construction
+  return `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${path}`;
+}
+
+/**
  * Generate GitHub raw content URL variations to try
  * Uses proper URL parsing to prevent domain hijacking
+ *
+ * SECURITY: Only uses jsDelivr CDN for Firefox/Safari (browserNeedsCorsProxy)
+ * Chrome works fine with raw.githubusercontent.com, no need for external CDN
+ *
+ * SECURITY: All generated URLs must pass ALLOWED_GITHUB_REPOS validation
  */
 function generateGitHubVariations(url: string): string[] {
   const variations: string[] = [];
@@ -556,17 +599,25 @@ function generateGitHubVariations(url: string): string[] {
   const isGitHubDomain = isGitHubUrl(url);
   const isGitHubRawDomain = isGitHubRawUrl(url);
 
+  // SECURITY: Only use jsDelivr for browsers that need it (Firefox/Safari)
+  const needsCorsProxy = browserNeedsCorsProxy();
+
   // Only try GitHub variations for actual GitHub URLs
   if (isGitHubDomain || isGitHubRawDomain) {
-    // If it's a regular GitHub URL, try converting to raw.githubusercontent.com first (more targeted)
     if (isGitHubDomain) {
       // Handle tree URLs (directories) - convert to directory/unstyled.html
       const treeMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
       if (treeMatch) {
         const [_fullMatch, owner, repo, branch, path] = treeMatch;
+
+        // SECURITY: Only use jsDelivr for Firefox/Safari
+        if (needsCorsProxy) {
+          const jsDelivrUrl = convertToJsDelivrUrl(owner, repo, branch, `${path}/unstyled.html`);
+          variations.push(jsDelivrUrl);
+        }
+
+        // Always include raw.githubusercontent.com as primary (Chrome) or fallback (Firefox/Safari)
         // SECURITY (F3): Use URL constructor instead of template literal
-        // Note: raw.githubusercontent.com URLs use /{owner}/{repo}/{branch}/{path} format
-        // NOT /{owner}/{repo}/refs/heads/{branch}/{path}
         const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/unstyled.html`;
         variations.push(rawUrl);
       }
@@ -575,12 +626,46 @@ function generateGitHubVariations(url: string): string[] {
       const blobMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)/);
       if (blobMatch) {
         const [_fullMatch, owner, repo, branch, path] = blobMatch;
+
+        // SECURITY: Only use jsDelivr for Firefox/Safari
+        if (needsCorsProxy) {
+          const jsDelivrUrl = convertToJsDelivrUrl(owner, repo, branch, path);
+          variations.push(jsDelivrUrl);
+        }
+
+        // Always include raw.githubusercontent.com
         const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
         variations.push(rawUrl);
 
-        // Also try unstyled version of raw URL
-        if (!rawUrl.includes('/unstyled.html')) {
+        // Also try unstyled version
+        if (!path.includes('/unstyled.html')) {
+          if (needsCorsProxy) {
+            const jsDelivrUnstyledUrl = convertToJsDelivrUrl(owner, repo, branch, `${path}/unstyled.html`);
+            variations.push(jsDelivrUnstyledUrl);
+          }
           variations.push(`${rawUrl}/unstyled.html`);
+        }
+      }
+    }
+
+    // If it's already a raw.githubusercontent.com URL
+    if (isGitHubRawDomain) {
+      const rawMatch = url.match(/https:\/\/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)/);
+      if (rawMatch) {
+        const [_fullMatch, owner, repo, branch, path] = rawMatch;
+
+        // SECURITY: Only use jsDelivr for Firefox/Safari
+        if (needsCorsProxy) {
+          const jsDelivrUrl = convertToJsDelivrUrl(owner, repo, branch, path);
+          variations.push(jsDelivrUrl);
+        }
+
+        // Also try unstyled version if not already included
+        if (!path.includes('/unstyled.html')) {
+          if (needsCorsProxy) {
+            const jsDelivrUnstyledUrl = convertToJsDelivrUrl(owner, repo, branch, `${path}/unstyled.html`);
+            variations.push(jsDelivrUnstyledUrl);
+          }
         }
       }
     }
