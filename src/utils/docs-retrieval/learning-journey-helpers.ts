@@ -268,25 +268,32 @@ function appendBottomNavigationToContent(content: string, currentMilestone: numb
     return content;
   }
 
-  // We'll still generate both buttons and let the link handler check navigation availability
-  // This ensures consistent UI structure while the actual logic is handled by the navigation functions
+  const isLastMilestone = currentMilestone === totalMilestones;
+
+  // Conditionally render Previous button (primary style, always show)
+  const prevButton = `
+    <button class="btn btn--primary journey-nav-prev" 
+            data-journey-nav="prev">
+      ← Previous
+    </button>
+  `;
+
+  // Conditionally render Next button (primary style, hide on last milestone)
+  const nextButton = isLastMilestone
+    ? ''
+    : `
+    <button class="btn btn--primary journey-nav-next" 
+            data-journey-nav="next">
+      Next →
+    </button>
+  `;
 
   const navigationHtml = `
     <div class="journey-bottom-navigation">
       <div class="journey-bottom-nav-container">
-        <button class="journey-bottom-nav-button journey-nav-prev" 
-                data-journey-nav="prev">
-          ← Previous
-        </button>
-        
-        <div class="journey-progress-indicator">
-          Step ${currentMilestone} of ${totalMilestones}
-        </div>
-        
-        <button class="journey-bottom-nav-button journey-nav-next" 
-                data-journey-nav="next">
-          Next →
-        </button>
+        ${prevButton}
+        <span class="journey-progress-text">Step ${currentMilestone} of ${totalMilestones}</span>
+        ${nextButton}
       </div>
     </div>
   `;
