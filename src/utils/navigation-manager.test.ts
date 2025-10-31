@@ -73,24 +73,34 @@ describe('NavigationManager', () => {
       expect(mockConsoleWarn).toHaveBeenCalledWith('Element is hidden or not visible:', mockElement);
     });
 
-    it('should skip scrolling for fixed element already in viewport', async () => {
+    it('should always call scrollIntoView (browser handles optimization)', async () => {
       mockIsElementVisible.mockReturnValue(true);
       mockHasFixedPosition.mockReturnValue(true);
       mockIsInViewport.mockReturnValue(true);
 
       await navigationManager.ensureElementVisible(mockElement);
 
-      expect(mockElement.scrollIntoView).not.toHaveBeenCalled();
+      // New approach: always call scrollIntoView, let browser optimize
+      expect(mockElement.scrollIntoView).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        block: 'start',
+        inline: 'nearest',
+      });
     });
 
-    it('should skip scrolling for element already in viewport', async () => {
+    it('should always call scrollIntoView even when element appears in viewport', async () => {
       mockIsElementVisible.mockReturnValue(true);
       mockHasFixedPosition.mockReturnValue(false);
       mockIsInViewport.mockReturnValue(true);
 
       await navigationManager.ensureElementVisible(mockElement);
 
-      expect(mockElement.scrollIntoView).not.toHaveBeenCalled();
+      // New approach: always call scrollIntoView, let browser optimize
+      expect(mockElement.scrollIntoView).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        block: 'start',
+        inline: 'nearest',
+      });
     });
 
     it('should scroll element into view when not in viewport', async () => {
@@ -103,8 +113,8 @@ describe('NavigationManager', () => {
 
       expect(mockElement.scrollIntoView).toHaveBeenCalledWith({
         behavior: 'smooth',
-        block: 'center',
-        inline: 'center',
+        block: 'start',
+        inline: 'nearest',
       });
     });
 
@@ -142,8 +152,8 @@ describe('NavigationManager', () => {
 
       await navigationManager.ensureElementVisible(mockElement);
 
-      expect(customContainer.scrollBy).toHaveBeenCalled();
-      expect(mockElement.scrollIntoView).not.toHaveBeenCalled();
+      // Now we use scrollIntoView on the element within custom containers
+      expect(mockElement.scrollIntoView).toHaveBeenCalled();
 
       document.body.removeChild(customContainer);
     });

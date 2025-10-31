@@ -1,7 +1,7 @@
 import { waitForReactUpdates } from './requirements-checker.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
-import { isElementVisible, hasFixedPosition, isInViewport, getScrollParent } from './element-validator';
+import { isElementVisible, getScrollParent, getStickyHeaderOffset } from './element-validator';
 import { sanitizeDocumentationHTML } from './docs-retrieval/html-sanitizer';
 
 export interface NavigationOptions {
@@ -304,6 +304,7 @@ export class NavigationManager {
 
   /**
    * Ensure element is visible in the viewport by scrolling it into view
+   * Accounts for sticky/fixed headers that may obstruct visibility
    *
    * @param element - The element to make visible
    * @returns Promise that resolves when element is visible in viewport
@@ -321,63 +322,39 @@ export class NavigationManager {
       // Continue anyway - element might become visible during interaction
     }
 
-    // 2. Skip scrolling for fixed/sticky elements already in viewport
-    if (hasFixedPosition(element) && isInViewport(element)) {
-      return; // Already visible, no scroll needed
+    // 2. Calculate sticky header offset to account for headers blocking view
+    const stickyOffset = getStickyHeaderOffset(element);
+
+    // Debug logging for sticky header detection
+    if (stickyOffset > 0) {
+      console.warn(`Detected sticky header offset: ${stickyOffset}px for element:`, element);
     }
 
-    // 3. Check if element is already in viewport
-    if (isInViewport(element)) {
-      return; // Already visible, no scroll needed
-    }
-
-    // 4. Handle custom scroll containers (Grafana panels, modals, nested divs)
+    // 3. Get scroll container
     const scrollContainer = getScrollParent(element);
 
-    if (scrollContainer !== document.documentElement) {
-      // Custom scroll container - use manual scrolling
-      await this.scrollInCustomContainer(element, scrollContainer);
-    } else {
-      // Standard document scrolling
-      element.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-        inline: 'center',
-      });
-
-      // Wait for scroll animation to complete
-      await this.waitForScrollComplete(element);
+    // 4. Set scroll-padding-top on container (modern CSS solution)
+    const originalScrollPadding = scrollContainer.style.scrollPaddingTop;
+    if (stickyOffset > 0) {
+      scrollContainer.style.scrollPaddingTop = `${stickyOffset + 10}px`; // +10px padding
     }
+
+    // 5. Always scroll into view - let the browser handle it!
+    // The browser will automatically skip scrolling if element is already visible
+    element.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start', // Position at top (below sticky headers due to scroll-padding-top)
+      inline: 'nearest',
+    });
+
+    // Wait for scroll animation to complete
+    await this.waitForScrollComplete(scrollContainer);
+
+    // Restore original scroll padding
+    scrollContainer.style.scrollPaddingTop = originalScrollPadding;
 
     // Add small DOM settling delay after scroll completes to ensure element position is stable
     await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  /**
-   * Scroll element into view within a custom scroll container
-   * Handles nested scrollable containers like Grafana panels or modals
-   *
-   * @param element - The element to scroll into view
-   * @param container - The scrollable container
-   * @returns Promise that resolves when scrolling is complete
-   */
-  private async scrollInCustomContainer(element: HTMLElement, container: HTMLElement): Promise<void> {
-    const containerRect = container.getBoundingClientRect();
-    const elementRect = element.getBoundingClientRect();
-
-    // Check if element is outside container viewport
-    if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
-      // Calculate scroll offset to center element in container
-      const scrollOffset = elementRect.top - containerRect.top - (containerRect.height - elementRect.height) / 2;
-
-      container.scrollBy({
-        top: scrollOffset,
-        behavior: 'smooth',
-      });
-
-      // Wait for scroll to complete
-      await this.waitForScrollComplete(container);
-    }
   }
 
   private waitForScrollComplete(

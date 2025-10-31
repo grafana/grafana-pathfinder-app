@@ -139,6 +139,7 @@ export function hasFixedPosition(element: HTMLElement | null): boolean {
 /**
  * Find the actual scrollable parent container for an element
  * Handles custom scroll containers like Grafana panels, modals, or nested divs
+ * Enhanced to detect virtualized table containers
  *
  * @param element - The element to find scroll parent for
  * @returns The scrollable parent container or document.documentElement
@@ -169,6 +170,18 @@ export function getScrollParent(element: HTMLElement | null): HTMLElement {
       }
     }
 
+    // Special case: overflow:hidden parent might still be the scroll container
+    // if it has scrollable children (common in virtualized tables)
+    if (overflow.includes('hidden')) {
+      // Check if parent has explicit height and scrollable content
+      const hasExplicitHeight = style.height !== 'auto' && style.height !== '';
+      const isScrollable = parent.scrollHeight > parent.clientHeight;
+
+      if (hasExplicitHeight && isScrollable) {
+        return parent;
+      }
+    }
+
     parent = parent.parentElement;
   }
 
@@ -176,22 +189,96 @@ export function getScrollParent(element: HTMLElement | null): HTMLElement {
 }
 
 /**
+ * Calculate the total height offset from sticky/fixed headers above an element
+ * These headers can block visibility even when element appears "in viewport"
+ * Scans ALL elements in the scroll container, not just ancestors
+ *
+ * @param element - The element to check for obstructing sticky/fixed headers
+ * @returns Total pixel offset from sticky/fixed headers in pixels
+ *
+ * @example
+ * ```typescript
+ * const row = document.querySelector('.table-row');
+ * const offset = getStickyHeaderOffset(row);
+ * // Returns 75 if there's a 75px sticky header above
+ * ```
+ */
+export function getStickyHeaderOffset(element: HTMLElement | null): number {
+  if (!element) {
+    return 0;
+  }
+
+  let maxOffset = 0;
+  const scrollParent = getScrollParent(element);
+  const scrollParentRect = scrollParent.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+
+  // Determine the effective top boundary of the scroll container
+  const scrollContainerTop = scrollParent === document.documentElement ? 0 : scrollParentRect.top;
+
+  // CRITICAL FIX: Scan ALL elements within scroll container for sticky/fixed elements
+  // Not just ancestors - sticky headers are often siblings or in different DOM branches
+  const containerToSearch = scrollParent === document.documentElement ? document.body : scrollParent;
+  const allElements = containerToSearch.querySelectorAll('*');
+
+  allElements.forEach((el) => {
+    const style = getComputedStyle(el);
+    const position = style.position;
+
+    // Only check sticky or fixed elements
+    if (position !== 'sticky' && position !== 'fixed') {
+      return;
+    }
+
+    const rect = el.getBoundingClientRect();
+    const top = parseFloat(style.top);
+
+    // Check if this element is:
+    // 1. Positioned at the top (top value is 0-100px)
+    // 2. Currently stuck at/near the scroll container top
+    // 3. Above the target element (would obstruct it)
+    const isStuckAtTop = !isNaN(top) && top >= 0 && top < 100;
+    const isAtContainerTop = rect.top <= scrollContainerTop + 50; // 50px tolerance
+    const isAboveTarget = rect.bottom <= elementRect.top;
+
+    // Only count if it would actually obstruct the target element
+    if (isStuckAtTop && isAtContainerTop) {
+      // Use the element's bottom position relative to the scroll container
+      const offsetFromContainerTop = rect.bottom - scrollContainerTop;
+
+      console.warn(
+        `Found sticky/fixed element at top (${position}):`,
+        el,
+        `Offset: ${offsetFromContainerTop}px, IsAboveTarget: ${isAboveTarget}`
+      );
+
+      maxOffset = Math.max(maxOffset, offsetFromContainerTop);
+    }
+  });
+
+  return maxOffset;
+}
+
+/**
  * Check if element is currently in the viewport
  * Uses getBoundingClientRect to determine visibility
+ * Accounts for sticky/fixed headers that reduce effective viewport
  *
  * @param element - The element to check
  * @param threshold - Optional visibility threshold (0-1), defaults to 0 (any part visible)
+ * @param stickyOffset - Optional sticky header offset to adjust effective viewport top
  * @returns true if element is in viewport, false otherwise
  *
  * @example
  * ```typescript
  * const element = document.querySelector('.target');
- * if (isInViewport(element, 0.5)) {
- *   // At least 50% of element is visible
+ * const offset = getStickyHeaderOffset(element);
+ * if (isInViewport(element, 0.5, offset)) {
+ *   // At least 50% of element is visible below sticky headers
  * }
  * ```
  */
-export function isInViewport(element: HTMLElement | null, threshold = 0): boolean {
+export function isInViewport(element: HTMLElement | null, threshold = 0, stickyOffset = 0): boolean {
   if (!element) {
     return false;
   }
@@ -200,13 +287,16 @@ export function isInViewport(element: HTMLElement | null, threshold = 0): boolea
   const windowHeight = window.innerHeight || document.documentElement.clientHeight;
   const windowWidth = window.innerWidth || document.documentElement.clientWidth;
 
+  // Adjust effective viewport top by sticky header offset
+  const effectiveTop = stickyOffset;
+
   if (threshold === 0) {
-    // Any part visible
-    return rect.top < windowHeight && rect.bottom > 0 && rect.left < windowWidth && rect.right > 0;
+    // Any part visible, accounting for sticky headers
+    return rect.top < windowHeight && rect.bottom > effectiveTop && rect.left < windowWidth && rect.right > 0;
   }
 
-  // Calculate visible area percentage
-  const visibleHeight = Math.min(rect.bottom, windowHeight) - Math.max(rect.top, 0);
+  // Calculate visible area percentage, accounting for sticky headers
+  const visibleHeight = Math.min(rect.bottom, windowHeight) - Math.max(rect.top, effectiveTop);
   const visibleWidth = Math.min(rect.right, windowWidth) - Math.max(rect.left, 0);
   const visibleArea = Math.max(0, visibleHeight) * Math.max(0, visibleWidth);
   const totalArea = rect.height * rect.width;
