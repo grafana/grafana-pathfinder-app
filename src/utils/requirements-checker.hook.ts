@@ -4,6 +4,7 @@ import { useInteractiveElements } from './interactive.hook';
 import { RequirementsCheckResult } from './requirements-checker.utils';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { useTimeoutManager, TimeoutManager } from './timeout-manager';
+import { useSequentialStepState } from './use-sequential-step-state.hook';
 
 /**
  * Wait for React state updates to complete before proceeding
@@ -265,7 +266,7 @@ export function useRequirementsChecker({
   }, [checkRequirements]);
 
   const markCompleted = useCallback(() => {
-    // PERFORMANCE FIX: Single setState call with manager notification
+    // Single setState call with manager notification
     setState((prev) => {
       const newState = {
         ...prev,
@@ -279,23 +280,15 @@ export function useRequirementsChecker({
 
         // If this is a section completion, trigger reactive check to unlock dependent sections
         if (uniqueId.startsWith('section-')) {
-          // Delayed reactive check to allow state to settle
-          timeoutManager.setDebounced(
-            `section-completion-${uniqueId}`,
-            () => {
-              managerRef.current?.triggerReactiveCheck();
-            },
-            undefined,
-            'stateSettling'
-          );
+          // IMMEDIATE reactive check - no debouncing for critical path
+          // flushSync in InteractiveSection ensures DOM is already updated
+          managerRef.current.triggerReactiveCheck();
         }
       }
 
       return newState;
     });
-
-    // Step completion tracking (no debug logging needed)
-  }, [uniqueId, timeoutManager]);
+  }, [uniqueId]);
 
   const reset = useCallback(() => {
     setState({
@@ -336,6 +329,7 @@ export class SequentialRequirementsManager {
   private steps = new Map<string, RequirementsState>();
   private listeners = new Set<() => void>();
   private navClickListener?: (e: Event) => void;
+  private version = 0; // Track version for useSyncExternalStore
 
   static getInstance(): SequentialRequirementsManager {
     if (!SequentialRequirementsManager.instance) {
@@ -381,7 +375,16 @@ export class SequentialRequirementsManager {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * Get immutable snapshot for useSyncExternalStore
+   * Returns a new Map to ensure referential equality changes trigger React updates
+   */
+  getSnapshot(): Map<string, RequirementsState> {
+    return new Map(this.steps);
+  }
+
   private notifyListeners(): void {
+    this.version++; // Increment version to signal state change
     this.listeners.forEach((listener) => listener());
   }
 
@@ -658,13 +661,16 @@ export function useSequentialRequirements({
   targetAction,
   isSequence = false,
 }: UseRequirementsCheckerProps): UseRequirementsCheckerReturn {
-  const uniqueId = sectionId ? `section-${sectionId}` : stepId ? `step-${stepId}` : `fallback-${Date.now()}`;
+  // Use useId() instead of Date.now() for stable unique IDs (React best practice)
+  const reactId = useId();
+  const uniqueId = sectionId ? `section-${sectionId}` : stepId ? `step-${stepId}` : `fallback-${reactId}`;
   const manager = SequentialRequirementsManager.getInstance();
   const basicChecker = useRequirementsChecker({ requirements, hints, stepId, sectionId, targetAction, isSequence });
-  const timeoutManager = useTimeoutManager();
 
-  // Local state to force re-renders when manager state changes
-  const [, forceUpdate] = useState({});
+  // Subscribe to manager state via useSyncExternalStore
+  // This subscription triggers re-renders when manager state changes (even though we don't use the value directly)
+  // The managerState subscription is intentionally unused - it exists solely to trigger re-renders
+  useSequentialStepState(uniqueId);
 
   // Register this step with the manager
   useEffect(() => {
@@ -673,31 +679,6 @@ export function useSequentialRequirements({
       // Cleanup could be added here if needed
     };
   }, [uniqueId, isSequence, manager]);
-
-  // Subscribe to global state changes with debouncing to prevent infinite loops
-  useEffect(() => {
-    let timeoutId: number | null = null;
-
-    const unsubscribe = manager.subscribe(() => {
-      // Debounce the re-render to prevent rapid-fire updates
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-
-      timeoutId = window.setTimeout(() => {
-        forceUpdate({});
-        timeoutId = null;
-      }, INTERACTIVE_CONFIG.delays.debouncing.uiUpdates);
-    });
-
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      unsubscribe();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uniqueId]); // Use uniqueId instead of manager to prevent subscription loops
 
   // Enhanced check that considers sequential state
   const checkRequirements = useCallback(async () => {
@@ -767,18 +748,11 @@ export function useSequentialRequirements({
     // Just delegate to the basic checker - it will update the manager directly
     basicChecker.markCompleted();
 
-    // Additional reactive check for section dependencies
-    // The basic checker handles section-level reactive checks, but we ensure
-    // all dependent steps get re-evaluated
-    timeoutManager.setDebounced(
-      `sequential-reactive-check-${uniqueId}`,
-      () => {
-        manager.triggerReactiveCheck();
-      },
-      undefined,
-      'reactiveCheck'
-    );
-  }, [basicChecker, manager, timeoutManager, uniqueId]);
+    // IMMEDIATE reactive check - no debouncing for critical path
+    // The basic checker already triggers reactive checks, but we ensure
+    // all dependent steps get re-evaluated immediately
+    manager.triggerReactiveCheck();
+  }, [basicChecker, manager]);
 
   // Get current state from manager (which includes sequential logic)
   const managerState = manager.getStepState(uniqueId);

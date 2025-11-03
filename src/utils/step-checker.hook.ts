@@ -16,6 +16,7 @@ import { useInteractiveElements } from './interactive.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { useTimeoutManager } from './timeout-manager';
 import { checkRequirements } from './requirements-checker.utils';
+import { useSequentialStepState } from './use-sequential-step-state.hook';
 
 export interface UseStepCheckerProps {
   requirements?: string;
@@ -90,6 +91,10 @@ export function useStepChecker({
 
   // Requirements checking is now handled by the pure requirements utility
   const { checkRequirementsFromData } = useInteractiveElements();
+
+  // Subscribe to manager state changes via useSyncExternalStore
+  // This ensures React renders are synchronized with manager state updates
+  const managerStepState = useSequentialStepState(stepId);
 
   // Custom requirements checker that provides state updates for retry feedback
   const checkRequirementsWithStateUpdates = useCallback(
@@ -641,13 +646,14 @@ export function useStepChecker({
   }, [stepId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check requirements when step eligibility changes (both true and false)
+  // Also recheck when manager state changes (via useSyncExternalStore)
   useEffect(() => {
     if (!state.isCompleted) {
       // Always recheck when eligibility changes, whether becoming eligible or ineligible
       // This ensures steps show the correct "blocked" state when they become ineligible
       checkStepRef.current();
     }
-  }, [isEligibleForChecking]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isEligibleForChecking, managerStepState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for section completion events (for section dependencies)
   useEffect(() => {
