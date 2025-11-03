@@ -21,11 +21,11 @@ import {
   parseUrlSafely,
   isAllowedContentUrl,
   isAllowedGitHubRawUrl,
-  isAllowedJsDelivrUrl,
   isGitHubUrl,
   isGitHubRawUrl,
   isLocalhostUrl,
 } from '../../utils/url-validator';
+import { isDataProxyUrl } from '../../utils/data-proxy';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
@@ -192,7 +192,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
           return (
             isAllowedContentUrl(url) ||
             isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
-            isAllowedJsDelivrUrl(url, ALLOWED_GITHUB_REPOS) || // SECURITY: Strict validation
+            isDataProxyUrl(url) || // SECURITY: Data proxy URLs are internal
             isGitHubUrl(url) ||
             (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url)))
           );

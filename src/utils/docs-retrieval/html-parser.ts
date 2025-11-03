@@ -8,10 +8,10 @@ import { sanitizeDocumentationHTML } from './html-sanitizer';
 import {
   isGrafanaDocsUrl,
   isAllowedGitHubRawUrl,
-  isAllowedJsDelivrUrl,
   isLocalhostUrl,
   isGitHubRawUrl,
 } from '../url-validator';
+import { isDataProxyUrl } from '../data-proxy';
 import { ALLOWED_GITHUB_REPOS } from '../../constants';
 import { isDevModeEnabledGlobal } from '../dev-mode';
 
@@ -24,7 +24,7 @@ export type { ParsedElement, ParsedContent };
  *
  * In production: Only Grafana docs, bundled content, and approved GitHub repos
  * In dev mode: Also allows localhost URLs and any GitHub raw URLs for local testing
- * jsDelivr: Allowed ONLY if it maps to approved GitHub repos (same security as raw GitHub)
+ * Data proxy: Routes requests through Grafana backend to avoid CORS issues
  *
  * @param baseUrl - The source URL of the content being parsed
  * @returns true if source is trusted for interactive content, false otherwise
@@ -49,9 +49,8 @@ function isTrustedInteractiveSource(baseUrl?: string): boolean {
     return true;
   }
 
-  // SECURITY: Allow jsDelivr CDN ONLY for approved GitHub repos
-  // This provides CORS headers for Firefox/Safari while maintaining same security
-  if (isAllowedJsDelivrUrl(baseUrl, ALLOWED_GITHUB_REPOS)) {
+  // SECURITY: Allow data proxy URLs (internal URLs that route through Grafana backend)
+  if (isDataProxyUrl(baseUrl)) {
     return true;
   }
 

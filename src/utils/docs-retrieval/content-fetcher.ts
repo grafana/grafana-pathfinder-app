@@ -19,10 +19,9 @@ import {
   isGitHubUrl,
   isGitHubRawUrl,
   isAllowedGitHubRawUrl,
-  isAllowedJsDelivrUrl,
   isLocalhostUrl,
-  browserNeedsCorsProxy,
 } from '../url-validator';
+import { convertGitHubRawToProxyUrl, isDataProxyUrl } from '../data-proxy';
 import { isDevModeEnabledGlobal } from '../dev-mode';
 
 // Internal error structure for detailed error handling
@@ -79,19 +78,19 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Defense-in-depth: Even if callers validate, fetchContent provides final check
     // In production: Only Grafana docs, bundled content, and approved GitHub repos
     // In dev mode: Also allows any GitHub raw URL and localhost for local testing
-    // jsDelivr: Only allowed if it maps to an approved GitHub repo (strict validation)
+    // Data proxy: Routes requests through Grafana backend to avoid CORS issues
     const isDevMode = isDevModeEnabledGlobal();
     const isTrustedSource =
       isAllowedContentUrl(url) ||
       isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
-      isAllowedJsDelivrUrl(url, ALLOWED_GITHUB_REPOS) || // SECURITY: Same strict validation as raw GitHub
+      isDataProxyUrl(url) || // SECURITY: Data proxy URLs are internal and route through Grafana backend
       isGitHubUrl(url) ||
       (isDevMode && (isGitHubRawUrl(url) || isLocalhostUrl(url)));
 
     if (!isTrustedSource) {
       const errorMessage = isDevMode
-        ? 'Only Grafana.com documentation, any GitHub repositories (dev mode), localhost URLs (dev mode), and approved GitHub repositories can be loaded'
-        : 'Only Grafana.com documentation and approved GitHub repositories can be loaded';
+        ? 'Only Grafana.com documentation, any GitHub repositories (dev mode), localhost URLs (dev mode), approved GitHub repositories, and data proxy URLs can be loaded'
+        : 'Only Grafana.com documentation, approved GitHub repositories, and data proxy URLs can be loaded';
 
       return {
         content: null,
@@ -313,24 +312,31 @@ async function fetchRawHtml(
   const isGitHubRawUrlCheck = isGitHubRawUrl(url);
   const isGitHubUrlCheck = isGitHubUrl(url);
 
+  console.warn(`[fetchRawHtml] Processing URL: ${url}`);
+  console.warn(`[fetchRawHtml] isGitHubUrl: ${isGitHubUrlCheck}, isGitHubRawUrl: ${isGitHubRawUrlCheck}`);
+
   if (isGitHubUrlCheck && !isGitHubRawUrlCheck) {
     const githubVariations = generateGitHubVariations(url);
+    console.warn(`[fetchRawHtml] Generated ${githubVariations.length} GitHub variations:`, githubVariations);
     if (githubVariations.length > 0) {
       // Use the first (most specific) GitHub variation instead of the original URL
       actualUrl = githubVariations[0];
+      console.warn(`[fetchRawHtml] Using first variation: ${actualUrl}`);
     }
   }
 
-  // Check if this is a GitHub raw URL or jsDelivr URL to use minimal headers
-  const isJsDelivrUrl = actualUrl.includes('cdn.jsdelivr.net');
-  const useMinimalHeaders = isGitHubRawUrlCheck || isJsDelivrUrl;
+  // Check if this is a GitHub raw URL or data proxy URL to use minimal headers
+  const isDataProxy = isDataProxyUrl(actualUrl);
+  const useMinimalHeaders = isGitHubRawUrlCheck || isDataProxy;
 
-  // Build fetch options - use minimal headers for GitHub raw URLs and jsDelivr to avoid CORS preflight
+  console.warn(`[fetchRawHtml] isDataProxyUrl: ${isDataProxy}, useMinimalHeaders: ${useMinimalHeaders}`);
+
+  // Build fetch options - use minimal headers for GitHub raw URLs and data proxy to avoid CORS preflight
   const fetchOptions: RequestInit = {
     method: 'GET',
     headers: useMinimalHeaders
       ? {
-          // Minimal headers for GitHub raw URLs and jsDelivr - avoid triggering CORS preflight
+          // Minimal headers for GitHub raw URLs and data proxy - avoid triggering CORS preflight
           // Only use simple headers that don't require preflight
           ...headers,
         }
@@ -348,8 +354,11 @@ async function fetchRawHtml(
   // Try the actual URL (original or converted GitHub raw URL)
   let lastError: FetchError | undefined;
 
+  console.warn(`[fetchRawHtml] Attempting fetch to: ${actualUrl}`);
+
   try {
     const response = await fetch(actualUrl, fetchOptions);
+    console.warn(`[fetchRawHtml] Response status: ${response.status}, ok: ${response.ok}, url: ${response.url}`);
 
     if (response.ok) {
       const html = await response.text();
@@ -360,11 +369,11 @@ async function fetchRawHtml(
 
         // Re-validate the final URL after redirects
         // In dev mode: Allow any GitHub raw URL and localhost
-        // jsDelivr: Only allowed if it maps to an approved GitHub repo
+        // Data proxy: Internal URLs are trusted
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
           isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPOS) ||
-          isAllowedJsDelivrUrl(finalUrl, ALLOWED_GITHUB_REPOS) || // SECURITY: Strict validation
+          isDataProxyUrl(finalUrl) || // SECURITY: Data proxy URLs are internal
           isGitHubUrl(finalUrl) ||
           (isDevModeEnabledGlobal() && (isLocalhostUrl(finalUrl) || isGitHubRawUrl(finalUrl)));
 
@@ -376,7 +385,7 @@ async function fetchRawHtml(
               `Checks:\n` +
               `  - isAllowedContentUrl: ${isAllowedContentUrl(finalUrl)}\n` +
               `  - isAllowedGitHubRawUrl: ${isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPOS)}\n` +
-              `  - isAllowedJsDelivrUrl: ${isAllowedJsDelivrUrl(finalUrl, ALLOWED_GITHUB_REPOS)}\n` +
+              `  - isDataProxyUrl: ${isDataProxyUrl(finalUrl)}\n` +
               `  - isGitHubUrl: ${isGitHubUrl(finalUrl)}`
           );
           lastError = {
@@ -462,11 +471,11 @@ async function fetchRawHtml(
               // SECURITY: Re-validate the redirect URL is still trusted
               // Must match the same validation as the main fetch
               const isRedirectTrusted =
-                isAllowedContentUrl(redirectUrl.href) ||
-                isAllowedGitHubRawUrl(redirectUrl.href, ALLOWED_GITHUB_REPOS) ||
-                isAllowedJsDelivrUrl(redirectUrl.href, ALLOWED_GITHUB_REPOS) || // SECURITY: Strict validation
-                isGitHubUrl(redirectUrl.href) ||
-                (isDevModeEnabledGlobal() && (isLocalhostUrl(redirectUrl.href) || isGitHubRawUrl(redirectUrl.href)));
+              isAllowedContentUrl(redirectUrl.href) ||
+              isAllowedGitHubRawUrl(redirectUrl.href, ALLOWED_GITHUB_REPOS) ||
+              isDataProxyUrl(redirectUrl.href) || // SECURITY: Data proxy URLs are internal
+              isGitHubUrl(redirectUrl.href) ||
+              (isDevModeEnabledGlobal() && (isLocalhostUrl(redirectUrl.href) || isGitHubRawUrl(redirectUrl.href)));
 
               if (!isRedirectTrusted) {
                 console.warn(`Redirect target not in trusted domain list: ${redirectUrl.href}`);
@@ -507,7 +516,7 @@ async function fetchRawHtml(
         errorType,
         statusCode: response.status,
       };
-      console.warn(`Failed to fetch from ${url}:`, lastError.message);
+      console.warn(`[fetchRawHtml] Failed to fetch from ${actualUrl}: ${lastError.message}`);
     }
   } catch (error) {
     // Categorize catch errors (network, timeout, etc.)
@@ -523,39 +532,50 @@ async function fetchRawHtml(
       message: errorMessage,
       errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
     };
-    console.warn(`Failed to fetch from ${url}:`, error);
+    console.warn(`[fetchRawHtml] Fetch exception for ${actualUrl}:`, error);
   }
 
   // If original URL failed and we haven't already converted the URL (to avoid trying the same variations twice)
+  console.warn(`[fetchRawHtml] First attempt failed. actualUrl === url: ${actualUrl === url}`);
+  
   if (!lastError?.message.includes('Unstyled version required') && actualUrl === url) {
+    console.warn(`[fetchRawHtml] Trying GitHub variations as fallback`);
     // Only try GitHub for URLs that are actually GitHub URLs
     const githubVariations = generateGitHubVariations(url);
+    console.warn(`[fetchRawHtml] Fallback variations (${githubVariations.length}):`, githubVariations);
+    
     if (githubVariations.length > 0) {
       for (const githubUrl of githubVariations) {
+        console.warn(`[fetchRawHtml] Trying fallback variation: ${githubUrl}`);
         try {
           const githubResponse = await fetch(githubUrl, fetchOptions);
+          console.warn(`[fetchRawHtml] Fallback response status: ${githubResponse.status}, ok: ${githubResponse.ok}`);
+          
           if (githubResponse.ok) {
             const githubHtml = await githubResponse.text();
             if (githubHtml && githubHtml.trim()) {
+              console.warn(`[fetchRawHtml] Fallback SUCCESS with: ${githubUrl}`);
               return { html: githubHtml, finalUrl: githubResponse.url };
             }
           }
         } catch (githubError) {
-          console.warn(`Failed to fetch from GitHub variation ${githubUrl}:`, githubError);
+          console.warn(`[fetchRawHtml] Fallback failed for ${githubUrl}:`, githubError);
         }
       }
     }
+  } else {
+    console.warn(`[fetchRawHtml] Skipping fallback variations (already converted or unstyled required)`);
   }
 
   // Log final failure with most relevant error
   if (lastError) {
-    // Provide specific guidance for GitHub CORS issues (using centralized validator)
+    // Provide specific guidance for GitHub content loading issues (using centralized validator)
     if (isGitHubUrl(url) && lastError.message.includes('NetworkError')) {
       console.error(
         `Failed to fetch content from ${url}. Last error: ${lastError.message}\n` +
-          `GitHub raw URLs may be blocked due to CORS policies. System automatically tries:\n` +
-          `1. jsDelivr CDN (CORS-enabled, Firefox/Safari only)\n` +
-          `2. raw.githubusercontent.com (Chrome or fallback)\n` +
+          `GitHub content loading failed. System automatically tries:\n` +
+          `1. Grafana data proxy (routes through backend, avoids CORS)\n` +
+          `2. raw.githubusercontent.com (direct access as fallback)\n` +
           `3. Unstyled HTML variations\n` +
           `Consider using bundled content (bundled: URLs) for guaranteed availability.`
       );
@@ -567,28 +587,13 @@ async function fetchRawHtml(
   return { html: null, error: lastError };
 }
 
-/**
- * Convert GitHub URL to jsDelivr CDN URL
- * jsDelivr provides CORS headers, solving Firefox/Safari CORS issues
- * Format: https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}
- *
- * @param owner - GitHub repository owner
- * @param repo - GitHub repository name
- * @param branch - Branch name
- * @param path - File path
- * @returns jsDelivr CDN URL
- */
-function convertToJsDelivrUrl(owner: string, repo: string, branch: string, path: string): string {
-  // SECURITY (F3): Use proper URL construction
-  return `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${path}`;
-}
 
 /**
  * Generate GitHub raw content URL variations to try
  * Uses proper URL parsing to prevent domain hijacking
  *
- * SECURITY: Only uses jsDelivr CDN for Firefox/Safari (browserNeedsCorsProxy)
- * Chrome works fine with raw.githubusercontent.com, no need for external CDN
+ * SECURITY: Uses data proxy URLs to avoid CORS issues across all browsers
+ * Data proxy routes requests through Grafana backend, providing consistent behavior
  *
  * SECURITY: All generated URLs must pass ALLOWED_GITHUB_REPOS validation
  */
@@ -599,9 +604,6 @@ function generateGitHubVariations(url: string): string[] {
   const isGitHubDomain = isGitHubUrl(url);
   const isGitHubRawDomain = isGitHubRawUrl(url);
 
-  // SECURITY: Only use jsDelivr for browsers that need it (Firefox/Safari)
-  const needsCorsProxy = browserNeedsCorsProxy();
-
   // Only try GitHub variations for actual GitHub URLs
   if (isGitHubDomain || isGitHubRawDomain) {
     if (isGitHubDomain) {
@@ -610,15 +612,16 @@ function generateGitHubVariations(url: string): string[] {
       if (treeMatch) {
         const [_fullMatch, owner, repo, branch, path] = treeMatch;
 
-        // SECURITY: Only use jsDelivr for Firefox/Safari
-        if (needsCorsProxy) {
-          const jsDelivrUrl = convertToJsDelivrUrl(owner, repo, branch, `${path}/unstyled.html`);
-          variations.push(jsDelivrUrl);
-        }
-
-        // Always include raw.githubusercontent.com as primary (Chrome) or fallback (Firefox/Safari)
         // SECURITY (F3): Use URL constructor instead of template literal
         const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/unstyled.html`;
+        
+        // Try data proxy URL first (avoids CORS issues)
+        const proxyUrl = convertGitHubRawToProxyUrl(rawUrl);
+        if (proxyUrl) {
+          variations.push(proxyUrl);
+        }
+        
+        // Then try raw URL as fallback
         variations.push(rawUrl);
       }
 
@@ -627,23 +630,25 @@ function generateGitHubVariations(url: string): string[] {
       if (blobMatch) {
         const [_fullMatch, owner, repo, branch, path] = blobMatch;
 
-        // SECURITY: Only use jsDelivr for Firefox/Safari
-        if (needsCorsProxy) {
-          const jsDelivrUrl = convertToJsDelivrUrl(owner, repo, branch, path);
-          variations.push(jsDelivrUrl);
-        }
-
-        // Always include raw.githubusercontent.com
         const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
+        
+        // Try data proxy URL first (avoids CORS issues)
+        const proxyUrl = convertGitHubRawToProxyUrl(rawUrl);
+        if (proxyUrl) {
+          variations.push(proxyUrl);
+        }
+        
+        // Then try raw URL as fallback
         variations.push(rawUrl);
 
         // Also try unstyled version
         if (!path.includes('/unstyled.html')) {
-          if (needsCorsProxy) {
-            const jsDelivrUnstyledUrl = convertToJsDelivrUrl(owner, repo, branch, `${path}/unstyled.html`);
-            variations.push(jsDelivrUnstyledUrl);
+          const rawUnstyledUrl = `${rawUrl}/unstyled.html`;
+          const proxyUnstyledUrl = convertGitHubRawToProxyUrl(rawUnstyledUrl);
+          if (proxyUnstyledUrl) {
+            variations.push(proxyUnstyledUrl);
           }
-          variations.push(`${rawUrl}/unstyled.html`);
+          variations.push(rawUnstyledUrl);
         }
       }
     }
@@ -652,19 +657,20 @@ function generateGitHubVariations(url: string): string[] {
     if (isGitHubRawDomain) {
       const rawMatch = url.match(/https:\/\/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)/);
       if (rawMatch) {
-        const [_fullMatch, owner, repo, branch, path] = rawMatch;
+        const [_fullMatch, _owner, _repo, _branch, path] = rawMatch;
 
-        // SECURITY: Only use jsDelivr for Firefox/Safari
-        if (needsCorsProxy) {
-          const jsDelivrUrl = convertToJsDelivrUrl(owner, repo, branch, path);
-          variations.push(jsDelivrUrl);
+        // Try data proxy URL for the raw URL
+        const proxyUrl = convertGitHubRawToProxyUrl(url);
+        if (proxyUrl) {
+          variations.push(proxyUrl);
         }
 
         // Also try unstyled version if not already included
         if (!path.includes('/unstyled.html')) {
-          if (needsCorsProxy) {
-            const jsDelivrUnstyledUrl = convertToJsDelivrUrl(owner, repo, branch, `${path}/unstyled.html`);
-            variations.push(jsDelivrUnstyledUrl);
+          const unstyledUrl = `${url}/unstyled.html`;
+          const proxyUnstyledUrl = convertGitHubRawToProxyUrl(unstyledUrl);
+          if (proxyUnstyledUrl) {
+            variations.push(proxyUnstyledUrl);
           }
         }
       }
