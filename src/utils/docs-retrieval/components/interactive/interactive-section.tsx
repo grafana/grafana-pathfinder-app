@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
@@ -415,37 +416,43 @@ export function InteractiveSection({
   const handleStepComplete = useCallback(
     (stepId: string, skipStateUpdate = false) => {
       if (!skipStateUpdate) {
-        const newCompletedSteps = new Set([...completedSteps, stepId]);
-        setCompletedSteps(newCompletedSteps);
-      }
-      setCurrentlyExecutingStep(null);
+        // Use flushSync to ensure synchronous state updates before triggering checks
+        // This prevents race conditions where child components haven't re-rendered yet
+        flushSync(() => {
+          const newCompletedSteps = new Set([...completedSteps, stepId]);
+          setCompletedSteps(newCompletedSteps);
+          setCurrentlyExecutingStep(null);
 
-      // Advance currentStepIndex to the next uncompleted step
-      const currentIndex = stepComponents.findIndex((step) => step.stepId === stepId);
-      if (currentIndex >= 0) {
-        setCurrentStepIndex(currentIndex + 1);
+          const currentIndex = stepComponents.findIndex((step) => step.stepId === stepId);
+          if (currentIndex >= 0) {
+            setCurrentStepIndex(currentIndex + 1);
+          }
 
-        // Trigger requirements check for the next step that becomes eligible
-        const nextStepIndex = currentIndex + 1;
-        if (nextStepIndex < stepComponents.length) {
-          const nextStepId = stepComponents[nextStepIndex].stepId;
-          import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
-            const manager = SequentialRequirementsManager.getInstance();
-            manager.triggerStepEligibilityCheck(nextStepId);
-          });
+          persistCompletedSteps(newCompletedSteps);
+        });
+
+        // NOW trigger eligibility check - React has already re-rendered with new state
+        const currentIndex = stepComponents.findIndex((step) => step.stepId === stepId);
+        if (currentIndex >= 0) {
+          const nextStepIndex = currentIndex + 1;
+          if (nextStepIndex < stepComponents.length) {
+            const nextStepId = stepComponents[nextStepIndex].stepId;
+            import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
+              const manager = SequentialRequirementsManager.getInstance();
+              manager.triggerStepEligibilityCheck(nextStepId);
+            });
+          }
         }
-      }
 
-      // Check if all steps are completed (only when we actually updated the state)
-      if (!skipStateUpdate) {
+        // Check if all steps are completed
         const newCompletedSteps = new Set([...completedSteps, stepId]);
-        // Persist
-        persistCompletedSteps(newCompletedSteps);
         const allStepsCompleted = newCompletedSteps.size >= stepComponents.length;
 
         if (allStepsCompleted) {
           onComplete?.();
         }
+      } else {
+        setCurrentlyExecutingStep(null);
       }
     },
     [completedSteps, stepComponents, onComplete, persistCompletedSteps]
