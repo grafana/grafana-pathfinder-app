@@ -243,18 +243,18 @@ const plugin = new AppPlugin<{}>()
 plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const jsonData = meta?.jsonData || {};
   const config = getConfigWithDefaults(jsonData);
-  
+
   // Set global config immediately so other code can use it
   (window as any).__pathfinderPluginConfig = config;
-  
+
   // Auto-open panel if configured (once per session)
   if (config.openPanelOnLaunch) {
     const sessionKey = 'grafana-interactive-learning-panel-auto-opened';
     const hasAutoOpened = sessionStorage.getItem(sessionKey);
-    
+
     if (!hasAutoOpened) {
       sessionStorage.setItem(sessionKey, 'true');
-      
+
       // Small delay to ensure Grafana is ready
       setTimeout(() => {
         try {
@@ -266,13 +266,13 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
               componentTitle: 'Interactive learning',
             },
           });
-          
+
           // Auto-launch tutorial if configured
           if (config.tutorialUrl) {
             setTimeout(() => {
               const isBundled = config.tutorialUrl!.startsWith('bundled:');
               const isLearningJourney = config.tutorialUrl!.includes('/learning-journeys/') || isBundled;
-              
+
               const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
                 detail: {
                   url: config.tutorialUrl,
