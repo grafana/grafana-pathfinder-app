@@ -247,8 +247,12 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Set global config immediately so other code can use it
   (window as any).__pathfinderPluginConfig = config;
 
-  // Auto-open panel if configured (once per session)
-  if (config.openPanelOnLaunch) {
+  // Check if auto-open is enabled
+  // Feature toggle sets the default, but user config always takes precedence
+  const shouldAutoOpen = config.openPanelOnLaunch;
+
+  // Auto-open panel if enabled (once per session)
+  if (shouldAutoOpen) {
     const sessionKey = 'grafana-interactive-learning-panel-auto-opened';
     const hasAutoOpened = sessionStorage.getItem(sessionKey);
 
