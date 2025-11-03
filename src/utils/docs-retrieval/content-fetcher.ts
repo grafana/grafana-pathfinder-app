@@ -33,9 +33,14 @@ interface FetchError {
 
 /**
  * SECURITY: Enforce HTTPS for all external URLs to prevent MITM attacks
- * Exceptions: localhost in dev mode
+ * Exceptions: localhost in dev mode, data proxy URLs (internal to Grafana)
  */
 function enforceHttps(url: string): boolean {
+  // Data proxy URLs are internal to Grafana and don't need HTTPS enforcement
+  if (isDataProxyUrl(url)) {
+    return true;
+  }
+
   // Parse URL safely
   const parsedUrl = parseUrlSafely(url);
   if (!parsedUrl) {
@@ -312,24 +317,17 @@ async function fetchRawHtml(
   const isGitHubRawUrlCheck = isGitHubRawUrl(url);
   const isGitHubUrlCheck = isGitHubUrl(url);
 
-  console.warn(`[fetchRawHtml] Processing URL: ${url}`);
-  console.warn(`[fetchRawHtml] isGitHubUrl: ${isGitHubUrlCheck}, isGitHubRawUrl: ${isGitHubRawUrlCheck}`);
-
   if (isGitHubUrlCheck && !isGitHubRawUrlCheck) {
     const githubVariations = generateGitHubVariations(url);
-    console.warn(`[fetchRawHtml] Generated ${githubVariations.length} GitHub variations:`, githubVariations);
     if (githubVariations.length > 0) {
       // Use the first (most specific) GitHub variation instead of the original URL
       actualUrl = githubVariations[0];
-      console.warn(`[fetchRawHtml] Using first variation: ${actualUrl}`);
     }
   }
 
   // Check if this is a GitHub raw URL or data proxy URL to use minimal headers
   const isDataProxy = isDataProxyUrl(actualUrl);
   const useMinimalHeaders = isGitHubRawUrlCheck || isDataProxy;
-
-  console.warn(`[fetchRawHtml] isDataProxyUrl: ${isDataProxy}, useMinimalHeaders: ${useMinimalHeaders}`);
 
   // Build fetch options - use minimal headers for GitHub raw URLs and data proxy to avoid CORS preflight
   const fetchOptions: RequestInit = {
@@ -354,11 +352,8 @@ async function fetchRawHtml(
   // Try the actual URL (original or converted GitHub raw URL)
   let lastError: FetchError | undefined;
 
-  console.warn(`[fetchRawHtml] Attempting fetch to: ${actualUrl}`);
-
   try {
     const response = await fetch(actualUrl, fetchOptions);
-    console.warn(`[fetchRawHtml] Response status: ${response.status}, ok: ${response.ok}, url: ${response.url}`);
 
     if (response.ok) {
       const html = await response.text();
@@ -471,11 +466,11 @@ async function fetchRawHtml(
               // SECURITY: Re-validate the redirect URL is still trusted
               // Must match the same validation as the main fetch
               const isRedirectTrusted =
-              isAllowedContentUrl(redirectUrl.href) ||
-              isAllowedGitHubRawUrl(redirectUrl.href, ALLOWED_GITHUB_REPOS) ||
-              isDataProxyUrl(redirectUrl.href) || // SECURITY: Data proxy URLs are internal
-              isGitHubUrl(redirectUrl.href) ||
-              (isDevModeEnabledGlobal() && (isLocalhostUrl(redirectUrl.href) || isGitHubRawUrl(redirectUrl.href)));
+                isAllowedContentUrl(redirectUrl.href) ||
+                isAllowedGitHubRawUrl(redirectUrl.href, ALLOWED_GITHUB_REPOS) ||
+                isDataProxyUrl(redirectUrl.href) || // SECURITY: Data proxy URLs are internal
+                isGitHubUrl(redirectUrl.href) ||
+                (isDevModeEnabledGlobal() && (isLocalhostUrl(redirectUrl.href) || isGitHubRawUrl(redirectUrl.href)));
 
               if (!isRedirectTrusted) {
                 console.warn(`Redirect target not in trusted domain list: ${redirectUrl.href}`);
@@ -516,7 +511,7 @@ async function fetchRawHtml(
         errorType,
         statusCode: response.status,
       };
-      console.warn(`[fetchRawHtml] Failed to fetch from ${actualUrl}: ${lastError.message}`);
+      console.warn(`Failed to fetch from ${actualUrl}: ${lastError.message}`);
     }
   } catch (error) {
     // Categorize catch errors (network, timeout, etc.)
@@ -532,39 +527,28 @@ async function fetchRawHtml(
       message: errorMessage,
       errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
     };
-    console.warn(`[fetchRawHtml] Fetch exception for ${actualUrl}:`, error);
+    console.warn(`Failed to fetch from ${actualUrl}:`, error);
   }
 
   // If original URL failed and we haven't already converted the URL (to avoid trying the same variations twice)
-  console.warn(`[fetchRawHtml] First attempt failed. actualUrl === url: ${actualUrl === url}`);
-  
   if (!lastError?.message.includes('Unstyled version required') && actualUrl === url) {
-    console.warn(`[fetchRawHtml] Trying GitHub variations as fallback`);
     // Only try GitHub for URLs that are actually GitHub URLs
     const githubVariations = generateGitHubVariations(url);
-    console.warn(`[fetchRawHtml] Fallback variations (${githubVariations.length}):`, githubVariations);
-    
     if (githubVariations.length > 0) {
       for (const githubUrl of githubVariations) {
-        console.warn(`[fetchRawHtml] Trying fallback variation: ${githubUrl}`);
         try {
           const githubResponse = await fetch(githubUrl, fetchOptions);
-          console.warn(`[fetchRawHtml] Fallback response status: ${githubResponse.status}, ok: ${githubResponse.ok}`);
-          
           if (githubResponse.ok) {
             const githubHtml = await githubResponse.text();
             if (githubHtml && githubHtml.trim()) {
-              console.warn(`[fetchRawHtml] Fallback SUCCESS with: ${githubUrl}`);
               return { html: githubHtml, finalUrl: githubResponse.url };
             }
           }
         } catch (githubError) {
-          console.warn(`[fetchRawHtml] Fallback failed for ${githubUrl}:`, githubError);
+          console.warn(`Failed to fetch from GitHub variation ${githubUrl}:`, githubError);
         }
       }
     }
-  } else {
-    console.warn(`[fetchRawHtml] Skipping fallback variations (already converted or unstyled required)`);
   }
 
   // Log final failure with most relevant error
@@ -586,7 +570,6 @@ async function fetchRawHtml(
 
   return { html: null, error: lastError };
 }
-
 
 /**
  * Generate GitHub raw content URL variations to try
@@ -614,13 +597,13 @@ function generateGitHubVariations(url: string): string[] {
 
         // SECURITY (F3): Use URL constructor instead of template literal
         const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/unstyled.html`;
-        
+
         // Try data proxy URL first (avoids CORS issues)
         const proxyUrl = convertGitHubRawToProxyUrl(rawUrl);
         if (proxyUrl) {
           variations.push(proxyUrl);
         }
-        
+
         // Then try raw URL as fallback
         variations.push(rawUrl);
       }
@@ -631,13 +614,13 @@ function generateGitHubVariations(url: string): string[] {
         const [_fullMatch, owner, repo, branch, path] = blobMatch;
 
         const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
-        
+
         // Try data proxy URL first (avoids CORS issues)
         const proxyUrl = convertGitHubRawToProxyUrl(rawUrl);
         if (proxyUrl) {
           variations.push(proxyUrl);
         }
-        
+
         // Then try raw URL as fallback
         variations.push(rawUrl);
 

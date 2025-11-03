@@ -31,20 +31,20 @@ describe('fetchContent security validation', () => {
     it('should reject non-grafana.com URLs', async () => {
       const result = await fetchContent('https://evil.com/docs/malicious/');
       expect(result.content).toBeNull();
-      expect(result.error).toContain('Only Grafana.com documentation and approved GitHub repositories can be loaded');
+      expect(result.error).toContain('Only Grafana.com documentation');
       expect(result.errorType).toBe('other');
     });
 
     it('should reject domain hijacking attempts', async () => {
       const result = await fetchContent('https://grafana.com.evil.com/docs/');
       expect(result.content).toBeNull();
-      expect(result.error).toContain('Only Grafana.com documentation and approved GitHub repositories can be loaded');
+      expect(result.error).toContain('Only Grafana.com documentation');
     });
 
     it('should reject URLs with docs-like paths but wrong domain', async () => {
       const result = await fetchContent('https://example.com/tutorials/evil-tutorial/');
       expect(result.content).toBeNull();
-      expect(result.error).toContain('Only Grafana.com documentation and approved GitHub repositories can be loaded');
+      expect(result.error).toContain('Only Grafana.com documentation');
     });
 
     it('should allow grafana/interactive-tutorials GitHub URLs', async () => {
@@ -58,7 +58,7 @@ describe('fetchContent security validation', () => {
     it('should reject non-approved GitHub repos', async () => {
       const result = await fetchContent('https://raw.githubusercontent.com/evil-user/malicious-repo/main/test.html');
       expect(result.content).toBeNull();
-      expect(result.error).toContain('Only Grafana.com documentation and approved GitHub repositories can be loaded');
+      expect(result.error).toContain('Only Grafana.com documentation');
     });
   });
 });

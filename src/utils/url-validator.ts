@@ -255,7 +255,6 @@ export function isAllowedGitHubRawUrl(
   return allowedRepo.allowedRefs.includes(ref);
 }
 
-
 /**
  * Check if URL is a valid Grafana domain (for general use, not just docs)
  *

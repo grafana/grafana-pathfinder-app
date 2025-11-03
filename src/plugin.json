@@ -36,8 +36,8 @@
   ],
   "routes": [
     {
-      "path": "github-raw",
-      "url": "https://raw.githubusercontent.com/"
+      "path": "github-raw/*",
+      "url": "https://raw.githubusercontent.com/grafana/interactive-tutorials/main"
     }
   ],
   "extensions": {

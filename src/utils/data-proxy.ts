@@ -19,6 +19,10 @@ export const PLUGIN_ID = pluginJson.id;
 
 /**
  * Data proxy route paths configured in plugin.json
+ *
+ * SECURITY: Routes are configured with specific paths to limit backend access
+ * - github-raw: Points to https://raw.githubusercontent.com/grafana/interactive-tutorials/main
+ *   Only allows access to the interactive-tutorials repo's main branch
  */
 export const DATA_PROXY_ROUTES = {
   GITHUB_RAW: 'github-raw',
@@ -48,39 +52,36 @@ export function getDataProxyUrl(route: string, path: string): string {
  * Convert a GitHub raw URL to a data proxy URL
  *
  * SECURITY: Only converts URLs from allowed repositories with allowed refs
- * Format: https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}
- *         → /api/plugin-proxy/{PLUGIN_ID}/github-raw/{owner}/{repo}/{ref}/{path}
+ * The proxy route is configured to point to /grafana/interactive-tutorials/main/
+ * so we only append the file path after that base
+ *
+ * Format: https://raw.githubusercontent.com/grafana/interactive-tutorials/main/{path}
+ *         → api/plugin-proxy/{PLUGIN_ID}/github-raw/{path}
  *
  * @param githubRawUrl - The GitHub raw URL to convert
  * @returns Data proxy URL, or null if invalid/not allowed
  *
  * @example
- * convertGitHubRawToProxyUrl('https://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.html')
- * // Returns: '/api/plugin-proxy/grafana-pathfinder-app/github-raw/grafana/interactive-tutorials/main/tutorial.html'
+ * convertGitHubRawToProxyUrl('https://raw.githubusercontent.com/grafana/interactive-tutorials/main/explore-drilldowns-101/unstyled.html')
+ * // Returns: 'api/plugin-proxy/grafana-pathfinder-app/github-raw/explore-drilldowns-101/unstyled.html'
  */
 export function convertGitHubRawToProxyUrl(githubRawUrl: string): string | null {
-  console.warn(`[convertGitHubRawToProxyUrl] Input URL: ${githubRawUrl}`);
-  
   const url = parseUrlSafely(githubRawUrl);
   if (!url) {
-    console.warn(`[convertGitHubRawToProxyUrl] Failed to parse URL`);
     return null;
   }
 
   // Only convert raw.githubusercontent.com URLs
   if (url.hostname !== 'raw.githubusercontent.com') {
-    console.warn(`[convertGitHubRawToProxyUrl] Not a raw.githubusercontent.com URL, hostname: ${url.hostname}`);
     return null;
   }
 
   // Parse pathname: /{owner}/{repo}/{ref}/{path...}
   // Example: /grafana/interactive-tutorials/main/tutorial.html
   const pathParts = url.pathname.split('/').filter(Boolean);
-  console.warn(`[convertGitHubRawToProxyUrl] Path parts:`, pathParts);
 
-  if (pathParts.length < 3) {
-    // Need at least: owner, repo, ref
-    console.warn(`[convertGitHubRawToProxyUrl] Not enough path parts (need at least 3): ${pathParts.length}`);
+  if (pathParts.length < 4) {
+    // Need at least: owner, repo, ref, and some file path
     return null;
   }
 
@@ -89,53 +90,57 @@ export function convertGitHubRawToProxyUrl(githubRawUrl: string): string | null 
   const ref = pathParts[2];
   const repoPath = `/${owner}/${repo}/`;
 
-  console.warn(`[convertGitHubRawToProxyUrl] Parsed: owner=${owner}, repo=${repo}, ref=${ref}, repoPath=${repoPath}`);
+  // Extract the file path after owner/repo/ref
+  const filePath = pathParts.slice(3).join('/');
 
   // SECURITY: Validate against allowed repositories
   const allowedRepo = ALLOWED_GITHUB_REPOS.find((allowed) => allowed.repo === repoPath);
   if (!allowedRepo) {
-    console.warn(`[convertGitHubRawToProxyUrl] Repository not in allowlist: ${repoPath}`);
-    console.warn(`[convertGitHubRawToProxyUrl] Allowed repos:`, ALLOWED_GITHUB_REPOS);
     return null;
   }
 
   // SECURITY: Validate ref (branch/tag)
   if (!allowedRepo.allowedRefs.includes(ref)) {
-    console.warn(`[convertGitHubRawToProxyUrl] Ref not allowed for repository ${repoPath}: ${ref}`);
-    console.warn(`[convertGitHubRawToProxyUrl] Allowed refs:`, allowedRepo.allowedRefs);
     return null;
   }
 
-  // Construct the path for the proxy: {owner}/{repo}/{ref}/{path...}
-  // Remove the leading slash from pathname
-  const proxyPath = url.pathname.slice(1);
-  const proxyUrl = getDataProxyUrl(DATA_PROXY_ROUTES.GITHUB_RAW, proxyPath);
-  
-  console.warn(`[convertGitHubRawToProxyUrl] SUCCESS - Generated proxy URL: ${proxyUrl}`);
-  return proxyUrl;
+  // SECURITY: Route is configured to /grafana/interactive-tutorials/main/
+  // So we only append the file path, not the owner/repo/ref
+  return getDataProxyUrl(DATA_PROXY_ROUTES.GITHUB_RAW, filePath);
 }
 
 /**
  * Check if a URL is a data proxy URL
  *
  * Data proxy URLs follow the pattern: api/plugin-proxy/{PLUGIN_ID}/{route}/...
- * Note: Can be with or without leading slash
+ * Note: Can be with or without leading slash, and can be absolute or relative
  *
  * @param urlString - The URL to check
  * @returns true if URL is a data proxy URL, false otherwise
  *
  * @example
- * isDataProxyUrl('api/plugin-proxy/grafana-pathfinder-app/github-raw/grafana/repo/main/file.html') // true
- * isDataProxyUrl('/api/plugin-proxy/grafana-pathfinder-app/github-raw/grafana/repo/main/file.html') // true (also accepted)
- * isDataProxyUrl('https://raw.githubusercontent.com/grafana/repo/main/file.html') // false
+ * isDataProxyUrl('api/plugin-proxy/grafana-pathfinder-app/github-raw/file.html') // true
+ * isDataProxyUrl('/api/plugin-proxy/grafana-pathfinder-app/github-raw/file.html') // true
+ * isDataProxyUrl('http://localhost:3000/api/plugin-proxy/grafana-pathfinder-app/github-raw/file.html') // true
  */
 export function isDataProxyUrl(urlString: string): boolean {
   if (!urlString) {
     return false;
   }
 
+  // Handle absolute URLs - extract just the pathname
+  let pathToCheck = urlString;
+  if (urlString.startsWith('http://') || urlString.startsWith('https://')) {
+    try {
+      const url = new URL(urlString);
+      pathToCheck = url.pathname;
+    } catch {
+      return false;
+    }
+  }
+
   // Normalize by removing leading slash if present
-  const normalized = urlString.startsWith('/') ? urlString.slice(1) : urlString;
+  const normalized = pathToCheck.startsWith('/') ? pathToCheck.slice(1) : pathToCheck;
 
   // Data proxy URLs start with api/plugin-proxy/
   if (!normalized.startsWith('api/plugin-proxy/')) {
@@ -151,30 +156,42 @@ export function isDataProxyUrl(urlString: string): boolean {
  * Extract the original GitHub raw URL from a data proxy URL
  *
  * This is useful for logging and debugging purposes
+ * The route is configured to /grafana/interactive-tutorials/main/ so we reconstruct the full URL
  *
  * @param dataProxyUrl - The data proxy URL
  * @returns Original GitHub raw URL, or null if not a valid GitHub proxy URL
  *
  * @example
- * extractGitHubRawUrl('api/plugin-proxy/grafana-pathfinder-app/github-raw/grafana/repo/main/file.html')
- * // Returns: 'https://raw.githubusercontent.com/grafana/repo/main/file.html'
+ * extractGitHubRawUrl('api/plugin-proxy/grafana-pathfinder-app/github-raw/explore-drilldowns-101/unstyled.html')
+ * // Returns: 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/explore-drilldowns-101/unstyled.html'
  */
 export function extractGitHubRawUrl(dataProxyUrl: string): string | null {
   if (!isDataProxyUrl(dataProxyUrl)) {
     return null;
   }
 
+  // Handle absolute URLs - extract just the pathname
+  let pathToCheck = dataProxyUrl;
+  if (dataProxyUrl.startsWith('http://') || dataProxyUrl.startsWith('https://')) {
+    try {
+      const url = new URL(dataProxyUrl);
+      pathToCheck = url.pathname;
+    } catch {
+      return null;
+    }
+  }
+
   // Normalize by removing leading slash if present
-  const normalized = dataProxyUrl.startsWith('/') ? dataProxyUrl.slice(1) : dataProxyUrl;
+  const normalized = pathToCheck.startsWith('/') ? pathToCheck.slice(1) : pathToCheck;
 
   const proxyPrefix = `api/plugin-proxy/${PLUGIN_ID}/${DATA_PROXY_ROUTES.GITHUB_RAW}/`;
   if (!normalized.startsWith(proxyPrefix)) {
     return null;
   }
 
-  // Extract the path after the route
-  const path = normalized.slice(proxyPrefix.length);
+  // Extract the file path after the route
+  const filePath = normalized.slice(proxyPrefix.length);
 
-  return `https://raw.githubusercontent.com/${path}`;
+  // Reconstruct the full GitHub URL with the base path configured in plugin.json
+  return `https://raw.githubusercontent.com/grafana/interactive-tutorials/main/${filePath}`;
 }
-
