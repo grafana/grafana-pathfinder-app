@@ -1,5 +1,6 @@
 import {
   AppPlugin,
+  AppPluginMeta,
   type AppRootProps,
   PluginExtensionPoints,
   BusEventWithPayload,
@@ -11,7 +12,7 @@ import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { getConfigWithDefaults, ALLOWED_GITHUB_REPOS } from './constants';
+import { getConfigWithDefaults, ALLOWED_GITHUB_REPOS, DocsPluginConfig } from './constants';
 import {
   isAllowedContentUrl,
   isAllowedGitHubRawUrl,
@@ -189,85 +190,6 @@ export function setSidebarMounted(mounted: boolean) {
 // It starts disabled and will be enabled when config is loaded
 initializeGlobalLinkInterceptor();
 
-// Auto-open panel on launch (only once per session)
-// Similar to global link interceptor, this runs at module load
-function initializeAutoOpenPanel() {
-  // Check if already opened in this session
-  const sessionKey = 'grafana-interactive-learning-panel-auto-opened';
-  const hasAutoOpened = sessionStorage.getItem(sessionKey);
-
-  if (hasAutoOpened) {
-    return;
-  }
-
-  // Mark as opened for this session
-  sessionStorage.setItem(sessionKey, 'true');
-
-  // Wait for config to be available - retry multiple times since ContextSidebar component loads asynchronously
-  let retryCount = 0;
-  const maxRetries = 10; // Try up to 10 times over 5 seconds
-  const retryInterval = 500; // Check every 500ms
-
-  const attemptAutoOpen = () => {
-    retryCount++;
-
-    try {
-      // Get config from window (similar to how dev-mode checks config globally)
-      const globalConfig = (window as any).__pathfinderPluginConfig;
-
-      if (!globalConfig?.openPanelOnLaunch) {
-        // Feature not enabled or config not ready yet
-        if (retryCount < maxRetries) {
-          setTimeout(attemptAutoOpen, retryInterval);
-        } else {
-          sessionStorage.removeItem(sessionKey);
-        }
-        return;
-      }
-
-      // Config is ready and openPanelOnLaunch is true - open the sidebar
-      const appEvents = getAppEvents();
-      appEvents.publish({
-        type: 'open-extension-sidebar',
-        payload: {
-          pluginId: pluginJson.id,
-          componentTitle: 'Interactive learning',
-        },
-      });
-
-      // If tutorialUrl is configured, dispatch it after a delay to ensure panel is ready
-      if (globalConfig.tutorialUrl) {
-        setTimeout(() => {
-          // Determine type from URL
-          const isBundled = globalConfig.tutorialUrl.startsWith('bundled:');
-          const isLearningJourney = globalConfig.tutorialUrl.includes('/learning-journeys/') || isBundled;
-
-          const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
-            detail: {
-              url: globalConfig.tutorialUrl,
-              title: 'Auto-launched Tutorial',
-              type: isLearningJourney ? 'learning-journey' : 'docs-page',
-            },
-          });
-          document.dispatchEvent(autoLaunchEvent);
-        }, 2000); // Wait for panel to mount and render
-      }
-    } catch (error) {
-      if (retryCount < maxRetries) {
-        setTimeout(attemptAutoOpen, retryInterval);
-      } else {
-        sessionStorage.removeItem(sessionKey);
-      }
-    }
-  };
-
-  // Start the first attempt after a short delay to ensure Grafana is ready
-  setTimeout(attemptAutoOpen, 1000);
-}
-
-// Initialize auto-open at module load
-initializeAutoOpenPanel();
-
 interface OpenExtensionSidebarPayload {
   props?: Record<string, unknown>;
   pluginId: string;
@@ -316,6 +238,58 @@ const plugin = new AppPlugin<{}>()
     body: LazyInteractiveFeatures,
     id: 'interactive-features',
   });
+
+// Override init() to handle auto-open when plugin loads
+plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
+  const jsonData = meta?.jsonData || {};
+  const config = getConfigWithDefaults(jsonData);
+  
+  // Set global config immediately so other code can use it
+  (window as any).__pathfinderPluginConfig = config;
+  
+  // Auto-open panel if configured (once per session)
+  if (config.openPanelOnLaunch) {
+    const sessionKey = 'grafana-interactive-learning-panel-auto-opened';
+    const hasAutoOpened = sessionStorage.getItem(sessionKey);
+    
+    if (!hasAutoOpened) {
+      sessionStorage.setItem(sessionKey, 'true');
+      
+      // Small delay to ensure Grafana is ready
+      setTimeout(() => {
+        try {
+          const appEvents = getAppEvents();
+          appEvents.publish({
+            type: 'open-extension-sidebar',
+            payload: {
+              pluginId: pluginJson.id,
+              componentTitle: 'Interactive learning',
+            },
+          });
+          
+          // Auto-launch tutorial if configured
+          if (config.tutorialUrl) {
+            setTimeout(() => {
+              const isBundled = config.tutorialUrl!.startsWith('bundled:');
+              const isLearningJourney = config.tutorialUrl!.includes('/learning-journeys/') || isBundled;
+              
+              const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+                detail: {
+                  url: config.tutorialUrl,
+                  title: 'Auto-launched Tutorial',
+                  type: isLearningJourney ? 'learning-journey' : 'docs-page',
+                },
+              });
+              document.dispatchEvent(autoLaunchEvent);
+            }, 2000); // Wait for sidebar to mount
+          }
+        } catch (error) {
+          console.error('Failed to auto-open Interactive learning panel:', error);
+        }
+      }, 500);
+    }
+  }
+};
 
 export { plugin };
 
