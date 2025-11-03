@@ -34,6 +34,12 @@
       "defaultNav": false
     }
   ],
+  "routes": [
+    {
+      "path": "github-raw/*",
+      "url": "https://raw.githubusercontent.com/grafana/interactive-tutorials/main"
+    }
+  ],
   "extensions": {
     "addedComponents": [
       {
