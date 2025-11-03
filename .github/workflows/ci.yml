@@ -71,7 +71,7 @@ jobs:
 
       - name: Setup Go environment
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6
         with:
           go-version: '1.22'
 
@@ -167,7 +167,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Download plugin
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           path: dist
           name: ${{ needs.build.outputs.plugin-id }}-${{ needs.build.outputs.plugin-version }}
@@ -192,7 +192,7 @@ jobs:
           ANONYMOUS_AUTH_ENABLED=false DEVELOPMENT=false GRAFANA_VERSION=${{ matrix.GRAFANA_IMAGE.VERSION }} GRAFANA_IMAGE=${{ matrix.GRAFANA_IMAGE.NAME }} docker compose up -d
 
       - name: Wait for grafana server
-        uses: grafana/plugin-actions/wait-for-grafana@25c28fea81299aee1df683c51e71f43b021c2f79
+        uses: grafana/plugin-actions/wait-for-grafana@4294e198084cc8f81f80cb52c43f07d7f543196b
         with:
           url: http://localhost:3000/login
 
@@ -204,7 +204,7 @@ jobs:
         run: npm run e2e
 
       - name: Upload e2e test summary
-        uses: grafana/plugin-actions/playwright-gh-pages/upload-report-artifacts@25c28fea81299aee1df683c51e71f43b021c2f79
+        uses: grafana/plugin-actions/playwright-gh-pages/upload-report-artifacts@4294e198084cc8f81f80cb52c43f07d7f543196b
         if: ${{ always() && !cancelled() }}
         with:
           upload-report: false
@@ -240,6 +240,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Publish report
-        uses: grafana/plugin-actions/playwright-gh-pages/deploy-report-pages@25c28fea81299aee1df683c51e71f43b021c2f79
+        uses: grafana/plugin-actions/playwright-gh-pages/deploy-report-pages@4294e198084cc8f81f80cb52c43f07d7f543196b
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
