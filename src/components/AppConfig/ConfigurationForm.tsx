@@ -13,6 +13,7 @@ import {
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { config } from '@grafana/runtime';
+import { FeatureFlags, getFeatureToggle } from '../../utils/openfeature';
 
 type JsonData = DocsPluginConfig;
 
@@ -34,11 +35,19 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const hasDevParam = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
   const { enabled, pinned, jsonData } = plugin.meta;
+
+  // Feature toggle: sets the default value for openPanelOnLaunch
+  // - If toggle is set (true/false), use that as default
+  // - If toggle is not set, use DEFAULT_OPEN_PANEL_ON_LAUNCH
+  // - User can always override in settings after the default is applied
+  const toggleValue = getFeatureToggle(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH);
+  const defaultOpenPanelValue = toggleValue !== undefined ? toggleValue : DEFAULT_OPEN_PANEL_ON_LAUNCH;
+
   const [state, setState] = useState<State>({
     recommenderServiceUrl: jsonData?.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
     tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
     interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
-    openPanelOnLaunch: jsonData?.openPanelOnLaunch ?? DEFAULT_OPEN_PANEL_ON_LAUNCH,
+    openPanelOnLaunch: jsonData?.openPanelOnLaunch ?? defaultOpenPanelValue,
   });
   const [isSaving, setIsSaving] = useState(false);
 

@@ -19,6 +19,7 @@ export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
 export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = false; // Experimental opt-in feature
 
 // Open Panel on Launch defaults
+// Note: This is overridden by feature toggle if set
 export const DEFAULT_OPEN_PANEL_ON_LAUNCH = false; // Experimental opt-in feature
 
 // Network timeout defaults
