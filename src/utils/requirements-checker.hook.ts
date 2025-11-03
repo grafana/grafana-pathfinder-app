@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { getRequirementExplanation } from './requirement-explanations';
 import { useInteractiveElements } from './interactive.hook';
 import { RequirementsCheckResult } from './requirements-checker.utils';
@@ -103,11 +103,15 @@ export function useRequirementsChecker({
   const checkPromiseRef = useRef<Promise<void> | null>(null);
   const managerRef = useRef<SequentialRequirementsManager | null>(null);
 
-  // Create a unique identifier for this step
-  const uniqueId = sectionId ? `section-${sectionId}` : stepId ? `step-${stepId}` : `fallback-${Date.now()}`;
+  // REACT HOOKS v7: Use ref to hold checkRequirements callback to avoid accessing before declaration
+  const checkRequirementsRef = useRef<((retryAttempt?: number) => Promise<void>) | null>(null);
 
-  // Initialize manager reference
-  if (!managerRef.current) {
+  // REACT HOOKS v7: Use useId() instead of Date.now() to generate unique IDs without impure functions
+  const reactId = useId();
+  const uniqueId = sectionId ? `section-${sectionId}` : stepId ? `step-${stepId}` : `fallback-${reactId}`;
+
+  // REACT HOOKS v7: Initialize manager reference using null check pattern
+  if (managerRef.current == null) {
     managerRef.current = SequentialRequirementsManager.getInstance();
   }
   const checkRequirements = useCallback(
@@ -117,19 +121,19 @@ export function useRequirementsChecker({
         return checkPromiseRef.current;
       }
 
-      if (!requirements || state.isCompleted) {
-        // For completed steps: keep them completed and disabled
-        // For steps without requirements: enable them
-        const newState = state.isCompleted
-          ? { ...state, isEnabled: false, isChecking: false, isCompleted: true } // Preserve completion
-          : { ...state, isEnabled: true, isChecking: false }; // Enable if no requirements
+      // REACT HOOKS v7: Use functional setState to avoid dependency on state
+      if (!requirements) {
+        setState((prevState) => {
+          const newState = prevState.isCompleted
+            ? { ...prevState, isEnabled: false, isChecking: false, isCompleted: true } // Preserve completion
+            : { ...prevState, isEnabled: true, isChecking: false }; // Enable if no requirements
 
-        setState(newState);
-
-        // Directly notify the manager with the new state to avoid timing issues
-        if (managerRef.current) {
-          managerRef.current.updateStep(uniqueId, newState);
-        }
+          // Directly notify the manager with the new state to avoid timing issues
+          if (managerRef.current) {
+            managerRef.current.updateStep(uniqueId, newState);
+          }
+          return newState;
+        });
         return;
       }
 
@@ -200,11 +204,14 @@ export function useRequirementsChecker({
             error: `Check failed, retrying... (${nextRetryAttempt}/${maxRetries})`,
           }));
 
+          // REACT HOOKS v7: Use ref to call checkRequirements to avoid accessing before declaration
           // Schedule retry using timeout manager
           timeoutManager.setTimeout(
             `requirements-check-retry-${uniqueId}-${nextRetryAttempt}`,
             async () => {
-              await checkRequirements(nextRetryAttempt);
+              if (checkRequirementsRef.current) {
+                await checkRequirementsRef.current(nextRetryAttempt);
+              }
             },
             INTERACTIVE_CONFIG.delays.requirements.retryDelay
           );
@@ -224,22 +231,25 @@ export function useRequirementsChecker({
             ? `${errorMessage} (failed after ${retryAttempt + 1} attempts)`
             : errorMessage;
 
-        const newState = {
-          ...state,
-          isEnabled: result.pass,
-          isChecking: false,
-          isRetrying: false,
-          error: finalErrorMessage,
-          explanation,
-          retryCount: retryAttempt,
-          maxRetries,
-        };
-        setState(newState);
+        // REACT HOOKS v7: Use functional setState to avoid dependency on state
+        setState((prevState) => {
+          const newState = {
+            ...prevState,
+            isEnabled: result.pass,
+            isChecking: false,
+            isRetrying: false,
+            error: finalErrorMessage,
+            explanation,
+            retryCount: retryAttempt,
+            maxRetries,
+          };
 
-        // Directly notify the manager with the new state to avoid timing issues
-        if (managerRef.current) {
-          managerRef.current.updateStep(uniqueId, newState);
-        }
+          // Directly notify the manager with the new state to avoid timing issues
+          if (managerRef.current) {
+            managerRef.current.updateStep(uniqueId, newState);
+          }
+          return newState;
+        });
       }
 
       checkPromiseRef.current = checkPromise();
@@ -248,6 +258,11 @@ export function useRequirementsChecker({
     },
     [requirements, targetAction, uniqueId, hints, timeoutManager, checkRequirementsFromData] // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  // REACT HOOKS v7: Update ref with latest checkRequirements callback
+  useEffect(() => {
+    checkRequirementsRef.current = checkRequirements;
+  }, [checkRequirements]);
 
   const markCompleted = useCallback(() => {
     // PERFORMANCE FIX: Single setState call with manager notification

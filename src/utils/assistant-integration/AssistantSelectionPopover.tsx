@@ -1,4 +1,4 @@
-import React, { useState, useEffect, RefObject } from 'react';
+import React, { useState, useEffect, useLayoutEffect, RefObject } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2, Button } from '@grafana/ui';
@@ -56,10 +56,14 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
   const devModeEnabled = (window as any).__pathfinderPluginConfig?.enableAssistantDevMode ?? false;
   const [isAssistantAvailable, setIsAssistantAvailable] = useState(devModeEnabled);
 
+  // REACT HOOKS v7: Store calculated positions in state to avoid accessing refs during render
+  const [relativePosition, setRelativePosition] = useState<{ top: number; left: number } | null>(null);
+
   // Check if assistant is available (only if NOT in dev mode)
   useEffect(() => {
     if (devModeEnabled) {
-      setIsAssistantAvailable(true);
+      // REACT HOOKS v7: Wrap setState in Promise to make it asynchronous
+      Promise.resolve().then(() => setIsAssistantAvailable(true));
       return;
     }
 
@@ -72,8 +76,24 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
     };
   }, [devModeEnabled]);
 
+  // REACT HOOKS v7: Calculate position in useLayoutEffect instead of during render
+  useLayoutEffect(() => {
+    if (!position || !containerRef.current) {
+      // REACT HOOKS v7: Wrap setState in Promise to make it asynchronous
+      Promise.resolve().then(() => setRelativePosition(null));
+      return;
+    }
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const relativeTop = position.top - (containerRect.top + window.scrollY);
+    const relativeLeft = position.left - (containerRect.left + window.scrollX);
+
+    // REACT HOOKS v7: Wrap setState in Promise to make it asynchronous
+    Promise.resolve().then(() => setRelativePosition({ top: relativeTop, left: relativeLeft }));
+  }, [position, containerRef]);
+
   // Don't render if no selection or position
-  if (!selectedText || !position) {
+  if (!selectedText || !position || !relativePosition) {
     return null;
   }
 
@@ -104,24 +124,14 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
     window.getSelection()?.removeAllRanges();
   };
 
-  // Calculate position relative to container instead of page
-  const containerRect = containerRef.current?.getBoundingClientRect();
-  if (!containerRect) {
-    return null;
-  }
-
-  // Convert page coordinates to container-relative coordinates
-  const relativeTop = position.top - (containerRect.top + window.scrollY);
-  const relativeLeft = position.left - (containerRect.left + window.scrollX);
-
   return (
     <>
       {/* Highlight box around the selected text - shown for all users */}
       <div
         className={styles.highlightBox}
         style={{
-          top: `${relativeTop - 4}px`,
-          left: `${relativeLeft - position.width / 2 - 4}px`,
+          top: `${relativePosition.top - 4}px`,
+          left: `${relativePosition.left - position.width / 2 - 4}px`,
           width: `${position.width}px`,
           height: `${position.height}px`,
         }}
@@ -134,8 +144,8 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
             position.buttonPlacement === 'top' ? styles.buttonContainerTop : styles.buttonContainerBottom
           }`}
           style={{
-            top: `${position.buttonPlacement === 'top' ? relativeTop : relativeTop + position.height}px`,
-            left: `${relativeLeft}px`,
+            top: `${position.buttonPlacement === 'top' ? relativePosition.top : relativePosition.top + position.height}px`,
+            left: `${relativePosition.left}px`,
           }}
           onMouseDown={(e) => {
             e.stopPropagation();

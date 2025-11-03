@@ -21,7 +21,7 @@
   "author": "Grafanalabs",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@grafana/eslint-config": "^8.2.0",
+    "@grafana/eslint-config": "^9.0.0",
     "@grafana/plugin-e2e": "^2.1.13",
     "@grafana/tsconfig": "^2.0.0",
     "@playwright/test": "^1.52.0",
@@ -43,7 +43,7 @@
     "eslint-plugin-deprecation": "^2.0.0",
     "eslint-plugin-jsdoc": "^46.8.0",
     "eslint-plugin-react": "^7.33.0",
-    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-hooks": "^7.0.0",
     "eslint-webpack-plugin": "^4.0.1",
     "fork-ts-checker-webpack-plugin": "^8.0.0",
     "glob": "^10.2.7",
