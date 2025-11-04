@@ -5,13 +5,16 @@
  */
 
 import Peer, { DataConnection } from 'peerjs';
+import { ReconnectionManager } from './reconnection-manager';
 import type {
   SessionConfig,
   SessionInfo,
   AttendeeInfo,
   SessionRole,
   AnySessionEvent,
-  SessionError
+  SessionError,
+  ConnectionState,
+  ConnectionQuality
 } from '../../types/collaboration.types';
 
 export interface PeerJSConfig {
@@ -38,6 +41,18 @@ export class SessionManager {
   
   // Attendee tracking (for presenter)
   private attendees: Map<string, AttendeeInfo> = new Map();
+  
+  // Connection tracking and quality monitoring
+  private connectionStates: Map<string, ConnectionState> = new Map();
+  private lastHeartbeat: Map<string, number> = new Map();
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private heartbeatSentTimes: Map<string, number> = new Map();
+  
+  // Reconnection management
+  // @ts-expect-error - Will be used in future reconnection implementation
+  private reconnectionManager = new ReconnectionManager();
+  // @ts-expect-error - Stored for potential reconnection scenarios
+  private peerjsConfig: PeerJSConfig | null = null;
   
   /**
    * Check if session is active
@@ -71,6 +86,7 @@ export class SessionManager {
       
       // Use provided config or defaults
       const peerConfig = peerjsConfig || { host: 'localhost', port: 9000, key: 'pathfinder' };
+      this.peerjsConfig = peerConfig;
       
       // Create a new peer with a simple readable ID
       const peerId = this.generateReadableId();
@@ -111,6 +127,9 @@ export class SessionManager {
       
       // Set up connection handler for incoming attendees
       this.setupPresenterConnectionHandler();
+      
+      // Start heartbeat mechanism
+      this.startHeartbeat();
       
       // Generate join URL with session info
       const joinUrl = this.generateJoinUrl(peerId, config.name, config.tutorialUrl);
@@ -175,6 +194,10 @@ export class SessionManager {
         // Store connection
         this.connections.set(conn.peer, conn);
         
+        // Track connection state
+        this.connectionStates.set(conn.peer, 'connected');
+        this.lastHeartbeat.set(conn.peer, Date.now());
+        
         // Get attendee metadata from first message
         conn.on('data', (data: any) => {
           if (data.type === 'attendee_join') {
@@ -212,6 +235,32 @@ export class SessionManager {
             }
             // Forward event to handlers
             this.eventHandlers.forEach(handler => handler(data));
+          } else if (data.type === 'heartbeat') {
+            // Update last heartbeat time
+            this.lastHeartbeat.set(conn.peer, Date.now());
+            
+            // Calculate latency if we have the sent time
+            const sentTime = this.heartbeatSentTimes.get(conn.peer);
+            if (sentTime && data.sentAt === sentTime) {
+              const latency = Date.now() - sentTime;
+              
+              // Update attendee with connection quality
+              const attendee = this.attendees.get(conn.peer);
+              if (attendee) {
+                const quality: ConnectionQuality = {
+                  latency,
+                  packetsLost: 0, // TODO: Track actual packet loss
+                  lastHeartbeat: Date.now(),
+                  quality: latency < 100 ? 'excellent' : latency < 300 ? 'good' : 'poor'
+                };
+                
+                const updatedAttendee: AttendeeInfo = {
+                  ...attendee,
+                  connectionQuality: quality
+                };
+                this.attendees.set(conn.peer, updatedAttendee);
+              }
+            }
           } else {
             // Forward other events to handlers
             this.eventHandlers.forEach(handler => handler(data));
@@ -221,12 +270,44 @@ export class SessionManager {
         // Handle disconnection
         conn.on('close', () => {
           console.log(`[SessionManager] Attendee disconnected: ${conn.peer}`);
+          this.connectionStates.set(conn.peer, 'disconnected');
+          
+          // Update attendee state
+          const attendee = this.attendees.get(conn.peer);
+          if (attendee) {
+            const updatedAttendee: AttendeeInfo = {
+              ...attendee,
+              connectionState: 'disconnected'
+            };
+            this.attendees.set(conn.peer, updatedAttendee);
+          }
+          
           this.connections.delete(conn.peer);
-          this.attendees.delete(conn.peer);
+          // Don't immediately delete attendee - allow for reconnection
+          setTimeout(() => {
+            // Only delete if still disconnected after 30 seconds
+            if (this.connectionStates.get(conn.peer) === 'disconnected') {
+              this.attendees.delete(conn.peer);
+              this.connectionStates.delete(conn.peer);
+              this.lastHeartbeat.delete(conn.peer);
+              this.heartbeatSentTimes.delete(conn.peer);
+            }
+          }, 30000);
         });
         
         conn.on('error', (err) => {
           console.error(`[SessionManager] Connection error with ${conn.peer}:`, err);
+          this.connectionStates.set(conn.peer, 'failed');
+          
+          // Update attendee state
+          const attendee = this.attendees.get(conn.peer);
+          if (attendee) {
+            const updatedAttendee: AttendeeInfo = {
+              ...attendee,
+              connectionState: 'failed'
+            };
+            this.attendees.set(conn.peer, updatedAttendee);
+          }
         });
       });
     });
@@ -256,6 +337,7 @@ export class SessionManager {
       
       // Use provided config or defaults
       const peerConfig = peerjsConfig || { host: 'localhost', port: 9000, key: 'pathfinder' };
+      this.peerjsConfig = peerConfig;
       
       console.log(`[SessionManager] Joining session: ${sessionId}`);
       console.log(`[SessionManager] Using PeerJS server: ${peerConfig.host}:${peerConfig.port}/pathfinder`);
@@ -313,6 +395,23 @@ export class SessionManager {
           // Set up event handler
           conn.on('data', (data: any) => {
             console.log('[SessionManager] Received event from presenter:', data);
+            
+            // Respond to heartbeats
+            if (data.type === 'heartbeat') {
+              // Echo back the heartbeat with the same timestamp
+              conn.send({
+                type: 'heartbeat',
+                sessionId: this.sessionId || '',
+                timestamp: Date.now(),
+                senderId: 'attendee',
+                sentAt: data.sentAt // Echo back the sent time for latency calculation
+              });
+              
+              // Update last heartbeat time
+              this.lastHeartbeat.set(sessionId, Date.now());
+            }
+            
+            // Forward all events to handlers
             this.eventHandlers.forEach(handler => handler(data));
           });
           
@@ -487,6 +586,105 @@ export class SessionManager {
     this.eventHandlers.clear();
     this.errorHandlers.clear();
     this.attendeeHandlers.clear();
+    
+    // Stop heartbeat
+    this.stopHeartbeat();
+    
+    // Clear connection tracking
+    this.connectionStates.clear();
+    this.lastHeartbeat.clear();
+    this.heartbeatSentTimes.clear();
+  }
+  
+  // ============================================================================
+  // Connection Monitoring & Heartbeat
+  // ============================================================================
+  
+  /**
+   * Start heartbeat mechanism to monitor connection health
+   */
+  private startHeartbeat(): void {
+    // Don't start if already running
+    if (this.heartbeatInterval) {
+      return;
+    }
+    
+    console.log('[SessionManager] Starting heartbeat mechanism');
+    
+    // Send heartbeat every 5 seconds
+    this.heartbeatInterval = setInterval(() => {
+      const now = Date.now();
+      
+      this.connections.forEach((conn, peerId) => {
+        if (conn.open) {
+          try {
+            // Store when we sent this heartbeat
+            this.heartbeatSentTimes.set(peerId, now);
+            
+            // Send heartbeat
+            conn.send({
+              type: 'heartbeat',
+              sessionId: this.sessionId || '',
+              timestamp: now,
+              senderId: this.sessionId || 'presenter',
+              sentAt: now
+            });
+            
+            // Check if connection is stale (no response in 15 seconds)
+            const lastHeartbeat = this.lastHeartbeat.get(peerId) || 0;
+            const timeSinceLastHeartbeat = now - lastHeartbeat;
+            
+            if (timeSinceLastHeartbeat > 15000) {
+              console.warn(`[SessionManager] No heartbeat from ${peerId} for ${timeSinceLastHeartbeat}ms`);
+              
+              // Update connection state to disconnected if no response
+              const currentState = this.connectionStates.get(peerId);
+              if (currentState !== 'disconnected') {
+                this.connectionStates.set(peerId, 'disconnected');
+                
+                // Update attendee state
+                const attendee = this.attendees.get(peerId);
+                if (attendee) {
+                  const updatedAttendee: AttendeeInfo = {
+                    ...attendee,
+                    connectionState: 'disconnected'
+                  };
+                  this.attendees.set(peerId, updatedAttendee);
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`[SessionManager] Failed to send heartbeat to ${peerId}:`, error);
+          }
+        }
+      });
+    }, 5000);
+  }
+  
+  /**
+   * Stop heartbeat mechanism
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      console.log('[SessionManager] Stopping heartbeat mechanism');
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+  
+  /**
+   * Get connection state for a specific peer
+   */
+  getConnectionState(peerId: string): ConnectionState {
+    return this.connectionStates.get(peerId) || 'disconnected';
+  }
+  
+  /**
+   * Get connection quality for a specific peer
+   */
+  getConnectionQuality(peerId: string): ConnectionQuality | null {
+    const attendee = this.attendees.get(peerId);
+    return attendee?.connectionQuality || null;
   }
   
   // ============================================================================

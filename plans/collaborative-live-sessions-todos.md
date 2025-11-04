@@ -326,7 +326,35 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 
 ---
 
+## ✅ PHASE 1-2 COMPLETE: MVP SHIPPED
+
+**What Works**:
+- ✅ PeerJS-based session management with local signaling server
+- ✅ Session creation with join codes, QR codes, and shareable links
+- ✅ Guided mode: "Show Me" highlights replicate to attendees
+- ✅ Follow mode: "Do It" actions execute on attendee screens
+- ✅ All action types supported: button, highlight, formfill, navigate, multistep
+- ✅ Mode switching (guided ↔ follow) during active sessions
+- ✅ Session end handling and cleanup
+- ✅ Plugin configuration toggle
+- ✅ Comprehensive documentation
+
+**Current Limitations** (See `docs/KNOWN_ISSUES.md`):
+- Monaco editor visual updates require browser window focus
+- PeerJS server dependency (requires running local server)
+- No automatic reconnection on disconnect
+- Not tested beyond ~5 concurrent attendees
+
+**Next Priorities** (See updated plan):
+1. Production readiness: Reconnection logic, scale testing, error handling
+2. Session recording and playback
+3. Chat system for Q&A
+
+---
+
 ## Phase 3: Chat & Enhanced Features
+
+**Priority**: After production hardening (reconnection, scale testing)
 
 ### 3.1 Chat System
 - [ ] Create `src/components/LiveSession/ChatPanel.tsx`
@@ -468,29 +496,75 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 ✅ Session end handling and cleanup
 ✅ Known limitations documented
 
-### 🎯 Current Status: MVP Complete - Ready for User Testing
+### 🎯 Current Status: MVP Complete - Ready for Production Hardening
 
-**What Works:**
-- ✅ Create live session with join code, QR code, and shareable link
-- ✅ Guided mode: "Show Me" highlights replicate to all attendees
-- ✅ Follow mode: "Do It" actions execute on attendee screens
-- ✅ All interactive action types: button, highlight, formfill, navigate, multistep
-- ✅ Monaco editor support (with documented focus limitation)
-- ✅ Session persistence and cleanup
-- ✅ Mode switching (guided/follow)
-- ✅ Configurable PeerJS server settings
-- ✅ Plugin configuration toggle for feature enable/disable
+**✅ Fully Working (Phases 1-2 Complete):**
+- Create live session with join code, QR code, and shareable link
+- Guided mode: "Show Me" highlights replicate to all attendees
+- Follow mode: "Do It" actions execute on attendee screens
+- All interactive action types: button, highlight, formfill, navigate, multistep
+- Monaco editor support (with documented focus limitation)
+- Session persistence and cleanup
+- Mode switching (guided/follow) during active sessions
+- Configurable PeerJS server settings (host, port, key)
+- Plugin configuration toggle for feature enable/disable
+- Comprehensive documentation (setup, troubleshooting, known issues)
 
-**Known Limitations:**
+**Known Limitations (Documented in `docs/KNOWN_ISSUES.md`):**
 - Monaco editor visual updates require browser window focus
-- PeerJS connection reliability depends on network conditions
-- No automatic reconnection (requires manual rejoin)
+- PeerJS server dependency (requires running local server)
+- No automatic reconnection on disconnect (manual rejoin required)
+- Not tested beyond ~5 concurrent attendees
+- Browser compatibility: Modern browsers only
 
-### Complete Feature (Phase 3-5):
-✅ Chat works smoothly for real-time Q&A
-✅ Sessions can be recorded and replayed
-✅ Recordings convert to reusable tutorials
-✅ Supports 50 attendees with acceptable performance
-✅ Error recovery and graceful degradation
-✅ Comprehensive documentation and examples
+**🔄 Next Phase: Production Readiness (Before New Features)**
+
+**Priority 1 - Connection Resilience:**
+- [ ] Automatic reconnection with exponential backoff
+- [ ] Graceful handling of presenter disconnect
+- [ ] Connection quality indicators
+- [ ] TURN server configuration for restrictive firewalls
+
+**Priority 2 - Scale Testing:**
+- [ ] Systematic testing with 10, 25, 50 attendees
+- [ ] Document performance characteristics
+- [ ] Set and enforce recommended limits
+- [ ] Optimize event broadcasting
+
+**Priority 3 - Error Handling:**
+- [ ] Better error messages for common failures
+- [ ] Graceful degradation in Follow mode
+- [ ] User-friendly troubleshooting guidance
+- [ ] Telemetry for production debugging
+
+**🎯 Future Features (Phase 3+):**
+- [ ] Real-time chat for Q&A (Phase 3)
+- [ ] Session recording and playback (Phase 4)
+- [ ] Convert recordings to tutorials (Phase 4)
+- [ ] Support 50+ attendees reliably (Phase 5)
+- [ ] Comprehensive test suite (Phase 5)
+
+### Success Metrics
+
+**MVP Complete** ✅:
+- ✅ Guided and Follow modes work reliably
+- ✅ All action types supported
+- ✅ Setup documentation exists
+- ⏳ Tested with 10+ attendees (next step)
+- ⏳ Reconnection logic implemented (next step)
+
+**Production Ready** ⏳:
+- [ ] < 1% error rate in Follow mode
+- [ ] Graceful degradation on all failures
+- [ ] Clear user guidance for all scenarios
+- [ ] Monitoring and observability in place
+- [ ] Tested with 25+ concurrent attendees
+
+**Feature Complete** 🔮:
+- [ ] Recording and playback work
+- [ ] Chat enables live Q&A
+- [ ] Tested with 50+ attendees
+- [ ] Production deployment guide exists
+- [ ] Comprehensive test coverage
+- [ ] Security audit complete
 

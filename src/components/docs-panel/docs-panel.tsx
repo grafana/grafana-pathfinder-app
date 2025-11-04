@@ -1,7 +1,7 @@
 // Combined Learning Journey and Docs Panel
 // Post-refactoring unified component using new content system only
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
@@ -16,7 +16,7 @@ import {
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
-import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+import { isDevModeEnabledGlobal, isDevModeEnabled } from '../../utils/dev-mode';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -53,7 +53,6 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { isDevModeEnabled } from '../../utils/dev-mode';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import logoSvg from '../../img/logo.svg';
 import { PresenterControls, AttendeeJoin } from '../LiveSession';
@@ -818,9 +817,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     }
   }, [activeTab?.id, activeTab?.currentUrl, activeTab?.baseUrl]);
 
-<<<<<<< HEAD
-  // Initialize interactive elements for the content container
-=======
   // Save scroll position before content changes
   const saveScrollPosition = useCallback(() => {
     const scrollableElement = document.getElementById('inner-docs-content');

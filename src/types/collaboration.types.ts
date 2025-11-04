@@ -247,6 +247,15 @@ export interface SyncStateEvent extends SessionEvent {
 }
 
 /**
+ * Heartbeat event for connection health monitoring
+ */
+export interface HeartbeatEvent extends SessionEvent {
+  type: 'heartbeat';
+  /** Timestamp when heartbeat was sent */
+  sentAt: number;
+}
+
+/**
  * Union type of all possible session events
  */
 export type AnySessionEvent =
@@ -260,11 +269,26 @@ export type AnySessionEvent =
   | AttendeeJoinEvent
   | AttendeeLeaveEvent
   | ModeChangeEvent
-  | SyncStateEvent;
+  | SyncStateEvent
+  | HeartbeatEvent;
 
 // ============================================================================
 // Attendee & Connection Management
 // ============================================================================
+
+/**
+ * Connection quality metrics for monitoring
+ */
+export interface ConnectionQuality {
+  /** Round-trip latency in milliseconds */
+  latency: number;
+  /** Number of packets lost */
+  packetsLost: number;
+  /** Timestamp of last successful heartbeat */
+  lastHeartbeat: number;
+  /** Overall connection quality rating */
+  quality: 'excellent' | 'good' | 'poor' | 'disconnected';
+}
 
 /**
  * Information about a connected attendee
@@ -278,6 +302,8 @@ export interface AttendeeInfo {
   mode: AttendeeMode;
   /** Connection state */
   connectionState: ConnectionState;
+  /** Connection quality metrics */
+  connectionQuality?: ConnectionQuality;
   /** When they joined */
   joinedAt: number;
   /** Current step number if available */
@@ -343,11 +369,20 @@ export interface SessionRecording {
  */
 export interface SessionError {
   /** Error code */
-  code: 'CONNECTION_FAILED' | 'INVALID_CODE' | 'EXPIRED_SESSION' | 'STATE_DIVERGENCE' | 'UNKNOWN';
+  code: 
+    | 'CONNECTION_FAILED' 
+    | 'INVALID_CODE' 
+    | 'EXPIRED_SESSION' 
+    | 'STATE_DIVERGENCE'
+    | 'RECONNECTING'
+    | 'PRESENTER_DISCONNECTED'
+    | 'UNKNOWN';
   /** Human-readable error message */
   message: string;
   /** Optional details for debugging */
   details?: any;
+  /** Indicates if reconnection is possible */
+  canRetry?: boolean;
 }
 
 // ============================================================================

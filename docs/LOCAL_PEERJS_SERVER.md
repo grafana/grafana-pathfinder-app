@@ -36,6 +36,53 @@ In a third terminal:
 npm run dev
 ```
 
+## Server Management
+
+### Helper Script
+
+A management script is available for easier server control:
+
+```bash
+# Check server status
+./scripts/manage-peerjs.sh status
+
+# Start server
+./scripts/manage-peerjs.sh start
+
+# Stop server
+./scripts/manage-peerjs.sh stop
+
+# Restart server (stops then starts)
+./scripts/manage-peerjs.sh restart
+```
+
+### Troubleshooting Port Conflicts
+
+If you get "port 9000 is already in use":
+
+**Option 1: Use the helper script**
+```bash
+./scripts/manage-peerjs.sh restart
+```
+
+**Option 2: Manual cleanup**
+```bash
+# Find what's using port 9000
+lsof -i:9000
+
+# Kill the process
+lsof -ti:9000 | xargs kill -9
+
+# Start fresh
+npm run peerjs-server
+```
+
+**Option 3: Use a different port**
+```bash
+# Edit scripts/peerjs-server.js and change port to 9001
+# Then update plugin configuration to match
+```
+
 ## How It Works
 
 ### Architecture
@@ -221,16 +268,208 @@ Set `debug: true` in server config and `debug: 3` in client config for verbose l
 
 ### Development (Current Setup)
 - Server runs on localhost
-- No authentication required
+- Simple key-based validation only (`key: 'pathfinder'`)
+- No encryption (plain HTTP/WS)
 - Suitable for local development only
+- **Never expose to internet without security hardening**
 
-### Production Recommendations
-1. **Use HTTPS**: Deploy behind nginx/Apache with SSL
-2. **Add Authentication**: Implement API key validation
-3. **Rate Limiting**: Prevent abuse with connection limits
-4. **CORS**: Restrict to your Grafana domain
-5. **Monitoring**: Track connections and errors
-6. **Backups**: Have fallback TURN servers configured
+### Production Security Hardening
+
+#### 1. Use Strong API Keys
+
+Replace default key with cryptographically secure random string:
+
+```javascript
+// Generate secure key
+const crypto = require('crypto');
+const secureKey = crypto.randomBytes(32).toString('hex');
+
+const server = PeerServer({
+  key: secureKey, // Use this in production
+  // ...
+});
+```
+
+Update plugin configuration with same key.
+
+#### 2. Enable HTTPS/WSS
+
+**Why**: Browsers require HTTPS for WebRTC in production.
+
+Deploy behind reverse proxy with SSL:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name peerjs.yourdomain.com;
+    
+    ssl_certificate /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+    
+    # Modern SSL configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    
+    location /pathfinder {
+        proxy_pass http://localhost:9000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Timeouts for long-lived connections
+        proxy_connect_timeout 7d;
+        proxy_send_timeout 7d;
+        proxy_read_timeout 7d;
+    }
+}
+```
+
+#### 3. Restrict CORS
+
+Limit connections to your Grafana domains only:
+
+```javascript
+const server = PeerServer({
+  port: 9000,
+  path: '/pathfinder',
+  key: process.env.PEERJS_KEY,
+  allow_discovery: false, // Disable peer discovery
+  corsOptions: {
+    origin: [
+      'https://yourgrafana.com',
+      'https://*.yourgrafana.com'
+    ],
+    credentials: true
+  }
+});
+```
+
+#### 4. Implement Rate Limiting
+
+Prevent abuse with connection limits:
+
+```javascript
+const rateLimit = require('express-rate-limit');
+const express = require('express');
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 connections per window
+  message: 'Too many connections from this IP'
+});
+
+const app = express();
+app.use('/pathfinder', limiter);
+
+const server = PeerServer({
+  port: 9000,
+  path: '/pathfinder',
+  // ... other config
+});
+```
+
+#### 5. Connection Limits
+
+Set maximum concurrent connections per peer:
+
+```javascript
+const MAX_CONNECTIONS_PER_PEER = 50;
+
+server.on('connection', (client) => {
+  const connections = Array.from(server._clients.values())
+    .filter(c => c.getId() === client.getId()).length;
+  
+  if (connections > MAX_CONNECTIONS_PER_PEER) {
+    console.warn(`Peer ${client.getId()} exceeded connection limit`);
+    client.getSocket().close();
+  }
+});
+```
+
+#### 6. Logging and Monitoring
+
+Log security events:
+
+```javascript
+const winston = require('winston');
+
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.json(),
+  transports: [
+    new winston.transports.File({ filename: 'peerjs-security.log' })
+  ]
+});
+
+server.on('connection', (client) => {
+  logger.info('Peer connected', {
+    peerId: client.getId(),
+    ip: client.getSocket().remoteAddress,
+    timestamp: new Date().toISOString()
+  });
+});
+
+server.on('disconnect', (client) => {
+  logger.info('Peer disconnected', {
+    peerId: client.getId(),
+    timestamp: new Date().toISOString()
+  });
+});
+```
+
+#### 7. Environment-Based Configuration
+
+Use environment variables for sensitive config:
+
+```javascript
+require('dotenv').config();
+
+const server = PeerServer({
+  port: process.env.PEERJS_PORT || 9000,
+  path: process.env.PEERJS_PATH || '/pathfinder',
+  key: process.env.PEERJS_KEY, // Required in production
+  alive_timeout: parseInt(process.env.ALIVE_TIMEOUT) || 60000,
+  concurrent_limit: parseInt(process.env.CONCURRENT_LIMIT) || 5000
+});
+
+if (!process.env.PEERJS_KEY) {
+  console.error('FATAL: PEERJS_KEY environment variable not set');
+  process.exit(1);
+}
+```
+
+### Production Deployment Checklist
+
+Before deploying to production:
+
+- [ ] Generate and use strong random API key
+- [ ] Enable HTTPS/WSS with valid SSL certificate
+- [ ] Configure CORS to restrict to your domains
+- [ ] Implement rate limiting
+- [ ] Set connection limits per peer
+- [ ] Enable comprehensive logging
+- [ ] Set up monitoring and alerts
+- [ ] Configure automatic restart on crash
+- [ ] Set up backup TURN servers
+- [ ] Document emergency procedures
+- [ ] Test failover scenarios
+- [ ] Review and update firewall rules
+
+### Security Best Practices
+
+1. **Never use default key in production**
+2. **Always use HTTPS/WSS** - Required for WebRTC
+3. **Restrict CORS** - Limit to known Grafana domains
+4. **Monitor actively** - Watch for unusual connection patterns
+5. **Rotate keys periodically** - Update API keys regularly
+6. **Backup plan** - Have fallback servers ready
+7. **Keep updated** - Update PeerJS server regularly
+8. **Audit logs** - Review security logs weekly
 
 ## Performance Tuning
 

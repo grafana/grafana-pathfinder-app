@@ -6,4 +6,5 @@
 
 export { PresenterControls } from './PresenterControls';
 export { AttendeeJoin } from './AttendeeJoin';
+export { ConnectionIndicator } from './ConnectionIndicator';
 

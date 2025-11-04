@@ -7,6 +7,23 @@
 npm run peerjs-server
 ```
 
+**Tip**: Use the helper script for easier management:
+```bash
+./scripts/manage-peerjs.sh start   # Start server
+./scripts/manage-peerjs.sh stop    # Stop server
+./scripts/manage-peerjs.sh restart # Restart server
+./scripts/manage-peerjs.sh status  # Check status
+```
+
+**Troubleshooting**: If port 9000 is already in use:
+```bash
+# Kill any process on port 9000
+lsof -ti:9000 | xargs kill -9
+
+# Or use the helper script
+./scripts/manage-peerjs.sh restart
+```
+
 ### Terminal 2: Grafana
 ```bash
 npm run server

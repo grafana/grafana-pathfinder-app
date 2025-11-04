@@ -8,6 +8,73 @@ Transform Grafana Pathfinder into a real-time collaborative learning platform wh
 
 ---
 
+## Quick Start: Live Sessions
+
+**Status**: ✅ MVP Complete - Phases 1-2 Shipped
+
+### Prerequisites (3 Terminals Required)
+
+**Terminal 1 - PeerJS Server** (Required):
+```bash
+npm run peerjs-server
+```
+
+**Terminal 2 - Grafana**:
+```bash
+npm run server
+```
+
+**Terminal 3 - Plugin Build**:
+```bash
+npm run dev
+```
+
+### Enable the Feature
+
+1. Navigate to: **Configuration** → **Plugins** → **Pathfinder** → **Configuration**
+2. Enable **"Live Sessions (Experimental)"**
+3. Configure PeerJS server settings (default: localhost:9000)
+4. Save configuration
+
+### Use It
+
+**As Presenter**:
+1. Open Pathfinder sidebar
+2. Click **"Start Live Session"** button
+3. Share join code, QR code, or link with attendees
+4. Click "Show Me" or "Do It" in interactive tutorials - attendees see your actions in real-time!
+
+**As Attendee**:
+1. Click **"Join Live Session"** button
+2. Enter join code from presenter
+3. Choose your mode:
+   - **Guided Mode**: See highlights when presenter clicks "Show Me"
+   - **Follow Mode**: Your Grafana mirrors presenter's "Do It" actions automatically
+4. Join and follow along!
+
+### Important Notes
+
+- **PeerJS server is required** - The feature won't work without it running
+- **Local development only** - For production, see Production Deployment section below
+- **Browser window focus** - Monaco editors need window focus to show updates in Follow mode (known limitation)
+- **Tested with** - Up to 5 concurrent attendees. Larger scale testing needed.
+
+### Troubleshooting
+
+**"Cannot connect to PeerJS server"**:
+- Ensure `npm run peerjs-server` is running in Terminal 1
+- Check port 9000 is not in use: `lsof -i :9000`
+- See `docs/LOCAL_PEERJS_SERVER.md` for detailed help
+
+**"Attendee can't join session"**:
+- Verify both presenter and attendee use same PeerJS server
+- Check browser console for connection errors
+- Try from incognito/private windows
+
+**Further Help**: See `docs/LOCAL_PEERJS_SERVER.md` and `docs/KNOWN_ISSUES.md`
+
+---
+
 ## Use Cases & Scenarios
 
 ### Primary: Workshop & Training Sessions
@@ -173,136 +240,195 @@ Create Session → Share Join Code → Attendees Join → Live Session → End &
 
 ## Technical Architecture
 
-### High-Level Architecture (P2P - No Backend Required)
+### High-Level Architecture (PeerJS with Lightweight Signaling Server)
 
 ```
 ┌─────────────────┐                                      ┌─────────────────┐
 │   Presenter     │                                      │   Attendee 1    │
 │                 │◄──────WebRTC Data Channel───────────►│                 │
-│  (Broadcaster)  │         (P2P Direct)                 │  (Receiver)     │
+│  (Broadcaster)  │      (P2P Direct - Tutorial Data)    │  (Receiver)     │
 └─────────────────┘                                      └─────────────────┘
        │                                                          │
+       │                 ┌──────────────────────┐                │
+       │                 │   PeerJS Signaling   │                │
+       │─────────────────│   Server (Local)     │────────────────│
+       │   (Join/Answer) │   Port 9000          │  (Join/Answer) │
+       │                 └──────────────────────┘                │
+       │                           │                              │
+       │              ┌────────────┴────────────┐                │
+       │              │  Public STUN Servers    │                │
+       │──────────────│  (NAT Traversal)        │────────────────│
+       │              │  stun.l.google.com      │                │
+       │              └─────────────────────────┘                │
        │                                                          │
-       │              ┌──────────────────┐                       │
-       │              │  Public STUN     │                       │
-       │──────────────│  Servers (Free)  │───────────────────────│
-       │              │  (NAT Traversal) │                       │
-       │              └──────────────────┘                       │
-       │                                                          │
-       │                                                          │
-       └──────WebRTC Data Channel───────────────────────────────┘
+       └──────WebRTC Data Channel (P2P)─────────────────────────┘
                 (Star topology: presenter to each attendee)
 
-Connection Setup: QR Code / Link Sharing / Copy-Paste
+Connection Setup: PeerJS Join Codes / QR Code / Link Sharing
 Session Storage: Browser IndexedDB (local)
 Recording: Client-side JSON export
 ```
 
-**Key Innovation**: No custom backend service needed! Uses WebRTC peer-to-peer with public STUN servers.
+**Implementation Approach**: Uses **PeerJS library** with a lightweight local signaling server for connection setup, then pure P2P for data transfer.
 
-**STUN Servers (Free, Public)**:
+**Key Trade-off Decision**:
+- **Original Plan**: Raw WebRTC with no backend (complex signaling via QR/paste)
+- **Actual Implementation**: PeerJS with local server (simpler, more reliable)
+- **Benefit**: Much easier implementation, better connection reliability, cleaner UX
+- **Cost**: Requires running a lightweight Node.js signaling server (~50 lines)
+
+**Why PeerJS?**
+- Abstracts complex WebRTC signaling logic
+- Handles ICE candidate exchange automatically
+- Provides readable peer IDs instead of SDP blobs
+- Maintains P2P benefits (data flows directly between peers)
+- Well-tested library with good browser support
+
+**PeerJS Configuration**:
 ```typescript
-const iceServers = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:global.stun.twilio.com:3478' },
-  // Fallback TURN server for restrictive firewalls
-  { 
-    urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelayproject',
-    credential: 'openrelayproject'
+// Local signaling server (development)
+const peer = new Peer(peerId, {
+  host: 'localhost',
+  port: 9000,
+  path: '/pathfinder',
+  key: 'pathfinder',
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' }
+    ]
   }
-];
+});
+
+// Production: Use dedicated PeerJS server or PeerJS Cloud
 ```
 
-### Connection Establishment Flow (P2P)
+**What the Signaling Server Does**:
+- Facilitates initial peer discovery (attendee finds presenter by ID)
+- Exchanges WebRTC connection offers/answers
+- Tracks active peers and cleans up disconnected ones
+
+**What the Signaling Server Does NOT Do**:
+- Transfer tutorial data (flows P2P directly between browsers)
+- Store session state (everything in browser IndexedDB)
+- Authenticate users (simple key-based validation only)
+
+### Connection Establishment Flow (PeerJS Simplified)
 
 **1. Session Creation (Presenter)**
 ```typescript
-// Presenter creates WebRTC peer connection
-const pc = new RTCPeerConnection({ iceServers });
+// Start local PeerJS server first: npm run peerjs-server
 
-// Create data channel for events
-const dataChannel = pc.createDataChannel('pathfinder-events', {
-  ordered: true,
-  maxRetransmits: 3
+// Presenter creates PeerJS peer with readable ID
+const peerId = generateReadableId(); // e.g., "cozy-tiger-42"
+const peer = new Peer(peerId, {
+  host: 'localhost',
+  port: 9000,
+  path: '/pathfinder',
+  key: 'pathfinder'
 });
 
-// Generate WebRTC offer
-const offer = await pc.createOffer();
-await pc.setLocalDescription(offer);
+// Wait for peer to connect to signaling server
+peer.on('open', (id) => {
+  console.log('Session created:', id);
+  
+  // Generate shareable join code
+  const sessionInfo = {
+    id: id, // PeerJS peer ID
+    name: "Prometheus Workshop",
+    tutorialUrl: "https://grafana.com/tutorials/prometheus-101",
+    defaultMode: "guided"
+  };
+  
+  const joinCode = id; // Simple! Just the peer ID
+  const joinUrl = `${window.location.origin}/a/pathfinder?session=${joinCode}`;
+  const qrCode = await QRCode.toDataURL(joinUrl);
+  
+  // Display join code to presenter
+  showJoinOptions(joinCode, joinUrl, qrCode);
+});
 
-// Wait for ICE candidates to be gathered
-await waitForICEGathering(pc);
-
-// Create shareable session info
-const sessionOffer = {
-  id: generateId(),
-  name: "Prometheus Workshop",
-  tutorialUrl: "https://grafana.com/tutorials/prometheus-101",
-  defaultMode: "guided",
-  offer: pc.localDescription,
-  timestamp: Date.now()
-};
-
-// Generate shareable formats
-const joinCode = btoa(JSON.stringify(sessionOffer));
-const joinUrl = `${window.location.origin}/a/pathfinder?session=${joinCode}`;
-const qrCode = await QRCode.toDataURL(joinUrl);
-
-// Display to presenter: QR code, link, or copy-paste code
+// Handle incoming connections from attendees
+peer.on('connection', (conn) => {
+  console.log('Attendee connected:', conn.peer);
+  
+  // Set up data channel handler
+  conn.on('data', (data) => {
+    // Attendee sent their mode preference
+    console.log('Attendee mode:', data.mode);
+  });
+  
+  conn.on('open', () => {
+    // Connection ready, can send events now
+    trackAttendee(conn);
+  });
+});
 ```
 
 **2. Session Join (Attendee)**
 ```typescript
-// Attendee scans QR, clicks link, or pastes code
-const sessionOffer = JSON.parse(atob(joinCode));
+// Attendee enters join code (presenter's peer ID)
+const presenterPeerId = "cozy-tiger-42";
 
-// Create peer connection with same ICE servers
-const pc = new RTCPeerConnection({ iceServers });
+// Create own peer to connect
+const peer = new Peer({
+  host: 'localhost',
+  port: 9000,
+  path: '/pathfinder',
+  key: 'pathfinder'
+});
 
-// Set presenter's offer as remote description
-await pc.setRemoteDescription(sessionOffer.offer);
-
-// Create answer
-const answer = await pc.createAnswer();
-await pc.setLocalDescription(answer);
-
-// Wait for ICE gathering
-await waitForICEGathering(pc);
-
-// Send answer back to presenter (via same mechanism: QR/link/paste)
-const answerCode = btoa(JSON.stringify({
-  attendeeId: generateId(),
-  answer: pc.localDescription,
-  mode: "guided"
-}));
-
-// Listen for data channel
-pc.ondatachannel = (event) => {
-  const channel = event.channel;
-  channel.onmessage = (e) => {
-    const event = JSON.parse(e.data);
-    handlePresenterEvent(event);
-  };
-};
+// Connect to presenter
+peer.on('open', () => {
+  const conn = peer.connect(presenterPeerId);
+  
+  conn.on('open', () => {
+    console.log('Connected to presenter!');
+    
+    // Send mode preference
+    conn.send({ mode: 'guided', name: 'Alice' });
+    
+    // Listen for events from presenter
+    conn.on('data', (event) => {
+      handlePresenterEvent(event);
+    });
+  });
+});
 ```
 
-**3. Connection Completion (Presenter receives answer)**
+**3. Broadcasting Events (Presenter)**
 ```typescript
-// Presenter receives answer (QR scan, paste, or link)
-const attendeeAnswer = JSON.parse(atob(answerCode));
-
-// Add attendee to session
-const attendeePc = peerConnections.get(attendeeAnswer.attendeeId);
-await attendeePc.setRemoteDescription(attendeeAnswer.answer);
-
-// Connection established!
-// Can now send events directly via data channel
-dataChannel.send(JSON.stringify(event));
+// Presenter clicks "Show Me" button
+function captureShowMe(stepData) {
+  const event = {
+    type: 'show_me',
+    stepId: stepData.id,
+    action: stepData.action,
+    timestamp: Date.now()
+  };
+  
+  // Broadcast to all connected attendees
+  attendeeConnections.forEach(conn => {
+    if (conn.open) {
+      conn.send(event);
+    }
+  });
+}
 ```
 
-**Note**: Connection setup is manual (QR/link/paste) to avoid needing a signaling server. For better UX, organizations can optionally deploy a simple signaling server to automate the offer/answer exchange.
+**Key Simplifications with PeerJS**:
+- No manual SDP offer/answer exchange - PeerJS handles it
+- Readable peer IDs instead of complex WebRTC descriptions
+- Automatic ICE candidate gathering and exchange
+- Built-in connection management and cleanup
+- Simple `.connect(peerId)` API instead of WebRTC ceremony
+
+**Why This Works Better**:
+- **Simpler code**: ~50 lines vs ~300 lines of raw WebRTC
+- **More reliable**: PeerJS handles edge cases and reconnection
+- **Better UX**: Short readable join codes vs long encoded blobs
+- **Still P2P**: Data flows directly between browsers, just easier setup
 
 ### Event Protocol Specification
 
@@ -626,72 +752,217 @@ export function AttendeeInterface({ session }: Props) {
 
 ---
 
-## Backend Infrastructure (P2P - Minimal Backend)
+## Backend Infrastructure (PeerJS Server Required)
 
-### No Custom Backend Required!
+### PeerJS Signaling Server (Lightweight Backend)
 
-The P2P approach eliminates the need for custom backend infrastructure. All communication happens directly between browsers using WebRTC.
+The implementation requires a **PeerJS signaling server** for connection setup. This is a lightweight Node.js process that handles peer discovery and WebRTC signaling.
 
-**What We Use (All Free/Built-in)**:
+**What We Use**:
 
-1. **Public STUN Servers** (NAT traversal)
+1. **PeerJS Server** (Required - Signaling only)
+   - Handles peer discovery and connection setup
+   - Exchanges WebRTC offers/answers
+   - Tracks active peers
+   - ~50 lines of code via `peer-server` npm package
+   - See `docs/LOCAL_PEERJS_SERVER.md` for setup
+
+2. **Public STUN Servers** (NAT traversal)
    - Google's public STUN servers
    - Twilio's public STUN servers
    - Free, no registration needed
-
-2. **Public TURN Servers** (Firewall fallback)
-   - OpenRelay's free TURN server
-   - Only used when direct P2P fails
-   - Handles restrictive corporate firewalls
 
 3. **Browser IndexedDB** (Local storage)
    - Session recordings
    - Session history
    - User preferences
 
-### Optional: Simple Signaling Helper (Optional Enhancement)
+### Development Setup
 
-For better UX, organizations can deploy a minimal signaling helper to automate offer/answer exchange:
+**Local Development** (Recommended for development):
+```bash
+# Terminal 1: Start PeerJS signaling server
+npm run peerjs-server
 
-**Technology**: Cloudflare Workers (Free tier: 100k requests/day)
+# Terminal 2: Start Grafana
+npm run server
 
-**Single Endpoint**:
-```typescript
-// POST /signal
-// Stores offer/answer temporarily (60 seconds)
-// Returns retrieval code
-// Attendee fetches with code
-// Auto-deletes after retrieval
-
-// This is OPTIONAL - system works without it using QR/copy-paste
+# Terminal 3: Build plugin
+npm run dev
 ```
 
-**Implementation** (20 lines):
-```typescript
-// Cloudflare Worker
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const { method, url } = request;
-    const { pathname } = new URL(url);
-    
-    if (method === 'POST' && pathname === '/signal') {
-      const data = await request.json();
-      const code = generateShortCode();
-      await env.KV.put(code, JSON.stringify(data), { expirationTtl: 60 });
-      return new Response(JSON.stringify({ code }));
-    }
-    
-    if (method === 'GET' && pathname.startsWith('/signal/')) {
-      const code = pathname.split('/')[2];
-      const data = await env.KV.get(code);
-      if (data) await env.KV.delete(code);
-      return new Response(data || JSON.stringify({ error: 'Not found' }));
-    }
-    
-    return new Response('Not found', { status: 404 });
-  }
-};
+**Server Configuration** (`scripts/peerjs-server.js`):
+```javascript
+const { PeerServer } = require('peer');
+
+const server = PeerServer({
+  port: 9000,
+  path: '/pathfinder',
+  key: 'pathfinder',
+  alive_timeout: 60000,
+  debug: true
+});
+
+console.log('PeerJS server running on port 9000');
 ```
+
+### Production Deployment Options
+
+**Option 1: Self-Hosted PeerJS Server (Recommended for Enterprise)**
+
+Deploy on your own infrastructure:
+
+```bash
+# Install globally
+npm install -g peer
+
+# Run with production config
+peer --port 443 \
+     --path /pathfinder \
+     --key your-secure-key \
+     --sslkey ./ssl/key.pem \
+     --sslcert ./ssl/cert.pem
+```
+
+**Advantages**:
+- Full control over infrastructure
+- No external dependencies
+- Better security (can restrict to your domains)
+- Can monitor and scale as needed
+
+**Requirements**:
+- Node.js server (small footprint: ~100MB RAM)
+- SSL certificate (required for HTTPS)
+- Open port for WebSocket connections
+
+**Option 2: PeerJS Cloud Service (Easiest for Small Teams)**
+
+Use PeerJS hosted cloud service:
+
+```typescript
+const peer = new Peer({
+  host: 'peerjs.com',
+  secure: true,
+  port: 443
+});
+```
+
+**Advantages**:
+- No infrastructure to manage
+- Free tier available
+- Handles scaling automatically
+
+**Disadvantages**:
+- External dependency
+- Potential privacy concerns (peer IDs visible to service)
+- May have rate limits
+
+**Option 3: Hybrid Approach (Development + Production)**
+
+Use local server for development, cloud for production:
+
+```typescript
+const isProduction = window.location.hostname !== 'localhost';
+
+const peerConfig = isProduction
+  ? { host: 'peerjs.com', secure: true, port: 443 }
+  : { host: 'localhost', port: 9000, path: '/pathfinder' };
+
+const peer = new Peer(peerId, peerConfig);
+```
+
+### Production Deployment Guide
+
+**1. Deploy PeerJS Server**
+
+Using Docker:
+```dockerfile
+FROM node:18-alpine
+RUN npm install -g peer
+EXPOSE 9000
+CMD ["peer", "--port", "9000", "--path", "/pathfinder"]
+```
+
+Using systemd:
+```ini
+[Unit]
+Description=PeerJS Signaling Server
+After=network.target
+
+[Service]
+Type=simple
+User=peerjs
+ExecStart=/usr/bin/peer --port 9000 --path /pathfinder
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**2. Configure Reverse Proxy (nginx)**
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name peerjs.yourdomain.com;
+    
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+    
+    location /pathfinder {
+        proxy_pass http://localhost:9000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+**3. Update Plugin Configuration**
+
+In Grafana plugin configuration:
+```
+PeerJS Host: peerjs.yourdomain.com
+PeerJS Port: 443
+PeerJS Path: /pathfinder
+PeerJS Key: your-secure-production-key
+```
+
+**4. Security Hardening**
+
+- Use strong API key in production
+- Restrict CORS to your Grafana domains
+- Enable rate limiting to prevent abuse
+- Monitor connection counts and bandwidth
+- Use HTTPS/WSS for all connections
+
+**5. Monitoring**
+
+Add health checks:
+```javascript
+// Add to peerjs-server.js
+const express = require('express');
+const app = express();
+
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy',
+    connections: server.clients.size,
+    uptime: process.uptime()
+  });
+});
+
+app.listen(9001);
+```
+
+Monitor:
+- Active peer connections
+- Connection success rate
+- Average latency
+- Error rates
+- Server CPU/memory usage
 
 ### Session State Storage (Client-side)
 

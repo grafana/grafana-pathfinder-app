@@ -5,10 +5,11 @@
  */
 
 import React, { useState } from 'react';
-import { Button, Input, Alert, useStyles2 } from '@grafana/ui';
+import { Button, Input, Alert, useStyles2, Badge } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { useSession } from '../../utils/collaboration/session-state';
+import { ConnectionIndicator } from './ConnectionIndicator';
 import type { SessionConfig } from '../../types/collaboration.types';
 
 /**
@@ -165,22 +166,20 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
           {attendees.length > 0 && (
             <>
             {attendees.map((attendee) => {
-              const statusClass = attendee.connectionState === 'connected' ? styles.connectionState_connected
-                : attendee.connectionState === 'connecting' ? styles.connectionState_connecting
-                : attendee.connectionState === 'disconnected' ? styles.connectionState_disconnected
-                : styles.connectionState_failed;
-                
               return (
                 <div key={attendee.id} className={styles.attendeeItem}>
                   <span className={styles.attendeeName}>
                     {attendee.name || 'Anonymous'}
                   </span>
-                  <span className={styles.attendeeMode}>
-                    {attendee.mode === 'guided' ? 'Guided' : 'Follow'}
-                  </span>
-                  <span className={`${styles.attendeeStatus} ${statusClass}`}>
-                    {attendee.connectionState}
-                  </span>
+                  <Badge 
+                    text={attendee.mode === 'guided' ? 'Guided' : 'Follow'} 
+                    color={attendee.mode === 'guided' ? 'orange' : 'blue'}
+                  />
+                  <ConnectionIndicator 
+                    state={attendee.connectionState}
+                    quality={attendee.connectionQuality}
+                    showLabel={false}
+                  />
                 </div>
               );
             })}
@@ -407,34 +406,6 @@ function getStyles(theme: GrafanaTheme2) {
     `,
     attendeeName: css`
       flex: 1;
-    `,
-    attendeeMode: css`
-      font-size: ${theme.typography.bodySmall.fontSize};
-      color: ${theme.colors.text.secondary};
-      padding: ${theme.spacing(0.5)} ${theme.spacing(1)};
-      background: ${theme.colors.background.primary};
-      border-radius: ${theme.shape.radius.default};
-    `,
-    attendeeStatus: css`
-      font-size: ${theme.typography.bodySmall.fontSize};
-      padding: ${theme.spacing(0.5)} ${theme.spacing(1)};
-      border-radius: ${theme.shape.radius.default};
-    `,
-    connectionState_connected: css`
-      color: ${theme.colors.success.text};
-      background: ${theme.colors.success.transparent};
-    `,
-    connectionState_connecting: css`
-      color: ${theme.colors.warning.text};
-      background: ${theme.colors.warning.transparent};
-    `,
-    connectionState_disconnected: css`
-      color: ${theme.colors.error.text};
-      background: ${theme.colors.error.transparent};
-    `,
-    connectionState_failed: css`
-      color: ${theme.colors.error.text};
-      background: ${theme.colors.error.transparent};
     `,
     actions: css`
       display: flex;

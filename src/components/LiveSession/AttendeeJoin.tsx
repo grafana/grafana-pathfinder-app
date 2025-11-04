@@ -13,6 +13,86 @@ import { useSession } from '../../utils/collaboration/session-state';
 import type { SessionOffer, AttendeeMode } from '../../types/collaboration.types';
 
 /**
+ * Get user-friendly error guidance based on error type
+ */
+function getErrorGuidance(error: unknown): { title: string; message: string; steps: string[] } {
+  // Check if it's a SessionError with error code
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  
+  // Check for common error patterns
+  if (errorMessage.includes('peer-unavailable') || errorMessage.includes('Could not connect to peer')) {
+    return {
+      title: 'Cannot Connect to Session',
+      message: 'The presenter may not be online, or the join code may be incorrect.',
+      steps: [
+        'Verify the join code is correct',
+        'Ensure the presenter\'s session is still active',
+        'Check that you and the presenter are using the same PeerJS server',
+        'Try refreshing the page and rejoining'
+      ]
+    };
+  }
+  
+  if (errorMessage.includes('timeout') || errorMessage.includes('Peer connection timeout')) {
+    return {
+      title: 'Connection Timeout',
+      message: 'Could not establish connection within the expected time.',
+      steps: [
+        'Check your network connection',
+        'Ensure PeerJS server is running (if using local server)',
+        'Try again in a few moments',
+        'Contact your administrator if problem persists'
+      ]
+    };
+  }
+  
+  if (errorMessage.includes('Invalid') || errorMessage.includes('invalid')) {
+    return {
+      title: 'Invalid Join Code',
+      message: 'The join code format is not recognized.',
+      steps: [
+        'Double-check the join code for typos',
+        'Request a new join code from the presenter',
+        'Try copying and pasting the code instead of typing it'
+      ]
+    };
+  }
+  
+  // Generic connection failure
+  return {
+    title: 'Connection Failed',
+    message: 'Unable to join the session.',
+    steps: [
+      'Verify PeerJS server is running at the configured address',
+      'Check that the join code is correct',
+      'Ensure your network allows WebRTC connections',
+      'Try in a different browser or incognito window',
+      'Contact your administrator for help'
+    ]
+  };
+}
+
+/**
+ * Error Alert Component - Helper to render error with guidance
+ */
+function ErrorAlert({ error, className }: { error: unknown; className: string }) {
+  const guidance = getErrorGuidance(error);
+  return (
+    <Alert severity="error" title={guidance.title} className={className}>
+      <div>
+        <p>{guidance.message}</p>
+        <p style={{ marginTop: '12px', fontWeight: 600 }}>Troubleshooting steps:</p>
+        <ol style={{ marginTop: '8px', marginBottom: 0, paddingLeft: '20px' }}>
+          {guidance.steps.map((step, idx) => (
+            <li key={idx} style={{ marginBottom: '4px' }}>{step}</li>
+          ))}
+        </ol>
+      </div>
+    </Alert>
+  );
+}
+
+/**
  * Props for AttendeeJoin
  */
 interface AttendeeJoinProps {
@@ -32,7 +112,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
   const [mode, setMode] = useState<AttendeeMode>('guided');
   const [name, setName] = useState('');
   const [sessionOffer, setSessionOffer] = useState<SessionOffer | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown | null>(null);
   const [isJoining, setIsJoining] = useState(false);
   
   // Reset state when modal closes
@@ -133,7 +213,8 @@ const handleJoinSession = async () => {
       onJoined();
       onClose();
     } catch (err) {
-      setError('Failed to join session. Please check the session code and try again.');
+      console.error('[AttendeeJoin] Failed to join session:', err);
+      setError(err); // Store the actual error for better guidance
       setIsJoining(false);
     }
 };
@@ -193,11 +274,7 @@ const handleJoinSession = async () => {
                 </Button>
               </div>
               
-              {error && (
-                <Alert severity="error" title="Error" className={styles.alert}>
-                  {error}
-                </Alert>
-              )}
+              {error !== null && <ErrorAlert error={error} className={styles.alert} />}
             </div>
             
             <div className={styles.divider}>
@@ -257,11 +334,7 @@ const handleJoinSession = async () => {
               </div>
             </div>
             
-            {error && (
-              <Alert severity="error" title="Error" className={styles.alert}>
-                {error}
-              </Alert>
-            )}
+            {error !== null && <ErrorAlert error={error} className={styles.alert} />}
             
             <div className={styles.actions}>
               <Button variant="secondary" onClick={() => setSessionOffer(null)}>
