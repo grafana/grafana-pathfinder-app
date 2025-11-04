@@ -130,7 +130,14 @@ const hideSelectionStyle = css`
   }
 `;
 
-export function ContentRenderer({ content, onContentReady, className, containerRef }: ContentRendererProps) {
+// Memoize ContentRenderer to prevent re-renders when parent re-renders
+// but content prop hasn't changed
+export const ContentRenderer = React.memo(function ContentRenderer({
+  content,
+  onContentReady,
+  className,
+  containerRef,
+}: ContentRendererProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
 
@@ -209,7 +216,7 @@ export function ContentRenderer({ content, onContentReady, className, containerR
       )}
     </div>
   );
-}
+});
 
 interface ContentProcessorProps {
   html: string;

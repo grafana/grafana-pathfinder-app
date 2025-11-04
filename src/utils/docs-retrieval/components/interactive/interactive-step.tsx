@@ -138,9 +138,17 @@ export const InteractiveStep = forwardRef<
         // Execute the action using existing interactive logic
         await executeInteractiveAction(targetAction, refTarget, targetValue, 'do', targetComment);
 
+        // Wait for DOM to settle after action (especially important for navigation, form fills, etc.)
+        await waitForReactUpdates();
+
+        // Additional settling time for actions that trigger animations or async state updates
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
         // Run post-verification if specified by author
         if (postVerify && postVerify.trim() !== '') {
+          // Additional wait before verification to ensure all side effects have completed
           await waitForReactUpdates();
+
           const result = await verifyStepResult(
             postVerify,
             targetAction,

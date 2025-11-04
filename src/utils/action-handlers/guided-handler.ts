@@ -417,7 +417,10 @@ export class GuidedHandler {
           clearInterval(rectUpdateInterval);
           // Click is within bounds - programmatically trigger click on target element
           // This helps when an overlay or SVG is blocking the actual element
-          element.click();
+          // SAFETY: Only click if element is still connected to DOM (avoid "form not connected" errors)
+          if (element.isConnected) {
+            element.click();
+          }
           resolve('completed');
         }
       };

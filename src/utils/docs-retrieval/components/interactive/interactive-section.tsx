@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { flushSync } from 'react-dom';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
@@ -372,28 +371,19 @@ export function InteractiveSection({
     }
   }, [isCompleted, sectionId, stepComponents.length]);
 
-  // Calculate which step is eligible for checking (sequential logic)
-  // This is the AUTHORITATIVE source for step eligibility within this section
-  const getStepEligibility = useCallback(
-    (stepIndex: number) => {
+  // PRE-COMPUTE eligibility for ALL steps once (React best practice)
+  // This prevents expensive recalculation on every render
+  const stepEligibility = useMemo(() => {
+    return stepComponents.map((stepInfo, index) => {
       // First step is always eligible (Trust but Verify)
-      if (stepIndex === 0) {
+      if (index === 0) {
         return true;
       }
 
       // Subsequent steps are eligible if all previous steps are completed
-      // Use section's completedSteps as the authoritative source
-      for (let i = 0; i < stepIndex; i++) {
-        const prevStepId = stepComponents[i].stepId;
-        const isCompleted = completedSteps.has(prevStepId);
-        if (!isCompleted) {
-          return false;
-        }
-      }
-      return true;
-    },
-    [completedSteps, stepComponents] // eslint-disable-line react-hooks/exhaustive-deps
-  );
+      return stepComponents.slice(0, index).every((prevStep) => completedSteps.has(prevStep.stepId));
+    });
+  }, [completedSteps, stepComponents]); // Only recalculate when these change
 
   // Calculate resume information for button display
   const getResumeInfo = useCallback(() => {
@@ -416,38 +406,31 @@ export function InteractiveSection({
   const handleStepComplete = useCallback(
     (stepId: string, skipStateUpdate = false) => {
       if (!skipStateUpdate) {
-        // Use flushSync to ensure synchronous state updates before triggering checks
-        // This prevents race conditions where child components haven't re-rendered yet
-        flushSync(() => {
-          const newCompletedSteps = new Set([...completedSteps, stepId]);
-          setCompletedSteps(newCompletedSteps);
-          setCurrentlyExecutingStep(null);
+        // Update state normally - React batches these automatically
+        const newCompletedSteps = new Set([...completedSteps, stepId]);
+        setCompletedSteps(newCompletedSteps);
+        setCurrentlyExecutingStep(null);
 
-          const currentIndex = stepComponents.findIndex((step) => step.stepId === stepId);
-          if (currentIndex >= 0) {
-            setCurrentStepIndex(currentIndex + 1);
-          }
-
-          persistCompletedSteps(newCompletedSteps);
-        });
-
-        // NOW trigger eligibility check - React has already re-rendered with new state
         const currentIndex = stepComponents.findIndex((step) => step.stepId === stepId);
         if (currentIndex >= 0) {
-          const nextStepIndex = currentIndex + 1;
-          if (nextStepIndex < stepComponents.length) {
-            const nextStepId = stepComponents[nextStepIndex].stepId;
-            import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
-              const manager = SequentialRequirementsManager.getInstance();
-              manager.triggerStepEligibilityCheck(nextStepId);
-            });
-          }
+          setCurrentStepIndex(currentIndex + 1);
         }
 
-        // Check if all steps are completed
-        const newCompletedSteps = new Set([...completedSteps, stepId]);
-        const allStepsCompleted = newCompletedSteps.size >= stepComponents.length;
+        persistCompletedSteps(newCompletedSteps);
 
+        // React's reactive model handles eligibility updates automatically:
+        // 1. State updates are batched and applied
+        // 2. stepEligibility useMemo recalculates (triggered by completedSteps change)
+        // 3. enhancedChildren useMemo updates (triggered by stepEligibility change)
+        // 4. Child InteractiveStep receives new isEligibleForChecking prop
+        // 5. useStepChecker's useEffect fires (triggered by isEligibleForChecking change)
+        // 6. checkStep runs and next step unlocks
+
+        // useSyncExternalStore ensures manager state stays in sync with React renders
+        // No manual synchronization needed!
+
+        // Check if all steps are completed
+        const allStepsCompleted = newCompletedSteps.size >= stepComponents.length;
         if (allStepsCompleted) {
           onComplete?.();
         }
@@ -839,9 +822,13 @@ export function InteractiveSection({
           // Also call the standard completion handler for other side effects (skip state update to avoid double-setting)
           handleStepComplete(stepInfo.stepId, true);
 
-          // Wait between steps for visual feedback
-          // Check cancellation during wait
+          // Wait between steps for both visual feedback AND DOM settling
+          // This ensures the next step's requirements are ready before checking
           if (i < stepComponents.length - 1) {
+            // First: Wait for React updates to propagate
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+            // Then: Wait for visual feedback with cancellation checks
             for (let j = 0; j < INTERACTIVE_CONFIG.delays.section.betweenStepsIterations; j++) {
               if (isCancelledRef.current) {
                 break;
@@ -851,9 +838,18 @@ export function InteractiveSection({
           }
         } else {
           // Step execution failed after retries - stop and don't auto-complete remaining steps
-          console.warn(`Step ${i + 1} execution failed after retries, stopping section execution`);
           setCurrentStepIndex(i);
-          stoppedDueToRequirements = true; // Mark as stopped due to failure
+          stoppedDueToRequirements = true;
+
+          // Wait for state to settle, then trigger reactive check
+          // This ensures remaining steps update their eligibility based on completed steps
+          setTimeout(() => {
+            import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
+              const manager = SequentialRequirementsManager.getInstance();
+              manager.triggerReactiveCheck();
+            });
+          }, 200);
+
           break;
         }
       }
@@ -987,7 +983,7 @@ export function InteractiveSection({
           return child;
         }
 
-        const isEligibleForChecking = getStepEligibility(index);
+        const isEligibleForChecking = stepEligibility[index]; // Simple array lookup
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
 
@@ -1028,7 +1024,7 @@ export function InteractiveSection({
           return child;
         }
 
-        const isEligibleForChecking = getStepEligibility(index);
+        const isEligibleForChecking = stepEligibility[index]; // Simple array lookup
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
 
@@ -1071,7 +1067,7 @@ export function InteractiveSection({
           return child;
         }
 
-        const isEligibleForChecking = getStepEligibility(index);
+        const isEligibleForChecking = stepEligibility[index]; // Simple array lookup
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
 
@@ -1114,7 +1110,7 @@ export function InteractiveSection({
   }, [
     children,
     stepComponents,
-    getStepEligibility,
+    stepEligibility, // Pre-computed array instead of callback
     completedSteps, // This should trigger re-render when completedSteps changes
     currentlyExecutingStep,
     handleStepComplete,

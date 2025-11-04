@@ -643,6 +643,10 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
   const isRecommendationsTab = activeTabId === 'recommendations';
   const theme = useStyles2((theme: GrafanaTheme2) => theme);
 
+  // STABILITY: Memoize activeTab.content to prevent ContentRenderer from remounting
+  // when other tab properties change (isLoading, error, etc.)
+  const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
+
   const styles = useStyles2(getStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
@@ -1447,12 +1451,12 @@ function CombinedPanelRenderer({ model }: SceneComponentProps<CombinedLearningJo
                     minHeight: 0,
                   }}
                 >
-                  {activeTab.content && (
+                  {stableContent && (
                     <ContentRenderer
-                      content={activeTab.content}
+                      content={stableContent}
                       containerRef={contentRef}
                       className={`${
-                        activeTab.content.type === 'learning-journey' ? journeyStyles : docsStyles
+                        stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
                       } ${interactiveStyles} ${prismStyles}`}
                       onContentReady={() => {
                         // Restore scroll position after content is ready

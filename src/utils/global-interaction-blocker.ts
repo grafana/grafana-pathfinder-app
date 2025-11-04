@@ -20,6 +20,7 @@ class GlobalInteractionBlocker {
   private lastKnownModalState = false;
   private headerOverlay: HTMLElement | null = null;
   private fullScreenOverlay: HTMLElement | null = null;
+  private statusIndicator: HTMLElement | null = null;
 
   static getInstance(): GlobalInteractionBlocker {
     if (!GlobalInteractionBlocker.instance) {
@@ -243,16 +244,17 @@ class GlobalInteractionBlocker {
   }
 
   /**
-   * Add status indicator and cancel button to main overlay
+   * Add status indicator and cancel button - independent of overlays so always visible
    */
   private addStatusIndicator(data: InteractiveElementData): void {
-    if (!this.blockingOverlay) {
-      return;
+    if (this.statusIndicator) {
+      return; // Already created
     }
 
     // Create a small, unobtrusive status indicator at the bottom of the screen
-    const statusIndicator = document.createElement('div');
-    statusIndicator.style.cssText = `
+    // Append directly to body so it stays visible regardless of overlay mode
+    this.statusIndicator = document.createElement('div');
+    this.statusIndicator.style.cssText = `
       position: fixed;
       bottom: 20px;
       left: 50%;
@@ -269,10 +271,10 @@ class GlobalInteractionBlocker {
       align-items: center;
       gap: 8px;
       pointer-events: none;
-      z-index: 10000;
+      z-index: 10001;
     `;
 
-    statusIndicator.innerHTML = `
+    this.statusIndicator.innerHTML = `
       <div style="
         width: 16px;
         height: 16px;
@@ -295,17 +297,18 @@ class GlobalInteractionBlocker {
         align-items: center;
         gap: 4px;
         pointer-events: auto;
-        z-index: 10001;
+        z-index: 10002;
         position: relative;
       " title="Cancel section (Ctrl+C)">
         ✕ Cancel
       </button>
     `;
 
-    this.blockingOverlay.appendChild(statusIndicator);
+    // Append directly to body, not to blocking overlay
+    document.body.appendChild(this.statusIndicator);
 
     // Add cancel button click handler
-    const cancelButton = statusIndicator.querySelector('#cancel-section-btn');
+    const cancelButton = this.statusIndicator.querySelector('#cancel-section-btn');
     if (cancelButton) {
       cancelButton.addEventListener('click', (e) => {
         e.preventDefault();
@@ -314,9 +317,11 @@ class GlobalInteractionBlocker {
       });
     }
 
-    // Set cursor to indicate blocking and add interaction handlers
-    this.blockingOverlay.style.cursor = 'not-allowed';
-    this.addBlockingHandlersWithCancelException(this.blockingOverlay);
+    // Set cursor to indicate blocking and add interaction handlers to main overlay
+    if (this.blockingOverlay) {
+      this.blockingOverlay.style.cursor = 'not-allowed';
+      this.addBlockingHandlersWithCancelException(this.blockingOverlay);
+    }
   }
 
   /**
@@ -411,6 +416,12 @@ class GlobalInteractionBlocker {
     if (this.fullScreenOverlay) {
       this.fullScreenOverlay.remove();
       this.fullScreenOverlay = null;
+    }
+
+    // Remove status indicator
+    if (this.statusIndicator) {
+      this.statusIndicator.remove();
+      this.statusIndicator = null;
     }
 
     // Remove global keyboard handler when overlays are removed
@@ -557,7 +568,6 @@ class GlobalInteractionBlocker {
     for (const dialog of ariaDialogs) {
       const style = window.getComputedStyle(dialog);
       if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
-        console.warn('Modal detected - switching to full-screen blocking');
         return true;
       }
     }
@@ -567,7 +577,6 @@ class GlobalInteractionBlocker {
     for (const container of overlayContainers) {
       const style = window.getComputedStyle(container);
       if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
-        console.warn('Modal detected - switching to full-screen blocking');
         return true;
       }
     }

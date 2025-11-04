@@ -293,6 +293,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             // Do mode (actually perform the action)
             await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'do');
 
+            // Wait for DOM to settle after action
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            await new Promise((resolve) => setTimeout(resolve, 200));
+
             // Add delay between steps with cancellation check (but not after the last step)
             if (i < internalActions.length - 1 && stepDelay > 0) {
               const delaySteps = Math.ceil(stepDelay / INTERACTIVE_CONFIG.delays.multiStep.baseInterval); // Convert delay to base interval steps
