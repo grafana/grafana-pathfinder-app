@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { getRequirementExplanation } from './requirement-explanations';
 import { SequentialRequirementsManager } from './requirements-checker.hook';
 import { useInteractiveElements } from './interactive.hook';
@@ -86,6 +87,9 @@ export function useStepChecker({
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
     isRetrying: false,
   });
+
+  // Track previous isEnabled state to detect actual transitions
+  const prevIsEnabledRef = useRef(state.isEnabled);
 
   const timeoutManager = useTimeoutManager();
 
@@ -306,12 +310,14 @@ export function useStepChecker({
             maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
             isRetrying: false,
           };
-          setState(finalState);
+
+          // Use flushSync for objectives to ensure immediate UI update
+          flushSync(() => {
+            setState(finalState);
+          });
+          prevIsEnabledRef.current = true;
           updateManager(finalState);
           return;
-        } else if (objectivesResult.error) {
-          // Objectives check failed - log error but continue to requirements (per spec)
-          console.warn(`Objectives check failed for ${stepId}:`, objectivesResult.error);
         }
       }
 
@@ -419,8 +425,23 @@ export function useStepChecker({
           isRetrying: false,
         };
 
-        setState(requirementsState);
-        updateManager(requirementsState);
+        // Use flushSync ONLY when transitioning from disabled to enabled
+        // This prevents the step from appearing locked when Grafana main UI is rendering heavily
+        const isTransitioningToEnabled = !prevIsEnabledRef.current && requirementsResult.pass;
+
+        if (isTransitioningToEnabled) {
+          flushSync(() => {
+            setState(requirementsState);
+          });
+          prevIsEnabledRef.current = true;
+          updateManager(requirementsState);
+        } else {
+          // For other state changes, normal batching is fine
+          setState(requirementsState);
+          prevIsEnabledRef.current = requirementsResult.pass;
+          updateManager(requirementsState);
+        }
+
         return;
       }
 
@@ -441,10 +462,19 @@ export function useStepChecker({
         maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
         isRetrying: false,
       };
-      setState(enabledState);
+
+      // Use flushSync when step becomes enabled
+      const wasDisabled = !prevIsEnabledRef.current;
+      if (wasDisabled) {
+        flushSync(() => {
+          setState(enabledState);
+        });
+        prevIsEnabledRef.current = true;
+      } else {
+        setState(enabledState);
+      }
       updateManager(enabledState);
     } catch (error) {
-      console.warn(`Step checking failed for ${stepId}:`, error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to check step conditions';
       const errorState = {
         isEnabled: false,
