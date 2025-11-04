@@ -18,8 +18,8 @@ describe('SequentialRequirementsManager DOM monitoring (nav)', () => {
     // Simulate attribute mutation
     nav.setAttribute('aria-expanded', 'false');
 
-    // Debounced
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    // Debounced - wait for 1200ms debounce + 300ms settling delay + buffer
+    await new Promise((resolve) => setTimeout(resolve, 1600));
 
     expect(spy).toHaveBeenCalled();
 

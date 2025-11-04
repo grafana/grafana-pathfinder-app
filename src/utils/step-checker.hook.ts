@@ -91,6 +91,9 @@ export function useStepChecker({
   // Track previous isEnabled state to detect actual transitions
   const prevIsEnabledRef = useRef(state.isEnabled);
 
+  // Track when step became enabled to prevent immediate rechecks
+  const enabledTimestampRef = useRef<number>(0);
+
   const timeoutManager = useTimeoutManager();
 
   // Requirements checking is now handled by the pure requirements utility
@@ -287,6 +290,13 @@ export function useStepChecker({
       return;
     }
 
+    // Prevent checking too soon after becoming enabled (let DOM settle)
+    const timeSinceEnabled = Date.now() - enabledTimestampRef.current;
+    if (state.isEnabled && timeSinceEnabled < 200) {
+      // Skip this check - DOM might not be settled yet
+      return;
+    }
+
     setState((prev) => ({ ...prev, isChecking: true, error: undefined, retryCount: 0, isRetrying: false }));
 
     try {
@@ -316,6 +326,7 @@ export function useStepChecker({
             setState(finalState);
           });
           prevIsEnabledRef.current = true;
+          enabledTimestampRef.current = Date.now(); // Track when enabled
           updateManager(finalState);
           return;
         }
@@ -434,11 +445,15 @@ export function useStepChecker({
             setState(requirementsState);
           });
           prevIsEnabledRef.current = true;
+          enabledTimestampRef.current = Date.now(); // Track when enabled
           updateManager(requirementsState);
         } else {
           // For other state changes, normal batching is fine
           setState(requirementsState);
           prevIsEnabledRef.current = requirementsResult.pass;
+          if (requirementsResult.pass) {
+            enabledTimestampRef.current = Date.now();
+          }
           updateManager(requirementsState);
         }
 
@@ -470,6 +485,7 @@ export function useStepChecker({
           setState(enabledState);
         });
         prevIsEnabledRef.current = true;
+        enabledTimestampRef.current = Date.now(); // Track when enabled
       } else {
         setState(enabledState);
       }
@@ -745,7 +761,10 @@ export function useStepChecker({
       setTimeout(tick, intervalMs);
     };
 
-    const timeoutId = setTimeout(tick, intervalMs);
+    // Add initial delay before first heartbeat check to let DOM settle
+    // This prevents immediate recheck right after step becomes enabled
+    const initialDelay = intervalMs + 500; // Add 500ms buffer to normal interval
+    const timeoutId = setTimeout(tick, initialDelay);
 
     return () => {
       stopped = true;

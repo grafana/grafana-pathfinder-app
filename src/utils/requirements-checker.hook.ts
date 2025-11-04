@@ -280,9 +280,11 @@ export function useRequirementsChecker({
 
         // If this is a section completion, trigger reactive check to unlock dependent sections
         if (uniqueId.startsWith('section-')) {
-          // IMMEDIATE reactive check - no debouncing for critical path
-          // flushSync in InteractiveSection ensures DOM is already updated
-          managerRef.current.triggerReactiveCheck();
+          // Add small delay to let DOM settle before triggering reactive check
+          // This prevents dependent steps from being checked before DOM is ready
+          setTimeout(() => {
+            managerRef.current?.triggerReactiveCheck();
+          }, 300);
         }
       }
 
@@ -414,6 +416,7 @@ export class SequentialRequirementsManager {
 
   /**
    * Recheck only steps that are eligible for requirements validation
+   * Adds DOM settling delay to prevent false failures when steps just became enabled
    */
   private recheckEligibleStepsOnly(): void {
     requestAnimationFrame(() => {
@@ -422,11 +425,15 @@ export class SequentialRequirementsManager {
 
         // Only check steps that are not completed and not currently checking
         if (stepState && !stepState.isCompleted && !stepState.isChecking) {
-          try {
-            checker();
-          } catch (error) {
-            console.error(`Error in selective step checker for ${stepId}:`, error);
-          }
+          // Add delay to let DOM settle before rechecking
+          // This prevents false failures when steps just transitioned to enabled
+          setTimeout(() => {
+            try {
+              checker();
+            } catch (error) {
+              console.error(`Error in selective step checker for ${stepId}:`, error);
+            }
+          }, 300); // Wait for DOM to settle after state changes
         }
       });
     });
@@ -564,7 +571,7 @@ export class SequentialRequirementsManager {
           () => {
             this.triggerSelectiveRecheck();
           },
-          800
+          1200 // Increased from 800ms to 1200ms to allow more DOM settling time
         );
       }
     });
@@ -579,7 +586,7 @@ export class SequentialRequirementsManager {
     // Add lightweight click listener to capture nav toggle interactions
     this.navClickListener = () => {
       const timeoutManager = TimeoutManager.getInstance();
-      timeoutManager.setDebounced('nav-click-recheck', () => this.triggerSelectiveRecheck(), 250, 'reactiveCheck');
+      timeoutManager.setDebounced('nav-click-recheck', () => this.triggerSelectiveRecheck(), 500, 'reactiveCheck');
     };
     document.addEventListener('click', this.navClickListener, { capture: true });
   }
@@ -598,7 +605,7 @@ export class SequentialRequirementsManager {
           () => {
             this.triggerSelectiveRecheck();
           },
-          1500
+          2000 // Increased from 1500ms to 2000ms for better settling
         );
       }
     };
@@ -748,10 +755,11 @@ export function useSequentialRequirements({
     // Just delegate to the basic checker - it will update the manager directly
     basicChecker.markCompleted();
 
-    // IMMEDIATE reactive check - no debouncing for critical path
-    // The basic checker already triggers reactive checks, but we ensure
-    // all dependent steps get re-evaluated immediately
-    manager.triggerReactiveCheck();
+    // Add delay before reactive check to let DOM settle from the completed action
+    // This prevents dependent steps from being checked before DOM is ready
+    setTimeout(() => {
+      manager.triggerReactiveCheck();
+    }, 300);
   }, [basicChecker, manager]);
 
   // Get current state from manager (which includes sequential logic)
