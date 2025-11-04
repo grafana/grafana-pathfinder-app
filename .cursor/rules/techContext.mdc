@@ -126,3 +126,555 @@ description: Describes technologies, frameworks, and other tools used in this re
 - **Type Safety**: Comprehensive TypeScript integration with strict mode enabled
 - **Performance Optimization**: Tree-shaking friendly architecture with optimized bundle splitting
 - **Maintainability**: Each module has single responsibility with clear interfaces
+
+
+## Current Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              Grafana Pathfinder                                  │
+│                          (Extension Sidebar Plugin)                              │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    │                 │                 │
+         ┌──────────▼──────────┐  ┌──▼──────────────┐ │
+         │   App.tsx           │  │ Context Panel   │ │
+         │  (Entry Point)      │  │  (Scene)        │ │
+         └──────────┬──────────┘  └──┬──────────────┘ │
+                    │                │                 │
+                    │                │                 │
+         ┌──────────▼────────────────▼──────────────────────────────────┐
+         │                    Context System                             │
+         │  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐   │
+         │  │context.hook │─▶│context.service│─▶│ Grafana APIs     │   │
+         │  │             │  │               │  │ - EchoSrv events │   │
+         │  │- Location   │  │- Data sources │  │ - Backend APIs   │   │
+         │  │- Data srcs  │  │- Dashboards   │  │ - LocationSrv    │   │
+         │  │- Tags       │  │- Recommend.   │  └──────────────────┘   │
+         │  └─────────────┘  └──────────────┘                           │
+         └──────────────────────┬───────────────────────────────────────┘
+                                │ Recommendations
+                    ┌───────────▼──────────────┐
+                    │  External Recommender    │
+                    │  Service (Optional)      │
+                    └──────────────────────────┘
+                                │
+                ┌───────────────▼────────────────────────┐
+                │    Documentation Rendering             │
+                │  ┌─────────────┐  ┌─────────────────┐ │
+                │  │content-     │─▶│ content-renderer│ │
+                │  │fetcher      │  │                 │ │
+                │  │             │  │ - HTML Parser   │ │
+                │  │- Multi-src  │  │ - React Bridge  │ │
+                │  │- Fallback   │  │ - Components    │ │
+                │  │- Bundled    │  └─────────────────┘ │
+                │  └─────────────┘                       │
+                └───────────────┬────────────────────────┘
+                                │
+                ┌───────────────▼────────────────────────────────────────────┐
+                │              Interactive Tutorial System                    │
+                │                                                             │
+                │  ┌──────────────────────────────────────────────────────┐  │
+                │  │         Component Layer (React)                       │  │
+                │  │  ┌────────────────┐  ┌──────────────────────────┐   │  │
+                │  │  │InteractiveSection│ │InteractiveStep           │   │  │
+                │  │  │- Do Section    │  │- Show me / Do it buttons │   │  │
+                │  │  │- Sequential    │  │- Requirements/Objectives │   │  │
+                │  │  │- State mgmt    │  └──────────┬───────────────┘   │  │
+                │  │  └────────┬───────┘             │                    │  │
+                │  │           │  ┌──────────────────▼───────────────┐   │  │
+                │  │           │  │InteractiveMultiStep              │   │  │
+                │  │           │  │- Internal actions                │   │  │
+                │  │           │  │- Automated sequences             │   │  │
+                │  │           │  └──────────┬───────────────────────┘   │  │
+                │  │           │             │                            │  │
+                │  │           │  ┌──────────▼───────────────────────┐   │  │
+                │  │           └─▶│InteractiveGuided                 │   │  │
+                │  │              │- User-performed actions          │   │  │
+                │  │              │- Auto-detection support          │   │  │
+                │  │              └──────────┬───────────────────────┘   │  │
+                │  └─────────────────────────┼───────────────────────────┘  │
+                │                            │                              │
+                │  ┌─────────────────────────▼──────────────────────────┐  │
+                │  │         Execution Layer (Hooks & Handlers)          │  │
+                │  │  ┌──────────────────┐  ┌────────────────────────┐  │  │
+                │  │  │interactive.hook  │─▶│Action Handlers:        │  │  │
+                │  │  │                  │  │- FocusHandler          │  │  │
+                │  │  │- Action dispatch │  │- ButtonHandler         │  │  │
+                │  │  │- Requirements    │  │- FormFillHandler       │  │  │
+                │  │  │- Section blocking│  │- NavigateHandler       │  │  │
+                │  │  └──────────┬───────┘  │- HoverHandler          │  │  │
+                │  │             │          │- GuidedHandler         │  │  │
+                │  │             │          └────────────────────────┘  │  │
+                │  │  ┌──────────▼───────────────────────────────────┐ │  │
+                │  │  │         step-checker.hook                     │ │  │
+                │  │  │- Requirements validation (preconditions)      │ │  │
+                │  │  │- Objectives validation (auto-completion)      │ │  │
+                │  │  │- Retry logic with state updates              │ │  │
+                │  │  │- Skippable step support                      │ │  │
+                │  │  └──────────┬───────────────────────────────────┘ │  │
+                │  │             │                                      │  │
+                │  │  ┌──────────▼───────────────────────────────────┐ │  │
+                │  │  │  requirements-checker.utils                   │ │  │
+                │  │  │- Pure requirement functions                   │ │  │
+                │  │  │- API checks (datasources, plugins, etc.)     │ │  │
+                │  │  │- DOM checks (exists-reftarget, navmenu-open) │ │  │
+                │  │  └───────────────────────────────────────────────┘ │  │
+                │  └─────────────────────────────────────────────────────┘  │
+                │                                                           │
+                │  ┌───────────────────────────────────────────────────┐   │
+                │  │         State Management Layer                     │   │
+                │  │  ┌──────────────────────┐ ┌───────────────────┐  │   │
+                │  │  │interactive-state-    │ │SequentialRequire- │  │   │
+                │  │  │manager               │ │mentsManager       │  │   │
+                │  │  │                      │ │                   │  │   │
+                │  │  │- Step states         │ │- Step ordering    │  │   │
+                │  │  │- Event dispatch      │ │- DOM monitoring   │  │   │
+                │  │  │- Global blocking     │ │- Reactive checks  │  │   │
+                │  │  └──────────┬───────────┘ └─────────┬─────────┘  │   │
+                │  │             │                       │            │   │
+                │  │             │  ┌────────────────────▼─────────┐  │   │
+                │  │             └─▶│global-interaction-blocker    │  │   │
+                │  │                │- Main overlay                │  │   │
+                │  │                │- Header overlay              │  │   │
+                │  │                │- Fullscreen modal overlay    │  │   │
+                │  │                │- Cancel handling (Ctrl+C)    │  │   │
+                │  │                └──────────────────────────────┘  │   │
+                │  └───────────────────────────────────────────────────┘   │
+                │                                                           │
+                │  ┌───────────────────────────────────────────────────┐   │
+                │  │         Navigation & Visibility Layer              │   │
+                │  │  ┌──────────────────────┐ ┌───────────────────┐  │   │
+                │  │  │navigation-manager    │ │element-validator  │  │   │
+                │  │  │                      │ │                   │  │   │
+                │  │  │- Scroll into view    │ │- Visibility check │  │   │
+                │  │  │- Highlight elements  │ │- Viewport check   │  │   │
+                │  │  │- Comment tooltips    │ │- Fixed position   │  │   │
+                │  │  │- Nav menu handling   │ │- Scroll parents   │  │   │
+                │  │  └──────────────────────┘ └───────────────────┘  │   │
+                │  │  ┌──────────────────────┐                        │   │
+                │  │  │enhanced-selector     │                        │   │
+                │  │  │- :has() fallback     │                        │   │
+                │  │  │- :contains() support │                        │   │
+                │  │  │- :nth-match() custom │                        │   │
+                │  │  └──────────────────────┘                        │   │
+                │  └───────────────────────────────────────────────────┘   │
+                │                                                           │
+                │  ┌───────────────────────────────────────────────────┐   │
+                │  │         Auto-Detection Layer (Optional)            │   │
+                │  │  ┌──────────────────────┐ ┌───────────────────┐  │   │
+                │  │  │action-monitor        │ │action-matcher     │  │   │
+                │  │  │(Singleton)           │ │                   │  │   │
+                │  │  │                      │ │- Step matching    │  │   │
+                │  │  │- Global listeners    │ │- Coordinate-based │  │   │
+                │  │  │- Event emission      │ │- Selector-based   │  │   │
+                │  │  │- Enable/disable      │ └───────────────────┘  │   │
+                │  │  └──────────┬───────────┘                        │   │
+                │  │             │                                     │   │
+                │  │  ┌──────────▼───────────┐                        │   │
+                │  │  │action-detector       │                        │   │
+                │  │  │- Type detection      │                        │   │
+                │  │  │- Element filtering   │                        │   │
+                │  │  └──────────────────────┘                        │   │
+                │  └───────────────────────────────────────────────────┘   │
+                └───────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           Data Flow Overview                                     │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+1. USER OPENS PATHFINDER
+   App.tsx → SceneApp → CombinedLearningJourneyPanel (docs-panel.tsx)
+
+2. CONTEXT DETECTION (Automatic)
+   ┌──────────────────────────────────────────────────┐
+   │ Location Change (URL, search params)             │
+   │         ↓                                        │
+   │ context.hook.ts (useContextPanel)                │
+   │         ↓                                        │
+   │ context.service.ts (getContextData)              │
+   │         ↓                                        │
+   │ Parallel Fetch:                                  │
+   │  - Data sources (API)                            │
+   │  - Dashboard info (API)                          │
+   │  - EchoSrv events (datasource/viz detection)     │
+   │         ↓                                        │
+   │ Generate Context Tags                            │
+   │         ↓                                        │
+   │ Fetch Recommendations:                           │
+   │  - External Recommender (ML service) OR          │
+   │  - Fallback (bundled + static links)             │
+   │         ↓                                        │
+   │ Display Recommendations in Context Panel         │
+   └──────────────────────────────────────────────────┘
+
+3. DOCUMENTATION LOADING (User clicks recommendation)
+   ┌──────────────────────────────────────────────────┐
+   │ User clicks recommendation                       │
+   │         ↓                                        │
+   │ Tab Management (CombinedLearningJourneyPanel)    │
+   │         ↓                                        │
+   │ content-fetcher.ts (fetchContent)                │
+   │  - Determine content type (journey vs doc)       │
+   │  - Fetch raw HTML with fallbacks                 │
+   │  - Extract metadata (milestones, etc.)           │
+   │         ↓                                        │
+   │ content-renderer.tsx (ContentRenderer)           │
+   │         ↓                                        │
+   │ html-parser.ts (parseHTMLToComponents)           │
+   │  - Parse HTML → React component data             │
+   │  - Extract interactive elements                  │
+   │  - Fail-fast error handling                      │
+   │         ↓                                        │
+   │ Render React Components:                         │
+   │  - InteractiveSection                            │
+   │  - InteractiveStep                               │
+   │  - InteractiveMultiStep                          │
+   │  - InteractiveGuided                             │
+   │  - CodeBlock, Images, Videos, etc.               │
+   │         ↓                                        │
+   │ Start DOM Monitoring (SequentialRequirementsManager)│
+   └──────────────────────────────────────────────────┘
+
+4. INTERACTIVE TUTORIAL EXECUTION
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ User clicks "Show me" or "Do it" button                          │
+   │         ↓                                                        │
+   │ InteractiveStep.tsx → executeInteractiveAction()                 │
+   │         ↓                                                        │
+   │ step-checker.hook.ts                                             │
+   │  Priority Logic:                                                 │
+   │  1. Check objectives (auto-complete if met)                      │
+   │  2. Check eligibility (sequential dependencies)                  │
+   │  3. Check requirements (preconditions)                           │
+   │         ↓                                                        │
+   │ requirements-checker.utils.ts                                    │
+   │  - Pure checks (has-datasource, is-admin, etc.)                  │
+   │  - DOM checks (exists-reftarget, navmenu-open)                   │
+   │  - Retry logic with exponential backoff                          │
+   │         ↓ (if enabled)                                           │
+   │ interactive.hook.ts (useInteractiveElements)                     │
+   │         ↓                                                        │
+   │ Action Handler (based on targetAction):                          │
+   │  ┌─────────────────────────────────────────────────────────┐    │
+   │  │ FocusHandler (highlight)                                 │    │
+   │  │  1. Find elements (enhanced-selector)                    │    │
+   │  │  2. Validate visibility (element-validator)              │    │
+   │  │  3. Navigation (navigation-manager)                      │    │
+   │  │  4. Highlight / Click                                    │    │
+   │  ├─────────────────────────────────────────────────────────┤    │
+   │  │ ButtonHandler (button)                                   │    │
+   │  │  1. Find buttons by text (dom-utils)                     │    │
+   │  │  2. Ensure visibility & navigation                       │    │
+   │  │  3. Highlight / Click                                    │    │
+   │  ├─────────────────────────────────────────────────────────┤    │
+   │  │ FormFillHandler (formfill)                               │    │
+   │  │  1. Find form element                                    │    │
+   │  │  2. Ensure visibility & navigation                       │    │
+   │  │  3. Set value + dispatch events                          │    │
+   │  │  4. Special: Monaco editor handling                      │    │
+   │  │  5. Special: Combobox staged input                       │    │
+   │  ├─────────────────────────────────────────────────────────┤    │
+   │  │ HoverHandler (hover)                                     │    │
+   │  │  1. Find element                                         │    │
+   │  │  2. Apply CSS hover state (Tailwind group-hover)         │    │
+   │  │  3. Dispatch JS hover events                             │    │
+   │  ├─────────────────────────────────────────────────────────┤    │
+   │  │ NavigateHandler (navigate)                               │    │
+   │  │  1. Internal routes → locationService.push()             │    │
+   │  │  2. External URLs → window.open()                        │    │
+   │  ├─────────────────────────────────────────────────────────┤    │
+   │  │ GuidedHandler (guided)                                   │    │
+   │  │  1. Highlight element                                    │    │
+   │  │  2. Wait for user to perform action                      │    │
+   │  │  3. Listen for completion (click/hover detection)        │    │
+   │  │  4. Coordinate-based matching with padding               │    │
+   │  └─────────────────────────────────────────────────────────┘    │
+   │         ↓                                                        │
+   │ State Update (interactive-state-manager)                         │
+   │  - Dispatch 'interactive-action-completed' event                 │
+   │         ↓                                                        │
+   │ Sequential Step Unlock (if in section)                           │
+   │  - Next step becomes eligible for checking                       │
+   └──────────────────────────────────────────────────────────────────┘
+
+5. AUTO-DETECTION (Optional Feature - Plugin Config)
+   ┌──────────────────────────────────────────────────┐
+   │ ActionMonitor (Singleton) - Global DOM listeners │
+   │         ↓                                        │
+   │ User performs action (click, input, hover)       │
+   │         ↓                                        │
+   │ action-detector.ts                               │
+   │  - Detect action type from event & element       │
+   │  - Filter non-interactive elements               │
+   │         ↓                                        │
+   │ Emit 'user-action-detected' custom event         │
+   │         ↓                                        │
+   │ InteractiveStep/MultiStep/Guided components      │
+   │  - Listen for events when eligible               │
+   │  - Match against step config (action-matcher)    │
+   │  - Coordinate-based + selector-based matching    │
+   │         ↓ (if match)                             │
+   │ Auto-complete step                               │
+   │  - Mark as completed                             │
+   │  - Track analytics                               │
+   │  - Unlock next sequential step                   │
+   └──────────────────────────────────────────────────┘
+
+6. SECTION EXECUTION ("Do Section" button)
+   ┌──────────────────────────────────────────────────┐
+   │ User clicks "Do Section" button                  │
+   │         ↓                                        │
+   │ InteractiveSection.tsx (handleDoSection)         │
+   │         ↓                                        │
+   │ Start Section Blocking (global-interaction-      │
+   │  blocker) - Prevents user interference           │
+   │         ↓                                        │
+   │ Disable ActionMonitor (prevent auto-detection)   │
+   │         ↓                                        │
+   │ For each step in sequence:                       │
+   │  1. Check requirements (with auto-fix)           │
+   │  2. Show phase (highlight) - 1.5s                │
+   │  3. Do phase (execute) - with post-verify        │
+   │  4. Mark completed                               │
+   │  5. Delay between steps - 1.8s                   │
+   │  6. Handle failures:                             │
+   │     a. Try to fix (navigation, location)         │
+   │     b. Skip if skippable                         │
+   │     c. Stop if not skippable                     │
+   │         ↓                                        │
+   │ PAUSE for Guided steps - user must click "Do it" │
+   │         ↓                                        │
+   │ Stop Section Blocking                            │
+   │ Re-enable ActionMonitor                          │
+   │ Persist completion to localStorage               │
+   └──────────────────────────────────────────────────┘
+```
+
+## Key Architectural Patterns
+
+### 1. Context Detection (Automatic & Continuous)
+- **EchoSrv Integration**: Listens to Grafana analytics events for datasource/viz selection
+- **Location Monitoring**: Tracks URL changes via LocationService and browser events
+- **Debounced Updates**: Centralized timeout manager prevents rapid-fire API calls
+- **Event Buffer**: Handles missed events when plugin is closed/reopened
+
+### 2. Documentation Processing (2-Phase Pipeline)
+- **Phase 1: Fetching** (content-fetcher.ts)
+  - Multi-strategy fetching with fallbacks
+  - Bundled content support
+  - Unstyled content handling for Grafana docs
+- **Phase 2: Parsing** (html-parser.ts → content-renderer.tsx)
+  - HTML → React component tree conversion
+  - Fail-fast error handling with detailed diagnostics
+  - Interactive element extraction and configuration
+
+### 3. Interactive Tutorial System (Layered Architecture)
+- **Component Layer**: React components (InteractiveSection, InteractiveStep, etc.)
+- **Hook Layer**: Business logic (interactive.hook, step-checker.hook)
+- **Handler Layer**: Action execution (FocusHandler, ButtonHandler, etc.)
+- **Manager Layer**: State coordination (InteractiveStateManager, SequentialRequirementsManager)
+- **Utility Layer**: DOM operations (navigation-manager, element-validator, enhanced-selector)
+
+### 4. Requirements & Objectives System
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Step Checking Priority (step-checker.hook.ts)              │
+│                                                             │
+│ 1. Check Objectives (data-objectives)                       │
+│    ├─ If met → Auto-complete (completionReason: objectives) │
+│    └─ If not → Continue to #2                               │
+│                                                             │
+│ 2. Check Sequential Eligibility                             │
+│    ├─ If ineligible → Block (show sequential message)       │
+│    └─ If eligible → Continue to #3                          │
+│                                                             │
+│ 3. Check Requirements (data-requirements)                   │
+│    ├─ If met → Enable step                                  │
+│    ├─ If failed & fixable → Offer "Fix this" button         │
+│    ├─ If failed & skippable → Offer "Skip" button           │
+│    └─ If failed → Show explanation (data-hint)              │
+│                                                             │
+│ Requirements Checking (requirements-checker.utils.ts):     │
+│  • Pure checks: has-datasource, is-admin, has-permission   │
+│  • DOM checks: exists-reftarget, navmenu-open              │
+│  • Retry logic: 3 attempts with 200ms delay                │
+│  • Fail-open: Unknown requirements pass with warning       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 5. Auto-Detection System (Opt-in Feature)
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ActionMonitor (Singleton)                                   │
+│  • Registers global DOM listeners (click, input, hover)     │
+│  • Filters non-interactive elements (action-detector)       │
+│  • Emits 'user-action-detected' events                      │
+│                                                             │
+│ Interactive Components Subscribe                            │
+│  • Only when: enabled, eligible, not completed              │
+│  • Match action via action-matcher.ts:                      │
+│    1. Try coordinate-based matching (with 16px padding)     │
+│    2. Fallback to selector-based matching                   │
+│  • On match: Auto-complete step + track analytics           │
+│                                                             │
+│ Disabled During Section Execution                           │
+│  • Prevents conflicts with automated sequences              │
+│  • Re-enabled when section completes                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 6. Global Interaction Blocking (Section Execution Safety)
+```
+┌─────────────────────────────────────────────────────────────┐
+│ global-interaction-blocker.ts (Singleton)                   │
+│                                                             │
+│ Three Overlays:                                             │
+│  1. Main Content Overlay                                    │
+│     - Covers #pageContent area                              │
+│     - Status indicator with cancel button                   │
+│     - Resize/scroll tracking                                │
+│                                                             │
+│  2. Header Overlay                                          │
+│     - Covers top navigation bar                             │
+│     - Spans full viewport width                             │
+│     - Prevents navigation during execution                  │
+│                                                             │
+│  3. Fullscreen Modal Overlay (Dynamic)                      │
+│     - Activated when modal detected                         │
+│     - MutationObserver monitors DOM for modals              │
+│     - Polling fallback (500ms) for edge cases               │
+│                                                             │
+│ Cancellation:                                               │
+│  • Click cancel button                                      │
+│  • Keyboard: Ctrl+C (global handler)                        │
+│  • Callback to section → cleanup & restore state            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Component Relationships
+
+### Navigation & Visibility Stack
+```
+InteractiveStep/Section
+        ↓
+action-handlers/* 
+        ↓
+navigation-manager.ts
+        ├─→ ensureNavigationOpen() - Open/dock nav menu if needed
+        ├─→ ensureElementVisible() - Scroll into view (custom containers)
+        ├─→ highlightWithComment() - Visual feedback with tooltip
+        └─→ expandParentNavigationSection() - Expand collapsed nav sections
+                ↓
+element-validator.ts
+        ├─→ isElementVisible() - Check CSS display/visibility/opacity
+        ├─→ isInViewport() - Check position in viewport
+        ├─→ hasFixedPosition() - Detect fixed/sticky positioning
+        └─→ getScrollParent() - Find custom scroll containers
+                ↓
+enhanced-selector.ts
+        ├─→ querySelectorAllEnhanced() - Complex selector support
+        ├─→ :has() fallback - Parent-child relationships
+        ├─→ :contains() - Text content matching
+        └─→ :nth-match() - Custom global nth matching
+```
+
+### State Management Flow
+```
+InteractiveStep/Section (React components)
+        ↓
+step-checker.hook.ts (Requirements/Objectives)
+        ↓
+SequentialRequirementsManager (Global state coordination)
+        ├─→ registerStep() - Track step in global registry
+        ├─→ updateStep() - Update step state
+        ├─→ startDOMMonitoring() - Watch for DOM/URL changes
+        ├─→ triggerReactiveCheck() - Selective step rechecking
+        └─→ triggerStepEligibilityCheck() - Unlock next step
+                ↓
+interactive-state-manager.ts
+        ├─→ setState() - Track execution state
+        ├─→ startSectionBlocking() - Delegate to global blocker
+        └─→ Event: 'interactive-action-completed'
+                ↓
+global-interaction-blocker.ts (Singleton)
+        ├─→ Create overlays (main, header, fullscreen)
+        ├─→ Block user interactions
+        ├─→ Handle cancellation (Ctrl+C)
+        └─→ Modal detection & dynamic overlay switching
+```
+
+### Link Handling Flow
+```
+User clicks link in content
+        ↓
+link-handler.hook.ts (useLinkClickHandler)
+        ├─→ Journey start buttons → loadTabContent()
+        ├─→ Grafana docs links → openDocsPage() / openLearningJourney()
+        ├─→ Side/related journeys → Open in new tab
+        ├─→ External links → window.open()
+        ├─→ GitHub allowed URLs → Try unstyled.html version
+        └─→ Images → Create lightbox modal
+
+PLUS (if enabled in config):
+        ↓
+global-link-interceptor.hook.ts
+        ├─→ Listens globally (capture phase)
+        ├─→ Filters: Grafana docs/tutorials/learning-journeys
+        ├─→ Respects modifiers (Ctrl/Cmd+Click → new tab)
+        ├─→ Excludes: Already inside [data-pathfinder-content]
+        └─→ Opens in Pathfinder instead of browser
+```
+
+## Performance Optimizations
+
+1. **Debouncing & Timeout Management**
+   - Centralized `TimeoutManager` singleton
+   - Context refresh: 500ms debounce
+   - UI updates: 50ms debounce
+   - Prevents competing timeout mechanisms
+
+2. **Selective Reactive Checking**
+   - Only rechecks eligible (non-completed) steps
+   - Watches specific DOM attributes (aria-expanded, data-testid, etc.)
+   - Debounced DOM observer (800ms)
+   - Lightweight click listener for nav toggles
+
+3. **Memoization & Caching**
+   - Plugin config memoized with useMemo
+   - Action handlers created once with useMemo
+   - Journey completion stored in localStorage
+   - Content parsed once per load
+
+4. **Smart Event Buffering**
+   - EchoSrv events buffered (max 10 events, 5 min TTL)
+   - Handles plugin close/reopen gracefully
+   - Initializes from recent events on startup
+
+## Error Handling Strategy
+
+1. **Fail-Fast Content Parsing**
+   - HTML parsing errors collected with context
+   - Shows detailed error UI (ContentParsingError)
+   - Preserves original HTML for debugging
+   - No silent failures
+
+2. **Graceful Degradation**
+   - External recommender unavailable → Static recommendations
+   - Content fetch failure → Error message with retry
+   - Requirements timeout → Retry with exponential backoff
+   - Unknown requirements → Pass with warning (fail-open)
+
+3. **User-Friendly Messages**
+   - Error type categorization (network, not-found, timeout, etc.)
+   - Requirement explanations (data-hint > mapped messages)
+   - Fix suggestions when available
+   - Context-aware guidance
+
+## Extension Points
+
+1. **New Action Types**: Add handler in `action-handlers/` + update `interactive.hook.ts`
+2. **New Requirements**: Add check function in `requirements-checker.utils.ts`
+3. **New Auto-Detection**: Extend `action-detector.ts` detection logic
+4. **New Content Sources**: Add strategy in `content-fetcher.ts`

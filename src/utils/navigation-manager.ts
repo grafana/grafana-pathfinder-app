@@ -1,7 +1,8 @@
 import { waitForReactUpdates } from './requirements-checker.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
-import { isElementVisible, hasFixedPosition, isInViewport, getScrollParent } from './element-validator';
+import { isElementVisible, getScrollParent, getStickyHeaderOffset } from './element-validator';
+import { sanitizeDocumentationHTML } from './docs-retrieval/html-sanitizer';
 
 export interface NavigationOptions {
   checkContext?: boolean;
@@ -27,8 +28,8 @@ export class NavigationManager {
     const padding = 8; // Minimum padding from viewport edges
 
     // Get comment box dimensions (might vary based on content)
-    const commentWidth = 250; // Fixed width from CSS
-    const commentHeight = commentBox.offsetHeight || 100; // Actual height, fallback to 100
+    const commentWidth = 320; // Fixed width from CSS (increased for better readability with step checklists)
+    const commentHeight = commentBox.offsetHeight || 130; // Actual height, fallback to 130 (increased for larger font/line-height)
 
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
@@ -303,6 +304,7 @@ export class NavigationManager {
 
   /**
    * Ensure element is visible in the viewport by scrolling it into view
+   * Accounts for sticky/fixed headers that may obstruct visibility
    *
    * @param element - The element to make visible
    * @returns Promise that resolves when element is visible in viewport
@@ -320,93 +322,97 @@ export class NavigationManager {
       // Continue anyway - element might become visible during interaction
     }
 
-    // 2. Skip scrolling for fixed/sticky elements already in viewport
-    if (hasFixedPosition(element) && isInViewport(element)) {
-      return; // Already visible, no scroll needed
-    }
+    // 2. Calculate sticky header offset to account for headers blocking view
+    const stickyOffset = getStickyHeaderOffset(element);
 
-    // 3. Check if element is already in viewport
-    if (isInViewport(element)) {
-      return; // Already visible, no scroll needed
-    }
-
-    // 4. Handle custom scroll containers (Grafana panels, modals, nested divs)
+    // 3. Check if element is already visible - if so, skip scrolling!
+    const rect = element.getBoundingClientRect();
     const scrollContainer = getScrollParent(element);
+    const containerRect =
+      scrollContainer === document.documentElement
+        ? { top: 0, bottom: window.innerHeight }
+        : scrollContainer.getBoundingClientRect();
 
-    if (scrollContainer !== document.documentElement) {
-      // Custom scroll container - use manual scrolling
-      await this.scrollInCustomContainer(element, scrollContainer);
-    } else {
-      // Standard document scrolling
-      element.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-        inline: 'center',
-      });
+    // Element is visible if it's within the container bounds (accounting for sticky offset)
+    const isVisible = rect.top >= containerRect.top + stickyOffset && rect.bottom <= containerRect.bottom;
 
-      // Wait for scroll animation to complete
-      await this.waitForScrollComplete(element);
+    if (isVisible) {
+      return; // Already visible, no need to scroll!
     }
 
-    // Add small DOM settling delay after scroll completes to ensure element position is stable
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // 4. Set scroll-padding-top on container (modern CSS solution)
+    const originalScrollPadding = scrollContainer.style.scrollPaddingTop;
+    if (stickyOffset > 0) {
+      scrollContainer.style.scrollPaddingTop = `${stickyOffset + 10}px`; // +10px padding
+    }
+
+    // 5. Scroll into view with smooth animation
+    element.scrollIntoView({
+      behavior: 'smooth', // Smooth animation looks better
+      block: 'start', // Position at top (below sticky headers due to scroll-padding-top)
+      inline: 'nearest',
+    });
+
+    // Wait for browser to finish scrolling using modern scrollend event
+    await this.waitForScrollEnd(scrollContainer);
+
+    // Restore original scroll padding after scroll completes
+    scrollContainer.style.scrollPaddingTop = originalScrollPadding;
   }
 
   /**
-   * Scroll element into view within a custom scroll container
-   * Handles nested scrollable containers like Grafana panels or modals
+   * Wait for scroll animation to complete using modern scrollend event
+   * Browser-native event that fires when scrolling stops (no guessing!)
+   * Per MDN: "If scroll position did not change, then no scrollend event fires"
    *
-   * @param element - The element to scroll into view
-   * @param container - The scrollable container
-   * @returns Promise that resolves when scrolling is complete
+   * @param scrollContainer - The element that is scrolling
+   * @returns Promise that resolves when scrolling completes
    */
-  private async scrollInCustomContainer(element: HTMLElement, container: HTMLElement): Promise<void> {
-    const containerRect = container.getBoundingClientRect();
-    const elementRect = element.getBoundingClientRect();
-
-    // Check if element is outside container viewport
-    if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
-      // Calculate scroll offset to center element in container
-      const scrollOffset = elementRect.top - containerRect.top - (containerRect.height - elementRect.height) / 2;
-
-      container.scrollBy({
-        top: scrollOffset,
-        behavior: 'smooth',
-      });
-
-      // Wait for scroll to complete
-      await this.waitForScrollComplete(container);
-    }
-  }
-
-  private waitForScrollComplete(
-    element: HTMLElement,
-    fallbackTimeout = INTERACTIVE_CONFIG.delays.navigation.scrollFallbackTimeout
-  ): Promise<void> {
+  private waitForScrollEnd(scrollContainer: HTMLElement): Promise<void> {
     return new Promise((resolve) => {
-      let scrollTimeout: NodeJS.Timeout;
-      let fallbackTimeoutId: NodeJS.Timeout;
+      let scrollDetected = false;
+      let resolved = false;
+      let timeoutId: NodeJS.Timeout;
 
-      const handleScroll = () => {
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-          // Clean up event listener
-          element.removeEventListener('scroll', handleScroll);
-          clearTimeout(fallbackTimeoutId);
-          resolve();
-        }, INTERACTIVE_CONFIG.delays.navigation.scrollTimeout);
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        scrollContainer.removeEventListener('scroll', scrollHandler);
+        scrollContainer.removeEventListener('scrollend', scrollendHandler);
+        document.removeEventListener('scrollend', docScrollendHandler);
       };
 
-      // Add event listener
-      element.addEventListener('scroll', handleScroll);
-
-      // Fallback timeout with cleanup
-      fallbackTimeoutId = setTimeout(() => {
-        // Clean up event listener
-        element.removeEventListener('scroll', handleScroll);
-        clearTimeout(scrollTimeout);
+      const handleScrollEnd = () => {
+        if (resolved) {
+          return;
+        }
+        resolved = true;
+        cleanup();
         resolve();
-      }, fallbackTimeout);
+      };
+
+      const scrollHandler = () => {
+        scrollDetected = true;
+        // Scroll started - now wait for scrollend
+      };
+
+      const scrollendHandler = () => handleScrollEnd();
+      const docScrollendHandler = () => handleScrollEnd();
+
+      // Detect if scrolling actually happens
+      scrollContainer.addEventListener('scroll', scrollHandler, { once: true, passive: true });
+
+      // Listen for scrollend on both container and document
+      // Per Chrome blog: scrollIntoView may fire scrollend on different elements
+      scrollContainer.addEventListener('scrollend', scrollendHandler, { once: true });
+      document.addEventListener('scrollend', docScrollendHandler, { once: true });
+
+      // Safety timeout: If no scroll detected after 200ms, assume no scroll needed
+      // This handles edge cases where scrollIntoView is a no-op
+      timeoutId = setTimeout(() => {
+        if (!scrollDetected && !resolved) {
+          handleScrollEnd();
+        }
+      }, 200);
     });
   }
 
@@ -442,9 +448,8 @@ export class NavigationManager {
     await this.ensureNavigationOpen(element);
     await this.ensureElementVisible(element);
 
-    // DOM settling delay after scroll to ensure accurate element positioning
-    // This prevents highlight positioning issues when DOM hasn't fully settled
-    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.domSettlingDelay));
+    // No DOM settling delay needed - scrollend event ensures scroll is complete
+    // and DOM is stable. Highlight immediately for better responsiveness!
 
     // Add highlight class for better styling
     element.classList.add('interactive-highlighted');
@@ -579,7 +584,8 @@ export class NavigationManager {
     // Create text container with HTML support
     const textContainer = document.createElement('div');
     textContainer.className = 'interactive-comment-text';
-    textContainer.innerHTML = comment; // Use innerHTML to support rich HTML content
+    // SECURITY: Sanitize comment HTML before insertion to prevent XSS
+    textContainer.innerHTML = sanitizeDocumentationHTML(comment || '');
 
     // Create content wrapper
     const contentWrapper = document.createElement('div');
@@ -858,9 +864,7 @@ export class NavigationManager {
     const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
     if (!megaMenuToggle) {
       if (logWarnings) {
-        console.warn(
-          '⚠️ Mega menu toggle button not found - navigation may already be open or use different structure'
-        );
+        console.warn('Mega menu toggle button not found - navigation may already be open or use different structure');
       }
       return;
     }
@@ -882,7 +886,7 @@ export class NavigationManager {
         return;
       } else {
         if (logWarnings) {
-          console.warn('⚠️ Dock menu button not found, navigation will remain in modal mode');
+          console.warn('Dock menu button not found, navigation will remain in modal mode');
         }
         return;
       }

@@ -10,12 +10,14 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { getRequirementExplanation } from './requirement-explanations';
 import { SequentialRequirementsManager } from './requirements-checker.hook';
 import { useInteractiveElements } from './interactive.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { useTimeoutManager } from './timeout-manager';
 import { checkRequirements } from './requirements-checker.utils';
+import { useSequentialStepState } from './use-sequential-step-state.hook';
 
 export interface UseStepCheckerProps {
   requirements?: string;
@@ -86,10 +88,20 @@ export function useStepChecker({
     isRetrying: false,
   });
 
+  // Track previous isEnabled state to detect actual transitions
+  const prevIsEnabledRef = useRef(state.isEnabled);
+
+  // Track when step became enabled to prevent immediate rechecks
+  const enabledTimestampRef = useRef<number>(0);
+
   const timeoutManager = useTimeoutManager();
 
   // Requirements checking is now handled by the pure requirements utility
   const { checkRequirementsFromData } = useInteractiveElements();
+
+  // Subscribe to manager state changes via useSyncExternalStore
+  // This ensures React renders are synchronized with manager state updates
+  const managerStepState = useSequentialStepState(stepId);
 
   // Custom requirements checker that provides state updates for retry feedback
   const checkRequirementsWithStateUpdates = useCallback(
@@ -278,6 +290,13 @@ export function useStepChecker({
       return;
     }
 
+    // Prevent checking too soon after becoming enabled (let DOM settle)
+    const timeSinceEnabled = Date.now() - enabledTimestampRef.current;
+    if (state.isEnabled && timeSinceEnabled < 200) {
+      // Skip this check - DOM might not be settled yet
+      return;
+    }
+
     setState((prev) => ({ ...prev, isChecking: true, error: undefined, retryCount: 0, isRetrying: false }));
 
     try {
@@ -301,12 +320,15 @@ export function useStepChecker({
             maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
             isRetrying: false,
           };
-          setState(finalState);
+
+          // Use flushSync for objectives to ensure immediate UI update
+          flushSync(() => {
+            setState(finalState);
+          });
+          prevIsEnabledRef.current = true;
+          enabledTimestampRef.current = Date.now(); // Track when enabled
           updateManager(finalState);
           return;
-        } else if (objectivesResult.error) {
-          // Objectives check failed - log error but continue to requirements (per spec)
-          console.error(`⚠️ Objectives check failed for ${stepId}:`, objectivesResult.error);
         }
       }
 
@@ -414,8 +436,27 @@ export function useStepChecker({
           isRetrying: false,
         };
 
-        setState(requirementsState);
-        updateManager(requirementsState);
+        // Use flushSync ONLY when transitioning from disabled to enabled
+        // This prevents the step from appearing locked when Grafana main UI is rendering heavily
+        const isTransitioningToEnabled = !prevIsEnabledRef.current && requirementsResult.pass;
+
+        if (isTransitioningToEnabled) {
+          flushSync(() => {
+            setState(requirementsState);
+          });
+          prevIsEnabledRef.current = true;
+          enabledTimestampRef.current = Date.now(); // Track when enabled
+          updateManager(requirementsState);
+        } else {
+          // For other state changes, normal batching is fine
+          setState(requirementsState);
+          prevIsEnabledRef.current = requirementsResult.pass;
+          if (requirementsResult.pass) {
+            enabledTimestampRef.current = Date.now();
+          }
+          updateManager(requirementsState);
+        }
+
         return;
       }
 
@@ -436,10 +477,20 @@ export function useStepChecker({
         maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
         isRetrying: false,
       };
-      setState(enabledState);
+
+      // Use flushSync when step becomes enabled
+      const wasDisabled = !prevIsEnabledRef.current;
+      if (wasDisabled) {
+        flushSync(() => {
+          setState(enabledState);
+        });
+        prevIsEnabledRef.current = true;
+        enabledTimestampRef.current = Date.now(); // Track when enabled
+      } else {
+        setState(enabledState);
+      }
       updateManager(enabledState);
     } catch (error) {
-      console.error(`❌ Step checking failed for ${stepId}:`, error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to check step conditions';
       const errorState = {
         isEnabled: false,
@@ -641,13 +692,14 @@ export function useStepChecker({
   }, [stepId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check requirements when step eligibility changes (both true and false)
+  // Also recheck when manager state changes (via useSyncExternalStore)
   useEffect(() => {
     if (!state.isCompleted) {
       // Always recheck when eligibility changes, whether becoming eligible or ineligible
       // This ensures steps show the correct "blocked" state when they become ineligible
       checkStepRef.current();
     }
-  }, [isEligibleForChecking]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isEligibleForChecking, managerStepState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for section completion events (for section dependencies)
   useEffect(() => {
@@ -709,7 +761,10 @@ export function useStepChecker({
       setTimeout(tick, intervalMs);
     };
 
-    const timeoutId = setTimeout(tick, intervalMs);
+    // Add initial delay before first heartbeat check to let DOM settle
+    // This prevents immediate recheck right after step becomes enabled
+    const initialDelay = intervalMs + 500; // Add 500ms buffer to normal interval
+    const timeoutId = setTimeout(tick, initialDelay);
 
     return () => {
       stopped = true;

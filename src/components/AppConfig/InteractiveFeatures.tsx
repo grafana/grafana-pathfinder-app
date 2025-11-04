@@ -1,4 +1,4 @@
-import React, { useState, ChangeEvent, useEffect } from 'react';
+import React, { useState, ChangeEvent } from 'react';
 import { Button, Field, Input, useStyles2, FieldSet, Switch, Text, Alert } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -6,7 +6,6 @@ import { testIds } from '../testIds';
 import {
   DocsPluginConfig,
   DEFAULT_ENABLE_AUTO_DETECTION,
-  DEFAULT_AUTO_DETECTION_DEBOUNCE,
   DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   DEFAULT_GUIDED_STEP_TIMEOUT,
 } from '../../constants';
@@ -16,7 +15,6 @@ type JsonData = DocsPluginConfig;
 
 type State = {
   enableAutoDetection: boolean;
-  autoDetectionDebounce: number;
   requirementsCheckTimeout: number;
   guidedStepTimeout: number;
 };
@@ -27,24 +25,15 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
   const styles = useStyles2(getStyles);
   const { enabled, pinned, jsonData } = plugin.meta;
 
-  const [state, setState] = useState<State>({
+  // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
+  // After save, page reload brings fresh jsonData - no sync needed
+  const [state, setState] = useState<State>(() => ({
     enableAutoDetection: jsonData?.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
-    autoDetectionDebounce: jsonData?.autoDetectionDebounce ?? DEFAULT_AUTO_DETECTION_DEBOUNCE,
     requirementsCheckTimeout: jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
     guidedStepTimeout: jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
-  });
+  }));
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-
-  // Sync local state with jsonData when it changes (after reload)
-  useEffect(() => {
-    setState({
-      enableAutoDetection: jsonData?.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
-      autoDetectionDebounce: jsonData?.autoDetectionDebounce ?? DEFAULT_AUTO_DETECTION_DEBOUNCE,
-      requirementsCheckTimeout: jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
-      guidedStepTimeout: jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
-    });
-  }, [jsonData]);
 
   const validateNumber = (value: string, min: number, max: number, fieldName: string): number | null => {
     const num = parseInt(value, 10);
@@ -68,13 +57,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     setState({ ...state, enableAutoDetection: event.target.checked });
   };
 
-  const onChangeDebounce = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = validateNumber(event.target.value, 50, 1000, 'debounce');
-    if (value !== null) {
-      setState({ ...state, autoDetectionDebounce: value });
-    }
-  };
-
   const onChangeRequirementsTimeout = (event: ChangeEvent<HTMLInputElement>) => {
     const value = validateNumber(event.target.value, 1000, 10000, 'requirementsTimeout');
     if (value !== null) {
@@ -92,7 +74,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
   const onResetDefaults = () => {
     setState({
       enableAutoDetection: DEFAULT_ENABLE_AUTO_DETECTION,
-      autoDetectionDebounce: DEFAULT_AUTO_DETECTION_DEBOUNCE,
       requirementsCheckTimeout: DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
       guidedStepTimeout: DEFAULT_GUIDED_STEP_TIMEOUT,
     });
@@ -113,7 +94,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
       const newJsonData = {
         ...jsonData,
         enableAutoDetection: state.enableAutoDetection,
-        autoDetectionDebounce: state.autoDetectionDebounce,
         requirementsCheckTimeout: state.requirementsCheckTimeout,
         guidedStepTimeout: state.guidedStepTimeout,
       };
@@ -143,7 +123,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
 
   const hasChanges =
     state.enableAutoDetection !== (jsonData?.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION) ||
-    state.autoDetectionDebounce !== (jsonData?.autoDetectionDebounce ?? DEFAULT_AUTO_DETECTION_DEBOUNCE) ||
     state.requirementsCheckTimeout !== (jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT) ||
     state.guidedStepTimeout !== (jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT);
 
@@ -203,27 +182,6 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
               Fine-tune timing parameters for interactive tutorial behavior
             </Text>
           </div>
-
-          {/* Debounce Delay */}
-          <Field
-            label="Action detection debounce"
-            description="Delay before detecting user actions (prevents rapid-fire matches). Range: 50-1000ms"
-            invalid={!!validationErrors.debounce}
-            error={validationErrors.debounce}
-            className={styles.field}
-          >
-            <Input
-              type="number"
-              width={20}
-              id="auto-detection-debounce"
-              data-testid={testIds.appConfig.interactiveFeatures?.debounce}
-              value={state.autoDetectionDebounce}
-              onChange={onChangeDebounce}
-              suffix="ms"
-              min={50}
-              max={1000}
-            />
-          </Field>
 
           {/* Requirements Check Timeout */}
           <Field

@@ -1,41 +1,35 @@
 import React, { useState, ChangeEvent } from 'react';
-import { Button, Field, Input, useStyles2, FieldSet, SecretInput, Switch, Alert, Text } from '@grafana/ui';
+import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
 import {
   DocsPluginConfig,
   DEFAULT_RECOMMENDER_SERVICE_URL,
-  DEFAULT_DOCS_BASE_URL,
-  DEFAULT_DOCS_USERNAME,
   DEFAULT_TUTORIAL_URL,
   DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+  DEFAULT_OPEN_PANEL_ON_LAUNCH,
   DEFAULT_ENABLE_LIVE_SESSIONS,
   DEFAULT_PEERJS_HOST,
   DEFAULT_PEERJS_PORT,
   DEFAULT_PEERJS_KEY,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
+import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
+import { config } from '@grafana/runtime';
+import { FeatureFlags, getFeatureToggle } from '../../utils/openfeature';
 
 type JsonData = DocsPluginConfig;
 
 type State = {
   // The URL to reach the recommender service
   recommenderServiceUrl: string;
-  // The base URL for the docs website service
-  docsBaseUrl: string;
-  // Username for docs authentication
-  docsUsername: string;
-  // Password for docs authentication
-  docsPassword: string;
-  // Tells us if the docs password secret is set (from secureJsonFields)
-  isDocsPasswordSet: boolean;
   // Auto-launch tutorial URL (for demo scenarios)
   tutorialUrl: string;
-  // Dev mode enables loading of the components page for testing of proper rendering of components
-  devMode: boolean;
   // Global link interception
   interceptGlobalDocsLinks: boolean;
+  // Open panel on launch
+  openPanelOnLaunch: boolean;
   // Live sessions (collaborative learning)
   enableLiveSessions: boolean;
   peerjsHost: string;
@@ -47,61 +41,58 @@ export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginM
 
 const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const urlParams = new URLSearchParams(window.location.search);
-  const showDevModeInput = urlParams.get('dev') === 'true';
+  const hasDevParam = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
-  const { enabled, pinned, jsonData, secureJsonFields } = plugin.meta;
-  const [state, setState] = useState<State>({
-    recommenderServiceUrl: jsonData?.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
-    docsBaseUrl: jsonData?.docsBaseUrl || DEFAULT_DOCS_BASE_URL,
-    docsUsername: jsonData?.docsUsername || DEFAULT_DOCS_USERNAME,
-    docsPassword: '',
-    isDocsPasswordSet: Boolean(secureJsonFields && (secureJsonFields as any).docsPassword),
-    tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
-    devMode: jsonData?.devMode || false,
-    interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
-    enableLiveSessions: jsonData?.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
-    peerjsHost: jsonData?.peerjsHost || DEFAULT_PEERJS_HOST,
-    peerjsPort: jsonData?.peerjsPort ?? DEFAULT_PEERJS_PORT,
-    peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
+  const { enabled, pinned, jsonData } = plugin.meta;
+
+  // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
+  // After save, page reload brings fresh jsonData - no sync needed
+  const [state, setState] = useState<State>(() => {
+    // Feature toggle: sets the default value for openPanelOnLaunch
+    const toggleValue = getFeatureToggle(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH);
+    const defaultOpenPanelValue = toggleValue !== undefined ? toggleValue : DEFAULT_OPEN_PANEL_ON_LAUNCH;
+
+    return {
+      recommenderServiceUrl: jsonData?.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
+      tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
+      interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+      openPanelOnLaunch: jsonData?.openPanelOnLaunch ?? defaultOpenPanelValue,
+      enableLiveSessions: jsonData?.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
+      peerjsHost: jsonData?.peerjsHost || DEFAULT_PEERJS_HOST,
+      peerjsPort: jsonData?.peerjsPort ?? DEFAULT_PEERJS_PORT,
+      peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
+    };
   });
   const [isSaving, setIsSaving] = useState(false);
 
+  // SECURITY: Dev mode - hybrid approach (jsonData storage, multi-user ID scoping)
+  // Get current user ID for scoping
+  const currentUserId = config.bootData.user?.id;
+  const devModeUserIds = jsonData?.devModeUserIds ?? [];
+
+  // Check if dev mode is enabled for THIS user (synchronous)
+  const devModeEnabledForUser = isDevModeEnabled(jsonData || {}, currentUserId);
+  const [devModeToggling, setDevModeToggling] = useState<boolean>(false);
+
+  // Assistant dev mode state
+  const assistantDevModeEnabled = jsonData?.enableAssistantDevMode ?? false;
+  const [assistantDevModeToggling, setAssistantDevModeToggling] = useState<boolean>(false);
+
+  // Show dev mode input if URL param is set OR if dev mode is already enabled for this user
+  const showDevModeInput = hasDevParam || devModeEnabledForUser;
+
+  // Show advanced config fields only in dev mode (for Grafana team development)
+  const showAdvancedConfig = devModeEnabledForUser || showDevModeInput;
+
   // Configuration is now retrieved directly from plugin meta via usePluginContext
 
-  const isSubmitDisabled = Boolean(!state.recommenderServiceUrl || !state.docsBaseUrl);
-
-  const onResetDocsPassword = () =>
-    setState({
-      ...state,
-      docsPassword: '',
-      isDocsPasswordSet: false,
-    });
-
-  const onChangeDocsPassword = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      docsPassword: event.target.value.trim(),
-    });
-  };
+  // Only require service URLs when in dev mode, otherwise these are hidden
+  const isSubmitDisabled = showAdvancedConfig ? Boolean(!state.recommenderServiceUrl) : false;
 
   const onChangeRecommenderServiceUrl = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
       ...state,
       recommenderServiceUrl: event.target.value.trim(),
-    });
-  };
-
-  const onChangeDocsBaseUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      docsBaseUrl: event.target.value.trim(),
-    });
-  };
-
-  const onChangeDocsUsername = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      docsUsername: event.target.value.trim(),
     });
   };
 
@@ -112,17 +103,73 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
-  const onChangeDevMode = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      devMode: event.target.checked,
-    });
+  const onChangeDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!currentUserId) {
+      alert('Cannot determine current user. Please refresh the page and try again.');
+      return;
+    }
+
+    // SECURITY: Dev mode is now stored in plugin jsonData (server-side, admin-controlled)
+    setDevModeToggling(true);
+    try {
+      await toggleDevMode(currentUserId, devModeEnabledForUser, devModeUserIds);
+
+      // Reload page to refresh plugin config and apply changes globally
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.error('Failed to toggle dev mode:', error);
+
+      // Show user-friendly error message
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to toggle dev mode. You may need admin permissions.';
+      alert(errorMessage);
+
+      setDevModeToggling(false);
+    }
+  };
+
+  const onChangeAssistantDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
+    setAssistantDevModeToggling(true);
+    try {
+      const newValue = event.target.checked;
+
+      await updatePluginSettings(plugin.meta.id, {
+        enabled,
+        pinned,
+        jsonData: {
+          ...jsonData,
+          enableAssistantDevMode: newValue,
+        },
+      });
+
+      // Reload page to refresh plugin config and apply changes globally
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.error('Failed to toggle assistant dev mode:', error);
+
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to toggle assistant dev mode. You may need admin permissions.';
+      alert(errorMessage);
+
+      setAssistantDevModeToggling(false);
+    }
   };
 
   const onToggleGlobalLinkInterception = (event: ChangeEvent<HTMLInputElement>) => {
     setState({
       ...state,
       interceptGlobalDocsLinks: event.target.checked,
+    });
+  };
+
+  const onToggleOpenPanelOnLaunch = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      openPanelOnLaunch: event.target.checked,
     });
   };
 
@@ -164,11 +211,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       const newJsonData = {
         ...jsonData, // Preserve existing fields
         recommenderServiceUrl: state.recommenderServiceUrl,
-        docsBaseUrl: state.docsBaseUrl,
-        docsUsername: state.docsUsername,
         tutorialUrl: state.tutorialUrl,
-        devMode: state.devMode,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
+        openPanelOnLaunch: state.openPanelOnLaunch,
         enableLiveSessions: state.enableLiveSessions,
         peerjsHost: state.peerjsHost,
         peerjsPort: state.peerjsPort,
@@ -179,8 +224,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         enabled,
         pinned,
         jsonData: newJsonData,
-        // Only include secureJsonData if password was changed
-        secureJsonData: state.isDocsPasswordSet ? undefined : { docsPassword: state.docsPassword },
       });
 
       // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh
@@ -202,71 +245,30 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   return (
     <form onSubmit={onSubmit}>
       <FieldSet label="Plugin Configuration" className={s.marginTopXl}>
-        {/* Recommender Service URL */}
-        <Field
-          label="Recommender service URL"
-          description="The URL of the service that provides documentation recommendations"
-        >
-          <Input
-            width={60}
-            id="recommender-service-url"
-            data-testid={testIds.appConfig.recommenderServiceUrl}
-            value={state.recommenderServiceUrl}
-            placeholder={DEFAULT_RECOMMENDER_SERVICE_URL}
-            onChange={onChangeRecommenderServiceUrl}
-          />
-        </Field>
+        {/* Advanced configuration fields - only shown in dev mode */}
+        {showAdvancedConfig && (
+          <>
+            {/* Recommender Service URL */}
+            <Field
+              label="Recommender service URL"
+              description="The URL of the service that provides documentation recommendations (Dev mode only)"
+            >
+              <Input
+                width={60}
+                id="recommender-service-url"
+                data-testid={testIds.appConfig.recommenderServiceUrl}
+                value={state.recommenderServiceUrl}
+                placeholder={DEFAULT_RECOMMENDER_SERVICE_URL}
+                onChange={onChangeRecommenderServiceUrl}
+              />
+            </Field>
+          </>
+        )}
 
-        {/* Docs Base website URL */}
-        <Field label="Docs base URL" description="The base URL for the documentation service" className={s.marginTop}>
-          <Input
-            width={60}
-            id="docs-base-url"
-            data-testid={testIds.appConfig.docsBaseUrl}
-            value={state.docsBaseUrl}
-            placeholder={DEFAULT_DOCS_BASE_URL}
-            onChange={onChangeDocsBaseUrl}
-          />
-        </Field>
-
-        {/* Docs Username */}
-        <Field
-          label="Docs username"
-          description="Username for accessing the documentation service (if authentication is required)"
-          className={s.marginTop}
-        >
-          <Input
-            width={60}
-            id="docs-username"
-            data-testid={testIds.appConfig.docsUsername}
-            value={state.docsUsername}
-            placeholder="Enter username (optional)"
-            onChange={onChangeDocsUsername}
-          />
-        </Field>
-
-        {/* Docs Password */}
-        <Field
-          label="Docs password"
-          description="Password for accessing the documentation service (if authentication is required)"
-          className={s.marginTop}
-        >
-          <SecretInput
-            width={60}
-            data-testid={testIds.appConfig.docsPassword}
-            id="docs-password"
-            value={state.docsPassword}
-            isConfigured={state.isDocsPasswordSet}
-            placeholder="Enter password (optional)"
-            onChange={onChangeDocsPassword}
-            onReset={onResetDocsPassword}
-          />
-        </Field>
-
-        {/* Tutorial URL */}
+        {/* Tutorial URL - available to all users */}
         <Field
           label="Auto-launch tutorial URL"
-          description="Optional: URL of a learning journey or documentation page to automatically open when Grafana starts. Useful for demo scenarios. Can be set via environment variable GF_PLUGINS_GRAFANA_GRAFANADOCSPLUGIN_APP_TUTORIAL_URL"
+          description="Optional: URL of a learning journey or documentation page to automatically open when the Interactive learning panel opens. Useful for demo scenarios. Can be set via environment variable GRAFANA_INTERACTIVE_LEARNING_TUTORIAL_URL"
           className={s.marginTop}
         >
           <Input
@@ -279,15 +281,76 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           />
         </Field>
 
-        {/* Dev Mode */}
+        {/* Dev Mode - Per-User Setting (stored server-side in Grafana user preferences) */}
         {showDevModeInput && (
-          <Field label="Dev Mode" description="Enable dev mode" className={s.marginTop}>
-            <Input type="checkbox" id="dev-mode" checked={state.devMode} onChange={onChangeDevMode} />
-          </Field>
+          <>
+            <Field
+              label="Dev Mode"
+              description="⚠️ WARNING: Disables security protections. Only enable in isolated development environments. Requires admin permissions to change. Only visible to the user who enabled it."
+              className={s.marginTop}
+            >
+              <div className={s.devModeField}>
+                <Input
+                  type="checkbox"
+                  id="dev-mode"
+                  checked={devModeEnabledForUser}
+                  onChange={onChangeDevMode}
+                  disabled={devModeToggling}
+                />
+                {devModeToggling && <span className={s.updateText}>Saving to server and reloading...</span>}
+              </div>
+            </Field>
+
+            {/* Assistant Dev Mode - Only show when main dev mode is enabled */}
+            {devModeEnabledForUser && (
+              <Field
+                label="Enable Assistant (Dev Mode)"
+                description="Mock the Grafana Assistant in OSS environments for testing. When enabled, the assistant popover will appear on text selection and log prompts to console instead of opening the real assistant."
+                className={s.marginTop}
+              >
+                <div className={s.devModeField}>
+                  <Input
+                    type="checkbox"
+                    id="assistant-dev-mode"
+                    checked={assistantDevModeEnabled}
+                    onChange={onChangeAssistantDevMode}
+                    disabled={assistantDevModeToggling}
+                  />
+                  {assistantDevModeToggling && <span className={s.updateText}>Saving to server and reloading...</span>}
+                </div>
+              </Field>
+            )}
+
+            {devModeEnabledForUser && (
+              <Alert severity="warning" title="⚠️ Dev mode security warning" className={s.marginTop}>
+                <Text variant="body" weight="bold">
+                  Dev mode disables critical security protections:
+                </Text>
+                <ul style={{ marginTop: '8px', marginBottom: '8px' }}>
+                  <li>Allows loading content from ANY GitHub repository (bypasses branch validation)</li>
+                  <li>Allows loading content from ANY localhost URL</li>
+                  <li>Exposes debug tools that can manipulate the Grafana DOM</li>
+                  <li>Bypasses source validation for interactive content</li>
+                </ul>
+                <Text variant="body" weight="bold" color="error">
+                  Only enable dev mode in isolated development environments. Never enable when viewing untrusted content
+                  or in production.
+                </Text>
+              </Alert>
+            )}
+          </>
         )}
 
         {/* Global Link Interception */}
-        <FieldSet label="Global Link Interception" className={s.marginTopXl}>
+        <FieldSet
+          label={
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Global Link Interception
+              <Badge text="Experimental" color="orange" />
+            </div>
+          }
+          className={s.marginTopXl}
+        >
           <div className={s.toggleSection}>
             <Switch
               id="enable-global-link-interception"
@@ -299,7 +362,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                 Intercept documentation links globally
               </Text>
               <Text variant="body" color="secondary">
-                When enabled, clicking Grafana docs links anywhere will open them in Pathfinder instead of a new tab
+                When enabled, clicking Grafana docs links anywhere will open them in Interactive learning instead of a
+                new tab
               </Text>
             </div>
           </div>
@@ -307,13 +371,51 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           {state.interceptGlobalDocsLinks && (
             <Alert severity="info" title="How it works" className={s.marginTop}>
               <Text variant="body">
-                When you click a documentation link anywhere in Grafana, Pathfinder will automatically open the sidebar
-                (if closed) and display the documentation inside. Links are queued if the sidebar hasn&apos;t fully
-                loaded yet.
+                When you click a documentation link anywhere in Grafana, Interactive learning will automatically open
+                the sidebar (if closed) and display the documentation inside. Links are queued if the sidebar
+                hasn&apos;t fully loaded yet.
                 <br />
                 <br />
                 Hold <strong>Ctrl</strong> (Windows/Linux) or <strong>Cmd</strong> (Mac) while clicking any link to open
-                it in a new tab instead of Pathfinder. Middle-click also opens in a new tab.
+                it in a new tab instead of Interactive learning. Middle-click also opens in a new tab.
+              </Text>
+            </Alert>
+          )}
+        </FieldSet>
+
+        {/* Open Panel on Launch */}
+        <FieldSet
+          label={
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Open Panel on Launch
+              <Badge text="Experimental" color="orange" />
+            </div>
+          }
+          className={s.marginTopXl}
+        >
+          <div className={s.toggleSection}>
+            <Switch
+              id="enable-open-panel-on-launch"
+              value={state.openPanelOnLaunch}
+              onChange={onToggleOpenPanelOnLaunch}
+            />
+            <div className={s.toggleLabels}>
+              <Text variant="body" weight="medium">
+                Automatically open Interactive learning panel when Grafana loads
+              </Text>
+              <Text variant="body" color="secondary">
+                When enabled, the Interactive learning sidebar will automatically open when you first load Grafana (only
+                on initial load, not on every page navigation)
+              </Text>
+            </div>
+          </div>
+
+          {state.openPanelOnLaunch && (
+            <Alert severity="info" title="How it works" className={s.marginTop}>
+              <Text variant="body">
+                The Interactive learning sidebar will automatically open when Grafana loads for the first time in your
+                browser session. It will not reopen on subsequent page navigations within Grafana. The panel will reset
+                to auto-open behavior when you refresh the entire page or start a new browser session.
               </Text>
             </Alert>
           )}
@@ -430,5 +532,17 @@ const getStyles = (theme: GrafanaTheme2) => ({
     flex-direction: column;
     gap: ${theme.spacing(0.5)};
     flex: 1;
+  `,
+  devModeField: css`
+    display: flex;
+    align-items: center;
+    gap: ${theme.spacing(1)};
+  `,
+  updateText: css`
+    color: ${theme.colors.text.secondary};
+    font-size: ${theme.typography.bodySmall.fontSize};
+  `,
+  marginTopSmall: css`
+    margin-top: ${theme.spacing(1)};
   `,
 });

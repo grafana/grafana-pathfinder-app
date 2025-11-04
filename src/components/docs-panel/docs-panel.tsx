@@ -3,16 +3,32 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
-import { IconButton, Alert, Icon, useStyles2, ButtonGroup } from '@grafana/ui';
+import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { getConfigWithDefaults, DocsPluginConfig } from '../../constants';
+import {
+  DocsPluginConfig,
+  ALLOWED_GRAFANA_DOCS_HOSTNAMES,
+  ALLOWED_GITHUB_REPOS,
+  getConfigWithDefaults,
+} from '../../constants';
 
 import { useInteractiveElements } from '../../utils/interactive.hook';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
+import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+import {
+  parseUrlSafely,
+  isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isLocalhostUrl,
+} from '../../utils/url-validator';
+import { isDataProxyUrl } from '../../utils/data-proxy';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
@@ -37,8 +53,9 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { Button } from '@grafana/ui';
-import { getAppEvents } from '@grafana/runtime';
+import { isDevModeEnabled } from '../../utils/dev-mode';
+import { config, getAppEvents, locationService } from '@grafana/runtime';
+import logoSvg from '../../img/logo.svg';
 import { PresenterControls, AttendeeJoin } from '../LiveSession';
 import { SessionProvider, useSession } from '../../utils/collaboration/session-state';
 import { ActionReplaySystem } from '../../utils/collaboration/action-replay';
@@ -75,9 +92,6 @@ interface CombinedPanelState extends SceneObjectState {
   pluginConfig: DocsPluginConfig;
 }
 
-const STORAGE_KEY = 'grafana-docs-plugin-tabs';
-const ACTIVE_TAB_STORAGE_KEY = 'grafana-docs-plugin-active-tab';
-
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public static Component = CombinedPanelRenderer;
 
@@ -86,19 +100,42 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public constructor(pluginConfig: DocsPluginConfig = {}) {
-    const restoredTabs = CombinedLearningJourneyPanel.restoreTabsFromStorage();
+    // Initialize with default tabs first
+    const defaultTabs: LearningJourneyTab[] = [
+      {
+        id: 'recommendations',
+        title: 'Recommendations',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+      },
+    ];
+
     const contextPanel = new ContextPanel(
       (url: string, title: string) => this.openLearningJourney(url, title),
       (url: string, title: string) => this.openDocsPage(url, title)
     );
 
-    const activeTabId = CombinedLearningJourneyPanel.restoreActiveTabFromStorage(restoredTabs);
-
     super({
-      tabs: restoredTabs,
-      activeTabId,
+      tabs: defaultTabs,
+      activeTabId: 'recommendations',
       contextPanel,
       pluginConfig,
+    });
+
+    // Note: Tab restoration now happens from React component after storage is initialized
+    // to avoid race condition with useUserStorage hook
+  }
+
+  public async restoreTabsAsync(): Promise<void> {
+    const restoredTabs = await CombinedLearningJourneyPanel.restoreTabsFromStorage();
+    const activeTabId = await CombinedLearningJourneyPanel.restoreActiveTabFromStorage(restoredTabs);
+
+    this.setState({
+      tabs: restoredTabs,
+      activeTabId,
     });
 
     // Initialize the active tab if needed
@@ -123,16 +160,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     }
   }
 
-  private static restoreTabsFromStorage(): LearningJourneyTab[] {
+  private static async restoreTabsFromStorage(): Promise<LearningJourneyTab[]> {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsedData: PersistedTabData[] = JSON.parse(stored);
+      const parsedData = await tabStorage.getTabs<PersistedTabData>();
 
-        const tabs: LearningJourneyTab[] = [
+      if (!parsedData || parsedData.length === 0) {
+        // Return default tabs if no stored data
+        return [
           {
             id: 'recommendations',
-            title: 'Recommendations', // Will be translated in renderer
+            title: 'Recommendations',
             baseUrl: '',
             currentUrl: '',
             content: null,
@@ -140,53 +177,80 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
             error: null,
           },
         ];
-
-        parsedData.forEach((data) => {
-          tabs.push({
-            id: data.id,
-            title: data.title,
-            baseUrl: data.baseUrl,
-            currentUrl: data.currentUrl || data.baseUrl,
-            content: null, // Will be loaded when tab becomes active
-            isLoading: false,
-            error: null,
-            type: data.type || 'learning-journey',
-          });
-        });
-
-        return tabs;
       }
-    } catch (error) {
-      console.error('Failed to restore tabs from storage:', error);
-    }
 
-    return [
-      {
-        id: 'recommendations',
-        title: 'Recommendations',
-        baseUrl: '',
-        currentUrl: '',
-        content: null,
-        isLoading: false,
-        error: null,
-      },
-    ];
-  }
+      const tabs: LearningJourneyTab[] = [
+        {
+          id: 'recommendations',
+          title: 'Recommendations', // Will be translated in renderer
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+        },
+      ];
 
-  private static restoreActiveTabFromStorage(tabs: LearningJourneyTab[]): string {
-    try {
-      const stored = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-      if (stored) {
-        let activeTabId: string;
+      parsedData.forEach((data) => {
+        // SECURITY: Validate URLs before restoring from storage
+        // This prevents XSS attacks via storage injection
+        const validateUrl = (url: string): boolean => {
+          return (
+            isAllowedContentUrl(url) ||
+            isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
+            isDataProxyUrl(url) || // SECURITY: Data proxy URLs are internal
+            isGitHubUrl(url) ||
+            (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url)))
+          );
+        };
 
-        // Handle both JSON string and raw string cases
-        try {
-          activeTabId = JSON.parse(stored);
-        } catch {
-          // If JSON.parse fails, treat it as a raw string
-          activeTabId = stored;
+        const isValidBase = validateUrl(data.baseUrl);
+        const isValidCurrent = !data.currentUrl || validateUrl(data.currentUrl);
+
+        if (!isValidBase || !isValidCurrent) {
+          console.warn('Rejected potentially unsafe URL from storage:', {
+            baseUrl: data.baseUrl,
+            currentUrl: data.currentUrl,
+            isValidBase,
+            isValidCurrent,
+          });
+          return; // Skip this tab
         }
 
+        tabs.push({
+          id: data.id,
+          title: data.title,
+          baseUrl: data.baseUrl,
+          currentUrl: data.currentUrl || data.baseUrl,
+          content: null, // Will be loaded when tab becomes active
+          isLoading: false,
+          error: null,
+          type: data.type || 'learning-journey',
+        });
+      });
+
+      return tabs;
+    } catch (error) {
+      console.error('Failed to restore tabs from storage:', error);
+      return [
+        {
+          id: 'recommendations',
+          title: 'Recommendations',
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+        },
+      ];
+    }
+  }
+
+  private static async restoreActiveTabFromStorage(tabs: LearningJourneyTab[]): Promise<string> {
+    try {
+      const activeTabId = await tabStorage.getActiveTab();
+
+      if (activeTabId) {
         const tabExists = tabs.some((t) => t.id === activeTabId);
         return tabExists ? activeTabId : 'recommendations';
       }
@@ -197,7 +261,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     return 'recommendations';
   }
 
-  private saveTabsToStorage(): void {
+  private async saveTabsToStorage(): Promise<void> {
     try {
       const tabsToSave: PersistedTabData[] = this.state.tabs
         .filter((tab) => tab.id !== 'recommendations')
@@ -209,17 +273,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
           type: tab.type,
         }));
 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(tabsToSave));
-      localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(this.state.activeTabId));
+      // Save both tabs and active tab
+      await Promise.all([tabStorage.setTabs(tabsToSave), tabStorage.setActiveTab(this.state.activeTabId)]);
     } catch (error) {
       console.error('Failed to save tabs to storage:', error);
     }
   }
 
-  public static clearPersistedTabs(): void {
+  public static async clearPersistedTabs(): Promise<void> {
     try {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
+      await tabStorage.clear();
     } catch (error) {
       console.error('Failed to clear persisted tabs:', error);
     }
@@ -268,30 +331,48 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      const configWithDefaults = getConfigWithDefaults(this.state.pluginConfig);
-      const result = await fetchContent(url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
+      const result = await fetchContent(url);
 
-      const finalUpdatedTabs = this.state.tabs.map((t) =>
-        t.id === tabId
-          ? {
-              ...t,
-              content: result.content,
-              isLoading: false,
-              error: null,
-              currentUrl: url, // Ensure currentUrl is set to the actual loaded URL
-            }
-          : t
-      );
-      this.setState({ tabs: finalUpdatedTabs });
+      // Check if fetch succeeded or failed
+      if (result.content) {
+        // Success: set content and clear error
+        const finalUpdatedTabs = this.state.tabs.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                content: result.content,
+                isLoading: false,
+                error: null,
+                currentUrl: url, // Ensure currentUrl is set to the actual loaded URL
+              }
+            : t
+        );
+        this.setState({ tabs: finalUpdatedTabs });
 
-      // Save tabs to storage after content is loaded
-      this.saveTabsToStorage();
+        // Save tabs to storage after content is loaded
+        this.saveTabsToStorage();
 
-      // Update completion percentage for learning journeys
-      const updatedTab = finalUpdatedTabs.find((t) => t.id === tabId);
-      if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
-        const progress = getJourneyProgress(updatedTab.content);
-        setJourneyCompletionPercentage(updatedTab.baseUrl, progress);
+        // Update completion percentage for learning journeys
+        const updatedTab = finalUpdatedTabs.find((t) => t.id === tabId);
+        if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
+          const progress = getJourneyProgress(updatedTab.content);
+          setJourneyCompletionPercentage(updatedTab.baseUrl, progress);
+        }
+      } else {
+        // Fetch failed: set error from result
+        const errorUpdatedTabs = this.state.tabs.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                isLoading: false,
+                error: result.error || 'Failed to load content',
+              }
+            : t
+        );
+        this.setState({ tabs: errorUpdatedTabs });
+
+        // Save tabs to storage even when there's an error
+        this.saveTabsToStorage();
       }
     } catch (error) {
       console.error(`Failed to load journey content for tab ${tabId}:`, error);
@@ -347,23 +428,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.saveTabsToStorage();
 
     // Clear any persisted interactive completion state for this tab
-    try {
-      const tab = currentTabs.find((t) => t.id === tabId);
-      if (tab) {
-        // Remove all keys matching this content key prefix
-        const prefix = `docsPlugin:completedSteps:${tab.baseUrl}`;
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith(prefix)) {
-            localStorage.removeItem(key);
-            // Adjust index due to removal
-            i--;
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
+    // Note: Interactive step completion is now handled by interactiveStepStorage
+    // which uses a different key format and is managed within interactive components
+    // This cleanup is now handled automatically when interactive sections are unmounted
   }
 
   public setActiveTab(tabId: string) {
@@ -460,24 +527,42 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      const configWithDefaults = getConfigWithDefaults(this.state.pluginConfig);
-      const result = await fetchContent(url, { docsBaseUrl: configWithDefaults.docsBaseUrl });
+      const result = await fetchContent(url);
 
-      const finalUpdatedTabs = this.state.tabs.map((t) =>
-        t.id === tabId
-          ? {
-              ...t,
-              content: result.content,
-              isLoading: false,
-              error: null,
-              currentUrl: url,
-            }
-          : t
-      );
-      this.setState({ tabs: finalUpdatedTabs });
+      // Check if fetch succeeded or failed
+      if (result.content) {
+        // Success: set content and clear error
+        const finalUpdatedTabs = this.state.tabs.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                content: result.content,
+                isLoading: false,
+                error: null,
+                currentUrl: url,
+              }
+            : t
+        );
+        this.setState({ tabs: finalUpdatedTabs });
 
-      // Save tabs to storage after content is loaded
-      this.saveTabsToStorage();
+        // Save tabs to storage after content is loaded
+        this.saveTabsToStorage();
+      } else {
+        // Fetch failed: set error from result
+        const errorUpdatedTabs = this.state.tabs.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                isLoading: false,
+                error: result.error || 'Failed to load documentation',
+              }
+            : t
+        );
+        this.setState({ tabs: errorUpdatedTabs });
+
+        // Save tabs to storage even when there's an error
+        this.saveTabsToStorage();
+      }
     } catch (error) {
       console.error(`Failed to load docs content for tab ${tabId}:`, error);
 
@@ -499,16 +584,30 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 }
 
 function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearningJourneyPanel>) {
+  // Initialize user storage (sets up global storage for standalone helpers)
+  // This MUST be called before any storage operations to ensure Grafana user storage is used
+  useUserStorage();
+
+  // Get plugin configuration for dev mode check
+  const pluginContext = usePluginContext();
+  const pluginConfig = React.useMemo(() => {
+    return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+  }, [pluginContext?.meta?.jsonData]);
+
+  // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
+  const currentUserId = config.bootData.user?.id;
+  const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
+
+  // Set global config for utility functions that can't access React context
+  (window as any).__pathfinderPluginConfig = pluginConfig;
+
+  const { tabs, activeTabId, contextPanel } = model.useState();
   React.useEffect(() => {
     addGlobalModalStyles();
   }, []);
   
   // Get plugin configuration to check if live sessions are enabled
-  const pluginContext = usePluginContext();
-  const config = useMemo(() => {
-    return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-  }, [pluginContext?.meta?.jsonData]);
-  const isLiveSessionsEnabled = config.enableLiveSessions;
+  const isLiveSessionsEnabled = pluginConfig.enableLiveSessions;
   
   // Live session state
   const [showPresenterControls, setShowPresenterControls] = React.useState(false);
@@ -546,6 +645,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     navigationManagerRef.current = new NavigationManager();
   }
 
+  // Restore tabs after storage is initialized (fixes race condition)
+  React.useEffect(() => {
+    // Only restore if we haven't loaded tabs yet (tabs length === 1 means only recommendations tab)
+    if (tabs.length === 1 && tabs[0].id === 'recommendations') {
+      model.restoreTabsAsync();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run once after mount, tabs checked at mount time
+
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
   React.useEffect(() => {
@@ -555,7 +663,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
       // Always create a new tab for each intercepted link
       // Call the model method directly to ensure new tabs are created
-      if (url.includes('/learning-journeys/')) {
+      // Use proper URL parsing for security (defense in depth)
+      const urlObj = parseUrlSafely(url);
+      const isLearningJourney = urlObj?.pathname.includes('/learning-journeys/');
+
+      if (isLearningJourney) {
         model.openLearningJourney(url, title);
       } else {
         model.openDocsPage(url, title);
@@ -569,13 +681,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       document.removeEventListener('pathfinder-auto-open-docs', handleAutoOpen);
     };
   }, [model]); // Only model as dependency - this component doesn't remount on tab changes
-
-  const { tabs, activeTabId, contextPanel } = model.useState();
   // removed — using restored custom overflow state below
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
   const isRecommendationsTab = activeTabId === 'recommendations';
   const theme = useStyles2((theme: GrafanaTheme2) => theme);
+
+  // STABILITY: Memoize activeTab.content to prevent ContentRenderer from remounting
+  // when other tab properties change (isLoading, error, etc.)
+  const stableContent = React.useMemo(() => activeTab?.content, [activeTab?.content]);
 
   const styles = useStyles2(getStyles);
   const interactiveStyles = useStyles2(getInteractiveStyles);
@@ -583,7 +697,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const journeyStyles = useStyles2(journeyContentHtml);
   const docsStyles = useStyles2(docsContentHtml);
 
-  // Tab overflow management - restored simplified approach
+  // Tab overflow management - dynamic calculation based on container width
+  const tabBarRef = useRef<HTMLDivElement>(null); // Measure parent instead of child
   const tabListRef = useRef<HTMLDivElement>(null);
   const [visibleTabs, setVisibleTabs] = useState<LearningJourneyTab[]>(tabs);
   const [overflowedTabs, setOverflowedTabs] = useState<LearningJourneyTab[]>([]);
@@ -591,30 +706,107 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dropdownOpenTimeRef = useRef<number>(0);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
 
+  // Dynamic tab visibility calculation based on container width
   const calculateTabVisibility = useCallback(() => {
     if (tabs.length === 0) {
       setVisibleTabs([]);
       setOverflowedTabs([]);
       return;
     }
-    const maxVisibleTabs = 2; // Recommendations + 1
-    if (tabs.length <= maxVisibleTabs) {
-      setVisibleTabs(tabs);
-      setOverflowedTabs([]);
+
+    // If we don't have container width yet, show minimal tabs
+    if (containerWidth === 0) {
+      setVisibleTabs(tabs.slice(0, 1)); // Just Recommendations
+      setOverflowedTabs(tabs.slice(1));
+      return;
+    }
+
+    // Note: chevron button width is already reserved in containerWidth calculation
+    const tabSpacing = 4; // Gap between tabs (theme.spacing(0.5))
+
+    // Use a more practical minimum: each tab needs at least 100px to be readable
+    // With flex layout, tabs will grow to fill available space proportionally
+    const minTabWidth = 100; // Minimum readable width per tab
+
+    // The containerWidth already has chevron space reserved
+    const availableWidth = containerWidth;
+
+    // Determine how many tabs can fit
+    let maxVisibleTabs = 1; // Always show at least Recommendations
+    let widthUsed = minTabWidth; // Start with first tab (Recommendations)
+
+    // Try to fit additional tabs
+    for (let i = 1; i < tabs.length; i++) {
+      const tabWidth = minTabWidth + tabSpacing;
+      const spaceNeeded = widthUsed + tabWidth;
+
+      if (spaceNeeded <= availableWidth) {
+        maxVisibleTabs++;
+        widthUsed += tabWidth;
+      } else {
+        break;
+      }
+    }
+
+    // Ensure active tab is visible if possible
+    const activeTabIndex = tabs.findIndex((t) => t.id === activeTabId);
+    if (activeTabIndex >= maxVisibleTabs && maxVisibleTabs > 1) {
+      // Swap active tab into visible range
+      const visibleTabsArray = [...tabs.slice(0, maxVisibleTabs - 1), tabs[activeTabIndex]];
+      const overflowTabsArray = [...tabs.slice(maxVisibleTabs - 1, activeTabIndex), ...tabs.slice(activeTabIndex + 1)];
+      setVisibleTabs(visibleTabsArray);
+      setOverflowedTabs(overflowTabsArray);
     } else {
       setVisibleTabs(tabs.slice(0, maxVisibleTabs));
       setOverflowedTabs(tabs.slice(maxVisibleTabs));
     }
-  }, [tabs]);
+  }, [tabs, containerWidth, activeTabId]);
 
   useEffect(() => {
     calculateTabVisibility();
   }, [calculateTabVisibility]);
 
+  // ResizeObserver to track container width changes
+  useEffect(() => {
+    const tabBar = tabBarRef.current;
+    if (!tabBar) {
+      return;
+    }
+
+    // Measure tabBar and reserve space for chevron button
+    const chevronWidth = 120; // Approximate width of chevron button + spacing
+
+    // Set initial width immediately (ResizeObserver may not fire on initial mount)
+    const tabBarWidth = tabBar.getBoundingClientRect().width;
+    const availableForTabs = Math.max(0, tabBarWidth - chevronWidth);
+    if (availableForTabs > 0) {
+      setContainerWidth(availableForTabs);
+    }
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const tabBarWidth = entry.contentRect.width;
+        const availableForTabs = Math.max(0, tabBarWidth - chevronWidth);
+        setContainerWidth(availableForTabs);
+      }
+    });
+
+    resizeObserver.observe(tabBar);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   // Content styles are applied at the component level via CSS classes
 
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Scroll position preservation by tab/URL
+  const scrollPositionRef = useRef<Record<string, number>>({});
+  const lastContentUrlRef = useRef<string>('');
 
   // Expose current active tab id/url globally for interactive persistence keys
   useEffect(() => {
@@ -626,7 +818,64 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     }
   }, [activeTab?.id, activeTab?.currentUrl, activeTab?.baseUrl]);
 
+<<<<<<< HEAD
   // Initialize interactive elements for the content container
+=======
+  // Save scroll position before content changes
+  const saveScrollPosition = useCallback(() => {
+    const scrollableElement = document.getElementById('inner-docs-content');
+    if (scrollableElement && lastContentUrlRef.current) {
+      scrollPositionRef.current[lastContentUrlRef.current] = scrollableElement.scrollTop;
+    }
+  }, []);
+
+  // Restore scroll position when content loads
+  const restoreScrollPosition = useCallback(() => {
+    const contentUrl = activeTab?.currentUrl || activeTab?.baseUrl || '';
+    if (contentUrl && contentUrl !== lastContentUrlRef.current) {
+      lastContentUrlRef.current = contentUrl;
+
+      // Restore saved position if available
+      const savedPosition = scrollPositionRef.current[contentUrl];
+      if (typeof savedPosition === 'number') {
+        const scrollableElement = document.getElementById('inner-docs-content');
+        if (scrollableElement) {
+          // Use requestAnimationFrame to ensure DOM is ready
+          requestAnimationFrame(() => {
+            scrollableElement.scrollTop = savedPosition;
+          });
+        }
+      } else {
+        // New content - scroll to top
+        const scrollableElement = document.getElementById('inner-docs-content');
+        if (scrollableElement) {
+          requestAnimationFrame(() => {
+            scrollableElement.scrollTop = 0;
+          });
+        }
+      }
+    }
+  }, [activeTab?.currentUrl, activeTab?.baseUrl]);
+
+  // Track scroll position continuously
+  useEffect(() => {
+    const scrollableElement = document.getElementById('inner-docs-content');
+    if (!scrollableElement) {
+      return;
+    }
+
+    const handleScroll = () => {
+      saveScrollPosition();
+    };
+
+    scrollableElement.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      scrollableElement.removeEventListener('scroll', handleScroll);
+      saveScrollPosition();
+    };
+  }, [saveScrollPosition]);
+
+  // Initialize interactive elements for the content container (side effects only)
   useInteractiveElements({ containerRef: contentRef });
 
   // Use custom hooks for cleaner organization
@@ -845,6 +1094,45 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   return (
     <div id="CombinedLearningJourney" className={styles.container} data-pathfinder-content="true">
+      <div className={styles.headerBar}>
+        <img src={logoSvg} alt="" width={20} height={20} />
+        <div className={styles.headerRight}>
+          <IconButton
+            name="cog"
+            size="sm"
+            tooltip={t('docsPanel.settings', 'Plugin settings')}
+            onClick={() => {
+              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                action: 'navigate_to_config',
+                source: 'header_settings_button',
+                timestamp: Date.now(),
+              });
+              locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
+            }}
+            aria-label={t('docsPanel.settings', 'Plugin settings')}
+          />
+          <div className={styles.headerDivider} />
+          <IconButton
+            name="times"
+            size="sm"
+            tooltip={t('docsPanel.closeSidebar', 'Close sidebar')}
+            onClick={() => {
+              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                action: 'close_sidebar',
+                source: 'header_close_button',
+                timestamp: Date.now(),
+              });
+              // Close the extension sidebar
+              const appEvents = getAppEvents();
+              appEvents.publish({
+                type: 'close-extension-sidebar',
+                payload: {},
+              });
+            }}
+            aria-label="Close sidebar"
+          />
+        </div>
+      </div>
       <div className={styles.topBar}>
         <div className={styles.liveSessionButtons}>
           {!isSessionActive && isLiveSessionsEnabled && (
@@ -972,7 +1260,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             </div>
           )}
         </div>
-        <div className={styles.tabBar}>
+        <div className={styles.tabBar} ref={tabBarRef}>
           <div className={styles.tabList} ref={tabListRef}>
             {visibleTabs.map((tab) => {
               const getTranslatedTitle = (title: string) => {
@@ -1169,12 +1457,44 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             );
           }
 
-          // Show error state
+          // Show error state with retry option
           if (!isRecommendationsTab && activeTab?.error && !activeTab.isLoading) {
+            const isRetryable =
+              activeTab.error.includes('timeout') ||
+              activeTab.error.includes('Unable to connect') ||
+              activeTab.error.includes('network');
+
             return (
-              <Alert severity="error" title={activeTab.type === 'docs' ? 'Documentation' : 'Learning Journey'}>
-                {activeTab.error}
-              </Alert>
+              <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
+                <Alert
+                  severity="error"
+                  title={`Unable to load ${activeTab.type === 'docs' ? 'documentation' : 'learning journey'}`}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <p>{activeTab.error}</p>
+                    {isRetryable && (
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            if (activeTab.type === 'docs') {
+                              model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                            } else {
+                              model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                            }
+                          }}
+                        >
+                          {t('docsPanel.retry', 'Retry')}
+                        </Button>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          {t('docsPanel.retryHint', 'Check your connection and try again')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </Alert>
+              </div>
             );
           }
 
@@ -1224,20 +1544,23 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         try {
                           if (url && typeof url === 'string') {
                             const parsed = new URL(url);
-                            isGrafanaDomain =
-                              parsed.hostname === 'grafana.com' || parsed.hostname.endsWith('.grafana.com');
+                            // Security: Use exact hostname matching from allowlist (no subdomains)
+                            isGrafanaDomain = ALLOWED_GRAFANA_DOCS_HOSTNAMES.includes(parsed.hostname);
                           }
                         } catch {
                           isGrafanaDomain = false;
                         }
                         if (url && !isBundled && isGrafanaDomain) {
+                          // Strip /unstyled.html from URL for browser viewing (users want the styled docs page)
+                          const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+
                           return (
                             <button
                               className={styles.secondaryActionButton}
                               aria-label={t('docsPanel.openInNewTab', 'Open this page in new tab')}
                               onClick={() => {
                                 reportAppInteraction(UserInteraction.OpenExtraResource, {
-                                  content_url: url,
+                                  content_url: cleanUrl,
                                   content_type: activeTab.type || 'docs',
                                   link_text: activeTab.title,
                                   source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
@@ -1246,7 +1569,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                                 });
                                 // Delay to ensure analytics event is sent before opening new tab
                                 setTimeout(() => {
-                                  window.open(url, '_blank', 'noopener,noreferrer');
+                                  window.open(cleanUrl, '_blank', 'noopener,noreferrer');
                                 }, 100);
                               }}
                             >
@@ -1257,6 +1580,21 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         }
                         return null;
                       })()}
+                      {isDevMode && (
+                        <IconButton
+                          tooltip="Refresh tab (dev mode only)"
+                          name="sync"
+                          onClick={() => {
+                            if (activeTab) {
+                              if (activeTab.type === 'docs') {
+                                model.loadDocsTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                              } else {
+                                model.loadTabContent(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+                              }
+                            }
+                          }}
+                        />
+                      )}
                       <FeedbackButton
                         variant="secondary"
                         contentUrl={activeTab.content?.url || activeTab.baseUrl}
@@ -1387,15 +1725,16 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     minHeight: 0,
                   }}
                 >
-                  {activeTab.content && (
+                  {stableContent && (
                     <ContentRenderer
-                      content={activeTab.content}
+                      content={stableContent}
                       containerRef={contentRef}
                       className={`${
-                        activeTab.content.type === 'learning-journey' ? journeyStyles : docsStyles
+                        stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
                       } ${interactiveStyles} ${prismStyles}`}
                       onContentReady={() => {
-                        // Content is ready - any additional setup can go here
+                        // Restore scroll position after content is ready
+                        restoreScrollPosition();
                       }}
                     />
                   )}
@@ -1409,13 +1748,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       </div>
       {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement */}
       {!isRecommendationsTab && activeTab?.type !== 'docs' && (
-        <FeedbackButton
-          contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
-          contentType={activeTab?.type || 'learning-journey'}
-          interactionLocation="docs_panel_footer_feedback_button"
-          currentMilestone={activeTab?.content?.metadata?.learningJourney?.currentMilestone}
-          totalMilestones={activeTab?.content?.metadata?.learningJourney?.totalMilestones}
-        />
+        <>
+          <FeedbackButton
+            contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
+            contentType={activeTab?.type || 'learning-journey'}
+            interactionLocation="docs_panel_footer_feedback_button"
+            currentMilestone={activeTab?.content?.metadata?.learningJourney?.currentMilestone}
+            totalMilestones={activeTab?.content?.metadata?.learningJourney?.totalMilestones}
+          />
+        </>
       )}
       
       {/* Live Session Modals */}

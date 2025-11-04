@@ -1082,8 +1082,9 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: theme.spacing(2),
+    gap: theme.spacing(1.5),
     width: '100%',
+    flexWrap: 'wrap',
   },
 
   '& .journey-progress-indicator': {
@@ -1099,6 +1100,17 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
     border: `1px solid ${theme.colors.border.weak}`,
     minWidth: '60px',
     textAlign: 'center',
+  },
+
+  // Progress text without box styling
+  '& .journey-progress-text': {
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    whiteSpace: 'nowrap',
+    flex: '1 1 auto',
+    textAlign: 'center',
+    minWidth: 'fit-content',
   },
 
   '& .journey-bottom-nav-button': {
@@ -1133,6 +1145,25 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
       width: '16px',
       height: '16px',
       flexShrink: 0,
+    },
+  },
+
+  // Journey navigation buttons using .btn classes
+  '& .journey-nav-prev, & .journey-nav-next': {
+    flex: '0 0 auto',
+    whiteSpace: 'nowrap',
+  },
+
+  // Secondary style for Previous button
+  '& .journey-nav-secondary': {
+    backgroundColor: theme.colors.secondary.main,
+    color: theme.colors.secondary.contrastText,
+    border: `1px solid ${theme.colors.secondary.border}`,
+
+    '&:hover': {
+      backgroundColor: theme.colors.secondary.shade,
+      borderColor: theme.colors.secondary.shade,
+      color: theme.colors.secondary.contrastText,
     },
   },
 

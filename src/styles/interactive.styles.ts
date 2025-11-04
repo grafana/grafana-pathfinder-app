@@ -911,8 +911,8 @@ export const addGlobalInteractiveStyles = () => {
       position: absolute;
       top: var(--comment-top);
       left: var(--comment-left);
-      max-width: 250px;
-      min-width: 200px;
+      max-width: 320px;
+      min-width: 240px;
       pointer-events: none;
       z-index: 10002;
       animation: fadeInComment 0.3s ease-out;
@@ -921,8 +921,8 @@ export const addGlobalInteractiveStyles = () => {
     .interactive-comment-content {
       border-radius: 6px;
       padding: 12px;
-      font-size: 13px;
-      line-height: 1.4;
+      font-size: 14px;
+      line-height: 1.5;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
       position: relative;
       /* Essential styling that needs to be global to avoid theme override conflicts */
@@ -1089,14 +1089,14 @@ export const addGlobalInteractiveStyles = () => {
       display: flex;
       flex-direction: column;
       gap: 4px;
-      margin-bottom: 10px;
-      padding-bottom: 8px;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
       border-bottom: 1px solid var(--grafana-colors-border-weak, #404040);
     }
 
     .interactive-comment-step-item {
-      font-size: 12px;
-      line-height: 1.3;
+      font-size: 13px;
+      line-height: 1.4;
       color: var(--grafana-colors-text-secondary, #999999);
       padding: 2px 0;
       display: flex;

@@ -49,7 +49,7 @@ discovery.relabel "logs_integrations_docker" {
       targets = []
   
   // Extract the docker-compose service name from container names like
-  // /grafana-grafanadocsplugin-app-alloy-1 -> alloy
+  // /grafana-pathfinder-app-alloy-1 -> alloy
   rule {
       source_labels = ["__meta_docker_container_name"]
       regex = "^/(?:.+-)?([^-]+)-(?:\\d+)$"

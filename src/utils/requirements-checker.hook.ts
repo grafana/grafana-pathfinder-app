@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { getRequirementExplanation } from './requirement-explanations';
 import { useInteractiveElements } from './interactive.hook';
 import { RequirementsCheckResult } from './requirements-checker.utils';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { useTimeoutManager, TimeoutManager } from './timeout-manager';
+import { useSequentialStepState } from './use-sequential-step-state.hook';
 
 /**
  * Wait for React state updates to complete before proceeding
@@ -103,11 +104,15 @@ export function useRequirementsChecker({
   const checkPromiseRef = useRef<Promise<void> | null>(null);
   const managerRef = useRef<SequentialRequirementsManager | null>(null);
 
-  // Create a unique identifier for this step
-  const uniqueId = sectionId ? `section-${sectionId}` : stepId ? `step-${stepId}` : `fallback-${Date.now()}`;
+  // REACT HOOKS v7: Use ref to hold checkRequirements callback to avoid accessing before declaration
+  const checkRequirementsRef = useRef<((retryAttempt?: number) => Promise<void>) | null>(null);
 
-  // Initialize manager reference
-  if (!managerRef.current) {
+  // REACT HOOKS v7: Use useId() instead of Date.now() to generate unique IDs without impure functions
+  const reactId = useId();
+  const uniqueId = sectionId ? `section-${sectionId}` : stepId ? `step-${stepId}` : `fallback-${reactId}`;
+
+  // REACT HOOKS v7: Initialize manager reference using null check pattern
+  if (managerRef.current == null) {
     managerRef.current = SequentialRequirementsManager.getInstance();
   }
   const checkRequirements = useCallback(
@@ -117,19 +122,19 @@ export function useRequirementsChecker({
         return checkPromiseRef.current;
       }
 
-      if (!requirements || state.isCompleted) {
-        // For completed steps: keep them completed and disabled
-        // For steps without requirements: enable them
-        const newState = state.isCompleted
-          ? { ...state, isEnabled: false, isChecking: false, isCompleted: true } // Preserve completion
-          : { ...state, isEnabled: true, isChecking: false }; // Enable if no requirements
+      // REACT HOOKS v7: Use functional setState to avoid dependency on state
+      if (!requirements) {
+        setState((prevState) => {
+          const newState = prevState.isCompleted
+            ? { ...prevState, isEnabled: false, isChecking: false, isCompleted: true } // Preserve completion
+            : { ...prevState, isEnabled: true, isChecking: false }; // Enable if no requirements
 
-        setState(newState);
-
-        // Directly notify the manager with the new state to avoid timing issues
-        if (managerRef.current) {
-          managerRef.current.updateStep(uniqueId, newState);
-        }
+          // Directly notify the manager with the new state to avoid timing issues
+          if (managerRef.current) {
+            managerRef.current.updateStep(uniqueId, newState);
+          }
+          return newState;
+        });
         return;
       }
 
@@ -200,11 +205,14 @@ export function useRequirementsChecker({
             error: `Check failed, retrying... (${nextRetryAttempt}/${maxRetries})`,
           }));
 
+          // REACT HOOKS v7: Use ref to call checkRequirements to avoid accessing before declaration
           // Schedule retry using timeout manager
           timeoutManager.setTimeout(
             `requirements-check-retry-${uniqueId}-${nextRetryAttempt}`,
             async () => {
-              await checkRequirements(nextRetryAttempt);
+              if (checkRequirementsRef.current) {
+                await checkRequirementsRef.current(nextRetryAttempt);
+              }
             },
             INTERACTIVE_CONFIG.delays.requirements.retryDelay
           );
@@ -224,22 +232,25 @@ export function useRequirementsChecker({
             ? `${errorMessage} (failed after ${retryAttempt + 1} attempts)`
             : errorMessage;
 
-        const newState = {
-          ...state,
-          isEnabled: result.pass,
-          isChecking: false,
-          isRetrying: false,
-          error: finalErrorMessage,
-          explanation,
-          retryCount: retryAttempt,
-          maxRetries,
-        };
-        setState(newState);
+        // REACT HOOKS v7: Use functional setState to avoid dependency on state
+        setState((prevState) => {
+          const newState = {
+            ...prevState,
+            isEnabled: result.pass,
+            isChecking: false,
+            isRetrying: false,
+            error: finalErrorMessage,
+            explanation,
+            retryCount: retryAttempt,
+            maxRetries,
+          };
 
-        // Directly notify the manager with the new state to avoid timing issues
-        if (managerRef.current) {
-          managerRef.current.updateStep(uniqueId, newState);
-        }
+          // Directly notify the manager with the new state to avoid timing issues
+          if (managerRef.current) {
+            managerRef.current.updateStep(uniqueId, newState);
+          }
+          return newState;
+        });
       }
 
       checkPromiseRef.current = checkPromise();
@@ -249,8 +260,13 @@ export function useRequirementsChecker({
     [requirements, targetAction, uniqueId, hints, timeoutManager, checkRequirementsFromData] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // REACT HOOKS v7: Update ref with latest checkRequirements callback
+  useEffect(() => {
+    checkRequirementsRef.current = checkRequirements;
+  }, [checkRequirements]);
+
   const markCompleted = useCallback(() => {
-    // PERFORMANCE FIX: Single setState call with manager notification
+    // Single setState call with manager notification
     setState((prev) => {
       const newState = {
         ...prev,
@@ -264,23 +280,17 @@ export function useRequirementsChecker({
 
         // If this is a section completion, trigger reactive check to unlock dependent sections
         if (uniqueId.startsWith('section-')) {
-          // Delayed reactive check to allow state to settle
-          timeoutManager.setDebounced(
-            `section-completion-${uniqueId}`,
-            () => {
-              managerRef.current?.triggerReactiveCheck();
-            },
-            undefined,
-            'stateSettling'
-          );
+          // Add small delay to let DOM settle before triggering reactive check
+          // This prevents dependent steps from being checked before DOM is ready
+          setTimeout(() => {
+            managerRef.current?.triggerReactiveCheck();
+          }, 300);
         }
       }
 
       return newState;
     });
-
-    // Step completion tracking (no debug logging needed)
-  }, [uniqueId, timeoutManager]);
+  }, [uniqueId]);
 
   const reset = useCallback(() => {
     setState({
@@ -321,6 +331,7 @@ export class SequentialRequirementsManager {
   private steps = new Map<string, RequirementsState>();
   private listeners = new Set<() => void>();
   private navClickListener?: (e: Event) => void;
+  private version = 0; // Track version for useSyncExternalStore
 
   static getInstance(): SequentialRequirementsManager {
     if (!SequentialRequirementsManager.instance) {
@@ -366,7 +377,16 @@ export class SequentialRequirementsManager {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * Get immutable snapshot for useSyncExternalStore
+   * Returns a new Map to ensure referential equality changes trigger React updates
+   */
+  getSnapshot(): Map<string, RequirementsState> {
+    return new Map(this.steps);
+  }
+
   private notifyListeners(): void {
+    this.version++; // Increment version to signal state change
     this.listeners.forEach((listener) => listener());
   }
 
@@ -396,6 +416,7 @@ export class SequentialRequirementsManager {
 
   /**
    * Recheck only steps that are eligible for requirements validation
+   * Adds DOM settling delay to prevent false failures when steps just became enabled
    */
   private recheckEligibleStepsOnly(): void {
     requestAnimationFrame(() => {
@@ -404,11 +425,15 @@ export class SequentialRequirementsManager {
 
         // Only check steps that are not completed and not currently checking
         if (stepState && !stepState.isCompleted && !stepState.isChecking) {
-          try {
-            checker();
-          } catch (error) {
-            console.error(`Error in selective step checker for ${stepId}:`, error);
-          }
+          // Add delay to let DOM settle before rechecking
+          // This prevents false failures when steps just transitioned to enabled
+          setTimeout(() => {
+            try {
+              checker();
+            } catch (error) {
+              console.error(`Error in selective step checker for ${stepId}:`, error);
+            }
+          }, 300); // Wait for DOM to settle after state changes
         }
       });
     });
@@ -546,7 +571,7 @@ export class SequentialRequirementsManager {
           () => {
             this.triggerSelectiveRecheck();
           },
-          800
+          1200 // Increased from 800ms to 1200ms to allow more DOM settling time
         );
       }
     });
@@ -561,7 +586,7 @@ export class SequentialRequirementsManager {
     // Add lightweight click listener to capture nav toggle interactions
     this.navClickListener = () => {
       const timeoutManager = TimeoutManager.getInstance();
-      timeoutManager.setDebounced('nav-click-recheck', () => this.triggerSelectiveRecheck(), 250, 'reactiveCheck');
+      timeoutManager.setDebounced('nav-click-recheck', () => this.triggerSelectiveRecheck(), 500, 'reactiveCheck');
     };
     document.addEventListener('click', this.navClickListener, { capture: true });
   }
@@ -580,7 +605,7 @@ export class SequentialRequirementsManager {
           () => {
             this.triggerSelectiveRecheck();
           },
-          1500
+          2000 // Increased from 1500ms to 2000ms for better settling
         );
       }
     };
@@ -643,13 +668,16 @@ export function useSequentialRequirements({
   targetAction,
   isSequence = false,
 }: UseRequirementsCheckerProps): UseRequirementsCheckerReturn {
-  const uniqueId = sectionId ? `section-${sectionId}` : stepId ? `step-${stepId}` : `fallback-${Date.now()}`;
+  // Use useId() instead of Date.now() for stable unique IDs (React best practice)
+  const reactId = useId();
+  const uniqueId = sectionId ? `section-${sectionId}` : stepId ? `step-${stepId}` : `fallback-${reactId}`;
   const manager = SequentialRequirementsManager.getInstance();
   const basicChecker = useRequirementsChecker({ requirements, hints, stepId, sectionId, targetAction, isSequence });
-  const timeoutManager = useTimeoutManager();
 
-  // Local state to force re-renders when manager state changes
-  const [, forceUpdate] = useState({});
+  // Subscribe to manager state via useSyncExternalStore
+  // This subscription triggers re-renders when manager state changes (even though we don't use the value directly)
+  // The managerState subscription is intentionally unused - it exists solely to trigger re-renders
+  useSequentialStepState(uniqueId);
 
   // Register this step with the manager
   useEffect(() => {
@@ -658,31 +686,6 @@ export function useSequentialRequirements({
       // Cleanup could be added here if needed
     };
   }, [uniqueId, isSequence, manager]);
-
-  // Subscribe to global state changes with debouncing to prevent infinite loops
-  useEffect(() => {
-    let timeoutId: number | null = null;
-
-    const unsubscribe = manager.subscribe(() => {
-      // Debounce the re-render to prevent rapid-fire updates
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-
-      timeoutId = window.setTimeout(() => {
-        forceUpdate({});
-        timeoutId = null;
-      }, INTERACTIVE_CONFIG.delays.debouncing.uiUpdates);
-    });
-
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      unsubscribe();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uniqueId]); // Use uniqueId instead of manager to prevent subscription loops
 
   // Enhanced check that considers sequential state
   const checkRequirements = useCallback(async () => {
@@ -752,18 +755,12 @@ export function useSequentialRequirements({
     // Just delegate to the basic checker - it will update the manager directly
     basicChecker.markCompleted();
 
-    // Additional reactive check for section dependencies
-    // The basic checker handles section-level reactive checks, but we ensure
-    // all dependent steps get re-evaluated
-    timeoutManager.setDebounced(
-      `sequential-reactive-check-${uniqueId}`,
-      () => {
-        manager.triggerReactiveCheck();
-      },
-      undefined,
-      'reactiveCheck'
-    );
-  }, [basicChecker, manager, timeoutManager, uniqueId]);
+    // Add delay before reactive check to let DOM settle from the completed action
+    // This prevents dependent steps from being checked before DOM is ready
+    setTimeout(() => {
+      manager.triggerReactiveCheck();
+    }, 300);
+  }, [basicChecker, manager]);
 
   // Get current state from manager (which includes sequential logic)
   const managerState = manager.getStepState(uniqueId);

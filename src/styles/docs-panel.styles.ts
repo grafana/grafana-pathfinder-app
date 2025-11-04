@@ -216,6 +216,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     borderBottom: `1px solid ${theme.colors.border.weak}`,
     overflow: 'visible', // Allow dropdown to extend below tab bar
     position: 'relative', // Positioning context for absolute dropdown
+    flex: 1, // Take full width of parent container
+    minWidth: 0, // Allow shrinking
   }),
   tabList: css({
     label: 'combined-journey-tab-list',
@@ -236,11 +238,14 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 0,
-    minWidth: '140px',
-    maxWidth: '220px',
+    // Flexible width that respects container bounds
+    flex: '1 1 80px',
+    minWidth: 0, // Allow flex shrinking below content size
+    maxWidth: '220px', // Still cap maximum width for aesthetics
     position: 'relative',
     transition: 'all 0.2s ease',
     color: theme.colors.text.secondary,
+    overflow: 'hidden', // Prevent content overflow
     '&:hover': {
       backgroundColor: 'transparent',
       color: theme.colors.text.primary,
@@ -278,7 +283,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(1),
     width: '100%',
-    minWidth: 0,
+    minWidth: 0, // Allow shrinking to fit parent
+    overflow: 'hidden', // Prevent overflow
   }),
   tabIcon: css({
     label: 'combined-journey-tab-icon',
@@ -294,7 +300,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     fontWeight: 'inherit',
     color: 'inherit',
     flex: 1,
-    minWidth: 0,
+    minWidth: 0, // Critical for allowing text truncation in flex containers
+    maxWidth: '100%', // Ensure it doesn't exceed parent
   }),
   loadingText: css({
     marginLeft: theme.spacing(0.5),
@@ -621,9 +628,36 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
+export const getHeaderBarStyles = (theme: GrafanaTheme2) => ({
+  headerBar: css({
+    label: 'docs-panel-header-bar',
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: theme.spacing(1, 1.5),
+    backgroundColor: theme.colors.background.canvas,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+  }),
+  headerRight: css({
+    label: 'docs-panel-header-right',
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+  }),
+  headerDivider: css({
+    label: 'docs-panel-header-divider',
+    width: '1px',
+    height: '20px',
+    backgroundColor: theme.colors.border.weak,
+  }),
+});
+
 // Combine all styles
 export const getStyles = (theme: GrafanaTheme2) => ({
   ...getContainerStyles(theme),
+  ...getHeaderBarStyles(theme),
   ...getTopBarStyles(theme),
   ...getTabStyles(theme),
   ...getContentStyles(theme),

@@ -1,16 +1,18 @@
 {
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "app",
-  "name": "Grafana Pathfinder",
-  "id": "grafana-grafanadocsplugin-app",
+  "name": "Interactive learning",
+  "id": "grafana-pathfinder-app",
   "backend": false,
   "autoEnabled": true,
   "info": {
     "keywords": ["app", "documentation", "learning", "command palette", "search"],
-    "description": "A learning journey plugin that provides contextual help and interactive learning experiences",
+    "description": "Get help exactly when and where you need it. Interactive learning brings contextual documentation and interactive tutorials directly into Grafana, so you can learn and build without leaving your workflow.",
     "screenshots": [
-      { "name": "Recommended reading", "path": "img/screenshot_1.png" },
-      { "name": "Progress through reading", "path": "img/screenshot_2.png" }
+      { "name": "Context-aware recommendations", "path": "img/img_1.png" },
+      { "name": "Interactive tutorials with guided steps", "path": "img/img_2.png" },
+      { "name": "Step-by-step guidance throughout Grafana", "path": "img/img_3.png" },
+      { "name": "Documentation for any Grafana feature", "path": "img/img_4.png" }
     ],
     "author": {
       "name": "Grafana"
@@ -25,31 +27,37 @@
   "includes": [
     {
       "type": "page",
-      "name": "Grafana Pathfinder",
-      "path": "/a/grafana-grafanadocsplugin-app",
-      "action": "grafana-grafanadocsplugin-app.docs:read",
+      "name": "Interactive learning",
+      "path": "/a/grafana-pathfinder-app",
+      "action": "grafana-pathfinder-app.docs:read",
       "addToNav": false,
       "defaultNav": false
+    }
+  ],
+  "routes": [
+    {
+      "path": "github-raw/*",
+      "url": "https://raw.githubusercontent.com/grafana/interactive-tutorials/main"
     }
   ],
   "extensions": {
     "addedComponents": [
       {
         "targets": ["grafana/extension-sidebar/v0-alpha"],
-        "description": "Opens Grafana Pathfinder",
-        "title": "Grafana Pathfinder"
+        "description": "Opens Interactive learning",
+        "title": "Interactive learning"
       }
     ],
     "addedLinks": [
       {
         "targets": ["grafana/extension-sidebar/v0-alpha"],
-        "description": "Opens Grafana Pathfinder",
+        "description": "Opens Interactive learning",
         "title": "Documentation-Link"
       },
       {
         "targets": ["grafana/commandpalette/action"],
-        "description": "Open Grafana Pathfinder",
-        "title": "Open Grafana Pathfinder"
+        "description": "Open Interactive learning",
+        "title": "Open Interactive learning"
       },
       {
         "targets": ["grafana/commandpalette/action"],
@@ -64,22 +72,22 @@
     ]
   },
   "dependencies": {
-    "grafanaDependency": ">=12.1.0",
+    "grafanaDependency": ">=12.3.0-0",
     "plugins": []
   },
   "roles": [
     {
       "grants": ["Viewer"],
       "role": {
-        "name": "Pathfinder User",
-        "description": "Access to Grafana Pathfinder",
+        "name": "Interactive learning User",
+        "description": "Access to Interactive learning",
         "permissions": [
           {
             "action": "plugins.app:access",
-            "scope": "plugins:id:grafana-grafanadocsplugin-app"
+            "scope": "plugins:id:grafana-pathfinder-app"
           },
           {
-            "action": "grafana-grafanadocsplugin-app.docs:read"
+            "action": "grafana-pathfinder-app.docs:read"
           }
         ]
       }

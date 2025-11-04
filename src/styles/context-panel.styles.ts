@@ -46,15 +46,6 @@ export const getStateStyles = (theme: GrafanaTheme2) => ({
     border: `1px solid ${theme.colors.border.weak}`,
     margin: theme.spacing(1),
   }),
-  errorContainer: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1.5),
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.shape.radius.default,
-    border: `1px solid ${theme.colors.border.weak}`,
-  }),
   emptyContainer: css({
     display: 'flex',
     flexDirection: 'column',
@@ -77,16 +68,36 @@ export const getSectionHeaderStyles = (theme: GrafanaTheme2) => ({
     textAlign: 'center',
     borderBottom: `1px solid ${theme.colors.border.weak}`,
     marginBottom: theme.spacing(1),
+    position: 'relative',
+  }),
+  settingsButton: css({
+    position: 'absolute',
+    top: theme.spacing(1),
+    right: theme.spacing(1),
+    color: theme.colors.text.secondary,
+    '&:hover': {
+      color: theme.colors.text.primary,
+    },
   }),
   headerIcon: css({
     color: theme.colors.primary.main,
     marginBottom: theme.spacing(1),
+  }),
+  titleContainer: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    justifyContent: 'center',
   }),
   sectionTitle: css({
     margin: 0,
     fontSize: theme.typography.h5.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.primary,
+  }),
+  betaBadge: css({
+    fontSize: '11px',
+    fontWeight: theme.typography.fontWeightMedium,
   }),
   sectionSubtitle: css({
     margin: 0,

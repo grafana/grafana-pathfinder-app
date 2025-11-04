@@ -1,5 +1,6 @@
 import {
   AppPlugin,
+  AppPluginMeta,
   type AppRootProps,
   PluginExtensionPoints,
   BusEventWithPayload,
@@ -11,7 +12,15 @@ import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { getConfigWithDefaults } from './constants';
+import { getConfigWithDefaults, ALLOWED_GITHUB_REPOS, DocsPluginConfig } from './constants';
+import {
+  isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isLocalhostUrl,
+} from './utils/url-validator';
+import { isDevModeEnabledGlobal } from './utils/dev-mode';
 
 // Persistent queue for docs links clicked before sidebar opens
 interface QueuedDocsLink {
@@ -25,6 +34,9 @@ export const pendingDocsQueue: QueuedDocsLink[] = [];
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
+
+// SECURITY: Dev mode is initialized lazily when user visits config with ?dev=true
+// This avoids unnecessary API calls for anonymous users who can't use dev mode anyway
 
 // Global link interceptor state
 let isInterceptorInitialized = false;
@@ -70,24 +82,28 @@ function initializeGlobalLinkInterceptor() {
     try {
       if (href.startsWith('http://') || href.startsWith('https://')) {
         fullUrl = href;
-      } else if (href.startsWith('/')) {
-        fullUrl = `https://grafana.com${href}`;
       } else if (href.startsWith('#')) {
         return;
       } else {
+        // Absolute path (starts with /) or relative path - resolve against current location
+        // This ensures self-hosted instances resolve to their own domain, not grafana.com
         fullUrl = new URL(href, window.location.href).href;
       }
     } catch (error) {
       return;
     }
 
-    // Check if it's a supported docs URL
-    const isSupportedUrl =
-      fullUrl.includes('grafana.com/docs/') ||
-      fullUrl.includes('grafana.com/tutorials/') ||
-      fullUrl.includes('grafana.com/learning-journeys/');
+    // SECURITY (F6): Check if it's a supported docs URL using secure validation
+    // Must match the same validation as content-fetcher, docs-panel, link-handler, and global-link-interceptor
+    // In production: Grafana docs URLs and approved GitHub repos
+    // In dev mode: Also allows any GitHub URLs and localhost URLs for testing
+    const isValidUrl =
+      isAllowedContentUrl(fullUrl) ||
+      isAllowedGitHubRawUrl(fullUrl, ALLOWED_GITHUB_REPOS) ||
+      isGitHubUrl(fullUrl) ||
+      (isDevModeEnabledGlobal() && (isLocalhostUrl(fullUrl) || isGitHubRawUrl(fullUrl)));
 
-    if (!isSupportedUrl) {
+    if (!isValidUrl) {
       return;
     }
 
@@ -141,7 +157,7 @@ function initializeGlobalLinkInterceptor() {
           type: 'open-extension-sidebar',
           payload: {
             pluginId: pluginJson.id,
-            componentTitle: 'Grafana Pathfinder',
+            componentTitle: 'Interactive learning',
           },
         });
       } catch (error) {
@@ -194,9 +210,7 @@ function openExtensionSidebar(pluginId: string, componentTitle: string, props?: 
 }
 
 const LazyApp = lazy(() => import('./components/App/App'));
-const LazyMemoizedContextPanel = lazy(() =>
-  import('./components/App/App').then((module) => ({ default: module.MemoizedContextPanel }))
-);
+const LazyMemoizedContextPanel = lazy(() => import('./components/App/ContextPanel'));
 const LazyAppConfig = lazy(() => import('./components/AppConfig/AppConfig'));
 const LazyTermsAndConditions = lazy(() => import('./components/AppConfig/TermsAndConditions'));
 const LazyInteractiveFeatures = lazy(() => import('./components/AppConfig/InteractiveFeatures'));
@@ -225,18 +239,82 @@ const plugin = new AppPlugin<{}>()
     id: 'interactive-features',
   });
 
+// Override init() to handle auto-open when plugin loads
+plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
+  const jsonData = meta?.jsonData || {};
+  const config = getConfigWithDefaults(jsonData);
+
+  // Set global config immediately so other code can use it
+  (window as any).__pathfinderPluginConfig = config;
+
+  // Check if auto-open is enabled
+  // Feature toggle sets the default, but user config always takes precedence
+  const shouldAutoOpen = config.openPanelOnLaunch;
+
+  // Auto-open panel if enabled (once per session)
+  if (shouldAutoOpen) {
+    const sessionKey = 'grafana-interactive-learning-panel-auto-opened';
+    const hasAutoOpened = sessionStorage.getItem(sessionKey);
+
+    if (!hasAutoOpened) {
+      sessionStorage.setItem(sessionKey, 'true');
+
+      // Small delay to ensure Grafana is ready
+      setTimeout(() => {
+        try {
+          const appEvents = getAppEvents();
+          appEvents.publish({
+            type: 'open-extension-sidebar',
+            payload: {
+              pluginId: pluginJson.id,
+              componentTitle: 'Interactive learning',
+            },
+          });
+
+          // Auto-launch tutorial if configured
+          if (config.tutorialUrl) {
+            setTimeout(() => {
+              const isBundled = config.tutorialUrl!.startsWith('bundled:');
+              const isLearningJourney = config.tutorialUrl!.includes('/learning-journeys/') || isBundled;
+
+              const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+                detail: {
+                  url: config.tutorialUrl,
+                  title: 'Auto-launched Tutorial',
+                  type: isLearningJourney ? 'learning-journey' : 'docs-page',
+                },
+              });
+              document.dispatchEvent(autoLaunchEvent);
+            }, 2000); // Wait for sidebar to mount
+          }
+        } catch (error) {
+          console.error('Failed to auto-open Interactive learning panel:', error);
+        }
+      }, 500);
+    }
+  }
+};
+
 export { plugin };
 
 plugin.addComponent({
   targets: `grafana/extension-sidebar/v0-alpha`,
-  title: 'Grafana Pathfinder',
-  description: 'Opens Grafana Pathfinder',
+  title: 'Interactive learning',
+  description: 'Opens Interactive learning',
   component: function ContextSidebar() {
     // Get plugin configuration
     const pluginContext = usePluginContext();
     const config = useMemo(() => {
-      return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+      const rawJsonData = pluginContext?.meta?.jsonData || {};
+      const configWithDefaults = getConfigWithDefaults(rawJsonData);
+
+      return configWithDefaults;
     }, [pluginContext?.meta?.jsonData]);
+
+    // Set global config for utility functions (including auto-open logic)
+    useEffect(() => {
+      (window as any).__pathfinderPluginConfig = config;
+    }, [config]);
 
     // Enable/disable global link interception based on config
     useEffect(() => {
@@ -296,8 +374,8 @@ plugin.addComponent({
 });
 
 plugin.addLink({
-  title: 'Open Grafana Pathfinder',
-  description: 'Open Grafana Pathfinder',
+  title: 'Open Interactive learning',
+  description: 'Open Interactive learning',
   targets: [PluginExtensionPoints.CommandPalette],
   onClick: () => {
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
@@ -306,7 +384,7 @@ plugin.addLink({
       timestamp: Date.now(),
     });
 
-    openExtensionSidebar(pluginJson.id, 'Grafana Pathfinder', {
+    openExtensionSidebar(pluginJson.id, 'Interactive learning', {
       origin: 'command_palette',
       timestamp: Date.now(),
     });
@@ -324,7 +402,7 @@ plugin.addLink({
       timestamp: Date.now(),
     });
 
-    openExtensionSidebar(pluginJson.id, 'Grafana Pathfinder', {
+    openExtensionSidebar(pluginJson.id, 'Interactive learning', {
       origin: 'command_palette_help',
       timestamp: Date.now(),
     });
@@ -342,7 +420,7 @@ plugin.addLink({
       timestamp: Date.now(),
     });
 
-    openExtensionSidebar(pluginJson.id, 'Grafana Pathfinder', {
+    openExtensionSidebar(pluginJson.id, 'Interactive learning', {
       origin: 'command_palette_learn',
       timestamp: Date.now(),
     });
@@ -352,12 +430,12 @@ plugin.addLink({
 plugin.addLink({
   targets: `grafana/extension-sidebar/v0-alpha`,
   title: 'Documentation-Link',
-  description: 'Opens Grafana Pathfinder',
+  description: 'Opens Interactive learning',
   configure: () => {
     return {
       icon: 'question-circle',
-      description: 'Opens Grafana Pathfinder',
-      title: 'Grafana Pathfinder',
+      description: 'Opens Interactive learning',
+      title: 'Interactive learning',
     };
   },
   onClick: () => {},

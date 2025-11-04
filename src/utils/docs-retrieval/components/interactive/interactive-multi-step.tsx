@@ -8,6 +8,8 @@ import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties }
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../../constants/interactive-config';
 import { matchesStepAction, type DetectedActionEvent } from '../../../action-matcher';
 import { getConfigWithDefaults } from '../../../../constants';
+import { findButtonByText } from '../../../dom-utils';
+import { querySelectorAllEnhanced } from '../../../enhanced-selector';
 
 interface InternalAction {
   targetAction: string;
@@ -264,7 +266,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             const requirementsResult = await checkActionRequirements(action, i, checkRequirementsFromData);
             if (!requirementsResult.pass) {
               console.error(
-                `❌ Multi-step ${stepId}: Internal action ${i + 1} requirements failed`,
+                `Multi-step ${stepId}: Internal action ${i + 1} requirements failed`,
                 requirementsResult.explanation
               );
               setExecutionError(requirementsResult.explanation || 'Action requirements not met');
@@ -291,6 +293,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             // Do mode (actually perform the action)
             await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'do');
 
+            // Wait for DOM to settle after action
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            await new Promise((resolve) => setTimeout(resolve, 200));
+
             // Add delay between steps with cancellation check (but not after the last step)
             if (i < internalActions.length - 1 && stepDelay > 0) {
               const delaySteps = Math.ceil(stepDelay / INTERACTIVE_CONFIG.delays.multiStep.baseInterval); // Convert delay to base interval steps
@@ -302,7 +308,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               }
             }
           } catch (actionError) {
-            console.error(`❌ Multi-step ${stepId}: Internal action ${i + 1} execution failed`, actionError);
+            console.error(`Multi-step ${stepId}: Internal action ${i + 1} execution failed`, actionError);
             const errorMessage = actionError instanceof Error ? actionError.message : 'Action execution failed';
             setExecutionError(`Step ${i + 1} failed: ${errorMessage}`);
             return false;
@@ -329,7 +335,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
         return true;
       } catch (error) {
-        console.error(`❌ Multi-step execution failed: ${stepId}`, error);
+        console.error(`Multi-step execution failed: ${stepId}`, error);
         const errorMessage = error instanceof Error ? error.message : 'Multi-step execution failed';
         setExecutionError(errorMessage);
         return false;
@@ -395,11 +401,39 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         let matchedActionIndex = -1;
         for (let i = 0; i < internalActions.length; i++) {
           const action = internalActions[i];
-          const matches = matchesStepAction(detectedAction, {
-            targetAction: action.targetAction as any,
-            refTarget: action.refTarget || '',
-            targetValue: action.targetValue,
-          });
+
+          // Try to find target element for coordinate-based matching
+          // Using synchronous resolution to avoid timing issues with dynamic menus/dropdowns
+          let targetElement: HTMLElement | null = null;
+          try {
+            const actionType = action.targetAction;
+            const selector = action.refTarget || '';
+
+            if (actionType === 'button') {
+              // Use button-specific finder for text matching
+              const buttons = findButtonByText(selector);
+              targetElement = buttons[0] || null;
+            } else if (actionType === 'highlight' || actionType === 'hover') {
+              // Use enhanced selector for other action types
+              const result = querySelectorAllEnhanced(selector);
+              targetElement = result.elements[0] || null;
+            }
+            // Note: formfill and navigate don't use coordinate matching
+          } catch (error) {
+            // Element resolution failed, fall back to selector-based matching
+            console.warn('Failed to resolve target element for coordinate matching:', error);
+          }
+
+          // Check if action matches (with coordinate support)
+          const matches = matchesStepAction(
+            detectedAction,
+            {
+              targetAction: action.targetAction as any,
+              refTarget: action.refTarget || '',
+              targetValue: action.targetValue,
+            },
+            targetElement
+          );
 
           if (matches) {
             matchedActionIndex = i;

@@ -12,6 +12,8 @@ import { matchesStepAction, type DetectedActionEvent } from '../../../action-mat
 import { getInteractiveConfig } from '../../../../constants/interactive-config';
 import { checkPostconditions } from '../../../requirements-checker.utils';
 import { getConfigWithDefaults } from '../../../../constants';
+import { findButtonByText } from '../../../dom-utils';
+import { querySelectorAllEnhanced } from '../../../enhanced-selector';
 
 export const InteractiveStep = forwardRef<
   { executeStep: () => Promise<boolean>; markSkipped?: () => void },
@@ -136,9 +138,17 @@ export const InteractiveStep = forwardRef<
         // Execute the action using existing interactive logic
         await executeInteractiveAction(targetAction, refTarget, targetValue, 'do', targetComment);
 
+        // Wait for DOM to settle after action (especially important for navigation, form fills, etc.)
+        await waitForReactUpdates();
+
+        // Additional settling time for actions that trigger animations or async state updates
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
         // Run post-verification if specified by author
         if (postVerify && postVerify.trim() !== '') {
+          // Additional wait before verification to ensure all side effects have completed
           await waitForReactUpdates();
+
           const result = await verifyStepResult(
             postVerify,
             targetAction,
@@ -175,7 +185,7 @@ export const InteractiveStep = forwardRef<
 
         return true;
       } catch (error) {
-        console.error(`❌ Step execution failed: ${stepId}`, error);
+        console.error(`Step execution failed: ${stepId}`, error);
         setPostVerifyError(error instanceof Error ? error.message : 'Execution failed');
         return false;
       }
@@ -226,12 +236,36 @@ export const InteractiveStep = forwardRef<
         const customEvent = event as CustomEvent<DetectedActionEvent>;
         const detectedAction = customEvent.detail;
 
+        // Try to find target element for coordinate-based matching
+        // Using synchronous resolution to avoid timing issues with dynamic menus/dropdowns
+        let targetElement: HTMLElement | null = null;
+        try {
+          if (targetAction === 'button') {
+            // Use button-specific finder for text matching
+            const buttons = findButtonByText(refTarget);
+            targetElement = buttons[0] || null;
+          } else if (targetAction === 'highlight' || targetAction === 'hover') {
+            // Use enhanced selector for other action types
+            const result = querySelectorAllEnhanced(refTarget);
+            targetElement = result.elements[0] || null;
+          }
+          // Note: formfill and navigate don't use coordinate matching
+        } catch (error) {
+          // Element resolution failed, fall back to selector-based matching
+          console.warn('Failed to resolve target element for coordinate matching:', error);
+        }
+
         // Check if detected action matches this step's configuration
-        const matches = matchesStepAction(detectedAction, {
-          targetAction,
-          refTarget,
-          targetValue,
-        });
+        // Now with coordinate-based matching support
+        const matches = matchesStepAction(
+          detectedAction,
+          {
+            targetAction,
+            refTarget,
+            targetValue,
+          },
+          targetElement
+        );
 
         if (!matches) {
           return; // Not a match for this step

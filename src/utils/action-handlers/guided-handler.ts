@@ -129,23 +129,15 @@ export class GuidedHandler {
       attemptCount++;
       try {
         const element = await this.findTargetElement(selector, actionType);
-        if (attemptCount > 1) {
-          console.warn(`✅ Element found after ${attemptCount} attempts (${Date.now() - startTime}ms)`);
-        }
         return element;
       } catch (error) {
         const elapsed = Date.now() - startTime;
         const remaining = timeout - elapsed;
 
         if (remaining <= 0) {
-          console.error(`❌ Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
+          console.error(`Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
           throw error;
         }
-
-        console.warn(
-          `🔄 Element not found (attempt ${attemptCount}), retrying in ${retryInterval}ms... (${Math.round(remaining / 1000)}s remaining)`
-        );
-
         // Wait before retrying, but don't exceed timeout
         await new Promise((resolve) => setTimeout(resolve, Math.min(retryInterval, remaining)));
       }
@@ -425,7 +417,10 @@ export class GuidedHandler {
           clearInterval(rectUpdateInterval);
           // Click is within bounds - programmatically trigger click on target element
           // This helps when an overlay or SVG is blocking the actual element
-          element.click();
+          // SAFETY: Only click if element is still connected to DOM (avoid "form not connected" errors)
+          if (element.isConnected) {
+            element.click();
+          }
           resolve('completed');
         }
       };

@@ -29,7 +29,7 @@ export const EnableRecommenderBanner: React.FC<EnableRecommenderBannerProps> = (
 
     // Navigate to the Recommendations configuration tab
     // Use query parameter format as shown in the URL
-    locationService.push('/plugins/grafana-grafanadocsplugin-app?page=recommendations-config');
+    locationService.push('/plugins/grafana-pathfinder-app?page=recommendations-config');
   };
 
   return (

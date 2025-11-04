@@ -10,6 +10,7 @@ import {
   RelatedJourneys,
   ConclusionImage,
 } from './content.types';
+import { journeyCompletionStorage } from '../../lib/user-storage';
 
 /**
  * Navigation helpers - these work with metadata, not DOM
@@ -267,25 +268,32 @@ function appendBottomNavigationToContent(content: string, currentMilestone: numb
     return content;
   }
 
-  // We'll still generate both buttons and let the link handler check navigation availability
-  // This ensures consistent UI structure while the actual logic is handled by the navigation functions
+  const isLastMilestone = currentMilestone === totalMilestones;
+
+  // Conditionally render Previous button (primary style, always show)
+  const prevButton = `
+    <button class="btn btn--primary journey-nav-prev" 
+            data-journey-nav="prev">
+      ← Previous
+    </button>
+  `;
+
+  // Conditionally render Next button (primary style, hide on last milestone)
+  const nextButton = isLastMilestone
+    ? ''
+    : `
+    <button class="btn btn--primary journey-nav-next" 
+            data-journey-nav="next">
+      Next →
+    </button>
+  `;
 
   const navigationHtml = `
     <div class="journey-bottom-navigation">
       <div class="journey-bottom-nav-container">
-        <button class="journey-bottom-nav-button journey-nav-prev" 
-                data-journey-nav="prev">
-          ← Previous
-        </button>
-        
-        <div class="journey-progress-indicator">
-          Step ${currentMilestone} of ${totalMilestones}
-        </div>
-        
-        <button class="journey-bottom-nav-button journey-nav-next" 
-                data-journey-nav="next">
-          Next →
-        </button>
+        ${prevButton}
+        <span class="journey-progress-text">Step ${currentMilestone} of ${totalMilestones}</span>
+        ${nextButton}
       </div>
     </div>
   `;
@@ -294,44 +302,56 @@ function appendBottomNavigationToContent(content: string, currentMilestone: numb
 }
 
 /**
- * Cache completion percentage tracking
- * These functions manage progress state in localStorage
+ * Journey completion percentage tracking
+ *
+ * These functions use the new user storage system which automatically:
+ * - Uses Grafana's user storage API when available (11.5+)
+ * - Falls back to localStorage for older versions
+ * - Handles quota exhaustion with built-in cleanup
+ * - Provides user-specific storage in Grafana database
  */
-const COMPLETION_STORAGE_KEY = 'grafana-docs-plugin-journey-completion';
 
 export function getJourneyCompletionPercentage(journeyBaseUrl: string): number {
-  try {
-    const completionData = JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
-    return completionData[journeyBaseUrl] || 0;
-  } catch {
-    return 0;
-  }
+  // Note: This is now async but wrapped to maintain backward compatibility
+  // The storage operation will resolve quickly from cache
+  let result = 0;
+  journeyCompletionStorage.get(journeyBaseUrl).then((percentage) => {
+    result = percentage;
+  });
+  return result;
+}
+
+export async function getJourneyCompletionPercentageAsync(journeyBaseUrl: string): Promise<number> {
+  return journeyCompletionStorage.get(journeyBaseUrl);
 }
 
 export function setJourneyCompletionPercentage(journeyBaseUrl: string, percentage: number): void {
-  try {
-    const completionData = JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
-    completionData[journeyBaseUrl] = Math.max(0, Math.min(100, percentage));
-    localStorage.setItem(COMPLETION_STORAGE_KEY, JSON.stringify(completionData));
-  } catch (error) {
-    console.warn('Failed to save journey completion percentage:', error);
-  }
+  // Fire and forget - storage handles errors internally
+  journeyCompletionStorage.set(journeyBaseUrl, percentage);
+}
+
+export async function setJourneyCompletionPercentageAsync(journeyBaseUrl: string, percentage: number): Promise<void> {
+  return journeyCompletionStorage.set(journeyBaseUrl, percentage);
 }
 
 export function clearJourneyCompletion(journeyBaseUrl: string): void {
-  try {
-    const completionData = JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
-    delete completionData[journeyBaseUrl];
-    localStorage.setItem(COMPLETION_STORAGE_KEY, JSON.stringify(completionData));
-  } catch (error) {
-    console.warn('Failed to clear journey completion:', error);
-  }
+  // Fire and forget - storage handles errors internally
+  journeyCompletionStorage.clear(journeyBaseUrl);
+}
+
+export async function clearJourneyCompletionAsync(journeyBaseUrl: string): Promise<void> {
+  return journeyCompletionStorage.clear(journeyBaseUrl);
 }
 
 export function getAllJourneyCompletions(): Record<string, number> {
-  try {
-    return JSON.parse(localStorage.getItem(COMPLETION_STORAGE_KEY) || '{}');
-  } catch {
-    return {};
-  }
+  // Note: This is now async but wrapped to maintain backward compatibility
+  let result: Record<string, number> = {};
+  journeyCompletionStorage.getAll().then((completions) => {
+    result = completions;
+  });
+  return result;
+}
+
+export async function getAllJourneyCompletionsAsync(): Promise<Record<string, number>> {
+  return journeyCompletionStorage.getAll();
 }

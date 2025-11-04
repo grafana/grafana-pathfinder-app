@@ -27,12 +27,12 @@ env:
   # Choose between:
   # - 'universal': on-prem + cloud (default)
   # - 'grafana_cloud': cloud only, hidden for on-prem users
-  SCOPES: universal # TODO: Choose the appropriate scope for your plugin.
+  SCOPES: universal
 
 jobs:
   cd:
     name: CD
-    uses: grafana/plugin-ci-workflows/.github/workflows/cd.yml@main # zizmor: ignore[unpinned-uses]
+    uses: grafana/plugin-ci-workflows/.github/workflows/cd.yml@ci-cd-workflows/v3.2.0
     permissions:
       contents: write
       id-token: write
@@ -45,7 +45,7 @@ jobs:
       grafana-cloud-deployment-type: provisioned
       argo-workflow-slack-channel: '#pathfinder-app-release'
       auto-merge-environments: dev,ops
-      publish-to-catalog-as-pending: true
+      publish-to-catalog-as-pending: false
       # temp disable while https://github.com/grafana/plugin-actions/pull/118 is being fixed
       run-playwright: false
 

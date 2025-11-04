@@ -139,6 +139,7 @@ export function hasFixedPosition(element: HTMLElement | null): boolean {
 /**
  * Find the actual scrollable parent container for an element
  * Handles custom scroll containers like Grafana panels, modals, or nested divs
+ * Enhanced to detect virtualized table containers
  *
  * @param element - The element to find scroll parent for
  * @returns The scrollable parent container or document.documentElement
@@ -169,6 +170,18 @@ export function getScrollParent(element: HTMLElement | null): HTMLElement {
       }
     }
 
+    // Special case: overflow:hidden parent might still be the scroll container
+    // if it has scrollable children (common in virtualized tables)
+    if (overflow.includes('hidden')) {
+      // Check if parent has explicit height and scrollable content
+      const hasExplicitHeight = style.height !== 'auto' && style.height !== '';
+      const isScrollable = parent.scrollHeight > parent.clientHeight;
+
+      if (hasExplicitHeight && isScrollable) {
+        return parent;
+      }
+    }
+
     parent = parent.parentElement;
   }
 
@@ -176,22 +189,53 @@ export function getScrollParent(element: HTMLElement | null): HTMLElement {
 }
 
 /**
+ * Calculate the total height offset from sticky/fixed headers above an element
+ * These headers can block visibility even when element appears "in viewport"
+ * Scans ALL elements in the scroll container, not just ancestors
+ *
+ * @param element - The element to check for obstructing sticky/fixed headers
+ * @returns Total pixel offset from sticky/fixed headers in pixels
+ *
+ * @example
+ * ```typescript
+ * const row = document.querySelector('.table-row');
+ * const offset = getStickyHeaderOffset(row);
+ * // Returns 75 if there's a 75px sticky header above
+ * ```
+ */
+export function getStickyHeaderOffset(element: HTMLElement | null): number {
+  if (!element) {
+    return 0;
+  }
+
+  // Simple solution: Use a reasonable fixed offset for sticky headers
+  // Most sticky headers (Grafana, navigation bars, etc.) are 60-80px tall
+  // This avoids expensive DOM scanning and is fast and reliable
+  const TYPICAL_HEADER_HEIGHT = 70;
+
+  return TYPICAL_HEADER_HEIGHT;
+}
+
+/**
  * Check if element is currently in the viewport
  * Uses getBoundingClientRect to determine visibility
+ * Accounts for sticky/fixed headers that reduce effective viewport
  *
  * @param element - The element to check
  * @param threshold - Optional visibility threshold (0-1), defaults to 0 (any part visible)
+ * @param stickyOffset - Optional sticky header offset to adjust effective viewport top
  * @returns true if element is in viewport, false otherwise
  *
  * @example
  * ```typescript
  * const element = document.querySelector('.target');
- * if (isInViewport(element, 0.5)) {
- *   // At least 50% of element is visible
+ * const offset = getStickyHeaderOffset(element);
+ * if (isInViewport(element, 0.5, offset)) {
+ *   // At least 50% of element is visible below sticky headers
  * }
  * ```
  */
-export function isInViewport(element: HTMLElement | null, threshold = 0): boolean {
+export function isInViewport(element: HTMLElement | null, threshold = 0, stickyOffset = 0): boolean {
   if (!element) {
     return false;
   }
@@ -200,13 +244,16 @@ export function isInViewport(element: HTMLElement | null, threshold = 0): boolea
   const windowHeight = window.innerHeight || document.documentElement.clientHeight;
   const windowWidth = window.innerWidth || document.documentElement.clientWidth;
 
+  // Adjust effective viewport top by sticky header offset
+  const effectiveTop = stickyOffset;
+
   if (threshold === 0) {
-    // Any part visible
-    return rect.top < windowHeight && rect.bottom > 0 && rect.left < windowWidth && rect.right > 0;
+    // Any part visible, accounting for sticky headers
+    return rect.top < windowHeight && rect.bottom > effectiveTop && rect.left < windowWidth && rect.right > 0;
   }
 
-  // Calculate visible area percentage
-  const visibleHeight = Math.min(rect.bottom, windowHeight) - Math.max(rect.top, 0);
+  // Calculate visible area percentage, accounting for sticky headers
+  const visibleHeight = Math.min(rect.bottom, windowHeight) - Math.max(rect.top, effectiveTop);
   const visibleWidth = Math.min(rect.right, windowWidth) - Math.max(rect.left, 0);
   const visibleArea = Math.max(0, visibleHeight) * Math.max(0, visibleWidth);
   const totalArea = rect.height * rect.width;

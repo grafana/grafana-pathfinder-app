@@ -14,9 +14,14 @@ export const getHelpFooterStyles = (theme: GrafanaTheme2) => ({
   }),
   helpButtons: css({
     display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
     gap: theme.spacing(0.75),
     width: '100%',
+
+    // Stack vertically when width is too small
+    '@media (max-width: 400px)': {
+      gridTemplateColumns: '1fr',
+    },
   }),
   helpButton: css([
     createSecondaryButton(theme, { size: 'sm' }),
@@ -28,16 +33,6 @@ export const getHelpFooterStyles = (theme: GrafanaTheme2) => ({
       },
       textDecoration: 'none',
       minHeight: '32px',
-
-      // Override the default secondary button hover to be more subtle
-      '&:hover:not(:disabled)': {
-        backgroundColor: theme.colors.action.hover,
-        borderColor: theme.colors.border.medium,
-        transform: 'translateY(-1px)',
-        boxShadow: theme.shadows.z1,
-        textDecoration: 'none',
-        color: theme.colors.text.primary,
-      },
     },
   ]),
   helpButtonContent: css({

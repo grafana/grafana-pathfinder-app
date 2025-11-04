@@ -1,11 +1,7 @@
 apiVersion: 1
 
 apps:
-  - type: 'grafana-grafanadocsplugin-app'
+  - type: 'grafana-pathfinder-app'
     org_id: 1
     org_name: 'grafanalabs'
     disabled: false
-    jsonData:
-      # Docs Base URL - can be overridden with environment variable
-      docsBaseUrl: ${GF_PLUGINS_GRAFANA_GRAFANADOCSPLUGIN_APP_DOCS_URL:https://grafana.com}
-      # Auto-launch tutorial URL (for demo scenarios)

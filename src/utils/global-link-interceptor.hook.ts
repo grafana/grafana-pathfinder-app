@@ -1,5 +1,14 @@
 import { useEffect } from 'react';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
+import {
+  isAllowedContentUrl,
+  isAllowedGitHubRawUrl,
+  isGitHubUrl,
+  isGitHubRawUrl,
+  isLocalhostUrl,
+} from '../utils/url-validator';
+import { ALLOWED_GITHUB_REPOS } from '../constants';
+import { isDevModeEnabledGlobal } from './dev-mode';
 
 interface GlobalLinkInterceptorProps {
   onOpenDocsLink: (url: string, title: string) => void;
@@ -7,25 +16,24 @@ interface GlobalLinkInterceptorProps {
 }
 
 /**
- * Determines if a URL is a supported Grafana docs link that can be opened in Pathfinder
+ * Determines if a URL is a supported docs link that can be opened in Pathfinder
+ * Uses proper URL parsing to prevent domain hijacking attacks
+ *
+ * SECURITY (F6): Must match the same validation as content-fetcher, docs-panel, and link-handler
+ * In production: Grafana docs URLs and approved GitHub repos
+ * In dev mode: Also allows any GitHub URLs and localhost URLs for testing
+ *
+ * Note: Only validates full URLs. Relative paths should be resolved first before validation.
  */
 function isSupportedDocsUrl(url: string): boolean {
   try {
-    // Check if it's a Grafana docs, tutorial, or learning journey URL
-    if (
-      url.includes('grafana.com/docs/') ||
-      url.includes('grafana.com/tutorials/') ||
-      url.includes('grafana.com/learning-journeys/')
-    ) {
-      return true;
-    }
-
-    // Also support relative paths that might be Grafana docs
-    if (url.startsWith('/docs/') || url.startsWith('/tutorials/') || url.startsWith('/learning-journeys/')) {
-      return true;
-    }
-
-    return false;
+    // SECURITY: Validate URL is from a trusted source (F6)
+    return (
+      isAllowedContentUrl(url) ||
+      isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
+      isGitHubUrl(url) ||
+      (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url)))
+    );
   } catch (error) {
     console.warn('Error checking if URL is supported:', error);
     return false;
@@ -118,14 +126,12 @@ export function useGlobalLinkInterceptor({ onOpenDocsLink, enabled = false }: Gl
         if (href.startsWith('http://') || href.startsWith('https://')) {
           // Already a full URL
           fullUrl = href;
-        } else if (href.startsWith('/')) {
-          // Absolute path - assume it's on grafana.com domain
-          fullUrl = `https://grafana.com${href}`;
         } else if (href.startsWith('#')) {
           // Fragment link - skip it (let browser handle)
           return;
         } else {
-          // Relative path - resolve against current location
+          // Absolute path (starts with /) or relative path - resolve against current location
+          // This ensures self-hosted instances resolve to their own domain, not grafana.com
           fullUrl = new URL(href, window.location.href).href;
         }
       } catch (error) {

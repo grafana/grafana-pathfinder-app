@@ -9,7 +9,7 @@ A powerful developer tool for creating and testing interactive tutorial selector
 Navigate to the plugin configuration page with the dev mode parameter:
 
 ```
-https://your-grafana.com/a/grafana-grafanadocsplugin-app?page=configuration&dev=true
+https://your-grafana.com/a/grafana-pathfinder-app?page=configuration&dev=true
 ```
 
 ### 2. Enable Dev Mode

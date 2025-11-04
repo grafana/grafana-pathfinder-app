@@ -1,9 +1,6 @@
 ---
 alwaysApply: false
-description: Describes the projects orientation and strategy for unit and other forms of testing.  Provides instructions
-on how to test.
 ---
-
 # Testing Strategy
 
 ## Overview
