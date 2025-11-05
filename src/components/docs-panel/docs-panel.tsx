@@ -611,7 +611,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Live session state
   const [showPresenterControls, setShowPresenterControls] = React.useState(false);
   const [showAttendeeJoin, setShowAttendeeJoin] = React.useState(false);
-  const { isActive: isSessionActive, sessionRole, sessionInfo, sessionManager, onEvent, endSession, attendeeMode, setAttendeeMode, refreshAttendees } = useSession();
+  const { isActive: isSessionActive, sessionRole, sessionInfo, sessionManager, onEvent, endSession, attendeeMode, setAttendeeMode } = useSession();
   
   // Check for session join URL on mount and auto-open modal
   React.useEffect(() => {
@@ -910,14 +910,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     }
   }, [sessionRole, sessionManager, sessionInfo]);
   
-  // Refresh attendees list when presenter opens session controls
-  useEffect(() => {
-    if (showPresenterControls && sessionRole === 'presenter') {
-      console.log('[DocsPanel] Presenter controls opened, refreshing attendees');
-      refreshAttendees();
-    }
-  }, [showPresenterControls, sessionRole, refreshAttendees]);
-  
   // ============================================================================
   // Live Session Effects (Attendee)
   // ============================================================================
@@ -1193,13 +1185,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       if (actionReplayRef.current) {
                         actionReplayRef.current.setMode(newMode);
                       }
-                      // Broadcast mode change to presenter
+                      // Send mode change to presenter
                       if (sessionManager) {
-                        sessionManager.broadcastEvent({
+                        sessionManager.sendToPresenter({
                           type: 'mode_change',
                           sessionId: sessionInfo?.sessionId || '',
                           timestamp: Date.now(),
-                          senderId: 'attendee',
+                          senderId: sessionManager.getRole() || 'attendee',
                           mode: newMode
                         } as any);
                       }
@@ -1222,13 +1214,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       if (actionReplayRef.current) {
                         actionReplayRef.current.setMode(newMode);
                       }
-                      // Broadcast mode change to presenter
+                      // Send mode change to presenter
                       if (sessionManager) {
-                        sessionManager.broadcastEvent({
+                        sessionManager.sendToPresenter({
                           type: 'mode_change',
                           sessionId: sessionInfo?.sessionId || '',
                           timestamp: Date.now(),
-                          senderId: 'attendee',
+                          senderId: sessionManager.getRole() || 'attendee',
                           mode: newMode
                         } as any);
                       }

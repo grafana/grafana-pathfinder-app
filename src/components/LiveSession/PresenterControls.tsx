@@ -100,97 +100,106 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
           </div>
         </div>
         
-        <div className={styles.sessionInfo}>
-          <div className={styles.infoRow}>
-            <strong>Session:</strong> {sessionInfo.config.name}
-          </div>
-          <div className={styles.infoRow}>
-            <strong>Attendees:</strong> {attendees.length}
-          </div>
-        </div>
-        
-        <div className={styles.shareSection}>
-          <h4>Share with Attendees</h4>
-          
-          <div className={styles.shareItem}>
-            <label>Session Code</label>
-            <p className={styles.helpText}>Share this 6-character code with attendees</p>
-            <div className={styles.copyGroup}>
-              <Input
-                value={sessionInfo.joinCode}
-                readOnly
-                className={styles.codeInput}
-                style={{ fontSize: '24px', fontWeight: 'bold', textAlign: 'center', letterSpacing: '4px' }}
-              />
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => copyToClipboard(sessionInfo.joinCode, 'code')}
-              >
-                {copied === 'code' ? '✓ Copied' : 'Copy'}
-              </Button>
+        <div className={styles.activeSessionContainer}>
+          {/* Left Column: Join Information */}
+          <div className={styles.leftColumn}>
+            <div className={styles.sessionInfo}>
+              <div className={styles.infoRow}>
+                <strong>Session:</strong> {sessionInfo.config.name}
+              </div>
             </div>
-          </div>
-          
-          <div className={styles.shareItem}>
-            <label>Join URL</label>
-            <div className={styles.copyGroup}>
-              <Input
-                value={sessionInfo.joinUrl}
-                readOnly
-                className={styles.urlInput}
-              />
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => copyToClipboard(sessionInfo.joinUrl, 'url')}
-              >
-                {copied === 'url' ? '✓ Copied' : 'Copy'}
-              </Button>
-            </div>
-          </div>
-          
-          {sessionInfo.qrCode && (
-            <div className={styles.qrSection}>
-              <label>QR Code</label>
-              <img src={sessionInfo.qrCode} alt="QR Code" className={styles.qrCode} />
-              <p className={styles.helpText}>Attendees can scan this to join instantly</p>
-            </div>
-          )}
-        </div>
-        
-        <div className={styles.attendeesList}>
-          <h4>
-            {attendees.length === 0 ? 'Waiting for attendees...' : `Connected Attendees (${attendees.length})`}
-          </h4>
-          {attendees.length > 0 && (
-            <>
-            {attendees.map((attendee) => {
-              return (
-                <div key={attendee.id} className={styles.attendeeItem}>
-                  <span className={styles.attendeeName}>
-                    {attendee.name || 'Anonymous'}
-                  </span>
-                  <Badge 
-                    text={attendee.mode === 'guided' ? 'Guided' : 'Follow'} 
-                    color={attendee.mode === 'guided' ? 'orange' : 'blue'}
+            
+            <div className={styles.shareSection}>
+              <h4>Share with Attendees</h4>
+              
+              <div className={styles.shareItem}>
+                <label>Session Code</label>
+                <p className={styles.helpText}>Share this 6-character code with attendees</p>
+                <div className={styles.copyGroup}>
+                  <Input
+                    value={sessionInfo.joinCode}
+                    readOnly
+                    className={styles.codeInput}
+                    style={{ fontSize: '24px', fontWeight: 'bold', textAlign: 'center', letterSpacing: '4px' }}
                   />
-                  <ConnectionIndicator 
-                    state={attendee.connectionState}
-                    quality={attendee.connectionQuality}
-                    showLabel={false}
-                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => copyToClipboard(sessionInfo.joinCode, 'code')}
+                  >
+                    {copied === 'code' ? '✓ Copied' : 'Copy'}
+                  </Button>
                 </div>
-              );
-            })}
-            </>
-          )}
-        </div>
-        
-        <div className={styles.actions}>
-          <Button variant="destructive" onClick={handleEndSession}>
-            End Session
-          </Button>
+              </div>
+              
+              <div className={styles.shareItem}>
+                <label>Join URL</label>
+                <div className={styles.copyGroup}>
+                  <Input
+                    value={sessionInfo.joinUrl}
+                    readOnly
+                    className={styles.urlInput}
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => copyToClipboard(sessionInfo.joinUrl, 'url')}
+                  >
+                    {copied === 'url' ? '✓ Copied' : 'Copy'}
+                  </Button>
+                </div>
+              </div>
+              
+              {sessionInfo.qrCode && (
+                <div className={styles.qrSection}>
+                  <label>QR Code</label>
+                  <img src={sessionInfo.qrCode} alt="QR Code" className={styles.qrCode} />
+                  <p className={styles.helpText}>Attendees can scan this to join instantly</p>
+                </div>
+              )}
+            </div>
+            
+            <div className={styles.actions}>
+              <Button variant="destructive" onClick={handleEndSession}>
+                End Session
+              </Button>
+            </div>
+          </div>
+          
+          {/* Right Column: Attendee List */}
+          <div className={styles.rightColumn}>
+            <div className={styles.attendeeListHeader}>
+              <h4>Attendees</h4>
+              <span className={styles.attendeeCount}>{attendees.length}</span>
+            </div>
+            
+            {attendees.length === 0 ? (
+              <div className={styles.emptyState}>
+                <p>Waiting for attendees to join...</p>
+              </div>
+            ) : (
+              <div className={styles.scrollableAttendeeList}>
+                {attendees.map((attendee) => {
+                  return (
+                    <div key={attendee.id} className={styles.attendeeItem}>
+                      <span className={styles.attendeeName}>
+                        {attendee.name || 'Anonymous'}
+                      </span>
+                      <Badge 
+                        text={attendee.mode === 'guided' ? 'Guided' : 'Follow'} 
+                        color={attendee.mode === 'guided' ? 'orange' : 'blue'}
+                      />
+                      <ConnectionIndicator 
+                        state={attendee.connectionState}
+                        quality={attendee.connectionQuality}
+                        showLabel={false}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -293,6 +302,63 @@ function getStyles(theme: GrafanaTheme2) {
           opacity: 0.5;
         }
       }
+    `,
+    activeSessionContainer: css`
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: ${theme.spacing(3)};
+      
+      @media (max-width: 900px) {
+        grid-template-columns: 1fr;
+      }
+    `,
+    leftColumn: css`
+      display: flex;
+      flex-direction: column;
+      gap: ${theme.spacing(2)};
+    `,
+    rightColumn: css`
+      display: flex;
+      flex-direction: column;
+      gap: ${theme.spacing(2)};
+      border-left: 1px solid ${theme.colors.border.medium};
+      padding-left: ${theme.spacing(3)};
+      
+      @media (max-width: 900px) {
+        border-left: none;
+        padding-left: 0;
+        border-top: 1px solid ${theme.colors.border.medium};
+        padding-top: ${theme.spacing(3)};
+      }
+    `,
+    attendeeListHeader: css`
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: ${theme.spacing(1)};
+      
+      h4 {
+        margin: 0;
+        font-size: ${theme.typography.h4.fontSize};
+      }
+    `,
+    attendeeCount: css`
+      font-size: ${theme.typography.h4.fontSize};
+      font-weight: ${theme.typography.fontWeightBold};
+      color: ${theme.colors.primary.text};
+    `,
+    scrollableAttendeeList: css`
+      max-height: 400px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: ${theme.spacing(0.5)};
+    `,
+    emptyState: css`
+      padding: ${theme.spacing(3)};
+      text-align: center;
+      color: ${theme.colors.text.secondary};
+      font-style: italic;
     `,
     form: css`
       display: flex;

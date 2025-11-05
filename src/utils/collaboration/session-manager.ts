@@ -38,6 +38,7 @@ export class SessionManager {
   private eventHandlers: Set<(event: AnySessionEvent) => void> = new Set();
   private errorHandlers: Set<(error: SessionError) => void> = new Set();
   private attendeeHandlers: Set<(attendee: AttendeeInfo) => void> = new Set();
+  private attendeeUpdateHandlers: Set<(attendees: AttendeeInfo[]) => void> = new Set();
   
   // Attendee tracking (for presenter)
   private attendees: Map<string, AttendeeInfo> = new Map();
@@ -214,6 +215,9 @@ export class SessionManager {
             // Notify handlers
             this.attendeeHandlers.forEach(handler => handler(attendee));
             
+            // Notify attendee list update
+            this.notifyAttendeeListUpdate();
+            
             // Send welcome message
             conn.send({
               type: 'session_start',
@@ -232,7 +236,26 @@ export class SessionManager {
                 mode: data.mode
               };
               this.attendees.set(conn.peer, updatedAttendee);
+              
+              // Notify attendee list update
+              this.notifyAttendeeListUpdate();
+            } else {
+              console.warn(`[SessionManager] Received mode_change for unknown attendee: ${conn.peer}`);
             }
+            // Forward event to handlers
+            this.eventHandlers.forEach(handler => handler(data));
+          } else if (data.type === 'attendee_leave') {
+            // Handle intentional attendee leave - remove immediately (no grace period)
+            console.log(`[SessionManager] Attendee ${conn.peer} leaving intentionally`);
+            this.attendees.delete(conn.peer);
+            this.connectionStates.delete(conn.peer);
+            this.lastHeartbeat.delete(conn.peer);
+            this.heartbeatSentTimes.delete(conn.peer);
+            this.connections.delete(conn.peer);
+            
+            // Notify UI of immediate attendee removal
+            this.notifyAttendeeListUpdate();
+            
             // Forward event to handlers
             this.eventHandlers.forEach(handler => handler(data));
           } else if (data.type === 'heartbeat') {
@@ -259,6 +282,9 @@ export class SessionManager {
                   connectionQuality: quality
                 };
                 this.attendees.set(conn.peer, updatedAttendee);
+                
+                // Notify attendee list update
+                this.notifyAttendeeListUpdate();
               }
             }
           } else {
@@ -280,6 +306,9 @@ export class SessionManager {
               connectionState: 'disconnected'
             };
             this.attendees.set(conn.peer, updatedAttendee);
+            
+            // Notify attendee list update
+            this.notifyAttendeeListUpdate();
           }
           
           this.connections.delete(conn.peer);
@@ -287,10 +316,14 @@ export class SessionManager {
           setTimeout(() => {
             // Only delete if still disconnected after 30 seconds
             if (this.connectionStates.get(conn.peer) === 'disconnected') {
+              console.log(`[SessionManager] Removing attendee after grace period: ${conn.peer}`);
               this.attendees.delete(conn.peer);
               this.connectionStates.delete(conn.peer);
               this.lastHeartbeat.delete(conn.peer);
               this.heartbeatSentTimes.delete(conn.peer);
+              
+              // Notify UI of attendee removal
+              this.notifyAttendeeListUpdate();
             }
           }, 30000);
         });
@@ -307,6 +340,9 @@ export class SessionManager {
               connectionState: 'failed'
             };
             this.attendees.set(conn.peer, updatedAttendee);
+            
+            // Notify attendee list update
+            this.notifyAttendeeListUpdate();
           }
         });
       });
@@ -534,6 +570,36 @@ export class SessionManager {
   }
   
   /**
+   * Register attendee list update handler (presenter only)
+   * Called whenever the attendee list changes (join, leave, mode change, connection state change)
+   */
+  onAttendeeListUpdate(callback: (attendees: AttendeeInfo[]) => void): () => void {
+    this.attendeeUpdateHandlers.add(callback);
+    
+    // Return cleanup function
+    return () => {
+      this.attendeeUpdateHandlers.delete(callback);
+    };
+  }
+  
+  /**
+   * Notify all attendee list update handlers
+   * @private
+   */
+  private notifyAttendeeListUpdate(): void {
+    const attendeeList = Array.from(this.attendees.values());
+    console.log(`[SessionManager] Notifying attendee list update (${attendeeList.length} attendees)`);
+    
+    this.attendeeUpdateHandlers.forEach(handler => {
+      try {
+        handler(attendeeList);
+      } catch (error) {
+        console.error('[SessionManager] Error in attendee update handler:', error);
+      }
+    });
+  }
+  
+  /**
    * Get list of attendees (presenter only)
    */
   getAttendees(): AttendeeInfo[] {
@@ -551,23 +617,48 @@ export class SessionManager {
    * End the session and close all connections
    */
   endSession(): void {
-    console.log('[SessionManager] Ending session');
+    console.log(`[SessionManager] Ending session (role: ${this.role})`);
     
-    // Close all connections
-    this.connections.forEach((conn, peerId) => {
-      try {
-        if (conn.open) {
-          conn.send({
-            type: 'session_end',
+    // If attendee, send leave event to presenter before disconnecting
+    if (this.role === 'attendee' && this.sessionId) {
+      const presenterConn = this.connections.get(this.sessionId);
+      if (presenterConn && presenterConn.open) {
+        try {
+          console.log('[SessionManager] Attendee sending leave event to presenter');
+          presenterConn.send({
+            type: 'attendee_leave',
             sessionId: this.sessionId,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            senderId: this.peer?.id || 'unknown'
           });
+          // Give time for the message to be sent
+          setTimeout(() => {
+            presenterConn.close();
+          }, 100);
+        } catch (error) {
+          console.error('[SessionManager] Error sending leave event:', error);
+          presenterConn.close();
         }
-        conn.close();
-      } catch (error) {
-        console.error(`[SessionManager] Error closing connection to ${peerId}:`, error);
       }
-    });
+    }
+    
+    // If presenter, close all connections
+    if (this.role === 'presenter') {
+      this.connections.forEach((conn, peerId) => {
+        try {
+          if (conn.open) {
+            conn.send({
+              type: 'session_end',
+              sessionId: this.sessionId,
+              timestamp: Date.now()
+            });
+          }
+          conn.close();
+        } catch (error) {
+          console.error(`[SessionManager] Error closing connection to ${peerId}:`, error);
+        }
+      });
+    }
     
     this.connections.clear();
     this.attendees.clear();
