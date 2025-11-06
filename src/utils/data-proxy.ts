@@ -10,7 +10,7 @@
 
 import pluginJson from '../plugin.json';
 import { ALLOWED_GITHUB_REPOS } from '../constants';
-import { parseUrlSafely } from './url-validator';
+import { parseUrlSafely } from '../security';
 
 /**
  * Plugin ID from plugin.json metadata

@@ -6,7 +6,7 @@ import { testIds } from '../testIds';
 import { DocsPluginConfig, TERMS_VERSION, getConfigWithDefaults } from '../../constants';
 import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
 import { updatePluginSettings } from '../../utils/utils.plugin';
-import { sanitizeDocumentationHTML } from '../../utils/docs-retrieval/html-sanitizer';
+import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 
 type JsonData = DocsPluginConfig & {
   isDocsPasswordSet?: boolean;

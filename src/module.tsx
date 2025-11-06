@@ -13,13 +13,7 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, ALLOWED_GITHUB_REPOS, DocsPluginConfig } from './constants';
-import {
-  isAllowedContentUrl,
-  isAllowedGitHubRawUrl,
-  isGitHubUrl,
-  isGitHubRawUrl,
-  isLocalhostUrl,
-} from './utils/url-validator';
+import { isAllowedContentUrl, isAllowedGitHubRawUrl, isGitHubUrl, isGitHubRawUrl, isLocalhostUrl } from './security';
 import { isDevModeEnabledGlobal } from './utils/dev-mode';
 
 // Persistent queue for docs links clicked before sidebar opens

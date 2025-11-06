@@ -5,8 +5,8 @@
  * Based on security audit from meeting with Kristian Bremberg.
  */
 
-import { sanitizeDocumentationHTML } from './docs-retrieval/html-sanitizer';
-import { parseHTMLToComponents } from './docs-retrieval/html-parser';
+import { sanitizeDocumentationHTML } from './html-sanitizer';
+import { parseHTMLToComponents } from '../utils/docs-retrieval/html-parser';
 import {
   parseUrlSafely,
   isGrafanaDocsUrl,
@@ -299,7 +299,7 @@ describe('Security: Interactive Content Source Validation', () => {
     // Reimport with mocked dev mode
     jest.isolateModules(() => {
       // Mock dev mode as enabled
-      jest.doMock('./dev-mode', () => ({
+      jest.doMock('../utils/dev-mode', () => ({
         isDevModeEnabled: () => true,
         isDevModeEnabledGlobal: () => true, // NEW: Mock global check
         enableDevMode: jest.fn(),
@@ -307,7 +307,7 @@ describe('Security: Interactive Content Source Validation', () => {
         toggleDevMode: jest.fn(),
       }));
 
-      const { parseHTMLToComponents: parseWithDevMode } = require('./docs-retrieval/html-parser');
+      const { parseHTMLToComponents: parseWithDevMode } = require('../utils/docs-retrieval/html-parser');
 
       localhostUrls.forEach((url) => {
         const result = parseWithDevMode(html, url);
@@ -328,7 +328,7 @@ describe('Security: Interactive Content Source Validation', () => {
     // Reimport with mocked dev mode
     jest.isolateModules(() => {
       // Mock dev mode as enabled
-      jest.doMock('./dev-mode', () => ({
+      jest.doMock('../utils/dev-mode', () => ({
         isDevModeEnabled: () => true,
         isDevModeEnabledGlobal: () => true, // NEW: Mock global check
         enableDevMode: jest.fn(),
@@ -336,7 +336,7 @@ describe('Security: Interactive Content Source Validation', () => {
         toggleDevMode: jest.fn(),
       }));
 
-      const { parseHTMLToComponents: parseWithDevMode } = require('./docs-retrieval/html-parser');
+      const { parseHTMLToComponents: parseWithDevMode } = require('../utils/docs-retrieval/html-parser');
 
       personalRepoUrls.forEach((url) => {
         const result = parseWithDevMode(html, url);
