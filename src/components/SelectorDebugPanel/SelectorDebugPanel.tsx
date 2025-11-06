@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button, Input, Badge, Icon, useStyles2, TextArea } from '@grafana/ui';
-import { useInteractiveElements } from '../../utils/interactive.hook';
+import { useInteractiveElements } from '../../interactive-engine';
 import { querySelectorAllEnhanced } from '../../utils/enhanced-selector';
 import { generateBestSelector, getSelectorInfo } from '../../utils/selector-generator';
 import {

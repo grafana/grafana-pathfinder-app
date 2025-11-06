@@ -32,10 +32,11 @@ const mockCheckRequirements = jest.fn().mockResolvedValue({
   error: [],
 });
 
-jest.mock('../utils/interactive.hook', () => ({
+jest.mock('../interactive-engine', () => ({
   useInteractiveElements: jest.fn().mockImplementation(() => ({
     checkRequirementsFromData: mockCheckRequirements,
   })),
+  useSequentialStepState: jest.fn().mockReturnValue(undefined),
 }));
 
 // Mock requirement explanations

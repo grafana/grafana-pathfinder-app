@@ -2,7 +2,7 @@ import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffec
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
-import { useInteractiveElements } from '../../../interactive.hook';
+import { useInteractiveElements } from '../../../../interactive-engine';
 import { useStepChecker } from '../../../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../../lib/analytics';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../../constants/interactive-config';
@@ -227,7 +227,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       isCancelledRef.current = false; // Reset ref as well
 
       // Clear any existing highlights before starting multi-step execution
-      const { NavigationManager } = await import('../../../navigation-manager');
+      const { NavigationManager } = await import('../../../../interactive-engine/navigation-manager');
       const navigationManager = new NavigationManager();
       navigationManager.clearAllHighlights();
 
