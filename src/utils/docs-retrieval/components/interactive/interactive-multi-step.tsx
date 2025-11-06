@@ -634,6 +634,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         className={`interactive-step${className ? ` ${className}` : ''}${
           isCompletedWithObjectives ? ' completed' : ''
         }${isCurrentlyExecuting ? ' executing' : ''}`}
+        data-targetaction="multistep"
+        data-reftarget={stepId || 'multistep'}
+        data-internal-actions={JSON.stringify(internalActions)}
+        data-step-id={stepId}
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
