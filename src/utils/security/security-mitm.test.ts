@@ -5,12 +5,12 @@
  * open redirects, and XSS from external services.
  */
 
-import { fetchContent } from './docs-retrieval/content-fetcher';
-import { sanitizeTextForDisplay } from './docs-retrieval/html-sanitizer';
-import { isDevModeEnabledGlobal } from './dev-mode';
+import { fetchContent } from '../docs-retrieval/content-fetcher';
+import { sanitizeTextForDisplay } from './html-sanitizer';
+import { isDevModeEnabledGlobal } from '../dev-mode';
 
 // Mock the dev-mode module
-jest.mock('./dev-mode', () => ({
+jest.mock('../dev-mode', () => ({
   isDevModeEnabled: jest.fn(() => false),
   isDevModeEnabledGlobal: jest.fn(() => false),
 }));

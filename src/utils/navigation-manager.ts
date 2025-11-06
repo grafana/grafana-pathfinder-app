@@ -2,7 +2,7 @@ import { waitForReactUpdates } from './requirements-checker.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
 import { isElementVisible, getScrollParent, getStickyHeaderOffset } from './element-validator';
-import { sanitizeDocumentationHTML } from './docs-retrieval/html-sanitizer';
+import { sanitizeDocumentationHTML } from './security/html-sanitizer';
 
 export interface NavigationOptions {
   checkContext?: boolean;

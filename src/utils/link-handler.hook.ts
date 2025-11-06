@@ -14,7 +14,7 @@ import {
   isAllowedGitHubRawUrl,
   isAnyGitHubUrl,
   isLocalhostUrl,
-} from './url-validator';
+} from './security';
 import { ALLOWED_GITHUB_REPOS } from '../constants';
 import { isDevModeEnabledGlobal } from './dev-mode';
 

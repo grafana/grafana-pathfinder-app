@@ -6,7 +6,7 @@ import {
   isGitHubUrl,
   isGitHubRawUrl,
   isLocalhostUrl,
-} from '../utils/url-validator';
+} from '../utils/security';
 import { ALLOWED_GITHUB_REPOS } from '../constants';
 import { isDevModeEnabledGlobal } from './dev-mode';
 

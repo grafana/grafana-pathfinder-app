@@ -20,7 +20,7 @@ import {
   isGitHubRawUrl,
   isAllowedGitHubRawUrl,
   isLocalhostUrl,
-} from '../url-validator';
+} from '../security';
 import { convertGitHubRawToProxyUrl, isDataProxyUrl } from '../data-proxy';
 import { isDevModeEnabledGlobal } from '../dev-mode';
 

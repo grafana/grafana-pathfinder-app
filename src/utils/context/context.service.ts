@@ -9,9 +9,11 @@ import {
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import { hashUserData } from '../../lib/hash.util';
 import { isDevModeEnabledGlobal } from '../dev-mode';
-import { sanitizeTextForDisplay } from '../docs-retrieval/html-sanitizer';
-import { parseUrlSafely } from '../url-validator';
-import { sanitizeForLogging } from '../log-sanitizer';
+import { 
+  sanitizeTextForDisplay, 
+  parseUrlSafely, 
+  sanitizeForLogging 
+} from '../security';
 import {
   ContextData,
   DataSource,

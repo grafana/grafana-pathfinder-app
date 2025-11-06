@@ -4,8 +4,13 @@
 // SECURITY: All HTML is sanitized with DOMPurify before parsing
 
 import { ParseError, ParseResult, ParsedElement, ParsedContent, ContentParseResult } from './content.types';
-import { sanitizeDocumentationHTML } from './html-sanitizer';
-import { isGrafanaDocsUrl, isAllowedGitHubRawUrl, isLocalhostUrl, isGitHubRawUrl } from '../url-validator';
+import { 
+  sanitizeDocumentationHTML,
+  isGrafanaDocsUrl, 
+  isAllowedGitHubRawUrl, 
+  isLocalhostUrl, 
+  isGitHubRawUrl 
+} from '../security';
 import { isDataProxyUrl } from '../data-proxy';
 import { ALLOWED_GITHUB_REPOS } from '../../constants';
 import { isDevModeEnabledGlobal } from '../dev-mode';

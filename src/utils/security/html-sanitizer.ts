@@ -3,7 +3,7 @@
 // for interactive documentation features
 
 import DOMPurify from 'dompurify';
-import { isYouTubeDomain, isVimeoDomain } from '../url-validator';
+import { isYouTubeDomain, isVimeoDomain } from './url-validator';
 
 /**
  * Sanitizes HTML content for documentation rendering.

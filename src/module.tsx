@@ -19,7 +19,7 @@ import {
   isGitHubUrl,
   isGitHubRawUrl,
   isLocalhostUrl,
-} from './utils/url-validator';
+} from './utils/security';
 import { isDevModeEnabledGlobal } from './utils/dev-mode';
 
 // Persistent queue for docs links clicked before sidebar opens
