@@ -1,6 +1,6 @@
 /**
  * Action Capture System for Collaborative Sessions
- * 
+ *
  * Intercepts presenter's interactive tutorial actions (Show Me / Do It clicks)
  * and broadcasts them to all connected attendees via WebRTC data channels.
  */
@@ -15,16 +15,16 @@ export class ActionCaptureSystem {
   private isCapturing = false;
   private sessionManager: SessionManager;
   private sessionId: string;
-  
+
   // Debounce tracking to prevent duplicate events
   private lastEvent: { type: string; stepId: string; timestamp: number } | null = null;
   private readonly DEBOUNCE_MS = 100;
-  
+
   constructor(sessionManager: SessionManager, sessionId: string) {
     this.sessionManager = sessionManager;
     this.sessionId = sessionId;
   }
-  
+
   /**
    * Start capturing interactive actions
    */
@@ -33,12 +33,12 @@ export class ActionCaptureSystem {
       console.warn('[ActionCapture] Already capturing');
       return;
     }
-    
+
     this.isCapturing = true;
     this.setupCaptureHandlers();
     console.log('[ActionCapture] Started capturing presenter actions');
   }
-  
+
   /**
    * Stop capturing actions and restore original behavior
    */
@@ -46,22 +46,22 @@ export class ActionCaptureSystem {
     if (!this.isCapturing) {
       return;
     }
-    
+
     this.isCapturing = false;
     this.restoreOriginalHandlers();
     console.log('[ActionCapture] Stopped capturing');
   }
-  
+
   /**
    * Set up capture handlers for Show Me and Do It buttons
    */
   private setupCaptureHandlers(): void {
     // Use event delegation on the document to capture all button clicks
     document.addEventListener('click', this.handleButtonClick, true);
-    
+
     console.log('[ActionCapture] Capture handlers set up');
   }
-  
+
   /**
    * Handle button clicks to intercept Show Me / Do It actions
    */
@@ -69,55 +69,55 @@ export class ActionCaptureSystem {
     if (!this.isCapturing) {
       return;
     }
-    
+
     const target = event.target as HTMLElement;
-    
+
     // Check if this is a Show Me or Do It button
     const button = this.findInteractiveButton(target);
     if (!button) {
       return;
     }
-    
+
     const buttonType = this.getButtonType(button);
     if (!buttonType) {
       return;
     }
-    
+
     // Get the interactive step element
     const stepElement = this.findInteractiveStepElement(button);
     if (!stepElement) {
       console.warn('[ActionCapture] Could not find interactive step element');
       return;
     }
-    
+
     // Extract action details
     const action = this.extractActionFromElement(stepElement);
     if (!action) {
       console.warn('[ActionCapture] Could not extract action details');
       return;
     }
-    
+
     console.log('[ActionCapture] ✅ Extracted action:', {
       targetAction: action.targetAction,
       refTarget: action.refTarget,
       targetValue: action.targetValue,
-      targetComment: action.targetComment
+      targetComment: action.targetComment,
     });
-    
+
     const stepId = stepElement.getAttribute('data-step-id') || this.generateStepId(stepElement);
-    
+
     // Check for duplicate events (debounce)
     if (this.isDuplicateEvent(buttonType, stepId)) {
       console.log('[ActionCapture] Skipping duplicate event');
       return;
     }
-    
+
     // Get screen coordinates for positioning
     const coordinates = {
       x: event.clientX,
-      y: event.clientY
+      y: event.clientY,
     };
-    
+
     // Create and broadcast event
     const sessionEvent: InteractiveStepEvent = {
       type: buttonType,
@@ -126,30 +126,30 @@ export class ActionCaptureSystem {
       senderId: 'presenter',
       stepId,
       action,
-      coordinates
+      coordinates,
     };
-    
+
     console.log(`[ActionCapture] 📡 Broadcasting ${buttonType} event:`, {
       stepId,
       actionType: action.targetAction,
       refTarget: action.refTarget,
       targetValue: action.targetValue,
-      sessionId: this.sessionId
+      sessionId: this.sessionId,
     });
-    
+
     this.sessionManager.broadcastEvent(sessionEvent);
     console.log(`[ActionCapture] ✅ Event broadcasted successfully`);
-    
+
     // Update last event for debouncing
     this.lastEvent = {
       type: buttonType,
       stepId,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
-    
+
     // Don't prevent default - let the original action execute for presenter
   };
-  
+
   /**
    * Find the interactive button element (Show Me or Do It)
    */
@@ -158,7 +158,7 @@ export class ActionCaptureSystem {
     if (this.isInteractiveButton(element)) {
       return element;
     }
-    
+
     // Check parent elements (in case click was on icon or text inside button)
     let current = element.parentElement;
     let depth = 0;
@@ -169,24 +169,26 @@ export class ActionCaptureSystem {
       current = current.parentElement;
       depth++;
     }
-    
+
     return null;
   }
-  
+
   /**
    * Check if element is an interactive button
    */
   private isInteractiveButton(element: HTMLElement): boolean {
     const text = element.textContent?.toLowerCase() || '';
     const ariaLabel = element.getAttribute('aria-label')?.toLowerCase() || '';
-    
+
     return (
-      (text.includes('show me') || text.includes('do it') ||
-       ariaLabel.includes('show me') || ariaLabel.includes('do it')) &&
+      (text.includes('show me') ||
+        text.includes('do it') ||
+        ariaLabel.includes('show me') ||
+        ariaLabel.includes('do it')) &&
       (element.tagName === 'BUTTON' || element.getAttribute('role') === 'button')
     );
   }
-  
+
   /**
    * Determine button type (show_me or do_it)
    */
@@ -194,23 +196,23 @@ export class ActionCaptureSystem {
     const text = button.textContent?.toLowerCase() || '';
     const ariaLabel = button.getAttribute('aria-label')?.toLowerCase() || '';
     const combined = text + ' ' + ariaLabel;
-    
+
     if (combined.includes('show me')) {
       return 'show_me';
     } else if (combined.includes('do it')) {
       return 'do_it';
     }
-    
+
     return null;
   }
-  
+
   /**
    * Find the parent interactive step element
    */
   private findInteractiveStepElement(button: HTMLElement): HTMLElement | null {
     let current: HTMLElement | null = button;
     let depth = 0;
-    
+
     while (current && depth < 10) {
       // Look for interactive step markers (the actual classes used in the codebase)
       if (
@@ -225,10 +227,10 @@ export class ActionCaptureSystem {
       current = current.parentElement;
       depth++;
     }
-    
+
     return null;
   }
-  
+
   /**
    * Extract action details from interactive element
    */
@@ -237,18 +239,18 @@ export class ActionCaptureSystem {
     const refTarget = element.getAttribute('data-reftarget');
     const targetValue = element.getAttribute('data-targetvalue');
     const targetComment = element.getAttribute('data-targetcomment');
-    
+
     if (!targetAction || !refTarget) {
       return null;
     }
-    
+
     const action: InteractiveAction = {
       targetAction: targetAction as any,
       refTarget,
       targetValue: targetValue || undefined,
-      targetComment: targetComment || undefined
+      targetComment: targetComment || undefined,
     };
-    
+
     // For multistep, parse internal actions
     if (targetAction === 'multistep') {
       const internalActionsStr = element.getAttribute('data-internal-actions');
@@ -260,10 +262,10 @@ export class ActionCaptureSystem {
         }
       }
     }
-    
+
     return action;
   }
-  
+
   /**
    * Generate a unique step ID from element
    */
@@ -273,15 +275,15 @@ export class ActionCaptureSystem {
     if (existingId) {
       return existingId;
     }
-    
+
     // Generate ID based on action and selector
     const action = element.getAttribute('data-targetaction') || 'unknown';
     const target = element.getAttribute('data-reftarget') || 'unknown';
     const hash = this.simpleHash(action + target);
-    
+
     return `step-${hash}`;
   }
-  
+
   /**
    * Simple hash function for generating IDs
    */
@@ -289,12 +291,12 @@ export class ActionCaptureSystem {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash; // Convert to 32-bit integer
     }
     return Math.abs(hash).toString(36);
   }
-  
+
   /**
    * Check if this is a duplicate event (debouncing)
    */
@@ -302,23 +304,19 @@ export class ActionCaptureSystem {
     if (!this.lastEvent) {
       return false;
     }
-    
+
     const timeSinceLastEvent = Date.now() - this.lastEvent.timestamp;
-    
-    return (
-      this.lastEvent.type === type &&
-      this.lastEvent.stepId === stepId &&
-      timeSinceLastEvent < this.DEBOUNCE_MS
-    );
+
+    return this.lastEvent.type === type && this.lastEvent.stepId === stepId && timeSinceLastEvent < this.DEBOUNCE_MS;
   }
-  
+
   /**
    * Restore original handlers (cleanup)
    */
   private restoreOriginalHandlers(): void {
     document.removeEventListener('click', this.handleButtonClick, true);
   }
-  
+
   /**
    * Check if currently capturing
    */
@@ -326,4 +324,3 @@ export class ActionCaptureSystem {
     return this.isCapturing;
   }
 }
-

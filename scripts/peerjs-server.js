@@ -2,10 +2,10 @@
 
 /**
  * Local PeerJS Signaling Server
- * 
+ *
  * Run this alongside Grafana during development for reliable peer connections.
  * Production: Consider deploying this on a dedicated server/cloud instance.
- * 
+ *
  * Usage: npm run peerjs-server
  */
 
@@ -49,4 +49,3 @@ console.log(`
 Waiting for peer connections...
 Press Ctrl+C to stop the server.
 `);
-

@@ -433,17 +433,14 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             className={s.marginTopXl}
           >
             <div className={s.toggleSection}>
-              <Switch
-                id="enable-live-sessions"
-                value={state.enableLiveSessions}
-                onChange={onToggleLiveSessions}
-              />
+              <Switch id="enable-live-sessions" value={state.enableLiveSessions} onChange={onToggleLiveSessions} />
               <div className={s.toggleLabels}>
                 <Text variant="body" weight="medium">
                   Enable live collaborative learning sessions (Experimental)
                 </Text>
                 <Text variant="body" color="secondary">
-                  Allow presenters to create live sessions where attendees can follow along with interactive tutorials in real-time
+                  Allow presenters to create live sessions where attendees can follow along with interactive tutorials
+                  in real-time
                 </Text>
               </div>
             </div>
@@ -452,8 +449,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
               <>
                 <Alert severity="warning" title="⚠️ Experimental Feature" className={s.marginTop}>
                   <Text variant="body">
-                    <strong>This feature is experimental and may have stability issues.</strong> Connection reliability depends on
-                    network configuration and the availability of the PeerJS signaling server. Not recommended for production-critical workflows.
+                    <strong>This feature is experimental and may have stability issues.</strong> Connection reliability
+                    depends on network configuration and the availability of the PeerJS signaling server. Not
+                    recommended for production-critical workflows.
                   </Text>
                 </Alert>
 
@@ -467,11 +465,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   </div>
 
                   <Field label="Server Host" description="Hostname or IP address">
-                    <Input
-                      value={state.peerjsHost}
-                      onChange={onChangePeerjsHost}
-                      placeholder={DEFAULT_PEERJS_HOST}
-                    />
+                    <Input value={state.peerjsHost} onChange={onChangePeerjsHost} placeholder={DEFAULT_PEERJS_HOST} />
                   </Field>
 
                   <Field label="Server Port" description="Port number">
@@ -484,11 +478,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   </Field>
 
                   <Field label="API Key" description="Authentication key">
-                    <Input
-                      value={state.peerjsKey}
-                      onChange={onChangePeerjsKey}
-                      placeholder={DEFAULT_PEERJS_KEY}
-                    />
+                    <Input value={state.peerjsKey} onChange={onChangePeerjsKey} placeholder={DEFAULT_PEERJS_KEY} />
                   </Field>
                 </div>
               </>
@@ -497,12 +487,14 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             {!state.enableLiveSessions && (
               <Alert severity="warning" title="Experimental feature disabled" className={s.marginTop}>
                 <Text variant="body">
-                  Live sessions are currently disabled. This is an <strong>experimental feature</strong> that enables collaborative learning
-                  experiences where presenters can guide attendees through interactive tutorials in real-time.
+                  Live sessions are currently disabled. This is an <strong>experimental feature</strong> that enables
+                  collaborative learning experiences where presenters can guide attendees through interactive tutorials
+                  in real-time.
                   <br />
                   <br />
-                  <strong>Note:</strong> This feature uses peer-to-peer connections and may have stability issues depending on network
-                  configuration. Enable only if you understand the limitations and have tested it in your environment.
+                  <strong>Note:</strong> This feature uses peer-to-peer connections and may have stability issues
+                  depending on network configuration. Enable only if you understand the limitations and have tested it
+                  in your environment.
                 </Text>
               </Alert>
             )}

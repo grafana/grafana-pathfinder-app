@@ -3,6 +3,7 @@
 ## How to Test
 
 ### Setup
+
 1. Open Grafana in two browser windows (or one normal + one incognito)
 2. Open browser console (F12) in both windows
 3. Navigate to Pathfinder panel in both windows
@@ -15,6 +16,7 @@
 4. Click "Create Session"
 
 **Expected Console Logs:**
+
 ```
 [SessionManager] Creating session...
 [SessionManager] Peer ready: [peer-id]
@@ -38,6 +40,7 @@
 6. Click "Join Session"
 
 **Expected Console Logs:**
+
 ```
 [SessionManager] Joining session: [peer-id]
 [SessionManager] Attendee peer ready: [peer-id]
@@ -56,14 +59,17 @@
 ### Testing Show Me Replication
 
 **As Presenter:**
+
 1. Click any "Show Me" button in the tutorial
 
 **Expected Console Logs (Presenter):**
+
 ```
 [ActionCapture] Broadcasted show_me event for step: [step-id]
 ```
 
 **Expected Console Logs (Attendee):**
+
 ```
 [DocsPanel] Received event: show_me
 [ActionReplay] Handling show_me in guided mode
@@ -71,38 +77,45 @@
 ```
 
 **Expected Behavior:**
+
 - Attendee should see the same element highlighted with a tooltip
 - The highlight should appear immediately (within 100-200ms)
 
 ## Common Issues
 
 ### Issue: "No console logs appear"
+
 - Make sure you've opened the browser console (F12 → Console tab)
 - Check that you're looking at the correct browser window
 - Refresh the page and try again
 
 ### Issue: "Presenter logs appear but no ActionCapture logs"
+
 - The ActionCaptureSystem only starts when a session is active
 - Make sure you clicked "Create Session" successfully
 - Check that the "Session Active" button appears in the top bar
 
 ### Issue: "Attendee connects but no logs appear"
+
 - Check the Network tab for WebRTC errors
 - Verify the join code is correct (6 characters)
 - Try creating a new session and joining again
 
 ### Issue: "session_start event not received"
+
 - This means the PeerJS connection isn't fully established
 - Check firewall/network settings
 - Try refreshing both windows and starting fresh
 
 ### Issue: "Show Me doesn't broadcast"
+
 - Verify the tutorial has interactive elements with "Show Me" buttons
 - Check that the button text actually says "Show Me"
 - Try clicking a different "Show Me" button
 - Verify you're in the tutorial tab, not the Recommendations tab
 
 ### Issue: "Show Me broadcasts but attendee doesn't see highlight"
+
 - Check if the attendee has the same tutorial open
 - Verify the attendee's console shows the event was received
 - Check if the element exists on the attendee's page (selector might not match)
@@ -166,6 +179,7 @@ Presenter                              Attendee
 ## PeerJS Cloud Service Status
 
 If connections are failing entirely:
+
 1. Check https://peerjs.com/ for service status
 2. The default PeerJS cloud signaling server is free but may have rate limits
 3. Consider implementing a custom PeerJS server if issues persist
@@ -176,4 +190,3 @@ If connections are failing entirely:
 - **Firewall**: May be blocked by strict corporate firewalls
 - **VPN**: Some VPNs may interfere with P2P connections
 - **Browser**: Works best in Chrome/Edge, Firefox, Safari (not IE)
-

@@ -45,6 +45,7 @@ Once you open Interactive learning:
 ### Quick Start
 
 **Prerequisites** (3 terminals required):
+
 ```bash
 # Terminal 1: PeerJS Server (Required!)
 npm run peerjs-server
@@ -59,14 +60,17 @@ npm run dev
 **Enable**: Configuration → Plugins → Pathfinder → Enable "Live Sessions"
 
 **Use**:
+
 - **Presenter**: Click "Start Live Session" → Share join code with attendees
 - **Attendee**: Click "Join Live Session" → Enter code → Choose Guided or Follow mode
 
 **Modes**:
+
 - **Guided Mode**: See highlights when presenter clicks "Show Me"
 - **Follow Mode**: Your Grafana automatically mirrors presenter's "Do It" actions
 
-**Learn More**: 
+**Learn More**:
+
 - Setup guide: `README_LIVE_SESSIONS.md`
 - Detailed docs: `docs/LOCAL_PEERJS_SERVER.md`
 - Full plan: `plans/collaborative-live-sessions.md`

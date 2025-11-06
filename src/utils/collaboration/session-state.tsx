@@ -1,6 +1,6 @@
 /**
  * Session State Management for Collaborative Learning
- * 
+ *
  * React Context and hooks for managing active session state across components
  */
 
@@ -14,7 +14,7 @@ import type {
   SessionRole,
   AttendeeInfo,
   AnySessionEvent,
-  SessionStartEvent
+  SessionStartEvent,
 } from '../../types/collaboration.types';
 
 /**
@@ -26,19 +26,19 @@ interface SessionContextValue {
   sessionInfo: SessionInfo | null;
   sessionRole: SessionRole;
   isActive: boolean;
-  
+
   // Attendees (presenter only)
   attendees: AttendeeInfo[];
-  
+
   // Attendee mode (attendee only)
   attendeeMode: 'guided' | 'follow' | null;
   setAttendeeMode: (mode: 'guided' | 'follow') => void;
-  
+
   // Actions
   createSession: (config: SessionConfig) => Promise<SessionInfo>;
   joinSession: (sessionId: string, mode: 'guided' | 'follow', name?: string) => Promise<void>;
   endSession: () => void;
-  
+
   // Event handling
   onEvent: (callback: (event: AnySessionEvent) => void) => () => void;
 }
@@ -57,7 +57,7 @@ interface SessionProviderProps {
 
 /**
  * Session Provider component
- * 
+ *
  * Wrap your app with this to enable session management
  */
 export function SessionProvider({ children }: SessionProviderProps) {
@@ -68,7 +68,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [attendees, setAttendees] = useState<AttendeeInfo[]>([]);
   const [attendeeMode, setAttendeeMode] = useState<'guided' | 'follow' | null>(null);
   const [eventCallbacks, setEventCallbacks] = useState<Set<(event: AnySessionEvent) => void>>(new Set());
-  
+
   // Get PeerJS config from plugin settings
   const getPeerjsConfig = useCallback(() => {
     if (!pluginProps) {
@@ -81,32 +81,32 @@ export function SessionProvider({ children }: SessionProviderProps) {
       key: config.peerjsKey,
     };
   }, [pluginProps]);
-  
+
   // Subscribe to real-time attendee list updates (presenter only)
   useEffect(() => {
     if (sessionRole !== 'presenter' || !sessionManager.isActive()) {
       return;
     }
-    
+
     // Subscribe to real-time attendee list updates
     const cleanup = sessionManager.onAttendeeListUpdate((updatedAttendees) => {
       console.log('[SessionState] Attendee list updated:', updatedAttendees.length);
       setAttendees(updatedAttendees);
     });
-    
+
     // Get initial list
     const initial = sessionManager.getAttendees();
     setAttendees(initial);
-    
+
     return cleanup;
   }, [sessionRole, sessionManager]);
-  
+
   // Set up event listener on session manager
   useEffect(() => {
     if (!sessionManager) {
       return;
     }
-    
+
     const cleanup = sessionManager.onEvent((event) => {
       // Notify all registered callbacks
       eventCallbacks.forEach((callback) => {
@@ -117,104 +117,106 @@ export function SessionProvider({ children }: SessionProviderProps) {
         }
       });
     });
-    
+
     return cleanup;
   }, [sessionManager, eventCallbacks]);
-  
+
   // Listen for attendee joins (presenter only)
   useEffect(() => {
     if (!sessionManager || sessionRole !== 'presenter') {
       return;
     }
-    
+
     const cleanup = sessionManager.onAttendeeJoin((attendee) => {
       console.log('[SessionState] Attendee joined:', attendee);
       setAttendees((prev) => [...prev, attendee]);
     });
-    
+
     return cleanup;
   }, [sessionManager, sessionRole]);
-  
+
   /**
    * Create a new session as presenter
    */
-  const createSession = useCallback(async (config: SessionConfig): Promise<SessionInfo> => {
-    try {
-      const peerjsConfig = getPeerjsConfig();
-      const info = await sessionManager.createSession(config, peerjsConfig);
-      setSessionInfo(info);
-      setSessionRole('presenter');
-      return info;
-    } catch (error) {
-      console.error('[SessionState] Failed to create session:', error);
-      throw error;
-    }
-  }, [sessionManager, getPeerjsConfig]);
-  
+  const createSession = useCallback(
+    async (config: SessionConfig): Promise<SessionInfo> => {
+      try {
+        const peerjsConfig = getPeerjsConfig();
+        const info = await sessionManager.createSession(config, peerjsConfig);
+        setSessionInfo(info);
+        setSessionRole('presenter');
+        return info;
+      } catch (error) {
+        console.error('[SessionState] Failed to create session:', error);
+        throw error;
+      }
+    },
+    [sessionManager, getPeerjsConfig]
+  );
+
   /**
    * Join an existing session as attendee
    */
-  const joinSession = useCallback(async (
-    sessionId: string,
-    mode: 'guided' | 'follow',
-    name?: string
-  ): Promise<void> => {
-    try {
-      // Store the attendee's selected mode
-      setAttendeeMode(mode);
-      
-      const peerjsConfig = getPeerjsConfig();
-      await sessionManager.joinSession(sessionId, mode, name, peerjsConfig);
-      
-      // Wait for session_start event to get full session info
-      const sessionStartPromise = new Promise<SessionInfo>((resolve) => {
-        const cleanup = sessionManager.onEvent((event) => {
-          if (event.type === 'session_start') {
+  const joinSession = useCallback(
+    async (sessionId: string, mode: 'guided' | 'follow', name?: string): Promise<void> => {
+      try {
+        // Store the attendee's selected mode
+        setAttendeeMode(mode);
+
+        const peerjsConfig = getPeerjsConfig();
+        await sessionManager.joinSession(sessionId, mode, name, peerjsConfig);
+
+        // Wait for session_start event to get full session info
+        const sessionStartPromise = new Promise<SessionInfo>((resolve) => {
+          const cleanup = sessionManager.onEvent((event) => {
+            if (event.type === 'session_start') {
+              cleanup();
+
+              const startEvent = event as SessionStartEvent;
+
+              // Construct session info from the event
+              const info: SessionInfo = {
+                sessionId: startEvent.sessionId,
+                joinCode: sessionId,
+                joinUrl: '',
+                qrCode: '',
+                config: startEvent.config,
+              };
+
+              resolve(info);
+            }
+          });
+
+          // Timeout after 5 seconds
+          setTimeout(() => {
             cleanup();
-            
-            const startEvent = event as SessionStartEvent;
-            
-            // Construct session info from the event
-            const info: SessionInfo = {
-              sessionId: startEvent.sessionId,
+            resolve({
+              sessionId,
               joinCode: sessionId,
               joinUrl: '',
               qrCode: '',
-              config: startEvent.config
-            };
-            
-            resolve(info);
-          }
+              config: {
+                name: 'Unknown Session',
+                tutorialUrl: '',
+                defaultMode: mode,
+              },
+            });
+          }, 5000);
         });
-        
-        // Timeout after 5 seconds
-        setTimeout(() => {
-          cleanup();
-          resolve({
-            sessionId,
-            joinCode: sessionId,
-            joinUrl: '',
-            qrCode: '',
-            config: {
-              name: 'Unknown Session',
-              tutorialUrl: '',
-              defaultMode: mode
-            }
-          });
-        }, 5000);
-      });
-      
-      const info = await sessionStartPromise;
-      setSessionInfo(info);
-      setSessionRole('attendee');
-      
-      console.log('[SessionState] Successfully joined session:', info);
-    } catch (error) {
-      console.error('[SessionState] Failed to join session:', error);
-      throw error;
-    }
-  }, [sessionManager]);
-  
+
+        const info = await sessionStartPromise;
+        setSessionInfo(info);
+        setSessionRole('attendee');
+
+        console.log('[SessionState] Successfully joined session:', info);
+      } catch (error) {
+        console.error('[SessionState] Failed to join session:', error);
+        throw error;
+      }
+    },
+    [sessionManager]
+  );
+
   /**
    * End the current session
    */
@@ -225,13 +227,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setAttendees([]);
     setAttendeeMode(null);
   }, [sessionManager]);
-  
+
   /**
    * Register event callback
    */
   const onEvent = useCallback((callback: (event: AnySessionEvent) => void) => {
     setEventCallbacks((prev) => new Set(prev).add(callback));
-    
+
     return () => {
       setEventCallbacks((prev) => {
         const next = new Set(prev);
@@ -240,7 +242,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       });
     };
   }, []);
-  
+
   /**
    * Update attendee mode
    */
@@ -248,7 +250,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     console.log(`[SessionState] Updating attendee mode to: ${mode}`);
     setAttendeeMode(mode);
   }, []);
-  
+
   const value: SessionContextValue = {
     sessionManager,
     sessionInfo,
@@ -260,15 +262,15 @@ export function SessionProvider({ children }: SessionProviderProps) {
     createSession,
     joinSession,
     endSession,
-    onEvent
+    onEvent,
   };
-  
+
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
 /**
  * Hook to access session context
- * 
+ *
  * @throws Error if used outside SessionProvider
  */
 export function useSession(): SessionContextValue {
@@ -302,4 +304,3 @@ export function useSessionManager(): SessionManager | null {
   const { sessionManager } = useSession();
   return sessionManager;
 }
-

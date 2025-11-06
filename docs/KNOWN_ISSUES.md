@@ -11,6 +11,7 @@
 **Status**: This is **not optional** - the feature will not work without it.
 
 **Setup**:
+
 ```bash
 # Must run in separate terminal
 npm run peerjs-server
@@ -33,6 +34,7 @@ npm run peerjs-server
 **Status**: This is a limitation of the Monaco editor component, not a bug in Pathfinder. The action executes correctly and the step completion still works properly.
 
 **Technical Details**:
+
 - The formfill action triggers successfully
 - The underlying textarea value is set correctly
 - Monaco editor events are dispatched
@@ -45,11 +47,13 @@ npm run peerjs-server
 
 **Issue**: If presenter or attendee disconnects, there is no automatic reconnection.
 
-**Impact**: 
+**Impact**:
+
 - Presenter disconnect ends the session for all attendees
 - Attendee disconnect requires manual rejoin with new connection
 
-**Workaround**: 
+**Workaround**:
+
 - Ensure stable network connection before starting session
 - For presenter: Keep browser tab active and network stable
 - For attendee: Rejoin using the same join code if disconnected
@@ -60,12 +64,14 @@ npm run peerjs-server
 
 **Issue**: Feature has only been tested with up to 5 concurrent attendees.
 
-**Current Status**: 
+**Current Status**:
+
 - **Tested**: 1-5 attendees ✅
 - **Untested**: 10-25 attendees ⚠️
 - **Unknown**: 25+ attendees ❓
 
-**Recommendation**: 
+**Recommendation**:
+
 - Safe for workshops with < 10 attendees
 - Larger groups: Test in your environment first
 - Very large groups (50+): Not recommended until scale testing complete
@@ -77,12 +83,14 @@ npm run peerjs-server
 **Issue**: Feature requires modern browser with full WebRTC support.
 
 **Supported**:
+
 - Chrome 90+
 - Firefox 88+
 - Edge 90+
 - Safari 15+
 
 **Not Supported**:
+
 - Internet Explorer (any version)
 - Legacy browsers without WebRTC DataChannel support
 
@@ -93,11 +101,13 @@ npm run peerjs-server
 **Issue**: Restrictive corporate firewalls may block WebRTC connections.
 
 **Symptoms**:
+
 - Attendee can't connect even with correct join code
 - Connection timeout errors
 - PeerJS connects but WebRTC fails
 
 **Workaround**:
+
 - Use TURN server fallback (see `docs/LOCAL_PEERJS_SERVER.md`)
 - Configure firewall to allow WebRTC ports
 - Test connection in unrestricted network first
@@ -107,9 +117,10 @@ npm run peerjs-server
 ### Planned Fixes
 
 **Phase 5: Production Readiness**
+
 - [ ] Automatic reconnection with exponential backoff
 - [ ] Connection quality indicators
-- [ ] Graceful handling of presenter disconnect  
+- [ ] Graceful handling of presenter disconnect
 - [ ] Scale testing with 10, 25, 50 attendees
 - [ ] Better error messages for firewall issues
 - [ ] TURN server testing and documentation
@@ -133,19 +144,21 @@ If you encounter issues not listed here:
 **Current Status**: ✅ MVP Complete - Experimental
 
 **What Works Reliably**:
+
 - Guided and Follow modes
 - All action types (button, formfill, navigate, multistep)
 - Session creation and joining
 - Mode switching during session
 
 **Use With Caution**:
+
 - Sessions with > 5 attendees (untested)
 - Restrictive network environments
 - Long-running sessions (> 1 hour)
 - Production/critical training (wait for production-ready status)
 
 **Not Recommended**:
+
 - Mission-critical training (no recording yet)
 - Large public workshops (scale unknown)
 - Environments with unstable networks
-

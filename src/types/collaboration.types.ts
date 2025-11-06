@@ -1,6 +1,6 @@
 /**
  * Type definitions for Collaborative Live Learning Sessions
- * 
+ *
  * This module defines all TypeScript interfaces and types used in the P2P
  * collaborative learning feature where presenters can broadcast their actions
  * to attendees in real-time.
@@ -369,10 +369,10 @@ export interface SessionRecording {
  */
 export interface SessionError {
   /** Error code */
-  code: 
-    | 'CONNECTION_FAILED' 
-    | 'INVALID_CODE' 
-    | 'EXPIRED_SESSION' 
+  code:
+    | 'CONNECTION_FAILED'
+    | 'INVALID_CODE'
+    | 'EXPIRED_SESSION'
     | 'STATE_DIVERGENCE'
     | 'RECONNECTING'
     | 'PRESENTER_DISCONNECTED'
@@ -403,4 +403,3 @@ export type ConnectionStateCallback = (attendeeId: string, state: ConnectionStat
  * Callback function type for error handling
  */
 export type ErrorCallback = (error: SessionError) => void;
-

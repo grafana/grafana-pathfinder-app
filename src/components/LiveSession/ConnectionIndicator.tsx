@@ -1,6 +1,6 @@
 /**
  * Connection Indicator Component
- * 
+ *
  * Visual indicator showing real-time connection status for live sessions
  */
 
@@ -24,12 +24,12 @@ interface ConnectionIndicatorProps {
 
 /**
  * Connection indicator component
- * 
+ *
  * Displays icon and optional label showing connection state
  */
 export function ConnectionIndicator({ state, quality, showLabel = true }: ConnectionIndicatorProps) {
   const styles = useStyles2(getStyles);
-  
+
   const getColor = (): string => {
     switch (state) {
       case 'connected':
@@ -44,7 +44,7 @@ export function ConnectionIndicator({ state, quality, showLabel = true }: Connec
         return styles.colorUnknown;
     }
   };
-  
+
   const getIcon = (): IconName => {
     switch (state) {
       case 'connected':
@@ -59,7 +59,7 @@ export function ConnectionIndicator({ state, quality, showLabel = true }: Connec
         return 'question-circle';
     }
   };
-  
+
   const getLabel = (): string => {
     switch (state) {
       case 'connected':
@@ -74,28 +74,22 @@ export function ConnectionIndicator({ state, quality, showLabel = true }: Connec
         return 'Unknown';
     }
   };
-  
+
   const getTooltipContent = (): string => {
     if (!quality) {
       return getLabel();
     }
-    
+
     return `${getLabel()}\nLatency: ${quality.latency}ms\nQuality: ${quality.quality}\nLast heartbeat: ${new Date(quality.lastHeartbeat).toLocaleTimeString()}`;
   };
-  
+
   return (
     <Tooltip content={getTooltipContent()} placement="top">
       <div className={styles.container}>
-        <Icon 
-          name={getIcon()} 
-          className={`${styles.icon} ${getColor()}`}
-          size="sm"
-        />
+        <Icon name={getIcon()} className={`${styles.icon} ${getColor()}`} size="sm" />
         {showLabel && (
           <div className={styles.label}>
-            <Text variant="bodySmall">
-              {getLabel()}
-            </Text>
+            <Text variant="bodySmall">{getLabel()}</Text>
           </div>
         )}
       </div>
@@ -112,21 +106,21 @@ const getStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(0.5),
   }),
-  
+
   icon: css({
     // Base icon styling
   }),
-  
+
   label: css({
     fontSize: theme.typography.bodySmall.fontSize,
     lineHeight: theme.typography.bodySmall.lineHeight,
   }),
-  
+
   // State colors
   colorConnected: css({
     color: theme.colors.success.text,
   }),
-  
+
   colorConnecting: css({
     color: theme.colors.warning.text,
     '@keyframes spin': {
@@ -135,17 +129,16 @@ const getStyles = (theme: GrafanaTheme2) => ({
     },
     animation: 'spin 1s linear infinite',
   }),
-  
+
   colorDisconnected: css({
     color: theme.colors.warning.text,
   }),
-  
+
   colorFailed: css({
     color: theme.colors.error.text,
   }),
-  
+
   colorUnknown: css({
     color: theme.colors.text.secondary,
   }),
 });
-

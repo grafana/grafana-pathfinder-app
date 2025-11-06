@@ -23,21 +23,25 @@ Before running scale tests:
 ### Test Levels
 
 **Level 1: Baseline (1-5 Attendees)**
+
 - **Purpose**: Verify basic functionality
 - **Expected**: All actions work reliably
 - **Status**: ✅ Validated
 
 **Level 2: Medium Scale (10-15 Attendees)**
+
 - **Purpose**: Identify first signs of degradation
 - **Expected**: Some latency increase acceptable
 - **Status**: ⏳ Needs testing
 
 **Level 3: High Scale (25-50 Attendees)**
+
 - **Purpose**: Find breaking point
 - **Expected**: Document where system fails
 - **Status**: ⏳ Needs testing
 
 **Level 4: Stress Test (50+ Attendees)**
+
 - **Purpose**: Understand absolute limits
 - **Expected**: System may fail
 - **Status**: ⏳ Future work
@@ -50,7 +54,6 @@ Before running scale tests:
    ```bash
    npm run peerjs-server
    ```
-   
 2. **Verify Server Health**:
    - Check console shows "PeerJS server running on port 9000"
    - No immediate error messages
@@ -70,6 +73,7 @@ Before running scale tests:
 #### For Each Test Level:
 
 **1. Create Session**:
+
 ```
 Presenter: Click "Start Live Session"
 Presenter: Enter session name: "Scale Test [N] Attendees"
@@ -78,6 +82,7 @@ Presenter: Share join code with test attendees
 ```
 
 **2. Join Attendees**:
+
 ```
 Attendee 1-N: Click "Join Live Session"
 Attendee 1-N: Enter join code
@@ -86,6 +91,7 @@ Attendee 1-N: Join session
 ```
 
 **3. Verify Connections**:
+
 ```
 Presenter: Open session controls
 Presenter: Verify all N attendees appear in list
@@ -97,6 +103,7 @@ Presenter: Check connection indicators show "connected"
 Test each action type with all attendees connected:
 
 **Test 1: Show Me (Highlight)**
+
 ```
 Presenter: Click "Show Me" on any tutorial step
 Expected: All guided-mode attendees see highlight within 2 seconds
@@ -104,6 +111,7 @@ Measure: Time from click to attendee sees highlight
 ```
 
 **Test 2: Do It (Button Click)**
+
 ```
 Presenter: Click "Do It" on button action
 Expected: All follow-mode attendees see button click execute
@@ -111,6 +119,7 @@ Measure: Success rate, execution time
 ```
 
 **Test 3: Do It (Form Fill)**
+
 ```
 Presenter: Click "Do It" on form fill action
 Expected: All follow-mode attendees see form populated
@@ -118,13 +127,15 @@ Measure: Success rate, any visual delays
 ```
 
 **Test 4: Do It (Navigation)**
+
 ```
-Presenter: Click "Do It" on navigation action  
+Presenter: Click "Do It" on navigation action
 Expected: All follow-mode attendees navigate to same page
 Measure: Success rate, navigation time
 ```
 
 **Test 5: Mode Switching**
+
 ```
 Attendee: Switch from Guided → Follow
 Presenter: Click "Do It" immediately after
@@ -133,6 +144,7 @@ Measure: Mode change latency
 ```
 
 **Test 6: Rapid Actions**
+
 ```
 Presenter: Click 5 "Show Me" buttons in rapid succession
 Expected: All actions reach attendees in order
@@ -157,18 +169,21 @@ Record the following metrics for each test level:
 #### Resource Usage
 
 **Presenter Machine**:
+
 - CPU usage (idle vs active broadcasting)
 - Memory usage
 - Network bandwidth (bytes sent per second)
 - Browser responsiveness
 
 **Attendee Machine** (sample):
+
 - CPU usage
-- Memory usage  
+- Memory usage
 - Network bandwidth (bytes received per second)
 - Browser responsiveness
 
 **PeerJS Server**:
+
 - Active connection count
 - CPU usage
 - Memory usage
@@ -209,31 +224,37 @@ Document results using this template:
 ### Scale Test: [N] Attendees - [Date]
 
 **Configuration**:
+
 - PeerJS Server: [Local/Cloud]
 - Tutorial: [Name]
 - Attendee Mix: [X Guided, Y Follow]
 - Network: [Local/VPN/Remote]
 
 **Latency Results**:
+
 - Show Me: [Avg]ms (min: [X]ms, max: [Y]ms)
 - Do It: [Avg]ms (min: [X]ms, max: [Y]ms)
 - Connection Quality: [Excellent/Good/Poor]
 
 **Resource Usage**:
+
 - Presenter CPU: [X]%
 - Presenter Memory: [X]MB
 - Attendee CPU (sample): [X]%
 - Server Connections: [N]
 
 **Success Rates**:
+
 - Connection: [X]% ([Y]/[N] successful)
 - Action Delivery: [X]% ([Y] delivered/[Z] sent)
 - Action Execution: [X]% ([Y] executed/[Z] attempted)
 
 **Issues Observed**:
+
 - [List any problems, errors, or degradation]
 
 **Conclusion**:
+
 - [Pass/Fail]
 - [Recommended max attendees at this level]
 - [Next steps]
@@ -246,11 +267,13 @@ Document results using this template:
 **Context**: In-person training session with all attendees on same network
 
 **Setup**:
+
 - Local PeerJS server on trainer's machine
 - All attendees connected to same WiFi
 - Mixed guided/follow modes
 
 **Expected Results**:
+
 - Minimal network latency
 - High success rates
 - Good performance
@@ -260,11 +283,13 @@ Document results using this template:
 **Context**: Online workshop with geographically distributed attendees
 
 **Setup**:
+
 - Cloud-hosted PeerJS server
 - Attendees on various networks (home, office, mobile)
 - Mostly guided mode (less intensive)
 
 **Expected Results**:
+
 - Variable network latency
 - Some connection challenges
 - Acceptable performance for guided mode
@@ -274,11 +299,13 @@ Document results using this template:
 **Context**: Conference or large training event
 
 **Setup**:
+
 - Dedicated PeerJS server instance
 - Mix of in-person and remote attendees
 - Guided mode only (recommended)
 
 **Expected Results**:
+
 - May reach architectural limits
 - Presenter machine may struggle
 - Consider alternative architecture (relay server)
@@ -314,11 +341,13 @@ Based on test results, consider these optimizations:
 **Symptoms**: Actions take > 2 seconds to reach attendees
 
 **Possible Causes**:
+
 - Network congestion
 - Presenter CPU overload
 - PeerJS server overload
 
 **Solutions**:
+
 - Reduce attendee count
 - Close unnecessary applications
 - Upgrade server resources
@@ -328,11 +357,13 @@ Based on test results, consider these optimizations:
 **Symptoms**: Attendees can't connect or drop frequently
 
 **Possible Causes**:
+
 - Firewall blocking WebRTC
 - PeerJS server unavailable
 - Network instability
 
 **Solutions**:
+
 - Configure TURN server fallback
 - Verify server is accessible
 - Test with fewer attendees first
@@ -342,10 +373,12 @@ Based on test results, consider these optimizations:
 **Symptoms**: Attendees see actions in wrong sequence
 
 **Possible Causes**:
+
 - Network packet reordering
 - Browser event queue overflow
 
 **Solutions**:
+
 - Add sequence numbers to events
 - Implement event acknowledgment
 - Reduce action frequency
@@ -375,4 +408,3 @@ Based on scale testing findings:
 - Live Sessions Plan: `/plans/collaborative-live-sessions.md`
 - PeerJS Server Setup: `/docs/LOCAL_PEERJS_SERVER.md`
 - Known Issues: `/docs/KNOWN_ISSUES.md`
-

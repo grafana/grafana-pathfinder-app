@@ -3,11 +3,13 @@
 ## Setup (3 Terminals)
 
 ### Terminal 1: PeerJS Server
+
 ```bash
 npm run peerjs-server
 ```
 
 **Tip**: Use the helper script for easier management:
+
 ```bash
 ./scripts/manage-peerjs.sh start   # Start server
 ./scripts/manage-peerjs.sh stop    # Stop server
@@ -16,6 +18,7 @@ npm run peerjs-server
 ```
 
 **Troubleshooting**: If port 9000 is already in use:
+
 ```bash
 # Kill any process on port 9000
 lsof -ti:9000 | xargs kill -9
@@ -25,11 +28,13 @@ lsof -ti:9000 | xargs kill -9
 ```
 
 ### Terminal 2: Grafana
+
 ```bash
 npm run server
 ```
 
 ### Terminal 3: Plugin Dev Build
+
 ```bash
 npm run dev
 ```
@@ -49,4 +54,3 @@ npm run dev
 ## Need Help?
 
 See `docs/LOCAL_PEERJS_SERVER.md` for detailed setup and troubleshooting.
-

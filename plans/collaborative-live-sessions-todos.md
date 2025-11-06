@@ -5,6 +5,7 @@
 Goal: Presenter can create a session for an interactive guide, attendee joins with code, and sees the same highlights when presenter clicks "Show Me"
 
 ### 1.1 Core Type Definitions
+
 - [x] Create `src/types/collaboration.types.ts`
   - [x] Define `SessionOffer` interface (id, name, tutorialUrl, offer, timestamp)
   - [x] Define `SessionAnswer` interface (attendeeId, answer, mode)
@@ -17,6 +18,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Define `SessionInfo` interface (sessionId, joinCode, qrCode)
 
 ### 1.2 WebRTC Session Manager
+
 - [x] Create `src/utils/collaboration/session-manager.ts`
   - [x] Define ICE server configuration (STUN: Google, Twilio; TURN: OpenRelay)
   - [x] Implement `SessionManager` class skeleton
@@ -49,6 +51,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Add error handling for connection failures
 
 ### 1.3 QR Code & Join Code Generation
+
 - [x] Install qrcode package: `npm install qrcode @types/qrcode`
 - [x] Create `src/utils/collaboration/join-code-utils.ts`
   - [x] Implement `generateJoinCode(offer: SessionOffer): string`
@@ -63,6 +66,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Add error handling for malformed codes
 
 ### 1.4 Presenter UI Components
+
 - [x] Create `src/components/LiveSession/PresenterControls.tsx`
   - [x] Create component skeleton with props interface
   - [x] Add "Start Live Session" button in main UI
@@ -99,6 +103,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [ ] Keep toolbar always on top with high z-index
 
 ### 1.5 Attendee UI Components
+
 - [x] Create `src/components/LiveSession/AttendeeJoin.tsx`
   - [x] Add "Join Live Session" button in sidebar
   - [x] Modal for joining:
@@ -122,6 +127,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Auto-open tutorial when joining session
 
 ### 1.6 Action Capture System
+
 - [x] Create `src/utils/collaboration/action-capture.ts`
   - [x] Create `ActionCaptureSystem` class
   - [x] Accept SessionManager and interactive hook in constructor
@@ -135,6 +141,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Add debouncing to prevent duplicate events
 
 ### 1.7 Action Replay System (Guided Mode Only)
+
 - [x] Create `src/utils/collaboration/action-replay.ts`
   - [x] Create `ActionReplaySystem` class
   - [x] Accept mode, NavigationManager in constructor
@@ -149,6 +156,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Log events for debugging
 
 ### 1.8 Integration with Existing Interactive System
+
 - [x] Integration in `src/components/docs-panel/docs-panel.tsx`
   - [x] Initialize ActionCaptureSystem for presenters
   - [x] Initialize ActionReplaySystem for attendees
@@ -160,6 +168,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Used by ActionReplaySystem for showing highlights
 
 ### 1.9 Session State Management
+
 - [x] Create `src/utils/collaboration/session-state.tsx`
   - [x] Create React Context for active session
   - [x] Provider stores: sessionManager, role, sessionInfo, attendees
@@ -170,6 +179,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
   - [x] Handle `session_start` event for attendees
 
 ### 1.10 Configuration & Admin Settings
+
 - [x] Add live sessions toggle to plugin configuration page
 - [x] Label feature as "Experimental" in configuration
 - [x] Add warning alerts explaining P2P limitations
@@ -178,6 +188,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
 - [x] Admin-gated approach: warnings in config, clean UX for users
 
 ### 1.11 MVP Testing & Validation
+
 - [x] Test: Presenter creates session, gets join code
 - [x] Test: Attendee joins with code, sees session info
 - [x] Test: Attendee loads same tutorial as presenter
@@ -196,6 +207,7 @@ Goal: Presenter can create a session for an interactive guide, attendee joins wi
 Goal: Extend to full mirroring where "Do It" actions are replicated to attendees in Follow mode
 
 ### 2.1 Action Capture - Do It
+
 - [x] Extend `src/utils/collaboration/action-capture.ts`
   - [x] Intercept "Do It" button clicks (already implemented)
   - [x] Extract full action details (type, selector, value)
@@ -205,6 +217,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [x] Maintain order of events (Show Me → Do It)
 
 ### 2.2 Action Replay - Follow Mode
+
 - [x] Extend `src/utils/collaboration/action-replay.ts`
   - [x] Add mode parameter to constructor (already implemented)
   - [x] Implement `executeAction()` method:
@@ -222,6 +235,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [x] Show toast on failure with reason
 
 ### 2.3 State Validation
+
 - [ ] Create `src/utils/collaboration/state-validator.ts`
   - [ ] Implement `validatePrerequisites(action)`:
     - [ ] Check if target element exists
@@ -232,6 +246,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [ ] Suggest switching to Guided mode if repeated failures
 
 ### 2.4 Mode Switching ✅
+
 - [x] Implement mode switcher in attendee session banner
   - [x] Add Guided/Follow button group with active state
   - [x] Show current mode badge with visual indicator
@@ -250,6 +265,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [x] Show informational toast instead of error when presenter triggers multistep in guided mode
 
 ### 2.5 Error Handling & Recovery
+
 - [ ] Create `src/utils/collaboration/error-handler.ts`
   - [ ] Handle action execution failures
   - [ ] Show user-friendly error messages
@@ -261,6 +277,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [ ] Add "Retry" button for failed actions
 
 ### 2.6 Action Sequence Management
+
 - [ ] Create `src/utils/collaboration/sequence-manager.ts`
   - [ ] Implement event queue for attendees
   - [ ] Handle events in order even if received out of order
@@ -269,6 +286,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [ ] Request missed events if gap detected
 
 ### 2.7 Integration with All Action Types
+
 - [x] Test and handle: `targetAction: 'button'`
   - [x] Button clicks replicate correctly
 - [x] Test and handle: `targetAction: 'highlight'`
@@ -288,6 +306,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [x] Wait for completion before next action
 
 ### 2.8 Performance Optimization
+
 - [ ] Implement event throttling for rapid actions
 - [ ] Add buffering for network latency
 - [ ] Show loading indicators during action execution
@@ -295,6 +314,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - [ ] Implement action coalescing (multiple highlights → one)
 
 ### 2.9 Follow Mode Testing & Validation
+
 - [x] Test: Attendee in Follow mode receives and executes Do It
 - [x] Test: Button clicks replicate correctly
 - [x] Test: Form fills work with correct values (including Monaco editors)
@@ -309,6 +329,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - [ ] Test: Attendee can recover from failed action
 
 ### 2.10 Local PeerJS Server & Configuration
+
 - [x] Create local PeerJS server script (`scripts/peerjs-server.js`)
 - [x] Add npm script to run local PeerJS server
 - [x] Configure SessionManager to use local server (localhost:9000)
@@ -317,6 +338,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - [x] Add README for quick start with live sessions
 
 ### 2.11 Known Issues & Documented Limitations
+
 - [x] Monaco Editor visual update limitation: Documented in `docs/KNOWN_ISSUES.md`
   - Requires browser window focus to see visual updates
   - Action executes correctly, only rendering is delayed
@@ -329,6 +351,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 ## ✅ PHASE 1-2 COMPLETE: MVP SHIPPED
 
 **What Works**:
+
 - ✅ PeerJS-based session management with local signaling server
 - ✅ Session creation with join codes, QR codes, and shareable links
 - ✅ Guided mode: "Show Me" highlights replicate to attendees
@@ -340,12 +363,14 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - ✅ Comprehensive documentation
 
 **Current Limitations** (See `docs/KNOWN_ISSUES.md`):
+
 - Monaco editor visual updates require browser window focus
 - PeerJS server dependency (requires running local server)
 - No automatic reconnection on disconnect
 - Not tested beyond ~5 concurrent attendees
 
 **Next Priorities** (See updated plan):
+
 1. Production readiness: Reconnection logic, scale testing, error handling
 2. Session recording and playback
 3. Chat system for Q&A
@@ -357,6 +382,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 **Priority**: After production hardening (reconnection, scale testing)
 
 ### 3.1 Chat System
+
 - [ ] Create `src/components/LiveSession/ChatPanel.tsx`
   - [ ] Collapsible sidebar
   - [ ] Message list with timestamps
@@ -376,6 +402,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [ ] Handle in ActionReplaySystem
 
 ### 3.2 Attendee Management
+
 - [ ] Show attendee list to presenter
 - [ ] Show which attendees are in Follow vs Guided mode
 - [ ] Show attendee progress (which step they're on)
@@ -384,6 +411,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - [ ] Allow presenter to message individual attendees
 
 ### 3.3 Session Analytics
+
 - [ ] Track session duration
 - [ ] Track attendee join/leave times
 - [ ] Track action execution success rates
@@ -395,6 +423,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 ## Phase 4: Recording & Persistence
 
 ### 4.1 IndexedDB Setup
+
 - [ ] Install idb package: `npm install idb`
 - [ ] Create `src/utils/collaboration/storage.ts`
   - [ ] Initialize IndexedDB database 'pathfinder-sessions'
@@ -402,6 +431,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [ ] Define schema for SessionRecording
 
 ### 4.2 Session Recording
+
 - [ ] Create `src/utils/collaboration/recorder.ts`
   - [ ] Implement `SessionRecorder` class
   - [ ] Start recording on session start
@@ -412,6 +442,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [ ] Store in IndexedDB
 
 ### 4.3 Playback System
+
 - [ ] Create `src/components/LiveSession/RecordingPlayer.tsx`
   - [ ] Video-like controls (play, pause, seek)
   - [ ] Speed control (0.5x, 1x, 2x)
@@ -421,12 +452,14 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
   - [ ] Mode switcher (watch recording in Guided or Follow)
 
 ### 4.4 Recording Export/Import
+
 - [ ] Export recording as downloadable JSON
 - [ ] Import recording from file
 - [ ] Share recordings via file upload (Slack, email)
 - [ ] Recording library/browser UI
 
 ### 4.5 Recording to Tutorial Conversion
+
 - [ ] Create `src/utils/collaboration/tutorial-converter.ts`
   - [ ] Parse recording events
   - [ ] Extract unique steps
@@ -440,6 +473,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 ## Phase 5: Scale & Polish
 
 ### 5.1 Connection Resilience
+
 - [ ] Handle presenter disconnect gracefully
 - [ ] Handle attendee disconnect/reconnect
 - [ ] Show connection quality indicator
@@ -448,6 +482,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - [ ] Reconnection logic with exponential backoff
 
 ### 5.2 Multi-Attendee Optimization
+
 - [ ] Test with 10 simultaneous attendees
 - [ ] Test with 25 simultaneous attendees
 - [ ] Test with 50 simultaneous attendees
@@ -456,6 +491,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - [ ] Implement connection limits with warning
 
 ### 5.3 UX Polish
+
 - [ ] Add keyboard shortcuts (Esc to leave, Space to pause)
 - [ ] Add tooltips and help text
 - [ ] Improve error messages
@@ -465,6 +501,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - [ ] Improve mobile responsiveness
 
 ### 5.4 Documentation
+
 - [ ] User guide: How to present a workshop
 - [ ] User guide: How to join a session
 - [ ] User guide: Mode differences explained
@@ -473,6 +510,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - [ ] Video demo of feature
 
 ### 5.5 Testing
+
 - [ ] Unit tests for SessionManager
 - [ ] Unit tests for ActionCapture
 - [ ] Unit tests for ActionReplay
@@ -486,6 +524,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 ## Success Criteria Summary
 
 ### ✅ MVP (Phase 1-2) - COMPLETE:
+
 ✅ Presenter can create session with one click
 ✅ Attendee can join with code (QR/link/paste)  
 ✅ Show Me highlights replicate accurately
@@ -499,6 +538,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 ### 🎯 Current Status: MVP Complete - Ready for Production Hardening
 
 **✅ Fully Working (Phases 1-2 Complete):**
+
 - Create live session with join code, QR code, and shareable link
 - Guided mode: "Show Me" highlights replicate to all attendees
 - Follow mode: "Do It" actions execute on attendee screens
@@ -511,6 +551,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - Comprehensive documentation (setup, troubleshooting, known issues)
 
 **Known Limitations (Documented in `docs/KNOWN_ISSUES.md`):**
+
 - Monaco editor visual updates require browser window focus
 - PeerJS server dependency (requires running local server)
 - No automatic reconnection on disconnect (manual rejoin required)
@@ -520,24 +561,28 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 **🔄 Next Phase: Production Readiness (Before New Features)**
 
 **Priority 1 - Connection Resilience:**
+
 - [ ] Automatic reconnection with exponential backoff
 - [ ] Graceful handling of presenter disconnect
 - [ ] Connection quality indicators
 - [ ] TURN server configuration for restrictive firewalls
 
 **Priority 2 - Scale Testing:**
+
 - [ ] Systematic testing with 10, 25, 50 attendees
 - [ ] Document performance characteristics
 - [ ] Set and enforce recommended limits
 - [ ] Optimize event broadcasting
 
 **Priority 3 - Error Handling:**
+
 - [ ] Better error messages for common failures
 - [ ] Graceful degradation in Follow mode
 - [ ] User-friendly troubleshooting guidance
 - [ ] Telemetry for production debugging
 
 **🎯 Future Features (Phase 3+):**
+
 - [ ] Real-time chat for Q&A (Phase 3)
 - [ ] Session recording and playback (Phase 4)
 - [ ] Convert recordings to tutorials (Phase 4)
@@ -547,6 +592,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 ### Success Metrics
 
 **MVP Complete** ✅:
+
 - ✅ Guided and Follow modes work reliably
 - ✅ All action types supported
 - ✅ Setup documentation exists
@@ -554,6 +600,7 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - ⏳ Reconnection logic implemented (next step)
 
 **Production Ready** ⏳:
+
 - [ ] < 1% error rate in Follow mode
 - [ ] Graceful degradation on all failures
 - [ ] Clear user guidance for all scenarios
@@ -561,10 +608,10 @@ Goal: Extend to full mirroring where "Do It" actions are replicated to attendees
 - [ ] Tested with 25+ concurrent attendees
 
 **Feature Complete** 🔮:
+
 - [ ] Recording and playback work
 - [ ] Chat enables live Q&A
 - [ ] Tested with 50+ attendees
 - [ ] Production deployment guide exists
 - [ ] Comprehensive test coverage
 - [ ] Security audit complete
-

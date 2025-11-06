@@ -15,16 +15,19 @@ Transform Grafana Pathfinder into a real-time collaborative learning platform wh
 ### Prerequisites (3 Terminals Required)
 
 **Terminal 1 - PeerJS Server** (Required):
+
 ```bash
 npm run peerjs-server
 ```
 
 **Terminal 2 - Grafana**:
+
 ```bash
 npm run server
 ```
 
 **Terminal 3 - Plugin Build**:
+
 ```bash
 npm run dev
 ```
@@ -39,12 +42,14 @@ npm run dev
 ### Use It
 
 **As Presenter**:
+
 1. Open Pathfinder sidebar
 2. Click **"Start Live Session"** button
 3. Share join code, QR code, or link with attendees
 4. Click "Show Me" or "Do It" in interactive tutorials - attendees see your actions in real-time!
 
 **As Attendee**:
+
 1. Click **"Join Live Session"** button
 2. Enter join code from presenter
 3. Choose your mode:
@@ -62,11 +67,13 @@ npm run dev
 ### Troubleshooting
 
 **"Cannot connect to PeerJS server"**:
+
 - Ensure `npm run peerjs-server` is running in Terminal 1
 - Check port 9000 is not in use: `lsof -i :9000`
 - See `docs/LOCAL_PEERJS_SERVER.md` for detailed help
 
 **"Attendee can't join session"**:
+
 - Verify both presenter and attendee use same PeerJS server
 - Check browser console for connection errors
 - Try from incognito/private windows
@@ -80,9 +87,10 @@ npm run dev
 ### Primary: Workshop & Training Sessions
 
 **Scenario**: Company-wide Grafana training workshop
+
 - **Presenter**: Senior SRE conducting "Prometheus Monitoring 101" workshop
 - **Attendees**: 50 engineers across multiple offices/timezones
-- **Flow**: 
+- **Flow**:
   1. Presenter creates session, shares join code
   2. Attendees join session from their Pathfinder sidebars
   3. Presenter walks through creating dashboards, writing queries, configuring alerts
@@ -92,26 +100,31 @@ npm run dev
 ### Secondary Use Cases
 
 **1. Emergency Response Training**
+
 - "Production is down - everyone join this session, I'll show you how to debug"
 - Real-time incident response training during actual incidents
 - Record session for post-mortem training material
 
 **2. Customer Onboarding**
+
 - Sales/support guiding new customers through initial setup
 - Personalized 1-on-1 onboarding with screen guidance
 - Customer follows along in their own instance
 
 **3. Open Source Community Workshops**
+
 - Public sessions for community learning
 - Recorded sessions become permanent learning resources
 - Contributors teaching new features
 
 **4. Certification Training**
+
 - Instructor-led certification prep courses
 - Hands-on exam practice with guidance
 - Standardized training across organizations
 
 **5. Peer Learning / Study Groups**
+
 - Small groups collaborating on complex configurations
 - Rotating presenter role for knowledge sharing
 - Team learning new Grafana features together
@@ -129,6 +142,7 @@ Create Session → Share Join Code → Attendees Join → Live Session → End &
 ### Presenter Experience
 
 **Starting a Session**
+
 ```
 1. Pathfinder sidebar: "Start Live Session" button
 2. Modal appears:
@@ -143,6 +157,7 @@ Create Session → Share Join Code → Attendees Join → Live Session → End &
 ```
 
 **Presenter Controls (Overlay Toolbar)**
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ 🔴 LIVE  |  15 Attendees  |  🎥 Recording  |  ⚙️ Settings  │
@@ -155,6 +170,7 @@ Create Session → Share Join Code → Attendees Join → Live Session → End &
 ```
 
 **Presenter Actions**
+
 - Everything presenter does is captured: clicks, form fills, navigation
 - When presenter clicks "Show Me" on interactive step:
   - Attendees see the same highlight (in their own Grafana instance)
@@ -167,6 +183,7 @@ Create Session → Share Join Code → Attendees Join → Live Session → End &
 ### Attendee Experience
 
 **Joining a Session**
+
 ```
 1. Pathfinder sidebar: "Join Live Session" button
 2. Enter join code: "pathfinder-abc123" or click shared link
@@ -182,6 +199,7 @@ Create Session → Share Join Code → Attendees Join → Live Session → End &
 ```
 
 **Attendee Interface**
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ ← Back to Tutorial  |  Session: Prometheus Workshop         │
@@ -208,23 +226,28 @@ Create Session → Share Join Code → Attendees Join → Live Session → End &
 ### The Two Modes Explained
 
 #### 1. Guided Mode (See But Don't Act)
+
 **Use Case**: Attendee follows along manually, presenter guides their attention
 
 **Behavior**:
+
 - When presenter clicks "Show Me": Highlight appears in attendee's Grafana
 - When presenter clicks "Do It": Attendee sees highlight but NO action occurs
 - Attendee can manually perform actions themselves
 - Perfect for workshops where attendees want hands-on practice
 - Default mode for new attendees
 
-**Implementation**: 
+**Implementation**:
+
 - Show Me: Sync highlight coordinates, selector, comment
 - Do It: Show highlight only (no action execution)
 
 #### 2. Follow Mode (Full Mirroring)
+
 **Use Case**: Attendee wants their Grafana to automatically mirror presenter
 
 **Behavior**:
+
 - When presenter clicks "Show Me": Highlight appears
 - When presenter clicks "Do It": Action executes in attendee's Grafana
 - Attendee's instance stays perfectly in sync
@@ -232,6 +255,7 @@ Create Session → Share Join Code → Attendees Join → Live Session → End &
 - Can switch back to Guided mode anytime
 
 **Implementation**:
+
 - Show Me: Sync highlight
 - Do It: Sync action execution (action type, selector, value)
 - Requires robust error handling if attendee's state diverges
@@ -272,12 +296,14 @@ Recording: Client-side JSON export
 **Implementation Approach**: Uses **PeerJS library** with a lightweight local signaling server for connection setup, then pure P2P for data transfer.
 
 **Key Trade-off Decision**:
+
 - **Original Plan**: Raw WebRTC with no backend (complex signaling via QR/paste)
 - **Actual Implementation**: PeerJS with local server (simpler, more reliable)
 - **Benefit**: Much easier implementation, better connection reliability, cleaner UX
 - **Cost**: Requires running a lightweight Node.js signaling server (~50 lines)
 
 **Why PeerJS?**
+
 - Abstracts complex WebRTC signaling logic
 - Handles ICE candidate exchange automatically
 - Provides readable peer IDs instead of SDP blobs
@@ -285,6 +311,7 @@ Recording: Client-side JSON export
 - Well-tested library with good browser support
 
 **PeerJS Configuration**:
+
 ```typescript
 // Local signaling server (development)
 const peer = new Peer(peerId, {
@@ -296,20 +323,22 @@ const peer = new Peer(peerId, {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:global.stun.twilio.com:3478' }
-    ]
-  }
+      { urls: 'stun:global.stun.twilio.com:3478' },
+    ],
+  },
 });
 
 // Production: Use dedicated PeerJS server or PeerJS Cloud
 ```
 
 **What the Signaling Server Does**:
+
 - Facilitates initial peer discovery (attendee finds presenter by ID)
 - Exchanges WebRTC connection offers/answers
 - Tracks active peers and cleans up disconnected ones
 
 **What the Signaling Server Does NOT Do**:
+
 - Transfer tutorial data (flows P2P directly between browsers)
 - Store session state (everything in browser IndexedDB)
 - Authenticate users (simple key-based validation only)
@@ -317,6 +346,7 @@ const peer = new Peer(peerId, {
 ### Connection Establishment Flow (PeerJS Simplified)
 
 **1. Session Creation (Presenter)**
+
 ```typescript
 // Start local PeerJS server first: npm run peerjs-server
 
@@ -326,25 +356,25 @@ const peer = new Peer(peerId, {
   host: 'localhost',
   port: 9000,
   path: '/pathfinder',
-  key: 'pathfinder'
+  key: 'pathfinder',
 });
 
 // Wait for peer to connect to signaling server
 peer.on('open', (id) => {
   console.log('Session created:', id);
-  
+
   // Generate shareable join code
   const sessionInfo = {
     id: id, // PeerJS peer ID
-    name: "Prometheus Workshop",
-    tutorialUrl: "https://grafana.com/tutorials/prometheus-101",
-    defaultMode: "guided"
+    name: 'Prometheus Workshop',
+    tutorialUrl: 'https://grafana.com/tutorials/prometheus-101',
+    defaultMode: 'guided',
   };
-  
+
   const joinCode = id; // Simple! Just the peer ID
   const joinUrl = `${window.location.origin}/a/pathfinder?session=${joinCode}`;
   const qrCode = await QRCode.toDataURL(joinUrl);
-  
+
   // Display join code to presenter
   showJoinOptions(joinCode, joinUrl, qrCode);
 });
@@ -352,13 +382,13 @@ peer.on('open', (id) => {
 // Handle incoming connections from attendees
 peer.on('connection', (conn) => {
   console.log('Attendee connected:', conn.peer);
-  
+
   // Set up data channel handler
   conn.on('data', (data) => {
     // Attendee sent their mode preference
     console.log('Attendee mode:', data.mode);
   });
-  
+
   conn.on('open', () => {
     // Connection ready, can send events now
     trackAttendee(conn);
@@ -367,28 +397,29 @@ peer.on('connection', (conn) => {
 ```
 
 **2. Session Join (Attendee)**
+
 ```typescript
 // Attendee enters join code (presenter's peer ID)
-const presenterPeerId = "cozy-tiger-42";
+const presenterPeerId = 'cozy-tiger-42';
 
 // Create own peer to connect
 const peer = new Peer({
   host: 'localhost',
   port: 9000,
   path: '/pathfinder',
-  key: 'pathfinder'
+  key: 'pathfinder',
 });
 
 // Connect to presenter
 peer.on('open', () => {
   const conn = peer.connect(presenterPeerId);
-  
+
   conn.on('open', () => {
     console.log('Connected to presenter!');
-    
+
     // Send mode preference
     conn.send({ mode: 'guided', name: 'Alice' });
-    
+
     // Listen for events from presenter
     conn.on('data', (event) => {
       handlePresenterEvent(event);
@@ -398,6 +429,7 @@ peer.on('open', () => {
 ```
 
 **3. Broadcasting Events (Presenter)**
+
 ```typescript
 // Presenter clicks "Show Me" button
 function captureShowMe(stepData) {
@@ -405,11 +437,11 @@ function captureShowMe(stepData) {
     type: 'show_me',
     stepId: stepData.id,
     action: stepData.action,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   };
-  
+
   // Broadcast to all connected attendees
-  attendeeConnections.forEach(conn => {
+  attendeeConnections.forEach((conn) => {
     if (conn.open) {
       conn.send(event);
     }
@@ -418,6 +450,7 @@ function captureShowMe(stepData) {
 ```
 
 **Key Simplifications with PeerJS**:
+
 - No manual SDP offer/answer exchange - PeerJS handles it
 - Readable peer IDs instead of complex WebRTC descriptions
 - Automatic ICE candidate gathering and exchange
@@ -425,6 +458,7 @@ function captureShowMe(stepData) {
 - Simple `.connect(peerId)` API instead of WebRTC ceremony
 
 **Why This Works Better**:
+
 - **Simpler code**: ~50 lines vs ~300 lines of raw WebRTC
 - **More reliable**: PeerJS handles edge cases and reconnection
 - **Better UX**: Short readable join codes vs long encoded blobs
@@ -487,6 +521,7 @@ interface StatusEvent extends SessionEvent {
 **Event Flow Examples**
 
 **Presenter clicks "Show Me"**
+
 ```typescript
 // 1. Presenter action captured
 const event: InteractiveStepEvent = {
@@ -498,9 +533,9 @@ const event: InteractiveStepEvent = {
   action: {
     targetAction: 'highlight',
     refTarget: 'button[data-testid="add-datasource"]',
-    targetComment: 'Click here to add datasource'
+    targetComment: 'Click here to add datasource',
   },
-  coordinates: { x: 450, y: 320 }
+  coordinates: { x: 450, y: 320 },
 };
 
 // 2. Broadcast to all attendees via WebRTC data channels
@@ -515,26 +550,24 @@ dataChannels.forEach((channel, attendeeId) => {
 ```
 
 **Attendee in Guided Mode receives Show Me**
+
 ```typescript
 dataChannel.onmessage = (msg) => {
   const event: InteractiveStepEvent = JSON.parse(msg.data);
-  
+
   if (event.type === 'show_me') {
     // In Guided mode: Show highlight
-    navigationManager.highlightWithComment(
-      event.action.refTarget,
-      event.action.targetComment,
-      event.coordinates
-    );
+    navigationManager.highlightWithComment(event.action.refTarget, event.action.targetComment, event.coordinates);
   }
 };
 ```
 
 **Attendee in Follow Mode receives Do It**
+
 ```typescript
 dataChannel.onmessage = (msg) => {
   const event: InteractiveStepEvent = JSON.parse(msg.data);
-  
+
   if (event.type === 'do_it' && attendeeMode === 'follow') {
     // In Follow mode: Execute the action
     await interactiveStateManager.executeAction(
@@ -551,6 +584,7 @@ dataChannel.onmessage = (msg) => {
 #### 1. Session Manager (`src/utils/collaboration/session-manager.ts`)
 
 **Responsibilities**:
+
 - Create/join/leave sessions
 - Manage WebRTC peer connections
 - Handle reconnection logic
@@ -562,38 +596,38 @@ export class SessionManager {
   private dataChannels: Map<string, RTCDataChannel> = new Map();
   private sessionId: string | null = null;
   private role: 'presenter' | 'attendee' | null = null;
-  
+
   private iceServers: RTCIceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:global.stun.twilio.com:3478' },
-    { 
+    {
       urls: 'turn:openrelay.metered.ca:80',
       username: 'openrelayproject',
-      credential: 'openrelayproject'
-    }
+      credential: 'openrelayproject',
+    },
   ];
-  
+
   async createSession(config: SessionConfig): Promise<SessionOffer> {
     // Create WebRTC peer connection
     // Set up data channel
     // Generate offer
     // Return shareable offer (QR code, link, copy-paste)
   }
-  
+
   async joinSession(sessionOffer: SessionOffer, mode: AttendeeMode): Promise<SessionAnswer> {
     // Create peer connection
     // Process offer
     // Generate answer
     // Return answer for presenter
   }
-  
+
   async addAttendee(answer: SessionAnswer): Promise<void> {
     // Presenter receives attendee's answer
     // Complete WebRTC handshake
     // Add to active connections
   }
-  
+
   broadcastEvent(event: SessionEvent): void {
     // Send event to all connected data channels (presenter only)
     this.dataChannels.forEach((channel, attendeeId) => {
@@ -602,7 +636,7 @@ export class SessionManager {
       }
     });
   }
-  
+
   onEventReceived(callback: (event: SessionEvent) => void): void {
     // Register callback for incoming events from data channel
   }
@@ -612,6 +646,7 @@ export class SessionManager {
 #### 2. Action Capture System (`src/utils/collaboration/action-capture.ts`)
 
 **Responsibilities**:
+
 - Intercept presenter's interactive actions
 - Convert to serializable event format
 - Broadcast to attendees
@@ -622,7 +657,7 @@ export class ActionCaptureSystem {
     private sessionManager: SessionManager,
     private interactiveHook: ReturnType<typeof useInteractiveElements>
   ) {}
-  
+
   startCapture(): void {
     // Wrap interactive action execution
     // Before execution: Capture action details
@@ -630,7 +665,7 @@ export class ActionCaptureSystem {
     // Broadcast via SessionManager
     // Execute action locally
   }
-  
+
   captureShowMe(stepData: InteractiveElementData): void {
     const event: InteractiveStepEvent = {
       type: 'show_me',
@@ -638,7 +673,7 @@ export class ActionCaptureSystem {
     };
     this.sessionManager.broadcastEvent(event);
   }
-  
+
   captureDoIt(stepData: InteractiveElementData): void {
     const event: InteractiveStepEvent = {
       type: 'do_it',
@@ -652,6 +687,7 @@ export class ActionCaptureSystem {
 #### 3. Action Replay System (`src/utils/collaboration/action-replay.ts`)
 
 **Responsibilities**:
+
 - Receive events from presenter
 - Apply based on attendee mode
 - Handle errors gracefully
@@ -663,20 +699,20 @@ export class ActionReplaySystem {
     private navigationManager: NavigationManager,
     private interactiveStateManager: InteractiveStateManager
   ) {}
-  
+
   async handleEvent(event: InteractiveStepEvent): Promise<void> {
     switch (this.mode) {
       case 'watch':
         // Do nothing - just update tutorial view
         break;
-        
+
       case 'guided':
         if (event.type === 'show_me' || event.type === 'do_it') {
           // Show highlight only
           await this.showHighlight(event);
         }
         break;
-        
+
       case 'follow':
         if (event.type === 'show_me') {
           await this.showHighlight(event);
@@ -687,11 +723,11 @@ export class ActionReplaySystem {
         break;
     }
   }
-  
+
   private async showHighlight(event: InteractiveStepEvent): Promise<void> {
     // Use existing NavigationManager to show highlight
   }
-  
+
   private async executeAction(event: InteractiveStepEvent): Promise<void> {
     // Use existing InteractiveStateManager to execute
     // Handle failures gracefully (attendee state may differ)
@@ -702,14 +738,15 @@ export class ActionReplaySystem {
 #### 4. Session UI Components
 
 **Presenter Controls** (`src/components/LiveSession/PresenterControls.tsx`)
+
 ```typescript
 export function PresenterControls({ session }: Props) {
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [isPaused, setIsPaused] = useState(false);
-  
+
   return (
     <div className={styles.presenterToolbar}>
-      <SessionStatus 
+      <SessionStatus
         attendeeCount={attendees.length}
         isRecording={session.isRecording}
       />
@@ -726,22 +763,23 @@ export function PresenterControls({ session }: Props) {
 ```
 
 **Attendee Interface** (`src/components/LiveSession/AttendeeInterface.tsx`)
+
 ```typescript
 export function AttendeeInterface({ session }: Props) {
   const [mode, setMode] = useState<AttendeeMode>('guided');
-  
+
   return (
     <div className={styles.attendeeInterface}>
-      <SessionHeader 
+      <SessionHeader
         presenter={session.presenter}
         attendeeCount={session.attendeeCount}
         currentMode={mode}
       />
-      <ModeSelector 
+      <ModeSelector
         currentMode={mode}
         onChange={setMode}
       />
-      <ChatSidebar 
+      <ChatSidebar
         messages={session.messages}
         onSend={(msg) => session.sendChat(msg)}
       />
@@ -780,6 +818,7 @@ The implementation requires a **PeerJS signaling server** for connection setup. 
 ### Development Setup
 
 **Local Development** (Recommended for development):
+
 ```bash
 # Terminal 1: Start PeerJS signaling server
 npm run peerjs-server
@@ -792,6 +831,7 @@ npm run dev
 ```
 
 **Server Configuration** (`scripts/peerjs-server.js`):
+
 ```javascript
 const { PeerServer } = require('peer');
 
@@ -800,7 +840,7 @@ const server = PeerServer({
   path: '/pathfinder',
   key: 'pathfinder',
   alive_timeout: 60000,
-  debug: true
+  debug: true,
 });
 
 console.log('PeerJS server running on port 9000');
@@ -825,12 +865,14 @@ peer --port 443 \
 ```
 
 **Advantages**:
+
 - Full control over infrastructure
 - No external dependencies
 - Better security (can restrict to your domains)
 - Can monitor and scale as needed
 
 **Requirements**:
+
 - Node.js server (small footprint: ~100MB RAM)
 - SSL certificate (required for HTTPS)
 - Open port for WebSocket connections
@@ -843,16 +885,18 @@ Use PeerJS hosted cloud service:
 const peer = new Peer({
   host: 'peerjs.com',
   secure: true,
-  port: 443
+  port: 443,
 });
 ```
 
 **Advantages**:
+
 - No infrastructure to manage
 - Free tier available
 - Handles scaling automatically
 
 **Disadvantages**:
+
 - External dependency
 - Potential privacy concerns (peer IDs visible to service)
 - May have rate limits
@@ -876,6 +920,7 @@ const peer = new Peer(peerId, peerConfig);
 **1. Deploy PeerJS Server**
 
 Using Docker:
+
 ```dockerfile
 FROM node:18-alpine
 RUN npm install -g peer
@@ -884,6 +929,7 @@ CMD ["peer", "--port", "9000", "--path", "/pathfinder"]
 ```
 
 Using systemd:
+
 ```ini
 [Unit]
 Description=PeerJS Signaling Server
@@ -905,10 +951,10 @@ WantedBy=multi-user.target
 server {
     listen 443 ssl;
     server_name peerjs.yourdomain.com;
-    
+
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
-    
+
     location /pathfinder {
         proxy_pass http://localhost:9000;
         proxy_http_version 1.1;
@@ -923,6 +969,7 @@ server {
 **3. Update Plugin Configuration**
 
 In Grafana plugin configuration:
+
 ```
 PeerJS Host: peerjs.yourdomain.com
 PeerJS Port: 443
@@ -941,16 +988,17 @@ PeerJS Key: your-secure-production-key
 **5. Monitoring**
 
 Add health checks:
+
 ```javascript
 // Add to peerjs-server.js
 const express = require('express');
 const app = express();
 
 app.get('/health', (req, res) => {
-  res.json({ 
+  res.json({
     status: 'healthy',
     connections: server.clients.size,
-    uptime: process.uptime()
+    uptime: process.uptime(),
   });
 });
 
@@ -958,6 +1006,7 @@ app.listen(9001);
 ```
 
 Monitor:
+
 - Active peer connections
 - Connection success rate
 - Average latency
@@ -969,6 +1018,7 @@ Monitor:
 **Technology**: Browser IndexedDB
 
 **Schema**:
+
 ```typescript
 // All stored locally in browser
 interface SessionRecording {
@@ -1009,11 +1059,13 @@ const url = URL.createObjectURL(blob);
 ### Recording Format
 
 Sessions are recorded as a sequence of timestamped events that can be:
+
 1. Replayed as a video-like experience
 2. Converted to interactive tutorial format
 3. Shared/distributed for async learning
 
 **Recording File Structure** (JSON):
+
 ```json
 {
   "sessionId": "ses_abc123",
@@ -1050,7 +1102,7 @@ Sessions are recorded as a sequence of timestamped events that can be:
         "targetAction": "button",
         "refTarget": "Add data source"
       }
-    },
+    }
     // ... more events
   ],
   "chat": [
@@ -1067,6 +1119,7 @@ Sessions are recorded as a sequence of timestamped events that can be:
 ### Playback Mode
 
 Recorded sessions can be played back with:
+
 - Speed control (0.5x, 1x, 2x)
 - Skip ahead/rewind
 - Pause at any point
@@ -1076,13 +1129,14 @@ Recorded sessions can be played back with:
 ### Tutorial Conversion
 
 Convert recording to standalone interactive tutorial:
+
 ```typescript
 function convertRecordingToTutorial(recording: SessionRecording): InteractiveTutorial {
   // Extract unique steps from recording
   // Generate tutorial HTML with interactive elements
   // Include presenter's timing as suggested delays
   // Add chat Q&A as helpful hints
-  
+
   return {
     title: recording.name,
     author: recording.presenter.name,
@@ -1090,8 +1144,8 @@ function convertRecordingToTutorial(recording: SessionRecording): InteractiveTut
     metadata: {
       sourceSession: recording.sessionId,
       recordedAt: recording.recordedAt,
-      duration: recording.duration
-    }
+      duration: recording.duration,
+    },
   };
 }
 ```
@@ -1107,22 +1161,20 @@ function convertRecordingToTutorial(recording: SessionRecording): InteractiveTut
 **Example**: Presenter clicks "Edit panel" but attendee hasn't created panel yet
 
 **Solutions**:
+
 1. **Graceful degradation**: Skip action, show warning to attendee
 2. **Requirement checking**: Before executing, verify prerequisites
 3. **State sync checkpoints**: Periodically sync critical state
 4. **Fallback to Guided**: If Follow mode fails repeatedly, suggest Guided mode
 
 ```typescript
-async function executeActionWithValidation(
-  action: InteractiveStepEvent,
-  mode: AttendeeMode
-): Promise<void> {
+async function executeActionWithValidation(action: InteractiveStepEvent, mode: AttendeeMode): Promise<void> {
   if (mode !== 'follow') return;
-  
+
   try {
     // Check if action is possible in current state
     const canExecute = await validatePrerequisites(action);
-    
+
     if (!canExecute) {
       // Show friendly message
       showToast('Skipping step - your setup differs from presenter');
@@ -1130,7 +1182,7 @@ async function executeActionWithValidation(
       logStateDivergence(action);
       return;
     }
-    
+
     // Execute action
     await interactiveStateManager.executeAction(action);
   } catch (error) {
@@ -1143,6 +1195,7 @@ async function executeActionWithValidation(
 ### Network Issues (P2P Specific)
 
 **Presenter Disconnects**:
+
 - P2P connections drop for all attendees
 - Attendees notified: "Presenter disconnected"
 - Recording saved locally up to disconnection point
@@ -1150,12 +1203,14 @@ async function executeActionWithValidation(
 - No automatic reconnection (trade-off of serverless approach)
 
 **Attendee Disconnects**:
+
 - Only their P2P connection drops
 - Other attendees unaffected (benefit of P2P!)
 - Attendee can rejoin by getting new answer from presenter
 - Presenter sees: "Attendee 3 disconnected"
 
 **Poor Connectivity**:
+
 - WebRTC automatically adjusts to bandwidth
 - DataChannel has built-in congestion control
 - Monitor channel.bufferedAmount to detect issues
@@ -1163,6 +1218,7 @@ async function executeActionWithValidation(
 - Automatically throttle events if buffer grows
 
 **ICE Connection Failures**:
+
 - Most common issue: Restrictive corporate firewalls
 - Automatic fallback to TURN relay servers
 - Show connection status: "Using relay (slower connection)"
@@ -1171,18 +1227,21 @@ async function executeActionWithValidation(
 ### Scaling Considerations (P2P Approach)
 
 **Small sessions (< 10 attendees)** ✅ Optimal:
+
 - Direct P2P to each attendee
 - Full bidirectional communication
 - Chat works smoothly
 - Both modes (Guided/Follow) work well
 
 **Medium sessions (10-50 attendees)** ✅ Good:
+
 - Star topology: Presenter connects to each
 - One-way communication (presenter → attendees)
 - Chat aggregated client-side, then relayed
 - Presenter may see slight lag with 30+ connections
 
 **Large sessions (50-100 attendees)** ⚠️ Challenging:
+
 - Browser connection limits (~256 max)
 - Use repeater topology: Some attendees relay to others
 - Automatically recruit first 10 attendees as repeaters
@@ -1190,12 +1249,14 @@ async function executeActionWithValidation(
 - Consider optional signaling server for this scale
 
 **Very large sessions (100+ attendees)** ❌ Need Server:
+
 - P2P approach not suitable
 - Recommend: Deploy optional WebSocket server version
 - Or use hybrid: Stream screen share + Pathfinder for interactivity
 - For most workshop use cases, this scale is rare
 
 **Recommended Approach**:
+
 - Default: P2P (works great for 95% of use cases)
 - For large organizations: Provide optional server deployment guide
 - Best of both worlds: Easy setup for most, scalable for enterprises
@@ -1207,11 +1268,12 @@ async function executeActionWithValidation(
 ### Authentication & Authorization
 
 **Session Access Control**:
+
 ```typescript
 enum SessionVisibility {
-  PUBLIC = 'public',           // Anyone with join code
-  ORGANIZATION = 'org',        // Only org members
-  PRIVATE = 'private'          // Invited users only
+  PUBLIC = 'public', // Anyone with join code
+  ORGANIZATION = 'org', // Only org members
+  PRIVATE = 'private', // Invited users only
 }
 
 interface SessionPermissions {
@@ -1222,6 +1284,7 @@ interface SessionPermissions {
 ```
 
 **Join Code Security**:
+
 - Short-lived codes (expire after 24 hours)
 - Rate limiting on join attempts
 - Optional password protection
@@ -1230,12 +1293,14 @@ interface SessionPermissions {
 ### Data Privacy
 
 **Personal Data**:
+
 - Hash user IDs in analytics
 - Optional anonymous mode for attendees
 - GDPR-compliant recording consent
 - Auto-delete recordings after configured period
 
 **Content Security**:
+
 - Prevent screen scraping of proprietary dashboards
 - Watermark sensitive sessions
 - Enterprise: On-premise session server option
@@ -1243,12 +1308,14 @@ interface SessionPermissions {
 ### Abuse Prevention
 
 **Rate Limiting**:
+
 - Max 5 sessions per user per day
 - Max session duration: 8 hours
 - Max attendees per free account: 10
 - Enterprise: Unlimited
 
 **Content Moderation**:
+
 - Chat message filtering
 - Report/block functionality
 - Presenter can mute/kick attendees
@@ -1263,6 +1330,7 @@ interface SessionPermissions {
 **Goal**: Basic P2P presenter-to-attendee broadcasting
 
 **Deliverables**:
+
 - WebRTC P2P connection setup (using public STUN servers)
 - Session creation with shareable QR code/link/copy-paste
 - DataChannel event protocol
@@ -1271,7 +1339,8 @@ interface SessionPermissions {
 - Simple presenter/attendee UI
 - IndexedDB for local session storage
 
-**Success Criteria**: 
+**Success Criteria**:
+
 - 2 people can do a session: presenter shows, attendee follows along manually
 - P2P connection establishes successfully (including through NAT)
 - Events transmitted with < 200ms latency (P2P is faster than WebSocket!)
@@ -1282,6 +1351,7 @@ interface SessionPermissions {
 **Goal**: Three modes fully functional, enhanced controls
 
 **Deliverables**:
+
 - Watch, Guided, Follow modes implemented
 - Mode switching UI
 - Presenter controls (pause/resume)
@@ -1289,6 +1359,7 @@ interface SessionPermissions {
 - Basic error handling for state divergence
 
 **Success Criteria**:
+
 - Follow mode works reliably for simple workflows
 - Attendees can switch modes mid-session
 - Presenter sees real-time attendee status
@@ -1298,6 +1369,7 @@ interface SessionPermissions {
 **Goal**: Rich interaction between participants
 
 **Deliverables**:
+
 - Real-time chat system
 - Raise hand / Q&A features
 - Presenter can spotlight attendees
@@ -1305,6 +1377,7 @@ interface SessionPermissions {
 - Enhanced attendee management
 
 **Success Criteria**:
+
 - Chat works smoothly with 50+ participants
 - Presenter can manage attendee interactions effectively
 
@@ -1313,6 +1386,7 @@ interface SessionPermissions {
 **Goal**: Sessions become permanent learning resources
 
 **Deliverables**:
+
 - Session recording to JSON
 - Playback UI with controls
 - Recording-to-tutorial converter
@@ -1320,6 +1394,7 @@ interface SessionPermissions {
 - Sharing & embedding capabilities
 
 **Success Criteria**:
+
 - Recorded sessions play back accurately
 - Recordings convert to high-quality interactive tutorials
 - Users can browse and discover recordings
@@ -1329,6 +1404,7 @@ interface SessionPermissions {
 **Goal**: Production-ready for typical workshops, with optional scale
 
 **Deliverables**:
+
 - Performance optimization for 50 attendees (P2P limit)
 - Advanced error handling and TURN fallback
 - Network resilience improvements
@@ -1337,6 +1413,7 @@ interface SessionPermissions {
 - Optional: WebSocket server deployment guide for 100+ attendees
 
 **Success Criteria**:
+
 - Reliably support 50 attendee sessions via P2P
 - < 1% error rate in Follow mode
 - < 5% of users need TURN relay fallback
@@ -1350,24 +1427,28 @@ interface SessionPermissions {
 ### Key Metrics
 
 **Adoption Metrics**:
+
 - Sessions created per week
 - Total attendees across all sessions
 - Average session duration
 - Repeat presenters (%)
 
 **Engagement Metrics**:
+
 - Average attendees per session
 - Mode distribution (Watch / Guided / Follow)
 - Chat messages per session
 - Attendee retention (% who stay for full session)
 
 **Quality Metrics**:
+
 - Follow mode success rate (%)
 - Event delivery latency (ms)
 - Error rate by action type
 - Attendee satisfaction (post-session survey)
 
 **Business Impact**:
+
 - Reduction in support tickets (workshops replace 1-on-1 support)
 - Faster onboarding time (measured via user surveys)
 - Recording reuse rate (views of recordings vs live attendees)
@@ -1375,6 +1456,7 @@ interface SessionPermissions {
 ### Analytics Dashboard
 
 Presenters get post-session insights:
+
 - Attendee engagement heatmap (when people paid attention)
 - Most replayed moments (valuable content indicators)
 - Questions asked per section
@@ -1388,18 +1470,22 @@ Presenters get post-session insights:
 ### Existing Pathfinder Components
 
 **1. Interactive System** (`src/utils/interactive.hook.ts`)
+
 - Wrap `executeInteractiveAction` to capture presenter actions
 - Reuse for attendee action execution in Follow mode
 
 **2. Navigation Manager** (`src/utils/navigation-manager.ts`)
+
 - Leverage for highlight display
 - Coordinate positioning system
 
 **3. Tutorial Recorder** (`src/components/SelectorDebugPanel`)
+
 - Similar capture mechanism
 - Could share code for action serialization
 
 **4. Context Service** (`src/utils/context`)
+
 - Detect when to suggest creating session (e.g., "Share this tutorial with your team")
 - Track session participation for recommendations
 
@@ -1415,7 +1501,7 @@ src/
       RecordingPlayer.tsx
       ChatPanel.tsx
       index.ts
-      
+
   utils/
     collaboration/
       session-manager.ts         // Core session lifecycle
@@ -1426,10 +1512,10 @@ src/
       recording-converter.ts      // Convert recordings to tutorials
       state-validator.ts          // Validate attendee state
       index.ts
-      
+
   types/
     collaboration.types.ts        // TypeScript interfaces
-    
+
   constants/
     collaboration-config.ts       // Timeouts, limits, etc.
 ```
@@ -1441,6 +1527,7 @@ src/
 ### For Presenters
 
 **"How to Run Your First Workshop"**
+
 1. Prepare your tutorial in Pathfinder
 2. Click "Start Live Session"
 3. Share join code with attendees (Slack, email, QR code)
@@ -1450,6 +1537,7 @@ src/
 7. End session (auto-saves recording)
 
 **Best Practices**:
+
 - Start with Watch or Guided mode for new audiences
 - Use Follow mode sparingly (complex workflows may diverge)
 - Pause regularly to let attendees catch up
@@ -1459,6 +1547,7 @@ src/
 ### For Attendees
 
 **"How to Join a Workshop"**
+
 1. Get join code from presenter
 2. Open Pathfinder, click "Join Live Session"
 3. Enter code, select your preferred mode:
@@ -1475,31 +1564,37 @@ src/
 ### V2 Features (Post-Launch)
 
 **1. Breakout Rooms**
+
 - Split large workshop into smaller groups
 - Each breakout has sub-session
 - Rejoin main session
 
 **2. Co-Presenting**
+
 - Multiple presenters in one session
 - Hand off control smoothly
 - Panel discussions
 
 **3. Interactive Polls & Quizzes**
+
 - Test attendee knowledge mid-session
 - Multiple choice questions
 - Results shown to presenter
 
 **4. AI Assistant**
+
 - Auto-generate session summaries
 - Suggest when to pause (if attendees falling behind)
 - Answer common questions automatically
 
 **5. Integration with Learning Management Systems (LMS)**
+
 - Export recordings to Moodle, Canvas, etc.
 - Attendance tracking
 - Certification integration
 
 **6. Mobile Attendee App**
+
 - Follow along on phone/tablet
 - View-only mode for smaller screens
 - Chat participation
@@ -1513,6 +1608,7 @@ Collaborative Live Learning Sessions transform Pathfinder from a documentation t
 The phased approach ensures we deliver value quickly while building toward a comprehensive solution. Starting with basic P2P broadcasting and progressively adding modes, recording, and scaling capabilities allows us to learn from real usage and iterate.
 
 **Key Differentiators**:
+
 - **Zero Infrastructure** - Works completely P2P using free public STUN servers
 - **Built into Grafana** - No context switching, seamless experience
 - **Multiple engagement modes** - Watch/Guided/Follow for different learning styles
@@ -1521,6 +1617,7 @@ The phased approach ensures we deliver value quickly while building toward a com
 - **No deployment needed** - Just frontend code, works immediately
 
 **P2P Architecture Benefits**:
+
 - ✅ Zero hosting costs - No servers to pay for or maintain
 - ✅ Lower latency - Direct peer connections are faster than server relay
 - ✅ Better privacy - Data stays between presenter and attendees
@@ -1530,9 +1627,9 @@ The phased approach ensures we deliver value quickly while building toward a com
 
 **When P2P Isn't Enough**:
 For organizations that need 100+ attendee sessions, we provide:
+
 - Optional signaling server deployment guide
 - Optional WebSocket relay server for scale
 - But 95% of users will never need this
 
 This feature positions Pathfinder as not just a learning tool, but a **community platform** where Grafana experts can share knowledge at scale - all without requiring any infrastructure.
-

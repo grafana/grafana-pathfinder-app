@@ -1,6 +1,6 @@
 /**
  * Attendee Join Interface for Live Sessions
- * 
+ *
  * UI for attendees to join sessions using join codes, QR codes, or URLs
  */
 
@@ -18,7 +18,7 @@ import type { SessionOffer, AttendeeMode } from '../../types/collaboration.types
 function getErrorGuidance(error: unknown): { title: string; message: string; steps: string[] } {
   // Check if it's a SessionError with error code
   const errorMessage = error instanceof Error ? error.message : String(error);
-  
+
   // Check for common error patterns
   if (errorMessage.includes('peer-unavailable') || errorMessage.includes('Could not connect to peer')) {
     return {
@@ -26,13 +26,13 @@ function getErrorGuidance(error: unknown): { title: string; message: string; ste
       message: 'The presenter may not be online, or the join code may be incorrect.',
       steps: [
         'Verify the join code is correct',
-        'Ensure the presenter\'s session is still active',
+        "Ensure the presenter's session is still active",
         'Check that you and the presenter are using the same PeerJS server',
-        'Try refreshing the page and rejoining'
-      ]
+        'Try refreshing the page and rejoining',
+      ],
     };
   }
-  
+
   if (errorMessage.includes('timeout') || errorMessage.includes('Peer connection timeout')) {
     return {
       title: 'Connection Timeout',
@@ -41,11 +41,11 @@ function getErrorGuidance(error: unknown): { title: string; message: string; ste
         'Check your network connection',
         'Ensure PeerJS server is running (if using local server)',
         'Try again in a few moments',
-        'Contact your administrator if problem persists'
-      ]
+        'Contact your administrator if problem persists',
+      ],
     };
   }
-  
+
   if (errorMessage.includes('Invalid') || errorMessage.includes('invalid')) {
     return {
       title: 'Invalid Join Code',
@@ -53,11 +53,11 @@ function getErrorGuidance(error: unknown): { title: string; message: string; ste
       steps: [
         'Double-check the join code for typos',
         'Request a new join code from the presenter',
-        'Try copying and pasting the code instead of typing it'
-      ]
+        'Try copying and pasting the code instead of typing it',
+      ],
     };
   }
-  
+
   // Generic connection failure
   return {
     title: 'Connection Failed',
@@ -67,8 +67,8 @@ function getErrorGuidance(error: unknown): { title: string; message: string; ste
       'Check that the join code is correct',
       'Ensure your network allows WebRTC connections',
       'Try in a different browser or incognito window',
-      'Contact your administrator for help'
-    ]
+      'Contact your administrator for help',
+    ],
   };
 }
 
@@ -84,7 +84,9 @@ function ErrorAlert({ error, className }: { error: unknown; className: string })
         <p style={{ marginTop: '12px', fontWeight: 600 }}>Troubleshooting steps:</p>
         <ol style={{ marginTop: '8px', marginBottom: 0, paddingLeft: '20px' }}>
           {guidance.steps.map((step, idx) => (
-            <li key={idx} style={{ marginBottom: '4px' }}>{step}</li>
+            <li key={idx} style={{ marginBottom: '4px' }}>
+              {step}
+            </li>
           ))}
         </ol>
       </div>
@@ -107,14 +109,14 @@ interface AttendeeJoinProps {
 export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
   const styles = useStyles2(getStyles);
   const { joinSession } = useSession();
-  
+
   const [joinCode, setJoinCode] = useState('');
   const [mode, setMode] = useState<AttendeeMode>('guided');
   const [name, setName] = useState('');
   const [sessionOffer, setSessionOffer] = useState<SessionOffer | null>(null);
   const [error, setError] = useState<unknown | null>(null);
   const [isJoining, setIsJoining] = useState(false);
-  
+
   // Reset state when modal closes
   useEffect(() => {
     if (!isOpen) {
@@ -127,7 +129,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
       setIsJoining(false);
     }
   }, [isOpen]);
-  
+
   // Check for session in URL when opening, or reset to initial state
   useEffect(() => {
     if (isOpen) {
@@ -149,7 +151,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
       }
     }
   }, [isOpen]);
-  
+
   /**
    * Handle join code submission
    */
@@ -158,12 +160,12 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
       setError('Please enter a join code');
       return;
     }
-    
+
     setError(null);
-    
+
     try {
       const trimmedCode = joinCode.trim();
-      
+
       // Check if it's a full URL
       if (trimmedCode.startsWith('http://') || trimmedCode.startsWith('https://')) {
         // Extract query parameters from URL
@@ -171,17 +173,17 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
         const sessionParam = url.searchParams.get('session');
         const sessionName = url.searchParams.get('sessionName');
         const tutorialUrl = url.searchParams.get('tutorialUrl');
-        
+
         if (!sessionParam) {
           throw new Error('Invalid URL - no session parameter');
         }
-        
+
         const offer = parseJoinCode(sessionParam);
         // Override with URL parameters if available
         const enrichedOffer = {
           ...offer,
           name: sessionName || offer.name,
-          tutorialUrl: tutorialUrl || offer.tutorialUrl
+          tutorialUrl: tutorialUrl || offer.tutorialUrl,
         };
         setSessionOffer(enrichedOffer);
       } else {
@@ -193,22 +195,22 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
       setError('Invalid join code or URL. Please check and try again.');
     }
   };
-  
-/**
- * Handle join session
- */
-const handleJoinSession = async () => {
-  if (!sessionOffer) {
-    return;
-  }
-  
-  setError(null);
-  setIsJoining(true);
-  
+
+  /**
+   * Handle join session
+   */
+  const handleJoinSession = async () => {
+    if (!sessionOffer) {
+      return;
+    }
+
+    setError(null);
+    setIsJoining(true);
+
     try {
       // Join session through context (handles state management)
       await joinSession(sessionOffer.id, mode, name || undefined);
-      
+
       // Close modal and notify parent
       onJoined();
       onClose();
@@ -217,8 +219,8 @@ const handleJoinSession = async () => {
       setError(err); // Store the actual error for better guidance
       setIsJoining(false);
     }
-};
-  
+  };
+
   /**
    * Reset form
    */
@@ -230,21 +232,21 @@ const handleJoinSession = async () => {
     setName('');
     onClose();
   };
-  
+
   // Mode options
   const modeOptions = [
     {
       label: 'Guided',
       value: 'guided' as AttendeeMode,
-      description: 'See highlights when presenter clicks "Show Me"'
+      description: 'See highlights when presenter clicks "Show Me"',
     },
     {
       label: 'Follow',
       value: 'follow' as AttendeeMode,
-      description: 'Your Grafana mirrors presenter\'s actions'
-    }
+      description: "Your Grafana mirrors presenter's actions",
+    },
   ];
-  
+
   return (
     <Modal title="Join Live Session" isOpen={isOpen} onDismiss={handleClose} className={styles.modal}>
       <div className={styles.container}>
@@ -253,10 +255,8 @@ const handleJoinSession = async () => {
           <>
             <div className={styles.section}>
               <label className={styles.label}>Enter Join Code</label>
-              <p className={styles.helpText}>
-                Get the join code from your presenter or scan their QR code
-              </p>
-              
+              <p className={styles.helpText}>Get the join code from your presenter or scan their QR code</p>
+
               <div className={styles.inputGroup}>
                 <Input
                   value={joinCode}
@@ -273,18 +273,16 @@ const handleJoinSession = async () => {
                   Next
                 </Button>
               </div>
-              
+
               {error !== null && <ErrorAlert error={error} className={styles.alert} />}
             </div>
-            
+
             <div className={styles.divider}>
               <span>OR</span>
             </div>
-            
+
             <div className={styles.section}>
-              <p className={styles.helpText}>
-                Scan QR code with your mobile device or click a shared link
-              </p>
+              <p className={styles.helpText}>Scan QR code with your mobile device or click a shared link</p>
             </div>
           </>
         ) : (
@@ -299,16 +297,12 @@ const handleJoinSession = async () => {
                 <strong>Tutorial:</strong> {sessionOffer.tutorialUrl}
               </div>
             </div>
-            
+
             <div className={styles.section}>
               <label className={styles.label}>Your Name (Optional)</label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.currentTarget.value)}
-                placeholder="Enter your name..."
-              />
+              <Input value={name} onChange={(e) => setName(e.currentTarget.value)} placeholder="Enter your name..." />
             </div>
-            
+
             <div className={styles.section}>
               <label className={styles.label}>Select Mode</label>
               <div className={styles.modeSelector}>
@@ -319,11 +313,7 @@ const handleJoinSession = async () => {
                     onClick={() => setMode(option.value)}
                   >
                     <div className={styles.modeRadio}>
-                      <input
-                        type="radio"
-                        checked={mode === option.value}
-                        onChange={() => setMode(option.value)}
-                      />
+                      <input type="radio" checked={mode === option.value} onChange={() => setMode(option.value)} />
                     </div>
                     <div className={styles.modeContent}>
                       <div className={styles.modeLabel}>{option.label}</div>
@@ -333,18 +323,14 @@ const handleJoinSession = async () => {
                 ))}
               </div>
             </div>
-            
+
             {error !== null && <ErrorAlert error={error} className={styles.alert} />}
-            
+
             <div className={styles.actions}>
               <Button variant="secondary" onClick={() => setSessionOffer(null)}>
                 Back
               </Button>
-              <Button
-                variant="primary"
-                onClick={handleJoinSession}
-                disabled={isJoining}
-              >
+              <Button variant="primary" onClick={handleJoinSession} disabled={isJoining}>
                 {isJoining ? 'Joining...' : 'Join Session'}
               </Button>
             </div>
@@ -389,14 +375,14 @@ function getStyles(theme: GrafanaTheme2) {
       align-items: center;
       text-align: center;
       margin: ${theme.spacing(3)} 0;
-      
+
       &::before,
       &::after {
         content: '';
         flex: 1;
         border-bottom: 1px solid ${theme.colors.border.medium};
       }
-      
+
       span {
         padding: 0 ${theme.spacing(2)};
         color: ${theme.colors.text.secondary};
@@ -408,7 +394,7 @@ function getStyles(theme: GrafanaTheme2) {
       background: ${theme.colors.background.secondary};
       border-radius: ${theme.shape.radius.default};
       margin-bottom: ${theme.spacing(2)};
-      
+
       h4 {
         margin: 0 0 ${theme.spacing(1.5)} 0;
         font-size: ${theme.typography.h4.fontSize};
@@ -416,11 +402,11 @@ function getStyles(theme: GrafanaTheme2) {
     `,
     detailRow: css`
       margin-bottom: ${theme.spacing(1)};
-      
+
       &:last-child {
         margin-bottom: 0;
       }
-      
+
       strong {
         margin-right: ${theme.spacing(1)};
       }
@@ -438,7 +424,7 @@ function getStyles(theme: GrafanaTheme2) {
       border-radius: ${theme.shape.radius.default};
       cursor: pointer;
       transition: all 0.2s;
-      
+
       &:hover {
         border-color: ${theme.colors.border.strong};
         background: ${theme.colors.background.secondary};
@@ -452,7 +438,7 @@ function getStyles(theme: GrafanaTheme2) {
       display: flex;
       align-items: flex-start;
       padding-top: 2px;
-      
+
       input {
         cursor: pointer;
       }
@@ -480,7 +466,6 @@ function getStyles(theme: GrafanaTheme2) {
     codeInput: css`
       font-family: ${theme.typography.fontFamilyMonospace};
       font-size: ${theme.typography.bodySmall.fontSize};
-    `
+    `,
   };
 }
-

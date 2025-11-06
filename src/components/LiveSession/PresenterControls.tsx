@@ -1,6 +1,6 @@
 /**
  * Presenter Controls for Live Sessions
- * 
+ *
  * UI for presenters to create sessions, share join codes, and monitor attendees
  */
 
@@ -26,12 +26,12 @@ interface PresenterControlsProps {
 export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
   const styles = useStyles2(getStyles);
   const { createSession, sessionInfo, endSession, attendees } = useSession();
-  
+
   const [isCreating, setIsCreating] = useState(false);
   const [sessionName, setSessionName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<'code' | 'url' | null>(null);
-  
+
   /**
    * Handle create session
    */
@@ -40,22 +40,24 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       setError('Please enter a session name');
       return;
     }
-    
+
     if (!tutorialUrl || tutorialUrl.trim() === '') {
-      setError('Please open a tutorial before creating a session. Open a learning journey or documentation page first.');
+      setError(
+        'Please open a tutorial before creating a session. Open a learning journey or documentation page first.'
+      );
       return;
     }
-    
+
     setError(null);
     setIsCreating(true);
-    
+
     try {
       const config: SessionConfig = {
         name: sessionName,
         tutorialUrl,
-        defaultMode: 'guided'
+        defaultMode: 'guided',
       };
-      
+
       await createSession(config);
       console.log('[PresenterControls] Session created successfully');
     } catch (err) {
@@ -65,7 +67,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       setIsCreating(false);
     }
   };
-  
+
   /**
    * Copy text to clipboard
    */
@@ -78,7 +80,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       console.error('[PresenterControls] Failed to copy:', error);
     }
   };
-  
+
   /**
    * Handle end session
    */
@@ -87,7 +89,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       endSession();
     }
   };
-  
+
   // If session is active, show session info
   if (sessionInfo) {
     return (
@@ -99,7 +101,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
             LIVE
           </div>
         </div>
-        
+
         <div className={styles.activeSessionContainer}>
           {/* Left Column: Join Information */}
           <div className={styles.leftColumn}>
@@ -108,10 +110,10 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
                 <strong>Session:</strong> {sessionInfo.config.name}
               </div>
             </div>
-            
+
             <div className={styles.shareSection}>
               <h4>Share with Attendees</h4>
-              
+
               <div className={styles.shareItem}>
                 <label>Session Code</label>
                 <p className={styles.helpText}>Share this 6-character code with attendees</p>
@@ -122,34 +124,22 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
                     className={styles.codeInput}
                     style={{ fontSize: '24px', fontWeight: 'bold', textAlign: 'center', letterSpacing: '4px' }}
                   />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => copyToClipboard(sessionInfo.joinCode, 'code')}
-                  >
+                  <Button variant="secondary" size="sm" onClick={() => copyToClipboard(sessionInfo.joinCode, 'code')}>
                     {copied === 'code' ? '✓ Copied' : 'Copy'}
                   </Button>
                 </div>
               </div>
-              
+
               <div className={styles.shareItem}>
                 <label>Join URL</label>
                 <div className={styles.copyGroup}>
-                  <Input
-                    value={sessionInfo.joinUrl}
-                    readOnly
-                    className={styles.urlInput}
-                  />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => copyToClipboard(sessionInfo.joinUrl, 'url')}
-                  >
+                  <Input value={sessionInfo.joinUrl} readOnly className={styles.urlInput} />
+                  <Button variant="secondary" size="sm" onClick={() => copyToClipboard(sessionInfo.joinUrl, 'url')}>
                     {copied === 'url' ? '✓ Copied' : 'Copy'}
                   </Button>
                 </div>
               </div>
-              
+
               {sessionInfo.qrCode && (
                 <div className={styles.qrSection}>
                   <label>QR Code</label>
@@ -158,21 +148,21 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
                 </div>
               )}
             </div>
-            
+
             <div className={styles.actions}>
               <Button variant="destructive" onClick={handleEndSession}>
                 End Session
               </Button>
             </div>
           </div>
-          
+
           {/* Right Column: Attendee List */}
           <div className={styles.rightColumn}>
             <div className={styles.attendeeListHeader}>
               <h4>Attendees</h4>
               <span className={styles.attendeeCount}>{attendees.length}</span>
             </div>
-            
+
             {attendees.length === 0 ? (
               <div className={styles.emptyState}>
                 <p>Waiting for attendees to join...</p>
@@ -182,14 +172,12 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
                 {attendees.map((attendee) => {
                   return (
                     <div key={attendee.id} className={styles.attendeeItem}>
-                      <span className={styles.attendeeName}>
-                        {attendee.name || 'Anonymous'}
-                      </span>
-                      <Badge 
-                        text={attendee.mode === 'guided' ? 'Guided' : 'Follow'} 
+                      <span className={styles.attendeeName}>{attendee.name || 'Anonymous'}</span>
+                      <Badge
+                        text={attendee.mode === 'guided' ? 'Guided' : 'Follow'}
                         color={attendee.mode === 'guided' ? 'orange' : 'blue'}
                       />
-                      <ConnectionIndicator 
+                      <ConnectionIndicator
                         state={attendee.connectionState}
                         quality={attendee.connectionQuality}
                         showLabel={false}
@@ -204,14 +192,14 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       </div>
     );
   }
-  
+
   // Otherwise, show create session form
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <h3>Start Live Session</h3>
       </div>
-      
+
       <div className={styles.form}>
         <div className={styles.formGroup}>
           <label>Session Name</label>
@@ -222,7 +210,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
             disabled={isCreating}
           />
         </div>
-        
+
         <div className={styles.formGroup}>
           <label>Tutorial</label>
           {tutorialUrl ? (
@@ -238,13 +226,13 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
             </>
           )}
         </div>
-        
+
         {error && (
           <Alert severity="error" title="Error">
             {error}
           </Alert>
         )}
-        
+
         <Button
           variant="primary"
           onClick={handleCreateSession}
@@ -273,7 +261,7 @@ function getStyles(theme: GrafanaTheme2) {
       justify-content: space-between;
       align-items: center;
       margin-bottom: ${theme.spacing(2)};
-      
+
       h3 {
         margin: 0;
         font-size: ${theme.typography.h3.fontSize};
@@ -293,9 +281,10 @@ function getStyles(theme: GrafanaTheme2) {
       background: ${theme.colors.error.main};
       border-radius: 50%;
       animation: pulse 2s infinite;
-      
+
       @keyframes pulse {
-        0%, 100% {
+        0%,
+        100% {
           opacity: 1;
         }
         50% {
@@ -307,7 +296,7 @@ function getStyles(theme: GrafanaTheme2) {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: ${theme.spacing(3)};
-      
+
       @media (max-width: 900px) {
         grid-template-columns: 1fr;
       }
@@ -323,7 +312,7 @@ function getStyles(theme: GrafanaTheme2) {
       gap: ${theme.spacing(2)};
       border-left: 1px solid ${theme.colors.border.medium};
       padding-left: ${theme.spacing(3)};
-      
+
       @media (max-width: 900px) {
         border-left: none;
         padding-left: 0;
@@ -336,7 +325,7 @@ function getStyles(theme: GrafanaTheme2) {
       justify-content: space-between;
       align-items: center;
       margin-bottom: ${theme.spacing(1)};
-      
+
       h4 {
         margin: 0;
         font-size: ${theme.typography.h4.fontSize};
@@ -369,7 +358,7 @@ function getStyles(theme: GrafanaTheme2) {
       display: flex;
       flex-direction: column;
       gap: ${theme.spacing(0.5)};
-      
+
       label {
         font-weight: ${theme.typography.fontWeightMedium};
         font-size: ${theme.typography.bodySmall.fontSize};
@@ -388,14 +377,14 @@ function getStyles(theme: GrafanaTheme2) {
     `,
     infoRow: css`
       margin-bottom: ${theme.spacing(1)};
-      
+
       &:last-child {
         margin-bottom: 0;
       }
     `,
     shareSection: css`
       margin-bottom: ${theme.spacing(2)};
-      
+
       h4 {
         margin: 0 0 ${theme.spacing(1.5)} 0;
         font-size: ${theme.typography.h4.fontSize};
@@ -403,7 +392,7 @@ function getStyles(theme: GrafanaTheme2) {
     `,
     shareItem: css`
       margin-bottom: ${theme.spacing(2)};
-      
+
       label {
         display: block;
         font-weight: ${theme.typography.fontWeightMedium};
@@ -428,7 +417,7 @@ function getStyles(theme: GrafanaTheme2) {
       padding: ${theme.spacing(2)};
       background: ${theme.colors.background.secondary};
       border-radius: ${theme.shape.radius.default};
-      
+
       label {
         display: block;
         font-weight: ${theme.typography.fontWeightMedium};
@@ -441,7 +430,7 @@ function getStyles(theme: GrafanaTheme2) {
       background: ${theme.colors.background.secondary};
       border-radius: ${theme.shape.radius.default};
       border: 1px dashed ${theme.colors.border.medium};
-      
+
       h4 {
         margin: 0 0 ${theme.spacing(1)} 0;
         font-size: ${theme.typography.h4.fontSize};
@@ -455,7 +444,7 @@ function getStyles(theme: GrafanaTheme2) {
     `,
     attendeesList: css`
       margin-bottom: ${theme.spacing(2)};
-      
+
       h4 {
         margin: 0 0 ${theme.spacing(1)} 0;
         font-size: ${theme.typography.h4.fontSize};
@@ -477,7 +466,6 @@ function getStyles(theme: GrafanaTheme2) {
       display: flex;
       gap: ${theme.spacing(1)};
       justify-content: flex-end;
-    `
+    `,
   };
 }
-

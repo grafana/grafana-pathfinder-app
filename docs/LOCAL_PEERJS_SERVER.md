@@ -9,11 +9,13 @@ The collaborative live sessions feature uses PeerJS for peer-to-peer connections
 ### 1. Start the PeerJS Server
 
 In one terminal:
+
 ```bash
 npm run peerjs-server
 ```
 
 You should see:
+
 ```
 ╔════════════════════════════════════════════════════════════╗
 ║  PeerJS Signaling Server for Grafana Pathfinder          ║
@@ -25,6 +27,7 @@ You should see:
 ### 2. Start Grafana
 
 In another terminal:
+
 ```bash
 npm run server
 ```
@@ -32,6 +35,7 @@ npm run server
 ### 3. Start the Plugin Dev Build
 
 In a third terminal:
+
 ```bash
 npm run dev
 ```
@@ -61,11 +65,13 @@ A management script is available for easier server control:
 If you get "port 9000 is already in use":
 
 **Option 1: Use the helper script**
+
 ```bash
 ./scripts/manage-peerjs.sh restart
 ```
 
 **Option 2: Manual cleanup**
+
 ```bash
 # Find what's using port 9000
 lsof -i:9000
@@ -78,6 +84,7 @@ npm run peerjs-server
 ```
 
 **Option 3: Use a different port**
+
 ```bash
 # Edit scripts/peerjs-server.js and change port to 9001
 # Then update plugin configuration to match
@@ -86,6 +93,7 @@ npm run peerjs-server
 ## How It Works
 
 ### Architecture
+
 ```
 ┌─────────────┐         ┌──────────────────┐         ┌─────────────┐
 │  Presenter  │ ◄─────► │  PeerJS Server   │ ◄─────► │  Attendee   │
@@ -99,11 +107,13 @@ npm run peerjs-server
 ```
 
 ### What the Server Does
+
 - **Signaling**: Facilitates the initial connection handshake between peers
 - **Peer Discovery**: Allows attendees to find the presenter by peer ID
 - **Connection Management**: Tracks active peers and cleans up disconnected ones
 
 ### What the Server Does NOT Do
+
 - **Data Transfer**: All tutorial data flows directly peer-to-peer
 - **Storage**: No session data is stored on the server
 - **Authentication**: Simple key-based validation only
@@ -111,6 +121,7 @@ npm run peerjs-server
 ## Configuration
 
 ### Server Settings
+
 File: `scripts/peerjs-server.js`
 
 ```javascript
@@ -124,6 +135,7 @@ File: `scripts/peerjs-server.js`
 ```
 
 ### Client Settings
+
 File: `src/utils/collaboration/session-manager.ts`
 
 ```typescript
@@ -141,33 +153,41 @@ new Peer(peerId, {
 ## Troubleshooting
 
 ### "Cannot connect to PeerJS server"
+
 **Problem**: The server isn't running or isn't reachable.
 
 **Solution**:
+
 1. Check if `npm run peerjs-server` is running
 2. Verify the port isn't in use: `lsof -i :9000`
 3. Check browser console for connection errors
 
 ### "Peer connection failed"
+
 **Problem**: P2P connection can't be established even though signaling works.
 
 **Solution**:
+
 1. Check your firewall settings
 2. TURN server might be needed for restrictive networks
 3. Try from incognito/private windows (different profiles)
 
 ### "Attendee can't find presenter"
+
 **Problem**: Join code is valid but attendee can't connect.
 
 **Solution**:
+
 1. Ensure both presenter and attendee are connected to the same server
 2. Check that the presenter's session is still active
 3. Verify the peer ID hasn't expired (60s timeout)
 
 ### Connection drops frequently
+
 **Problem**: Peers disconnect after a short time.
 
 **Solution**:
+
 1. Increase `alive_timeout` in server config
 2. Check network stability
 3. Look for errors in server logs
@@ -189,6 +209,7 @@ sudo nano /etc/systemd/system/peerjs-pathfinder.service
 ```
 
 Service file:
+
 ```ini
 [Unit]
 Description=PeerJS Signaling Server for Pathfinder
@@ -206,6 +227,7 @@ WantedBy=multi-user.target
 ```
 
 Enable and start:
+
 ```bash
 sudo systemctl enable peerjs-pathfinder
 sudo systemctl start peerjs-pathfinder
@@ -214,6 +236,7 @@ sudo systemctl start peerjs-pathfinder
 ### Option 2: Docker Deployment
 
 Create `Dockerfile.peerjs`:
+
 ```dockerfile
 FROM node:18-alpine
 WORKDIR /app
@@ -224,6 +247,7 @@ CMD ["node", "peerjs-server.js"]
 ```
 
 Build and run:
+
 ```bash
 docker build -f Dockerfile.peerjs -t peerjs-pathfinder .
 docker run -d -p 9000:9000 --name peerjs-pathfinder peerjs-pathfinder
@@ -242,6 +266,7 @@ this.peer = new Peer(peerId, {
 ```
 
 **Downsides**:
+
 - Less reliable (shared infrastructure)
 - Rate limits
 - No control over uptime
@@ -250,6 +275,7 @@ this.peer = new Peer(peerId, {
 ## Server Logs
 
 ### Normal Operation
+
 ```
 [PeerJS] Client connected: abc123
 [PeerJS] Client connected: xyz789
@@ -257,16 +283,19 @@ this.peer = new Peer(peerId, {
 ```
 
 ### Connection Issues
+
 ```
 [PeerJS] Server error: Error: Port 9000 already in use
 ```
 
 ### Debug Mode
+
 Set `debug: true` in server config and `debug: 3` in client config for verbose logging.
 
 ## Security Considerations
 
 ### Development (Current Setup)
+
 - Server runs on localhost
 - Simple key-based validation only (`key: 'pathfinder'`)
 - No encryption (plain HTTP/WS)
@@ -302,15 +331,15 @@ Deploy behind reverse proxy with SSL:
 server {
     listen 443 ssl http2;
     server_name peerjs.yourdomain.com;
-    
+
     ssl_certificate /path/to/fullchain.pem;
     ssl_certificate_key /path/to/privkey.pem;
-    
+
     # Modern SSL configuration
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
-    
+
     location /pathfinder {
         proxy_pass http://localhost:9000;
         proxy_http_version 1.1;
@@ -320,7 +349,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        
+
         # Timeouts for long-lived connections
         proxy_connect_timeout 7d;
         proxy_send_timeout 7d;
@@ -340,12 +369,9 @@ const server = PeerServer({
   key: process.env.PEERJS_KEY,
   allow_discovery: false, // Disable peer discovery
   corsOptions: {
-    origin: [
-      'https://yourgrafana.com',
-      'https://*.yourgrafana.com'
-    ],
-    credentials: true
-  }
+    origin: ['https://yourgrafana.com', 'https://*.yourgrafana.com'],
+    credentials: true,
+  },
 });
 ```
 
@@ -360,7 +386,7 @@ const express = require('express');
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 connections per window
-  message: 'Too many connections from this IP'
+  message: 'Too many connections from this IP',
 });
 
 const app = express();
@@ -381,9 +407,8 @@ Set maximum concurrent connections per peer:
 const MAX_CONNECTIONS_PER_PEER = 50;
 
 server.on('connection', (client) => {
-  const connections = Array.from(server._clients.values())
-    .filter(c => c.getId() === client.getId()).length;
-  
+  const connections = Array.from(server._clients.values()).filter((c) => c.getId() === client.getId()).length;
+
   if (connections > MAX_CONNECTIONS_PER_PEER) {
     console.warn(`Peer ${client.getId()} exceeded connection limit`);
     client.getSocket().close();
@@ -401,23 +426,21 @@ const winston = require('winston');
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'peerjs-security.log' })
-  ]
+  transports: [new winston.transports.File({ filename: 'peerjs-security.log' })],
 });
 
 server.on('connection', (client) => {
   logger.info('Peer connected', {
     peerId: client.getId(),
     ip: client.getSocket().remoteAddress,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
 server.on('disconnect', (client) => {
   logger.info('Peer disconnected', {
     peerId: client.getId(),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 ```
@@ -434,7 +457,7 @@ const server = PeerServer({
   path: process.env.PEERJS_PATH || '/pathfinder',
   key: process.env.PEERJS_KEY, // Required in production
   alive_timeout: parseInt(process.env.ALIVE_TIMEOUT) || 60000,
-  concurrent_limit: parseInt(process.env.CONCURRENT_LIMIT) || 5000
+  concurrent_limit: parseInt(process.env.CONCURRENT_LIMIT) || 5000,
 });
 
 if (!process.env.PEERJS_KEY) {
@@ -474,20 +497,24 @@ Before deploying to production:
 ## Performance Tuning
 
 ### For Small Teams (< 10 concurrent sessions)
+
 Default settings are fine.
 
 ### For Large Organizations (10+ concurrent sessions)
+
 - Increase `alive_timeout` to 120000 (2 minutes)
 - Add connection limits per IP
 - Use a dedicated server instance
 - Consider load balancing with multiple PeerJS servers
 
 ### Scaling Horizontally
+
 PeerJS servers can't share state, so each presenter/attendee pair must use the same server. Use consistent hashing based on session ID for load balancing.
 
 ## Monitoring
 
 ### Health Check Endpoint
+
 PeerJS doesn't provide a built-in health check. Add one to the server:
 
 ```javascript
@@ -502,6 +529,7 @@ app.listen(9001);
 ```
 
 ### Metrics to Track
+
 - Active peer connections
 - Connection success rate
 - Average connection time
@@ -529,4 +557,3 @@ A: Yes, but you'll need to deploy the PeerJS server on a publicly accessible hos
 - [PeerJS Documentation](https://peerjs.com/docs/)
 - [WebRTC Explainer](https://webrtc.org/getting-started/overview)
 - [STUN/TURN Server List](https://gist.github.com/mondain/b0ec1cf5f60ae726202e)
-

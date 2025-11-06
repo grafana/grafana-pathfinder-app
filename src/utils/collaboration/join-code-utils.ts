@@ -1,6 +1,6 @@
 /**
  * Utilities for generating and parsing join codes for collaborative sessions
- * 
+ *
  * Join codes encode the WebRTC offer in a shareable format (QR code, URL, copy-paste)
  */
 
@@ -9,7 +9,7 @@ import type { SessionOffer, SessionAnswer, SessionError } from '../../types/coll
 
 /**
  * Generate a base64-encoded join code from a session offer
- * 
+ *
  * @param offer - The session offer to encode
  * @returns Base64-encoded join code string
  */
@@ -26,7 +26,7 @@ export function generateJoinCode(offer: SessionOffer): string {
 /**
  * Parse a join code back into a session offer
  * With PeerJS, the join code IS the peer ID (simple string)
- * 
+ *
  * @param code - Peer ID (e.g., "abc123")
  * @returns Parsed session offer
  * @throws Error if code is invalid
@@ -34,12 +34,12 @@ export function generateJoinCode(offer: SessionOffer): string {
 export function parseJoinCode(code: string): SessionOffer {
   try {
     const trimmedCode = code.trim();
-    
+
     // Try to decode as base64 JSON first (new format with session info)
     try {
       const decoded = atob(trimmedCode);
       const sessionData = JSON.parse(decoded);
-      
+
       if (sessionData.id) {
         // Valid new format with session metadata
         return {
@@ -48,13 +48,13 @@ export function parseJoinCode(code: string): SessionOffer {
           tutorialUrl: sessionData.url || '',
           defaultMode: 'guided',
           offer: {} as RTCSessionDescriptionInit,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         };
       }
     } catch (decodeError) {
       // Not base64/JSON, try legacy format (plain peer ID)
     }
-    
+
     // Legacy format: just the 6-character peer ID
     const lowerCode = trimmedCode.toLowerCase();
     if (/^[a-z0-9]{6}$/.test(lowerCode)) {
@@ -64,17 +64,17 @@ export function parseJoinCode(code: string): SessionOffer {
         tutorialUrl: '',
         defaultMode: 'guided',
         offer: {} as RTCSessionDescriptionInit,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
     }
-    
+
     throw new Error('Invalid join code format');
   } catch (error) {
     console.error('Failed to parse join code:', error);
     const sessionError: SessionError = {
       code: 'INVALID_CODE',
       message: 'Invalid join code. Please check and try again.',
-      details: error
+      details: error,
     };
     throw sessionError;
   }
@@ -82,7 +82,7 @@ export function parseJoinCode(code: string): SessionOffer {
 
 /**
  * Generate a shareable URL with the join code embedded
- * 
+ *
  * @param offer - The session offer
  * @param baseUrl - Base URL of the application (default: current origin)
  * @returns Full URL with session parameter
@@ -97,7 +97,7 @@ export function generateJoinUrl(offer: SessionOffer, baseUrl?: string): string {
 
 /**
  * Parse session parameter from current URL
- * 
+ *
  * @returns Session offer if present in URL, null otherwise
  */
 export function parseSessionFromUrl(): SessionOffer | null {
@@ -106,19 +106,19 @@ export function parseSessionFromUrl(): SessionOffer | null {
     const sessionParam = params.get('session');
     const sessionName = params.get('sessionName');
     const tutorialUrl = params.get('tutorialUrl');
-    
+
     if (!sessionParam) {
       return null;
     }
-    
+
     const decoded = decodeURIComponent(sessionParam);
     const baseSession = parseJoinCode(decoded);
-    
+
     // Override with URL parameters if available
     return {
       ...baseSession,
       name: sessionName || baseSession.name,
-      tutorialUrl: tutorialUrl || baseSession.tutorialUrl
+      tutorialUrl: tutorialUrl || baseSession.tutorialUrl,
     };
   } catch (error) {
     console.error('Failed to parse session from URL:', error);
@@ -128,7 +128,7 @@ export function parseSessionFromUrl(): SessionOffer | null {
 
 /**
  * Generate a QR code data URL from a session offer
- * 
+ *
  * @param offer - The session offer
  * @param baseUrl - Base URL for the join link
  * @returns Promise resolving to QR code data URL (image)
@@ -143,8 +143,8 @@ export async function generateQRCode(offer: SessionOffer, baseUrl?: string): Pro
       errorCorrectionLevel: 'M',
       color: {
         dark: '#000000',
-        light: '#FFFFFF'
-      }
+        light: '#FFFFFF',
+      },
     });
     return qrCode;
   } catch (error) {
@@ -155,7 +155,7 @@ export async function generateQRCode(offer: SessionOffer, baseUrl?: string): Pro
 
 /**
  * Generate a join code for an attendee's answer
- * 
+ *
  * @param answer - The session answer to encode
  * @returns Base64-encoded answer code
  */
@@ -171,7 +171,7 @@ export function generateAnswerCode(answer: SessionAnswer): string {
 
 /**
  * Parse an answer code back into a session answer
- * 
+ *
  * @param code - Base64-encoded answer code
  * @returns Parsed session answer
  * @throws Error if code is invalid
@@ -180,19 +180,19 @@ export function parseAnswerCode(code: string): SessionAnswer {
   try {
     const json = atob(code);
     const answer = JSON.parse(json) as SessionAnswer;
-    
+
     // Validate required fields
     if (!answer.attendeeId || !answer.mode || !answer.answer) {
       throw new Error('Invalid session answer structure');
     }
-    
+
     return answer;
   } catch (error) {
     console.error('Failed to parse answer code:', error);
     const sessionError: SessionError = {
       code: 'INVALID_CODE',
       message: 'Invalid or malformed answer code',
-      details: error
+      details: error,
     };
     throw sessionError;
   }
@@ -200,7 +200,7 @@ export function parseAnswerCode(code: string): SessionAnswer {
 
 /**
  * Generate a short, human-readable session ID
- * 
+ *
  * @returns Random 8-character session ID
  */
 export function generateSessionId(): string {
@@ -214,7 +214,7 @@ export function generateSessionId(): string {
 
 /**
  * Generate a unique attendee ID
- * 
+ *
  * @returns Random attendee ID with timestamp
  */
 export function generateAttendeeId(): string {
@@ -225,7 +225,7 @@ export function generateAttendeeId(): string {
 
 /**
  * Validate if a join code is properly formatted (basic check)
- * 
+ *
  * @param code - Code to validate
  * @returns True if code appears valid
  */
@@ -239,4 +239,3 @@ export function isValidJoinCode(code: string): boolean {
     return false;
   }
 }
-
