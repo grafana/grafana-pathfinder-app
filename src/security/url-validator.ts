@@ -10,8 +10,8 @@
  * In dev mode, localhost URLs are permitted for local testing.
  */
 
-import { isDevModeEnabledGlobal } from '../dev-mode';
-import { ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../../constants';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
+import { ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../constants';
 
 /**
  * Safely parse a URL string, returning null on failure

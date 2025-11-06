@@ -24,7 +24,7 @@ import {
   isGitHubUrl,
   isGitHubRawUrl,
   isLocalhostUrl,
-} from '../../utils/security';
+} from '../../security';
 import { isDataProxyUrl } from '../../utils/data-proxy';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';

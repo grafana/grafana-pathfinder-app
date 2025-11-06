@@ -9,7 +9,7 @@ import {
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import { hashUserData } from '../../lib/hash.util';
 import { isDevModeEnabledGlobal } from '../dev-mode';
-import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
+import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../../security';
 import {
   ContextData,
   DataSource,

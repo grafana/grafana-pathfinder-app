@@ -1,7 +1,7 @@
 import { Box, Button, Icon, Input, Tab, TabContent, TabsBar, useStyles2 } from '@grafana/ui';
 import React, { PropsWithChildren, useCallback, useState } from 'react';
 import { getURLTesterStyles } from './url-tester.styles';
-import { validateGitHubUrl, validateTutorialUrl } from '../../utils/security';
+import { validateGitHubUrl, validateTutorialUrl } from '../../security';
 
 export interface URLTesterProps {
   onOpenDocsPage: (url: string, title: string) => void;

@@ -10,7 +10,7 @@ import {
   isAllowedGitHubRawUrl,
   isLocalhostUrl,
   isGitHubRawUrl,
-} from '../security';
+} from '../../security';
 import { isDataProxyUrl } from '../data-proxy';
 import { ALLOWED_GITHUB_REPOS } from '../../constants';
 import { isDevModeEnabledGlobal } from '../dev-mode';

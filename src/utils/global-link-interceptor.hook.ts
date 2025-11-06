@@ -1,12 +1,6 @@
 import { useEffect } from 'react';
 import { reportAppInteraction, UserInteraction } from '../lib/analytics';
-import {
-  isAllowedContentUrl,
-  isAllowedGitHubRawUrl,
-  isGitHubUrl,
-  isGitHubRawUrl,
-  isLocalhostUrl,
-} from '../utils/security';
+import { isAllowedContentUrl, isAllowedGitHubRawUrl, isGitHubUrl, isGitHubRawUrl, isLocalhostUrl } from '../security';
 import { ALLOWED_GITHUB_REPOS } from '../constants';
 import { isDevModeEnabledGlobal } from './dev-mode';
 
