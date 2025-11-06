@@ -511,6 +511,11 @@ export const InteractiveStep = forwardRef<
         className={`interactive-step${className ? ` ${className}` : ''}${
           isCompletedWithObjectives ? (checker.completionReason === 'skipped' ? ' skipped' : ' completed') : ''
         }${isCurrentlyExecuting ? ' executing' : ''}`}
+        data-targetaction={targetAction}
+        data-reftarget={refTarget}
+        data-targetvalue={targetValue}
+        data-targetcomment={targetComment}
+        data-step-id={stepId}
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}

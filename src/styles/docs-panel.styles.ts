@@ -148,13 +148,19 @@ export const getTopBarStyles = (theme: GrafanaTheme2) => ({
   topBar: css({
     label: 'combined-journey-top-bar',
     display: 'flex',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     gap: theme.spacing(1),
     padding: theme.spacing(1),
     backgroundColor: theme.colors.background.canvas,
-    // Removed overflow: 'hidden' to allow chevron button to be visible
+  }),
+
+  liveSessionButtons: css({
+    label: 'live-session-buttons',
+    display: 'flex',
+    flexDirection: 'row',
+    gap: theme.spacing(1),
+    padding: `0 ${theme.spacing(1)}`,
+    alignItems: 'center',
   }),
   title: css({
     label: 'combined-journey-title',
