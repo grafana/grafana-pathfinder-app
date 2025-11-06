@@ -31,4 +31,3 @@ export {
   HoverHandler,
   GuidedHandler,
 } from './action-handlers';
-

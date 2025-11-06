@@ -6,7 +6,11 @@ export { HoverHandler } from './hover-handler';
 export { GuidedHandler } from './guided-handler';
 
 // Enhanced selector support
-export { querySelectorEnhanced, querySelectorAllEnhanced, getBrowserSelectorSupport } from '../../utils/enhanced-selector';
+export {
+  querySelectorEnhanced,
+  querySelectorAllEnhanced,
+  getBrowserSelectorSupport,
+} from '../../utils/enhanced-selector';
 
 // Element validation utilities
 export {
