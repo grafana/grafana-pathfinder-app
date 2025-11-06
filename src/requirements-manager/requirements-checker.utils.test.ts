@@ -1,9 +1,9 @@
 import { checkRequirements, RequirementsCheckOptions } from './requirements-checker.utils';
 import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
-import { ContextService } from './context';
+import { ContextService } from '../utils/context';
 
 // Mock dom-utils functions
-jest.mock('./dom-utils', () => ({
+jest.mock('../utils/dom-utils', () => ({
   reftargetExistsCheck: jest.fn(),
   navmenuOpenCheck: jest.fn(),
 }));
@@ -29,7 +29,7 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 // Mock ContextService
-jest.mock('./context', () => ({
+jest.mock('../utils/context', () => ({
   ContextService: {
     fetchPlugins: jest.fn(),
     fetchDashboardsByName: jest.fn(),
@@ -45,7 +45,7 @@ describe('requirements-checker.utils', () => {
     jest.clearAllMocks();
 
     // Get the mocked functions
-    const domUtils = require('./dom-utils');
+    const domUtils = require('../utils/dom-utils');
     mockReftargetExistsCheck = domUtils.reftargetExistsCheck;
     mockNavmenuOpenCheck = domUtils.navmenuOpenCheck;
 

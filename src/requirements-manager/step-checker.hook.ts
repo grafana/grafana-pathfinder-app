@@ -11,13 +11,13 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { getRequirementExplanation } from './requirement-explanations';
+import { getRequirementExplanation } from './requirements-explanations';
 import { SequentialRequirementsManager } from './requirements-checker.hook';
-import { useInteractiveElements } from './interactive.hook';
+import { useInteractiveElements } from '../utils/interactive.hook';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
-import { useTimeoutManager } from './timeout-manager';
+import { useTimeoutManager } from '../utils/timeout-manager';
 import { checkRequirements } from './requirements-checker.utils';
-import { useSequentialStepState } from './use-sequential-step-state.hook';
+import { useSequentialStepState } from '../utils/use-sequential-step-state.hook';
 
 export interface UseStepCheckerProps {
   requirements?: string;
@@ -201,7 +201,7 @@ export function useStepChecker({
   const navigationManagerRef = useRef<any>(null);
   if (!navigationManagerRef.current) {
     // Lazy import to avoid circular dependencies
-    import('./navigation-manager').then(({ NavigationManager }) => {
+    import('../utils/navigation-manager').then(({ NavigationManager }) => {
       navigationManagerRef.current = new NavigationManager();
     });
   }

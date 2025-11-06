@@ -1,4 +1,4 @@
-import { waitForReactUpdates } from './requirements-checker.hook';
+import { waitForReactUpdates } from '../requirements-manager';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
 import { isElementVisible, getScrollParent, getStickyHeaderOffset } from './element-validator';

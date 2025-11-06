@@ -19,7 +19,7 @@ import {
   VideoRenderer,
   YouTubeVideoRenderer,
 } from './components/interactive-components';
-import { SequentialRequirementsManager } from '../requirements-checker.hook';
+import { SequentialRequirementsManager } from '../../requirements-manager';
 import { useTextSelection, AssistantSelectionPopover, buildDocumentContext } from '../assistant-integration';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {

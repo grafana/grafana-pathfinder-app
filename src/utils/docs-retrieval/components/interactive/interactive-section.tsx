@@ -3,7 +3,7 @@ import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements } from '../../../interactive.hook';
-import { useStepChecker } from '../../../step-checker.hook';
+import { useStepChecker } from '../../../../requirements-manager';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
@@ -844,7 +844,7 @@ export function InteractiveSection({
           // Wait for state to settle, then trigger reactive check
           // This ensures remaining steps update their eligibility based on completed steps
           setTimeout(() => {
-            import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
+            import('../../../../requirements-manager/requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
               const manager = SequentialRequirementsManager.getInstance();
               manager.triggerReactiveCheck();
             });
@@ -919,7 +919,7 @@ export function InteractiveSection({
     interactiveStepStorage.clear(contentKey, sectionId);
 
     // Reset all step states in the global manager
-    import('../../../requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
+    import('../../../../requirements-manager/requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
       const manager = SequentialRequirementsManager.getInstance();
 
       // Temporarily stop DOM monitoring during reset

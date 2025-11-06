@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { SequentialRequirementsManager, RequirementsState } from './requirements-checker.hook';
+import { SequentialRequirementsManager, RequirementsState } from '../requirements-manager';
 
 /**
  * React 18 hook for subscribing to SequentialRequirementsManager state

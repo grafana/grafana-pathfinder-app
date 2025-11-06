@@ -9,8 +9,9 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 // Mock requirements checker
-jest.mock('./requirements-checker.utils', () => ({
+jest.mock('../requirements-manager', () => ({
   checkRequirements: jest.fn(),
+  checkPostconditions: jest.fn(),
   RequirementsCheckOptions: jest.fn(),
 }));
 
@@ -78,7 +79,7 @@ jest.mock('./dom-utils', () => ({
 
 describe('useInteractiveElements', () => {
   // Get access to mocked functions
-  const { checkRequirements } = require('./requirements-checker.utils');
+  const { checkRequirements } = require('../requirements-manager');
   const { extractInteractiveDataFromElement } = require('./dom-utils');
 
   // Create a container div for our tests
