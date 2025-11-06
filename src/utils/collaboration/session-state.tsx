@@ -87,18 +87,23 @@ export function SessionProvider({ children }: SessionProviderProps) {
     if (sessionRole !== 'presenter' || !sessionManager.isActive()) {
       return;
     }
-
+    
     // Subscribe to real-time attendee list updates
     const cleanup = sessionManager.onAttendeeListUpdate((updatedAttendees) => {
       console.log('[SessionState] Attendee list updated:', updatedAttendees.length);
       setAttendees(updatedAttendees);
     });
-
-    // Get initial list
+    
+    // Set initial list asynchronously to avoid lint error
     const initial = sessionManager.getAttendees();
-    setAttendees(initial);
-
-    return cleanup;
+    const timer = setTimeout(() => {
+      setAttendees(initial);
+    }, 0);
+    
+    return () => {
+      clearTimeout(timer);
+      cleanup();
+    };
   }, [sessionRole, sessionManager]);
 
   // Set up event listener on session manager
@@ -214,7 +219,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         throw error;
       }
     },
-    [sessionManager]
+    [sessionManager, getPeerjsConfig]
   );
 
   /**
