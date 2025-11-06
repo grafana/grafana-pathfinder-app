@@ -1,8 +1,4 @@
-import {
-  SequentialRequirementsManager,
-  useRequirementsChecker,
-  useSequentialRequirements,
-} from './index';
+import { SequentialRequirementsManager, useRequirementsChecker, useSequentialRequirements } from './index';
 
 describe('SequentialRequirementsManager DOM monitoring (nav)', () => {
   it('triggers selective recheck on nav-related mutations', async () => {

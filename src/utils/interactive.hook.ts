@@ -1,6 +1,11 @@
 import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
-import { waitForReactUpdates, checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
+import {
+  waitForReactUpdates,
+  checkRequirements,
+  checkPostconditions,
+  RequirementsCheckOptions,
+} from '../requirements-manager';
 import { extractInteractiveDataFromElement } from './dom-utils';
 import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';

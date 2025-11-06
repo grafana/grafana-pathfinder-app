@@ -844,10 +844,12 @@ export function InteractiveSection({
           // Wait for state to settle, then trigger reactive check
           // This ensures remaining steps update their eligibility based on completed steps
           setTimeout(() => {
-            import('../../../../requirements-manager/requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
-              const manager = SequentialRequirementsManager.getInstance();
-              manager.triggerReactiveCheck();
-            });
+            import('../../../../requirements-manager/requirements-checker.hook').then(
+              ({ SequentialRequirementsManager }) => {
+                const manager = SequentialRequirementsManager.getInstance();
+                manager.triggerReactiveCheck();
+              }
+            );
           }, 200);
 
           break;
