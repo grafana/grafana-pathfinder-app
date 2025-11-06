@@ -1,6 +1,6 @@
 /**
  * Security utilities barrel export
- * 
+ *
  * Centralizes exports for all security-related utilities including:
  * - URL validation and sanitization
  * - HTML sanitization (XSS protection)
@@ -28,21 +28,10 @@ export {
 } from './url-validator';
 
 // HTML sanitization
-export {
-  sanitizeDocumentationHTML,
-  sanitizeTextForDisplay,
-} from './html-sanitizer';
+export { sanitizeDocumentationHTML, sanitizeTextForDisplay } from './html-sanitizer';
 
 // Log sanitization
-export {
-  sanitizeForLogging,
-  sanitizeObjectForLogging,
-} from './log-sanitizer';
+export { sanitizeForLogging, sanitizeObjectForLogging } from './log-sanitizer';
 
 // Regex safety
-export {
-  safeRegexMatch,
-  safeRegexTest,
-  validateRegexPattern,
-} from './regex-safe';
-
+export { safeRegexMatch, safeRegexTest, validateRegexPattern } from './regex-safe';
