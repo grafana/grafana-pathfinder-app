@@ -87,19 +87,19 @@ export function SessionProvider({ children }: SessionProviderProps) {
     if (sessionRole !== 'presenter' || !sessionManager.isActive()) {
       return;
     }
-    
+
     // Subscribe to real-time attendee list updates
     const cleanup = sessionManager.onAttendeeListUpdate((updatedAttendees) => {
       console.log('[SessionState] Attendee list updated:', updatedAttendees.length);
       setAttendees(updatedAttendees);
     });
-    
+
     // Set initial list asynchronously to avoid lint error
     const initial = sessionManager.getAttendees();
     const timer = setTimeout(() => {
       setAttendees(initial);
     }, 0);
-    
+
     return () => {
       clearTimeout(timer);
       cleanup();
