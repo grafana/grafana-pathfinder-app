@@ -2,8 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { querySelectorAllEnhanced } from '../../utils/enhanced-selector';
-import { isElementVisible } from '../../utils/element-validator';
+import { querySelectorAllEnhanced, isElementVisible } from '../../lib/dom';
 
 /**
  * Handler for hover actions that simulate mouse hover to trigger CSS :hover states

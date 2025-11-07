@@ -13,8 +13,7 @@ import type { InteractiveStepProps } from './interactive-section';
 import { matchesStepAction, type DetectedActionEvent, useInteractiveElements } from '../../../interactive-engine';
 import { getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
-import { findButtonByText } from '../../../utils/dom-utils';
-import { querySelectorAllEnhanced } from '../../../utils/enhanced-selector';
+import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
 
 export const InteractiveStep = forwardRef<
   { executeStep: () => Promise<boolean>; markSkipped?: () => void },

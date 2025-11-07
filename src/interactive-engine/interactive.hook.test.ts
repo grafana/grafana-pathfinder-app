@@ -65,7 +65,7 @@ jest.mock('./sequence-manager', () => ({
 }));
 
 // Mock dom-utils
-jest.mock('../utils/dom-utils', () => ({
+jest.mock('../lib/dom', () => ({
   extractInteractiveDataFromElement: jest.fn().mockReturnValue({
     reftarget: 'test-target',
     targetaction: 'highlight',
@@ -75,12 +75,15 @@ jest.mock('../utils/dom-utils', () => ({
     textContent: 'Test Element',
     timestamp: Date.now(),
   }),
+  // Re-export other commonly needed functions as pass-through mocks
+  findButtonByText: jest.fn().mockReturnValue([]),
+  querySelectorAllEnhanced: jest.fn().mockReturnValue({ elements: [], usedFallback: false, originalSelector: '' }),
 }));
 
 describe('useInteractiveElements', () => {
   // Get access to mocked functions
   const { checkRequirements } = require('../requirements-manager');
-  const { extractInteractiveDataFromElement } = require('../utils/dom-utils');
+  const { extractInteractiveDataFromElement } = require('../lib/dom');
 
   // Create a container div for our tests
   let container: HTMLDivElement;

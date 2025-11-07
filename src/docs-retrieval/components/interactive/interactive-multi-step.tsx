@@ -7,8 +7,7 @@ import { useStepChecker } from '../../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
-import { findButtonByText } from '../../../utils/dom-utils';
-import { querySelectorAllEnhanced } from '../../../utils/enhanced-selector';
+import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
 
 interface InternalAction {
   targetAction: string;

@@ -1,8 +1,8 @@
 import { NavigationManager } from './navigation-manager';
-import * as elementValidator from '../utils/element-validator';
+import * as elementValidator from '../lib/dom';
 
 // Mock the element validator functions
-jest.mock('../utils/element-validator');
+jest.mock('../lib/dom');
 
 const mockIsElementVisible = elementValidator.isElementVisible as jest.MockedFunction<
   typeof elementValidator.isElementVisible

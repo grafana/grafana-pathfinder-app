@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 import { usePluginContext } from '@grafana/data';
-import { ContextPanel } from '../components/docs-panel/context-panel';
-import { CombinedLearningJourneyPanel } from '../components/docs-panel/docs-panel';
-import { getConfigWithDefaults } from '../constants';
+import { ContextPanel } from '../../components/docs-panel/context-panel';
+import { CombinedLearningJourneyPanel } from '../../components/docs-panel/docs-panel';
+import { getConfigWithDefaults } from '../../constants';
 
 /**
  * Hook to create and memoize a ContextPanel Scene instance

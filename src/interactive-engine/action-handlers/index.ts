@@ -5,19 +5,15 @@ export { FormFillHandler } from './form-fill-handler';
 export { HoverHandler } from './hover-handler';
 export { GuidedHandler } from './guided-handler';
 
-// Enhanced selector support
+// Enhanced selector support and element validation utilities
 export {
   querySelectorEnhanced,
   querySelectorAllEnhanced,
   getBrowserSelectorSupport,
-} from '../../utils/enhanced-selector';
-
-// Element validation utilities
-export {
   isElementVisible,
   hasFixedPosition,
   getScrollParent,
   isInViewport,
   hasCustomScrollParent,
   getElementVisibilityInfo,
-} from '../../utils/element-validator';
+} from '../../lib/dom';

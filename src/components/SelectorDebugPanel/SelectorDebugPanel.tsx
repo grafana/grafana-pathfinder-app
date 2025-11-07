@@ -1,8 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button, Input, Badge, Icon, useStyles2, TextArea } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive-engine';
-import { querySelectorAllEnhanced } from '../../utils/enhanced-selector';
-import { generateBestSelector, getSelectorInfo } from '../../utils/selector-generator';
+import {
+  querySelectorAllEnhanced,
+  generateBestSelector,
+  getSelectorInfo,
+  validateAndCleanSelector,
+} from '../../lib/dom';
 import {
   detectActionType,
   shouldCaptureElement,
@@ -12,7 +16,6 @@ import {
 import { getDebugPanelStyles } from './debug-panel.styles';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { exportStepsToHTML, combineStepsIntoMultistep, type RecordedStep } from '../../utils/tutorial-exporter';
-import { validateAndCleanSelector } from '../../utils/selector-validator';
 import { URLTester } from 'components/URLTester';
 
 interface TestResult {

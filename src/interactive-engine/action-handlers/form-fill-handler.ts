@@ -2,9 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG, CLEAR_COMMAND } from '../../constants/interactive-config';
-import { resetValueTracker } from '../../utils/dom-utils';
-import { querySelectorAllEnhanced } from '../../utils/enhanced-selector';
-import { isElementVisible } from '../../utils/element-validator';
+import { resetValueTracker, querySelectorAllEnhanced, isElementVisible } from '../../lib/dom';
 
 export class FormFillHandler {
   constructor(
