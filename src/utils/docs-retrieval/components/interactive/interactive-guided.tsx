@@ -40,6 +40,7 @@ interface InteractiveGuidedProps {
   objectives?: string;
   onComplete?: () => void;
   skippable?: boolean;
+  completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
 
   // Step position tracking for analytics (added by section)
   stepIndex?: number;
@@ -71,6 +72,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       objectives,
       onComplete,
       skippable = false,
+      completeEarly = false, // Default to false - only mark early if explicitly set
       stepTimeout = 30000, // 30 second default timeout per step
       resetTrigger,
       stepIndex,
@@ -148,6 +150,20 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         return true;
       }
 
+      // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
+      if (completeEarly) {
+        setIsLocallyCompleted(true);
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+        if (onComplete) {
+          onComplete();
+        }
+
+        // Small delay to ensure localStorage write completes
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
       setIsExecuting(true);
       setExecutionError(null);
       setCurrentStepIndex(0);
@@ -187,14 +203,17 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         // All steps completed - clear the final highlight
         navManager.clearAllHighlights();
 
-        setIsLocallyCompleted(true);
+        // NEW: If NOT completeEarly, mark complete after actions (normal flow)
+        if (!completeEarly) {
+          setIsLocallyCompleted(true);
 
-        if (onStepComplete && stepId) {
-          onStepComplete(stepId);
-        }
+          if (onStepComplete && stepId) {
+            onStepComplete(stepId);
+          }
 
-        if (onComplete) {
-          onComplete();
+          if (onComplete) {
+            onComplete();
+          }
         }
 
         return true;
@@ -211,6 +230,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       checker.isEnabled,
       isCompletedWithObjectives,
       isExecuting,
+      completeEarly,
       stepId,
       internalActions,
       guidedHandler,

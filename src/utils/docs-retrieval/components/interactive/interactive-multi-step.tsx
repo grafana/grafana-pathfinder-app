@@ -39,6 +39,7 @@ interface InteractiveMultiStepProps {
   objectives?: string; // Overall objectives for the multi-step
   onComplete?: () => void;
   skippable?: boolean; // Whether this multi-step can be skipped if requirements fail
+  completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
 
   // Step position tracking for analytics (added by section)
   stepIndex?: number;
@@ -127,6 +128,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       objectives,
       onComplete,
       skippable = false, // Whether this multi-step can be skipped
+      completeEarly = false, // Default to false - only mark early if explicitly set
       stepDelay = INTERACTIVE_CONFIG.delays.multiStep.defaultStepDelay, // Default delay between steps
       resetTrigger,
       stepIndex,
@@ -219,6 +221,20 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         }
 
         return true;
+      }
+
+      // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
+      if (completeEarly) {
+        setIsLocallyCompleted(true);
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+        if (onComplete) {
+          onComplete();
+        }
+
+        // Small delay to ensure localStorage write completes
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       setIsExecuting(true);
@@ -320,17 +336,20 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           return false;
         }
 
-        // All internal actions completed successfully
-        setIsLocallyCompleted(true);
+        // NEW: If NOT completeEarly, mark complete after actions (normal flow)
+        if (!completeEarly) {
+          // All internal actions completed successfully
+          setIsLocallyCompleted(true);
 
-        // Notify parent if we have the callback (section coordination)
-        if (onStepComplete && stepId) {
-          onStepComplete(stepId);
-        }
+          // Notify parent if we have the callback (section coordination)
+          if (onStepComplete && stepId) {
+            onStepComplete(stepId);
+          }
 
-        // Call the original onComplete callback if provided
-        if (onComplete) {
-          onComplete();
+          // Call the original onComplete callback if provided
+          if (onComplete) {
+            onComplete();
+          }
         }
 
         return true;
@@ -352,6 +371,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       checker.isEnabled,
       isCompletedWithObjectives,
       isExecuting,
+      completeEarly,
       stepId,
       internalActions,
       executeInteractiveAction,

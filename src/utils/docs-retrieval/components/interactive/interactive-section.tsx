@@ -33,6 +33,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   showMe?: boolean; // Control whether "Show me" button appears (defaults to true)
   showMeText?: string; // Optional text override for the "Show me" button
   skippable?: boolean; // Whether this step can be skipped if requirements fail
+  completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
   title?: string;
   description?: string;
   children?: React.ReactNode;

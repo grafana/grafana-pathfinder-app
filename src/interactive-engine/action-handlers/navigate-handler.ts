@@ -55,12 +55,12 @@ export class NavigateHandler {
     // Wait for React to process all navigation events and state updates
     await this.waitForReactUpdates();
 
+    // Mark as completed after state has settled
+    this.stateManager.setState(data, 'completed');
+
     // Additional settling time for React state propagation, navigation completion, and reactive checks
     // This ensures the sequential requirements system has time to unlock the next step
     await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck));
-
-    // Mark as completed after state has settled
-    this.stateManager.setState(data, 'completed');
 
     // Final wait to ensure completion state propagates
     await this.waitForReactUpdates();
