@@ -65,7 +65,7 @@ jest.mock('./sequence-manager', () => ({
 }));
 
 // Mock dom-utils
-jest.mock('./dom-utils', () => ({
+jest.mock('../utils/dom-utils', () => ({
   extractInteractiveDataFromElement: jest.fn().mockReturnValue({
     reftarget: 'test-target',
     targetaction: 'highlight',
@@ -80,7 +80,7 @@ jest.mock('./dom-utils', () => ({
 describe('useInteractiveElements', () => {
   // Get access to mocked functions
   const { checkRequirements } = require('../requirements-manager');
-  const { extractInteractiveDataFromElement } = require('./dom-utils');
+  const { extractInteractiveDataFromElement } = require('../utils/dom-utils');
 
   // Create a container div for our tests
   let container: HTMLDivElement;

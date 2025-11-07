@@ -13,7 +13,7 @@ import {
   getConfigWithDefaults,
 } from '../../constants';
 
-import { useInteractiveElements } from '../../utils/interactive.hook';
+import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
 import { isDevModeEnabledGlobal, isDevModeEnabled } from '../../utils/dev-mode';
@@ -59,7 +59,6 @@ import { PresenterControls, AttendeeJoin } from '../LiveSession';
 import { SessionProvider, useSession } from '../../utils/collaboration/session-state';
 import { ActionReplaySystem } from '../../utils/collaboration/action-replay';
 import { ActionCaptureSystem } from '../../utils/collaboration/action-capture';
-import { NavigationManager } from '../../utils/navigation-manager';
 import type { AttendeeMode } from '../../types/collaboration.types';
 
 // Use the properly extracted styles

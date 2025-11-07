@@ -2,8 +2,8 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { findButtonByText } from '../dom-utils';
-import { isElementVisible } from '../element-validator';
+import { findButtonByText } from '../../utils/dom-utils';
+import { isElementVisible } from '../../utils/element-validator';
 
 export class ButtonHandler {
   constructor(

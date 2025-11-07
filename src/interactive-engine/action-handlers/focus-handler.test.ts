@@ -2,12 +2,12 @@ import { FocusHandler } from './focus-handler';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import * as elementValidator from '../element-validator';
+import * as elementValidator from '../../utils/element-validator';
 
 // Mock dependencies
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
-jest.mock('../element-validator');
+jest.mock('../../utils/element-validator');
 
 const mockStateManager = {
   setState: jest.fn(),
@@ -39,7 +39,7 @@ Object.defineProperty(document, 'querySelectorAll', {
 });
 
 // Mock enhanced selector
-jest.mock('../enhanced-selector', () => ({
+jest.mock('../../utils/enhanced-selector', () => ({
   querySelectorAllEnhanced: jest.fn((selector: string) => ({
     elements: mockQuerySelectorAll(selector),
     usedFallback: false,

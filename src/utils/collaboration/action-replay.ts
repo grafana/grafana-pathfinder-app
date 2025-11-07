@@ -6,7 +6,7 @@
  */
 
 import { getAppEvents } from '@grafana/runtime';
-import type { NavigationManager } from '../navigation-manager';
+import type { NavigationManager } from '../../interactive-engine';
 import type {
   AttendeeMode,
   AnySessionEvent,

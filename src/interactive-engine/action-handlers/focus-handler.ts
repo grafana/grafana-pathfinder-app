@@ -2,8 +2,8 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { querySelectorAllEnhanced } from '../enhanced-selector';
-import { isElementVisible } from '../element-validator';
+import { querySelectorAllEnhanced } from '../../utils/enhanced-selector';
+import { isElementVisible } from '../../utils/element-validator';
 
 export class FocusHandler {
   constructor(

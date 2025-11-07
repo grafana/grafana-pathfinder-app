@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
-import { useInteractiveElements } from '../../../interactive.hook';
+import { useInteractiveElements } from '../../../../interactive-engine';
 import { useStepChecker } from '../../../../requirements-manager';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
@@ -560,7 +560,7 @@ export function InteractiveSection({
     actionMonitor.disable();
 
     // Clear any existing highlights before starting section execution
-    const { NavigationManager } = await import('../../../navigation-manager');
+    const { NavigationManager } = await import('../../../../interactive-engine/navigation-manager');
     const navigationManager = new NavigationManager();
     navigationManager.clearAllHighlights();
 
@@ -596,7 +596,7 @@ export function InteractiveSection({
 
             try {
               // Try to fix the section requirement automatically
-              const { NavigationManager } = await import('../../../navigation-manager');
+              const { NavigationManager } = await import('../../../../interactive-engine/navigation-manager');
               const navigationManager = new NavigationManager();
 
               if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
@@ -701,7 +701,7 @@ export function InteractiveSection({
 
                 try {
                   // Try to fix the requirement automatically
-                  const { NavigationManager } = await import('../../../navigation-manager');
+                  const { NavigationManager } = await import('../../../../interactive-engine/navigation-manager');
                   const navigationManager = new NavigationManager();
 
                   if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {

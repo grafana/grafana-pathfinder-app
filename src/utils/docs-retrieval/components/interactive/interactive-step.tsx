@@ -2,7 +2,7 @@ import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffec
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
-import { useInteractiveElements } from '../../../interactive.hook';
+import { useInteractiveElements } from '../../../../interactive-engine';
 import {
   waitForReactUpdates,
   useStepChecker,

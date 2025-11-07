@@ -6,7 +6,11 @@ export { HoverHandler } from './hover-handler';
 export { GuidedHandler } from './guided-handler';
 
 // Enhanced selector support
-export { querySelectorEnhanced, querySelectorAllEnhanced, getBrowserSelectorSupport } from '../enhanced-selector';
+export {
+  querySelectorEnhanced,
+  querySelectorAllEnhanced,
+  getBrowserSelectorSupport,
+} from '../../utils/enhanced-selector';
 
 // Element validation utilities
 export {
@@ -16,4 +20,4 @@ export {
   isInViewport,
   hasCustomScrollParent,
   getElementVisibilityInfo,
-} from '../element-validator';
+} from '../../utils/element-validator';

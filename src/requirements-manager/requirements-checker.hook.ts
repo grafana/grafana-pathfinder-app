@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { getRequirementExplanation } from './requirements-explanations';
-import { useInteractiveElements } from '../utils/interactive.hook';
+import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { RequirementsCheckResult } from './requirements-checker.utils';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { useTimeoutManager, TimeoutManager } from '../utils/timeout-manager';
-import { useSequentialStepState } from '../utils/use-sequential-step-state.hook';
 
 /**
  * Wait for React state updates to complete before proceeding

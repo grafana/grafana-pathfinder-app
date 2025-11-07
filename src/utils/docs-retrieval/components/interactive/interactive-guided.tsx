@@ -3,9 +3,7 @@ import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../../lib/analytics';
-import { GuidedHandler } from '../../../action-handlers/guided-handler';
-import { InteractiveStateManager } from '../../../interactive-state-manager';
-import { NavigationManager } from '../../../navigation-manager';
+import { GuidedHandler, InteractiveStateManager, NavigationManager } from '../../../../interactive-engine';
 import { waitForReactUpdates, useStepChecker } from '../../../../requirements-manager';
 import { matchesStepAction, type DetectedActionEvent } from '../../../action-matcher';
 import { getInteractiveConfig } from '../../../../constants/interactive-config';
@@ -156,7 +154,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
 
-      const { NavigationManager } = await import('../../../navigation-manager');
+      const { NavigationManager } = await import('../../../../interactive-engine/navigation-manager');
       const navManager = new NavigationManager();
       navManager.clearAllHighlights();
 
@@ -420,7 +418,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       guidedHandler.cancel();
 
       // Clear highlights
-      const { NavigationManager } = await import('../../../navigation-manager');
+      const { NavigationManager } = await import('../../../../interactive-engine/navigation-manager');
       const navManager = new NavigationManager();
       navManager.clearAllHighlights();
 
