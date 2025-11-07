@@ -1,4 +1,4 @@
-import { getDocsLinkFromEvent } from "global-state/utils.link-interception";
+import { getDocsLinkFromEvent } from 'global-state/utils.link-interception';
 import { sidebarState } from 'global-state/sidebar';
 
 export interface QueuedDocsLink {
@@ -68,13 +68,15 @@ class GlobalLinkInterceptionState {
   }
 
   public processLink(link: QueuedDocsLink): void {
-    document.dispatchEvent(new CustomEvent('pathfinder-auto-open-docs', {
-      detail: {
-        url: link.url,
-        title: link.title,
-        origin: 'queued_link',
-      },
-    }));
+    document.dispatchEvent(
+      new CustomEvent('pathfinder-auto-open-docs', {
+        detail: {
+          url: link.url,
+          title: link.title,
+          origin: 'queued_link',
+        },
+      })
+    );
   }
 
   // Arrow function to preserve 'this' binding when used as event listener
@@ -89,9 +91,11 @@ class GlobalLinkInterceptionState {
 
     // if sidebar is mounted, auto-open the link
     if (sidebarState.getIsSidebarMounted()) {
-      document.dispatchEvent(new CustomEvent('pathfinder-auto-open-docs', {
-        detail: docsLink,
-      }));
+      document.dispatchEvent(
+        new CustomEvent('pathfinder-auto-open-docs', {
+          detail: docsLink,
+        })
+      );
     } else {
       sidebarState.openSidebar('Interactive learning', {
         url: docsLink.url,

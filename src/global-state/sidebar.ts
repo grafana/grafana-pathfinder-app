@@ -1,5 +1,5 @@
 import { getAppEvents } from '@grafana/runtime';
-import { BusEventWithPayload } from "@grafana/data";
+import { BusEventWithPayload } from '@grafana/data';
 import { reportAppInteraction, UserInteraction } from 'lib';
 import pluginJson from '../plugin.json';
 
@@ -28,11 +28,13 @@ class GlobalSidebarState {
   public openSidebar(componentTitle: string, props?: Record<string, unknown>): void {
     this.setIsSidebarMounted(true);
 
-    getAppEvents().publish(new OpenExtensionSidebarEvent({
-      pluginId: pluginJson.id,
-      componentTitle,
-      props,
-    }));
+    getAppEvents().publish(
+      new OpenExtensionSidebarEvent({
+        pluginId: pluginJson.id,
+        componentTitle,
+        props,
+      })
+    );
 
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
       action: 'open',
