@@ -6,7 +6,8 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
-import { globalState } from './global-state/link-interception';
+import { linkInterceptionState } from './global-state/link-interception';
+import { sidebarState } from 'global-state/sidebar';
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
@@ -45,7 +46,7 @@ const plugin = new AppPlugin<{}>()
 plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const jsonData = meta?.jsonData || {};
   const config = getConfigWithDefaults(jsonData);
-  globalState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
+  linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
 
   // Set global config immediately so other code can use it
   (window as any).__pathfinderPluginConfig = config;
@@ -121,30 +122,15 @@ plugin.addComponent({
 
     // Enable/disable global link interception based on config
     useEffect(() => {
-      globalState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
+      linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
     }, [config.interceptGlobalDocsLinks]);
 
     // Process queued docs links when sidebar mounts
     useEffect(() => {
-      // Mark sidebar as mounted
-      globalState.setSidebarMounted(true);
-
-      // Report sidebar opened
-      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-        action: 'open',
-        source: 'sidebar_mount',
-        timestamp: Date.now(),
-      });
+      sidebarState.setIsSidebarMounted(true);
 
       return () => {
-        // Mark sidebar as unmounted
-        globalState.setSidebarMounted(false);
-
-        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-          action: 'close',
-          source: 'sidebar_unmount',
-          timestamp: Date.now(),
-        });
+        sidebarState.setIsSidebarMounted(false);
       };
     }, []);
 
@@ -167,7 +153,7 @@ plugin.addLink({
       timestamp: Date.now(),
     });
 
-    globalState.openSidebar('Interactive learning', {
+    sidebarState.openSidebar('Interactive learning', {
       origin: 'command_palette',
       timestamp: Date.now(),
     });
@@ -185,7 +171,7 @@ plugin.addLink({
       timestamp: Date.now(),
     });
 
-    globalState.openSidebar('Interactive learning', {
+    sidebarState.openSidebar('Interactive learning', {
       origin: 'command_palette_help',
       timestamp: Date.now(),
     });
@@ -203,7 +189,7 @@ plugin.addLink({
       timestamp: Date.now(),
     });
 
-    globalState.openSidebar('Interactive learning', {
+    sidebarState.openSidebar('Interactive learning', {
       origin: 'command_palette_learn',
       timestamp: Date.now(),
     });

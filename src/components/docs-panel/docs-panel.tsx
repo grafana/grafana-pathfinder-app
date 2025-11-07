@@ -57,7 +57,7 @@ import { SessionProvider, useSession } from '../../utils/collaboration/session-s
 import { ActionReplaySystem } from '../../utils/collaboration/action-replay';
 import { ActionCaptureSystem } from '../../utils/collaboration/action-capture';
 import type { AttendeeMode } from '../../types/collaboration.types';
-import { globalState } from '../../global-state/link-interception';
+import { linkInterceptionState } from '../../global-state/link-interception';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -738,7 +738,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     document.addEventListener('pathfinder-auto-open-docs', handleAutoOpen);
 
     // todo: investigate why this needs to be kicked to the end of the event loop
-    setTimeout(() => globalState.processQueuedLinks(), 0);
+    setTimeout(() => linkInterceptionState.processQueuedLinks(), 0);
 
     return () => {
       document.removeEventListener('pathfinder-auto-open-docs', handleAutoOpen);

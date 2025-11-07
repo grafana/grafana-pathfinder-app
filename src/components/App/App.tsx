@@ -5,7 +5,7 @@ import { docsPage } from '../../pages/docsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { onPluginStart } from '../../context-engine';
-import { globalState } from '../../global-state/link-interception';
+import { linkInterceptionState } from '../../global-state/link-interception';
 
 function getSceneApp() {
   return new SceneApp({
@@ -31,7 +31,7 @@ function App(props: AppRootProps) {
 
   // Enable/disable global link interception based on config
   useEffect(() => {
-    globalState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
+    linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
   }, [config.interceptGlobalDocsLinks]);
 
   return (

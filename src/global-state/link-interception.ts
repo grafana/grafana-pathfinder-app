@@ -1,9 +1,5 @@
-import { getAppEvents } from '@grafana/runtime';
-import { BusEventWithPayload } from "@grafana/data";
-
-import { getDocsLinkFromEvent } from "global-state/getDocsLinkFromEvent";
-
-import pluginJson from '../plugin.json';
+import { getDocsLinkFromEvent } from "global-state/utils.link-interception";
+import { sidebarState } from 'global-state/sidebar';
 
 export interface QueuedDocsLink {
   url: string;
@@ -11,30 +7,15 @@ export interface QueuedDocsLink {
   timestamp: number;
 }
 
-interface OpenExtensionSidebarPayload {
-  pluginId: string;
-  componentTitle: string;
-  props?: Record<string, unknown>;
-}
-
-class OpenExtensionSidebarEvent extends BusEventWithPayload<OpenExtensionSidebarPayload> {
-  static type = 'open-extension-sidebar';
-}
-
 /**
- * Global state manager for the Pathfinder plugin.
- * Manages link interception, sidebar state, and pending docs queue.
+ * Global state manager for the Pathfinder plugin's link interception.
+ * Manages link interception and pending docs queue.
  */
-class GlobalState {
-  private _isSidebarMounted = false;
+class GlobalLinkInterceptionState {
   private _isInterceptionEnabled = false;
   private _pendingDocsQueue: QueuedDocsLink[] = [];
 
   // Getter methods
-  public getIsSidebarMounted(): boolean {
-    return this._isSidebarMounted;
-  }
-
   public getIsInterceptionEnabled(): boolean {
     return this._isInterceptionEnabled;
   }
@@ -44,10 +25,6 @@ class GlobalState {
   }
 
   // Setter methods
-  public setSidebarMounted(mounted: boolean): void {
-    this._isSidebarMounted = mounted;
-  }
-
   public setInterceptionEnabled(enabled: boolean): void {
     this._isInterceptionEnabled = enabled;
 
@@ -57,17 +34,6 @@ class GlobalState {
     } else {
       document.removeEventListener('click', this.handleGlobalClick, { capture: true });
     }
-  }
-
-  // Sidebar management
-  public openSidebar(componentTitle: string, props?: Record<string, unknown>): void {
-    const event = new OpenExtensionSidebarEvent({
-      pluginId: pluginJson.id,
-      componentTitle,
-      props,
-    });
-    this.setSidebarMounted(true);
-    getAppEvents().publish(event);
   }
 
   // Queue manipulation methods
@@ -122,20 +88,15 @@ class GlobalState {
     event.preventDefault();
 
     // if sidebar is mounted, auto-open the link
-    if (this._isSidebarMounted) {
+    if (sidebarState.getIsSidebarMounted()) {
       document.dispatchEvent(new CustomEvent('pathfinder-auto-open-docs', {
         detail: docsLink,
       }));
     } else {
-
-      // if sidebar is not mounted, open it and add the link to the queue
-      const appEvents = getAppEvents();
-      appEvents.publish({
-        type: 'open-extension-sidebar',
-        payload: {
-          pluginId: pluginJson.id,
-          componentTitle: 'Interactive learning',
-        },
+      sidebarState.openSidebar('Interactive learning', {
+        url: docsLink.url,
+        title: docsLink.title,
+        timestamp: Date.now(),
       });
 
       this.addToQueue({
@@ -147,4 +108,4 @@ class GlobalState {
   };
 }
 
-export const globalState = new GlobalState();
+export const linkInterceptionState = new GlobalLinkInterceptionState();
