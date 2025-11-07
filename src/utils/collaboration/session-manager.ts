@@ -276,7 +276,7 @@ export class SessionManager {
             this.lastHeartbeat.delete(conn.peer);
             this.heartbeatSentTimes.delete(conn.peer);
             this.connections.delete(conn.peer);
-            
+
             // Clean up hand raise if present
             if (this.handRaises.has(conn.peer)) {
               this.handRaises.delete(conn.peer);
@@ -351,7 +351,7 @@ export class SessionManager {
               this.connectionStates.delete(conn.peer);
               this.lastHeartbeat.delete(conn.peer);
               this.heartbeatSentTimes.delete(conn.peer);
-              
+
               // Clean up hand raise if present
               if (this.handRaises.has(conn.peer)) {
                 this.handRaises.delete(conn.peer);

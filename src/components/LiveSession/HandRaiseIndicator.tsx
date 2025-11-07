@@ -65,4 +65,3 @@ const getStyles = (theme: GrafanaTheme2) => ({
     marginLeft: theme.spacing(0.5),
   }),
 });
-

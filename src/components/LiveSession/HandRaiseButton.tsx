@@ -54,4 +54,3 @@ const getStyles = (theme: GrafanaTheme2) => ({
     lineHeight: 1,
   }),
 });
-
