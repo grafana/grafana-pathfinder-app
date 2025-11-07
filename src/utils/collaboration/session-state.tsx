@@ -15,6 +15,7 @@ import type {
   AttendeeInfo,
   AnySessionEvent,
   SessionStartEvent,
+  HandRaiseInfo,
 } from '../../types/collaboration.types';
 
 /**
@@ -30,8 +31,12 @@ interface SessionContextValue {
   // Attendees (presenter only)
   attendees: AttendeeInfo[];
 
-  // Attendee mode (attendee only)
+  // Hand raises (presenter only)
+  handRaises: HandRaiseInfo[];
+
+  // Attendee mode and name (attendee only)
   attendeeMode: 'guided' | 'follow' | null;
+  attendeeName: string;
   setAttendeeMode: (mode: 'guided' | 'follow') => void;
 
   // Actions
@@ -66,7 +71,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [sessionRole, setSessionRole] = useState<SessionRole>(null);
   const [attendees, setAttendees] = useState<AttendeeInfo[]>([]);
+  const [handRaises, setHandRaises] = useState<HandRaiseInfo[]>([]);
   const [attendeeMode, setAttendeeMode] = useState<'guided' | 'follow' | null>(null);
+  const [attendeeName, setAttendeeName] = useState<string>('');
   const [eventCallbacks, setEventCallbacks] = useState<Set<(event: AnySessionEvent) => void>>(new Set());
 
   // Get PeerJS config from plugin settings
@@ -98,6 +105,30 @@ export function SessionProvider({ children }: SessionProviderProps) {
     const initial = sessionManager.getAttendees();
     const timer = setTimeout(() => {
       setAttendees(initial);
+    }, 0);
+
+    return () => {
+      clearTimeout(timer);
+      cleanup();
+    };
+  }, [sessionRole, sessionManager]);
+
+  // Subscribe to real-time hand raise updates (presenter only)
+  useEffect(() => {
+    if (sessionRole !== 'presenter' || !sessionManager.isActive()) {
+      return;
+    }
+
+    // Subscribe to real-time hand raise updates
+    const cleanup = sessionManager.onHandRaiseUpdate((updatedHandRaises) => {
+      console.log('[SessionState] Hand raises updated:', updatedHandRaises.length);
+      setHandRaises(updatedHandRaises);
+    });
+
+    // Set initial list asynchronously to avoid lint error
+    const initial = sessionManager.getHandRaises();
+    const timer = setTimeout(() => {
+      setHandRaises(initial);
     }, 0);
 
     return () => {
@@ -165,11 +196,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const joinSession = useCallback(
     async (sessionId: string, mode: 'guided' | 'follow', name?: string): Promise<void> => {
       try {
-        // Store the attendee's selected mode
+        // Store the attendee's selected mode and name
         setAttendeeMode(mode);
+        const attendeeName = name || 'Anonymous';
+        setAttendeeName(attendeeName);
 
         const peerjsConfig = getPeerjsConfig();
-        await sessionManager.joinSession(sessionId, mode, name, peerjsConfig);
+        await sessionManager.joinSession(sessionId, mode, attendeeName, peerjsConfig);
 
         // Wait for session_start event to get full session info
         const sessionStartPromise = new Promise<SessionInfo>((resolve) => {
@@ -262,7 +295,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
     sessionRole,
     isActive: sessionManager.isActive(),
     attendees,
+    handRaises,
     attendeeMode,
+    attendeeName,
     setAttendeeMode: updateAttendeeMode,
     createSession,
     joinSession,

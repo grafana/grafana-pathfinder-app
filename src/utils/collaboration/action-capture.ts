@@ -137,8 +137,8 @@ export class ActionCaptureSystem {
       sessionId: this.sessionId,
     });
 
-    this.sessionManager.broadcastEvent(sessionEvent);
-    console.log(`[ActionCapture] ✅ Event broadcasted successfully`);
+    this.sessionManager.broadcastToAttendees(sessionEvent);
+    console.log(`[ActionCapture] ✅ Event broadcasted to attendees successfully`);
 
     // Update last event for debouncing
     this.lastEvent = {

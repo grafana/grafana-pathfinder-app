@@ -256,6 +256,17 @@ export interface HeartbeatEvent extends SessionEvent {
 }
 
 /**
+ * Event sent when an attendee raises or lowers their hand
+ */
+export interface HandRaiseEvent extends SessionEvent {
+  type: 'hand_raise';
+  /** Attendee display name */
+  attendeeName: string;
+  /** True if raising hand, false if lowering */
+  isRaised: boolean;
+}
+
+/**
  * Union type of all possible session events
  */
 export type AnySessionEvent =
@@ -270,7 +281,8 @@ export type AnySessionEvent =
   | AttendeeLeaveEvent
   | ModeChangeEvent
   | SyncStateEvent
-  | HeartbeatEvent;
+  | HeartbeatEvent
+  | HandRaiseEvent;
 
 // ============================================================================
 // Attendee & Connection Management
@@ -308,6 +320,18 @@ export interface AttendeeInfo {
   joinedAt: number;
   /** Current step number if available */
   currentStep?: number;
+}
+
+/**
+ * Information about a raised hand in the session
+ */
+export interface HandRaiseInfo {
+  /** Attendee ID */
+  attendeeId: string;
+  /** Attendee name */
+  attendeeName: string;
+  /** Timestamp when hand was raised */
+  raisedAt: number;
 }
 
 /**
