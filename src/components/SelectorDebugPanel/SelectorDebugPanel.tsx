@@ -8,7 +8,7 @@ import {
   shouldCaptureElement,
   getActionDescription,
   type DetectedAction,
-} from '../../utils/action-detector';
+} from '../../interactive-engine/auto-completion/action-detector';
 import { getDebugPanelStyles } from './debug-panel.styles';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { exportStepsToHTML, combineStepsIntoMultistep, type RecordedStep } from '../../utils/tutorial-exporter';

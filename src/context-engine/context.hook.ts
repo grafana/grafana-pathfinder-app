@@ -3,7 +3,7 @@ import { locationService } from '@grafana/runtime';
 import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
 import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from './context.types';
-import { useTimeoutManager } from '../timeout-manager';
+import { useTimeoutManager } from '../utils/timeout-manager';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {
   const { onOpenLearningJourney, onOpenDocsPage } = options;

@@ -31,3 +31,21 @@ export {
   HoverHandler,
   GuidedHandler,
 } from './action-handlers';
+
+// Auto-completion (re-export from auto-completion index)
+export {
+  detectActionType,
+  getActionDescription,
+  shouldCaptureElement,
+  extractElementSelector,
+  findInteractiveParent,
+  canHaveFocus,
+  canBeTabbed,
+  matchesStepAction,
+  matchesElementBounds,
+  isNonFocusableInteractive,
+  ActionMatcher,
+  ActionMonitor,
+  getActionMonitor,
+} from './auto-completion';
+export type { DetectedAction, StepActionConfig, DetectedActionEvent } from './auto-completion';

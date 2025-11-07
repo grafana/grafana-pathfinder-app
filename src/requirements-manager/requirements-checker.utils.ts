@@ -7,7 +7,7 @@
  */
 
 import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
-import { ContextService } from '../utils/context';
+import { ContextService } from '../context-engine';
 import { reftargetExistsCheck, navmenuOpenCheck } from '../utils/dom-utils';
 import { isValidRequirement } from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';

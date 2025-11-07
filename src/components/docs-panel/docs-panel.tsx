@@ -25,7 +25,7 @@ import {
   isGitHubRawUrl,
   isLocalhostUrl,
 } from '../../security';
-import { isDataProxyUrl } from '../../utils/data-proxy';
+import { isDataProxyUrl } from '../../docs-retrieval/data-proxy';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
@@ -39,13 +39,10 @@ import {
   RawContent,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
-} from '../../utils/docs-retrieval';
+} from '../../docs-retrieval';
 
 // Import learning journey helpers
-import {
-  getJourneyProgress,
-  setJourneyCompletionPercentage,
-} from '../../utils/docs-retrieval/learning-journey-helpers';
+import { getJourneyProgress, setJourneyCompletionPercentage } from '../../docs-retrieval/learning-journey-helpers';
 
 import { ContextPanel } from './context-panel';
 

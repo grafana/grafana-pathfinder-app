@@ -5,7 +5,7 @@
  * open redirects, and XSS from external services.
  */
 
-import { fetchContent } from '../utils/docs-retrieval/content-fetcher';
+import { fetchContent } from '../docs-retrieval/content-fetcher';
 import { sanitizeTextForDisplay } from './html-sanitizer';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 

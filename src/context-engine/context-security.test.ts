@@ -12,10 +12,10 @@
  */
 
 import { ContextService } from './context.service';
-import { isDevModeEnabledGlobal } from '../dev-mode';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 
 // Mock dependencies
-jest.mock('../dev-mode', () => ({
+jest.mock('../utils/dev-mode', () => ({
   isDevModeEnabled: jest.fn(() => false),
   isDevModeEnabledGlobal: jest.fn(() => false),
 }));
@@ -52,7 +52,7 @@ jest.mock('@grafana/runtime', () => ({
   },
 }));
 
-jest.mock('../../lib/hash.util', () => ({
+jest.mock('../lib/hash.util', () => ({
   hashUserData: jest.fn().mockResolvedValue({
     hashedUserId: 'hashed-user',
     hashedEmail: 'hashed-email',

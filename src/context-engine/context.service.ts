@@ -5,11 +5,11 @@ import {
   DocsPluginConfig,
   DEFAULT_RECOMMENDER_TIMEOUT,
   ALLOWED_RECOMMENDER_DOMAINS,
-} from '../../constants';
+} from '../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
-import { hashUserData } from '../../lib/hash.util';
-import { isDevModeEnabledGlobal } from '../dev-mode';
-import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../../security';
+import { hashUserData } from '../lib/hash.util';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
+import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
   ContextData,
   DataSource,
@@ -1034,7 +1034,7 @@ export class ContextService {
       const currentPlatform = this.getCurrentPlatform();
 
       // Dynamically load all JSON files from static-links directory
-      const staticLinksContext = (require as any).context('../../bundled-interactives/static-links', false, /\.json$/);
+      const staticLinksContext = (require as any).context('../bundled-interactives/static-links', false, /\.json$/);
       const allFilePaths = staticLinksContext.keys();
 
       // Deduplicate files by filename to handle webpack context finding same files with different paths
@@ -1192,7 +1192,7 @@ export class ContextService {
 
     try {
       // Load the index.json file that contains metadata for all bundled interactives
-      const indexData: BundledInteractivesIndex = require('../../bundled-interactives/index.json');
+      const indexData: BundledInteractivesIndex = require('../bundled-interactives/index.json');
 
       if (indexData && indexData.interactives && Array.isArray(indexData.interactives)) {
         // Filter interactives that match the current URL/path

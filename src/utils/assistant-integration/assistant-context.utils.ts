@@ -1,5 +1,5 @@
 import { createAssistantContextItem, type ChatContextItem } from '@grafana/assistant';
-import { RawContent } from '../docs-retrieval/content.types';
+import { RawContent } from '../../docs-retrieval/content.types';
 
 /**
  * Build the prompt for the assistant based on highlighted text

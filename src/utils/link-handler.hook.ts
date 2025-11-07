@@ -7,7 +7,7 @@ import {
   enrichWithJourneyContext,
   enrichWithStepContext,
 } from '../lib/analytics';
-import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
+import { getJourneyProgress } from '../docs-retrieval/learning-journey-helpers';
 import {
   parseUrlSafely,
   isAllowedContentUrl,

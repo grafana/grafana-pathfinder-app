@@ -2,16 +2,15 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
-import { useInteractiveElements } from '../../../../interactive-engine';
-import { useStepChecker } from '../../../../requirements-manager';
+import { useInteractiveElements, ActionMonitor } from '../../../interactive-engine';
+import { useStepChecker } from '../../../requirements-manager';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
-import { reportAppInteraction, UserInteraction, getSourceDocument } from '../../../../lib/analytics';
-import { interactiveStepStorage } from '../../../../lib/user-storage';
-import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../../constants/interactive-config';
-import { ActionMonitor } from '../../../action-monitor';
-import { getConfigWithDefaults } from '../../../../constants';
+import { reportAppInteraction, UserInteraction, getSourceDocument } from '../../../lib/analytics';
+import { interactiveStepStorage } from '../../../lib/user-storage';
+import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
+import { getConfigWithDefaults } from '../../../constants';
 
 // Shared type definitions
 export interface BaseInteractiveProps {
@@ -561,7 +560,7 @@ export function InteractiveSection({
     actionMonitor.disable();
 
     // Clear any existing highlights before starting section execution
-    const { NavigationManager } = await import('../../../../interactive-engine/navigation-manager');
+    const { NavigationManager } = await import('../../../interactive-engine');
     const navigationManager = new NavigationManager();
     navigationManager.clearAllHighlights();
 
@@ -597,7 +596,7 @@ export function InteractiveSection({
 
             try {
               // Try to fix the section requirement automatically
-              const { NavigationManager } = await import('../../../../interactive-engine/navigation-manager');
+              const { NavigationManager } = await import('../../../interactive-engine');
               const navigationManager = new NavigationManager();
 
               if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
@@ -702,7 +701,7 @@ export function InteractiveSection({
 
                 try {
                   // Try to fix the requirement automatically
-                  const { NavigationManager } = await import('../../../../interactive-engine/navigation-manager');
+                  const { NavigationManager } = await import('../../../interactive-engine');
                   const navigationManager = new NavigationManager();
 
                   if (fixableError?.fixType === 'expand-parent-navigation' && fixableError.targetHref) {
@@ -845,12 +844,10 @@ export function InteractiveSection({
           // Wait for state to settle, then trigger reactive check
           // This ensures remaining steps update their eligibility based on completed steps
           setTimeout(() => {
-            import('../../../../requirements-manager/requirements-checker.hook').then(
-              ({ SequentialRequirementsManager }) => {
-                const manager = SequentialRequirementsManager.getInstance();
-                manager.triggerReactiveCheck();
-              }
-            );
+            import('../../../requirements-manager').then(({ SequentialRequirementsManager }) => {
+              const manager = SequentialRequirementsManager.getInstance();
+              manager.triggerReactiveCheck();
+            });
           }, 200);
 
           break;
@@ -922,7 +919,7 @@ export function InteractiveSection({
     interactiveStepStorage.clear(contentKey, sectionId);
 
     // Reset all step states in the global manager
-    import('../../../../requirements-manager/requirements-checker.hook').then(({ SequentialRequirementsManager }) => {
+    import('../../../requirements-manager').then(({ SequentialRequirementsManager }) => {
       const manager = SequentialRequirementsManager.getInstance();
 
       // Temporarily stop DOM monitoring during reset

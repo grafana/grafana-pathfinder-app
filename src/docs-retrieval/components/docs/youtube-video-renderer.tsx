@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback } from 'react';
-import { reportAppInteraction, UserInteraction } from '../../../../lib/analytics';
+import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 
 export interface YouTubeVideoRendererProps {
   src: string;
