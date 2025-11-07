@@ -53,9 +53,7 @@ import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import logoSvg from '../../img/logo.svg';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
-import { SessionProvider, useSession } from '../../utils/collaboration/session-state';
-import { ActionReplaySystem } from '../../utils/collaboration/action-replay';
-import { ActionCaptureSystem } from '../../utils/collaboration/action-capture';
+import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import type { AttendeeMode } from '../../types/collaboration.types';
 
 // Use the properly extracted styles

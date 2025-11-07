@@ -13,7 +13,7 @@
 
 import { Observable, BehaviorSubject } from 'rxjs';
 import { isAssistantAvailable, openAssistant, type ChatContextItem } from '@grafana/assistant';
-import { isAssistantDevModeEnabledGlobal } from '../dev-mode';
+import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
 
 // Create a persistent BehaviorSubject for mock availability
 // This ensures the mock stays active and doesn't get overridden

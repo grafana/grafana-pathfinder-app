@@ -8,8 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Button, Input, Alert, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
-import { parseJoinCode, parseSessionFromUrl } from '../../utils/collaboration/join-code-utils';
-import { useSession } from '../../utils/collaboration/session-state';
+import { parseJoinCode, parseSessionFromUrl, useSession } from '../../integrations/workshop';
 import type { SessionOffer, AttendeeMode } from '../../types/collaboration.types';
 
 /**
