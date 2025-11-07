@@ -120,11 +120,6 @@ plugin.addComponent({
       (window as any).__pathfinderPluginConfig = config;
     }, [config]);
 
-    // Enable/disable global link interception based on config
-    useEffect(() => {
-      linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
-    }, [config.interceptGlobalDocsLinks]);
-
     // Process queued docs links when sidebar mounts
     useEffect(() => {
       sidebarState.setIsSidebarMounted(true);
