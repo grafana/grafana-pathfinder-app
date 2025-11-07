@@ -15,6 +15,7 @@ import type {
   SessionError,
   ConnectionState,
   ConnectionQuality,
+  HandRaiseInfo,
 } from '../../types/collaboration.types';
 
 export interface PeerJSConfig {
@@ -42,6 +43,10 @@ export class SessionManager {
 
   // Attendee tracking (for presenter)
   private attendees: Map<string, AttendeeInfo> = new Map();
+
+  // Hand raise tracking (for presenter)
+  private handRaises: Map<string, HandRaiseInfo> = new Map();
+  private handRaiseHandlers: Set<(handRaises: HandRaiseInfo[]) => void> = new Set();
 
   // Connection tracking and quality monitoring
   private connectionStates: Map<string, ConnectionState> = new Map();
@@ -244,6 +249,25 @@ export class SessionManager {
             }
             // Forward event to handlers
             this.eventHandlers.forEach((handler) => handler(data));
+          } else if (data.type === 'hand_raise') {
+            // Handle hand raise from attendee
+            if (data.isRaised) {
+              // Add to hand raises
+              console.log(`[SessionManager] Attendee ${data.attendeeName} raised their hand`);
+              this.handRaises.set(conn.peer, {
+                attendeeId: conn.peer,
+                attendeeName: data.attendeeName,
+                raisedAt: data.timestamp,
+              });
+            } else {
+              // Remove from hand raises
+              console.log(`[SessionManager] Attendee ${data.attendeeName} lowered their hand`);
+              this.handRaises.delete(conn.peer);
+            }
+            // Notify hand raise update
+            this.notifyHandRaiseUpdate();
+            // Forward event to handlers
+            this.eventHandlers.forEach((handler) => handler(data));
           } else if (data.type === 'attendee_leave') {
             // Handle intentional attendee leave - remove immediately (no grace period)
             console.log(`[SessionManager] Attendee ${conn.peer} leaving intentionally`);
@@ -252,6 +276,12 @@ export class SessionManager {
             this.lastHeartbeat.delete(conn.peer);
             this.heartbeatSentTimes.delete(conn.peer);
             this.connections.delete(conn.peer);
+            
+            // Clean up hand raise if present
+            if (this.handRaises.has(conn.peer)) {
+              this.handRaises.delete(conn.peer);
+              this.notifyHandRaiseUpdate();
+            }
 
             // Notify UI of immediate attendee removal
             this.notifyAttendeeListUpdate();
@@ -321,6 +351,12 @@ export class SessionManager {
               this.connectionStates.delete(conn.peer);
               this.lastHeartbeat.delete(conn.peer);
               this.heartbeatSentTimes.delete(conn.peer);
+              
+              // Clean up hand raise if present
+              if (this.handRaises.has(conn.peer)) {
+                this.handRaises.delete(conn.peer);
+                this.notifyHandRaiseUpdate();
+              }
 
               // Notify UI of attendee removal
               this.notifyAttendeeListUpdate();
@@ -497,13 +533,13 @@ export class SessionManager {
   // ============================================================================
 
   /**
-   * Broadcast an event to all connected peers
+   * Broadcast an event to all attendees (presenter only)
    *
    * @param event - Event to broadcast
    */
-  broadcastEvent(event: AnySessionEvent): void {
+  broadcastToAttendees(event: AnySessionEvent): void {
     if (this.role !== 'presenter') {
-      console.warn('[SessionManager] Only presenter can broadcast events');
+      console.warn('[SessionManager] Only presenter can broadcast to attendees');
       return;
     }
 
@@ -607,6 +643,37 @@ export class SessionManager {
     console.log('[SessionManager] getAttendees() called, returning:', attendeeList);
     console.log('[SessionManager] Internal attendees Map size:', this.attendees.size);
     return attendeeList;
+  }
+
+  /**
+   * Subscribe to hand raise updates (presenter only)
+   */
+  onHandRaiseUpdate(handler: (handRaises: HandRaiseInfo[]) => void): () => void {
+    this.handRaiseHandlers.add(handler);
+    return () => {
+      this.handRaiseHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Get list of raised hands sorted by timestamp (presenter only)
+   */
+  getHandRaises(): HandRaiseInfo[] {
+    return Array.from(this.handRaises.values()).sort((a, b) => a.raisedAt - b.raisedAt);
+  }
+
+  /**
+   * Notify all handlers of hand raise changes
+   */
+  private notifyHandRaiseUpdate(): void {
+    const handRaiseList = this.getHandRaises();
+    this.handRaiseHandlers.forEach((handler) => {
+      try {
+        handler(handRaiseList);
+      } catch (error) {
+        console.error('[SessionManager] Error in hand raise update handler:', error);
+      }
+    });
   }
 
   // ============================================================================
