@@ -1,6 +1,6 @@
 import { isValidEvent } from './isValidEvent';
 import { isValidHref } from './isValidHref';
-import { QueuedDocsLink } from 'global-state';
+import { QueuedDocsLink } from 'global-state/link-interception';
 import { isValidUrl } from 'global-state/isValidUrl';
 
 export const getDocsLinkFromEvent = (event: MouseEvent): QueuedDocsLink | undefined => {

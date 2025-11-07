@@ -19,8 +19,8 @@ import {
   VideoRenderer,
   YouTubeVideoRenderer,
 } from './components/interactive-components';
-import { SequentialRequirementsManager } from '../../requirements-manager';
-import { useTextSelection, AssistantSelectionPopover, buildDocumentContext } from '../assistant-integration';
+import { SequentialRequirementsManager } from '../requirements-manager';
+import { useTextSelection, AssistantSelectionPopover, buildDocumentContext } from '../utils/assistant-integration';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
   try {
@@ -456,6 +456,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           showMe={element.props.showMe}
           showMeText={element.props.showMeText}
           skippable={element.props.skippable}
+          completeEarly={element.props.completeEarly}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           postVerify={element.props.postVerify}
@@ -472,6 +473,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           key={key}
           internalActions={element.props.internalActions}
           skippable={element.props.skippable}
+          completeEarly={element.props.completeEarly}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           hints={element.props.hints}
@@ -489,6 +491,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           internalActions={element.props.internalActions}
           stepTimeout={element.props.stepTimeout}
           skippable={element.props.skippable}
+          completeEarly={element.props.completeEarly}
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           hints={element.props.hints}

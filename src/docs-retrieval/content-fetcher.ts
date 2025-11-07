@@ -11,7 +11,7 @@ import {
   SingleDocMetadata,
   Milestone,
 } from './content.types';
-import { DEFAULT_CONTENT_FETCH_TIMEOUT, ALLOWED_GITHUB_REPOS } from '../../constants';
+import { DEFAULT_CONTENT_FETCH_TIMEOUT, ALLOWED_GITHUB_REPOS } from '../constants';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -20,9 +20,9 @@ import {
   isGitHubRawUrl,
   isAllowedGitHubRawUrl,
   isLocalhostUrl,
-} from '../../security';
-import { convertGitHubRawToProxyUrl, isDataProxyUrl } from '../data-proxy';
-import { isDevModeEnabledGlobal } from '../dev-mode';
+} from '../security';
+import { convertGitHubRawToProxyUrl, isDataProxyUrl } from './data-proxy';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -192,7 +192,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
     let html = '';
 
     // Load the index.json to find the correct filename for this interactive
-    const indexData = require('../../bundled-interactives/index.json');
+    const indexData = require('../bundled-interactives/index.json');
     const interactive = indexData?.interactives?.find((item: any) => item.id === contentId);
 
     if (!interactive) {
@@ -207,7 +207,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
     const exportName = interactive.exportName || `${contentId}Html`;
 
     // Import the TypeScript module (webpack handles this properly)
-    const importedModule = require(`../../bundled-interactives/${filename}`) as any;
+    const importedModule = require(`../bundled-interactives/${filename}`) as any;
 
     // Get the HTML content from the exported constant
     if (importedModule && typeof importedModule[exportName] === 'string') {

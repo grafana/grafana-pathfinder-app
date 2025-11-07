@@ -1,9 +1,7 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { querySelectorAllEnhanced } from '../../utils/enhanced-selector';
-import { findButtonByText } from '../../utils/dom-utils';
-import { isElementVisible } from '../../utils/element-validator';
+import { querySelectorAllEnhanced, findButtonByText, isElementVisible } from '../../lib/dom';
 
 interface InternalAction {
   targetAction: 'hover' | 'button' | 'highlight';

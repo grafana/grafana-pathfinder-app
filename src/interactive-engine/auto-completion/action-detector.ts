@@ -15,8 +15,7 @@
  * @module action-detector
  */
 
-import { findButtonByText } from './dom-utils';
-import { isElementVisible } from './element-validator';
+import { findButtonByText, isElementVisible } from '../../lib/dom';
 
 export type DetectedAction = 'highlight' | 'button' | 'formfill' | 'navigate' | 'hover';
 

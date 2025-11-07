@@ -2,20 +2,18 @@ import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffec
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
-import { useInteractiveElements } from '../../../../interactive-engine';
 import {
   waitForReactUpdates,
   useStepChecker,
   getPostVerifyExplanation,
   checkPostconditions,
-} from '../../../../requirements-manager';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../../lib/analytics';
+} from '../../../requirements-manager';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
 import type { InteractiveStepProps } from './interactive-section';
-import { matchesStepAction, type DetectedActionEvent } from '../../../action-matcher';
-import { getInteractiveConfig } from '../../../../constants/interactive-config';
-import { getConfigWithDefaults } from '../../../../constants';
-import { findButtonByText } from '../../../dom-utils';
-import { querySelectorAllEnhanced } from '../../../enhanced-selector';
+import { matchesStepAction, type DetectedActionEvent, useInteractiveElements } from '../../../interactive-engine';
+import { getInteractiveConfig } from '../../../constants/interactive-config';
+import { getConfigWithDefaults } from '../../../constants';
+import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
 
 export const InteractiveStep = forwardRef<
   { executeStep: () => Promise<boolean>; markSkipped?: () => void },
@@ -31,6 +29,7 @@ export const InteractiveStep = forwardRef<
       doIt = true, // Default to true - show "Do it" button unless explicitly disabled
       showMe = true, // Default to true - show "Show me" button unless explicitly disabled
       skippable = false, // Default to false - only skippable if explicitly set
+      completeEarly = false, // Default to false - only mark early if explicitly set
       showMeText,
       title,
       description,
@@ -137,6 +136,20 @@ export const InteractiveStep = forwardRef<
       }
 
       try {
+        // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
+        if (completeEarly) {
+          setIsLocallyCompleted(true);
+          if (onStepComplete && stepId) {
+            onStepComplete(stepId);
+          }
+          if (onComplete) {
+            onComplete();
+          }
+
+          // Small delay to ensure localStorage write completes
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
         // Execute the action using existing interactive logic
         await executeInteractiveAction(targetAction, refTarget, targetValue, 'do', targetComment);
 
@@ -172,17 +185,20 @@ export const InteractiveStep = forwardRef<
           }
         }
 
-        // Mark as completed locally and notify parent
-        setIsLocallyCompleted(true);
+        // NEW: If NOT completeEarly, mark complete after action (normal flow)
+        if (!completeEarly) {
+          // Mark as completed locally and notify parent
+          setIsLocallyCompleted(true);
 
-        // Notify parent if we have the callback (section coordination)
-        if (onStepComplete && stepId) {
-          onStepComplete(stepId);
-        }
+          // Notify parent if we have the callback (section coordination)
+          if (onStepComplete && stepId) {
+            onStepComplete(stepId);
+          }
 
-        // Call the original onComplete callback if provided
-        if (onComplete) {
-          onComplete();
+          // Call the original onComplete callback if provided
+          if (onComplete) {
+            onComplete();
+          }
         }
 
         return true;
@@ -195,6 +211,7 @@ export const InteractiveStep = forwardRef<
       finalIsEnabled,
       isCompletedWithObjectives,
       disabled,
+      completeEarly,
       stepId,
       targetAction,
       refTarget,

@@ -94,10 +94,6 @@ class GlobalState {
   public processQueuedLinks(): void {
     while (this.hasQueuedLinks()) {
       const docsLink = this.shiftFromQueue();
-      console.log({
-        docsLink,
-        queuedLinks: this._pendingDocsQueue,
-      })
 
       if (docsLink) {
         this.processLink(docsLink);

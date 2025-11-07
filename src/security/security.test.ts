@@ -6,7 +6,7 @@
  */
 
 import { sanitizeDocumentationHTML } from './html-sanitizer';
-import { parseHTMLToComponents } from '../utils/docs-retrieval/html-parser';
+import { parseHTMLToComponents } from '../docs-retrieval/html-parser';
 import {
   parseUrlSafely,
   isGrafanaDocsUrl,
@@ -307,7 +307,7 @@ describe('Security: Interactive Content Source Validation', () => {
         toggleDevMode: jest.fn(),
       }));
 
-      const { parseHTMLToComponents: parseWithDevMode } = require('../utils/docs-retrieval/html-parser');
+      const { parseHTMLToComponents: parseWithDevMode } = require('../docs-retrieval/html-parser');
 
       localhostUrls.forEach((url) => {
         const result = parseWithDevMode(html, url);
@@ -336,7 +336,7 @@ describe('Security: Interactive Content Source Validation', () => {
         toggleDevMode: jest.fn(),
       }));
 
-      const { parseHTMLToComponents: parseWithDevMode } = require('../utils/docs-retrieval/html-parser');
+      const { parseHTMLToComponents: parseWithDevMode } = require('../docs-retrieval/html-parser');
 
       personalRepoUrls.forEach((url) => {
         const result = parseWithDevMode(html, url);

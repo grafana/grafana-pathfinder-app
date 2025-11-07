@@ -6,7 +6,7 @@ import {
   checkPostconditions,
   RequirementsCheckOptions,
 } from '../requirements-manager';
-import { extractInteractiveDataFromElement } from '../utils/dom-utils';
+import { extractInteractiveDataFromElement } from '../lib/dom';
 import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { InteractiveStateManager } from './interactive-state-manager';

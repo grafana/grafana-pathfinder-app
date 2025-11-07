@@ -30,7 +30,7 @@ The root application component that initializes the plugin and handles top-level
 - `@grafana/data` - For `AppRootProps` type
 - `@grafana/scenes` - For `SceneApp` state management
 - `src/pages/docsPage` - The main docs page scene
-- `src/utils/docs.utils` - For context panel component
+- `src/components/App/ContextPanel` - Memoized context panel component
 - `src/utils/utils.plugin` - For plugin props context
 
 **Exports**:

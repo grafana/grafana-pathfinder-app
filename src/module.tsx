@@ -6,7 +6,7 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
-import { globalState } from './global-state';
+import { globalState } from './global-state/link-interception';
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);

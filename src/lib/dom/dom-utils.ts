@@ -1,4 +1,4 @@
-import { InteractiveElementData } from '../types/interactive.types';
+import { InteractiveElementData } from '../../types/interactive.types';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 
 /**

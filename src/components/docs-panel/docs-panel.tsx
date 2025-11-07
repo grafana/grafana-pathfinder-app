@@ -25,7 +25,7 @@ import {
   isGitHubRawUrl,
   isLocalhostUrl,
 } from '../../security';
-import { isDataProxyUrl } from '../../utils/data-proxy';
+import { isDataProxyUrl } from '../../docs-retrieval/data-proxy';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
@@ -39,13 +39,10 @@ import {
   RawContent,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
-} from '../../utils/docs-retrieval';
+} from '../../docs-retrieval';
 
 // Import learning journey helpers
-import {
-  getJourneyProgress,
-  setJourneyCompletionPercentage,
-} from '../../utils/docs-retrieval/learning-journey-helpers';
+import { getJourneyProgress, setJourneyCompletionPercentage } from '../../docs-retrieval/learning-journey-helpers';
 
 import { ContextPanel } from './context-panel';
 
@@ -55,12 +52,12 @@ import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import logoSvg from '../../img/logo.svg';
-import { PresenterControls, AttendeeJoin } from '../LiveSession';
+import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession } from '../../utils/collaboration/session-state';
 import { ActionReplaySystem } from '../../utils/collaboration/action-replay';
 import { ActionCaptureSystem } from '../../utils/collaboration/action-capture';
 import type { AttendeeMode } from '../../types/collaboration.types';
-import { globalState } from '../../global-state';
+import { globalState } from '../../global-state/link-interception';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -611,6 +608,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Live session state
   const [showPresenterControls, setShowPresenterControls] = React.useState(false);
   const [showAttendeeJoin, setShowAttendeeJoin] = React.useState(false);
+  const [isHandRaised, setIsHandRaised] = React.useState(false);
+  const [showHandRaiseQueue, setShowHandRaiseQueue] = React.useState(false);
+  const handRaiseIndicatorRef = React.useRef<HTMLDivElement>(null);
   const {
     isActive: isSessionActive,
     sessionRole,
@@ -619,7 +619,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     onEvent,
     endSession,
     attendeeMode,
+    attendeeName,
     setAttendeeMode,
+    handRaises,
   } = useSession();
 
   // Check for session join URL on mount and auto-open modal
@@ -653,6 +655,56 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     navigationManagerRef.current = new NavigationManager();
   }
 
+  // Hand raise handler for attendees
+  const handleHandRaiseToggle = useCallback(
+    (isRaised: boolean) => {
+      if (!sessionManager || !sessionInfo) {
+        return;
+      }
+
+      setIsHandRaised(isRaised);
+
+      // Send hand raise event to presenter
+      sessionManager.sendToPresenter({
+        type: 'hand_raise',
+        sessionId: sessionInfo.sessionId,
+        timestamp: Date.now(),
+        senderId: sessionManager.getRole() || 'attendee',
+        attendeeName: attendeeName || 'Anonymous',
+        isRaised,
+      });
+
+      console.log(`[DocsPanel] Hand ${isRaised ? 'raised' : 'lowered'} by ${attendeeName}`);
+    },
+    [sessionManager, sessionInfo, attendeeName]
+  );
+
+  // Listen for hand raise events (presenter only)
+  React.useEffect(() => {
+    if (sessionRole !== 'presenter') {
+      return;
+    }
+
+    console.log('[DocsPanel] Setting up hand raise event listener for presenter');
+
+    const cleanup = onEvent((event) => {
+      console.log('[DocsPanel] Presenter received event:', event.type, event);
+
+      if (event.type === 'hand_raise') {
+        if (event.isRaised) {
+          // Show toast notification when someone raises their hand
+          console.log('[DocsPanel] Showing toast for hand raise:', event.attendeeName);
+          getAppEvents().publish({
+            type: 'alert-success',
+            payload: ['Live Session', `${event.attendeeName} has raised their hand`],
+          });
+        }
+      }
+    });
+
+    return cleanup;
+  }, [sessionRole, onEvent]);
+
   // Restore tabs after storage is initialized (fixes race condition)
   React.useEffect(() => {
     // Only restore if we haven't loaded tabs yet (tabs length === 1 means only recommendations tab)
@@ -684,7 +736,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
     // Listen for all auto-open events
     document.addEventListener('pathfinder-auto-open-docs', handleAutoOpen);
-    globalState.processQueuedLinks();
+
+    // todo: investigate why this needs to be kicked to the end of the event loop
+    setTimeout(() => globalState.processQueuedLinks(), 0);
 
     return () => {
       document.removeEventListener('pathfinder-auto-open-docs', handleAutoOpen);
@@ -1156,103 +1210,101 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             </>
           )}
           {isSessionActive && sessionRole === 'presenter' && (
-            <Button size="sm" variant="primary" icon="circle" onClick={() => setShowPresenterControls(true)}>
-              Session Active
-            </Button>
+            <>
+              <Button size="sm" variant="primary" icon="circle" onClick={() => setShowPresenterControls(true)}>
+                Session Active
+              </Button>
+              <div ref={handRaiseIndicatorRef}>
+                <HandRaiseIndicator count={handRaises.length} onClick={() => setShowHandRaiseQueue(true)} />
+              </div>
+            </>
           )}
           {isSessionActive && sessionRole === 'attendee' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Alert title="" severity="success" style={{ margin: 0, padding: '4px 8px' }}>
+            <Alert title="" severity="success" style={{ margin: 0, padding: '8px 12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Icon name="check-circle" />
-                  <span>Connected to: {sessionInfo?.config.name || 'Live Session'}</span>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      opacity: 0.8,
-                      padding: '2px 6px',
-                      background: attendeeMode === 'follow' ? 'rgba(50, 116, 217, 0.2)' : 'rgba(255, 152, 0, 0.2)',
-                      borderRadius: '3px',
-                    }}
-                  >
-                    {attendeeMode === 'follow' ? 'Follow Mode' : 'Guided Mode'}
-                  </span>
+                  <span style={{ fontWeight: 500 }}>Connected to: {sessionInfo?.config.name || 'Live Session'}</span>
                 </div>
-              </Alert>
-              <ButtonGroup>
-                <Button
-                  size="sm"
-                  variant={attendeeMode === 'guided' ? 'primary' : 'secondary'}
-                  onClick={() => {
-                    if (attendeeMode !== 'guided') {
-                      const newMode: AttendeeMode = 'guided';
-                      // Update session state
-                      setAttendeeMode(newMode);
-                      // Update ActionReplaySystem
-                      if (actionReplayRef.current) {
-                        actionReplayRef.current.setMode(newMode);
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '12px', color: 'rgba(204, 204, 220, 0.85)' }}>Mode:</span>
+                  <ButtonGroup>
+                    <Button
+                      size="sm"
+                      variant={attendeeMode === 'guided' ? 'primary' : 'secondary'}
+                      onClick={() => {
+                        if (attendeeMode !== 'guided') {
+                          const newMode: AttendeeMode = 'guided';
+                          // Update session state
+                          setAttendeeMode(newMode);
+                          // Update ActionReplaySystem
+                          if (actionReplayRef.current) {
+                            actionReplayRef.current.setMode(newMode);
+                          }
+                          // Send mode change to presenter
+                          if (sessionManager) {
+                            sessionManager.sendToPresenter({
+                              type: 'mode_change',
+                              sessionId: sessionInfo?.sessionId || '',
+                              timestamp: Date.now(),
+                              senderId: sessionManager.getRole() || 'attendee',
+                              mode: newMode,
+                            } as any);
+                          }
+                          console.log('[DocsPanel] Switched to Guided mode');
+                        }
+                      }}
+                      tooltip="Only see highlights when presenter clicks Show Me"
+                    >
+                      Guided
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={attendeeMode === 'follow' ? 'primary' : 'secondary'}
+                      onClick={() => {
+                        if (attendeeMode !== 'follow') {
+                          const newMode: AttendeeMode = 'follow';
+                          // Update session state
+                          setAttendeeMode(newMode);
+                          // Update ActionReplaySystem
+                          if (actionReplayRef.current) {
+                            actionReplayRef.current.setMode(newMode);
+                          }
+                          // Send mode change to presenter
+                          if (sessionManager) {
+                            sessionManager.sendToPresenter({
+                              type: 'mode_change',
+                              sessionId: sessionInfo?.sessionId || '',
+                              timestamp: Date.now(),
+                              senderId: sessionManager.getRole() || 'attendee',
+                              mode: newMode,
+                            } as any);
+                          }
+                          console.log('[DocsPanel] Switched to Follow mode');
+                        }
+                      }}
+                      tooltip="Execute actions automatically when presenter clicks Do It"
+                    >
+                      Follow
+                    </Button>
+                  </ButtonGroup>
+                  <HandRaiseButton isRaised={isHandRaised} onToggle={handleHandRaiseToggle} />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon="times"
+                    onClick={() => {
+                      if (confirm('Leave this live session?')) {
+                        endSession();
                       }
-                      // Send mode change to presenter
-                      if (sessionManager) {
-                        sessionManager.sendToPresenter({
-                          type: 'mode_change',
-                          sessionId: sessionInfo?.sessionId || '',
-                          timestamp: Date.now(),
-                          senderId: sessionManager.getRole() || 'attendee',
-                          mode: newMode,
-                        } as any);
-                      }
-                      console.log('[DocsPanel] Switched to Guided mode');
-                    }
-                  }}
-                  tooltip="Only see highlights when presenter clicks Show Me"
-                >
-                  Guided
-                </Button>
-                <Button
-                  size="sm"
-                  variant={attendeeMode === 'follow' ? 'primary' : 'secondary'}
-                  onClick={() => {
-                    if (attendeeMode !== 'follow') {
-                      const newMode: AttendeeMode = 'follow';
-                      // Update session state
-                      setAttendeeMode(newMode);
-                      // Update ActionReplaySystem
-                      if (actionReplayRef.current) {
-                        actionReplayRef.current.setMode(newMode);
-                      }
-                      // Send mode change to presenter
-                      if (sessionManager) {
-                        sessionManager.sendToPresenter({
-                          type: 'mode_change',
-                          sessionId: sessionInfo?.sessionId || '',
-                          timestamp: Date.now(),
-                          senderId: sessionManager.getRole() || 'attendee',
-                          mode: newMode,
-                        } as any);
-                      }
-                      console.log('[DocsPanel] Switched to Follow mode');
-                    }
-                  }}
-                  tooltip="Execute actions automatically when presenter clicks Do It"
-                >
-                  Follow
-                </Button>
-              </ButtonGroup>
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="times"
-                onClick={() => {
-                  if (confirm('Leave this live session?')) {
-                    endSession();
-                  }
-                }}
-                tooltip="Leave the live session"
-              >
-                Leave Session
-              </Button>
-            </div>
+                    }}
+                    tooltip="Leave the live session"
+                  >
+                    Leave
+                  </Button>
+                </div>
+              </div>
+            </Alert>
           )}
         </div>
         <div className={styles.tabBar} ref={tabBarRef}>
@@ -1826,6 +1878,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           setShowAttendeeJoin(false);
           // TODO: Start listening for presenter events
         }}
+      />
+
+      <HandRaiseQueue
+        handRaises={handRaises}
+        isOpen={showHandRaiseQueue}
+        onClose={() => setShowHandRaiseQueue(false)}
+        anchorRef={handRaiseIndicatorRef}
       />
 
       {/* Modal backdrop */}

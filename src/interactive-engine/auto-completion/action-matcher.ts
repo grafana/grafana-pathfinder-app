@@ -8,7 +8,7 @@
  */
 
 import type { DetectedAction } from './action-detector';
-import { findButtonByText } from './dom-utils';
+import { findButtonByText } from '../../lib/dom';
 
 export interface StepActionConfig {
   targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover';

@@ -226,6 +226,7 @@ export function sanitizeDocumentationHTML(html: string): string {
       'data-hint',
       'data-verify',
       'data-step-timeout',
+      'data-complete-early',
       'data-button-type',
       'data-section-id',
       'data-step-id',

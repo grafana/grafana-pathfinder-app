@@ -148,29 +148,6 @@ const events = ['interactive-highlight', 'interactive-formfill', 'interactive-bu
 
 ## Utility Files
 
-### `docs.utils.ts` ⭐ **Component Utilities**
-
-**Purpose**: React hooks and components for creating and managing documentation panels
-**Role**:
-
-- Provides memoized panel creation hooks
-- Component factories for different usage contexts
-- Backward compatibility exports
-
-**Key Exports**:
-
-- `useContextPanel()` - Memoized context panel hook
-- `useLearningJourneyPanel()` - Memoized main panel hook
-- `ContextPanelComponent` - React component wrapper
-- `LearningJourneyPanelComponent` - Alternative component wrapper
-
-**Used By**:
-
-- `src/components/App/App.tsx` - Context panel for extensions
-- Plugin extensions and sidebar integrations
-
----
-
 ### `utils.plugin.ts` ⭐ **Plugin Props Management**
 
 **Purpose**: Context management for plugin props throughout the component tree

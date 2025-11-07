@@ -2,16 +2,22 @@ import { FormFillHandler } from './form-fill-handler';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { resetValueTracker } from '../../utils/dom-utils';
-import * as elementValidator from '../../utils/element-validator';
+import { resetValueTracker } from '../../lib/dom';
+import * as elementValidator from '../../lib/dom';
 
 // Mock dependencies
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
-jest.mock('../../utils/dom-utils', () => ({
+jest.mock('../../lib/dom', () => ({
+  ...jest.requireActual('../../lib/dom'),
   resetValueTracker: jest.fn(),
+  isElementVisible: jest.fn(),
+  querySelectorAllEnhanced: jest.fn((selector: string) => ({
+    elements: [],
+    usedFallback: false,
+    originalSelector: selector,
+  })),
 }));
-jest.mock('../../utils/element-validator');
 
 const mockStateManager = {
   setState: jest.fn(),
@@ -51,20 +57,18 @@ const mockDispatchEvent = jest.fn();
 const mockFocus = jest.fn();
 const mockBlur = jest.fn();
 
+// Get the mocked querySelectorAllEnhanced
+const mockQuerySelectorAllEnhanced = elementValidator.querySelectorAllEnhanced as jest.MockedFunction<
+  typeof elementValidator.querySelectorAllEnhanced
+>;
+
 // Mock setTimeout for Monaco editor delays
 const mockSetTimeout = jest.fn().mockImplementation((callback: any) => {
   callback();
   return 0;
 });
 
-// Mock enhanced selector
-jest.mock('../../utils/enhanced-selector', () => ({
-  querySelectorAllEnhanced: jest.fn((selector: string) => ({
-    elements: mockQuerySelectorAll(selector),
-    usedFallback: false,
-    originalSelector: selector,
-  })),
-}));
+// Mock enhanced selector - already mocked above in lib/dom mock
 
 describe('FormFillHandler', () => {
   let formFillHandler: FormFillHandler;
@@ -73,6 +77,13 @@ describe('FormFillHandler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockIsElementVisible.mockReturnValue(true); // Default to visible
+
+    // Wire up querySelectorAllEnhanced to use mockQuerySelectorAll
+    mockQuerySelectorAllEnhanced.mockImplementation((selector: string) => ({
+      elements: mockQuerySelectorAll(selector),
+      usedFallback: false,
+      originalSelector: selector,
+    }));
 
     // Mock global setTimeout
     jest.spyOn(global, 'setTimeout').mockImplementation(mockSetTimeout);

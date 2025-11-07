@@ -10,10 +10,10 @@ import {
   isAllowedGitHubRawUrl,
   isLocalhostUrl,
   isGitHubRawUrl,
-} from '../../security';
-import { isDataProxyUrl } from '../data-proxy';
-import { ALLOWED_GITHUB_REPOS } from '../../constants';
-import { isDevModeEnabledGlobal } from '../dev-mode';
+} from '../security';
+import { isDataProxyUrl } from './data-proxy';
+import { ALLOWED_GITHUB_REPOS } from '../constants';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 
 // Re-export for convenience
 export type { ParsedElement, ParsedContent };
@@ -731,6 +731,7 @@ export function parseHTMLToComponents(
               // Core multi-step props
               internalActions,
               skippable: el.getAttribute('data-skippable') === 'true', // Default to false, only true if explicitly set to 'true'
+              completeEarly: el.getAttribute('data-complete-early') === 'true', // Default to false, only true if explicitly set to 'true'
               title: undefined, // Remove title - content will be in children
               // Specific data attribute mappings for React prop names
               requirements: el.getAttribute('data-requirements'),
@@ -861,6 +862,7 @@ export function parseHTMLToComponents(
               internalActions,
               stepTimeout: parseInt(el.getAttribute('data-step-timeout') || '30000', 10),
               skippable: el.getAttribute('data-skippable') === 'true',
+              completeEarly: el.getAttribute('data-complete-early') === 'true',
               title: undefined,
               // Specific data attribute mappings
               requirements: el.getAttribute('data-requirements'),
@@ -947,6 +949,7 @@ export function parseHTMLToComponents(
               // Customizable label for the "Show me" button
               showMeText: el.getAttribute('data-showme-text') || undefined,
               skippable: el.getAttribute('data-skippable') === 'true', // Default to false, only true if explicitly set to 'true'
+              completeEarly: el.getAttribute('data-complete-early') === 'true', // Default to false, only true if explicitly set to 'true'
               title: undefined, // Remove title - content will be in children
               // Specific data attribute mappings for React prop names
               requirements: el.getAttribute('data-requirements'),
