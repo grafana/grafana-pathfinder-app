@@ -5,7 +5,7 @@ import { docsPage } from '../../pages/docsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { setGlobalLinkInterceptionEnabled } from '../../module';
-import { onPluginStart } from '../../utils/context';
+import { onPluginStart } from '../../context-engine';
 
 function getSceneApp() {
   return new SceneApp({

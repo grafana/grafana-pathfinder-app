@@ -10,7 +10,7 @@ import {
   RelatedJourneys,
   ConclusionImage,
 } from './content.types';
-import { journeyCompletionStorage } from '../../lib/user-storage';
+import { journeyCompletionStorage } from '../lib/user-storage';
 
 /**
  * Navigation helpers - these work with metadata, not DOM

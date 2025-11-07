@@ -19,8 +19,8 @@ import {
   VideoRenderer,
   YouTubeVideoRenderer,
 } from './components/interactive-components';
-import { SequentialRequirementsManager } from '../../requirements-manager';
-import { useTextSelection, AssistantSelectionPopover, buildDocumentContext } from '../assistant-integration';
+import { SequentialRequirementsManager } from '../requirements-manager';
+import { useTextSelection, AssistantSelectionPopover, buildDocumentContext } from '../utils/assistant-integration';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
   try {

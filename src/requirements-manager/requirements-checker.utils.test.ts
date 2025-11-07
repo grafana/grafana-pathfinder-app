@@ -1,6 +1,6 @@
 import { checkRequirements, RequirementsCheckOptions } from './requirements-checker.utils';
 import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
-import { ContextService } from '../utils/context';
+import { ContextService } from '../context-engine';
 
 // Mock dom-utils functions
 jest.mock('../utils/dom-utils', () => ({
@@ -29,7 +29,7 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 // Mock ContextService
-jest.mock('../utils/context', () => ({
+jest.mock('../context-engine', () => ({
   ContextService: {
     fetchPlugins: jest.fn(),
     fetchDashboardsByName: jest.fn(),

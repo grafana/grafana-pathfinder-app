@@ -2,14 +2,13 @@ import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffec
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
-import { useInteractiveElements } from '../../../../interactive-engine';
-import { useStepChecker } from '../../../../requirements-manager';
-import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../../lib/analytics';
-import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../../constants/interactive-config';
-import { matchesStepAction, type DetectedActionEvent } from '../../../action-matcher';
-import { getConfigWithDefaults } from '../../../../constants';
-import { findButtonByText } from '../../../dom-utils';
-import { querySelectorAllEnhanced } from '../../../enhanced-selector';
+import { useInteractiveElements, matchesStepAction, type DetectedActionEvent } from '../../../interactive-engine';
+import { useStepChecker } from '../../../requirements-manager';
+import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
+import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
+import { getConfigWithDefaults } from '../../../constants';
+import { findButtonByText } from '../../../utils/dom-utils';
+import { querySelectorAllEnhanced } from '../../../utils/enhanced-selector';
 
 interface InternalAction {
   targetAction: string;
@@ -243,7 +242,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       isCancelledRef.current = false; // Reset ref as well
 
       // Clear any existing highlights before starting multi-step execution
-      const { NavigationManager } = await import('../../../../interactive-engine/navigation-manager');
+      const { NavigationManager } = await import('../../../interactive-engine');
       const navigationManager = new NavigationManager();
       navigationManager.clearAllHighlights();
 
