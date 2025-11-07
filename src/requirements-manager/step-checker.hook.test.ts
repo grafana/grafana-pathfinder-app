@@ -1,5 +1,5 @@
 import { renderHook, act } from '@testing-library/react';
-import { useStepChecker } from './step-checker.hook';
+import { useStepChecker } from './index';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 
 // Mock requirements checker utility to simulate nav toggle passing then failing

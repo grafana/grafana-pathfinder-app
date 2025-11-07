@@ -3,7 +3,7 @@ import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements } from '../../../interactive.hook';
-import { useStepChecker } from '../../../step-checker.hook';
+import { useStepChecker } from '../../../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../../lib/analytics';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../../constants/interactive-config';
 import { matchesStepAction, type DetectedActionEvent } from '../../../action-matcher';

@@ -1,8 +1,4 @@
-import {
-  SequentialRequirementsManager,
-  useRequirementsChecker,
-  useSequentialRequirements,
-} from './requirements-checker.hook';
+import { SequentialRequirementsManager, useRequirementsChecker, useSequentialRequirements } from './index';
 
 describe('SequentialRequirementsManager DOM monitoring (nav)', () => {
   it('triggers selective recheck on nav-related mutations', async () => {
@@ -36,14 +32,14 @@ const mockCheckRequirements = jest.fn().mockResolvedValue({
   error: [],
 });
 
-jest.mock('./interactive.hook', () => ({
+jest.mock('../utils/interactive.hook', () => ({
   useInteractiveElements: jest.fn().mockImplementation(() => ({
     checkRequirementsFromData: mockCheckRequirements,
   })),
 }));
 
 // Mock requirement explanations
-jest.mock('./requirement-explanations', () => ({
+jest.mock('./requirements-explanations', () => ({
   getRequirementExplanation: jest.fn().mockReturnValue('Mock explanation'),
 }));
 

@@ -7,11 +7,11 @@
  */
 
 import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
-import { ContextService } from './context';
-import { reftargetExistsCheck, navmenuOpenCheck } from './dom-utils';
+import { ContextService } from '../utils/context';
+import { reftargetExistsCheck, navmenuOpenCheck } from '../utils/dom-utils';
 import { isValidRequirement } from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
-import { TimeoutManager } from './timeout-manager';
+import { TimeoutManager } from '../utils/timeout-manager';
 
 // Re-export types for convenience
 export interface RequirementsCheckResult {
