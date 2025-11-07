@@ -70,7 +70,7 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
       modalDetection: 50, // Modal state change debounce
       requirementsRetry: 10000, // Auto-retry for failed requirements
       stateSettling: 100, // General state settling delay
-      reactiveCheck: 150, // Reactive check delay after completions
+      reactiveCheck: 50, // Reactive check delay after completions
     },
     // Element validation timing
     elementValidation: {
