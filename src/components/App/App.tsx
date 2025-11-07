@@ -4,8 +4,8 @@ import { SceneApp } from '@grafana/scenes';
 import { docsPage } from '../../pages/docsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
-import { setGlobalLinkInterceptionEnabled } from '../../module';
 import { onPluginStart } from '../../utils/context';
+import { globalState } from '../../global-state';
 
 function getSceneApp() {
   return new SceneApp({
@@ -31,7 +31,7 @@ function App(props: AppRootProps) {
 
   // Enable/disable global link interception based on config
   useEffect(() => {
-    setGlobalLinkInterceptionEnabled(config.interceptGlobalDocsLinks);
+    globalState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
   }, [config.interceptGlobalDocsLinks]);
 
   return (

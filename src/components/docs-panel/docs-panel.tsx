@@ -60,6 +60,7 @@ import { SessionProvider, useSession } from '../../utils/collaboration/session-s
 import { ActionReplaySystem } from '../../utils/collaboration/action-replay';
 import { ActionCaptureSystem } from '../../utils/collaboration/action-capture';
 import type { AttendeeMode } from '../../types/collaboration.types';
+import { globalState } from '../../global-state';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -683,6 +684,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
     // Listen for all auto-open events
     document.addEventListener('pathfinder-auto-open-docs', handleAutoOpen);
+    globalState.processQueuedLinks();
 
     return () => {
       document.removeEventListener('pathfinder-auto-open-docs', handleAutoOpen);
