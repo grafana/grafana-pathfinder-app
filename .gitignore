@@ -47,3 +47,4 @@ ci/
 .DS_Store
 .hippo
 temp/
+plans/
