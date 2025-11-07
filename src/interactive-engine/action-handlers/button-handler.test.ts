@@ -2,14 +2,13 @@ import { ButtonHandler } from './button-handler';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { findButtonByText } from '../../utils/dom-utils';
-import * as elementValidator from '../../utils/element-validator';
+import { findButtonByText } from '../../lib/dom';
+import * as elementValidator from '../../lib/dom';
 
 // Mock dependencies
-jest.mock('../../utils/dom-utils');
+jest.mock('../../lib/dom');
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
-jest.mock('../../utils/element-validator');
 
 const mockFindButtonByText = findButtonByText as jest.MockedFunction<typeof findButtonByText>;
 const mockStateManager = {

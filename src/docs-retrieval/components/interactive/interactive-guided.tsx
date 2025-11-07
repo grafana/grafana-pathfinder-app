@@ -13,8 +13,7 @@ import {
 import { waitForReactUpdates, useStepChecker } from '../../../requirements-manager';
 import { getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
-import { findButtonByText } from '../../../utils/dom-utils';
-import { querySelectorAllEnhanced } from '../../../utils/enhanced-selector';
+import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
 
 interface InternalAction {
   targetAction: 'hover' | 'button' | 'highlight';

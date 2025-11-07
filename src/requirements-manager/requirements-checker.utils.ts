@@ -8,7 +8,7 @@
 
 import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
 import { ContextService } from '../context-engine';
-import { reftargetExistsCheck, navmenuOpenCheck } from '../utils/dom-utils';
+import { reftargetExistsCheck, navmenuOpenCheck } from '../lib/dom';
 import { isValidRequirement } from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { TimeoutManager } from '../utils/timeout-manager';
