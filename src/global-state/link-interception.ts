@@ -15,72 +15,8 @@ class GlobalLinkInterceptionState {
   private _isInterceptionEnabled = false;
   private _pendingDocsQueue: QueuedDocsLink[] = [];
 
-  // Getter methods
-  public getIsInterceptionEnabled(): boolean {
-    return this._isInterceptionEnabled;
-  }
-
-  public getPendingDocsQueue(): QueuedDocsLink[] {
-    return this._pendingDocsQueue;
-  }
-
-  // Setter methods
-  public setInterceptionEnabled(enabled: boolean): void {
-    this._isInterceptionEnabled = enabled;
-
-    // Manage event listener registration
-    if (enabled) {
-      document.addEventListener('click', this.handleGlobalClick, { capture: true });
-    } else {
-      document.removeEventListener('click', this.handleGlobalClick, { capture: true });
-    }
-  }
-
-  // Queue manipulation methods
-  public addToQueue(link: QueuedDocsLink): void {
-    this._pendingDocsQueue.push(link);
-  }
-
-  public shiftFromQueue(): QueuedDocsLink | undefined {
-    return this._pendingDocsQueue.shift();
-  }
-
-  public clearQueue(): void {
-    this._pendingDocsQueue = [];
-  }
-
-  public getQueueLength(): number {
-    return this._pendingDocsQueue.length;
-  }
-
-  public hasQueuedLinks(): boolean {
-    return this._pendingDocsQueue.length > 0;
-  }
-
-  public processQueuedLinks(): void {
-    while (this.hasQueuedLinks()) {
-      const docsLink = this.shiftFromQueue();
-
-      if (docsLink) {
-        this.processLink(docsLink);
-      }
-    }
-  }
-
-  public processLink(link: QueuedDocsLink): void {
-    document.dispatchEvent(
-      new CustomEvent('pathfinder-auto-open-docs', {
-        detail: {
-          url: link.url,
-          title: link.title,
-          origin: 'queued_link',
-        },
-      })
-    );
-  }
-
   // Arrow function to preserve 'this' binding when used as event listener
-  public handleGlobalClick = (event: MouseEvent): void => {
+  private handleGlobalClick = (event: MouseEvent): void => {
     const docsLink = getDocsLinkFromEvent(event);
 
     if (!docsLink) {
@@ -110,6 +46,50 @@ class GlobalLinkInterceptionState {
       });
     }
   };
+
+  public getIsInterceptionEnabled(): boolean {
+    return this._isInterceptionEnabled;
+  }
+
+  public setInterceptionEnabled(enabled: boolean): void {
+    this._isInterceptionEnabled = enabled;
+
+    if (enabled) {
+      document.addEventListener('click', this.handleGlobalClick, { capture: true });
+    } else {
+      document.removeEventListener('click', this.handleGlobalClick, { capture: true });
+    }
+  }
+
+  public addToQueue(link: QueuedDocsLink): void {
+    this._pendingDocsQueue.push(link);
+  }
+
+  public shiftFromQueue(): QueuedDocsLink | undefined {
+    return this._pendingDocsQueue.shift();
+  }
+
+  public hasQueuedLinks(): boolean {
+    return this._pendingDocsQueue.length > 0;
+  }
+
+  public processQueuedLinks(): void {
+    while (this.hasQueuedLinks()) {
+      const docsLink = this.shiftFromQueue();
+
+      if (docsLink) {
+        document.dispatchEvent(
+          new CustomEvent('pathfinder-auto-open-docs', {
+            detail: {
+              url: docsLink.url,
+              title: docsLink.title,
+              origin: 'queued_link',
+            },
+          })
+        );
+      }
+    }
+  }
 }
 
 export const linkInterceptionState = new GlobalLinkInterceptionState();

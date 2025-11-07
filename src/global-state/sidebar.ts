@@ -13,6 +13,10 @@ class OpenExtensionSidebarEvent extends BusEventWithPayload<OpenExtensionSidebar
   static type = 'open-extension-sidebar';
 }
 
+/**
+ * Global state manager for the Pathfinder plugin's sidebar management.
+ * Manages sidebar mounting and unmounting.
+ */
 class GlobalSidebarState {
   private _isSidebarMounted = false;
 
