@@ -26,6 +26,12 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(2),
     marginBottom: theme.spacing(2),
   }),
+  actionWrapper: css({
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+  }),
   actionButton: css({
     height: 'auto',
     padding: theme.spacing(2),
@@ -34,6 +40,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(1),
     textAlign: 'center',
+    width: '100%',
   }),
   actionIcon: css({
     fontSize: '24px',
@@ -44,6 +51,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
   actionDesc: css({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
+    textAlign: 'center',
+    marginTop: theme.spacing(0.5),
   }),
   actions: css({
     display: 'flex',
@@ -64,16 +73,17 @@ const ActionSelector = ({ onSelect, onCancel }: ActionSelectorProps) => {
       <p className={styles.description}>Choose the type of interaction for this element</p>
       <div className={styles.grid}>
         {ACTION_METADATA.map((option) => (
-          <Button
-            key={option.type}
-            variant="secondary"
-            onClick={() => onSelect(option.type)}
-            className={styles.actionButton}
-          >
-            <span className={styles.actionIcon}>{option.icon}</span>
-            <span className={styles.actionName}>{option.name}</span>
+          <div key={option.type} className={styles.actionWrapper}>
+            <Button
+              variant="secondary"
+              onClick={() => onSelect(option.type)}
+              className={styles.actionButton}
+            >
+              <span className={styles.actionIcon}>{option.icon}</span>
+              <span className={styles.actionName}>{option.name}</span>
+            </Button>
             <span className={styles.actionDesc}>{option.description}</span>
-          </Button>
+          </div>
         ))}
       </div>
       <div className={styles.actions}>
