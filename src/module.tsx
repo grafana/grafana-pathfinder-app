@@ -55,6 +55,12 @@ function initializeGlobalLinkInterceptor() {
     }
 
     const target = event.target as HTMLElement;
+    
+    // Ignore clicks from within the WYSIWYG editor to prevent interference with editor interactions
+    if (target.closest('.ProseMirror') || target.closest('.wysiwyg-editor-container')) {
+      return;
+    }
+
     const anchor = target.closest('a[href]') as HTMLAnchorElement;
 
     if (!anchor) {

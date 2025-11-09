@@ -17,6 +17,7 @@ import { getDebugPanelStyles } from './debug-panel.styles';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { exportStepsToHTML, combineStepsIntoMultistep, type RecordedStep } from '../../utils/tutorial-exporter';
 import { URLTester } from 'components/URLTester';
+import { WysiwygEditor } from '../wysiwyg-editor';
 
 interface TestResult {
   success: boolean;
@@ -35,6 +36,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   const { executeInteractiveAction } = useInteractiveElements();
 
   // Section expansion state
+  const [wysiwygExpanded, setWysiwygExpanded] = useState(false);
   const [simpleExpanded, setSimpleExpanded] = useState(false);
   const [multiStepExpanded, setMultiStepExpanded] = useState(false);
   const [guidedExpanded, setGuidedExpanded] = useState(false);
@@ -758,6 +760,19 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         <Button variant="secondary" size="sm" onClick={handleLeaveDevMode} icon="times" fill="outline">
           Leave Dev Mode
         </Button>
+      </div>
+
+      {/* WYSIWYG Editor */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader} onClick={() => setWysiwygExpanded(!wysiwygExpanded)}>
+          <h4 className={styles.sectionTitle}>WYSIWYG Editor</h4>
+          <Icon name={wysiwygExpanded ? 'angle-up' : 'angle-down'} />
+        </div>
+        {wysiwygExpanded && (
+          <div className={styles.sectionContent}>
+            <WysiwygEditor />
+          </div>
+        )}
       </div>
 
       {/* Simple Selector Tester */}

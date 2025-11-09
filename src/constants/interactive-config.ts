@@ -153,3 +153,123 @@ export const CLEAR_COMMAND = '@@CLEAR@@' as const;
  * Type-safe access to configuration values
  */
 export type InteractiveConfig = typeof INTERACTIVE_CONFIG_DEFAULTS;
+
+/**
+ * HTML data attribute keys
+ * Shared between editor and runtime for interactive tutorials
+ */
+export const DATA_ATTRIBUTES = {
+  TARGET_ACTION: 'data-targetaction',
+  REF_TARGET: 'data-reftarget',
+  REQUIREMENTS: 'data-requirements',
+  DO_IT: 'data-doit',
+  TARGET_VALUE: 'data-targetvalue',
+} as const;
+
+/**
+ * Interactive action types
+ * Defines all supported interactive action types for tutorials
+ */
+export const ACTION_TYPES = {
+  BUTTON: 'button',
+  HIGHLIGHT: 'highlight',
+  FORM_FILL: 'formfill',
+  NAVIGATE: 'navigate',
+  HOVER: 'hover',
+  MULTISTEP: 'multistep',
+  SEQUENCE: 'sequence',
+} as const;
+
+/**
+ * Default attribute values
+ */
+export const DEFAULT_VALUES = {
+  CLASS: 'interactive',
+  REQUIREMENT: 'exists-reftarget',
+  DO_IT_FALSE: 'false',
+} as const;
+
+/**
+ * Common requirement options available across interactive elements
+ */
+export const COMMON_REQUIREMENTS = [
+  'exists-reftarget',
+  'navmenu-open',
+  'on-page:',
+  'is-admin',
+  'has-datasource:',
+  'has-plugin:',
+  'section-completed:',
+] as const;
+
+/**
+ * Action metadata for UI display in the editor
+ */
+export interface ActionMetadata {
+  type: string;
+  icon: string;
+  name: string;
+  description: string;
+  grafanaIcon?: string; // Grafana UI icon name mapping
+}
+
+/**
+ * All action metadata (used in ActionSelector)
+ * Includes emoji icons for backward compatibility and Grafana icon mappings
+ */
+export const ACTION_METADATA: ActionMetadata[] = [
+  {
+    type: ACTION_TYPES.BUTTON,
+    icon: '🔘',
+    name: 'Button',
+    description: 'Click a button',
+    grafanaIcon: 'gf-button',
+  },
+  {
+    type: ACTION_TYPES.HIGHLIGHT,
+    icon: '✨',
+    name: 'Highlight',
+    description: 'Highlight an element',
+    grafanaIcon: 'star',
+  },
+  {
+    type: ACTION_TYPES.FORM_FILL,
+    icon: '📝',
+    name: 'Form Fill',
+    description: 'Fill an input field',
+    grafanaIcon: 'document-info',
+  },
+  {
+    type: ACTION_TYPES.NAVIGATE,
+    icon: '🧭',
+    name: 'Navigate',
+    description: 'Go to a page',
+    grafanaIcon: 'compass',
+  },
+  {
+    type: ACTION_TYPES.HOVER,
+    icon: '👆',
+    name: 'Hover',
+    description: 'Reveal on hover',
+    grafanaIcon: 'mouse',
+  },
+  {
+    type: ACTION_TYPES.MULTISTEP,
+    icon: '📋',
+    name: 'Multistep',
+    description: 'Multiple actions',
+    grafanaIcon: 'clipboard-list',
+  },
+  {
+    type: ACTION_TYPES.SEQUENCE,
+    icon: '📑',
+    name: 'Sequence',
+    description: 'Section with steps',
+    grafanaIcon: 'folder-open',
+  },
+];
+
+// Type exports for type safety
+export type ActionType = (typeof ACTION_TYPES)[keyof typeof ACTION_TYPES];
+export type CommonRequirement = (typeof COMMON_REQUIREMENTS)[number];
+export type DataAttribute = (typeof DATA_ATTRIBUTES)[keyof typeof DATA_ATTRIBUTES];
