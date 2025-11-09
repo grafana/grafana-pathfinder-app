@@ -69,7 +69,6 @@ const ActionSelector = ({ onSelect, onCancel }: ActionSelectorProps) => {
 
   return (
     <div className={styles.container}>
-      <h4 className={styles.title}>Select Interactive Action</h4>
       <p className={styles.description}>Choose the type of interaction for this element</p>
       <div className={styles.grid}>
         {ACTION_METADATA.map((option) => (

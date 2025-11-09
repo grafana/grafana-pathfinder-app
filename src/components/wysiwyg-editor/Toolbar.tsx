@@ -183,7 +183,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onClick={onAddSequence}
           tooltip="Add Sequence Section"
         >
-          Add Sequence
+          Add Section
         </Button>
         <Button
           icon="comment-alt"

@@ -216,7 +216,6 @@ export const FormModal: React.FC<FormModalProps> = ({
       className={styles.modal}
     >
       <div className={styles.modalContent}>
-        <p style={{ marginBottom: '16px', color: '#999' }}>Configure interactive tutorial element</p>
         {renderForm()}
       </div>
     </Modal>
