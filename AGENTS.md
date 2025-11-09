@@ -32,9 +32,8 @@ This is a **React + TypeScript + Grafana Scenes** application built as a Grafana
 Before working on this codebase, you MUST read these files in `.cursor/rules/`:
 
 1. **`.cursor/rules/projectbrief.mdc`** - Start here to understand core requirements and goals
-2. **`.cursor/rules/productContext.mdc`** - Why this project exists and problems it solves
-3. **`.cursor/rules/techContext.mdc`** - Technologies, dependencies, and development setup
-4. **`.cursor/rules/systemPatterns.mdc`** - Architecture, design patterns, and critical implementation paths
+2. **`.cursor/rules/techContext.mdc`** - Technologies, dependencies, and development setup
+3. **`.cursor/rules/systemPatterns.mdc`** - Architecture, design patterns, and critical implementation paths
 
 ### Specialized Documentation
 
