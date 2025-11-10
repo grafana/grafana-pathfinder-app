@@ -145,6 +145,7 @@ Do NOT create summary `.md` files unless explicitly requested. This saves tokens
 ## Getting Help
 
 When uncertain about:
+
 - **Architecture decisions**: Review `.cursor/rules/systemPatterns.mdc`
 - **Security concerns**: Follow `.cursor/rules/frontend-security.mdc` and ask user to reach out in #security channel
 - **Interactive tutorials**: Consult `.cursor/rules/interactiveRequirements.mdc`
