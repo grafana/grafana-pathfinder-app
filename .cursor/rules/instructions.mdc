@@ -13,8 +13,6 @@ The memory bank lives inside .cursor folder. And it consists of core files and o
 
 ## flowchart TD
 
-    PB[projectbrief.md] --> PC[productContext.md]
-
     PB --> SP[systemPatterns.md]
 
     PB --> TC[techContext.md]
@@ -34,12 +32,6 @@ The memory bank lives inside .cursor folder. And it consists of core files and o
    - Created at project start if it doesn't exist
    - Defines core requirements and goals
    - Source of truth for project scope
-
-1. `productContext.md`
-   - Why this project exists
-   - Problems it solves
-   - How it should work
-   - User experience goals
 
 1. `activeContext.md`
    - Current work focus
@@ -222,8 +214,6 @@ The memory bank lives inside .cursor folder. And it consists of core files and o
 
 ## flowchart TD
 
-    PB[projectbrief.md] --> PC[productContext.md]
-
     PB --> SP[systemPatterns.md]
 
     PB --> TC[techContext.md]
@@ -236,47 +226,6 @@ The memory bank lives inside .cursor folder. And it consists of core files and o
 
     AC --> T[tasks.md]
 
-### Core Files
-
-1. `projectbrief.md`
-   - Foundation document that shapes all other files
-   - Created at project start if it doesn't exist
-   - Defines core requirements and goals
-   - Source of truth for project scope
-
-1. `productContext.md`
-   - Why this project exists
-   - Problems it solves
-   - How it should work
-   - User experience goals
-
-1. `activeContext.md`
-   - Current work focus
-   - Recent changes
-   - Next steps
-   - Active decisions and considerations
-   - Important patterns and preferences
-   - Learnings and project insights
-
-1. `systemPatterns.md`
-   - System architecture
-   - Key technical decisions
-   - Design patterns in use
-   - Component relationships
-   - Critical implementation paths
-
-1. `techContext.md`
-   - Technologies used
-   - Development setup
-   - Technical constraints
-   - Dependencies
-   - Tool usage patterns
-
-1. `tasks.md`
-   - A list of tasks each prefixed with a markdown checkbox ([ ])
-   - Completed tasks are indicated with a checked checkbox
-   - Pending tasks are indicated with an unchecked checkbox
-
 ### Additional Context
 
 Create additional files/folders within .agent/ when they help organize:
@@ -285,6 +234,7 @@ Create additional files/folders within .agent/ when they help organize:
 - API documentation
 - Testing strategies
 - Deployment procedures
+
 ## Documentation Updates
 
 Memory Bank updates occur when:
@@ -339,8 +289,6 @@ I use this style when I code in Python, JavaScript/TypeScript (FP style), Scala,
 
 I favor idiomatic usage of React that is similar to that found in the Grafana code base.
   
-  
-
 # Roles
 
 I play different roles when asked. I take on these roles when I see slash commands like these in the ask: `/fp`, `/review`, `/secure`, `/test`, `/docs`.  I default to the Functional Programming Engineer role when no role is specified.  When in doubt, I ask for clarification before proceeding.
