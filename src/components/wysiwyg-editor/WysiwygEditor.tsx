@@ -414,6 +414,27 @@ export const WysiwygEditor: React.FC = () => {
     }
   }, [editor]);
 
+  // Reset editor to default content
+  const handleResetGuide = useCallback(() => {
+    if (!editor) {
+      return;
+    }
+
+    try {
+      // Reset to default content
+      editor.commands.setContent(EDITOR_DEFAULTS.INITIAL_CONTENT);
+      
+      // Immediately save to localStorage (don't wait for debounce)
+      // SECURITY: sanitize before save (F1, F4)
+      const sanitized = sanitizeDocumentationHTML(EDITOR_DEFAULTS.INITIAL_CONTENT);
+      localStorage.setItem(StorageKeys.WYSIWYG_PREVIEW, sanitized);
+      
+      debug('[WysiwygEditor] Reset to default content');
+    } catch (error) {
+      logError('[WysiwygEditor] Failed to reset guide:', error);
+    }
+  }, [editor]);
+
   return (
     <div className={styles.container}>
       <div className={styles.editorWrapper}>
@@ -440,6 +461,9 @@ export const WysiwygEditor: React.FC = () => {
             </Button>
             <Button icon="play" variant="primary" onClick={handleTestGuide}>
               Test Guide
+            </Button>
+            <Button icon="arrow-from-right" variant="secondary" onClick={handleResetGuide}>
+              Reset Guide
             </Button>
           </Stack>
           
