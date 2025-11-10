@@ -76,15 +76,13 @@ export const EDITOR_UI_LABELS = {
  */
 export const EDITOR_DEFAULTS = {
   INITIAL_CONTENT: `
-    <h2>Interactive Tutorial Example</h2>
-    <p>Create interactive tutorials with special markup. Try adding a list item and marking it as interactive!</p>
+    <h2>Guide Example</h2>
+    <p>In this guide, you'll learn (things)</p>
 
     <span id="guide-section-1" class="interactive" data-targetaction="sequence" data-reftarget="span#guide-section-1">
       <h3>Section 1: Getting Started</h3>
       <ul>
-        <li>Step 1: Create your first interactive step</li>
-        <li>Step 2: Configure the action type and selector</li>
-        <li>Step 3: Add requirements if needed</li>
+        <li>Do the first step</li>
       </ul>
     </span>
   `,

@@ -2,9 +2,8 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
-import { Button, Stack, Icon } from '@grafana/ui';
+import { Button, Stack, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
-import { useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 
 // Extensions
@@ -416,17 +415,18 @@ export const WysiwygEditor: React.FC = () => {
 
   // Reset editor to default content
   const handleResetGuide = useCallback(() => {
+    console.log('RESET: ');
     if (!editor) {
+      console.log('[WysiwygEditor] No editor found');
       return;
     }
 
-    try {
-      // Reset to default content
-      editor.commands.setContent(EDITOR_DEFAULTS.INITIAL_CONTENT);
-      
-      // Immediately save to localStorage (don't wait for debounce)
+    try {      
       // SECURITY: sanitize before save (F1, F4)
+      console.log('SANITIZE: ', EDITOR_DEFAULTS.INITIAL_CONTENT);
       const sanitized = sanitizeDocumentationHTML(EDITOR_DEFAULTS.INITIAL_CONTENT);
+      console.log('SET: ', sanitized);
+      editor.commands.setContent(sanitized);
       localStorage.setItem(StorageKeys.WYSIWYG_PREVIEW, sanitized);
       
       debug('[WysiwygEditor] Reset to default content');
@@ -436,7 +436,7 @@ export const WysiwygEditor: React.FC = () => {
   }, [editor]);
 
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} wysiwyg-editor-container`}>
       <div className={styles.editorWrapper}>
         <Toolbar
           editor={editor}
@@ -460,10 +460,10 @@ export const WysiwygEditor: React.FC = () => {
               Download
             </Button>
             <Button icon="play" variant="primary" onClick={handleTestGuide}>
-              Test Guide
+              Test
             </Button>
             <Button icon="arrow-from-right" variant="secondary" onClick={handleResetGuide}>
-              Reset Guide
+              Reset
             </Button>
           </Stack>
           

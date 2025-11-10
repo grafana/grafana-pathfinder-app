@@ -84,7 +84,9 @@ export function validateSectionId(id: string): ValidationResult {
  * SECURITY: Uses DOMPurify-based sanitization to prevent XSS (F1)
  */
 export function sanitizeAttributeValue(value: string): string {
-  if (!value) return '';
+  if (!value) {
+    return '';
+  }
 
   // SECURITY: Use DOMPurify-based sanitization from security utilities (F1)
   return sanitizeTextForDisplay(value);
@@ -95,7 +97,7 @@ export function sanitizeAttributeValue(value: string): string {
  * Ensures basic safety without being overly restrictive
  * SECURITY: Checks for common XSS patterns (F1)
  */
-export function validateText(text: string, fieldName: string = 'Text'): ValidationResult {
+export function validateText(text: string, fieldName = 'Text'): ValidationResult {
   if (!text || text.trim() === '') {
     return { valid: false, error: `${fieldName} cannot be empty` };
   }

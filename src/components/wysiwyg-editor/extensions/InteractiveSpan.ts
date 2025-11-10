@@ -126,7 +126,9 @@ export const InteractiveSpan = Node.create<InteractiveSpanOptions>({
       {
         tag: 'span.interactive',
         getAttrs: (node) => {
-          if (typeof node === 'string') return false;
+          if (typeof node === 'string') {
+            return false;
+          }
           const element = node as HTMLElement;
           // Don't match if it's a sequence section
           if (element.getAttribute('data-targetaction') === 'sequence') {

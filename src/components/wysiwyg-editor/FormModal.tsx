@@ -1,7 +1,6 @@
 import React from 'react';
-import { Modal } from '@grafana/ui';
+import { Modal, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
-import { useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { Editor } from '@tiptap/react';
 
