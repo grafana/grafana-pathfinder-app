@@ -103,6 +103,15 @@ export const EDITOR_CONFIG = {
   HTML_WHITESPACE_SENSITIVITY: 'css' as const,
 } as const;
 
+/**
+ * Timing constants for editor operations
+ */
+export const EDITOR_TIMING = {
+  AUTO_SAVE_DEBOUNCE_MS: 1000,
+  SAVING_INDICATOR_DURATION_MS: 1000,
+  DOWNLOAD_CLEANUP_DELAY_MS: 100,
+} as const;
+
 // Type exports for type safety
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
 export type CssClass = (typeof CSS_CLASSES)[keyof typeof CSS_CLASSES];
