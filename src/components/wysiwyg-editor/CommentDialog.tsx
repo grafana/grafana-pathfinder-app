@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, Button, TextArea, useStyles2, Stack } from '@grafana/ui';
+import { Modal, Button, TextArea, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { Editor } from '@tiptap/react';

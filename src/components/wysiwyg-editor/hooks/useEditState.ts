@@ -34,8 +34,12 @@ export function useEditState() {
    */
   const isEditing = useCallback(
     (type?: InteractiveElementType) => {
-      if (!editState) return false;
-      if (!type) return true;
+      if (!editState) {
+        return false;
+      }
+      if (!type) {
+        return true;
+      }
       return editState.type === type;
     },
     [editState]

@@ -1,9 +1,8 @@
 import { useEffect } from 'react';
-import { useEditor } from '@tiptap/react';
+import { useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import { useStyles2 } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
 
 // Extensions
 import {
@@ -31,7 +30,6 @@ import { StorageKeys } from '../../../lib/user-storage';
 import { getEditorStyles } from '../editor.styles';
 
 // Types
-import type { Editor } from '@tiptap/react';
 import type { InteractiveElementType } from '../types';
 
 export interface UseEditorInitializationOptions {

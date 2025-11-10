@@ -20,7 +20,9 @@ export function useKeyboardShortcut(options: KeyboardShortcutOptions): void {
   const { key, handler, enabled = true, ctrlKey, shiftKey, altKey, metaKey } = options;
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const matches =
@@ -47,7 +49,7 @@ export function useKeyboardShortcut(options: KeyboardShortcutOptions): void {
  * @param handler - Callback function to execute when Escape is pressed
  * @param enabled - Whether the hook is active (default: true)
  */
-export function useEscapeKey(handler: KeyboardShortcutHandler, enabled: boolean = true): void {
+export function useEscapeKey(handler: KeyboardShortcutHandler, enabled = true): void {
   useKeyboardShortcut({ key: 'Escape', handler, enabled });
 }
 

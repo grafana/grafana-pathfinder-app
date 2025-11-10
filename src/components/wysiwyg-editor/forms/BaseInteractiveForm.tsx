@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Field, Input, Checkbox, Button, Stack } from '@grafana/ui';
-import { useStyles2 } from '@grafana/ui';
+import { Field, Input, Checkbox, Button, Stack, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { type InteractiveFormProps } from './types';
