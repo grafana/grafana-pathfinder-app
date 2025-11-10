@@ -1,28 +1,16 @@
 /**
  * Attribute Service
- * Centralizes attribute validation, transformation, and utilities
+ * Centralizes attribute transformation and utilities
+ * Note: Validation functions have been moved to validation.ts
  */
 
-import type { InteractiveAttributesInput, InteractiveAttributesOutput } from '../forms/types';
-import { DATA_ATTRIBUTES, DEFAULT_VALUES, ACTION_TYPES } from '../../../constants/interactive-config';
-import { validateNavigationUrl } from './validation';
+import type { InteractiveAttributesInput, InteractiveAttributesOutput } from '../types';
+import { DATA_ATTRIBUTES, DEFAULT_VALUES } from '../../../constants/interactive-config';
 import { sanitizeTextForDisplay } from '../../../security';
 
-/**
- * Validation error
- */
-export interface ValidationError {
-  field: string;
-  message: string;
-}
-
-/**
- * Attribute validation result
- */
-export interface AttributeValidationResult {
-  valid: boolean;
-  errors: ValidationError[];
-}
+// Re-export validation types and functions for backward compatibility
+export type { ValidationError, AttributeValidationResult } from './validation';
+export { validateAttributes } from './validation';
 
 /**
  * Transform UI input attributes to HTML output attributes
@@ -53,58 +41,6 @@ export function transformOutputToInput(
     'data-doit': output['data-doit'] === DEFAULT_VALUES.DO_IT_FALSE,
     class: output.class || '',
     id: output.id || '',
-  };
-}
-
-/**
- * Validate attributes for a specific action type
- */
-export function validateAttributes(
-  actionType: string,
-  attributes: Partial<InteractiveAttributesOutput>
-): AttributeValidationResult {
-  const errors: ValidationError[] = [];
-
-  // Validate action type
-  if (!actionType) {
-    errors.push({ field: 'data-targetaction', message: 'Action type is required' });
-  } else if (!Object.values(ACTION_TYPES).includes(actionType as any)) {
-    errors.push({ field: 'data-targetaction', message: `Invalid action type: ${actionType}` });
-  }
-
-  // Action-specific validation
-  switch (actionType) {
-    case ACTION_TYPES.BUTTON:
-    case ACTION_TYPES.HIGHLIGHT:
-    case ACTION_TYPES.FORM_FILL:
-    case ACTION_TYPES.HOVER:
-      if (!attributes['data-reftarget'] || attributes['data-reftarget'].trim() === '') {
-        errors.push({ field: 'data-reftarget', message: 'Reference target is required' });
-      }
-      break;
-
-    case ACTION_TYPES.NAVIGATE:
-      if (!attributes['data-reftarget'] || attributes['data-reftarget'].trim() === '') {
-        errors.push({ field: 'data-reftarget', message: 'Navigation path is required' });
-      } else {
-        // SECURITY: Validate URL against dangerous schemes (F4, F6)
-        const urlValidation = validateNavigationUrl(attributes['data-reftarget']);
-        if (!urlValidation.valid) {
-          errors.push({ field: 'data-reftarget', message: urlValidation.error || 'Invalid navigation URL' });
-        }
-      }
-      break;
-
-    case ACTION_TYPES.SEQUENCE:
-      if (!attributes.id || attributes.id.trim() === '') {
-        errors.push({ field: 'id', message: 'Section ID is required for sequence actions' });
-      }
-      break;
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
   };
 }
 

@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { Field, Input, Checkbox, Button, Stack, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { type InteractiveFormProps } from './types';
-import { COMMON_REQUIREMENTS, DATA_ATTRIBUTES, ACTION_TYPES } from '../../../constants/interactive-config';
-import { validateCssSelector, validateText, validateRequirement, validateNavigationUrl } from '../services/validation';
+import { type InteractiveFormProps } from '../types';
+import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { validateFormField } from '../services/validation';
 
 export interface FormField {
   id: string;
@@ -100,66 +100,8 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
   };
 
   const validateField = (field: FormField, value: any): string | null => {
-    if (field.type === 'checkbox') {
-      return null; // Checkboxes don't need validation
-    }
-
-    const stringValue = String(value || '').trim();
-
-    // Skip validation for optional empty fields
-    if (!field.required && stringValue === '') {
-      return null;
-    }
-
-    // Required field validation
-    if (field.required && stringValue === '') {
-      return `${field.label.replace(':', '')} is required`;
-    }
-
-    // Validate based on field type/purpose
-    // SECURITY: URL validation for navigate actions (F4, F6)
-    if (
-      field.id === DATA_ATTRIBUTES.REF_TARGET &&
-      config.actionType === ACTION_TYPES.NAVIGATE
-    ) {
-      const result = validateNavigationUrl(stringValue);
-      if (!result.valid) {
-        return result.error || 'Invalid navigation URL';
-      }
-    }
-    // CSS selectors (data-reftarget for highlight, formfill, hover)
-    else if (
-      field.id === DATA_ATTRIBUTES.REF_TARGET &&
-      config.actionType !== 'button' &&
-      config.actionType !== ACTION_TYPES.NAVIGATE
-    ) {
-      const result = validateCssSelector(stringValue);
-      if (!result.valid) {
-        return result.error || 'Invalid selector';
-      }
-    }
-
-    // Requirements field
-    if (field.id === DATA_ATTRIBUTES.REQUIREMENTS && stringValue !== '') {
-      const result = validateRequirement(stringValue);
-      if (!result.valid) {
-        return result.error || 'Invalid requirement';
-      }
-    }
-
-    // Button text and other text fields (only if not already validated above)
-    if (
-      field.id === DATA_ATTRIBUTES.REF_TARGET &&
-      stringValue !== '' &&
-      config.actionType === 'button'
-    ) {
-      const result = validateText(stringValue, field.label.replace(':', ''));
-      if (!result.valid) {
-        return result.error || 'Invalid text';
-      }
-    }
-
-    return null;
+    // Use centralized validation function from validation service
+    return validateFormField(field, value, config.actionType);
   };
 
   const handleApply = () => {

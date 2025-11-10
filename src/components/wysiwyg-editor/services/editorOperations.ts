@@ -6,7 +6,7 @@
 
 import type { Editor } from '@tiptap/react';
 import type { InteractiveElementType } from '../types';
-import type { InteractiveAttributesOutput } from '../forms/types';
+import type { InteractiveAttributesOutput } from '../types';
 import { buildInteractiveAttributes, getNodeTypeName } from './attributeBuilder';
 
 /**

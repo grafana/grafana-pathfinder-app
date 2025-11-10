@@ -4,7 +4,7 @@
  */
 
 import type { InteractiveElementType } from '../types';
-import type { InteractiveAttributesOutput } from '../forms/types';
+import type { InteractiveAttributesOutput } from '../types';
 import { CSS_CLASSES, NODE_TYPES } from '../../../constants/editor-config';
 
 /**

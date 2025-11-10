@@ -4,10 +4,43 @@
  */
 
 import { parseUrlSafely, sanitizeTextForDisplay } from '../../../security';
+import type { InteractiveAttributesOutput } from '../types';
+import { ACTION_TYPES, DATA_ATTRIBUTES } from '../../../constants/interactive-config';
+
+/**
+ * Form field definition for validation
+ */
+export interface FormField {
+  id: string;
+  label: string;
+  type: 'text' | 'checkbox';
+  placeholder?: string;
+  hint?: string;
+  defaultValue?: string | boolean;
+  required?: boolean;
+  autoFocus?: boolean;
+  showCommonOptions?: boolean;
+}
 
 export interface ValidationResult {
   valid: boolean;
   error?: string;
+}
+
+/**
+ * Validation error with field information
+ */
+export interface ValidationError {
+  field: string;
+  message: string;
+}
+
+/**
+ * Attribute validation result with multiple errors
+ */
+export interface AttributeValidationResult {
+  valid: boolean;
+  errors: ValidationError[];
 }
 
 /**
@@ -255,5 +288,130 @@ export function validateNavigationUrl(url: string): ValidationResult {
   }
 
   return { valid: true };
+}
+
+/**
+ * Validate attributes for a specific action type
+ * Centralized validation for all interactive element attributes
+ */
+export function validateAttributes(
+  actionType: string,
+  attributes: Partial<InteractiveAttributesOutput>
+): AttributeValidationResult {
+  const errors: ValidationError[] = [];
+
+  // Validate action type
+  if (!actionType) {
+    errors.push({ field: 'data-targetaction', message: 'Action type is required' });
+  } else if (!Object.values(ACTION_TYPES).includes(actionType as any)) {
+    errors.push({ field: 'data-targetaction', message: `Invalid action type: ${actionType}` });
+  }
+
+  // Action-specific validation
+  switch (actionType) {
+    case ACTION_TYPES.BUTTON:
+    case ACTION_TYPES.HIGHLIGHT:
+    case ACTION_TYPES.FORM_FILL:
+    case ACTION_TYPES.HOVER:
+      if (!attributes['data-reftarget'] || attributes['data-reftarget'].trim() === '') {
+        errors.push({ field: 'data-reftarget', message: 'Reference target is required' });
+      }
+      break;
+
+    case ACTION_TYPES.NAVIGATE:
+      if (!attributes['data-reftarget'] || attributes['data-reftarget'].trim() === '') {
+        errors.push({ field: 'data-reftarget', message: 'Navigation path is required' });
+      } else {
+        // SECURITY: Validate URL against dangerous schemes (F4, F6)
+        const urlValidation = validateNavigationUrl(attributes['data-reftarget']);
+        if (!urlValidation.valid) {
+          errors.push({ field: 'data-reftarget', message: urlValidation.error || 'Invalid navigation URL' });
+        }
+      }
+      break;
+
+    case ACTION_TYPES.SEQUENCE:
+      if (!attributes.id || attributes.id.trim() === '') {
+        errors.push({ field: 'id', message: 'Section ID is required for sequence actions' });
+      }
+      break;
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+/**
+ * Validate a single form field based on its type and the action type
+ * Centralized field validation logic extracted from BaseInteractiveForm
+ * 
+ * @param field - The form field definition
+ * @param value - The field value to validate
+ * @param actionType - The action type for context-specific validation
+ * @returns Error message string if invalid, null if valid
+ */
+export function validateFormField(field: FormField, value: any, actionType: string): string | null {
+  if (field.type === 'checkbox') {
+    return null; // Checkboxes don't need validation
+  }
+
+  const stringValue = String(value || '').trim();
+
+  // Skip validation for optional empty fields
+  if (!field.required && stringValue === '') {
+    return null;
+  }
+
+  // Required field validation
+  if (field.required && stringValue === '') {
+    return `${field.label.replace(':', '')} is required`;
+  }
+
+  // Validate based on field type/purpose
+  // SECURITY: URL validation for navigate actions (F4, F6)
+  if (
+    field.id === DATA_ATTRIBUTES.REF_TARGET &&
+    actionType === ACTION_TYPES.NAVIGATE
+  ) {
+    const result = validateNavigationUrl(stringValue);
+    if (!result.valid) {
+      return result.error || 'Invalid navigation URL';
+    }
+  }
+  // CSS selectors (data-reftarget for highlight, formfill, hover)
+  else if (
+    field.id === DATA_ATTRIBUTES.REF_TARGET &&
+    actionType !== ACTION_TYPES.BUTTON &&
+    actionType !== ACTION_TYPES.NAVIGATE
+  ) {
+    const result = validateCssSelector(stringValue);
+    if (!result.valid) {
+      return result.error || 'Invalid selector';
+    }
+  }
+
+  // Requirements field
+  if (field.id === DATA_ATTRIBUTES.REQUIREMENTS && stringValue !== '') {
+    const result = validateRequirement(stringValue);
+    if (!result.valid) {
+      return result.error || 'Invalid requirement';
+    }
+  }
+
+  // Button text and other text fields (only if not already validated above)
+  if (
+    field.id === DATA_ATTRIBUTES.REF_TARGET &&
+    stringValue !== '' &&
+    actionType === ACTION_TYPES.BUTTON
+  ) {
+    const result = validateText(stringValue, field.label.replace(':', ''));
+    if (!result.valid) {
+      return result.error || 'Invalid text';
+    }
+  }
+
+  return null;
 }
 
