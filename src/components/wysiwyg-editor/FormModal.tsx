@@ -41,19 +41,27 @@ const getStyles = (theme: GrafanaTheme2) => ({
  */
 const insertNewInteractiveElement = (editor: Editor, attributes: Record<string, any>) => {
   const actionType = attributes['data-targetaction'];
-  debug('[FormModal] Inserting interactive element', { actionType, attributes });
+  const { from, to } = editor.state.selection;
+  const hasSelection = from !== to;
+  
+  debug('[FormModal] Inserting interactive element', { 
+    actionType, 
+    attributes, 
+    hasSelection,
+    selectionRange: { from, to }
+  });
 
   try {
-    // Determine element type and insertion strategy based on action type
     if (actionType === ACTION_TYPES.SEQUENCE) {
-      // Sequence sections are block-level elements
-      // Validate insertion is possible at current position
+      // Sequence sections: Insert BEFORE selection without destroying it
+      const insertPos = hasSelection ? from : undefined;
+      
       if (!editor.can().insertContent({ type: 'sequenceSection' })) {
         logError('[FormModal] Cannot insert sequence section at current position');
         throw new Error('Cannot insert sequence section at current cursor position');
       }
 
-      editor.chain().focus().insertContent({
+      const sequenceContent = {
         type: 'sequenceSection',
         attrs: attributes,
         content: [
@@ -67,49 +75,89 @@ const insertNewInteractiveElement = (editor: Editor, attributes: Record<string, 
             content: [{ type: 'text', text: 'Add content here...' }],
           },
         ],
-      }).run();
+      };
+
+      if (insertPos !== undefined) {
+        // Insert before selection
+        editor.chain().focus().insertContentAt(insertPos, sequenceContent).run();
+      } else {
+        // Insert at cursor
+        editor.chain().focus().insertContent(sequenceContent).run();
+      }
+      
     } else if (actionType === ACTION_TYPES.MULTISTEP) {
-      // Multistep actions are list items (must be wrapped in bulletList)
-      // Validate insertion is possible at current position
+      // Multistep: Wrap selection in listItem if present
       if (!editor.can().insertContent({ type: 'bulletList' })) {
         logError('[FormModal] Cannot insert bullet list at current position');
         throw new Error('Cannot insert multistep action at current cursor position');
       }
 
-      editor.chain().focus().insertContent({
-        type: 'bulletList',
-        content: [{
-          type: 'listItem',
-          attrs: attributes,
-          content: [
-            {
+      if (hasSelection) {
+        // Replace selection with bulletList containing selected content
+        const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
+        editor.chain().focus().insertContentAt(
+          { from, to },
+          {
+            type: 'bulletList',
+            content: [{
+              type: 'listItem',
+              attrs: attributes,
+              content: [{
+                type: 'paragraph',
+                content: selectedContent,
+              }],
+            }],
+          }
+        ).run();
+      } else {
+        // Insert at cursor with default text
+        editor.chain().focus().insertContent({
+          type: 'bulletList',
+          content: [{
+            type: 'listItem',
+            attrs: attributes,
+            content: [{
               type: 'paragraph',
               content: [{ type: 'text', text: 'Action description' }],
-            },
-          ],
-        }],
-      }).run();
+            }],
+          }],
+        }).run();
+      }
+      
     } else {
-      // Other actions are inline spans (nodes, not marks)
+      // Inline spans: Wrap selection if present, otherwise use default text
       const displayText = attributes['data-reftarget'] || 'Interactive action';
       
-      // Validate insertion is possible at current position
       if (!editor.can().insertContent({ type: 'interactiveSpan' })) {
         logError('[FormModal] Cannot insert interactive span at current position');
         throw new Error('Cannot insert interactive action at current cursor position');
       }
 
-      editor.chain().focus().insertContent({
-        type: 'interactiveSpan',
-        attrs: attributes,
-        content: [{ type: 'text', text: displayText }],
-      }).run();
+      if (hasSelection) {
+        // Wrap selected content in interactiveSpan
+        const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
+        editor.chain().focus().insertContentAt(
+          { from, to },
+          {
+            type: 'interactiveSpan',
+            attrs: attributes,
+            content: selectedContent,
+          }
+        ).run();
+      } else {
+        // Insert with default text at cursor
+        editor.chain().focus().insertContent({
+          type: 'interactiveSpan',
+          attrs: attributes,
+          content: [{ type: 'text', text: displayText }],
+        }).run();
+      }
     }
 
-    debug('[FormModal] Element inserted successfully', { actionType });
+    debug('[FormModal] Element inserted successfully', { actionType, hasSelection });
   } catch (err) {
     logError('[FormModal] Failed to insert interactive element:', err);
-    throw err; // Re-throw so caller can handle
+    throw err;
   }
 };
 
