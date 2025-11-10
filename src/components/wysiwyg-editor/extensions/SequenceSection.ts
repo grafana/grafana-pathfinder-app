@@ -4,6 +4,7 @@ import {
   createClassAttribute,
   createTargetActionAttribute,
   createRefTargetAttribute,
+  createTargetValueAttribute,
   createRequirementsAttribute,
 } from './shared/attributes';
 import { createSequenceSectionNodeView } from './shared/nodeViewFactory';
@@ -80,6 +81,7 @@ export const SequenceSection = Node.create<SequenceSectionOptions>({
       class: createClassAttribute('interactive'),
       'data-targetaction': createTargetActionAttribute('sequence'),
       'data-reftarget': createRefTargetAttribute(),
+      'data-targetvalue': createTargetValueAttribute(),
       'data-requirements': createRequirementsAttribute(),
     };
   },

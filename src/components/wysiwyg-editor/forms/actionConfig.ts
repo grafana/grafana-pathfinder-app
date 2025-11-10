@@ -94,6 +94,14 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
         autoFocus: true,
       },
       {
+        id: DATA_ATTRIBUTES.TARGET_VALUE,
+        label: 'Value to Set:',
+        type: 'text',
+        placeholder: 'e.g., http://prometheus:9090, my-datasource',
+        hint: 'The value to fill into the input field',
+        required: true,
+      },
+      {
         id: DATA_ATTRIBUTES.REQUIREMENTS,
         label: 'Requirements:',
         type: 'text',
@@ -105,6 +113,7 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
     buildAttributes: (values) => ({
       [DATA_ATTRIBUTES.TARGET_ACTION]: ACTION_TYPES.FORM_FILL,
       [DATA_ATTRIBUTES.REF_TARGET]: values[DATA_ATTRIBUTES.REF_TARGET],
+      [DATA_ATTRIBUTES.TARGET_VALUE]: values[DATA_ATTRIBUTES.TARGET_VALUE],
       [DATA_ATTRIBUTES.REQUIREMENTS]: values[DATA_ATTRIBUTES.REQUIREMENTS],
       class: DEFAULT_VALUES.CLASS,
     }),

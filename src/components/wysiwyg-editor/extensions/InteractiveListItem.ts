@@ -3,6 +3,7 @@ import {
   createClassAttribute,
   createTargetActionAttribute,
   createRefTargetAttribute,
+  createTargetValueAttribute,
   createRequirementsAttribute,
   createDoItAttribute,
 } from './shared/attributes';
@@ -35,6 +36,7 @@ export const InteractiveListItem = ListItem.extend<InteractiveListItemOptions>({
       class: createClassAttribute(null),
       'data-targetaction': createTargetActionAttribute(),
       'data-reftarget': createRefTargetAttribute(),
+      'data-targetvalue': createTargetValueAttribute(),
       'data-requirements': createRequirementsAttribute(),
       'data-doit': createDoItAttribute(),
     };

@@ -68,6 +68,22 @@ export function createRefTargetAttribute() {
 }
 
 /**
+ * Creates the 'data-targetvalue' attribute configuration
+ */
+export function createTargetValueAttribute() {
+  return {
+    default: null,
+    parseHTML: (element: HTMLElement) => element.getAttribute('data-targetvalue'),
+    renderHTML: (attributes: Record<string, any>) => {
+      if (!attributes['data-targetvalue']) {
+        return {};
+      }
+      return { 'data-targetvalue': attributes['data-targetvalue'] };
+    },
+  };
+}
+
+/**
  * Creates the 'data-requirements' attribute configuration
  */
 export function createRequirementsAttribute() {

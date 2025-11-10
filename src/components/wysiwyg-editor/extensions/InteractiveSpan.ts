@@ -4,6 +4,7 @@ import {
   createIdAttribute,
   createTargetActionAttribute,
   createRefTargetAttribute,
+  createTargetValueAttribute,
   createRequirementsAttribute,
 } from './shared/attributes';
 import { createSpanNodeView } from './shared/nodeViewFactory';
@@ -82,6 +83,7 @@ export const InteractiveSpan = Node.create<InteractiveSpanOptions>({
       id: createIdAttribute(),
       'data-targetaction': createTargetActionAttribute(),
       'data-reftarget': createRefTargetAttribute(),
+      'data-targetvalue': createTargetValueAttribute(),
       'data-requirements': createRequirementsAttribute(),
     };
   },

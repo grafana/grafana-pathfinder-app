@@ -25,6 +25,7 @@ const ALLOWED_ATTRIBUTES = [
   'id',
   'data-targetaction',
   'data-reftarget',
+  'data-targetvalue',
   'data-requirements',
   'data-doit',
   'role',
