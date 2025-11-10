@@ -174,7 +174,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onClick={onAddInteractive}
           tooltip="Add Interactive Action"
         >
-          Add Action
+          Action
         </Button>
         <Button
           icon="layers-alt"
@@ -183,7 +183,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onClick={onAddSequence}
           tooltip="Add Sequence Section"
         >
-          Add Section
+          Section
         </Button>
         <Button
           icon="comment-alt"
