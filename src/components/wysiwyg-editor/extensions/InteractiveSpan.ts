@@ -14,6 +14,39 @@ import {
   createSetInlineNodeCommand,
 } from './shared/commandHelpers';
 
+/**
+ * Check if the current selection is inside a list item within a sequence section
+ * This helper works with TipTap's state object (used in commands)
+ */
+function isInsideSequenceSectionListItemFromState(state: any): boolean {
+  const { $from } = state.selection;
+  let foundListItem = false;
+  let foundSequenceSection = false;
+
+  // Walk up the node hierarchy
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth);
+    const nodeType = node.type.name;
+
+    // First, check if we're inside a list item
+    if (nodeType === 'listItem') {
+      foundListItem = true;
+    }
+
+    // Then check if we're inside a sequence section
+    if (nodeType === 'sequenceSection') {
+      foundSequenceSection = true;
+    }
+
+    // If we found both, we're in the right context
+    if (foundListItem && foundSequenceSection) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export interface InteractiveSpanOptions {
   HTMLAttributes: Record<string, any>;
 }
@@ -116,9 +149,64 @@ export const InteractiveSpan = Node.create<InteractiveSpanOptions>({
   },
 
   addCommands() {
+    const baseSetCommand = createSetInlineNodeCommand(this.name, [{ type: 'text', text: 'Interactive text' }]);
+    const baseToggleCommand = createToggleInlineNodeCommand(this.name, { class: 'interactive' });
+
     return {
-      setInteractiveSpan: createSetInlineNodeCommand(this.name, [{ type: 'text', text: 'Interactive text' }]),
-      toggleInteractiveSpan: createToggleInlineNodeCommand(this.name, { class: 'interactive' }),
+      setInteractiveSpan: (attributes: Record<string, any> = {}) =>
+        ({ commands, state, chain }: any) => {
+          // Check if we're inside a list item within a sequence section
+          if (isInsideSequenceSectionListItemFromState(state)) {
+            // Convert to interactive list item instead
+            const listItemAttributes = {
+              ...attributes,
+              class: attributes.class || 'interactive',
+            };
+            return commands.updateAttributes('listItem', listItemAttributes);
+          }
+
+          // Normal span behavior
+          return baseSetCommand(attributes)({ commands, state, chain });
+        },
+      toggleInteractiveSpan: () =>
+        ({ commands, state, chain }: any) => {
+          // Check if we're inside a list item within a sequence section
+          if (isInsideSequenceSectionListItemFromState(state)) {
+            const { $from } = state.selection;
+            
+            // Check if the list item already has interactive attributes
+            let listItemNode = null;
+            for (let depth = $from.depth; depth > 0; depth--) {
+              const node = $from.node(depth);
+              if (node.type.name === 'listItem') {
+                listItemNode = node;
+                break;
+              }
+            }
+
+            if (listItemNode) {
+              const hasInteractive = listItemNode.attrs.class?.includes('interactive');
+              if (hasInteractive) {
+                // Remove interactive attributes
+                return commands.updateAttributes('listItem', {
+                  class: null,
+                  'data-targetaction': null,
+                  'data-reftarget': null,
+                  'data-targetvalue': null,
+                  'data-requirements': null,
+                });
+              } else {
+                // Add interactive attributes with default class
+                return commands.updateAttributes('listItem', {
+                  class: 'interactive',
+                });
+              }
+            }
+          }
+
+          // Normal toggle behavior
+          return baseToggleCommand()({ commands, state, chain });
+        },
       unsetInteractiveSpan: createUnsetInlineNodeCommand(this.name),
     };
   },

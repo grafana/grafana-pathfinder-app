@@ -168,3 +168,40 @@ export function getCurrentNode(
   return null;
 }
 
+/**
+ * Check if the current selection is inside a list item within a sequence section
+ * This is used to automatically convert interactive spans to interactive list items
+ * when they're created inside sequence sections, ensuring proper HTML structure.
+ *
+ * @param editor - Tiptap editor instance
+ * @returns true if cursor is in a list item that's inside a sequence section
+ */
+export function isInsideSequenceSectionListItem(editor: Editor): boolean {
+  const { $from } = editor.state.selection;
+  let foundListItem = false;
+  let foundSequenceSection = false;
+
+  // Walk up the node hierarchy
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth);
+    const nodeType = node.type.name;
+
+    // First, check if we're inside a list item
+    if (nodeType === 'listItem') {
+      foundListItem = true;
+    }
+
+    // Then check if we're inside a sequence section
+    if (nodeType === 'sequenceSection') {
+      foundSequenceSection = true;
+    }
+
+    // If we found both, we're in the right context
+    if (foundListItem && foundSequenceSection) {
+      return true;
+    }
+  }
+
+  return false;
+}
+

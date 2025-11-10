@@ -17,6 +17,7 @@ import SequenceActionForm from './forms/SequenceActionForm';
 import { EditState } from './types';
 import { ACTION_TYPES } from '../../constants/interactive-config';
 import { debug, error as logError } from './utils/logger';
+import { isInsideSequenceSectionListItem } from './services/editorOperations';
 
 interface FormModalProps {
   isOpen: boolean;
@@ -125,7 +126,30 @@ const insertNewInteractiveElement = (editor: Editor, attributes: Record<string, 
       }
       
     } else {
-      // Inline spans: Wrap selection if present, otherwise use default text
+      // Inline spans: Check if we're inside a list item within a sequence section
+      // If so, convert to interactive list item instead of creating a span
+      if (isInsideSequenceSectionListItem(editor)) {
+        debug('[FormModal] Converting interactive span to list item (inside sequence section)');
+        
+        // Apply attributes directly to the list item
+        // Ensure class="interactive" is included
+        const listItemAttributes = {
+          ...attributes,
+          class: attributes.class || 'interactive',
+        };
+        
+        const success = editor.chain().focus().updateAttributes('listItem', listItemAttributes).run();
+        
+        if (!success) {
+          logError('[FormModal] Failed to convert to interactive list item');
+          throw new Error('Cannot convert to interactive list item at current position');
+        }
+        
+        debug('[FormModal] Successfully converted to interactive list item');
+        return;
+      }
+      
+      // Normal inline span behavior (not in sequence section)
       const displayText = attributes['data-reftarget'] || 'Interactive action';
       
       if (!editor.can().insertContent({ type: 'interactiveSpan' })) {
