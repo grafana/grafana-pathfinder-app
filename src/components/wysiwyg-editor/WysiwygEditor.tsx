@@ -18,6 +18,7 @@ import {
 // Components
 import Toolbar from './Toolbar';
 import FormModal from './FormModal';
+import CommentDialog from './CommentDialog';
 
 // Hooks
 import { useEditState } from './hooks/useEditState';
@@ -94,6 +95,7 @@ export const WysiwygEditor: React.FC = () => {
   const editorStyles = useStyles2(getEditorStyles);
   const { editState, startEditing, stopEditing } = useEditState();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCommentDialogOpen, setIsCommentDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -313,17 +315,37 @@ export const WysiwygEditor: React.FC = () => {
       return;
     }
 
-    const { from, to } = editor.state.selection;
-    
-    // Only add comment if text is selected
-    if (from === to) {
-      // TODO: Show toast notification
-      debug('[WysiwygEditor] No text selected for comment');
+    // Open comment dialog
+    setIsCommentDialogOpen(true);
+  };
+
+  // Handle inserting comment from dialog
+  const handleInsertComment = (commentText: string) => {
+    if (!editor || !commentText.trim()) {
       return;
     }
 
-    // Toggle comment on selected text
-    editor.chain().focus().toggleInteractiveComment().run();
+    debug('[WysiwygEditor] Inserting comment', { commentText });
+
+    try {
+      // Insert comment at cursor position
+      // TipTap will automatically handle the text content
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: 'interactiveComment',
+          attrs: {
+            class: 'interactive-comment',
+          },
+          content: [{ type: 'text', text: commentText }],
+        })
+        .run();
+
+      debug('[WysiwygEditor] Comment inserted successfully');
+    } catch (error) {
+      logError('[WysiwygEditor] Failed to insert comment:', error);
+    }
   };
 
   // Copy HTML to clipboard
@@ -481,6 +503,13 @@ export const WysiwygEditor: React.FC = () => {
         editor={editor}
         editState={editState}
         onFormSubmit={handleFormSubmit}
+      />
+
+      <CommentDialog
+        isOpen={isCommentDialogOpen}
+        onClose={() => setIsCommentDialogOpen(false)}
+        editor={editor}
+        onInsert={handleInsertComment}
       />
     </div>
   );
