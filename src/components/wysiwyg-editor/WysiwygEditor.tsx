@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
-import { Button, Stack } from '@grafana/ui';
+import { Button, Stack, Icon } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
@@ -32,6 +32,9 @@ import { sanitizeDocumentationHTML } from '../../security';
 
 // Constants
 import { EDITOR_DEFAULTS } from '../../constants/editor-config';
+
+// Storage
+import { StorageKeys } from '../../lib/user-storage';
 
 // Styles
 import { getEditorStyles } from './editor.styles';
@@ -72,6 +75,13 @@ const getStyles = (theme: GrafanaTheme2) => ({
     margin: 0,
     color: theme.colors.text.primary,
   }),
+  savingIndicator: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.success.text,
+  }),
 });
 
 /**
@@ -85,6 +95,8 @@ export const WysiwygEditor: React.FC = () => {
   const editorStyles = useStyles2(getEditorStyles);
   const { editState, startEditing, stopEditing } = useEditState();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize Tiptap editor with all extensions
   const editor = useEditor({
@@ -127,13 +139,81 @@ export const WysiwygEditor: React.FC = () => {
         },
       }),
     ],
-    content: EDITOR_DEFAULTS.INITIAL_CONTENT,
     editorProps: {
       attributes: {
         class: `ProseMirror ${editorStyles.proseMirror}`,
       },
     },
   });
+
+  // Load saved content from localStorage on mount (or use default if empty)
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    try {
+      const savedContent = localStorage.getItem(StorageKeys.WYSIWYG_PREVIEW);
+      
+      if (savedContent && savedContent.trim() !== '') {
+        // SECURITY: sanitize on load (defense in depth, F1, F4)
+        const sanitized = sanitizeDocumentationHTML(savedContent);
+        debug('[WysiwygEditor] Loading saved content from localStorage');
+        editor.commands.setContent(sanitized);
+      } else {
+        // No saved content, use default
+        debug('[WysiwygEditor] No saved content, using defaults');
+        editor.commands.setContent(EDITOR_DEFAULTS.INITIAL_CONTENT);
+      }
+    } catch (error) {
+      logError('[WysiwygEditor] Failed to load saved content:', error);
+      // Fallback to default on error
+      editor.commands.setContent(EDITOR_DEFAULTS.INITIAL_CONTENT);
+    }
+  }, [editor]);
+
+  // Auto-save to localStorage on content change (debounced)
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    const handleUpdate = () => {
+      // Clear existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      // Set new timeout (debounce 1 second)
+      saveTimeoutRef.current = setTimeout(() => {
+        try {
+          const html = editor.getHTML();
+          
+          // SECURITY: sanitize before save (F1, F4)
+          const sanitized = sanitizeDocumentationHTML(html);
+          localStorage.setItem(StorageKeys.WYSIWYG_PREVIEW, sanitized);
+          
+          setIsSaving(true);
+          
+          // Clear saving indicator after 1 second
+          setTimeout(() => setIsSaving(false), 1000);
+          
+          debug('[WysiwygEditor] Auto-saved to localStorage');
+        } catch (error) {
+          logError('[WysiwygEditor] Failed to auto-save:', error);
+        }
+      }, 1000);
+    };
+
+    editor.on('update', handleUpdate);
+
+    return () => {
+      editor.off('update', handleUpdate);
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [editor]);
 
   // Handle form submission
   const handleFormSubmit = (attributes: Record<string, any>) => {
@@ -303,6 +383,37 @@ export const WysiwygEditor: React.FC = () => {
     }
   };
 
+  // Test Guide in Pathfinder
+  const handleTestGuide = useCallback(() => {
+    if (!editor) {
+      return;
+    }
+
+    try {
+      const html = editor.getHTML();
+      
+      // SECURITY: sanitize HTML before preview to prevent XSS (F1, F4)
+      const sanitized = sanitizeDocumentationHTML(html);
+      
+      // Save to localStorage (overwrites auto-saved version with sanitized)
+      localStorage.setItem(StorageKeys.WYSIWYG_PREVIEW, sanitized);
+      
+      // Dispatch custom event to open in Pathfinder
+      const event = new CustomEvent('pathfinder-auto-open-docs', {
+        detail: {
+          url: 'bundled:wysiwyg-preview',
+          title: 'Preview: WYSIWYG Guide',
+          origin: 'wysiwyg-editor',
+        },
+      });
+      document.dispatchEvent(event);
+      
+      debug('[WysiwygEditor] Dispatched test guide event');
+    } catch (error) {
+      logError('[WysiwygEditor] Failed to test guide:', error);
+    }
+  }, [editor]);
+
   return (
     <div className={styles.container}>
       <div className={styles.editorWrapper}>
@@ -319,13 +430,24 @@ export const WysiwygEditor: React.FC = () => {
       </div>
 
       <div className={styles.actions}>
-        <Stack gap={1}>
-          <Button icon="copy" variant="secondary" onClick={handleCopyHTML}>
-            Copy
-          </Button>
-          <Button icon="download-alt" variant="secondary" onClick={handleDownloadHTML}>
-            Download
-          </Button>
+        <Stack gap={1} direction="row" justifyContent="space-between" alignItems="center">
+          <Stack gap={1}>
+            <Button icon="copy" variant="secondary" onClick={handleCopyHTML}>
+              Copy
+            </Button>
+            <Button icon="download-alt" variant="secondary" onClick={handleDownloadHTML}>
+              Download
+            </Button>
+            <Button icon="play" variant="primary" onClick={handleTestGuide}>
+              Test Guide
+            </Button>
+          </Stack>
+          
+          {isSaving && (
+            <span className={styles.savingIndicator}>
+              <Icon name="check" size="sm" /> Saved
+            </span>
+          )}
         </Stack>
       </div>
 

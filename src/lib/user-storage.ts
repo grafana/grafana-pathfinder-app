@@ -47,6 +47,7 @@ export const StorageKeys = {
   TABS: 'grafana-pathfinder-app-tabs',
   ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
   INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: grafana-pathfinder-app-interactive-steps-{contentKey}-{sectionId}
+  WYSIWYG_PREVIEW: 'pathfinder:editor:preview',
 } as const;
 
 // Timestamp suffix for conflict resolution
