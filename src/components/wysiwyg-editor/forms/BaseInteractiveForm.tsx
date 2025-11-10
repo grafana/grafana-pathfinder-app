@@ -4,8 +4,8 @@ import { useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { type InteractiveFormProps } from './types';
-import { COMMON_REQUIREMENTS, DATA_ATTRIBUTES } from '../../../constants/interactive-config';
-import { validateCssSelector, validateText, validateRequirement } from '../services/validation';
+import { COMMON_REQUIREMENTS, DATA_ATTRIBUTES, ACTION_TYPES } from '../../../constants/interactive-config';
+import { validateCssSelector, validateText, validateRequirement, validateNavigationUrl } from '../services/validation';
 
 export interface FormField {
   id: string;
@@ -118,11 +118,21 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
     }
 
     // Validate based on field type/purpose
-    // CSS selectors (data-reftarget for highlight, formfill, hover)
+    // SECURITY: URL validation for navigate actions (F4, F6)
     if (
       field.id === DATA_ATTRIBUTES.REF_TARGET &&
+      config.actionType === ACTION_TYPES.NAVIGATE
+    ) {
+      const result = validateNavigationUrl(stringValue);
+      if (!result.valid) {
+        return result.error || 'Invalid navigation URL';
+      }
+    }
+    // CSS selectors (data-reftarget for highlight, formfill, hover)
+    else if (
+      field.id === DATA_ATTRIBUTES.REF_TARGET &&
       config.actionType !== 'button' &&
-      config.actionType !== 'navigate'
+      config.actionType !== ACTION_TYPES.NAVIGATE
     ) {
       const result = validateCssSelector(stringValue);
       if (!result.valid) {
@@ -138,8 +148,12 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
       }
     }
 
-    // Button text and other text fields
-    if (field.id === DATA_ATTRIBUTES.REF_TARGET && stringValue !== '') {
+    // Button text and other text fields (only if not already validated above)
+    if (
+      field.id === DATA_ATTRIBUTES.REF_TARGET &&
+      stringValue !== '' &&
+      config.actionType === 'button'
+    ) {
       const result = validateText(stringValue, field.label.replace(':', ''));
       if (!result.valid) {
         return result.error || 'Invalid text';

@@ -13,6 +13,7 @@ import {
   InteractiveComment,
   SequenceSection,
   InteractiveClickHandler,
+  PasteSanitizer,
 } from './extensions';
 
 // Components
@@ -117,6 +118,7 @@ export const WysiwygEditor: React.FC = () => {
       InteractiveSpan,
       InteractiveComment,
       SequenceSection,
+      PasteSanitizer,
       InteractiveClickHandler.configure({
         onEditInteractiveListItem: (attributes, pos) => {
           debug('[WysiwygEditor] Edit list item clicked', { attributes, pos });

@@ -6,6 +6,7 @@
 import type { InteractiveAttributesInput, InteractiveAttributesOutput } from '../forms/types';
 import { DATA_ATTRIBUTES, DEFAULT_VALUES, ACTION_TYPES } from '../../../constants/interactive-config';
 import { validateNavigationUrl } from './validation';
+import { sanitizeTextForDisplay } from '../../../security';
 
 /**
  * Validation error
@@ -110,13 +111,14 @@ export function validateAttributes(
 /**
  * Sanitize attribute values
  * Removes null/undefined, trims strings, validates formats
+ * SECURITY: Sanitizes all string values to prevent XSS via attribute injection (F1, F4)
  */
 export function sanitizeAttributes(
   attributes: Partial<InteractiveAttributesOutput>
 ): InteractiveAttributesOutput {
   const sanitized: Partial<InteractiveAttributesOutput> = {};
 
-  // Trim string values and filter out empty ones
+  // Trim string values, sanitize, and filter out empty ones
   Object.entries(attributes).forEach(([key, value]) => {
     if (value === null || value === undefined) {
       return;
@@ -125,7 +127,9 @@ export function sanitizeAttributes(
     if (typeof value === 'string') {
       const trimmed = value.trim();
       if (trimmed !== '') {
-        sanitized[key as keyof InteractiveAttributesOutput] = trimmed as any;
+        // SECURITY: Sanitize string values to prevent XSS via attribute injection (F1, F4)
+        const sanitizedValue = sanitizeTextForDisplay(trimmed);
+        sanitized[key as keyof InteractiveAttributesOutput] = sanitizedValue as any;
       }
     } else {
       sanitized[key as keyof InteractiveAttributesOutput] = value;

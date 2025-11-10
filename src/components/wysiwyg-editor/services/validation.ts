@@ -20,6 +20,8 @@ export function validateCssSelector(selector: string): ValidationResult {
     return { valid: false, error: 'Selector cannot be empty' };
   }
 
+  const trimmedSelector = selector.trim();
+
   // SECURITY: Check for dangerous patterns that could enable XSS (F1, F5)
   const dangerousPatterns = [
     /<script/i,           // Script tags
@@ -32,10 +34,13 @@ export function validateCssSelector(selector: string): ValidationResult {
     /data:/i,            // Data URIs
     /vbscript:/i,        // VBScript protocol
     /expression\s*\(/i,  // CSS expressions (IE)
+    /<svg/i,             // SVG tags (can contain scripts)
+    /<form/i,            // Form tags (can be used for CSRF)
+    /<base/i,            // Base tags (can change base URL)
   ];
 
   for (const pattern of dangerousPatterns) {
-    if (pattern.test(selector)) {
+    if (pattern.test(trimmedSelector)) {
       return {
         valid: false,
         error: 'Selector contains dangerous patterns',
@@ -43,11 +48,62 @@ export function validateCssSelector(selector: string): ValidationResult {
     }
   }
 
+  // SECURITY: Check for dangerous patterns in attribute selectors (F1, F5)
+  // Attribute selectors like [attr*="javascript:"] or [attr^="data:"] can be dangerous
+  const attributeSelectorPattern = /\[[^\]]*\]/g;
+  const attributeSelectors = trimmedSelector.match(attributeSelectorPattern);
+  
+  if (attributeSelectors) {
+    for (const attrSelector of attributeSelectors) {
+      // Check for dangerous protocols or patterns in attribute values
+      const dangerousAttrPatterns = [
+        /javascript:/i,
+        /data:/i,
+        /vbscript:/i,
+        /on\w+\s*=/i,
+        /<script/i,
+        /expression\s*\(/i,
+      ];
+      
+      for (const pattern of dangerousAttrPatterns) {
+        if (pattern.test(attrSelector)) {
+          return {
+            valid: false,
+            error: 'Attribute selector contains dangerous patterns',
+          };
+        }
+      }
+    }
+  }
+
+  // SECURITY: Check for URL functions in CSS (url(), etc.) that might contain dangerous protocols
+  const urlFunctionPattern = /url\s*\([^)]*\)/gi;
+  const urlFunctions = trimmedSelector.match(urlFunctionPattern);
+  
+  if (urlFunctions) {
+    for (const urlFunc of urlFunctions) {
+      const dangerousUrlPatterns = [
+        /javascript:/i,
+        /data:/i,
+        /vbscript:/i,
+      ];
+      
+      for (const pattern of dangerousUrlPatterns) {
+        if (pattern.test(urlFunc)) {
+          return {
+            valid: false,
+            error: 'URL function contains dangerous protocol',
+          };
+        }
+      }
+    }
+  }
+
   // Validate CSS syntax using browser's querySelector
   try {
     // Create a temporary div to test the selector
     const testDiv = document.createElement('div');
-    testDiv.querySelector(selector);
+    testDiv.querySelector(trimmedSelector);
     return { valid: true };
   } catch (e) {
     return {

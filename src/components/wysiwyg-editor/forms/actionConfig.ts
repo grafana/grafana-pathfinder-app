@@ -5,6 +5,7 @@
 
 import type { BaseInteractiveFormConfig } from './BaseInteractiveForm';
 import { DATA_ATTRIBUTES, DEFAULT_VALUES, ACTION_TYPES } from '../../../constants/interactive-config';
+import { sanitizeTextForDisplay } from '../../../security';
 
 /**
  * Complete registry of all action configurations
@@ -141,13 +142,19 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
         hint: 'Leave blank to auto-generate on-page requirement',
       },
     ],
-    buildAttributes: (values) => ({
-      [DATA_ATTRIBUTES.TARGET_ACTION]: ACTION_TYPES.NAVIGATE,
-      [DATA_ATTRIBUTES.REF_TARGET]: values[DATA_ATTRIBUTES.REF_TARGET],
-      [DATA_ATTRIBUTES.REQUIREMENTS]:
-        values[DATA_ATTRIBUTES.REQUIREMENTS] || `on-page:${values[DATA_ATTRIBUTES.REF_TARGET]}`,
-      class: DEFAULT_VALUES.CLASS,
-    }),
+    buildAttributes: (values) => {
+      // SECURITY: Sanitize ref target before concatenation to prevent requirement string injection (F4)
+      const refTarget = values[DATA_ATTRIBUTES.REF_TARGET] || '';
+      const sanitizedRefTarget = sanitizeTextForDisplay(refTarget.trim());
+      
+      return {
+        [DATA_ATTRIBUTES.TARGET_ACTION]: ACTION_TYPES.NAVIGATE,
+        [DATA_ATTRIBUTES.REF_TARGET]: sanitizedRefTarget,
+        [DATA_ATTRIBUTES.REQUIREMENTS]:
+          values[DATA_ATTRIBUTES.REQUIREMENTS] || `on-page:${sanitizedRefTarget}`,
+        class: DEFAULT_VALUES.CLASS,
+      };
+    },
   },
 
   [ACTION_TYPES.HOVER]: {
