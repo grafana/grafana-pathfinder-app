@@ -27,6 +27,9 @@ import { useEditState } from './hooks/useEditState';
 import { formatHTML } from './utils/htmlFormatter';
 import { debug, error as logError } from './utils/logger';
 
+// Security
+import { sanitizeDocumentationHTML } from '../../security';
+
 // Constants
 import { EDITOR_DEFAULTS } from '../../constants/editor-config';
 
@@ -252,7 +255,9 @@ export const WysiwygEditor: React.FC = () => {
 
     try {
       const html = editor.getHTML();
-      const formatted = await formatHTML(html);
+      // SECURITY: sanitized HTML before export to prevent XSS (F1, F4)
+      const sanitized = sanitizeDocumentationHTML(html);
+      const formatted = await formatHTML(sanitized);
       await navigator.clipboard.writeText(formatted);
       debug('[WysiwygEditor] HTML copied to clipboard');
       // TODO: Show success toast
@@ -270,7 +275,9 @@ export const WysiwygEditor: React.FC = () => {
 
     try {
       const html = editor.getHTML();
-      const formatted = await formatHTML(html);
+      // SECURITY: sanitized HTML before export to prevent XSS (F1, F4)
+      const sanitized = sanitizeDocumentationHTML(html);
+      const formatted = await formatHTML(sanitized);
       
       // Use 'application/octet-stream' to force download instead of display
       const blob = new Blob([formatted], { type: 'application/octet-stream' });

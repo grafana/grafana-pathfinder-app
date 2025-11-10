@@ -5,6 +5,7 @@
 
 import type { InteractiveAttributesInput, InteractiveAttributesOutput } from '../forms/types';
 import { DATA_ATTRIBUTES, DEFAULT_VALUES, ACTION_TYPES } from '../../../constants/interactive-config';
+import { validateNavigationUrl } from './validation';
 
 /**
  * Validation error
@@ -84,10 +85,12 @@ export function validateAttributes(
     case ACTION_TYPES.NAVIGATE:
       if (!attributes['data-reftarget'] || attributes['data-reftarget'].trim() === '') {
         errors.push({ field: 'data-reftarget', message: 'Navigation path is required' });
-      }
-      // Validate path format (should start with /)
-      if (attributes['data-reftarget'] && !attributes['data-reftarget'].startsWith('/')) {
-        errors.push({ field: 'data-reftarget', message: 'Navigation path should start with /' });
+      } else {
+        // SECURITY: Validate URL against dangerous schemes (F4, F6)
+        const urlValidation = validateNavigationUrl(attributes['data-reftarget']);
+        if (!urlValidation.valid) {
+          errors.push({ field: 'data-reftarget', message: urlValidation.error || 'Invalid navigation URL' });
+        }
       }
       break;
 

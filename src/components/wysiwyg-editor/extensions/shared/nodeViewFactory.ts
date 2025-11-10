@@ -18,6 +18,20 @@
  * - For spans and sequences: Always shown (configurable)
  */
 
+// SECURITY: Allowlist of safe HTML attributes to prevent event handler injection (F5)
+// Only these attributes can be set on interactive elements
+const ALLOWED_ATTRIBUTES = [
+  'class',
+  'id',
+  'data-targetaction',
+  'data-reftarget',
+  'data-requirements',
+  'data-doit',
+  'role',
+  'tabindex',
+  'aria-label',
+] as const;
+
 export interface NodeViewConfig {
   tagName: keyof HTMLElementTagNameMap;
   showLightning?: boolean;
@@ -53,10 +67,12 @@ export function createLightningBolt(): HTMLSpanElement {
 
 /**
  * Applies HTML attributes to a DOM element
+ * SECURITY: Only allows attributes from ALLOWED_ATTRIBUTES to prevent event handler injection (F5)
  */
 export function applyAttributes(element: HTMLElement, attributes: Record<string, any>): void {
   Object.entries(attributes).forEach(([key, value]) => {
-    if (value !== null && value !== undefined) {
+    // SECURITY: Filter attributes against allowlist to prevent event handler injection (F5)
+    if (value !== null && value !== undefined && ALLOWED_ATTRIBUTES.includes(key as any)) {
       element.setAttribute(key, String(value));
     }
   });

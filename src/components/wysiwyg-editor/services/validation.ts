@@ -3,6 +3,8 @@
  * Prevents malformed/dangerous inputs from being stored in HTML attributes
  */
 
+import { parseUrlSafely, sanitizeTextForDisplay } from '../../../security';
+
 export interface ValidationResult {
   valid: boolean;
   error?: string;
@@ -11,15 +13,26 @@ export interface ValidationResult {
 /**
  * Validates CSS selectors to ensure they're safe and well-formed
  * Uses the browser's native querySelector to validate syntax
- * Rejects dangerous patterns that could cause issues
+ * SECURITY: Rejects dangerous patterns that could cause XSS (F1, F5)
  */
 export function validateCssSelector(selector: string): ValidationResult {
   if (!selector || selector.trim() === '') {
     return { valid: false, error: 'Selector cannot be empty' };
   }
 
-  // Check for dangerous patterns
-  const dangerousPatterns = [/<script/i, /javascript:/i, /<object/i, /<iframe/i, /<embed/i, /<applet/i];
+  // SECURITY: Check for dangerous patterns that could enable XSS (F1, F5)
+  const dangerousPatterns = [
+    /<script/i,           // Script tags
+    /javascript:/i,       // JavaScript protocol
+    /<object/i,          // Object tags
+    /<iframe/i,          // Iframe tags
+    /<embed/i,           // Embed tags
+    /<applet/i,          // Applet tags
+    /on\w+\s*=/i,        // Event handlers (onclick, onerror, onload, etc.)
+    /data:/i,            // Data URIs
+    /vbscript:/i,        // VBScript protocol
+    /expression\s*\(/i,  // CSS expressions (IE)
+  ];
 
   for (const pattern of dangerousPatterns) {
     if (pattern.test(selector)) {
@@ -68,30 +81,26 @@ export function validateSectionId(id: string): ValidationResult {
 
 /**
  * Sanitizes attribute values by removing potentially problematic characters
- * This is a lightweight sanitization for general attribute values
+ * SECURITY: Uses DOMPurify-based sanitization to prevent XSS (F1)
  */
 export function sanitizeAttributeValue(value: string): string {
   if (!value) return '';
 
-  // Remove null bytes and control characters
-  let sanitized = value.replace(/[\x00-\x1F\x7F]/g, '');
-
-  // Escape double quotes to prevent attribute injection
-  sanitized = sanitized.replace(/"/g, '&quot;');
-
-  return sanitized;
+  // SECURITY: Use DOMPurify-based sanitization from security utilities (F1)
+  return sanitizeTextForDisplay(value);
 }
 
 /**
  * Validates button text or other simple text inputs
  * Ensures basic safety without being overly restrictive
+ * SECURITY: Checks for common XSS patterns (F1)
  */
 export function validateText(text: string, fieldName: string = 'Text'): ValidationResult {
   if (!text || text.trim() === '') {
     return { valid: false, error: `${fieldName} cannot be empty` };
   }
 
-  // Check for script tags or javascript: protocol
+  // SECURITY: Check for script tags or javascript: protocol (F1)
   if (/<script/i.test(text) || /javascript:/i.test(text)) {
     return {
       valid: false,
@@ -129,6 +138,61 @@ export function validateRequirement(requirement: string): ValidationResult {
     return {
       valid: false,
       error: 'Invalid requirement format. Expected patterns like "exists-reftarget", "on-page:/path", etc.',
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validates navigation URLs to prevent XSS and injection attacks
+ * SECURITY: Validates against dangerous URL schemes (F4, F6)
+ * 
+ * @param url - The URL to validate (can be relative or absolute)
+ * @returns ValidationResult with error message if invalid
+ */
+export function validateNavigationUrl(url: string): ValidationResult {
+  if (!url || url.trim() === '') {
+    return { valid: false, error: 'Navigation URL cannot be empty' };
+  }
+
+  const trimmedUrl = url.trim();
+
+  // SECURITY: Check for dangerous URL schemes (F4, F6)
+  const dangerousSchemes = ['javascript:', 'data:', 'file:', 'vbscript:', 'blob:'];
+  const lowerUrl = trimmedUrl.toLowerCase();
+  
+  for (const scheme of dangerousSchemes) {
+    if (lowerUrl.startsWith(scheme)) {
+      return {
+        valid: false,
+        error: `Dangerous URL scheme detected: ${scheme}`,
+      };
+    }
+  }
+
+  // Check if it's a relative path (starts with /)
+  if (trimmedUrl.startsWith('/')) {
+    // Relative paths are safe if they start with /
+    return { valid: true };
+  }
+
+  // For absolute URLs, parse and validate
+  // SECURITY: Use parseUrlSafely() to safely parse URLs (F3)
+  const parsedUrl = parseUrlSafely(trimmedUrl);
+  
+  if (!parsedUrl) {
+    return {
+      valid: false,
+      error: 'Invalid URL format. Must be a relative path starting with / or a valid absolute URL',
+    };
+  }
+
+  // Only allow http and https protocols for absolute URLs
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    return {
+      valid: false,
+      error: `Only http and https protocols are allowed. Found: ${parsedUrl.protocol}`,
     };
   }
 
