@@ -219,17 +219,10 @@ export interface ActionMetadata {
  */
 export const ACTION_METADATA: ActionMetadata[] = [
   {
-    type: ACTION_TYPES.BUTTON,
-    icon: '🔘',
-    name: 'Button',
-    description: 'Click a button',
-    grafanaIcon: 'gf-button',
-  },
-  {
     type: ACTION_TYPES.HIGHLIGHT,
     icon: '✨',
     name: 'Highlight',
-    description: 'Highlight an element',
+    description: 'Click/Highlight an element',
     grafanaIcon: 'star',
   },
   {
@@ -245,6 +238,13 @@ export const ACTION_METADATA: ActionMetadata[] = [
     name: 'Navigate',
     description: 'Go to a page',
     grafanaIcon: 'compass',
+  },
+  {
+    type: ACTION_TYPES.BUTTON,
+    icon: '🔘',
+    name: 'Button',
+    description: 'Click a button by name',
+    grafanaIcon: 'gf-button',
   },
   {
     type: ACTION_TYPES.HOVER,
