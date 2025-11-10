@@ -16,6 +16,7 @@ import MultistepActionForm from './forms/MultistepActionForm';
 import SequenceActionForm from './forms/SequenceActionForm';
 import { EditState } from './types';
 import { ACTION_TYPES } from '../../constants/interactive-config';
+import { debug, error as logError } from './utils/logger';
 
 interface FormModalProps {
   isOpen: boolean;
@@ -40,50 +41,75 @@ const getStyles = (theme: GrafanaTheme2) => ({
  */
 const insertNewInteractiveElement = (editor: Editor, attributes: Record<string, any>) => {
   const actionType = attributes['data-targetaction'];
-  
-  // Determine element type and insertion strategy based on action type
-  if (actionType === ACTION_TYPES.SEQUENCE) {
-    // Sequence sections are block-level elements
-    editor.chain().focus().insertContent({
-      type: 'sequenceSection',
-      attrs: attributes,
-      content: [
-        {
-          type: 'heading',
-          attrs: { level: 3 },
-          content: [{ type: 'text', text: 'Section Title' }],
-        },
-        {
-          type: 'paragraph',
-          content: [{ type: 'text', text: 'Add content here...' }],
-        },
-      ],
-    }).run();
-  } else if (actionType === ACTION_TYPES.MULTISTEP) {
-    // Multistep actions are list items
-    editor.chain().focus().insertContent({
-      type: 'listItem',
-      attrs: attributes,
-      content: [
-        {
-          type: 'paragraph',
-          content: [{ type: 'text', text: 'Action description' }],
-        },
-      ],
-    }).run();
-  } else {
-    // Other actions are inline spans within text
-    const displayText = attributes['data-reftarget'] || 'Interactive action';
-    editor.chain().focus().insertContent({
-      type: 'text',
-      text: displayText,
-      marks: [
-        {
-          type: 'interactiveSpan',
+  debug('[FormModal] Inserting interactive element', { actionType, attributes });
+
+  try {
+    // Determine element type and insertion strategy based on action type
+    if (actionType === ACTION_TYPES.SEQUENCE) {
+      // Sequence sections are block-level elements
+      // Validate insertion is possible at current position
+      if (!editor.can().insertContent({ type: 'sequenceSection' })) {
+        logError('[FormModal] Cannot insert sequence section at current position');
+        throw new Error('Cannot insert sequence section at current cursor position');
+      }
+
+      editor.chain().focus().insertContent({
+        type: 'sequenceSection',
+        attrs: attributes,
+        content: [
+          {
+            type: 'heading',
+            attrs: { level: 3 },
+            content: [{ type: 'text', text: 'Section Title' }],
+          },
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Add content here...' }],
+          },
+        ],
+      }).run();
+    } else if (actionType === ACTION_TYPES.MULTISTEP) {
+      // Multistep actions are list items (must be wrapped in bulletList)
+      // Validate insertion is possible at current position
+      if (!editor.can().insertContent({ type: 'bulletList' })) {
+        logError('[FormModal] Cannot insert bullet list at current position');
+        throw new Error('Cannot insert multistep action at current cursor position');
+      }
+
+      editor.chain().focus().insertContent({
+        type: 'bulletList',
+        content: [{
+          type: 'listItem',
           attrs: attributes,
-        },
-      ],
-    }).run();
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'Action description' }],
+            },
+          ],
+        }],
+      }).run();
+    } else {
+      // Other actions are inline spans (nodes, not marks)
+      const displayText = attributes['data-reftarget'] || 'Interactive action';
+      
+      // Validate insertion is possible at current position
+      if (!editor.can().insertContent({ type: 'interactiveSpan' })) {
+        logError('[FormModal] Cannot insert interactive span at current position');
+        throw new Error('Cannot insert interactive action at current cursor position');
+      }
+
+      editor.chain().focus().insertContent({
+        type: 'interactiveSpan',
+        attrs: attributes,
+        content: [{ type: 'text', text: displayText }],
+      }).run();
+    }
+
+    debug('[FormModal] Element inserted successfully', { actionType });
+  } catch (err) {
+    logError('[FormModal] Failed to insert interactive element:', err);
+    throw err; // Re-throw so caller can handle
   }
 };
 
@@ -146,14 +172,19 @@ export const FormModal: React.FC<FormModalProps> = ({
       editor,
       initialValues: editState ? (editState.attributes as any) : undefined,
       onApply: (attrs: Record<string, any>) => {
-        if (editState) {
-          // Edit mode: update existing element
-          onFormSubmit(attrs);
-        } else {
-          // Creation mode: insert new element
-          insertNewInteractiveElement(editor, attrs);
+        try {
+          if (editState) {
+            // Edit mode: update existing element
+            onFormSubmit(attrs);
+          } else {
+            // Creation mode: insert new element
+            insertNewInteractiveElement(editor, attrs);
+          }
+          onClose();
+        } catch (err) {
+          logError('[FormModal] Failed to apply changes:', err);
+          // Keep modal open on error so user can retry
         }
-        onClose();
       },
       onCancel: onClose,
     };
