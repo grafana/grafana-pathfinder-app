@@ -24,6 +24,7 @@ import {
 } from '../security';
 import { convertGitHubRawToProxyUrl, isDataProxyUrl } from './data-proxy';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
+import { StorageKeys } from '../lib/user-storage';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -192,7 +193,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
   // SPECIAL CASE: Handle WYSIWYG preview from localStorage
   if (contentId === 'wysiwyg-preview') {
     try {
-      const previewContent = localStorage.getItem('pathfinder:editor:preview');
+      const previewContent = localStorage.getItem(StorageKeys.WYSIWYG_PREVIEW);
       
       if (!previewContent || previewContent.trim() === '') {
         return {
