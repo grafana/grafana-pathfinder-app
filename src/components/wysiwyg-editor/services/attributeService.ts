@@ -5,7 +5,7 @@
  */
 
 import type { InteractiveAttributesInput, InteractiveAttributesOutput } from '../types';
-import { DATA_ATTRIBUTES, DEFAULT_VALUES } from '../../../constants/interactive-config';
+import { ACTION_TYPES, DATA_ATTRIBUTES, DEFAULT_VALUES } from '../../../constants/interactive-config';
 import { sanitizeTextForDisplay } from '../../../security';
 
 // Re-export validation types and functions for backward compatibility
