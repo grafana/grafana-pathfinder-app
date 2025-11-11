@@ -762,18 +762,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         </Button>
       </div>
 
-      {/* WYSIWYG Editor */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader} onClick={() => setWysiwygExpanded(!wysiwygExpanded)}>
-          <h4 className={styles.sectionTitle}>WYSIWYG Editor</h4>
-          <Icon name={wysiwygExpanded ? 'angle-up' : 'angle-down'} />
-        </div>
-        {wysiwygExpanded && (
-          <div className={styles.sectionContent}>
-            <WysiwygEditor />
-          </div>
-        )}
-      </div>
+      <WysiwygEditor />
 
       {/* Simple Selector Tester */}
       <div className={styles.section}>
