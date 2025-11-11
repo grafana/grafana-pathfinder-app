@@ -216,15 +216,15 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onClick={() => editor.chain().focus().toggleBold().run()}
         >
           <strong>B</strong>
-        </Button>
-        <Button
+        </Button>    
+        {/* <Button
           variant={editor.isActive('italic') ? 'primary' : 'secondary'}
           size="sm"
           tooltip="Italic"
           onClick={() => editor.chain().focus().toggleItalic().run()}
         >
           <em>I</em>
-        </Button>
+        </Button> */}
         <Button
           variant={editor.isActive('code') ? 'primary' : 'secondary'}
           size="sm"
