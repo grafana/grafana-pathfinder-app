@@ -23,7 +23,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@grafana/eslint-config": "^9.0.0",
-    "@grafana/plugin-e2e": "^2.1.13",
+    "@grafana/plugin-e2e": "^2.2.0",
     "@grafana/tsconfig": "^2.0.0",
     "@jest/test-sequencer": "^29.7.0",
     "@playwright/test": "^1.52.0",
