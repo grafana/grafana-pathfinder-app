@@ -5,7 +5,7 @@ import { error as logError } from '../utils/logger';
 
 /**
  * PasteSanitizer Extension
- * 
+ *
  * Intercepts paste events and sanitizes HTML content before insertion to prevent XSS attacks.
  * SECURITY: Sanitizes all pasted content using DOMPurify (F1, F4)
  */
@@ -33,4 +33,3 @@ export const PasteSanitizer = Extension.create({
     ];
   },
 });
-

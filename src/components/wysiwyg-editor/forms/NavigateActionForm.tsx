@@ -13,4 +13,3 @@ const NavigateActionForm = (props: InteractiveFormProps) => {
 };
 
 export default NavigateActionForm;
-

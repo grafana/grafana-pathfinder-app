@@ -3,8 +3,7 @@
  * Centralizes logic for building interactive element attributes
  */
 
-import type { InteractiveElementType } from '../types';
-import type { InteractiveAttributesOutput } from '../types';
+import type { InteractiveElementType, InteractiveAttributesOutput } from '../types';
 import { CSS_CLASSES, NODE_TYPES } from '../../../constants/editor-config';
 
 /**
@@ -120,4 +119,3 @@ export function getNodeTypeName(elementType: InteractiveElementType): string {
       return NODE_TYPES.LIST_ITEM;
   }
 }
-

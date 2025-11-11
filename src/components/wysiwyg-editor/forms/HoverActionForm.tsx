@@ -13,4 +13,3 @@ const HoverActionForm = (props: InteractiveFormProps) => {
 };
 
 export default HoverActionForm;
-

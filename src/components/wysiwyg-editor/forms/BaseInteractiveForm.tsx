@@ -125,10 +125,12 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
   };
 
   const isValid = () => {
-    return config.fields.filter((f) => f.required).every((f) => {
-      const value = values[f.id];
-      return f.type === 'checkbox' ? true : value && value.trim() !== '';
-    });
+    return config.fields
+      .filter((f) => f.required)
+      .every((f) => {
+        const value = values[f.id];
+        return f.type === 'checkbox' ? true : value && value.trim() !== '';
+      });
   };
 
   const renderField = (field: FormField) => {
@@ -202,4 +204,3 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
 };
 
 export default BaseInteractiveForm;
-

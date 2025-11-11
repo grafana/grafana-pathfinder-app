@@ -10,4 +10,3 @@ export { InteractiveClickHandler } from './InteractiveClickHandler';
 export { PasteSanitizer } from './PasteSanitizer';
 
 export type { InteractiveClickHandlerOptions } from './InteractiveClickHandler';
-

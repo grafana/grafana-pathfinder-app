@@ -46,4 +46,3 @@ export function usePopover(): UsePopoverReturn {
     toggle,
   };
 }
-

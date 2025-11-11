@@ -153,4 +153,3 @@ export const SequenceSection = Node.create<SequenceSectionOptions>({
     };
   },
 });
-

@@ -75,11 +75,7 @@ export function extractElementAttributes(element: HTMLElement): Record<string, s
  * Find a node at a position in the editor
  * Used for inline nodes like interactive spans and comments
  */
-export function findNodeAtPosition(
-  view: EditorView,
-  pos: number,
-  nodeType: string
-): { node: any; pos: number } | null {
+export function findNodeAtPosition(view: EditorView, pos: number, nodeType: string): { node: any; pos: number } | null {
   let result: { node: any; pos: number } | null = null;
 
   view.state.doc.nodesBetween(pos, pos + 1, (node, nodePos) => {
@@ -142,7 +138,7 @@ export function handleInteractiveSpanClick(
  */
 export function extractTextFromNode(node: any): string {
   let text = '';
-  
+
   if (node.content) {
     node.content.forEach((child: any) => {
       if (child.type.name === 'text') {
@@ -153,7 +149,7 @@ export function extractTextFromNode(node: any): string {
       }
     });
   }
-  
+
   return text.trim();
 }
 
@@ -175,4 +171,3 @@ export function handleInteractiveCommentClick(
   logError('[handleInteractiveCommentClick] Could not find node at position:', pos);
   return false;
 }
-

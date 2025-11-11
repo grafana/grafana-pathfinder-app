@@ -73,11 +73,7 @@ const ActionSelector = ({ onSelect, onCancel }: ActionSelectorProps) => {
       <div className={styles.grid}>
         {ACTION_METADATA.map((option) => (
           <div key={option.type} className={styles.actionWrapper}>
-            <Button
-              variant="secondary"
-              onClick={() => onSelect(option.type)}
-              className={styles.actionButton}
-            >
+            <Button variant="secondary" onClick={() => onSelect(option.type)} className={styles.actionButton}>
               <span className={styles.actionIcon}>{option.icon}</span>
               <span className={styles.actionName}>{option.name}</span>
             </Button>
@@ -95,4 +91,3 @@ const ActionSelector = ({ onSelect, onCancel }: ActionSelectorProps) => {
 };
 
 export default ActionSelector;
-

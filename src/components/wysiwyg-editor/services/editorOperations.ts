@@ -5,8 +5,7 @@
  */
 
 import type { Editor } from '@tiptap/react';
-import type { InteractiveElementType } from '../types';
-import type { InteractiveAttributesOutput } from '../types';
+import type { InteractiveElementType, InteractiveAttributesOutput } from '../types';
 import { buildInteractiveAttributes, getNodeTypeName } from './attributeBuilder';
 
 /**
@@ -149,10 +148,7 @@ export function isInsideNodeType(editor: Editor, nodeType: string): boolean {
  * @param editor - Tiptap editor instance
  * @param nodeType - Type of node to find
  */
-export function getCurrentNode(
-  editor: Editor,
-  nodeType: string
-): { node: any; pos: number } | null {
+export function getCurrentNode(editor: Editor, nodeType: string): { node: any; pos: number } | null {
   const { $from } = editor.state.selection;
 
   for (let depth = $from.depth; depth > 0; depth--) {
@@ -204,4 +200,3 @@ export function isInsideSequenceSectionListItem(editor: Editor): boolean {
 
   return false;
 }
-

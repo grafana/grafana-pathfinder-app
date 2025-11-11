@@ -57,19 +57,19 @@ export function validateCssSelector(selector: string): ValidationResult {
 
   // SECURITY: Check for dangerous patterns that could enable XSS (F1, F5)
   const dangerousPatterns = [
-    /<script/i,           // Script tags
-    /javascript:/i,       // JavaScript protocol
-    /<object/i,          // Object tags
-    /<iframe/i,          // Iframe tags
-    /<embed/i,           // Embed tags
-    /<applet/i,          // Applet tags
-    /on\w+\s*=/i,        // Event handlers (onclick, onerror, onload, etc.)
-    /data:/i,            // Data URIs
-    /vbscript:/i,        // VBScript protocol
-    /expression\s*\(/i,  // CSS expressions (IE)
-    /<svg/i,             // SVG tags (can contain scripts)
-    /<form/i,            // Form tags (can be used for CSRF)
-    /<base/i,            // Base tags (can change base URL)
+    /<script/i, // Script tags
+    /javascript:/i, // JavaScript protocol
+    /<object/i, // Object tags
+    /<iframe/i, // Iframe tags
+    /<embed/i, // Embed tags
+    /<applet/i, // Applet tags
+    /on\w+\s*=/i, // Event handlers (onclick, onerror, onload, etc.)
+    /data:/i, // Data URIs
+    /vbscript:/i, // VBScript protocol
+    /expression\s*\(/i, // CSS expressions (IE)
+    /<svg/i, // SVG tags (can contain scripts)
+    /<form/i, // Form tags (can be used for CSRF)
+    /<base/i, // Base tags (can change base URL)
   ];
 
   for (const pattern of dangerousPatterns) {
@@ -85,7 +85,7 @@ export function validateCssSelector(selector: string): ValidationResult {
   // Attribute selectors like [attr*="javascript:"] or [attr^="data:"] can be dangerous
   const attributeSelectorPattern = /\[[^\]]*\]/g;
   const attributeSelectors = trimmedSelector.match(attributeSelectorPattern);
-  
+
   if (attributeSelectors) {
     for (const attrSelector of attributeSelectors) {
       // Check for dangerous protocols or patterns in attribute values
@@ -97,7 +97,7 @@ export function validateCssSelector(selector: string): ValidationResult {
         /<script/i,
         /expression\s*\(/i,
       ];
-      
+
       for (const pattern of dangerousAttrPatterns) {
         if (pattern.test(attrSelector)) {
           return {
@@ -112,15 +112,11 @@ export function validateCssSelector(selector: string): ValidationResult {
   // SECURITY: Check for URL functions in CSS (url(), etc.) that might contain dangerous protocols
   const urlFunctionPattern = /url\s*\([^)]*\)/gi;
   const urlFunctions = trimmedSelector.match(urlFunctionPattern);
-  
+
   if (urlFunctions) {
     for (const urlFunc of urlFunctions) {
-      const dangerousUrlPatterns = [
-        /javascript:/i,
-        /data:/i,
-        /vbscript:/i,
-      ];
-      
+      const dangerousUrlPatterns = [/javascript:/i, /data:/i, /vbscript:/i];
+
       for (const pattern of dangerousUrlPatterns) {
         if (pattern.test(urlFunc)) {
           return {
@@ -238,7 +234,7 @@ export function validateRequirement(requirement: string): ValidationResult {
 /**
  * Validates navigation URLs to prevent XSS and injection attacks
  * SECURITY: Validates against dangerous URL schemes (F4, F6)
- * 
+ *
  * @param url - The URL to validate (can be relative or absolute)
  * @returns ValidationResult with error message if invalid
  */
@@ -252,7 +248,7 @@ export function validateNavigationUrl(url: string): ValidationResult {
   // SECURITY: Check for dangerous URL schemes (F4, F6)
   const dangerousSchemes = ['javascript:', 'data:', 'file:', 'vbscript:', 'blob:'];
   const lowerUrl = trimmedUrl.toLowerCase();
-  
+
   for (const scheme of dangerousSchemes) {
     if (lowerUrl.startsWith(scheme)) {
       return {
@@ -271,7 +267,7 @@ export function validateNavigationUrl(url: string): ValidationResult {
   // For absolute URLs, parse and validate
   // SECURITY: Use parseUrlSafely() to safely parse URLs (F3)
   const parsedUrl = parseUrlSafely(trimmedUrl);
-  
+
   if (!parsedUrl) {
     return {
       valid: false,
@@ -346,7 +342,7 @@ export function validateAttributes(
 /**
  * Validate a single form field based on its type and the action type
  * Centralized field validation logic extracted from BaseInteractiveForm
- * 
+ *
  * @param field - The form field definition
  * @param value - The field value to validate
  * @param actionType - The action type for context-specific validation
@@ -371,10 +367,7 @@ export function validateFormField(field: FormField, value: any, actionType: stri
 
   // Validate based on field type/purpose
   // SECURITY: URL validation for navigate actions (F4, F6)
-  if (
-    field.id === DATA_ATTRIBUTES.REF_TARGET &&
-    actionType === ACTION_TYPES.NAVIGATE
-  ) {
+  if (field.id === DATA_ATTRIBUTES.REF_TARGET && actionType === ACTION_TYPES.NAVIGATE) {
     const result = validateNavigationUrl(stringValue);
     if (!result.valid) {
       return result.error || 'Invalid navigation URL';
@@ -401,11 +394,7 @@ export function validateFormField(field: FormField, value: any, actionType: stri
   }
 
   // Button text and other text fields (only if not already validated above)
-  if (
-    field.id === DATA_ATTRIBUTES.REF_TARGET &&
-    stringValue !== '' &&
-    actionType === ACTION_TYPES.BUTTON
-  ) {
+  if (field.id === DATA_ATTRIBUTES.REF_TARGET && stringValue !== '' && actionType === ACTION_TYPES.BUTTON) {
     const result = validateText(stringValue, field.label.replace(':', ''));
     if (!result.valid) {
       return result.error || 'Invalid text';
@@ -414,4 +403,3 @@ export function validateFormField(field: FormField, value: any, actionType: stri
 
   return null;
 }
-

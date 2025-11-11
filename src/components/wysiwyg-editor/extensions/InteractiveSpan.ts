@@ -155,7 +155,8 @@ export const InteractiveSpan = Node.create<InteractiveSpanOptions>({
     const baseToggleCommand = createToggleInlineNodeCommand(this.name, { class: 'interactive' });
 
     return {
-      setInteractiveSpan: (attributes: Record<string, any> = {}) =>
+      setInteractiveSpan:
+        (attributes: Record<string, any> = {}) =>
         ({ commands, state, chain }: any) => {
           // Check if we're inside a list item within a sequence section
           if (isInsideSequenceSectionListItemFromState(state)) {
@@ -170,12 +171,13 @@ export const InteractiveSpan = Node.create<InteractiveSpanOptions>({
           // Normal span behavior
           return baseSetCommand(attributes)({ commands, state, chain });
         },
-      toggleInteractiveSpan: () =>
+      toggleInteractiveSpan:
+        () =>
         ({ commands, state, chain }: any) => {
           // Check if we're inside a list item within a sequence section
           if (isInsideSequenceSectionListItemFromState(state)) {
             const { $from } = state.selection;
-            
+
             // Check if the list item already has interactive attributes
             let listItemNode = null;
             for (let depth = $from.depth; depth > 0; depth--) {
@@ -213,4 +215,3 @@ export const InteractiveSpan = Node.create<InteractiveSpanOptions>({
     };
   },
 });
-

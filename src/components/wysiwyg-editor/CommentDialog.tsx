@@ -35,7 +35,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
 
 /**
  * CommentDialog Component
- * 
+ *
  * A simple dialog for entering comment text that will be inserted
  * into the editor as an interactive comment at the cursor position.
  */
@@ -101,12 +101,7 @@ export const CommentDialog: React.FC<CommentDialogProps> = ({
   const buttonText = mode === 'edit' ? 'Update' : 'Insert';
 
   return (
-    <Modal
-      title={modalTitle}
-      isOpen={isOpen}
-      onDismiss={handleCancel}
-      className={styles.modal}
-    >
+    <Modal title={modalTitle} isOpen={isOpen} onDismiss={handleCancel} className={styles.modal}>
       <div className={styles.modalContent}>
         <div className={styles.form}>
           <TextArea
@@ -132,4 +127,3 @@ export const CommentDialog: React.FC<CommentDialogProps> = ({
 };
 
 export default CommentDialog;
-

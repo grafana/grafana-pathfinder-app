@@ -44,7 +44,7 @@ export const InteractiveClickHandler = Extension.create<InteractiveClickHandlerO
                 const lightningBolt = target.closest('.interactive-lightning');
                 const infoIcon = target.closest('.interactive-info-icon');
                 const clickableIcon = lightningBolt || infoIcon;
-                
+
                 if (!clickableIcon) {
                   return false;
                 }
@@ -130,11 +130,7 @@ export const InteractiveClickHandler = Extension.create<InteractiveClickHandlerO
                     return handleListItemClick(elementTypeResult.element, pos, options.onEditInteractiveListItem!);
 
                   case 'sequence':
-                    return handleSequenceSectionClick(
-                      elementTypeResult.element,
-                      pos,
-                      options.onEditSequenceSection!
-                    );
+                    return handleSequenceSectionClick(elementTypeResult.element, pos, options.onEditSequenceSection!);
 
                   case 'span':
                     return handleInteractiveSpanClick(view, pos, options.onEditInteractiveSpan!);
@@ -163,4 +159,3 @@ export const InteractiveClickHandler = Extension.create<InteractiveClickHandlerO
     ];
   },
 });
-

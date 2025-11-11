@@ -344,4 +344,3 @@ describe('WYSIWYG Editor Validation - Security Tests', () => {
     });
   });
 });
-

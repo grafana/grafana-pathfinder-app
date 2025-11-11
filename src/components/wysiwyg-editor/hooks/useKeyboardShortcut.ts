@@ -52,4 +52,3 @@ export function useKeyboardShortcut(options: KeyboardShortcutOptions): void {
 export function useEscapeKey(handler: KeyboardShortcutHandler, enabled = true): void {
   useKeyboardShortcut({ key: 'Escape', handler, enabled });
 }
-

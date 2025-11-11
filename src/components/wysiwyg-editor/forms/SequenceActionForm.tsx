@@ -13,4 +13,3 @@ const SequenceActionForm = (props: InteractiveFormProps) => {
 };
 
 export default SequenceActionForm;
-

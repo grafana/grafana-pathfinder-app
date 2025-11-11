@@ -75,4 +75,3 @@ export function useEditorPersistence({ editor }: UseEditorPersistenceOptions): U
     isSaving,
   };
 }
-

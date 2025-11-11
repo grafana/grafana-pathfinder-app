@@ -63,7 +63,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
 
 /**
  * WysiwygEditor Component
- * 
+ *
  * Main WYSIWYG editor for creating interactive tutorials.
  * Integrates Tiptap editor with custom extensions, toolbar, and form modal.
  */
@@ -120,7 +120,7 @@ export const WysiwygEditor: React.FC = () => {
           onAddSequence={handleAddSequence}
           onAddComment={handleAddComment}
         />
-        
+
         <div className={styles.editorContent}>
           <EditorContent editor={editor} />
         </div>
@@ -142,7 +142,7 @@ export const WysiwygEditor: React.FC = () => {
               Reset
             </Button>
           </Stack>
-          
+
           {isSaving && (
             <span className={styles.savingIndicator}>
               <Icon name="check" size="sm" /> Saved
@@ -172,4 +172,3 @@ export const WysiwygEditor: React.FC = () => {
 };
 
 export default WysiwygEditor;
-

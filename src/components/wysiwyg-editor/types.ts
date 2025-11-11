@@ -117,4 +117,3 @@ export interface InteractiveFormProps {
 
 // Re-export types from constants for convenience
 export type { ActionType, CommonRequirement } from '../../constants/interactive-config';
-

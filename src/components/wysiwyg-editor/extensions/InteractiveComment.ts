@@ -80,4 +80,3 @@ export const InteractiveComment = Node.create<InteractiveCommentOptions>({
     };
   },
 });
-

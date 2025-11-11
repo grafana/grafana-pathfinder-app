@@ -147,10 +147,8 @@ export function createInteractiveNodeView(
  * Creates a node view specifically for list items
  */
 export function createListItemNodeView(attributes: Record<string, any>): { dom: HTMLElement; contentDOM: HTMLElement } {
-  return createInteractiveNodeView(
-    { tagName: 'li', contentDisplay: 'contents' },
-    attributes,
-    (attrs) => attrs.class?.includes('interactive')
+  return createInteractiveNodeView({ tagName: 'li', contentDisplay: 'contents' }, attributes, (attrs) =>
+    attrs.class?.includes('interactive')
   );
 }
 
@@ -205,13 +203,13 @@ export function createSpanNodeView(
  * Creates a node view for sequence sections (block-level spans)
  * This is now a convenience wrapper around createSpanNodeView
  */
-export function createSequenceSectionNodeView(
-  attributes: Record<string, any>
-): { dom: HTMLElement; contentDOM: HTMLElement } {
+export function createSequenceSectionNodeView(attributes: Record<string, any>): {
+  dom: HTMLElement;
+  contentDOM: HTMLElement;
+} {
   return createSpanNodeView(attributes, {
     showLightning: true,
     contentTag: 'div',
     contentDisplay: 'contents',
   });
 }
-

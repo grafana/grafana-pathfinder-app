@@ -46,4 +46,3 @@ export function formatHTMLSync(html: string): string {
   warn('[htmlFormatter] formatHTMLSync called - returning unformatted HTML. Use formatHTML (async) instead.');
   return html;
 }
-

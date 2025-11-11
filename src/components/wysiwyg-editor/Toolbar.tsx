@@ -34,16 +34,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
 
 /**
  * Toolbar Component
- * 
+ *
  * Provides formatting and interactive element controls for the WYSIWYG editor.
  * Uses Grafana UI buttons and follows Grafana design patterns.
  */
-export const Toolbar: React.FC<ToolbarProps> = ({
-  editor,
-  onAddInteractive,
-  onAddSequence,
-  onAddComment,
-}) => {
+export const Toolbar: React.FC<ToolbarProps> = ({ editor, onAddInteractive, onAddSequence, onAddComment }) => {
   const styles = useStyles2(getStyles);
 
   if (!editor) {
@@ -166,31 +161,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Interactive Elements */}
       <div className={styles.buttonGroup}>
-        <Button
-          icon="bolt"
-          variant="secondary"
-          size="sm"
-          onClick={onAddInteractive}
-          tooltip="Add Interactive Action"
-        >
+        <Button icon="bolt" variant="secondary" size="sm" onClick={onAddInteractive} tooltip="Add Interactive Action">
           Action
         </Button>
-        <Button
-          icon="layers-alt"
-          variant="secondary"
-          size="sm"
-          onClick={onAddSequence}
-          tooltip="Add Sequence Section"
-        >
+        <Button icon="layers-alt" variant="secondary" size="sm" onClick={onAddSequence} tooltip="Add Sequence Section">
           Section
         </Button>
-        <Button
-          icon="comment-alt"
-          variant="secondary"
-          size="sm"
-          onClick={onAddComment}
-          tooltip="Add Comment"
-        >
+        <Button icon="comment-alt" variant="secondary" size="sm" onClick={onAddComment} tooltip="Add Comment">
           Add Comment
         </Button>
       </div>
@@ -210,4 +187,3 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 };
 
 export default Toolbar;
-

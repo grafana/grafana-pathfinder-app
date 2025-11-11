@@ -133,9 +133,7 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         border: `1px dashed ${theme.colors.border.medium}`,
         padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
         borderRadius: theme.shape.radius.default,
-        background: theme.isDark
-          ? 'rgba(255, 215, 0, 0.08)'
-          : 'rgba(255, 215, 0, 0.05)',
+        background: theme.isDark ? 'rgba(255, 215, 0, 0.08)' : 'rgba(255, 215, 0, 0.05)',
       },
 
       // Sequence sections
@@ -144,21 +142,16 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         borderRadius: theme.shape.radius.default,
         padding: theme.spacing(1.5),
         margin: `${theme.spacing(1)} 0`,
-        background: theme.isDark
-          ? 'rgba(74, 144, 226, 0.08)'
-          : 'rgba(74, 144, 226, 0.05)',
+        background: theme.isDark ? 'rgba(74, 144, 226, 0.08)' : 'rgba(74, 144, 226, 0.05)',
       },
 
       // Interactive comments - override global hide rule
       '& .interactive-comment': {
         display: 'inline !important', // Override global hide rule
-        background: theme.isDark
-          ? 'rgba(255, 165, 0, 0.2)'
-          : 'rgba(255, 165, 0, 0.15)',
+        background: theme.isDark ? 'rgba(255, 165, 0, 0.2)' : 'rgba(255, 165, 0, 0.15)',
         borderBottom: `2px dotted ${theme.colors.border.medium}`,
         padding: `0 ${theme.spacing(0.25)}`,
       },
     }),
   };
 };
-

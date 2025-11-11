@@ -13,4 +13,3 @@ const HighlightActionForm = (props: InteractiveFormProps) => {
 };
 
 export default HighlightActionForm;
-

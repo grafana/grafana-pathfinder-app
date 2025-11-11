@@ -25,7 +25,10 @@ export function createToggleInlineNodeCommand(nodeName: string, defaultAttrs: Re
           const nodeSize = node.nodeSize;
           const content = node.content;
 
-          return chain().deleteRange({ from: pos, to: pos + nodeSize }).insertContentAt(pos, content.toJSON()).run();
+          return chain()
+            .deleteRange({ from: pos, to: pos + nodeSize })
+            .insertContentAt(pos, content.toJSON())
+            .run();
         }
       }
 
@@ -64,7 +67,10 @@ export function createUnsetInlineNodeCommand(nodeName: string) {
           const nodeSize = node.nodeSize;
           const content = node.content;
 
-          return chain().deleteRange({ from: pos, to: pos + nodeSize }).insertContentAt(pos, content.toJSON()).run();
+          return chain()
+            .deleteRange({ from: pos, to: pos + nodeSize })
+            .insertContentAt(pos, content.toJSON())
+            .run();
         }
       }
 
@@ -79,10 +85,7 @@ export function createUnsetInlineNodeCommand(nodeName: string) {
  * @param nodeName - The name of the Tiptap node type
  * @param defaultContent - Default content to insert if no selection
  */
-export function createSetInlineNodeCommand(
-  nodeName: string,
-  defaultContent: any[] = [{ type: 'text', text: 'Text' }]
-) {
+export function createSetInlineNodeCommand(nodeName: string, defaultContent: any[] = [{ type: 'text', text: 'Text' }]) {
   return (attributes: Record<string, any> = {}) =>
     ({ commands, state }: any) => {
       const { from, to } = state.selection;
@@ -126,10 +129,7 @@ export function isInsideNode(state: any, nodeName: string): boolean {
 /**
  * Helper to get the node and position if cursor is inside it
  */
-export function findContainingNode(
-  state: any,
-  nodeName: string
-): { node: any; pos: number; depth: number } | null {
+export function findContainingNode(state: any, nodeName: string): { node: any; pos: number; depth: number } | null {
   const { $from } = state.selection;
 
   for (let depth = $from.depth; depth > 0; depth--) {
@@ -145,4 +145,3 @@ export function findContainingNode(
 
   return null;
 }
-

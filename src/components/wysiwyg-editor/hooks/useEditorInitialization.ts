@@ -33,7 +33,12 @@ import { getEditorStyles } from '../editor.styles';
 import type { InteractiveElementType } from '../types';
 
 export interface UseEditorInitializationOptions {
-  startEditing: (type: InteractiveElementType, attributes: Record<string, string>, pos: number) => void;
+  startEditing: (
+    type: InteractiveElementType,
+    attributes: Record<string, string>,
+    pos: number,
+    commentText?: string
+  ) => void;
   stopEditing: () => void;
   onModalOpen: () => void;
 }
@@ -133,4 +138,3 @@ export function useEditorInitialization({
     editorStyles,
   };
 }
-

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Editor } from '@tiptap/react';
 
 // Utils
@@ -10,7 +10,12 @@ import type { EditState, InteractiveElementType } from '../types';
 export interface UseEditorModalsOptions {
   editor: Editor | null;
   editState: EditState | null;
-  startEditing: (type: InteractiveElementType, attributes: Record<string, string>, pos: number) => void;
+  startEditing: (
+    type: InteractiveElementType,
+    attributes: Record<string, string>,
+    pos: number,
+    commentText?: string
+  ) => void;
   stopEditing: () => void;
 }
 
@@ -41,10 +46,11 @@ export function useEditorModals({
 }: UseEditorModalsOptions): UseEditorModalsReturn {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCommentDialogOpen, setIsCommentDialogOpen] = useState(false);
-  
+  const isManuallyControlledRef = useRef(false);
+
   // Determine comment dialog mode and initial text from editState
   const commentDialogMode: 'insert' | 'edit' = editState?.type === 'comment' ? 'edit' : 'insert';
-  const commentDialogInitialText = editState?.type === 'comment' ? (editState.commentText || '') : '';
+  const commentDialogInitialText = editState?.type === 'comment' ? editState.commentText || '' : '';
 
   const openModal = useCallback(() => {
     setIsModalOpen(true);
@@ -56,10 +62,12 @@ export function useEditorModals({
   }, [stopEditing]);
 
   const openCommentDialog = useCallback(() => {
+    isManuallyControlledRef.current = true;
     setIsCommentDialogOpen(true);
   }, []);
 
   const closeCommentDialog = useCallback(() => {
+    isManuallyControlledRef.current = true;
     setIsCommentDialogOpen(false);
     // Clear edit state when closing comment dialog
     if (editState?.type === 'comment') {
@@ -186,11 +194,11 @@ export function useEditorModals({
           const { pos } = editState;
           const { state } = editor;
           const { doc } = state;
-          
+
           // Find the comment node
           let commentNode: any = null;
           let commentPos = pos;
-          
+
           doc.nodesBetween(pos, pos + 1, (node, nodePos) => {
             if (node.type.name === 'interactiveComment') {
               commentNode = node;
@@ -250,12 +258,25 @@ export function useEditorModals({
     [editor, editState, stopEditing]
   );
 
-  // Open comment dialog when editing a comment
+  // Open comment dialog when editing a comment (only if not manually controlled)
+  // Synchronizing UI state (dialog open/closed) with editState is necessary for proper UX
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (editState?.type === 'comment') {
-      setIsCommentDialogOpen(true);
+    if (isManuallyControlledRef.current) {
+      // Reset manual control flag when editState changes
+      if (editState?.type !== 'comment') {
+        isManuallyControlledRef.current = false;
+      }
+      return;
     }
-  }, [editState]);
+
+    if (editState?.type === 'comment' && !isCommentDialogOpen) {
+      setIsCommentDialogOpen(true);
+    } else if (editState?.type !== 'comment' && isCommentDialogOpen) {
+      setIsCommentDialogOpen(false);
+    }
+  }, [editState, isCommentDialogOpen]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   return {
     isModalOpen,
@@ -273,4 +294,3 @@ export function useEditorModals({
     commentDialogInitialText,
   };
 }
-

@@ -49,9 +49,7 @@ export function transformOutputToInput(
  * Removes null/undefined, trims strings, validates formats
  * SECURITY: Sanitizes all string values to prevent XSS via attribute injection (F1, F4)
  */
-export function sanitizeAttributes(
-  attributes: Partial<InteractiveAttributesOutput>
-): InteractiveAttributesOutput {
+export function sanitizeAttributes(attributes: Partial<InteractiveAttributesOutput>): InteractiveAttributesOutput {
   const sanitized: Partial<InteractiveAttributesOutput> = {};
 
   // Trim string values, sanitize, and filter out empty ones
@@ -136,4 +134,3 @@ export function extractAttributesFromElement(element: HTMLElement): Record<strin
 
   return attrs;
 }
-

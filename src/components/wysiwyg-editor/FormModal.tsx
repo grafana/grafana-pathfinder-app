@@ -43,19 +43,19 @@ const insertNewInteractiveElement = (editor: Editor, attributes: Record<string, 
   const actionType = attributes['data-targetaction'];
   const { from, to } = editor.state.selection;
   const hasSelection = from !== to;
-  
-  debug('[FormModal] Inserting interactive element', { 
-    actionType, 
-    attributes, 
+
+  debug('[FormModal] Inserting interactive element', {
+    actionType,
+    attributes,
     hasSelection,
-    selectionRange: { from, to }
+    selectionRange: { from, to },
   });
 
   try {
     if (actionType === ACTION_TYPES.SEQUENCE) {
       // Sequence sections: Insert BEFORE selection without destroying it
       const insertPos = hasSelection ? from : undefined;
-      
+
       if (!editor.can().insertContent({ type: 'sequenceSection' })) {
         logError('[FormModal] Cannot insert sequence section at current position');
         throw new Error('Cannot insert sequence section at current cursor position');
@@ -84,7 +84,6 @@ const insertNewInteractiveElement = (editor: Editor, attributes: Record<string, 
         // Insert at cursor
         editor.chain().focus().insertContent(sequenceContent).run();
       }
-      
     } else if (actionType === ACTION_TYPES.MULTISTEP) {
       // Multistep: Wrap selection in listItem if present
       if (!editor.can().insertContent({ type: 'bulletList' })) {
@@ -95,62 +94,77 @@ const insertNewInteractiveElement = (editor: Editor, attributes: Record<string, 
       if (hasSelection) {
         // Replace selection with bulletList containing selected content
         const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
-        editor.chain().focus().insertContentAt(
-          { from, to },
-          {
-            type: 'bulletList',
-            content: [{
-              type: 'listItem',
-              attrs: attributes,
-              content: [{
-                type: 'paragraph',
-                content: selectedContent,
-              }],
-            }],
-          }
-        ).run();
+        editor
+          .chain()
+          .focus()
+          .insertContentAt(
+            { from, to },
+            {
+              type: 'bulletList',
+              content: [
+                {
+                  type: 'listItem',
+                  attrs: attributes,
+                  content: [
+                    {
+                      type: 'paragraph',
+                      content: selectedContent,
+                    },
+                  ],
+                },
+              ],
+            }
+          )
+          .run();
       } else {
         // Insert at cursor with default text
-        editor.chain().focus().insertContent({
-          type: 'bulletList',
-          content: [{
-            type: 'listItem',
-            attrs: attributes,
-            content: [{
-              type: 'paragraph',
-              content: [{ type: 'text', text: 'Action description' }],
-            }],
-          }],
-        }).run();
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: 'bulletList',
+            content: [
+              {
+                type: 'listItem',
+                attrs: attributes,
+                content: [
+                  {
+                    type: 'paragraph',
+                    content: [{ type: 'text', text: 'Action description' }],
+                  },
+                ],
+              },
+            ],
+          })
+          .run();
       }
-      
     } else {
       // Inline spans: Check if we're inside a list item within a sequence section
       // If so, convert to interactive list item instead of creating a span
       if (isInsideSequenceSectionListItem(editor)) {
         debug('[FormModal] Converting interactive span to list item (inside sequence section)');
-        
+
         // Apply attributes directly to the list item
         // Ensure class="interactive" is included
         const listItemAttributes = {
           ...attributes,
           class: attributes.class || 'interactive',
         };
-        
+
         const success = editor.chain().focus().updateAttributes('listItem', listItemAttributes).run();
-        
+
         if (!success) {
           logError('[FormModal] Failed to convert to interactive list item');
           throw new Error('Cannot convert to interactive list item at current position');
         }
-        
+
         debug('[FormModal] Successfully converted to interactive list item');
         return;
       }
-      
+
       // Normal inline span behavior (not in sequence section)
       const displayText = attributes['data-reftarget'] || 'Interactive action';
-      
+
       if (!editor.can().insertContent({ type: 'interactiveSpan' })) {
         logError('[FormModal] Cannot insert interactive span at current position');
         throw new Error('Cannot insert interactive action at current cursor position');
@@ -159,21 +173,29 @@ const insertNewInteractiveElement = (editor: Editor, attributes: Record<string, 
       if (hasSelection) {
         // Wrap selected content in interactiveSpan
         const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
-        editor.chain().focus().insertContentAt(
-          { from, to },
-          {
-            type: 'interactiveSpan',
-            attrs: attributes,
-            content: selectedContent,
-          }
-        ).run();
+        editor
+          .chain()
+          .focus()
+          .insertContentAt(
+            { from, to },
+            {
+              type: 'interactiveSpan',
+              attrs: attributes,
+              content: selectedContent,
+            }
+          )
+          .run();
       } else {
         // Insert with default text at cursor
-        editor.chain().focus().insertContent({
-          type: 'interactiveSpan',
-          attrs: attributes,
-          content: [{ type: 'text', text: displayText }],
-        }).run();
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: 'interactiveSpan',
+            attrs: attributes,
+            content: [{ type: 'text', text: displayText }],
+          })
+          .run();
       }
     }
 
@@ -186,23 +208,17 @@ const insertNewInteractiveElement = (editor: Editor, attributes: Record<string, 
 
 /**
  * FormModal Component
- * 
+ *
  * Renders a Grafana UI Modal containing the appropriate form based on the current edit state.
  * Uses a centered modal that doesn't interfere with sidebars.
  * Implements two-step flow: select action type, then configure and insert.
  */
-export const FormModal: React.FC<FormModalProps> = ({
-  isOpen,
-  onClose,
-  editor,
-  editState,
-  onFormSubmit,
-}) => {
+export const FormModal: React.FC<FormModalProps> = ({ isOpen, onClose, editor, editState, onFormSubmit }) => {
   const styles = useStyles2(getStyles);
-  
+
   // Track selected action type during creation (when editState is null)
   const [selectedActionType, setSelectedActionType] = React.useState<string | null>(null);
-  
+
   // Reset selectedActionType when modal closes
   React.useEffect(() => {
     if (!isOpen) {
@@ -218,7 +234,7 @@ export const FormModal: React.FC<FormModalProps> = ({
 
     // Determine which action type to use
     let actionType: string;
-    
+
     if (editState) {
       // Edit mode: use action type from editState
       actionType = editState.attributes['data-targetaction'] || '';
@@ -283,14 +299,12 @@ export const FormModal: React.FC<FormModalProps> = ({
 
   const getTitle = () => {
     // Determine action type from either editState or selectedActionType
-    const actionType = editState 
-      ? editState.attributes['data-targetaction'] 
-      : selectedActionType;
-    
+    const actionType = editState ? editState.attributes['data-targetaction'] : selectedActionType;
+
     if (!actionType) {
       return 'Select Action Type';
     }
-    
+
     const typeLabels: Record<string, string> = {
       [ACTION_TYPES.BUTTON]: 'Button Action',
       [ACTION_TYPES.HIGHLIGHT]: 'Highlight Action',
@@ -311,18 +325,10 @@ export const FormModal: React.FC<FormModalProps> = ({
   }
 
   return (
-    <Modal
-      title={getTitle()}
-      isOpen={isOpen}
-      onDismiss={onClose}
-      className={styles.modal}
-    >
-      <div className={styles.modalContent}>
-        {renderForm()}
-      </div>
+    <Modal title={getTitle()} isOpen={isOpen} onDismiss={onClose} className={styles.modal}>
+      <div className={styles.modalContent}>{renderForm()}</div>
     </Modal>
   );
 };
 
 export default FormModal;
-
