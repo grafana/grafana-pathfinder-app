@@ -9,6 +9,10 @@ interface ToolbarProps {
   onAddInteractive: () => void;
   onAddSequence: () => void;
   onAddComment: () => void;
+  onCopy: () => Promise<void>;
+  onDownload: () => Promise<void>;
+  onTest: () => void;
+  onReset: () => void;
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -38,7 +42,16 @@ const getStyles = (theme: GrafanaTheme2) => ({
  * Provides formatting and interactive element controls for the WYSIWYG editor.
  * Uses Grafana UI buttons and follows Grafana design patterns.
  */
-export const Toolbar: React.FC<ToolbarProps> = ({ editor, onAddInteractive, onAddSequence, onAddComment }) => {
+export const Toolbar: React.FC<ToolbarProps> = ({
+  editor,
+  onAddInteractive,
+  onAddSequence,
+  onAddComment,
+  onCopy,
+  onDownload,
+  onTest,
+  onReset,
+}) => {
   const styles = useStyles2(getStyles);
 
   if (!editor) {
@@ -182,6 +195,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({ editor, onAddInteractive, onAd
         tooltip="Clear Formatting"
         onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
       />
+
+      <div className={styles.divider} />
+
+      {/* Action Buttons */}
+      <div className={styles.buttonGroup}>
+        <Button icon="copy" variant="secondary" size="sm" onClick={onCopy} tooltip="Copy">
+        </Button>
+        <Button icon="download-alt" variant="secondary" size="sm" onClick={onDownload} tooltip="Download">
+        </Button>
+        <Button icon="play" variant="primary" size="sm" onClick={onTest} tooltip="Test">
+        </Button>
+        <Button icon="arrow-from-right" variant="secondary" size="sm" onClick={onReset} tooltip="Reset">
+        </Button>
+      </div>
     </div>
   );
 };

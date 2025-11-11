@@ -1,12 +1,12 @@
 import React, { useRef, useEffect } from 'react';
 import { EditorContent } from '@tiptap/react';
-import { Button, Stack, Icon, useStyles2 } from '@grafana/ui';
+import { useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
 // Components
 import Toolbar from './Toolbar';
-import FormModal from './FormModal';
+import FormPanel from './FormPanel';
 import CommentDialog from './CommentDialog';
 
 // Hooks
@@ -24,6 +24,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     padding: theme.spacing(2),
     height: '100%',
     backgroundColor: theme.colors.background.primary,
+    position: 'relative', // Needed for absolute positioning of hidden editor
   }),
   editorWrapper: css({
     flex: 1,
@@ -32,6 +33,13 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(2),
     overflow: 'hidden',
   }),
+  editorWrapperHidden: css({
+    visibility: 'hidden',
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none',
+  }),
   editorContent: css({
     flex: 1,
     overflow: 'auto',
@@ -39,25 +47,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     backgroundColor: theme.colors.background.primary,
   }),
-  actions: css({
-    display: 'flex',
-    gap: theme.spacing(1),
-    padding: theme.spacing(2),
-    borderTop: `1px solid ${theme.colors.border.weak}`,
-    backgroundColor: theme.colors.background.secondary,
-  }),
   title: css({
     fontSize: theme.typography.h2.fontSize,
     fontWeight: theme.typography.h2.fontWeight,
     margin: 0,
     color: theme.colors.text.primary,
-  }),
-  savingIndicator: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.success.text,
   }),
 });
 
@@ -107,18 +101,24 @@ export const WysiwygEditor: React.FC = () => {
     openModalRef.current = openModal;
   }, [openModal]);
 
-  const { isSaving } = useEditorPersistence({ editor });
+  // Auto-save functionality (indicator removed, but auto-save still needed)
+  useEditorPersistence({ editor });
 
   const { copyHTML, downloadHTML, testGuide, resetGuide } = useEditorActions({ editor });
 
   return (
     <div className={`${styles.container} wysiwyg-editor-container`}>
-      <div className={styles.editorWrapper}>
+      {/* Editor wrapper - hidden when form is open, but remains in DOM for auto-save */}
+      <div className={`${styles.editorWrapper} ${isModalOpen ? styles.editorWrapperHidden : ''}`}>
         <Toolbar
           editor={editor}
           onAddInteractive={handleAddInteractive}
           onAddSequence={handleAddSequence}
           onAddComment={handleAddComment}
+          onCopy={copyHTML}
+          onDownload={downloadHTML}
+          onTest={testGuide}
+          onReset={resetGuide}
         />
 
         <div className={styles.editorContent}>
@@ -126,38 +126,15 @@ export const WysiwygEditor: React.FC = () => {
         </div>
       </div>
 
-      <div className={styles.actions}>
-        <Stack gap={1} direction="row" justifyContent="space-between" alignItems="center">
-          <Stack gap={1}>
-            <Button icon="copy" variant="secondary" onClick={copyHTML}>
-              Copy
-            </Button>
-            <Button icon="download-alt" variant="secondary" onClick={downloadHTML}>
-              Download
-            </Button>
-            <Button icon="play" variant="primary" onClick={testGuide}>
-              Test
-            </Button>
-            <Button icon="arrow-from-right" variant="secondary" onClick={resetGuide}>
-              Reset
-            </Button>
-          </Stack>
-
-          {isSaving && (
-            <span className={styles.savingIndicator}>
-              <Icon name="check" size="sm" /> Saved
-            </span>
-          )}
-        </Stack>
-      </div>
-
-      <FormModal
-        isOpen={isModalOpen}
-        onClose={closeModal}
-        editor={editor}
-        editState={editState}
-        onFormSubmit={handleFormSubmit}
-      />
+      {/* Form panel - shown when form is open, uses same CSS sizing as editorWrapper */}
+      {isModalOpen && (
+        <FormPanel
+          onClose={closeModal}
+          editor={editor}
+          editState={editState}
+          onFormSubmit={handleFormSubmit}
+        />
+      )}
 
       <CommentDialog
         isOpen={isCommentDialogOpen}
