@@ -8,9 +8,9 @@ import React, { useState } from 'react';
 import { Button, Input, Alert, useStyles2, Badge } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
-import { useSession } from '../../utils/collaboration/session-state';
+import { useSession } from '../../integrations/workshop';
 import { ConnectionIndicator } from './ConnectionIndicator';
-import type { SessionConfig } from '../../types/collaboration.types';
+import type { SessionConfig, AttendeeInfo } from '../../types/collaboration.types';
 
 /**
  * Props for PresenterControls
@@ -169,7 +169,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
               </div>
             ) : (
               <div className={styles.scrollableAttendeeList}>
-                {attendees.map((attendee) => {
+                {attendees.map((attendee: AttendeeInfo) => {
                   return (
                     <div key={attendee.id} className={styles.attendeeItem}>
                       <span className={styles.attendeeName}>{attendee.name || 'Anonymous'}</span>
