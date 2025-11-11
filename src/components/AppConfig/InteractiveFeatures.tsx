@@ -1,4 +1,4 @@
-import React, { useState, ChangeEvent, useEffect } from 'react';
+import React, { useState, ChangeEvent } from 'react';
 import { Button, Field, Input, useStyles2, FieldSet, Switch, Text, Alert } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -25,22 +25,15 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
   const styles = useStyles2(getStyles);
   const { enabled, pinned, jsonData } = plugin.meta;
 
-  const [state, setState] = useState<State>({
+  // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
+  // After save, page reload brings fresh jsonData - no sync needed
+  const [state, setState] = useState<State>(() => ({
     enableAutoDetection: jsonData?.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
     requirementsCheckTimeout: jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
     guidedStepTimeout: jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
-  });
+  }));
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-
-  // Sync local state with jsonData when it changes (after reload)
-  useEffect(() => {
-    setState({
-      enableAutoDetection: jsonData?.enableAutoDetection ?? DEFAULT_ENABLE_AUTO_DETECTION,
-      requirementsCheckTimeout: jsonData?.requirementsCheckTimeout ?? DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
-      guidedStepTimeout: jsonData?.guidedStepTimeout ?? DEFAULT_GUIDED_STEP_TIMEOUT,
-    });
-  }, [jsonData]);
 
   const validateNumber = (value: string, min: number, max: number, fieldName: string): number | null => {
     const num = parseInt(value, 10);

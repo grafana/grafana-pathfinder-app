@@ -7,14 +7,14 @@ import {
   enrichWithJourneyContext,
   enrichWithStepContext,
 } from '../lib/analytics';
-import { getJourneyProgress } from './docs-retrieval/learning-journey-helpers';
+import { getJourneyProgress } from '../docs-retrieval/learning-journey-helpers';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
   isAllowedGitHubRawUrl,
   isAnyGitHubUrl,
   isLocalhostUrl,
-} from './url-validator';
+} from '../security';
 import { ALLOWED_GITHUB_REPOS } from '../constants';
 import { isDevModeEnabledGlobal } from './dev-mode';
 

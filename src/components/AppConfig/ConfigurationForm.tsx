@@ -9,6 +9,10 @@ import {
   DEFAULT_TUTORIAL_URL,
   DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   DEFAULT_OPEN_PANEL_ON_LAUNCH,
+  DEFAULT_ENABLE_LIVE_SESSIONS,
+  DEFAULT_PEERJS_HOST,
+  DEFAULT_PEERJS_PORT,
+  DEFAULT_PEERJS_KEY,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
@@ -26,6 +30,11 @@ type State = {
   interceptGlobalDocsLinks: boolean;
   // Open panel on launch
   openPanelOnLaunch: boolean;
+  // Live sessions (collaborative learning)
+  enableLiveSessions: boolean;
+  peerjsHost: string;
+  peerjsPort: number;
+  peerjsKey: string;
 };
 
 export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
@@ -36,18 +45,23 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const s = useStyles2(getStyles);
   const { enabled, pinned, jsonData } = plugin.meta;
 
-  // Feature toggle: sets the default value for openPanelOnLaunch
-  // - If toggle is set (true/false), use that as default
-  // - If toggle is not set, use DEFAULT_OPEN_PANEL_ON_LAUNCH
-  // - User can always override in settings after the default is applied
-  const toggleValue = getFeatureToggle(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH);
-  const defaultOpenPanelValue = toggleValue !== undefined ? toggleValue : DEFAULT_OPEN_PANEL_ON_LAUNCH;
+  // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
+  // After save, page reload brings fresh jsonData - no sync needed
+  const [state, setState] = useState<State>(() => {
+    // Feature toggle: sets the default value for openPanelOnLaunch
+    const toggleValue = getFeatureToggle(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH);
+    const defaultOpenPanelValue = toggleValue !== undefined ? toggleValue : DEFAULT_OPEN_PANEL_ON_LAUNCH;
 
-  const [state, setState] = useState<State>({
-    recommenderServiceUrl: jsonData?.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
-    tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
-    interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
-    openPanelOnLaunch: jsonData?.openPanelOnLaunch ?? defaultOpenPanelValue,
+    return {
+      recommenderServiceUrl: jsonData?.recommenderServiceUrl || DEFAULT_RECOMMENDER_SERVICE_URL,
+      tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
+      interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+      openPanelOnLaunch: jsonData?.openPanelOnLaunch ?? defaultOpenPanelValue,
+      enableLiveSessions: jsonData?.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
+      peerjsHost: jsonData?.peerjsHost || DEFAULT_PEERJS_HOST,
+      peerjsPort: jsonData?.peerjsPort ?? DEFAULT_PEERJS_PORT,
+      peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
+    };
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -159,6 +173,36 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     });
   };
 
+  const onToggleLiveSessions = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      enableLiveSessions: event.target.checked,
+    });
+  };
+
+  const onChangePeerjsHost = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      peerjsHost: event.target.value.trim(),
+    });
+  };
+
+  const onChangePeerjsPort = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value.trim();
+    const port = value === '' ? DEFAULT_PEERJS_PORT : parseInt(value, 10);
+    setState({
+      ...state,
+      peerjsPort: isNaN(port) ? DEFAULT_PEERJS_PORT : port,
+    });
+  };
+
+  const onChangePeerjsKey = (event: ChangeEvent<HTMLInputElement>) => {
+    setState({
+      ...state,
+      peerjsKey: event.target.value.trim(),
+    });
+  };
+
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSaving(true);
@@ -170,6 +214,10 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         tutorialUrl: state.tutorialUrl,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
         openPanelOnLaunch: state.openPanelOnLaunch,
+        enableLiveSessions: state.enableLiveSessions,
+        peerjsHost: state.peerjsHost,
+        peerjsPort: state.peerjsPort,
+        peerjsKey: state.peerjsKey,
       };
 
       await updatePluginSettings(plugin.meta.id, {
@@ -372,6 +420,86 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
             </Alert>
           )}
         </FieldSet>
+
+        {/* Live Sessions (Collaborative Learning) - Dev Mode Only */}
+        {devModeEnabledForUser && (
+          <FieldSet
+            label={
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Live Sessions (Collaborative Learning)
+                <Badge text="Experimental - Dev Mode Only" color="orange" />
+              </div>
+            }
+            className={s.marginTopXl}
+          >
+            <div className={s.toggleSection}>
+              <Switch id="enable-live-sessions" value={state.enableLiveSessions} onChange={onToggleLiveSessions} />
+              <div className={s.toggleLabels}>
+                <Text variant="body" weight="medium">
+                  Enable live collaborative learning sessions (Experimental)
+                </Text>
+                <Text variant="body" color="secondary">
+                  Allow presenters to create live sessions where attendees can follow along with interactive tutorials
+                  in real-time
+                </Text>
+              </div>
+            </div>
+
+            {state.enableLiveSessions && (
+              <>
+                <Alert severity="warning" title="⚠️ Experimental Feature" className={s.marginTop}>
+                  <Text variant="body">
+                    <strong>This feature is experimental and may have stability issues.</strong> Connection reliability
+                    depends on network configuration and the availability of the PeerJS signaling server. Not
+                    recommended for production-critical workflows.
+                  </Text>
+                </Alert>
+
+                {/* PeerJS Server Configuration */}
+                <div className={s.marginTop}>
+                  <Text variant="h6">Signaling Server Settings</Text>
+                  <div style={{ marginTop: '8px', marginBottom: '16px' }}>
+                    <Text variant="body" color="secondary">
+                      Configure the live session signaling server.
+                    </Text>
+                  </div>
+
+                  <Field label="Server Host" description="Hostname or IP address">
+                    <Input value={state.peerjsHost} onChange={onChangePeerjsHost} placeholder={DEFAULT_PEERJS_HOST} />
+                  </Field>
+
+                  <Field label="Server Port" description="Port number">
+                    <Input
+                      type="number"
+                      value={state.peerjsPort}
+                      onChange={onChangePeerjsPort}
+                      placeholder={String(DEFAULT_PEERJS_PORT)}
+                    />
+                  </Field>
+
+                  <Field label="API Key" description="Authentication key">
+                    <Input value={state.peerjsKey} onChange={onChangePeerjsKey} placeholder={DEFAULT_PEERJS_KEY} />
+                  </Field>
+                </div>
+              </>
+            )}
+
+            {!state.enableLiveSessions && (
+              <Alert severity="warning" title="Experimental feature disabled" className={s.marginTop}>
+                <Text variant="body">
+                  Live sessions are currently disabled. This is an <strong>experimental feature</strong> that enables
+                  collaborative learning experiences where presenters can guide attendees through interactive tutorials
+                  in real-time.
+                  <br />
+                  <br />
+                  <strong>Note:</strong> This feature uses peer-to-peer connections and may have stability issues
+                  depending on network configuration. Enable only if you understand the limitations and have tested it
+                  in your environment.
+                </Text>
+              </Alert>
+            )}
+          </FieldSet>
+        )}
 
         <div className={s.marginTop}>
           <Button type="submit" data-testid={testIds.appConfig.submit} disabled={isSubmitDisabled || isSaving}>

@@ -22,6 +22,14 @@ export const DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = false; // Experimental opt-in
 // Note: This is overridden by feature toggle if set
 export const DEFAULT_OPEN_PANEL_ON_LAUNCH = false; // Experimental opt-in feature
 
+// Live Sessions defaults
+export const DEFAULT_ENABLE_LIVE_SESSIONS = false; // Opt-in feature - disabled by default for stability
+
+// PeerJS Server defaults (for live sessions)
+export const DEFAULT_PEERJS_HOST = 'localhost';
+export const DEFAULT_PEERJS_PORT = 9000;
+export const DEFAULT_PEERJS_KEY = 'pathfinder';
+
 // Network timeout defaults
 export const DEFAULT_CONTENT_FETCH_TIMEOUT = 10000; // 10 seconds for document retrieval
 export const DEFAULT_RECOMMENDER_TIMEOUT = 5000; // 5 seconds for recommender API
@@ -75,6 +83,11 @@ export interface DocsPluginConfig {
   interceptGlobalDocsLinks?: boolean;
   // Open Panel on Launch
   openPanelOnLaunch?: boolean;
+  // Live Sessions (Collaborative Learning)
+  enableLiveSessions?: boolean;
+  peerjsHost?: string;
+  peerjsPort?: number;
+  peerjsKey?: string;
 }
 
 // Helper functions to get configuration values with defaults
@@ -99,6 +112,11 @@ export const getConfigWithDefaults = (
   interceptGlobalDocsLinks: config.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   // Open Panel on Launch
   openPanelOnLaunch: config.openPanelOnLaunch ?? DEFAULT_OPEN_PANEL_ON_LAUNCH,
+  // Live Sessions
+  enableLiveSessions: config.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
+  peerjsHost: config.peerjsHost || DEFAULT_PEERJS_HOST,
+  peerjsPort: config.peerjsPort ?? DEFAULT_PEERJS_PORT,
+  peerjsKey: config.peerjsKey || DEFAULT_PEERJS_KEY,
 });
 
 /**

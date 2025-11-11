@@ -1,12 +1,33 @@
 /**
  * User storage abstraction for the Grafana Docs Plugin
  *
- * This module provides a unified storage API that uses Grafana's user storage
- * when available (Grafana 11.5+) and falls back to localStorage for older versions.
+ * This module provides a unified storage API with a hybrid approach to ensure
+ * data persistence even during page navigations/refreshes.
+ *
+ * Storage Strategy:
+ * - When Grafana user storage is available (11.5+):
+ *   1. Writes to localStorage immediately (synchronous, survives page refresh)
+ *   2. Queues async writes to Grafana storage (eventual consistency)
+ *   3. Reads from localStorage (fast, always available)
+ *   4. On init, syncs bidirectionally using timestamp-based conflict resolution
+ *
+ * - When Grafana user storage is unavailable:
+ *   Falls back to localStorage only
+ *
+ * Conflict Resolution:
+ * - Each write/delete includes a timestamp
+ * - On initialization, timestamps are compared between localStorage and Grafana storage
+ * - The most recent operation (last-write-wins) is applied
+ * - Deletions are represented by timestamp without data
+ * - If localStorage is newer, it syncs back to Grafana storage
+ * - This handles cases where page refresh happened before Grafana storage could sync
  *
  * Key features:
+ * - No data loss during page navigation/refresh
  * - User-specific storage in Grafana database (when available)
- * - Automatic fallback to localStorage
+ * - Timestamp-based conflict resolution (last-write-wins)
+ * - Proper deletion propagation across devices
+ * - Eventual consistency between localStorage and Grafana storage
  * - Security measures for quota exhaustion
  * - Type-safe operations with JSON serialization
  * - Consistent API across storage mechanisms
@@ -27,6 +48,16 @@ export const StorageKeys = {
   ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
   INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: grafana-pathfinder-app-interactive-steps-{contentKey}-{sectionId}
 } as const;
+
+// Timestamp suffix for conflict resolution
+const TIMESTAMP_SUFFIX = '__timestamp';
+
+/**
+ * Gets the timestamp key for a given storage key
+ */
+function getTimestampKey(key: string): string {
+  return `${key}${TIMESTAMP_SUFFIX}`;
+}
 
 // ============================================================================
 // SECURITY LIMITS
@@ -159,6 +190,208 @@ function createLocalStorage(): UserStorage {
   };
 }
 
+/**
+ * Creates a hybrid storage implementation that writes to localStorage immediately
+ * and then syncs to Grafana user storage asynchronously for eventual consistency.
+ *
+ * This prevents data loss during page navigation/refresh while maintaining
+ * the benefits of user-scoped storage in Grafana.
+ *
+ * Strategy:
+ * 1. Writes happen to localStorage first (synchronous, reliable)
+ * 2. Then queued to Grafana storage (async, eventual consistency)
+ * 3. Reads come from localStorage (fast, always available)
+ * 4. On init, sync from Grafana storage to localStorage (Grafana is source of truth)
+ */
+function createHybridStorage(grafanaStorage: any): UserStorage {
+  const localStorage = createLocalStorage();
+
+  // Queue for async writes to Grafana storage
+  const writeQueue: Array<{ key: string; value: string }> = [];
+  let isProcessingQueue = false;
+
+  // Process queued writes to Grafana storage
+  const processQueue = async () => {
+    if (isProcessingQueue || writeQueue.length === 0) {
+      return;
+    }
+
+    isProcessingQueue = true;
+
+    while (writeQueue.length > 0) {
+      const item = writeQueue.shift();
+      if (item) {
+        try {
+          await grafanaStorage.setItem(item.key, item.value);
+        } catch (error) {
+          console.warn(`Failed to sync to Grafana storage: ${item.key}`, error);
+          // Don't retry - localStorage is the immediate source of truth
+        }
+      }
+    }
+
+    isProcessingQueue = false;
+  };
+
+  return {
+    async getItem<T>(key: string): Promise<T | null> {
+      // Read from localStorage for immediate access
+      return localStorage.getItem<T>(key);
+    },
+
+    async setItem<T>(key: string, value: T): Promise<void> {
+      try {
+        const serialized = JSON.stringify(value);
+        const timestamp = Date.now().toString();
+
+        // 1. Write to localStorage first (synchronous, survives page refresh)
+        await localStorage.setItem(key, value);
+        // Store timestamp for conflict resolution
+        await localStorage.setItem(getTimestampKey(key), timestamp);
+
+        // 2. Queue write to Grafana storage (async, eventual consistency)
+        writeQueue.push({ key, value: serialized });
+        writeQueue.push({ key: getTimestampKey(key), value: timestamp });
+
+        // Process queue in background (don't await - we don't want to block)
+        processQueue().catch((error) => {
+          console.warn('Error processing Grafana storage queue:', error);
+        });
+      } catch (error) {
+        // If localStorage fails, at least try Grafana storage
+        console.warn(`Failed to write to localStorage: ${key}, trying Grafana storage`, error);
+        try {
+          const serialized = JSON.stringify(value);
+          const timestamp = Date.now().toString();
+          await grafanaStorage.setItem(key, serialized);
+          await grafanaStorage.setItem(getTimestampKey(key), timestamp);
+        } catch (grafanaError) {
+          console.error(`Failed to write to both storages: ${key}`, grafanaError);
+          throw grafanaError;
+        }
+      }
+    },
+
+    async removeItem(key: string): Promise<void> {
+      const timestamp = Date.now().toString();
+
+      // Remove from localStorage first
+      await localStorage.removeItem(key);
+      // Store deletion timestamp so we can resolve conflicts properly
+      await localStorage.setItem(getTimestampKey(key), timestamp);
+
+      // Queue removal to Grafana storage (set to empty string with timestamp)
+      writeQueue.push({ key, value: '' });
+      writeQueue.push({ key: getTimestampKey(key), value: timestamp });
+      processQueue().catch((error) => {
+        console.warn('Error processing Grafana storage queue:', error);
+      });
+    },
+
+    async clear(): Promise<void> {
+      // Clear localStorage
+      await localStorage.clear();
+
+      // Note: Grafana storage doesn't support bulk clear
+      console.warn('Clear operation not fully supported for Grafana user storage');
+    },
+  };
+}
+
+/**
+ * Syncs data from Grafana user storage to localStorage on initialization
+ * Uses timestamp comparison to keep the most recent data (last-write-wins)
+ *
+ * Deletion Handling:
+ * - Deletions are represented by a timestamp without data (value='')
+ * - If a deletion timestamp is newer than existing data, the deletion is applied
+ * - This ensures deletions propagate correctly across devices/sessions
+ */
+async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
+  try {
+    // Get all our storage keys
+    const keysToSync = [StorageKeys.JOURNEY_COMPLETION, StorageKeys.TABS, StorageKeys.ACTIVE_TAB];
+
+    for (const key of keysToSync) {
+      try {
+        // Get value and timestamp from Grafana storage
+        const grafanaValue = await grafanaStorage.getItem(key);
+        const grafanaTimestampStr = await grafanaStorage.getItem(getTimestampKey(key));
+
+        // Get value and timestamp from localStorage
+        const localValue = localStorage.getItem(key);
+        const localTimestampStr = localStorage.getItem(getTimestampKey(key));
+
+        // Parse timestamps (default to 0 if not found)
+        const grafanaTimestamp = grafanaTimestampStr ? parseInt(grafanaTimestampStr, 10) : 0;
+        const localTimestamp = localTimestampStr ? parseInt(localTimestampStr, 10) : 0;
+
+        const hasGrafanaData = grafanaValue && grafanaValue !== '';
+        const hasLocalData = localValue && localValue !== '';
+        const hasGrafanaTimestamp = grafanaTimestamp > 0;
+        const hasLocalTimestamp = localTimestamp > 0;
+
+        // Conflict resolution based on timestamps
+        // Note: A timestamp without data indicates a deletion
+        if (hasGrafanaTimestamp && hasLocalTimestamp) {
+          // Both have timestamps - compare them to resolve conflict
+          if (grafanaTimestamp > localTimestamp) {
+            // Grafana is newer
+            if (hasGrafanaData) {
+              // Grafana has newer data - use it
+              localStorage.setItem(key, grafanaValue);
+              localStorage.setItem(getTimestampKey(key), grafanaTimestampStr);
+            } else {
+              // Grafana has newer deletion - apply it
+              localStorage.removeItem(key);
+              localStorage.setItem(getTimestampKey(key), grafanaTimestampStr);
+            }
+          } else if (localTimestamp > grafanaTimestamp) {
+            // localStorage is newer
+            if (hasLocalData) {
+              // localStorage has newer data - sync it back to Grafana
+              await grafanaStorage.setItem(key, localValue);
+              await grafanaStorage.setItem(getTimestampKey(key), localTimestampStr);
+            } else {
+              // localStorage has newer deletion - sync it back to Grafana
+              await grafanaStorage.setItem(key, '');
+              await grafanaStorage.setItem(getTimestampKey(key), localTimestampStr);
+            }
+          }
+          // If timestamps are equal, they're in sync
+        } else if (hasGrafanaTimestamp) {
+          // Only Grafana has timestamp
+          if (hasGrafanaData) {
+            // Grafana has data - use it
+            localStorage.setItem(key, grafanaValue);
+            localStorage.setItem(getTimestampKey(key), grafanaTimestampStr);
+          } else {
+            // Grafana has deletion - apply it
+            localStorage.removeItem(key);
+            localStorage.setItem(getTimestampKey(key), grafanaTimestampStr);
+          }
+        } else if (hasLocalTimestamp) {
+          // Only localStorage has timestamp
+          if (hasLocalData) {
+            // localStorage has data - sync it to Grafana
+            await grafanaStorage.setItem(key, localValue);
+            await grafanaStorage.setItem(getTimestampKey(key), localTimestampStr);
+          } else {
+            // localStorage has deletion - sync it to Grafana
+            await grafanaStorage.setItem(key, '');
+            await grafanaStorage.setItem(getTimestampKey(key), localTimestampStr);
+          }
+        }
+        // If neither has timestamp, nothing to sync
+      } catch (error) {
+        console.warn(`Failed to sync key from Grafana storage: ${key}`, error);
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to sync from Grafana storage:', error);
+  }
+}
+
 // ============================================================================
 // REACT HOOK
 // ============================================================================
@@ -203,59 +436,20 @@ export function useUserStorage(): UserStorage {
     try {
       // Check if Grafana storage is actually available and functional
       if (grafanaStorage && typeof grafanaStorage.getItem === 'function') {
-        // Create wrapper for Grafana storage
-        storage = {
-          async getItem<T>(key: string): Promise<T | null> {
-            try {
-              const value = await grafanaStorage.getItem(key);
-
-              // Handle null, undefined, and empty string (all mean "not found")
-              if (value === null || value === undefined || value === '') {
-                return null;
-              }
-
-              // Try to parse as JSON
-              try {
-                const parsed = JSON.parse(value) as T;
-                return parsed;
-              } catch {
-                return value as unknown as T;
-              }
-            } catch (error) {
-              console.warn(`Failed to get item from user storage: ${key}`, error);
-              return null;
-            }
-          },
-
-          async setItem<T>(key: string, value: T): Promise<void> {
-            try {
-              const serialized = JSON.stringify(value);
-              await grafanaStorage.setItem(key, serialized);
-            } catch (error) {
-              console.error(`Failed to set item in user storage: ${key}`, error);
-              throw error;
-            }
-          },
-
-          async removeItem(key: string): Promise<void> {
-            try {
-              // Grafana storage doesn't have removeItem, set to empty string
-              await grafanaStorage.setItem(key, '');
-            } catch (error) {
-              console.warn(`Failed to remove item from user storage: ${key}`, error);
-            }
-          },
-
-          async clear(): Promise<void> {
-            console.warn('Clear operation not fully supported for Grafana user storage');
-          },
-        };
+        // Use hybrid storage: localStorage for immediate writes, Grafana for sync
+        storage = createHybridStorage(grafanaStorage);
         storageRef.current = storage;
 
         // Set global storage so standalone helpers can use it
         setGlobalStorage(storage);
+
+        // Sync from Grafana storage to localStorage on init
+        // Grafana storage is the source of truth across devices/sessions
+        syncFromGrafanaStorage(grafanaStorage).catch((error) => {
+          console.warn('Failed initial sync from Grafana storage:', error);
+        });
       } else {
-        // Fall back to localStorage
+        // Fall back to localStorage only
         storage = createLocalStorage();
         storageRef.current = storage;
         setGlobalStorage(storage);

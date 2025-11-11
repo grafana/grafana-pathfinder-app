@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useEffect } from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, useStyles2, Card, Badge, Alert } from '@grafana/ui';
@@ -13,7 +13,7 @@ import { locationService, config } from '@grafana/runtime';
 
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
-import { useContextPanel, Recommendation } from '../../utils/context';
+import { useContextPanel, Recommendation } from '../../context-engine';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getConfigWithDefaults } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
@@ -405,8 +405,10 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const currentUserId = config.bootData.user?.id;
   const devModeEnabled = isDevModeEnabled(configWithDefaults, currentUserId);
 
-  // Set global config for utility functions that can't access React context
-  (window as any).__pathfinderPluginConfig = configWithDefaults;
+  // REACT HOOKS v7: Set global config in useEffect to avoid modifying globals during render
+  useEffect(() => {
+    (window as any).__pathfinderPluginConfig = configWithDefaults;
+  }, [configWithDefaults]);
 
   // Use the simplified context hook
   const {
