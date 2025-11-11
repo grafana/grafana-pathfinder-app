@@ -43,27 +43,27 @@ export const EDITOR_UI_LABELS = {
   INTERACTIVE: 'Add Interactive Action',
   SEQUENCE: 'Add Sequence Section',
   COMMENT: 'Interactive Comment',
-  
+
   // Heading levels
   HEADING_NORMAL: 'Normal',
   HEADING_1: 'Heading 1',
   HEADING_2: 'Heading 2',
   HEADING_3: 'Heading 3',
   HEADING_4: 'Heading 4',
-  
+
   // Format options
   FORMAT_CODE: 'Code',
   FORMAT_BLOCKQUOTE: 'Blockquote',
   FORMAT_HR: 'Horizontal Rule',
-  
+
   // List types
   LIST_BULLET: 'Bullet List',
   LIST_ORDERED: 'Numbered List',
-  
+
   // Export buttons
   COPY_HTML: 'Copy HTML',
   DOWNLOAD_HTML: 'Download HTML',
-  
+
   // Tooltips
   TOOLTIP_BOLD: 'Bold (Ctrl+B)',
   TOOLTIP_ITALIC: 'Italic (Ctrl+I)',
@@ -86,9 +86,9 @@ export const EDITOR_DEFAULTS = {
       </ul>
     </span>
   `,
-  
+
   PLACEHOLDER_TEXT: 'Start typing your tutorial content here...',
-  
+
   DEFAULT_SECTION_ID: 'section-1',
   DEFAULT_SECTION_TITLE: 'Section Title',
 } as const;
@@ -116,4 +116,3 @@ export const EDITOR_TIMING = {
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
 export type CssClass = (typeof CSS_CLASSES)[keyof typeof CSS_CLASSES];
 export type HtmlTag = (typeof HTML_TAGS)[keyof typeof HTML_TAGS];
-

@@ -101,25 +101,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dropdownWrapperRef = useRef<HTMLDivElement>(null);
 
-  if (!editor) {
-    return null;
-  }
-
-  // Helper function to get current active style
-  const getCurrentStyle = (): string => {
-    if (editor.isActive('heading', { level: 1 })) return 'Heading 1';
-    if (editor.isActive('heading', { level: 2 })) return 'Heading 2';
-    if (editor.isActive('heading', { level: 3 })) return 'Heading 3';
-    return 'Normal text'; // paragraph is default
-  };
-
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownWrapperRef.current &&
-        !dropdownWrapperRef.current.contains(event.target as Node)
-      ) {
+      if (dropdownWrapperRef.current && !dropdownWrapperRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
       }
     };
@@ -133,6 +118,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
     return undefined;
   }, [isDropdownOpen]);
+
+  if (!editor) {
+    return null;
+  }
+
+  // Helper function to get current active style
+  const getCurrentStyle = (): string => {
+    if (editor.isActive('heading', { level: 1 })) {
+      return 'Heading 1';
+    }
+    if (editor.isActive('heading', { level: 2 })) {
+      return 'Heading 2';
+    }
+    if (editor.isActive('heading', { level: 3 })) {
+      return 'Heading 3';
+    }
+    return 'Normal text'; // paragraph is default
+  };
 
   // Style options for dropdown
   const styleOptions = [
@@ -216,7 +219,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onClick={() => editor.chain().focus().toggleBold().run()}
         >
           <strong>B</strong>
-        </Button>    
+        </Button>
         {/* <Button
           variant={editor.isActive('italic') ? 'primary' : 'secondary'}
           size="sm"
@@ -281,18 +284,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           tooltip="Clear Formatting"
           onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
         />
-        <Button icon="copy" variant="secondary" size="sm" onClick={onCopy} tooltip="Copy">
-        </Button>
-        <Button icon="download-alt" variant="secondary" size="sm" onClick={onDownload} tooltip="Download">
-        </Button>
-        <Button icon="play" variant="primary" size="sm" onClick={onTest} tooltip="Test">
-        </Button>
+        <Button icon="copy" variant="secondary" size="sm" onClick={onCopy} tooltip="Copy"></Button>
+        <Button icon="download-alt" variant="secondary" size="sm" onClick={onDownload} tooltip="Download"></Button>
+        <Button icon="play" variant="primary" size="sm" onClick={onTest} tooltip="Test"></Button>
       </div>
 
       {/* Reset button - right-aligned with spacing */}
       <div className={styles.resetButtonWrapper}>
-        <Button icon="arrow-from-right" variant="secondary" size="sm" onClick={onReset} tooltip="Reset">
-        </Button>
+        <Button icon="arrow-from-right" variant="secondary" size="sm" onClick={onReset} tooltip="Reset"></Button>
       </div>
     </div>
   );

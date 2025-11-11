@@ -343,4 +343,3 @@ export const FormPanel: React.FC<FormPanelProps> = ({ onClose, editor, editState
 };
 
 export default FormPanel;
-
