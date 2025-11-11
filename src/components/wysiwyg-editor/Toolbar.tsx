@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -34,6 +34,45 @@ const getStyles = (theme: GrafanaTheme2) => ({
     background: theme.colors.border.weak,
     margin: `0 ${theme.spacing(1)}`,
   }),
+  dropdownWrapper: css({
+    position: 'relative',
+  }),
+  dropdownMenu: css({
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    marginTop: theme.spacing(0.5),
+    minWidth: '160px',
+    background: theme.colors.background.primary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    boxShadow: theme.shadows.z3,
+    zIndex: 1000,
+    padding: theme.spacing(0.5),
+  }),
+  dropdownMenuItem: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    padding: `${theme.spacing(0.75)} ${theme.spacing(1)}`,
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.text.primary,
+    '&:hover': {
+      background: theme.colors.action.hover,
+    },
+  }),
+  dropdownMenuItemActive: css({
+    fontWeight: theme.typography.fontWeightMedium,
+  }),
+  dropdownCheckmark: css({
+    marginLeft: theme.spacing(1),
+    color: theme.colors.primary.text,
+  }),
 });
 
 /**
@@ -41,6 +80,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
  *
  * Provides formatting and interactive element controls for the WYSIWYG editor.
  * Uses Grafana UI buttons and follows Grafana design patterns.
+ * Organized to match Google Docs conventions for familiarity.
  */
 export const Toolbar: React.FC<ToolbarProps> = ({
   editor,
@@ -53,10 +93,60 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onReset,
 }) => {
   const styles = useStyles2(getStyles);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownWrapperRef = useRef<HTMLDivElement>(null);
 
   if (!editor) {
     return null;
   }
+
+  // Helper function to get current active style
+  const getCurrentStyle = (): string => {
+    if (editor.isActive('heading', { level: 1 })) return 'Heading 1';
+    if (editor.isActive('heading', { level: 2 })) return 'Heading 2';
+    if (editor.isActive('heading', { level: 3 })) return 'Heading 3';
+    return 'Normal text'; // paragraph is default
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownWrapperRef.current &&
+        !dropdownWrapperRef.current.contains(event.target as Node)
+      ) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+
+    return undefined;
+  }, [isDropdownOpen]);
+
+  // Style options for dropdown
+  const styleOptions = [
+    { label: 'Normal text', action: () => editor.chain().focus().setParagraph().run() },
+    { label: 'Heading 1', action: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
+    { label: 'Heading 2', action: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+    { label: 'Heading 3', action: () => editor.chain().focus().toggleHeading({ level: 3 }).run() },
+  ];
+
+  const currentStyle = getCurrentStyle();
+  const isStyleActive = (label: string): boolean => {
+    return label === currentStyle;
+  };
+
+  const handleStyleSelect = (action: () => void) => {
+    action();
+    setIsDropdownOpen(false);
+  };
 
   return (
     <div className={styles.toolbar}>
@@ -80,6 +170,35 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         >
           ↷
         </Button>
+      </div>
+
+      <div className={styles.divider} />
+
+      {/* Heading Style Dropdown */}
+      <div ref={dropdownWrapperRef} className={styles.dropdownWrapper}>
+        <Button
+          variant="secondary"
+          size="sm"
+          tooltip="Text Style"
+          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+          icon={isDropdownOpen ? 'angle-up' : 'angle-down'}
+        >
+          {currentStyle}
+        </Button>
+        {isDropdownOpen && (
+          <div ref={dropdownRef} className={styles.dropdownMenu}>
+            {styleOptions.map((option) => (
+              <button
+                key={option.label}
+                className={`${styles.dropdownMenuItem} ${isStyleActive(option.label) ? styles.dropdownMenuItemActive : ''}`}
+                onClick={() => handleStyleSelect(option.action)}
+              >
+                <span>{option.label}</span>
+                {isStyleActive(option.label) && <span className={styles.dropdownCheckmark}>✓</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className={styles.divider} />
@@ -109,44 +228,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onClick={() => editor.chain().focus().toggleCode().run()}
         >
           {'<>'}
-        </Button>
-      </div>
-
-      <div className={styles.divider} />
-
-      {/* Headings */}
-      <div className={styles.buttonGroup}>
-        <Button
-          variant={editor.isActive('heading', { level: 1 }) ? 'primary' : 'secondary'}
-          size="sm"
-          tooltip="Heading 1"
-          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        >
-          H1
-        </Button>
-        <Button
-          variant={editor.isActive('heading', { level: 2 }) ? 'primary' : 'secondary'}
-          size="sm"
-          tooltip="Heading 2"
-          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        >
-          H2
-        </Button>
-        <Button
-          variant={editor.isActive('heading', { level: 3 }) ? 'primary' : 'secondary'}
-          size="sm"
-          tooltip="Heading 3"
-          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        >
-          H3
-        </Button>
-        <Button
-          variant={editor.isActive('paragraph') ? 'primary' : 'secondary'}
-          size="sm"
-          tooltip="Paragraph"
-          onClick={() => editor.chain().focus().setParagraph().run()}
-        >
-          P
         </Button>
       </div>
 
@@ -187,19 +268,15 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       <div className={styles.divider} />
 
-      {/* Clear Formatting */}
-      <Button
-        icon="trash-alt"
-        variant="secondary"
-        size="sm"
-        tooltip="Clear Formatting"
-        onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
-      />
-
-      <div className={styles.divider} />
-
-      {/* Action Buttons */}
+      {/* Action Buttons (Clear Formatting + Copy/Download/Test/Reset) */}
       <div className={styles.buttonGroup}>
+        <Button
+          icon="trash-alt"
+          variant="secondary"
+          size="sm"
+          tooltip="Clear Formatting"
+          onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
+        />
         <Button icon="copy" variant="secondary" size="sm" onClick={onCopy} tooltip="Copy">
         </Button>
         <Button icon="download-alt" variant="secondary" size="sm" onClick={onDownload} tooltip="Download">
