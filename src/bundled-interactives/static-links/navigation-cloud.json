@@ -1,0 +1,36 @@
+{
+  "rules": [
+    {
+      "title": "Grafana Cloud documentation",
+      "url": "https://grafana.com/docs/grafana-cloud/",
+      "description": "Learn about Grafana Cloud documentation.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/cloud-home-app"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Get started with Grafana Cloud",
+      "url": "https://grafana.com/docs/learning-journeys/grafana-cloud-onboarding/",
+      "description": "",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefixIn": ["/a/cloud-home-app", "/a/grafana-setupguide-app/getting-started"]
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    }
+  ]
+}

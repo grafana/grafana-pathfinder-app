@@ -1,0 +1,1154 @@
+{
+  "rules": [
+    {
+      "title": "Get Started with Grafana Dashboards",
+      "url": "https://grafana.com/docs/grafana/latest/dashboards/",
+      "description": "Dashboards allow you to query, transform, visualize, and understand your data no matter where it’s stored.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          { "urlPrefix": "/d/" },
+          {
+            "or": [{ "targetPlatform": "cloud" }, { "targetPlatform": "oss" }]
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage Dashboards",
+      "url": "https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/",
+      "description": "Learn how to manage permissions and folders",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          { "urlPrefix": "/d/" },
+          {
+            "or": [{ "targetPlatform": "cloud" }, { "targetPlatform": "oss" }]
+          }
+        ]
+      }
+    },
+    {
+      "title": "Visualize metrics in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/visualization-metrics/add-visualization/",
+      "description": "Step-by-step guide: Visualize metrics in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Visualize logs in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/visualization-logs/",
+      "description": "Step-by-step guide: Visualize logs in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Visualize traces in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/visualization-traces/",
+      "description": "Step-by-step guide: Visualize traces in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Dashboards",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/dashboards/",
+      "description": "Learn about Dashboards.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage playlists",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/dashboards/create-manage-playlists/",
+      "description": "Learn about Manage playlists.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/playlists"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Share a snapshot",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/dashboards/share-dashboards-panels/#share-a-snapshot",
+      "description": "Learn about Share a snapshot.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboard/snapshots"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage library panels",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/dashboards/build-dashboards/manage-library-panels/",
+      "description": "Learn about Manage library panels.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/library-panels"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Externally shared dashboards",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/dashboards/share-dashboards-panels/shared-dashboards/",
+      "description": "Learn about Externally shared dashboards.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboard/public"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create and manage reports",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/dashboards/create-reports/",
+      "description": "Learn about Create and manage reports.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/reports"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Visualize metrics in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/visualization-metrics/",
+      "description": "Step-by-step guide: Visualize metrics in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:timeseries"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Time series",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/time-series/",
+      "description": "Learn about Time series.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:timeseries"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:timeseries"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Alert list",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/alert-list/",
+      "description": "Learn about Alert list.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:alertlist"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Annotations list",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/annotations/",
+      "description": "Learn about Annotations list.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:annolist"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Bar chart",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/bar-chart/",
+      "description": "Learn about Bar chart.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:barchart"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:barchart"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Bar gauge",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/bar-gauge/",
+      "description": "Learn about Bar gauge.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:bargauge"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:bargauge"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Candlestick",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/candlestick/",
+      "description": "Learn about Candlestick.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:candlestick"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:candlestick"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Canvas",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/canvas/",
+      "description": "Learn about Canvas.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:canvas"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:canvas"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Dashboard list",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/dashboard-list/",
+      "description": "Learn about Dashboard list.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:dashlist"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Datagrid",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/datagrid/",
+      "description": "Learn about Datagrid.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:datagrid"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:datagrid"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Flame graph",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/flame-graph/",
+      "description": "Learn about Flame graph.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:flamegraph"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:flamegraph"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Gauge",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/gauge/",
+      "description": "Learn about Gauge.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:gauge"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:gauge"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Geomap",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/geomap/",
+      "description": "Learn about Geomap.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:geomap"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:geomap"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Heatmap",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/heatmap/",
+      "description": "Learn about Heatmap.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:heatmap"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:heatmap"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Histogram",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/histogram/",
+      "description": "Learn about Histogram.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:histogram"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:histogram"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Visualize logs in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/visualization-logs/add-visualization/",
+      "description": "Step-by-step guide: Visualize logs in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:logs"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Logs",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/logs/",
+      "description": "Learn about Logs.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:logs"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:logs"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "News",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/news/",
+      "description": "Learn about News.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:news"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Node graph",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/node-graph/",
+      "description": "Learn about Node graph.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:nodegraph"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:nodegraph"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Pie chart",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/pie-chart/",
+      "description": "Learn about Pie chart.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:piechart"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:piechart"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Stat",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/stat/",
+      "description": "Learn about Stat.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:stat"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:stat"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "State timeline",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/state-timeline/",
+      "description": "Learn about State timeline.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:state-timeline"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:state-timeline"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Status history",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/status-history/",
+      "description": "Learn about Status history.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:status-history"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:status-history"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Table",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/table/",
+      "description": "Learn about Table.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:table"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Visualize traces in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/visualization-traces/",
+      "description": "Step-by-step guide: Visualize traces in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:table"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:table"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Text",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/text/",
+      "description": "Learn about Text.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:text"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Visualize traces in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/visualization-traces/",
+      "description": "Step-by-step guide: Visualize traces in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:traces"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Traces",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/traces/",
+      "description": "Learn about Traces.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:traces"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:traces"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Trend",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/trend/",
+      "description": "Learn about Trend.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:trend"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:trend"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "XY chart",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/xy-chart/",
+      "description": "Learn about XY chart.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:xychart"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Transform data in a Grafana Cloud dashboard",
+      "url": "https://grafana.com/docs/learning-journeys/data-transformation/",
+      "description": "Step-by-step guide: Transform data in a Grafana Cloud dashboard.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/dashboards"
+          },
+          {
+            "tag": "panel-type:xychart"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Visualize GitHub data source in Grafana Cloud",
+      "url": "https://grafana.com/docs/learning-journeys/github-visualize/",
+      "description": "A learning journey that shows you how to visualize GitHub repository data in Grafana Cloud.",
+      "type": "learning-journey",
+      "match": {
+        "urlPrefix": "/dashboards"
+      }
+    }
+  ]
+}

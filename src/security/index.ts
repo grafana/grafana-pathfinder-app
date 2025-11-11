@@ -23,7 +23,6 @@ export {
   validateTutorialUrl,
   isYouTubeDomain,
   isVimeoDomain,
-  isTrustedDomain,
   type URLValidation,
 } from './url-validator';
 
@@ -31,7 +30,4 @@ export {
 export { sanitizeDocumentationHTML, sanitizeTextForDisplay } from './html-sanitizer';
 
 // Log sanitization
-export { sanitizeForLogging, sanitizeObjectForLogging } from './log-sanitizer';
-
-// Regex safety
-export { safeRegexMatch, safeRegexTest, validateRegexPattern } from './regex-safe';
+export { sanitizeForLogging } from './log-sanitizer';

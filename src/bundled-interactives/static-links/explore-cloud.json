@@ -1,0 +1,52 @@
+{
+  "rules": [
+    {
+      "title": "Get started with Explore",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/explore/get-started-with-explore/",
+      "description": "Get started: Get started with Explore.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/explore"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Logs in Explore",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/explore/logs-integration/",
+      "description": "Learn about Logs in Explore.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/explore"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Traces in Explore",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/explore/trace-integration/",
+      "description": "Learn about Traces in Explore.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/explore"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    }
+  ]
+}

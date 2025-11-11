@@ -1,0 +1,132 @@
+{
+  "rules": [
+    {
+      "title": "Simplified exploration",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/",
+      "description": "Learn about Simplified exploration.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/drilldown"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Explore data using Metrics Drilldown",
+      "url": "https://grafana.com/docs/learning-journeys/drilldown-metrics/",
+      "description": "Step-by-step guide: Explore data using Metrics Drilldown.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-metricsdrilldown-app/drilldown"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Metrics Drilldown",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/metrics/",
+      "description": "Learn about Grafana Metrics Drilldown.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-metricsdrilldown-app/drilldown"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Explore logs using Logs Drilldown",
+      "url": "https://grafana.com/docs/learning-journeys/drilldown-logs/",
+      "description": "Step-by-step guide: Explore logs using Logs Drilldown.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-lokiexplore-app/explore"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Logs Drilldown",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/",
+      "description": "Learn about Grafana Logs Drilldown.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-lokiexplore-app/explore"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Use Traces Drilldown to identify high latency service requests",
+      "url": "https://grafana.com/docs/learning-journeys/drilldown-traces/",
+      "description": "Step-by-step guide: Use Traces Drilldown to identify high latency service requests.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-exploretraces-app/explore"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Traces Drilldown",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/traces/",
+      "description": "Learn about Traces Drilldown.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-exploretraces-app/explore"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Profiles Drilldown",
+      "url": "https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/profiles/",
+      "description": "Learn about Profiles Drilldown.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-pyroscope-app/explore"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -40,30 +40,3 @@ export function sanitizeForLogging(value: unknown): string {
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '') // Remove other control chars (exclude \t\n\r)
     .substring(0, 1000); // Limit length to prevent log flooding
 }
-
-/**
- * Sanitize objects for logging (useful for data structures)
- *
- * @param obj - Any object to be logged
- * @returns Sanitized JSON string safe for logging
- *
- * @example
- * ```typescript
- * const userData = { name: "Alice\nADMIN", role: "user" };
- * console.log('Data:', sanitizeObjectForLogging(userData));
- * // Logs: Data: {"name":"Alice\\nADMIN","role":"user"}
- * ```
- */
-export function sanitizeObjectForLogging(obj: unknown): string {
-  if (obj === null || obj === undefined) {
-    return String(obj);
-  }
-
-  try {
-    // For objects, stringify first then sanitize
-    const str = typeof obj === 'object' ? JSON.stringify(obj) : String(obj);
-    return sanitizeForLogging(str);
-  } catch (error) {
-    return '[Unable to serialize object]';
-  }
-}

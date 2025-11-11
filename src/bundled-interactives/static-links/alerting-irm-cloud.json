@@ -1,0 +1,564 @@
+{
+  "rules": [
+    {
+      "title": "Alerts and IRM",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/",
+      "description": "Learn about Alerts and IRM.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerts-and-incidents"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Add a service",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/service-center/#add-a-service",
+      "description": "Learn about Add a service.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-slo-app/services"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Escalate issues from the Service Center",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/service-center/escalate-to-irm/",
+      "description": "Learn about Escalate issues from the Service Center.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-slo-app/services"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Alerting",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/alerting/",
+      "description": "Learn about Grafana Alerting.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create metric alert rules in Grafana Cloud",
+      "url": "https://grafana.com/docs/learning-journeys/alerting-metrics/",
+      "description": "Step-by-step guide: Create metric alert rules in Grafana Cloud.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/list"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create log alert rules with Grafana Alerting",
+      "url": "https://grafana.com/docs/learning-journeys/logs-alert-creation",
+      "description": "Step-by-step guide: Create log alert rules with Grafana Alerting.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/list"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure contact points",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/alerting/configure-notifications/manage-contact-points/",
+      "description": "How to configure contact points.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/notifications"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage notification templates",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/alerting/configure-notifications/template-notifications/manage-notification-templates/",
+      "description": "How to manage notification templates.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/notifications"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure notification policies",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/alerting/configure-notifications/create-notification-policy/",
+      "description": "How to configure notification policies.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/routes"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure mute timings and active intervals",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/alerting/configure-notifications/mute-timings/",
+      "description": "How to configure mute timings and active intervals.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/routes"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure silences",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/alerting/configure-notifications/create-silence/",
+      "description": "How to configure silences.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/silences"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "View active notifications",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/alerting/monitor-status/view-active-notifications/",
+      "description": "Learn about View active notifications.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/groups"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "View alert state history",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/alerting/monitor-status/view-alert-state-history/",
+      "description": "Learn about View alert state history.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/history"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Alertmanagers",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/alerting/set-up/configure-alertmanager/",
+      "description": "How to configure Alertmanagers.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/alerting/admin/alertmanager"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana IRM",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/",
+      "description": "Learn about Grafana IRM.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Respond to alerts in Grafana IRM",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/respond-to-alerts/",
+      "description": "Learn about Respond to alerts in Grafana IRM.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/alert-groups"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Declare an incident in Grafana IRM",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/incident-management/declare-incident/",
+      "description": "Learn about Declare an incident in Grafana IRM.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/incidents"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Add and manage incident participants",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/incident-management/participate-collaborate/",
+      "description": "Learn about Add and manage incident participants.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/incidents"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Private incidents",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/incident-management/private-incidents/",
+      "description": "Learn about Private incidents.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/incidents"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Investigate incidents with Sift",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/incident-management/investigate-with-sift/",
+      "description": "Learn about Investigate incidents with Sift.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/incidents"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Update task status",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/incident-management/manage-tasks/#update-task-status",
+      "description": "Learn about Update task status.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/tasks"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "On-call schedules",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/manage/on-call-schedules/",
+      "description": "Learn about On-call schedules.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/schedules"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create on-call schedules",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/manage/on-call-schedules/create-schedules/",
+      "description": "Learn about Create on-call schedules.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/schedules"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure escalation chains",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/escalation-routing/escalation-chains/",
+      "description": "How to configure escalation chains.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/escalations/"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure integrations for Grafana IRM",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/integrations/configure-integrations/",
+      "description": "How to configure integrations for Grafana IRM.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/integrations/monitoring-systems"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Webhooks in Grafana IRM",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/integrations/webhooks/",
+      "description": "How to webhooks in Grafana IRM.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/integrations/monitoring-systems"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana IRM integration for Slack",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/integrations/irm-slack/",
+      "description": "How to grafana IRM integration for Slack.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/integrations/monitoring-systems"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Incident insights",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/manage/insights-and-reporting/incident-insights/",
+      "description": "Learn about Incident insights.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/insights/alerts"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Define incident roles",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/incident-settings/roles/",
+      "description": "How to define incident roles.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/settings"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Customize incident severity levels",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/configure/incident-settings/severity-levels/",
+      "description": "How to customize incident severity levels.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-irm-app/settings"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create SLOs",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/create/",
+      "description": "Learn about Create SLOs.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-slo-app/home/insights"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage SLOs",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/manage/",
+      "description": "Learn about Manage SLOs.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-slo-app/manage-slos"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create SLOs",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/create/",
+      "description": "Learn about Create SLOs.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-slo-app/manage-slos"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "The SLO performance page",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/overviewdashboards/#the-slo-performance-page",
+      "description": "Learn about The SLO performance page.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-slo-app/slo-performance"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "SLO Reports",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/slo/reports/",
+      "description": "Learn about SLO Reports.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-slo-app/reports"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    }
+  ]
+}

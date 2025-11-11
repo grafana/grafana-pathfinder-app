@@ -1,0 +1,84 @@
+{
+  "rules": [
+    {
+      "title": "Get started with metric forecasting and anomaly detection",
+      "url": "https://grafana.com/docs/grafana-cloud/machine-learning/dynamic-alerting/forecasting/",
+      "description": "Learn about Get started with metric forecasting and anomaly detection.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-ml-app/home"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create a forecast",
+      "url": "https://grafana.com/docs/grafana-cloud/machine-learning/dynamic-alerting/forecasting/#create-a-forecast",
+      "description": "Learn about Create a forecast.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-ml-app/metric-forecast"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Forecast model configuration",
+      "url": "https://grafana.com/docs/grafana-cloud/machine-learning/dynamic-alerting/forecasting/config/",
+      "description": "Learn about Forecast model configuration.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-ml-app/metric-forecast"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create an Outlier Detector",
+      "url": "https://grafana.com/docs/grafana-cloud/machine-learning/dynamic-alerting/outlier-detection/#create-an-outlier-detector",
+      "description": "Learn about Create an Outlier Detector.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-ml-app/outlier-detector"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Investigate incidents with Sift",
+      "url": "https://grafana.com/docs/grafana-cloud/alerting-and-irm/irm/use/incident-management/investigate-with-sift/",
+      "description": "Learn about Investigate incidents with Sift.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-ml-app/investigations"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    }
+  ]
+}

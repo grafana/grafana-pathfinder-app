@@ -1,4 +1,4 @@
-import { sanitizeForLogging, sanitizeObjectForLogging } from './log-sanitizer';
+import { sanitizeForLogging } from './log-sanitizer';
 
 describe('sanitizeForLogging', () => {
   describe('Newline injection protection', () => {
@@ -112,51 +112,5 @@ describe('sanitizeForLogging', () => {
       const sanitized = sanitizeForLogging(attack);
       expect(sanitized).toBe('benignevil'); // Backspaces removed
     });
-  });
-});
-
-describe('sanitizeObjectForLogging', () => {
-  it('should handle null', () => {
-    expect(sanitizeObjectForLogging(null)).toBe('null');
-  });
-
-  it('should handle undefined', () => {
-    expect(sanitizeObjectForLogging(undefined)).toBe('undefined');
-  });
-
-  it('should stringify and sanitize objects', () => {
-    const obj = { name: 'Alice\nFake', role: 'user' };
-    const sanitized = sanitizeObjectForLogging(obj);
-    expect(sanitized).toBe('{"name":"Alice\\nFake","role":"user"}');
-    expect(sanitized).not.toContain('\n');
-  });
-
-  it('should handle circular references gracefully', () => {
-    const obj: any = { name: 'test' };
-    obj.self = obj; // Circular reference
-    const sanitized = sanitizeObjectForLogging(obj);
-    expect(sanitized).toBe('[Unable to serialize object]');
-  });
-
-  it('should handle objects with malicious properties', () => {
-    const obj = {
-      url: 'https://evil.com',
-      title: 'Doc\nADMIN PASSWORD: secret',
-    };
-    const sanitized = sanitizeObjectForLogging(obj);
-    expect(sanitized).toContain('\\n');
-    expect(sanitized).not.toContain('\n');
-  });
-
-  it('should handle arrays with newlines', () => {
-    const arr = ['item1\nfake', 'item2'];
-    const sanitized = sanitizeObjectForLogging(arr);
-    expect(sanitized).toBe('["item1\\nfake","item2"]');
-  });
-
-  it('should limit length for large objects', () => {
-    const largeObj = { data: 'x'.repeat(2000) };
-    const sanitized = sanitizeObjectForLogging(largeObj);
-    expect(sanitized.length).toBe(1000);
   });
 });
