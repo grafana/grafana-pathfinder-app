@@ -89,7 +89,7 @@ describe('FormFillHandler', () => {
     jest.spyOn(global, 'setTimeout').mockImplementation(mockSetTimeout);
 
     // Mock document.querySelectorAll
-    document.querySelectorAll = mockQuerySelectorAll;
+    jest.spyOn(document, 'querySelectorAll').mockImplementation(mockQuerySelectorAll);
 
     // Create a mock element
     mockElement = {
