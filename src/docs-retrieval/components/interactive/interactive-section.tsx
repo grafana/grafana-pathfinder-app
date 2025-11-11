@@ -479,7 +479,7 @@ export function InteractiveSection({
       // This ensures green checkmarks are cleared from the UI
       setResetTrigger((prev) => prev + 1);
     },
-    [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps]  
+    [currentlyExecutingStep, stepComponents, currentStepIndex, persistCompletedSteps]
   );
 
   // Execute a single step (shared between individual and sequence execution)
@@ -946,7 +946,7 @@ export function InteractiveSection({
         }, 100);
       }, 200);
     });
-  }, [disabled, isRunning, getContentKey, stepComponents, sectionId]);  
+  }, [disabled, isRunning, getContentKey, stepComponents, sectionId]);
 
   // Register this section's steps in the global registry BEFORE rendering children
   // This must happen in useMemo (not useEffect) to ensure totalDocumentSteps is correct

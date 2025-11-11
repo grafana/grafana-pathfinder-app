@@ -177,7 +177,7 @@ export class HoverHandler {
    * Reserved for future use if hover cleanup is needed
    */
   // @ts-ignore - Reserved for future use
-   
+
   private removeProgrammaticHoverState(element: HTMLElement): void {
     element.removeAttribute('data-interactive-hover');
 
@@ -205,7 +205,7 @@ export class HoverHandler {
    * Reserved for future use if hover cleanup is needed
    */
   // @ts-ignore - Reserved for future use
-   
+
   private dispatchUnhoverEvents(element: HTMLElement): void {
     const rect = element.getBoundingClientRect();
     const clientX = rect.left + rect.width / 2;

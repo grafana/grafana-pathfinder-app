@@ -722,7 +722,7 @@ export function useStepChecker({
       document.removeEventListener('section-completed', handleSectionCompletion);
       document.removeEventListener('step-auto-skipped', handleAutoSkip as EventListener);
     };
-  }, [checkStep, state.isCompleted, requirements, stepId, markSkipped]);  
+  }, [checkStep, state.isCompleted, requirements, stepId, markSkipped]);
 
   // Scoped heartbeat recheck for fragile prerequisites
   useEffect(() => {
@@ -769,7 +769,7 @@ export function useStepChecker({
       stopped = true;
       clearTimeout(timeoutId);
     };
-  }, [requirements, state.isEnabled, state.isCompleted]);  
+  }, [requirements, state.isEnabled, state.isCompleted]);
 
   return {
     ...state,
