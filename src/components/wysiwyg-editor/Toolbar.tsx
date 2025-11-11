@@ -73,6 +73,10 @@ const getStyles = (theme: GrafanaTheme2) => ({
     marginLeft: theme.spacing(1),
     color: theme.colors.primary.text,
   }),
+  resetButtonWrapper: css({
+    marginLeft: 'auto',
+    display: 'flex',
+  }),
 });
 
 /**
@@ -262,13 +266,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           Section
         </Button>
         <Button icon="comment-alt" variant="secondary" size="sm" onClick={onAddComment} tooltip="Add Comment">
-          Add Comment
+          Comment
         </Button>
       </div>
 
       <div className={styles.divider} />
 
-      {/* Action Buttons (Clear Formatting + Copy/Download/Test/Reset) */}
+      {/* Action Buttons (Clear Formatting + Copy/Download/Test) */}
       <div className={styles.buttonGroup}>
         <Button
           icon="trash-alt"
@@ -283,6 +287,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </Button>
         <Button icon="play" variant="primary" size="sm" onClick={onTest} tooltip="Test">
         </Button>
+      </div>
+
+      {/* Reset button - right-aligned with spacing */}
+      <div className={styles.resetButtonWrapper}>
         <Button icon="arrow-from-right" variant="secondary" size="sm" onClick={onReset} tooltip="Reset">
         </Button>
       </div>
