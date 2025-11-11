@@ -219,7 +219,7 @@ export function generateSessionId(): string {
  */
 export function generateAttendeeId(): string {
   const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substr(2, 5);
+  const random = Math.random().toString(36).substring(2, 7);
   return `att_${timestamp}_${random}`;
 }
 

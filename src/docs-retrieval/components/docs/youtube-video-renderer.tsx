@@ -258,7 +258,7 @@ export function YouTubeVideoRenderer({
         height={height}
         title={title}
         className={className}
-        frameBorder="0"
+        style={{ border: 0 }}
         allowFullScreen
         {...props}
       />
@@ -285,7 +285,7 @@ export function YouTubeVideoRenderer({
       height={height}
       title={title || 'YouTube video player'}
       className={className}
-      frameBorder="0"
+      style={{ border: 0 }}
       allowFullScreen
       {...props}
     />
