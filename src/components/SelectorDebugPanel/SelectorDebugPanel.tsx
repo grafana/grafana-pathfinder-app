@@ -1,30 +1,14 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Button, Input, Badge, Icon, useStyles2, TextArea } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive-engine';
-import {
-  querySelectorAllEnhanced,
-  generateBestSelector,
-  getSelectorInfo,
-  validateAndCleanSelector,
-} from '../../lib/dom';
-import {
-  detectActionType,
-  shouldCaptureElement,
-  getActionDescription,
-  type DetectedAction,
-} from '../../interactive-engine/auto-completion/action-detector';
 import { getDebugPanelStyles } from './debug-panel.styles';
-import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { exportStepsToHTML, combineStepsIntoMultistep, type RecordedStep } from '../../utils/tutorial-exporter';
+import { combineStepsIntoMultistep } from '../../utils/tutorial-exporter';
 import { URLTester } from 'components/URLTester';
-
-interface TestResult {
-  success: boolean;
-  message: string;
-  matchCount?: number;
-}
-
-// RecordedStep interface is now imported from tutorial-exporter
+import { useSelectorTester } from '../../utils/selector-tester.hook';
+import { useStepExecutor } from '../../utils/step-executor.hook';
+import { useSelectorCapture } from '../../utils/selector-capture.hook';
+import { useActionRecorder } from '../../utils/action-recorder.hook';
+import { parseStepString } from '../../utils/step-parser.util';
 
 export interface SelectorDebugPanelProps {
   onOpenDocsPage?: (url: string, title: string) => void;
@@ -71,143 +55,73 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     }
   }, []);
 
-  // Simple Selector Tester State
+  // Simple Selector Tester
   const [simpleSelector, setSimpleSelector] = useState('');
-  const [simpleResult, setSimpleResult] = useState<TestResult | null>(null);
-  const [simpleTesting, setSimpleTesting] = useState(false);
+  const { testSelector, isTesting: simpleTesting, result: simpleResult } = useSelectorTester({
+    executeInteractiveAction,
+  });
 
-  // MultiStep Debug State (auto-execution)
+  // MultiStep Debug (auto-execution)
   const [multiStepInput, setMultiStepInput] = useState('');
-  const [multiStepResult, setMultiStepResult] = useState<TestResult | null>(null);
-  const [multiStepTesting, setMultiStepTesting] = useState(false);
-  const [multiStepProgress, setMultiStepProgress] = useState<{ current: number; total: number } | null>(null);
+  const {
+    execute: executeMultiStep,
+    isExecuting: multiStepTesting,
+    progress: multiStepProgress,
+    result: multiStepResult,
+  } = useStepExecutor({ executeInteractiveAction });
 
-  // Guided Debug State (user performs actions manually)
+  // Guided Debug (user performs actions manually)
   const [guidedInput, setGuidedInput] = useState('');
-  const [guidedResult, setGuidedResult] = useState<TestResult | null>(null);
-  const [guidedRunning, setGuidedRunning] = useState(false);
   const [guidedCurrentStep, setGuidedCurrentStep] = useState(0);
   const [guidedSteps, setGuidedSteps] = useState<Array<{ action: string; selector: string; value?: string }>>([]);
-  const guidedAbortControllerRef = useRef<AbortController | null>(null);
+  const {
+    execute: executeGuided,
+    isExecuting: guidedRunning,
+    progress: guidedProgress,
+    result: guidedResult,
+    cancel: cancelGuided,
+  } = useStepExecutor({ executeInteractiveAction });
 
   // Guided Debug Handlers
   const handleGuidedStart = useCallback(async () => {
-    if (!guidedInput.trim()) {
-      setGuidedResult({ success: false, message: 'Please enter guided steps' });
-      return;
-    }
-
-    // Parse input lines
-    const lines = guidedInput.split('\n').filter((line) => line.trim());
-    const steps: Array<{ action: string; selector: string; value?: string }> = [];
-
-    for (const line of lines) {
-      const parts = line.split('|').map((p) => p.trim());
-      if (parts.length >= 2) {
-        steps.push({
-          action: parts[0],
-          selector: parts[1],
-          value: parts[2] || undefined,
-        });
-      }
-    }
-
-    if (steps.length === 0) {
-      setGuidedResult({ success: false, message: 'No valid steps found in input' });
-      return;
-    }
-
+    const steps = parseStepString(guidedInput);
     setGuidedSteps(steps);
-    setGuidedRunning(true);
     setGuidedCurrentStep(0);
-    setGuidedResult(null);
 
-    // Create abort controller for cancellation
-    guidedAbortControllerRef.current = new AbortController();
-
-    try {
-      // Execute steps one at a time, waiting for user action
-      for (let i = 0; i < steps.length; i++) {
-        if (guidedAbortControllerRef.current?.signal.aborted) {
-          break;
-        }
-
-        const step = steps[i];
-        setGuidedCurrentStep(i);
-
-        // Highlight the element and wait for user to perform the action
-        await executeInteractiveAction(step.action, step.selector, step.value, 'show');
-
-        // Wait for user to complete the action
-        // This is a simplified version - in production, you'd use GuidedHandler's completion detection
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            resolve(undefined);
-          }, 30000); // 30 second timeout per step
-
-          if (guidedAbortControllerRef.current) {
-            guidedAbortControllerRef.current.signal.addEventListener('abort', () => {
-              clearTimeout(timeout);
-              reject(new Error('Cancelled'));
-            });
-          }
-
-          // Listen for completion (simplified - just wait for any click near the highlighted element)
-          const handleCompletion = () => {
-            clearTimeout(timeout);
-            document.removeEventListener('click', handleCompletion);
-            resolve(undefined);
-          };
-
-          // Wait a bit before adding listener to avoid immediate trigger
-          setTimeout(() => {
-            document.addEventListener('click', handleCompletion, { once: true });
-          }, 500);
-        });
-      }
-
-      setGuidedResult({
-        success: true,
-        message: `Completed ${steps.length} guided step${steps.length !== 1 ? 's' : ''}`,
-      });
-    } catch (error) {
-      if (error instanceof Error && error.message === 'Cancelled') {
-        setGuidedResult({ success: false, message: 'Guided sequence cancelled' });
-      } else {
-        setGuidedResult({
-          success: false,
-          message: error instanceof Error ? error.message : 'Guided execution failed',
-        });
-      }
-    } finally {
-      setGuidedRunning(false);
-      setGuidedCurrentStep(0);
-      guidedAbortControllerRef.current = null;
-    }
-  }, [guidedInput, executeInteractiveAction]);
+    // Execute with guided mode (error handling is done by the hook)
+    await executeGuided(steps, 'guided');
+  }, [guidedInput, executeGuided]);
 
   const handleGuidedCancel = useCallback(() => {
-    if (guidedAbortControllerRef.current) {
-      guidedAbortControllerRef.current.abort();
+    cancelGuided();
+    setGuidedCurrentStep(0);
+  }, [cancelGuided]);
+
+  // Update current step based on progress
+  useEffect(() => {
+    if (guidedProgress) {
+      setGuidedCurrentStep(guidedProgress.current - 1);
     }
-  }, []);
+  }, [guidedProgress]);
 
-  // Watch Mode State
-  const [watchMode, setWatchMode] = useState(false);
-  const [capturedSelector, setCapturedSelector] = useState('');
-  const [selectorInfo, setSelectorInfo] = useState<{
-    method: string;
-    isUnique: boolean;
-    matchCount: number;
-    contextStrategy?: string;
-  } | null>(null);
+  // Watch Mode
   const [selectorCopied, setSelectorCopied] = useState(false);
+  const { isActive: watchMode, capturedSelector, selectorInfo, startCapture, stopCapture } = useSelectorCapture({
+    autoDisable: true,
+  });
 
-  // Record Mode State
-  const [recordMode, setRecordMode] = useState(false);
-  const [recordedSteps, setRecordedSteps] = useState<RecordedStep[]>([]);
-  const recordingElementsRef = useRef<Map<HTMLElement, { value: string; timestamp: number }>>(new Map());
+  // Record Mode
   const [allStepsCopied, setAllStepsCopied] = useState(false);
+  const {
+    isRecording: recordMode,
+    recordedSteps,
+    startRecording,
+    stopRecording,
+    clearRecording,
+    deleteStep,
+    setRecordedSteps,
+    exportSteps: exportStepsFromRecorder,
+  } = useActionRecorder();
 
   // Export State
   const [exportCopied, setExportCopied] = useState(false);
@@ -218,164 +132,27 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
   // Simple Selector Tester Handlers
   const handleSimpleShow = useCallback(async () => {
-    if (!simpleSelector.trim()) {
-      setSimpleResult({ success: false, message: 'Please enter a selector' });
-      return;
-    }
-
-    setSimpleTesting(true);
-    setSimpleResult(null);
-
-    try {
-      const result = querySelectorAllEnhanced(simpleSelector);
-      const matchCount = result.elements.length;
-
-      if (matchCount === 0) {
-        setSimpleResult({
-          success: false,
-          message: 'No elements found',
-          matchCount: 0,
-        });
-      } else {
-        // Highlight all matches using the highlight action
-        await executeInteractiveAction('highlight', simpleSelector, undefined, 'show');
-        setSimpleResult({
-          success: true,
-          message: `Found ${matchCount} element${matchCount !== 1 ? 's' : ''}${result.usedFallback ? ' (using fallback)' : ''}`,
-          matchCount,
-        });
-      }
-    } catch (error) {
-      setSimpleResult({
-        success: false,
-        message: error instanceof Error ? error.message : 'Selector test failed',
-      });
-    } finally {
-      setSimpleTesting(false);
-    }
-  }, [simpleSelector, executeInteractiveAction]);
+    await testSelector(simpleSelector, 'show');
+  }, [simpleSelector, testSelector]);
 
   const handleSimpleDo = useCallback(async () => {
-    if (!simpleSelector.trim()) {
-      setSimpleResult({ success: false, message: 'Please enter a selector' });
-      return;
-    }
-
-    setSimpleTesting(true);
-    setSimpleResult(null);
-
-    try {
-      const result = querySelectorAllEnhanced(simpleSelector);
-      const matchCount = result.elements.length;
-
-      if (matchCount === 0) {
-        setSimpleResult({
-          success: false,
-          message: 'No elements found',
-          matchCount: 0,
-        });
-      } else {
-        // Highlight and click first match
-        await executeInteractiveAction('highlight', simpleSelector, undefined, 'do');
-        setSimpleResult({
-          success: true,
-          message: `Clicked first of ${matchCount} element${matchCount !== 1 ? 's' : ''}${result.usedFallback ? ' (using fallback)' : ''}`,
-          matchCount,
-        });
-      }
-    } catch (error) {
-      setSimpleResult({
-        success: false,
-        message: error instanceof Error ? error.message : 'Selector action failed',
-      });
-    } finally {
-      setSimpleTesting(false);
-    }
-  }, [simpleSelector, executeInteractiveAction]);
+    await testSelector(simpleSelector, 'do');
+  }, [simpleSelector, testSelector]);
 
   // MultiStep Debug Handlers
   const handleMultiStepRun = useCallback(async () => {
-    if (!multiStepInput.trim()) {
-      setMultiStepResult({ success: false, message: 'Please enter steps' });
-      return;
-    }
-
-    setMultiStepTesting(true);
-    setMultiStepResult(null);
-    setMultiStepProgress(null);
-
-    try {
-      // Parse input lines
-      const lines = multiStepInput.split('\n').filter((line) => line.trim());
-      const steps: Array<{ action: string; selector: string; value?: string }> = [];
-
-      for (const line of lines) {
-        const parts = line.split('|').map((p) => p.trim());
-        if (parts.length >= 2) {
-          steps.push({
-            action: parts[0],
-            selector: parts[1],
-            value: parts[2] || undefined,
-          });
-        }
-      }
-
-      if (steps.length === 0) {
-        setMultiStepResult({ success: false, message: 'No valid steps found in input' });
-        setMultiStepTesting(false);
-        return;
-      }
-
-      // Execute steps sequentially with show→delay→do pattern
-      for (let i = 0; i < steps.length; i++) {
-        const step = steps[i];
-        setMultiStepProgress({ current: i + 1, total: steps.length });
-
-        // Show phase
-        await executeInteractiveAction(step.action, step.selector, step.value, 'show');
-
-        // Delay between show and do
-        await new Promise((resolve) =>
-          setTimeout(
-            resolve,
-            INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations * INTERACTIVE_CONFIG.delays.multiStep.baseInterval
-          )
-        );
-
-        // Do phase
-        await executeInteractiveAction(step.action, step.selector, step.value, 'do');
-
-        // Delay between steps (except after last step)
-        if (i < steps.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.multiStep.defaultStepDelay));
-        }
-      }
-
-      setMultiStepResult({
-        success: true,
-        message: `Successfully executed ${steps.length} step${steps.length !== 1 ? 's' : ''}`,
-      });
-      setMultiStepProgress(null);
-    } catch (error) {
-      setMultiStepResult({
-        success: false,
-        message: error instanceof Error ? error.message : 'MultiStep execution failed',
-      });
-      setMultiStepProgress(null);
-    } finally {
-      setMultiStepTesting(false);
-    }
-  }, [multiStepInput, executeInteractiveAction]);
+    const steps = parseStepString(multiStepInput);
+    await executeMultiStep(steps, 'auto');
+  }, [multiStepInput, executeMultiStep]);
 
   // Watch Mode Handlers
   const handleWatchModeToggle = useCallback(() => {
-    setWatchMode((prev) => !prev);
     if (watchMode) {
-      // Turning off - clear captured selector
-      setCapturedSelector('');
-      setSelectorInfo(null);
+      stopCapture();
+    } else {
+      startCapture();
     }
-  }, [watchMode]);
+  }, [watchMode, startCapture, stopCapture]);
 
   const handleCopySelector = useCallback(async () => {
     if (capturedSelector) {
@@ -391,99 +168,37 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   }, [capturedSelector]);
 
   const handleUseInSimpleTester = useCallback(() => {
-    setSimpleSelector(capturedSelector);
-    setSimpleExpanded(true);
-    // Always turn off watch mode after using selector
-    setWatchMode(false);
-    setCapturedSelector('');
-    setSelectorInfo(null);
-  }, [capturedSelector]);
-
-  // Watch Mode click listener
-  useEffect(() => {
-    if (!watchMode) {
-      return;
+    if (capturedSelector) {
+      setSimpleSelector(capturedSelector);
+      setSimpleExpanded(true);
+      // Always turn off watch mode after using selector
+      stopCapture();
     }
+  }, [capturedSelector, stopCapture]);
 
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-
-      // Don't capture clicks within the debug panel
-      if (target.closest('[class*="debug"]') || target.closest('.context-container')) {
-        return;
-      }
-
-      // DON'T preventDefault - let the click proceed normally!
-      // Just capture the selector and let navigation/actions happen
-
-      // Use same mechanics as record mode: coordinates + validation
-      const clickX = event.clientX;
-      const clickY = event.clientY;
-
-      let selector = generateBestSelector(target, { clickX, clickY });
-      let action = detectActionType(target, event);
-
-      // Apply same logic as record mode for action type
-      const isPlainText =
-        !selector.includes('[') && !selector.includes('.') && !selector.includes('#') && !selector.includes(':');
-      if (isPlainText) {
-        action = 'button';
-      } else if (action === 'button') {
-        action = 'highlight';
-      }
-
-      // FINAL VALIDATION: Apply all quality rules
-      const validated = validateAndCleanSelector(selector, action);
-      selector = validated.selector;
-
-      if (validated.warnings.length > 0) {
-        console.warn('Watch mode selector validation warnings:', validated.warnings);
-      }
-
-      const info = getSelectorInfo(target);
-
-      setCapturedSelector(selector);
-      setSelectorInfo({
-        method: info.method,
-        isUnique: info.isUnique,
-        matchCount: info.matchCount,
-      });
-
-      // Auto-disable watch mode after capturing to preserve the selector
-      setWatchMode(false);
-    };
-
-    // Use capture phase but don't prevent default
-    document.addEventListener('click', handleClick, true);
-    return () => {
-      document.removeEventListener('click', handleClick, true);
-    };
-  }, [watchMode]);
 
   // Record Mode Handlers
   const handleRecordModeToggle = useCallback(() => {
-    setRecordMode((prev) => !prev);
     if (recordMode) {
-      // Turning off - keep recorded steps
+      stopRecording();
     } else {
-      // Turning on - clear previous recordings if any
-      recordingElementsRef.current.clear();
+      startRecording();
     }
-  }, [recordMode]);
+  }, [recordMode, startRecording, stopRecording]);
 
   const handleClearRecording = useCallback(() => {
-    setRecordedSteps([]);
-    recordingElementsRef.current.clear();
-  }, []);
+    clearRecording();
+  }, [clearRecording]);
+
+  const handleDeleteStep = useCallback(
+    (index: number) => {
+      deleteStep(index);
+    },
+    [deleteStep]
+  );
 
   const handleCopyAllSteps = useCallback(async () => {
-    const stepsText = recordedSteps
-      .map((step) => {
-        const valuePart = step.value ? `|${step.value}` : '|';
-        return `${step.action}|${step.selector}${valuePart}`;
-      })
-      .join('\n');
-
+    const stepsText = exportStepsFromRecorder('string');
     try {
       await navigator.clipboard.writeText(stepsText);
       setAllStepsCopied(true);
@@ -492,26 +207,16 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     } catch (error) {
       console.error('Failed to copy steps:', error);
     }
-  }, [recordedSteps]);
+  }, [exportStepsFromRecorder]);
 
   const handleLoadIntoMultiStep = useCallback(() => {
-    const stepsText = recordedSteps
-      .map((step) => {
-        const valuePart = step.value ? `|${step.value}` : '|';
-        return `${step.action}|${step.selector}${valuePart}`;
-      })
-      .join('\n');
-
+    const stepsText = exportStepsFromRecorder('string');
     setMultiStepInput(stepsText);
     setMultiStepExpanded(true);
-  }, [recordedSteps]);
-
-  const handleDeleteStep = useCallback((index: number) => {
-    setRecordedSteps((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+  }, [exportStepsFromRecorder]);
 
   const handleExportHTML = useCallback(async () => {
-    const html = exportStepsToHTML(recordedSteps, {
+    const html = exportStepsFromRecorder('html', {
       includeComments: true,
       includeHints: true,
       wrapInSection: true,
@@ -526,7 +231,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     } catch (error) {
       console.error('Failed to copy HTML:', error);
     }
-  }, [recordedSteps]);
+  }, [exportStepsFromRecorder]);
 
   const handleToggleStepSelection = useCallback((index: number) => {
     setSelectedSteps((prev) => {
@@ -551,7 +256,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     setRecordedSteps(newSteps);
     setSelectedSteps(new Set());
     setMultistepMode(false);
-  }, [selectedSteps, recordedSteps]);
+  }, [selectedSteps, recordedSteps, setRecordedSteps]);
 
   const handleToggleMultistepMode = useCallback(() => {
     if (multistepMode) {
@@ -561,189 +266,6 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     setMultistepMode(!multistepMode);
   }, [multistepMode]);
 
-  // Record Mode event listeners
-  useEffect(() => {
-    if (!recordMode) {
-      return;
-    }
-
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-
-      if (!shouldCaptureElement(target)) {
-        return;
-      }
-
-      // DON'T preventDefault - let the click proceed normally!
-      // Just record the action and let navigation/actions happen
-
-      // Capture click coordinates for coordinate-aware selector generation
-      const clickX = event.clientX;
-      const clickY = event.clientY;
-
-      let selector = generateBestSelector(target, { clickX, clickY });
-      let action = detectActionType(target, event);
-
-      // If selector is plain text (no CSS syntax), force button action for text-based matching
-      // Otherwise, use highlight with the CSS selector
-      const isPlainText =
-        !selector.includes('[') && !selector.includes('.') && !selector.includes('#') && !selector.includes(':');
-      if (isPlainText) {
-        // Plain text selector - use button action for text matching
-        action = 'button';
-      } else if (action === 'button') {
-        // Has CSS selector - use highlight instead of button
-        action = 'highlight';
-      }
-
-      // FINAL VALIDATION: Apply all quality rules as a safety net
-      const validated = validateAndCleanSelector(selector, action);
-      selector = validated.selector;
-      // Only use validated action if it's a valid DetectedAction
-      const validDetectedActions: DetectedAction[] = ['highlight', 'button', 'formfill', 'navigate', 'hover'];
-      if (validDetectedActions.includes(validated.action as DetectedAction)) {
-        action = validated.action as DetectedAction;
-      }
-
-      // Log validation warnings for debugging
-      if (validated.warnings.length > 0) {
-        console.warn('Selector validation warnings:', validated.warnings);
-      }
-
-      const selectorInfo = getSelectorInfo(target);
-      const description = getActionDescription(action, target);
-
-      // For text form elements, track them but don't record yet (wait for value)
-      // Radio/checkbox use 'highlight' action and are recorded immediately, not tracked
-      if (action === 'formfill') {
-        recordingElementsRef.current.set(target, {
-          value: (target as HTMLInputElement).value || '',
-          timestamp: Date.now(),
-        });
-        return;
-      }
-
-      // Check for duplicate - don't record if last step has same selector and action
-      setRecordedSteps((prev) => {
-        const lastStep = prev.length > 0 ? prev[prev.length - 1] : null;
-        if (lastStep && lastStep.selector === selector && lastStep.action === action) {
-          console.warn('Skipping duplicate selector:', selector);
-          return prev; // Skip duplicate
-        }
-
-        // For other actions, record immediately
-        return [
-          ...prev,
-          {
-            action,
-            selector,
-            value: undefined,
-            description: validated.wasModified ? `${description} ⚠️ (cleaned)` : description,
-            isUnique: selectorInfo.isUnique,
-            matchCount: selectorInfo.matchCount,
-            contextStrategy: selectorInfo.contextStrategy,
-          },
-        ];
-      });
-    };
-
-    const handleInput = (event: Event) => {
-      const target = event.target as HTMLElement;
-
-      if (!shouldCaptureElement(target)) {
-        return;
-      }
-
-      // Skip tracking radio/checkbox inputs - they're handled on click
-      const inputElement = target as HTMLInputElement;
-      if (inputElement.type === 'radio' || inputElement.type === 'checkbox') {
-        return;
-      }
-
-      // Update the tracked value for text inputs
-      recordingElementsRef.current.set(target, {
-        value: inputElement.value || '',
-        timestamp: Date.now(),
-      });
-    };
-
-    const handleChange = (event: Event) => {
-      const target = event.target as HTMLElement;
-
-      if (!shouldCaptureElement(target)) {
-        return;
-      }
-
-      const tracked = recordingElementsRef.current.get(target);
-      if (tracked) {
-        let selector = generateBestSelector(target);
-        let action = detectActionType(target, event);
-
-        // Skip recording radio/checkbox change events - they're already recorded on click
-        if (action === 'highlight') {
-          recordingElementsRef.current.delete(target);
-          return;
-        }
-
-        // FINAL VALIDATION: Apply all quality rules
-        const validated = validateAndCleanSelector(selector, action);
-        selector = validated.selector;
-        // Only use validated action if it's a valid DetectedAction
-        const validDetectedActions: DetectedAction[] = ['highlight', 'button', 'formfill', 'navigate', 'hover'];
-        if (validDetectedActions.includes(validated.action as DetectedAction)) {
-          action = validated.action as DetectedAction;
-        }
-
-        // Log validation warnings for debugging
-        if (validated.warnings.length > 0) {
-          console.warn('Selector validation warnings:', validated.warnings);
-        }
-
-        const selectorInfo = getSelectorInfo(target);
-        const description = getActionDescription(action, target);
-
-        // Check for duplicate - don't record if last step has same selector, action, and value
-        setRecordedSteps((prev) => {
-          const lastStep = prev.length > 0 ? prev[prev.length - 1] : null;
-          if (
-            lastStep &&
-            lastStep.selector === selector &&
-            lastStep.action === action &&
-            lastStep.value === tracked.value
-          ) {
-            console.warn('Skipping duplicate formfill:', selector);
-            recordingElementsRef.current.delete(target);
-            return prev; // Skip duplicate
-          }
-
-          // Record the form fill action
-          recordingElementsRef.current.delete(target);
-          return [
-            ...prev,
-            {
-              action,
-              selector,
-              value: tracked.value,
-              description: validated.wasModified ? `${description} ⚠️ (cleaned)` : description,
-              isUnique: selectorInfo.isUnique,
-              matchCount: selectorInfo.matchCount,
-              contextStrategy: selectorInfo.contextStrategy,
-            },
-          ];
-        });
-      }
-    };
-
-    document.addEventListener('click', handleClick, true);
-    document.addEventListener('input', handleInput, true);
-    document.addEventListener('change', handleChange, true);
-
-    return () => {
-      document.removeEventListener('click', handleClick, true);
-      document.removeEventListener('input', handleInput, true);
-      document.removeEventListener('change', handleChange, true);
-    };
-  }, [recordMode]);
 
   return (
     <div className={styles.container}>
