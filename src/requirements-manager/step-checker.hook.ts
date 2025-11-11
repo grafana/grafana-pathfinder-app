@@ -722,7 +722,7 @@ export function useStepChecker({
       document.removeEventListener('section-completed', handleSectionCompletion);
       document.removeEventListener('step-auto-skipped', handleAutoSkip as EventListener);
     };
-  }, [checkStep, state.isCompleted, requirements, stepId, markSkipped]); // eslint-disable-line react-hooks/exhaustive-deps -- Intentionally minimal dependencies for event listeners
+  }, [checkStep, state.isCompleted, requirements, stepId, markSkipped]);  
 
   // Scoped heartbeat recheck for fragile prerequisites
   useEffect(() => {
@@ -769,7 +769,7 @@ export function useStepChecker({
       stopped = true;
       clearTimeout(timeoutId);
     };
-  }, [requirements, state.isEnabled, state.isCompleted]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [requirements, state.isEnabled, state.isCompleted]);  
 
   return {
     ...state,

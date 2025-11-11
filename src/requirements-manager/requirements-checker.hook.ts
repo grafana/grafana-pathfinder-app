@@ -256,7 +256,7 @@ export function useRequirementsChecker({
       await checkPromiseRef.current;
       checkPromiseRef.current = null;
     },
-    [requirements, targetAction, uniqueId, hints, timeoutManager, checkRequirementsFromData] // eslint-disable-line react-hooks/exhaustive-deps
+    [requirements, targetAction, uniqueId, hints, timeoutManager, checkRequirementsFromData]  
   );
 
   // REACT HOOKS v7: Update ref with latest checkRequirements callback
