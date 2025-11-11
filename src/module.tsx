@@ -51,6 +51,79 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Set global config immediately so other code can use it
   (window as any).__pathfinderPluginConfig = config;
 
+  // Check for journey query parameter to auto-open specific learning journey
+  const urlParams = new URLSearchParams(window.location.search);
+  const journeyParam = urlParams.get('journey');
+
+  if (journeyParam) {
+    // Search for learning journeys in static-links files
+    const findLearningJourney = async () => {
+      try {
+        // Dynamically load all JSON files from static-links directory
+        const staticLinksContext = (require as any).context('./bundled-interactives/static-links', false, /\.json$/);
+        const allFilePaths = staticLinksContext.keys();
+
+        let foundJourney: any = null;
+
+        // Search through all static-links files
+        for (const filePath of allFilePaths) {
+          const staticData = staticLinksContext(filePath);
+
+          if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
+            // Find learning journeys that match the URL
+            const journey = staticData.rules.find(
+              (rule: any) =>
+                rule.type === 'learning-journey' && (rule.url === journeyParam || rule.url.includes(journeyParam))
+            );
+
+            if (journey) {
+              foundJourney = journey;
+              break;
+            }
+          }
+        }
+
+        if (!foundJourney) {
+          console.warn(`Learning journey not found for parameter: ${journeyParam}`);
+          return;
+        }
+
+        // Small delay to ensure Grafana is ready
+        setTimeout(() => {
+          try {
+            const appEvents = getAppEvents();
+            appEvents.publish({
+              type: 'open-extension-sidebar',
+              payload: {
+                pluginId: pluginJson.id,
+                componentTitle: 'Interactive learning',
+              },
+            });
+
+            // Auto-launch the specified learning journey
+            setTimeout(() => {
+              const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+                detail: {
+                  url: foundJourney.url,
+                  title: foundJourney.title,
+                  type: 'learning-journey',
+                },
+              });
+              document.dispatchEvent(autoLaunchEvent);
+            }, 2000); // Wait for sidebar to mount
+          } catch (error) {
+            console.error('Failed to auto-open Interactive learning panel from query param:', error);
+          }
+        }, 500);
+      } catch (error) {
+        console.error('Failed to load learning journeys:', error);
+      }
+    };
+
+    findLearningJourney();
+    return; // Skip other auto-open logic when query param is present
+  }
+
   // Check if auto-open is enabled
   // Feature toggle sets the default, but user config always takes precedence
   const shouldAutoOpen = config.openPanelOnLaunch;
