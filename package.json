@@ -13,6 +13,7 @@
     "lint": "eslint --cache .",
     "lint:fix": "npm run lint -- --fix && prettier --write --list-different .",
     "e2e": "playwright test",
+    "test:guide": "ts-node e2e/cli.ts",
     "server": "docker compose up --build",
     "sign": "npx --yes @grafana/sign-plugin@latest",
     "prettier": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,json,yaml,md}' --write",
@@ -98,5 +99,8 @@
   "overrides": {
     "@grafana/runtime": "^12.3.0-18562067081"
   },
-  "packageManager": "npm@11.6.2"
+  "packageManager": "npm@11.6.2",
+  "bin": {
+    "test-guide": "./e2e/cli.js"
+  }
 }
