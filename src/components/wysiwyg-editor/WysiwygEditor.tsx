@@ -93,6 +93,8 @@ export const WysiwygEditor: React.FC = () => {
     handleAddComment,
     handleInsertComment,
     handleFormSubmit,
+    commentDialogMode,
+    commentDialogInitialText,
   } = useEditorModals({
     editor,
     editState,
@@ -162,6 +164,8 @@ export const WysiwygEditor: React.FC = () => {
         onClose={closeCommentDialog}
         editor={editor}
         onInsert={handleInsertComment}
+        initialText={commentDialogInitialText}
+        mode={commentDialogMode}
       />
     </div>
   );

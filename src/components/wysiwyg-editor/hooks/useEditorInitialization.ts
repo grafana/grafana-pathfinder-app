@@ -88,10 +88,10 @@ export function useEditorInitialization({
           startEditing('span', attributes, pos);
           onModalOpen();
         },
-        onEditInteractiveComment: (attributes, pos) => {
-          debug('[useEditorInitialization] Edit interactive comment clicked', { attributes, pos });
-          startEditing('comment', attributes, pos);
-          onModalOpen();
+        onEditInteractiveComment: (attributes, pos, text) => {
+          debug('[useEditorInitialization] Edit interactive comment clicked', { attributes, pos, text });
+          startEditing('comment', attributes, pos, text);
+          // Don't call onModalOpen() for comments - CommentDialog is opened by useEffect in useEditorModals
         },
       }),
     ],

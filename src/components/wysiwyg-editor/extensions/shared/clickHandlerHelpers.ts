@@ -137,16 +137,39 @@ export function handleInteractiveSpanClick(
 }
 
 /**
+ * Extract text content from a TipTap node
+ * Recursively extracts all text nodes from the node's content
+ */
+export function extractTextFromNode(node: any): string {
+  let text = '';
+  
+  if (node.content) {
+    node.content.forEach((child: any) => {
+      if (child.type.name === 'text') {
+        text += child.text || '';
+      } else if (child.content) {
+        // Recursively extract from nested nodes
+        text += extractTextFromNode(child);
+      }
+    });
+  }
+  
+  return text.trim();
+}
+
+/**
  * Handle click on interactive comment
  */
 export function handleInteractiveCommentClick(
   view: EditorView,
   pos: number,
-  callback: (attrs: Record<string, string>, pos: number) => void
+  callback: (attrs: Record<string, string>, pos: number, text?: string) => void
 ): boolean {
   const nodeInfo = findNodeAtPosition(view, pos, NODE_TYPES.INTERACTIVE_COMMENT);
   if (nodeInfo) {
-    callback(nodeInfo.node.attrs, nodeInfo.pos);
+    // Extract text content from the comment node
+    const commentText = extractTextFromNode(nodeInfo.node);
+    callback(nodeInfo.node.attrs, nodeInfo.pos, commentText);
     return true;
   }
   logError('[handleInteractiveCommentClick] Could not find node at position:', pos);

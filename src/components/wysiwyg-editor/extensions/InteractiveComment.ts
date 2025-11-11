@@ -1,6 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { createClassAttribute } from './shared/attributes';
-import { createSpanNodeView } from './shared/nodeViewFactory';
+import { createInfoIcon, applyAttributes } from './shared/nodeViewFactory';
 import {
   createToggleInlineNodeCommand,
   createUnsetInlineNodeCommand,
@@ -55,8 +55,20 @@ export const InteractiveComment = Node.create<InteractiveCommentOptions>({
   },
 
   addNodeView() {
-    return ({ HTMLAttributes }) => {
-      return createSpanNodeView(HTMLAttributes, true);
+    return ({ node, HTMLAttributes }) => {
+      const dom = document.createElement('span');
+      applyAttributes(dom, HTMLAttributes);
+
+      // Add info icon instead of lightning bolt
+      const infoIcon = createInfoIcon();
+      dom.appendChild(infoIcon);
+
+      // Create content wrapper but hide text (keep for editing)
+      const contentDOM = document.createElement('span');
+      contentDOM.style.display = 'none'; // Hide text, show only icon
+      dom.appendChild(contentDOM);
+
+      return { dom, contentDOM };
     };
   },
 

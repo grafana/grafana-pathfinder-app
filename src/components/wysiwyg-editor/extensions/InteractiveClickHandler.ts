@@ -13,7 +13,7 @@ export interface InteractiveClickHandlerOptions {
   onEditInteractiveListItem?: (attrs: Record<string, string>, pos: number) => void;
   onEditSequenceSection?: (attrs: Record<string, string>, pos: number) => void;
   onEditInteractiveSpan?: (attrs: Record<string, string>, pos: number) => void;
-  onEditInteractiveComment?: (attrs: Record<string, string>, pos: number) => void;
+  onEditInteractiveComment?: (attrs: Record<string, string>, pos: number, text?: string) => void;
 }
 
 export const InteractiveClickHandler = Extension.create<InteractiveClickHandlerOptions>({
@@ -40,9 +40,12 @@ export const InteractiveClickHandler = Extension.create<InteractiveClickHandlerO
               try {
                 const target = event.target as HTMLElement;
 
-                // Walk up the DOM tree to find the lightning bolt
+                // Walk up the DOM tree to find the lightning bolt or info icon
                 const lightningBolt = target.closest('.interactive-lightning');
-                if (!lightningBolt) {
+                const infoIcon = target.closest('.interactive-info-icon');
+                const clickableIcon = lightningBolt || infoIcon;
+                
+                if (!clickableIcon) {
                   return false;
                 }
 
@@ -50,9 +53,9 @@ export const InteractiveClickHandler = Extension.create<InteractiveClickHandlerO
                 event.stopPropagation();
 
                 // Find the parent interactive element
-                const element = lightningBolt.parentElement;
+                const element = clickableIcon.parentElement;
                 if (!element) {
-                  logError('[InteractiveClickHandler] No parent element found for lightning bolt');
+                  logError('[InteractiveClickHandler] No parent element found for icon');
                   return false;
                 }
 
@@ -137,7 +140,12 @@ export const InteractiveClickHandler = Extension.create<InteractiveClickHandlerO
                     return handleInteractiveSpanClick(view, pos, options.onEditInteractiveSpan!);
 
                   case 'comment':
-                    return handleInteractiveCommentClick(view, pos, options.onEditInteractiveComment!);
+                    return handleInteractiveCommentClick(view, pos, (attrs, pos, text) => {
+                      // Pass comment text along with attributes and position
+                      if (options.onEditInteractiveComment) {
+                        options.onEditInteractiveComment(attrs, pos, text);
+                      }
+                    });
 
                   default:
                     logError('[InteractiveClickHandler] Unknown element type:', elementTypeResult.type);

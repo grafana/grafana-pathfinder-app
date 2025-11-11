@@ -113,6 +113,21 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         },
       },
 
+      // Info icon indicator for comment elements
+      '& .interactive-info-icon': {
+        cursor: 'pointer',
+        color: theme.colors.info.text, // Blue color for info
+        marginRight: theme.spacing(0.5),
+        userSelect: 'none',
+        display: 'inline-block',
+        transition: 'transform 0.15s ease-in-out',
+        fontSize: '1.1em',
+
+        '&:hover': {
+          transform: 'scale(1.2)',
+        },
+      },
+
       // Interactive elements visual feedback
       '& .interactive': {
         border: `1px dashed ${theme.colors.border.medium}`,
@@ -134,8 +149,9 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
           : 'rgba(74, 144, 226, 0.05)',
       },
 
-      // Interactive comments
+      // Interactive comments - override global hide rule
       '& .interactive-comment': {
+        display: 'inline !important', // Override global hide rule
         background: theme.isDark
           ? 'rgba(255, 165, 0, 0.2)'
           : 'rgba(255, 165, 0, 0.15)',

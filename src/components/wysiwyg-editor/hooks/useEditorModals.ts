@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { Editor } from '@tiptap/react';
 
 // Utils
@@ -26,6 +26,8 @@ export interface UseEditorModalsReturn {
   handleAddComment: () => void;
   handleInsertComment: (commentText: string) => void;
   handleFormSubmit: (attributes: Record<string, any>) => void;
+  commentDialogMode: 'insert' | 'edit';
+  commentDialogInitialText: string;
 }
 
 /**
@@ -39,6 +41,10 @@ export function useEditorModals({
 }: UseEditorModalsOptions): UseEditorModalsReturn {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCommentDialogOpen, setIsCommentDialogOpen] = useState(false);
+  
+  // Determine comment dialog mode and initial text from editState
+  const commentDialogMode: 'insert' | 'edit' = editState?.type === 'comment' ? 'edit' : 'insert';
+  const commentDialogInitialText = editState?.type === 'comment' ? (editState.commentText || '') : '';
 
   const openModal = useCallback(() => {
     setIsModalOpen(true);
@@ -55,7 +61,11 @@ export function useEditorModals({
 
   const closeCommentDialog = useCallback(() => {
     setIsCommentDialogOpen(false);
-  }, []);
+    // Clear edit state when closing comment dialog
+    if (editState?.type === 'comment') {
+      stopEditing();
+    }
+  }, [editState, stopEditing]);
 
   // Handle form submission
   const handleFormSubmit = useCallback(
@@ -67,6 +77,7 @@ export function useEditorModals({
       debug('[useEditorModals] Form submitted', { attributes, editState });
 
       // Update attributes based on element type
+      // Note: Comments are handled by CommentDialog, not FormModal
       const { type } = editState;
 
       try {
@@ -81,7 +92,8 @@ export function useEditorModals({
             editor.commands.updateAttributes('interactiveSpan', attributes);
             break;
           case 'comment':
-            editor.commands.updateAttributes('interactiveComment', attributes);
+            // Comments are handled by CommentDialog, skip here
+            debug('[useEditorModals] Comment editing handled by CommentDialog');
             break;
         }
 
@@ -153,41 +165,97 @@ export function useEditorModals({
       return;
     }
 
-    // Open comment dialog
+    // Clear any existing edit state and open comment dialog for insertion
+    stopEditing();
     setIsCommentDialogOpen(true);
-  }, [editor]);
+  }, [editor, stopEditing]);
 
-  // Handle inserting comment from dialog
+  // Handle inserting/updating comment from dialog
   const handleInsertComment = useCallback(
     (commentText: string) => {
       if (!editor || !commentText.trim()) {
         return;
       }
 
-      debug('[useEditorModals] Inserting comment', { commentText });
+      // Check if we're editing an existing comment
+      if (editState?.type === 'comment' && editState.pos !== undefined) {
+        debug('[useEditorModals] Updating comment', { commentText, pos: editState.pos });
 
-      try {
-        // Insert comment at cursor position
-        // TipTap will automatically handle the text content
-        editor
-          .chain()
-          .focus()
-          .insertContent({
-            type: 'interactiveComment',
-            attrs: {
-              class: 'interactive-comment',
-            },
-            content: [{ type: 'text', text: commentText }],
-          })
-          .run();
+        try {
+          // Find the comment node at the position
+          const { pos } = editState;
+          const { state } = editor;
+          const { doc } = state;
+          
+          // Find the comment node
+          let commentNode: any = null;
+          let commentPos = pos;
+          
+          doc.nodesBetween(pos, pos + 1, (node, nodePos) => {
+            if (node.type.name === 'interactiveComment') {
+              commentNode = node;
+              commentPos = nodePos;
+              return false; // stop iteration
+            }
+            return true;
+          });
 
-        debug('[useEditorModals] Comment inserted successfully');
-      } catch (error) {
-        logError('[useEditorModals] Failed to insert comment:', error);
+          if (commentNode) {
+            // Replace the comment node with updated content
+            editor
+              .chain()
+              .focus()
+              .setTextSelection({ from: commentPos, to: commentPos + commentNode.nodeSize })
+              .deleteSelection()
+              .insertContent({
+                type: 'interactiveComment',
+                attrs: {
+                  class: 'interactive-comment',
+                },
+                content: [{ type: 'text', text: commentText }],
+              })
+              .run();
+
+            debug('[useEditorModals] Comment updated successfully');
+            stopEditing();
+          } else {
+            logError('[useEditorModals] Could not find comment node at position:', pos);
+          }
+        } catch (error) {
+          logError('[useEditorModals] Failed to update comment:', error);
+        }
+      } else {
+        debug('[useEditorModals] Inserting comment', { commentText });
+
+        try {
+          // Insert comment at cursor position
+          editor
+            .chain()
+            .focus()
+            .insertContent({
+              type: 'interactiveComment',
+              attrs: {
+                class: 'interactive-comment',
+              },
+              content: [{ type: 'text', text: commentText }],
+            })
+            .run();
+
+          debug('[useEditorModals] Comment inserted successfully');
+        } catch (error) {
+          logError('[useEditorModals] Failed to insert comment:', error);
+        }
       }
     },
-    [editor]
+    [editor, editState, stopEditing]
   );
+
+  // Open comment dialog when editing a comment
+  useEffect(() => {
+    if (editState?.type === 'comment') {
+      setIsCommentDialogOpen(true);
+    }
+  }, [editState]);
 
   return {
     isModalOpen,
@@ -201,6 +269,8 @@ export function useEditorModals({
     handleAddComment,
     handleInsertComment,
     handleFormSubmit,
+    commentDialogMode,
+    commentDialogInitialText,
   };
 }
 

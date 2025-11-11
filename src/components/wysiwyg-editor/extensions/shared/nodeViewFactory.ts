@@ -67,6 +67,32 @@ export function createLightningBolt(): HTMLSpanElement {
 }
 
 /**
+ * Creates an info icon element for comment nodes
+ * Similar to lightning bolt but uses blue info icon
+ */
+export function createInfoIcon(): HTMLSpanElement {
+  const infoIcon = document.createElement('span');
+  infoIcon.className = 'interactive-info-icon';
+  infoIcon.textContent = 'ℹ️'; // Blue info emoji
+
+  // Make keyboard accessible (same pattern as lightning bolt)
+  infoIcon.setAttribute('role', 'button');
+  infoIcon.setAttribute('tabindex', '0');
+  infoIcon.setAttribute('aria-label', 'Edit comment');
+
+  // Add keyboard event handler
+  infoIcon.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      event.stopPropagation();
+      infoIcon.click();
+    }
+  });
+
+  return infoIcon;
+}
+
+/**
  * Applies HTML attributes to a DOM element
  * SECURITY: Only allows attributes from ALLOWED_ATTRIBUTES to prevent event handler injection (F5)
  */

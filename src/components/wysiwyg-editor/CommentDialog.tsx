@@ -9,6 +9,8 @@ interface CommentDialogProps {
   onClose: () => void;
   editor: Editor | null;
   onInsert: (commentText: string) => void;
+  initialText?: string;
+  mode?: 'insert' | 'edit';
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -42,16 +44,22 @@ export const CommentDialog: React.FC<CommentDialogProps> = ({
   onClose,
   editor,
   onInsert,
+  initialText = '',
+  mode = 'insert',
 }) => {
   const styles = useStyles2(getStyles);
   const [commentText, setCommentText] = useState('');
 
-  // Reset comment text when dialog opens/closes
+  // Set comment text when dialog opens
   React.useEffect(() => {
     if (isOpen) {
-      setCommentText('');
+      if (mode === 'edit' && initialText) {
+        setCommentText(initialText);
+      } else {
+        setCommentText('');
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, mode, initialText]);
 
   const handleInsert = () => {
     const trimmedText = commentText.trim();
@@ -89,9 +97,12 @@ export const CommentDialog: React.FC<CommentDialogProps> = ({
 
   const isValid = commentText.trim().length > 0;
 
+  const modalTitle = mode === 'edit' ? 'Edit Comment' : 'Add Comment';
+  const buttonText = mode === 'edit' ? 'Update' : 'Insert';
+
   return (
     <Modal
-      title="Add Comment"
+      title={modalTitle}
       isOpen={isOpen}
       onDismiss={handleCancel}
       className={styles.modal}
@@ -111,7 +122,7 @@ export const CommentDialog: React.FC<CommentDialogProps> = ({
               Cancel
             </Button>
             <Button variant="primary" onClick={handleInsert} disabled={!isValid}>
-              Insert
+              {buttonText}
             </Button>
           </div>
         </div>

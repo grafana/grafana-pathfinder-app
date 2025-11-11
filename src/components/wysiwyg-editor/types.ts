@@ -18,6 +18,7 @@ export interface EditState {
   type: InteractiveElementType;
   attributes: Record<string, string>;
   pos: number;
+  commentText?: string; // Optional text content for comment editing
 }
 
 /**

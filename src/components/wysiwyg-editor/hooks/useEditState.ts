@@ -11,8 +11,8 @@ export function useEditState() {
   /**
    * Start editing an interactive element
    */
-  const startEditing = useCallback((type: InteractiveElementType, attributes: Record<string, string>, pos: number) => {
-    setEditState({ type, attributes, pos });
+  const startEditing = useCallback((type: InteractiveElementType, attributes: Record<string, string>, pos: number, commentText?: string) => {
+    setEditState({ type, attributes, pos, commentText });
   }, []);
 
   /**
