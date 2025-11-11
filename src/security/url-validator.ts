@@ -14,6 +14,26 @@ import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../constants';
 
 /**
+ * Check if URL uses HTTPS protocol
+ *
+ * @param url - Parsed URL object
+ * @returns true if protocol is https:
+ */
+function requiresHttps(url: URL): boolean {
+  return url.protocol === 'https:';
+}
+
+/**
+ * Check if URL uses HTTP or HTTPS protocol
+ *
+ * @param url - Parsed URL object
+ * @returns true if protocol is http: or https:
+ */
+function allowsHttpOrHttps(url: URL): boolean {
+  return url.protocol === 'http:' || url.protocol === 'https:';
+}
+
+/**
  * Safely parse a URL string, returning null on failure
  *
  * @param urlString - The URL string to parse
@@ -40,7 +60,7 @@ export function isLocalhostUrl(urlString: string): boolean {
   }
 
   // Only allow http and https protocols for localhost
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+  if (!allowsHttpOrHttps(url)) {
     return false;
   }
 
@@ -149,7 +169,7 @@ export function isYouTubeDomain(urlString: string): boolean {
   }
 
   // Only allow https protocol
-  if (url.protocol !== 'https:') {
+  if (!requiresHttps(url)) {
     return false;
   }
 
@@ -184,7 +204,7 @@ export function isVimeoDomain(urlString: string): boolean {
   }
 
   // Only allow https protocol
-  if (url.protocol !== 'https:') {
+  if (!requiresHttps(url)) {
     return false;
   }
 
@@ -220,7 +240,7 @@ export function isAllowedGitHubRawUrl(
   }
 
   // Only allow https protocol for GitHub
-  if (url.protocol !== 'https:') {
+  if (!requiresHttps(url)) {
     return false;
   }
 
@@ -271,7 +291,7 @@ export function isGrafanaDomain(urlString: string): boolean {
   }
 
   // Only allow http and https protocols
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+  if (!allowsHttpOrHttps(url)) {
     return false;
   }
 
@@ -299,7 +319,7 @@ export function isGitHubUrl(urlString: string): boolean {
   }
 
   // Only allow https protocol for GitHub
-  if (url.protocol !== 'https:') {
+  if (!requiresHttps(url)) {
     return false;
   }
 
@@ -328,7 +348,7 @@ export function isGitHubRawUrl(urlString: string): boolean {
   }
 
   // Only allow https protocol for GitHub
-  if (url.protocol !== 'https:') {
+  if (!requiresHttps(url)) {
     return false;
   }
 
@@ -352,28 +372,6 @@ export function isGitHubRawUrl(urlString: string): boolean {
  */
 export function isAnyGitHubUrl(urlString: string): boolean {
   return isGitHubUrl(urlString) || isGitHubRawUrl(urlString);
-}
-
-/**
- * Generic trusted domain validator
- *
- * @param urlString - The URL to validate
- * @param allowedDomains - Array of allowed hostnames (exact match)
- * @returns true if URL hostname matches one of the allowed domains
- */
-export function isTrustedDomain(urlString: string, allowedDomains: string[]): boolean {
-  const url = parseUrlSafely(urlString);
-  if (!url) {
-    return false;
-  }
-
-  // Only allow http and https protocols
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    return false;
-  }
-
-  // Check if hostname matches any allowed domain (exact match only)
-  return allowedDomains.includes(url.hostname);
 }
 
 /**

@@ -1,0 +1,730 @@
+{
+  "rules": [
+    {
+      "title": "Configure authentication and authorization",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/",
+      "description": "Learn about Configure authentication and authorization.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Cloud user roles and permissions",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/cloud-roles/",
+      "description": "Learn about Grafana Cloud user roles and permissions.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Organization preferences",
+      "url": "https://grafana.com/docs/grafana/next/administration/organization-preferences/",
+      "description": "Learn about Organization preferences.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/general"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Migrate from Grafana OSS/Enterprise to Grafana Cloud manually",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/migration-guide/manually-migrate-to-grafana-cloud/",
+      "description": "Learn about Migrate from Grafana OSS/Enterprise to Grafana Cloud manually.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/general"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Cloud Migration Assistant",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/migration-guide/cloud-migration-assistant/",
+      "description": "Learn about Grafana Cloud Migration Assistant.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/general"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create an announcement banner",
+      "url": "https://grafana.com/docs/grafana/next/administration/announcement-banner/",
+      "description": "Learn about Create an announcement banner.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/general"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Organization preferences",
+      "url": "https://grafana.com/docs/grafana/next/administration/organization-preferences/",
+      "description": "Learn about Organization preferences.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Migrate from Grafana OSS/Enterprise to Grafana Cloud manually",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/migration-guide/manually-migrate-to-grafana-cloud/",
+      "description": "Learn about Migrate from Grafana OSS/Enterprise to Grafana Cloud manually.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/migrate-to-cloud"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Cloud Migration Assistant",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/migration-guide/cloud-migration-assistant/",
+      "description": "Learn about Grafana Cloud Migration Assistant.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/migrate-to-cloud"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create an announcement banner",
+      "url": "https://grafana.com/docs/grafana/next/administration/announcement-banner/",
+      "description": "Learn about Create an announcement banner.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/banner-settings"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Find and use Grafana plugins",
+      "url": "https://grafana.com/docs/grafana-cloud/introduction/find-and-use-plugins/",
+      "description": "Learn about Find and use Grafana plugins.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/plugins"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create Grafana-managed recording rules",
+      "url": "https://grafana.com/docs/grafana/next/alerting/alerting-rules/create-recording-rules/create-grafana-managed-recording-rules/",
+      "description": "Learn about Create Grafana-managed recording rules.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/plugins"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create a new correlation",
+      "url": "https://grafana.com/docs/grafana/next/administration/correlations/create-a-new-correlation/",
+      "description": "Learn about Create a new correlation.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/plugins"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Find and use Grafana plugins",
+      "url": "https://grafana.com/docs/grafana-cloud/introduction/find-and-use-plugins/",
+      "description": "Learn about Find and use Grafana plugins.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/plugins"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create Grafana-managed recording rules",
+      "url": "https://grafana.com/docs/grafana/next/alerting/alerting-rules/create-recording-rules/create-grafana-managed-recording-rules/",
+      "description": "Learn about Create Grafana-managed recording rules.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/recorded-queries"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create a new correlation",
+      "url": "https://grafana.com/docs/grafana/next/administration/correlations/create-a-new-correlation/",
+      "description": "Learn about Create a new correlation.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/datasources/correlations"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Use correlations in visualizations",
+      "url": "https://grafana.com/docs/grafana/next/administration/correlations/use-correlations-in-visualizations/",
+      "description": "Learn about Use correlations in visualizations.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/datasources/correlations"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Use variables and transformations in a correlation",
+      "url": "https://grafana.com/docs/grafana/next/administration/correlations/use-variables-and-transformations/",
+      "description": "Learn about Use variables and transformations in a correlation.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/datasources/correlations"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Grafana Teams",
+      "url": "https://grafana.com/docs/grafana/next/administration/team-management/configure-grafana-teams/",
+      "description": "How to configure Grafana Teams.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/access"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create access policies and tokens",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/",
+      "description": "Learn about Create access policies and tokens.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/access"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create a service account in Grafana",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/service-accounts/#create-a-service-account-in-grafana",
+      "description": "Learn about Create a service account in Grafana.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/access"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Grafana Teams",
+      "url": "https://grafana.com/docs/grafana/next/administration/team-management/configure-grafana-teams/",
+      "description": "How to configure Grafana Teams.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/teams"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Administer Grafana Teams",
+      "url": "https://grafana.com/docs/grafana/next/administration/team-management/administering-grafana-teams/",
+      "description": "Learn about Administer Grafana Teams.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/teams"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Teams",
+      "url": "https://grafana.com/docs/grafana/next/administration/team-management/",
+      "description": "Learn about Grafana Teams.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/teams"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create access policies and tokens",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/",
+      "description": "Learn about Create access policies and tokens.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-auth-app"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Use IP range based access control with access policies",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/ip-ranges-access-policies/",
+      "description": "Learn about Use IP range based access control with access policies.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-auth-app"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Cloud Access Policies",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/",
+      "description": "Learn about Grafana Cloud Access Policies.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-auth-app"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create a service account in Grafana",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/service-accounts/#create-a-service-account-in-grafana",
+      "description": "Learn about Create a service account in Grafana.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/serviceaccounts"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Assign roles to a service account in Grafana",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/service-accounts/#assign-roles-to-a-service-account-in-grafana",
+      "description": "Learn about Assign roles to a service account in Grafana.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/serviceaccounts"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage users and teams permissions for a service account in Grafana",
+      "url": "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/service-accounts/#manage-users-and-teams-permissions-for-a-service-account-in-grafana",
+      "description": "Learn about Manage users and teams permissions for a service account in Grafana.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/org/serviceaccounts"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure authentication",
+      "url": "https://grafana.com/docs/grafana/next/setup-grafana/configure-security/configure-authentication/",
+      "description": "How to configure authentication.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/admin/authentication"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Grafana Advisor",
+      "url": "https://grafana.com/docs/grafana/next/administration/grafana-advisor/",
+      "description": "Learn about Grafana Advisor.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-advisor-app"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Cost management and billing",
+      "url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/",
+      "description": "Learn about Cost management and billing.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/overview"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Reduce metrics costs via Adaptive Metrics",
+      "url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/adaptive-telemetry/adaptive-metrics/",
+      "description": "Learn about Reduce metrics costs via Adaptive Metrics.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/metrics"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Define metrics aggregation rules",
+      "url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/adaptive-telemetry/adaptive-metrics/define-metrics-aggregation-rules/",
+      "description": "Learn about Define metrics aggregation rules.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/metrics"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure segmentation",
+      "url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/adaptive-telemetry/adaptive-metrics/adaptive-metrics-rule-segmentation/",
+      "description": "Learn about Configure segmentation.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/metrics"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Set up usage alerts for Grafana Cloud billing",
+      "url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/set-up-usage-alerts/",
+      "description": "How to set up usage alerts for Grafana Cloud billing.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/metrics"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Analyze log ingestion volume with Log Volume Explorer",
+      "url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/analyze-costs/logs-costs/analyze-log-ingestion-log-volume-explorer/",
+      "description": "Learn about Analyze log ingestion volume with Log Volume Explorer.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/logs"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Create exemptions",
+      "url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/adaptive-telemetry/adaptive-logs/create-exemptions/",
+      "description": "Learn about Create exemptions.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/logs"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Review and apply recommendations",
+      "url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/adaptive-telemetry/adaptive-logs/manage-recommendations/",
+      "description": "Learn about Review and apply recommendations.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/logs"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Set up usage alerts for Grafana Cloud billing",
+      "url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/set-up-usage-alerts/",
+      "description": "How to set up usage alerts for Grafana Cloud billing.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/logs"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Reduce Grafana Cloud Traces costs",
+      "url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/traces-costs/",
+      "description": "Learn about Reduce Grafana Cloud Traces costs.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/traces"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Best practices for tracing",
+      "url": "https://grafana.com/docs/grafana-cloud/send-data/traces/tracing-best-practices/",
+      "description": "Learn about Best practices for tracing.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/traces"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Set up usage alerts for Grafana Cloud billing",
+      "url": "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/set-up-usage-alerts/",
+      "description": "How to set up usage alerts for Grafana Cloud billing.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-costmanagementui-app/traces"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Understand billing and usage in Grafana Cloud",
+      "url": "https://grafana.com/docs/learning-journeys/billing-usage/",
+      "description": "A learning journey that teaches you how to understand and manage your billing and usage, identify cost drivers, and set up alerts to control spending.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefixIn": [
+              "/a/grafana-costmanagementui-app",
+              "/a/grafana-costmanagementui-app/metrics",
+              "/a/grafana-costmanagementui-app/logs",
+              "/a/grafana-costmanagementui-app/traces",
+              "/a/grafana-costmanagementui-app/profiles"
+            ]
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    }
+  ]
+}

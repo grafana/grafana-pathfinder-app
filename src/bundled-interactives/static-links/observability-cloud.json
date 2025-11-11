@@ -1,0 +1,760 @@
+{
+  "rules": [
+    {
+      "title": "Monitor AWS resources with Grafana Cloud",
+      "url": "https://grafana.com/docs/learning-journeys/monitor-aws-resources/",
+      "description": "A learning journey that shows you how to monitor AWS resources using Grafana Cloud Provider Observability.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefixIn": [
+              "/a/grafana-csp-app/aws",
+              "/a/grafana-csp-app/aws/overview",
+              "/a/grafana-csp-app/aws/configuration"
+            ]
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Monitor applications",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-applications/",
+      "description": "Learn about Monitor applications.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/observability"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Application Observability service inventory",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/manual/inventory/",
+      "description": "Learn about Application Observability service inventory.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-app-observability-app/services"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Application Observability service map",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/manual/map/",
+      "description": "Learn about Application Observability service map.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-app-observability-app/services"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Application Observability service overview",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/manual/service/",
+      "description": "Learn about Application Observability service overview.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-app-observability-app/services"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Application Observability",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/manual/configure/",
+      "description": "How to configure Application Observability.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-app-observability-app/configuration"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Application Observability at the service level",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/manual/configure-per-service/",
+      "description": "How to configure Application Observability at the service level.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-app-observability-app/configuration"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Cloud Provider Observability",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/",
+      "description": "Learn about Cloud Provider Observability.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure CloudWatch metrics",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/aws/cloudwatch-metrics/config-cw-metrics/",
+      "description": "Learn about Configure CloudWatch metrics.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app/aws"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Logs with Firehose",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/aws/logs/firehose-logs/config-firehose-logs/",
+      "description": "Learn about Configure Logs with Firehose.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app/aws"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Application Load Balancer Logs",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/aws/logs/cloudwatch-logs/config-alb-access-logs-lambda/",
+      "description": "Learn about Configure Application Load Balancer Logs.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app/aws"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Logs with Lambda",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/aws/logs/cloudwatch-logs/config-cw-logs-lambda/",
+      "description": "Learn about Configure Logs with Lambda.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app/aws"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Collect Azure Metrics with Grafana Alloy",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/azure/config-azure-metrics/",
+      "description": "Learn about Collect Azure Metrics with Grafana Alloy.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app/azure"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Collect Azure metrics without a collector",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/azure/collect-azure-serverless/",
+      "description": "Learn about Collect Azure metrics without a collector.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app/azure"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Collect Azure Logs with Grafana Alloy",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/azure/config-azure-logs-alloy/",
+      "description": "Learn about Collect Azure Logs with Grafana Alloy.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app/azure"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Collect Azure Logs with Azure Functions",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/azure/config-azure-logs-azure-function/",
+      "description": "Learn about Collect Azure Logs with Azure Functions.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app/azure"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure GCP Metrics",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/gcp/config-gcp-metrics/",
+      "description": "Learn about Configure GCP Metrics.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app/gcp"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure GCP Logs",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/gcp/config-gcp-logs/",
+      "description": "Learn about Configure GCP Logs.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app/gcp"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Preconfigured dashboards",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/monitor-cloud-provider/gcp/#preconfigured-dashboards",
+      "description": "How to preconfigured dashboards.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-csp-app/gcp"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Explore your infrastructure with Kubernetes Monitoring",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/navigate-k8s-monitoring/#start-with-high-level-snapshot",
+      "description": "Learn about Explore your infrastructure with Kubernetes Monitoring.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/home"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Search for a Kubernetes object",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/navigate-k8s-monitoring/#explore-using-the-kubernetes-structure",
+      "description": "Learn about Search for a Kubernetes object.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/search"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Application latency due to network saturation",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/network-saturation/",
+      "description": "Learn about Application latency due to network saturation.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/cluster"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Strategies for assigning CPU requests and limits to containers",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/container-requests-limits-cpu/",
+      "description": "Learn about Strategies for assigning CPU requests and limits to containers.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/cluster"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "CPU throttling",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/cpu-throttling/",
+      "description": "Learn about CPU throttling.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/cluster"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Out-of-memory issues",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/memory-manage-oomkill/",
+      "description": "Learn about Out-of-memory issues.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/cluster"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Application latency due to network saturation",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/network-saturation/",
+      "description": "Learn about Application latency due to network saturation.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/namespace"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Strategies for assigning CPU requests and limits to containers",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/container-requests-limits-cpu/",
+      "description": "Learn about Strategies for assigning CPU requests and limits to containers.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/namespace"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "CPU throttling",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/cpu-throttling/",
+      "description": "Learn about CPU throttling.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/namespace"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Out-of-memory issues",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/memory-manage-oomkill/",
+      "description": "Learn about Out-of-memory issues.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/namespace"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Application latency due to network saturation",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/network-saturation/",
+      "description": "Learn about Application latency due to network saturation.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/workload"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Strategies for assigning CPU requests and limits to containers",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/container-requests-limits-cpu/",
+      "description": "Learn about Strategies for assigning CPU requests and limits to containers.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/workload"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "CPU throttling",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/cpu-throttling/",
+      "description": "Learn about CPU throttling.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/workload"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Out-of-memory issues",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/memory-manage-oomkill/",
+      "description": "Learn about Out-of-memory issues.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/workload"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Application latency due to network saturation",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/network-saturation/",
+      "description": "Learn about Application latency due to network saturation.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/nodes"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Strategies for assigning CPU requests and limits to containers",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/container-requests-limits-cpu/",
+      "description": "Learn about Strategies for assigning CPU requests and limits to containers.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/nodes"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "CPU throttling",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/cpu-throttling/",
+      "description": "Learn about CPU throttling.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/nodes"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Out-of-memory issues",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/optimize-resource-usage/memory-manage-oomkill/",
+      "description": "Learn about Out-of-memory issues.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/navigation/nodes"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Manage costs",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/manage-costs/",
+      "description": "Learn about Manage costs.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/cost"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Respond to alerts",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/respond-to-alerts/",
+      "description": "Learn about Respond to alerts.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/alerts"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Monitor Kubernetes cluster infrastructure in Grafana Cloud",
+      "url": "https://grafana.com/docs/learning-journeys/kubernetes/",
+      "description": "Step-by-step guide: Monitor Kubernetes cluster infrastructure in Grafana Cloud.",
+      "type": "learning-journey",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/configuration"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Kubernetes Monitoring with easy deployment and Helm chart",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/configuration/helm-chart-config/",
+      "description": "How to configure Kubernetes Monitoring with easy deployment and Helm chart.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/configuration"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Send Kubernetes metrics, logs, and events using the OpenTelemetry Collector",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/configuration/config-other-methods/otel-collector/",
+      "description": "How to send Kubernetes metrics, logs, and events using the OpenTelemetry Collector.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/configuration"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Send Kubernetes metrics, logs, and events to Grafana Cloud with Helm and Terraform",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/configuration/config-other-methods/helm-terraform-config/",
+      "description": "How to send Kubernetes metrics, logs, and events to Grafana Cloud with Helm and Terraform.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/configuration"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Configure Kubernetes Monitoring with other methods",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/configuration/config-other-methods/",
+      "description": "How to configure Kubernetes Monitoring with other methods.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-k8s-app/configuration"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Frontend Observability",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-applications/frontend-observability/",
+      "description": "Learn about Frontend Observability.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-kowalski-app"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Frontend Observability quickstart",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-applications/frontend-observability/quickstart/",
+      "description": "Get started: Frontend Observability quickstart.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-kowalski-app"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Errors overview",
+      "url": "https://grafana.com/docs/grafana-cloud/monitor-applications/frontend-observability/error-awareness/",
+      "description": "Learn about Errors overview.",
+      "type": "docs-page",
+      "match": {
+        "and": [
+          {
+            "urlPrefix": "/a/grafana-kowalski-app/errors"
+          },
+          {
+            "targetPlatform": "cloud"
+          }
+        ]
+      }
+    }
+  ]
+}
