@@ -57,7 +57,11 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
   // Simple Selector Tester
   const [simpleSelector, setSimpleSelector] = useState('');
-  const { testSelector, isTesting: simpleTesting, result: simpleResult } = useSelectorTester({
+  const {
+    testSelector,
+    isTesting: simpleTesting,
+    result: simpleResult,
+  } = useSelectorTester({
     executeInteractiveAction,
   });
 
@@ -106,7 +110,13 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
   // Watch Mode
   const [selectorCopied, setSelectorCopied] = useState(false);
-  const { isActive: watchMode, capturedSelector, selectorInfo, startCapture, stopCapture } = useSelectorCapture({
+  const {
+    isActive: watchMode,
+    capturedSelector,
+    selectorInfo,
+    startCapture,
+    stopCapture,
+  } = useSelectorCapture({
     autoDisable: true,
   });
 
@@ -175,7 +185,6 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       stopCapture();
     }
   }, [capturedSelector, stopCapture]);
-
 
   // Record Mode Handlers
   const handleRecordModeToggle = useCallback(() => {
@@ -265,7 +274,6 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     }
     setMultistepMode(!multistepMode);
   }, [multistepMode]);
-
 
   return (
     <div className={styles.container}>

@@ -7,10 +7,10 @@ import type { StepDefinition } from './dev-tools.types';
 
 /**
  * Parse step string format (action|selector|value) into StepDefinition array
- * 
+ *
  * @param input - Multi-line string with steps in format: action|selector|value
  * @returns Array of parsed step definitions
- * 
+ *
  * @example
  * ```typescript
  * const steps = parseStepString('highlight|button[data-testid="save"]|\nformfill|input[name="query"]|prometheus');
@@ -40,10 +40,10 @@ export function parseStepString(input: string): StepDefinition[] {
 
 /**
  * Format StepDefinition array back to string format
- * 
+ *
  * @param steps - Array of step definitions
  * @returns Multi-line string in format: action|selector|value
- * 
+ *
  * @example
  * ```typescript
  * const steps = [
@@ -62,4 +62,3 @@ export function formatStepsToString(steps: StepDefinition[]): string {
     })
     .join('\n');
 }
-

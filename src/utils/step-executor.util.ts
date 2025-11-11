@@ -22,12 +22,12 @@ type ExecuteActionFunction = (action: string, selector: string, value?: string, 
 
 /**
  * Execute a sequence of steps with show→delay→do pattern
- * 
+ *
  * @param steps - Array of step definitions to execute
  * @param executeAction - Function to execute interactive actions
  * @param options - Execution options (mode, progress callback, abort signal)
  * @returns Promise resolving to execution result
- * 
+ *
  * @example
  * ```typescript
  * const result = await executeStepSequence(
@@ -158,4 +158,3 @@ export async function executeStepSequence(
     };
   }
 }
-

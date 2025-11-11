@@ -20,16 +20,16 @@ export interface UseStepExecutorReturn {
 
 /**
  * Hook for executing step sequences
- * 
+ *
  * @param options - Configuration options
  * @param options.executeInteractiveAction - Function to execute interactive actions
  * @returns Object with execute function, execution state, progress, result, and cancel function
- * 
+ *
  * @example
  * ```typescript
  * const { executeInteractiveAction } = useInteractiveElements();
  * const { execute, isExecuting, progress, result, cancel } = useStepExecutor({ executeInteractiveAction });
- * 
+ *
  * // Execute steps
  * await execute(steps, 'auto');
  * ```
@@ -102,4 +102,3 @@ export function useStepExecutor({ executeInteractiveAction }: UseStepExecutorOpt
     cancel,
   };
 }
-

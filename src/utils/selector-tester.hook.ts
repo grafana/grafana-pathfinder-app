@@ -18,16 +18,16 @@ export interface UseSelectorTesterReturn {
 
 /**
  * Hook for testing CSS selectors
- * 
+ *
  * @param options - Configuration options
  * @param options.executeInteractiveAction - Function to execute interactive actions
  * @returns Object with testSelector function, isTesting state, and result
- * 
+ *
  * @example
  * ```typescript
  * const { executeInteractiveAction } = useInteractiveElements();
  * const { testSelector, isTesting, result } = useSelectorTester({ executeInteractiveAction });
- * 
+ *
  * // Test a selector
  * await testSelector('button[data-testid="save"]', 'show');
  * ```
@@ -81,7 +81,12 @@ export function useSelectorTester({ executeInteractiveAction }: UseSelectorTeste
       } catch (error) {
         const errorResult: TestResult = {
           success: false,
-          message: error instanceof Error ? error.message : mode === 'show' ? 'Selector test failed' : 'Selector action failed',
+          message:
+            error instanceof Error
+              ? error.message
+              : mode === 'show'
+                ? 'Selector test failed'
+                : 'Selector action failed',
         };
         setResult(errorResult);
         return errorResult;
@@ -98,4 +103,3 @@ export function useSelectorTester({ executeInteractiveAction }: UseSelectorTeste
     result,
   };
 }
-

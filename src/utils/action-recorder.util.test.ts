@@ -114,12 +114,7 @@ describe('action-recorder.util', () => {
     it('should extract only selector strings', () => {
       const result = extractSelectorStrings(mockSteps);
 
-      expect(result).toEqual([
-        'button[data-testid="save"]',
-        'input[name="query"]',
-        'Cancel',
-        'a[href="/dashboard"]',
-      ]);
+      expect(result).toEqual(['button[data-testid="save"]', 'input[name="query"]', 'Cancel', 'a[href="/dashboard"]']);
     });
 
     it('should handle empty array', () => {
@@ -186,4 +181,3 @@ describe('action-recorder.util', () => {
     });
   });
 });
-

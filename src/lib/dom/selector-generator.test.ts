@@ -119,7 +119,7 @@ describe('Selector Generator', () => {
       const selector = generateBestSelector(button);
       expect(selector).toContain('button');
       expect(selector).toContain('data-testid="submit"');
-      
+
       // Clicking wrapper may not always find button (depends on implementation)
       // This test verifies the button itself generates correct selector
     });
@@ -153,7 +153,7 @@ describe('Selector Generator', () => {
       const selector = generateBestSelector(button);
       expect(selector).toContain('button');
       expect(selector).toContain('data-testid="action-button"');
-      
+
       // This test verifies the button itself generates correct selector
       // Hierarchy walking from wrapper may vary by implementation
     });
@@ -369,7 +369,7 @@ describe('Selector Generator', () => {
       // Verify selector can find the input
       const matches = querySelectorAllEnhanced(selector);
       expect(matches.elements.length).toBeGreaterThan(0);
-      
+
       // Hierarchy walking from SVG may vary by implementation
     });
 
@@ -598,4 +598,3 @@ describe('Selector Generator', () => {
     });
   });
 });
-

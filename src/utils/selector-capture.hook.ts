@@ -22,13 +22,13 @@ export interface UseSelectorCaptureReturn {
 
 /**
  * Hook for capturing selectors from clicks (Watch Mode)
- * 
+ *
  * @param options - Configuration options
  * @param options.excludeSelectors - CSS selectors for elements to ignore (default: debug panel selectors)
  * @param options.onCapture - Callback when selector is captured
  * @param options.autoDisable - Whether to auto-disable after capture (default: true)
  * @returns Object with capture state and control functions
- * 
+ *
  * @example
  * ```typescript
  * const { isActive, capturedSelector, startCapture, stopCapture } = useSelectorCapture({
@@ -36,17 +36,13 @@ export interface UseSelectorCaptureReturn {
  *   onCapture: (selector, info) => console.log('Captured:', selector),
  *   autoDisable: true
  * });
- * 
+ *
  * // Start capturing
  * startCapture();
  * ```
  */
 export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): UseSelectorCaptureReturn {
-  const {
-    excludeSelectors = ['[class*="debug"]', '.context-container'],
-    onCapture,
-    autoDisable = true,
-  } = options;
+  const { excludeSelectors = ['[class*="debug"]', '.context-container'], onCapture, autoDisable = true } = options;
 
   const [isActive, setIsActive] = useState(false);
   const [capturedSelector, setCapturedSelector] = useState<string | null>(null);
@@ -121,4 +117,3 @@ export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): Use
     stopCapture,
   };
 }
-

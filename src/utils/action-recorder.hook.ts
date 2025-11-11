@@ -3,10 +3,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import {
-  shouldCaptureElement,
-  getActionDescription,
-} from '../interactive-engine/auto-completion/action-detector';
+import { shouldCaptureElement, getActionDescription } from '../interactive-engine/auto-completion/action-detector';
 import { generateSelectorFromEvent } from './selector-generator.util';
 import { exportStepsToHTML, type RecordedStep, type ExportOptions } from './tutorial-exporter';
 import { formatStepsToString } from './step-parser.util';
@@ -29,21 +26,21 @@ export interface UseActionRecorderReturn {
 
 /**
  * Hook for recording user interactions as tutorial steps
- * 
+ *
  * @param options - Configuration options
  * @param options.excludeSelectors - CSS selectors for elements to ignore
  * @param options.onStepRecorded - Callback when a step is recorded
  * @returns Object with recording state and control functions
- * 
+ *
  * @example
  * ```typescript
  * const { isRecording, recordedSteps, startRecording, stopRecording, exportSteps } = useActionRecorder({
  *   onStepRecorded: (step) => console.log('Recorded:', step)
  * });
- * 
+ *
  * // Start recording
  * startRecording();
- * 
+ *
  * // Export as string
  * const stepsString = exportSteps('string');
  * ```
@@ -291,4 +288,3 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     exportSteps,
   };
 }
-
