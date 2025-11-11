@@ -52,6 +52,8 @@ export async function executeStepSequence(
     };
   }
 
+  let completedSteps = 0; // Track completed steps for error handling
+
   try {
     if (mode === 'auto') {
       // Auto mode: show→delay→do for each step
@@ -80,6 +82,8 @@ export async function executeStepSequence(
 
         // Do phase
         await executeAction(step.action, step.selector, step.value, 'do');
+
+        completedSteps = i + 1; // Update after completing step
 
         // Delay between steps (except after last step)
         if (i < steps.length - 1) {
@@ -115,25 +119,38 @@ export async function executeStepSequence(
             resolve();
           }, stepTimeout);
 
-          if (abortSignal) {
-            abortSignal.addEventListener('abort', () => {
-              clearTimeout(timeout);
-              reject(new Error('Cancelled'));
-            });
-          }
+          // Store timeout ID for listener setup so we can clear it on abort
+          let listenerSetupTimeout: NodeJS.Timeout | null = null;
 
           // Listen for completion (simplified - just wait for any click)
           const handleCompletion = () => {
             clearTimeout(timeout);
+            if (listenerSetupTimeout) {
+              clearTimeout(listenerSetupTimeout);
+            }
             document.removeEventListener('click', handleCompletion);
             resolve();
           };
 
           // Wait a bit before adding listener to avoid immediate trigger
-          setTimeout(() => {
+          listenerSetupTimeout = setTimeout(() => {
             document.addEventListener('click', handleCompletion, { once: true });
           }, 500);
+
+          if (abortSignal) {
+            abortSignal.addEventListener('abort', () => {
+              clearTimeout(timeout);
+              if (listenerSetupTimeout) {
+                clearTimeout(listenerSetupTimeout);
+              }
+              // Remove listener if it was already added
+              document.removeEventListener('click', handleCompletion);
+              reject(new Error('Cancelled'));
+            });
+          }
         });
+
+        completedSteps = i + 1; // Update after completing step
       }
 
       return {
@@ -147,14 +164,14 @@ export async function executeStepSequence(
       return {
         success: false,
         message: 'Guided sequence cancelled',
-        stepsCompleted: 0,
+        stepsCompleted: completedSteps,
       };
     }
 
     return {
       success: false,
       message: error instanceof Error ? error.message : 'Step execution failed',
-      stepsCompleted: 0,
+      stepsCompleted: completedSteps,
     };
   }
 }

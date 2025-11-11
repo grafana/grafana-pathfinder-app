@@ -66,6 +66,7 @@ describe('useSelectorCapture', () => {
         contextStrategy: undefined,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useSelectorCapture());
@@ -98,6 +99,7 @@ describe('useSelectorCapture', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() =>
@@ -131,6 +133,7 @@ describe('useSelectorCapture', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() =>
@@ -162,6 +165,7 @@ describe('useSelectorCapture', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() =>
@@ -215,6 +219,7 @@ describe('useSelectorCapture', () => {
         matchCount: 1,
       },
       warnings: ['Removed auto-generated class'],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useSelectorCapture());
@@ -244,6 +249,7 @@ describe('useSelectorCapture', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useSelectorCapture());

@@ -103,10 +103,13 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
   // Update current step based on progress
   useEffect(() => {
-    if (guidedProgress) {
+    if (guidedRunning && guidedProgress) {
       setGuidedCurrentStep(guidedProgress.current - 1);
+    } else if (!guidedRunning) {
+      // Reset when execution stops (completed, cancelled, or error)
+      setGuidedCurrentStep(0);
     }
-  }, [guidedProgress]);
+  }, [guidedProgress, guidedRunning]);
 
   // Watch Mode
   const [selectorCopied, setSelectorCopied] = useState(false);

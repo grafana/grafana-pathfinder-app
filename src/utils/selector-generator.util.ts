@@ -14,6 +14,7 @@ export interface SelectorGenerationResult {
   action: DetectedAction;
   selectorInfo: SelectorInfo;
   warnings: string[];
+  wasModified: boolean;
 }
 
 /**
@@ -52,7 +53,12 @@ export function generateSelectorFromEvent(target: HTMLElement, event: MouseEvent
   // Detect action type
   let action = detectActionType(target, event);
 
-  // Apply action type normalization
+  // FINAL VALIDATION: Apply all quality rules as a safety net
+  const validated = validateAndCleanSelector(selector, action);
+  selector = validated.selector;
+
+  // Apply action type normalization AFTER validation (using cleaned selector)
+  // This ensures we normalize based on the final cleaned selector, not the original
   // If selector is plain text (no CSS syntax), force button action for text-based matching
   // Otherwise, use highlight with the CSS selector
   const isPlainText =
@@ -60,19 +66,15 @@ export function generateSelectorFromEvent(target: HTMLElement, event: MouseEvent
   if (isPlainText) {
     // Plain text selector - use button action for text matching
     action = 'button';
-  } else if (action === 'button') {
+  } else if (validated.action === 'button') {
     // Has CSS selector - use highlight instead of button
     action = 'highlight';
-  }
-
-  // FINAL VALIDATION: Apply all quality rules as a safety net
-  const validated = validateAndCleanSelector(selector, action);
-  selector = validated.selector;
-
-  // Only use validated action if it's a valid DetectedAction
-  const validDetectedActions: DetectedAction[] = ['highlight', 'button', 'formfill', 'navigate', 'hover'];
-  if (validDetectedActions.includes(validated.action as DetectedAction)) {
-    action = validated.action as DetectedAction;
+  } else {
+    // Use validated action for other cases
+    const validDetectedActions: DetectedAction[] = ['highlight', 'button', 'formfill', 'navigate', 'hover'];
+    if (validDetectedActions.includes(validated.action as DetectedAction)) {
+      action = validated.action as DetectedAction;
+    }
   }
 
   // Get selector metadata
@@ -89,5 +91,6 @@ export function generateSelectorFromEvent(target: HTMLElement, event: MouseEvent
     action,
     selectorInfo,
     warnings: validated.warnings,
+    wasModified: validated.wasModified,
   };
 }

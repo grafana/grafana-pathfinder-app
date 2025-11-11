@@ -71,6 +71,7 @@ describe('useActionRecorder', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     act(() => {
@@ -95,6 +96,7 @@ describe('useActionRecorder', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useActionRecorder());
@@ -123,6 +125,7 @@ describe('useActionRecorder', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useActionRecorder());
@@ -158,6 +161,7 @@ describe('useActionRecorder', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() =>
@@ -188,6 +192,7 @@ describe('useActionRecorder', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useActionRecorder());
@@ -216,6 +221,7 @@ describe('useActionRecorder', () => {
           matchCount: 1,
         },
         warnings: [],
+        wasModified: false,
       })
       .mockReturnValueOnce({
         selector: 'button[data-testid="test-button-2"]',
@@ -226,6 +232,7 @@ describe('useActionRecorder', () => {
           matchCount: 1,
         },
         warnings: [],
+        wasModified: false,
       });
 
     const { result } = renderHook(() => useActionRecorder());
@@ -288,6 +295,7 @@ describe('useActionRecorder', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useActionRecorder());
@@ -322,6 +330,7 @@ describe('useActionRecorder', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useActionRecorder());
@@ -353,6 +362,7 @@ describe('useActionRecorder', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useActionRecorder());
@@ -390,6 +400,7 @@ describe('useActionRecorder', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useActionRecorder());
@@ -439,6 +450,7 @@ describe('useActionRecorder', () => {
         matchCount: 1,
       },
       warnings: [],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useActionRecorder());
@@ -473,6 +485,7 @@ describe('useActionRecorder', () => {
         matchCount: 1,
       },
       warnings: ['Removed auto-generated class'],
+      wasModified: false,
     });
 
     const { result } = renderHook(() => useActionRecorder());
