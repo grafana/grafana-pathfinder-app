@@ -55,6 +55,7 @@ import logoSvg from '../../img/logo.svg';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import type { AttendeeMode } from '../../types/collaboration.types';
+import { linkInterceptionState } from '../../global-state/link-interception';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -733,6 +734,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
     // Listen for all auto-open events
     document.addEventListener('pathfinder-auto-open-docs', handleAutoOpen);
+
+    // todo: investigate why this needs to be kicked to the end of the event loop
+    setTimeout(() => linkInterceptionState.processQueuedLinks(), 0);
 
     return () => {
       document.removeEventListener('pathfinder-auto-open-docs', handleAutoOpen);

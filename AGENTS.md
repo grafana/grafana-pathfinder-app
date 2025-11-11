@@ -1,297 +1,152 @@
-# AGENTS.md
+# Grafana Pathfinder - AI Agent Guide
 
-<!-- docs-ai-begin -->
+## What is this Project?
 
-<!-- version: 1.1.0 -->
+**Grafana Pathfinder** is a Grafana App Plugin that provides contextual, interactive documentation directly within the Grafana UI. It appears as a right-hand sidebar panel that displays personalized learning content, tutorials, and recommendations to help users learn Grafana products and configurations.
 
-## Documentation
+### Key Features
 
-Instructions for documentation authoring in Markdown files.
+- **Context-Aware Recommendations**: Automatically detects what you're doing in Grafana and suggests relevant documentation
+- **Interactive Tutorials**: Step-by-step guides with "Show me" and "Do it" buttons that can automate actions in the Grafana UI
+- **Tab-Based Interface**: Browser-like experience with multiple documentation tabs and localStorage persistence
+- **Intelligent Content Delivery**: Multi-strategy content fetching with bundled fallbacks
+- **Progressive Learning**: Tracks completion state and adapts to user experience level
 
-DOCS.md contains all the Docs AI toolkit docs in one file.
+### Target Audience
 
-## Role
+Beginners and intermediate users who need to quickly learn Grafana products. Not intended for deep experts who primarily need reference documentation.
 
-Act as an experienced software engineer and technical writer for Grafana Labs.
+## Project Architecture
 
-Write for software developers and engineers who understand general programming concepts.
+This is a **React + TypeScript + Grafana Scenes** application built as a Grafana extension plugin. The architecture follows these key patterns:
 
-Focus on practical implementation and clear problem-solving guidance.
+- **Modular, Scene-Based Architecture**: Uses Grafana Scenes for state management
+- **Hook-Based Business Logic**: Business logic extracted into focused React hooks
+- **Interactive Tutorial System**: Sophisticated requirement checking and automated action execution
+- **Functional-First Code Style**: Pragmatic functional programming approach with immutable data and pure functions
 
-### Grafana
+## Getting Started for AI Agents
 
-Use full product names on first mention, then short names:
+### Essential Reading (in order)
 
-- Grafana Alloy (full), Alloy (short)
-- Grafana Beyla (full), Beyla (short)
+Before working on this codebase, you MUST read these files in `.cursor/rules/`:
 
-Use "OpenTelemetry Collector" on first mention, then "Collector" for subsequent references.
-Keep full name for distributions, headings, and links.
+1. **`.cursor/rules/projectbrief.mdc`** - Start here to understand core requirements and goals
+2. **`.cursor/rules/techContext.mdc`** - Technologies, dependencies, and development setup
+3. **`.cursor/rules/systemPatterns.mdc`** - Architecture, design patterns, and critical implementation paths
 
-Always use "Grafana Cloud" in full.
+### Specialized Documentation
 
-Use complete terms:
+For specific work areas, consult these:
 
-- "OpenTelemetry" (not "OTel")
-- "Kubernetes" (not "K8s")
+- **`.cursor/rules/interactiveRequirements.mdc`** - Requirements and objectives system for interactive tutorials
+- **`.cursor/rules/multistepActions.mdc`** - Multi-step component design and implementation
+- **`.cursor/rules/frontend-security.mdc`** - Security rules for frontend code (ALWAYS apply)
+- **`.cursor/rules/instructions.mdc`** - Agent behavior, commands, and workflow patterns
 
-Present observability signals in order: metrics, logs, traces, and profiles.
+### Security First
 
-Focus content on Grafana solutions when discussing integrations or migrations.
+Always follow the security rules in `.cursor/rules/frontend-security.mdc`
 
-## Style
+## Local Development Commands
 
-### Structure
+### Initial Setup
 
-Structure articles into sections with headings.
+```bash
+# Install dependencies (requires Node.js 22+)
+npm install
 
-Leave Markdown front matter content between two triple dashes `---`.
-
-The front matter YAML `title` and the content h1 (#) heading should be the same.
-Make sure there's an h1 heading in the content; this redundancy is required.
-
-Always include copy after a heading or between headings, for example:
-
-```markdown
-## Heading
-
-Immediately followed by copy and not another heading.
-
-## Sub heading
+# Type check
+npm run typecheck
 ```
 
-The immediate copy after a heading should introduce and provide an overview of what's covered in the section.
+### Development Workflow
 
-Start articles with an introduction that covers the goal of the article. Example goals:
+```bash
+# Start development server with watch mode
+npm run dev
 
-- Learn concepts
-- Set up or install something
-- Configure something
-- Use a product to solve a business problem
-- Troubleshoot a problem
-- Integrate with other software or systems
-- Migrate from one thing to another
-- Refer to APIs or reference documentation
+# Run Grafana locally with Docker
+npm run server
 
-Follow the goal with a list of prerequisites, for example:
+# Run tests in watch mode
+npm test
 
-```markdown
-Before you begin, ensure you have the following:
+# Run all tests (CI mode)
+npm run test:ci
 
-- <Prerequisite 1>
-- <Prerequisite 2>
-- ...
+# Run tests with coverage
+npm run test:coverage
 ```
 
-Suggest and link to next steps and related resources at the end of the article, for example:
+### Code Quality
 
-- Learn more about A, B, C
-- Configure X
-- Use X to achieve Y
-- Use X to achieve Z
-- Project homepage or documentation
-- Project repository (for example, GitHub, GitLab)
-- Project package (for example, pip or NPM)
+```bash
+# Lint code
+npm run lint
 
-You don't need to use the "Refer to..." syntax for next steps; use the link text directly.
+# Lint and auto-fix
+npm run lint:fix
 
-### Copy
+# Format code with Prettier
+npm run prettier
 
-Write simple, direct copy with short sentences and paragraphs.
-
-Use contractions:
-
-- it's, isn't, that's, you're, don't
-
-Choose simple words:
-
-- use (not utilize)
-- help (not assist)
-- show (not demonstrate)
-
-Write with verbs and nouns. Use minimal adjectives except when describing Grafana Labs products.
-
-## Tense
-
-Write in present simple tense.
-
-Avoid present continuous tense.
-
-Only write in future tense to show future actions.
-
-### Voice
-
-Always write in an active voice.
-
-Change passive voice to active voice.
-
-### Perspective
-
-Address users as "you".
-
-Use second person perspective consistently.
-
-### Wordlist
-
-Use allowlist/blocklist instead of whitelist/blacklist.
-
-Use primary/secondary instead of master/slave.
-
-Use "refer to" instead of "see", "consult", "check out", and other phrases.
-
-### Formatting
-
-Use sentence case for titles and headings.
-
-Use inline Markdown links: [Link text](https://example.com).
-
-Link to other sections using descriptive phrases that include the section name:
-"For setup details, refer to the [Lists](#lists) section."
-
-Bold text with two asterisks: **bold**
-
-Emphasize text with one underscore: _italics_
-
-Format UI elements using sentence case as they appear:
-
-- Click **Submit**.
-- Navigate to **User settings**.
-- Configure **Alerting rules**.
-
-### Lists
-
-Write complete sentences for lists:
-
-- Works with all languages and frameworks (correct)
-- All languages and frameworks (incorrect)
-
-Use dashes for unordered lists.
-
-Bold keywords at list start and follow with a colon.
-
-### Images
-
-Include descriptive alt text that conveys the essential information or purpose.
-
-Write alt text without "Image of..." or "Picture of..." prefixes.
-
-### Code
-
-Use single code backticks for:
-
-- user input
-- placeholders in markdown, for example _`<PLACEHOLDER_NAME>`_
-- files and directories, for example `/opt/file.md`
-- source code keywords and identifiers,
-  for example variables, function and class names
-- configuration options and values, for example `PORT` and `80`
-- status codes, for example `404`
-
-Use triple code backticks followed by the syntax for code blocks, for example:
-
-```javascript
-console.log('Hello World!');
+# Check formatting
+npm run prettier-test
 ```
 
-Introduce each code block with a short description.
-End the introduction with a colon if the code sample follows it, for example:
+### Building and Testing
 
-```markdown
-The code sample outputs "Hello World!" to the browser console:
+```bash
+# Production build
+npm run build
 
-<CODE_BLOCK>
+# Run end-to-end tests
+npm run e2e
+
+# Sign plugin for distribution
+npm run sign
 ```
 
-Use descriptive placeholder names in code samples.
-Use uppercase letters with underscores to separate words in placeholders,
-for example:
+### Development Server
 
-```sh
-OTEL_RESOURCE_ATTRIBUTES="service.name=<SERVICE_NAME>
-OTEL_EXPORTER_OTLP_ENDPOINT=<OTLP_ENDPOINT>
+The development server runs Grafana OSS in Docker with the plugin mounted. After running `npm run server`, access:
+
+- **Grafana UI**: http://localhost:3000
+- **Default credentials**: admin/admin
+
+## Code Organization
+
+```
+src/
+├── components/         # React components
+│   ├── interactive/   # Interactive tutorial components
+│   └── docs/          # Documentation rendering components
+├── utils/             # Business logic hooks and utilities
+├── styles/            # Theme-aware styling functions
+├── constants/         # Configuration and selectors
+└── types/             # TypeScript type definitions
 ```
 
-The placeholder includes the name and the less than and greater than symbols,
-for example <PLACEHOLDER_NAME>.
+## AI Agent Roles
 
-If the placeholder is markdown emphasize it with underscores,
-for example _`<PLACEHOLDER_NAME>`_.
+This project supports role-based agent behavior via slash commands:
 
-In code blocks use the placeholder without additional backticks or emphasis,
-for example <PLACEHOLDER_NAME>.
+- **`/fp`** - Functional Programming Engineer (default): Write functional-first code with pure functions and immutability
+- **`/review`** - Code Reviewer: Review for clarity, correctness, and maintainability
+- **`/secure`** - Security Analyst: Check for vulnerabilities and unsafe patterns
+- **`/test`** - Test Writer: Write fast, isolated, reliable tests
+- **`/docs`** - Documentation Writer: Write clear, human-first documentation
 
-Provide an explanation for each placeholder,
-typically in the text following the code block or in a configuration section.
+## File Creation Policy
 
-Follow code samples with an explanation
-and configuration options for placeholders, for example:
+Do NOT create summary `.md` files unless explicitly requested. This saves tokens and keeps the repository clean.
 
-```markdown
-<CODE_BLOCK>
+## Getting Help
 
-This code sets required environment variables
-to send OTLP data to an OTLP endpoint.
-To configure the code refer to the configuration section.
+When uncertain about:
 
-<CONFIGURATION>
-```
-
-Put configuration for a code block after the code block.
-
-## APIs
-
-When documenting API endpoints specify the HTTP method,
-for example `GET`, `POST`, `PUT`, `DELETE`.
-
-Provide the full request path, using backticks.
-
-Use backticks for parameter names and example values.
-
-Use placeholders like `{userId}` for path parameters, for example:
-
-- To retrieve user details, make a `GET` request to `/api/v1/users/{userId}`.
-
-### CLI commands
-
-When presenting CLI commands and their output,
-introduce the command with a brief explanation of its purpose.
-Clearly distinguish the command from its output.
-
-For commands, use `sh` to specify the code block language.
-
-For output, use a generic specifier like `text`, `console`,
-or `json`/`yaml` if the output is structured.
-
-For example:
-
-```markdown
-To list all running pods in the `default` namespace, use the following command:
-
-<CODE_BLOCK>
-```
-
-The output will resemble the following:
-
-```text
-NAME                               READY   STATUS    RESTARTS   AGE
-my-app-deployment-7fdb6c5f65-abcde   1/1     Running   0          2d1h
-another-service-pod-xyz123           2/2     Running   0          5h30m
-```
-
-### Shortcodes
-
-Leave Hugo shortcodes in the content when editing.
-
-Use our custom admonition Hugo shortcode for notes, cautions, or warnings,
-with `<TYPE>` as "note", "caution", or "warning":
-
-```markdown
-{{< admonition type="<TYPE>" >}}
-...
-{{< /admonition >}}
-```
-
-Use admonitions sparingly.
-Only include exceptional information in admonitions.
-
-<!-- docs-ai-end -->
+- **Architecture decisions**: Review `.cursor/rules/systemPatterns.mdc`
+- **Security concerns**: Follow `.cursor/rules/frontend-security.mdc` and ask user to reach out in #security channel
+- **Interactive tutorials**: Consult `.cursor/rules/interactiveRequirements.mdc`
+- **Memory/context**: The agent instructions in `.cursor/rules/instructions.mdc` explain the memory bank system
