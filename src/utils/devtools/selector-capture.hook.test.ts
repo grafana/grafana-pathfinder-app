@@ -283,3 +283,4 @@ describe('useSelectorCapture', () => {
     expect(result.current.isActive).toBe(true);
   });
 });
+

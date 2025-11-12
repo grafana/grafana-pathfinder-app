@@ -2,13 +2,13 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Button, Input, Badge, Icon, useStyles2, TextArea } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive-engine';
 import { getDebugPanelStyles } from './debug-panel.styles';
-import { combineStepsIntoMultistep } from '../../utils/tutorial-exporter';
+import { combineStepsIntoMultistep } from '../../utils/devtools/tutorial-exporter';
 import { URLTester } from 'components/URLTester';
-import { useSelectorTester } from '../../utils/selector-tester.hook';
-import { useStepExecutor } from '../../utils/step-executor.hook';
-import { useSelectorCapture } from '../../utils/selector-capture.hook';
-import { useActionRecorder } from '../../utils/action-recorder.hook';
-import { parseStepString } from '../../utils/step-parser.util';
+import { useSelectorTester } from '../../utils/devtools/selector-tester.hook';
+import { useStepExecutor } from '../../utils/devtools/step-executor.hook';
+import { useSelectorCapture } from '../../utils/devtools/selector-capture.hook';
+import { useActionRecorder } from '../../utils/devtools/action-recorder.hook';
+import { parseStepString } from '../../utils/devtools/step-parser.util';
 
 export interface SelectorDebugPanelProps {
   onOpenDocsPage?: (url: string, title: string) => void;

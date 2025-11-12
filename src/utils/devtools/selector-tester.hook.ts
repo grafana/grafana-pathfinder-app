@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { querySelectorAllEnhanced } from '../lib/dom';
+import { querySelectorAllEnhanced } from '../../lib/dom';
 import type { TestResult } from './dev-tools.types';
 
 export interface UseSelectorTesterOptions {
@@ -103,3 +103,4 @@ export function useSelectorTester({ executeInteractiveAction }: UseSelectorTeste
     result,
   };
 }
+

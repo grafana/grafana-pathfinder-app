@@ -1,14 +1,14 @@
 import { renderHook, act, cleanup } from '@testing-library/react';
 import { useActionRecorder } from './action-recorder.hook';
 import { generateSelectorFromEvent } from './selector-generator.util';
-import { shouldCaptureElement } from '../interactive-engine/auto-completion/action-detector';
+import { shouldCaptureElement } from '../../interactive-engine/auto-completion/action-detector';
 
 // Mock dependencies
 jest.mock('./selector-generator.util', () => ({
   generateSelectorFromEvent: jest.fn(),
 }));
 
-jest.mock('../interactive-engine/auto-completion/action-detector', () => ({
+jest.mock('../../interactive-engine/auto-completion/action-detector', () => ({
   shouldCaptureElement: jest.fn((el) => true),
   getActionDescription: jest.fn((action, el) => `Action: ${action}`),
   detectActionType: jest.fn(),
@@ -504,3 +504,4 @@ describe('useActionRecorder', () => {
     consoleWarnSpy.mockRestore();
   });
 });
+

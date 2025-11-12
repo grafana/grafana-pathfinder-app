@@ -62,3 +62,4 @@ export function formatStepsToString(steps: StepDefinition[]): string {
     })
     .join('\n');
 }
+
