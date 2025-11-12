@@ -16,7 +16,7 @@ cards:
       height: 24
     - title: Get started
       description: Enable Interactive learning and understand how interactive tutorials work.
-      href: get-started/
+      href: getting-started/
       height: 24
     - title: Administrators reference
       description: Learn about Interactive learning administrators features. 

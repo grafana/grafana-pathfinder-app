@@ -14,6 +14,11 @@
       { "name": "Step-by-step guidance throughout Grafana", "path": "img/img_3.png" },
       { "name": "Documentation for any Grafana feature", "path": "img/img_4.png" }
     ],
+    "links": [
+      { "name": "Website", "url": "https://grafana.com/grafana/plugins/grafana-pathfinder-app/" },
+      { "name": "Documentation", "url": "https://grafana.com/docs/plugins/grafana-pathfinder-app/latest/" },
+      { "name": "GitHub", "url": "https://github.com/grafana/grafana-pathfinder-app" }
+    ],
     "author": {
       "name": "Grafana"
     },
