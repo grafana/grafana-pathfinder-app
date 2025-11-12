@@ -49,10 +49,10 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
     fields: [
       {
         id: DATA_ATTRIBUTES.REF_TARGET,
-        label: 'CSS Selector:',
+        label: 'Selector:',
         type: 'text',
         placeholder: 'e.g., [data-testid="panel"], .my-class',
-        hint: 'CSS selector for the element to highlight',
+        hint: 'Selector for the element to highlight',
         required: true,
         autoFocus: true,
       },
@@ -87,10 +87,10 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
     fields: [
       {
         id: DATA_ATTRIBUTES.REF_TARGET,
-        label: 'Input Selector:',
+        label: 'Selector:',
         type: 'text',
         placeholder: 'e.g., input[name="title"], #query',
-        hint: 'CSS selector for the input field',
+        hint: 'Selector for the input field',
         required: true,
         autoFocus: true,
       },
@@ -163,10 +163,10 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
     fields: [
       {
         id: DATA_ATTRIBUTES.REF_TARGET,
-        label: 'Element Selector:',
+        label: 'Selector:',
         type: 'text',
         placeholder: 'e.g., div[data-cy="item"]:has(p:contains("name"))',
-        hint: 'CSS selector for the element to hover over',
+        hint: 'Selector for the element to hover over',
         required: true,
         autoFocus: true,
       },

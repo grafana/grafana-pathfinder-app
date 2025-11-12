@@ -3,8 +3,9 @@ import { Field, Input, Checkbox, Button, Stack, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { type InteractiveFormProps } from '../types';
-import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { COMMON_REQUIREMENTS, DATA_ATTRIBUTES } from '../../../constants/interactive-config';
 import { validateFormField } from '../services/validation';
+import { useSelectorCapture } from '../../../utils/devtools/selector-capture.hook';
 
 export interface FormField {
   id: string;
@@ -61,6 +62,19 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1),
     marginTop: theme.spacing(2),
   }),
+  selectorInputContainer: css({
+    display: 'flex',
+    gap: theme.spacing(1),
+    alignItems: 'flex-start',
+  }),
+  selectorInput: css({
+    flex: 1,
+  }),
+  captureButton: css({
+    flexShrink: 0,
+    minWidth: 'auto',
+    padding: theme.spacing(0.5, 1),
+  }),
 });
 
 /**
@@ -98,6 +112,22 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
       });
     }
   };
+
+  // Selector capture hook - exclude pathfinder content sidebar and form panel
+  const { isActive, startCapture, stopCapture } = useSelectorCapture({
+    excludeSelectors: ['[data-pathfinder-content]', '[data-wysiwyg-form]'],
+    autoDisable: true,
+    onCapture: (selector: string) => {
+      // Populate the selector field
+      setValues((prev) => ({ ...prev, [DATA_ATTRIBUTES.REF_TARGET]: selector }));
+      // Clear validation error if present
+      setValidationErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[DATA_ATTRIBUTES.REF_TARGET];
+        return newErrors;
+      });
+    },
+  });
 
   const validateField = (field: FormField, value: any): string | null => {
     // Use centralized validation function from validation service
@@ -146,6 +176,8 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
       );
     }
 
+    const isSelectorField = field.id === DATA_ATTRIBUTES.REF_TARGET;
+
     return (
       <Field
         key={field.id}
@@ -156,12 +188,32 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
         required={field.required}
       >
         <>
-          <Input
-            value={values[field.id] || ''}
-            onChange={(e) => handleChange(field.id, e.currentTarget.value)}
-            placeholder={field.placeholder}
-            autoFocus={field.autoFocus}
-          />
+          <div className={isSelectorField ? styles.selectorInputContainer : undefined}>
+            <Input
+              className={isSelectorField ? styles.selectorInput : undefined}
+              value={values[field.id] || ''}
+              onChange={(e) => handleChange(field.id, e.currentTarget.value)}
+              placeholder={field.placeholder}
+              autoFocus={field.autoFocus}
+            />
+            {isSelectorField && (
+              <Button
+                className={styles.captureButton}
+                size="sm"
+                variant={isActive ? 'primary' : 'secondary'}
+                onClick={() => {
+                  if (isActive) {
+                    stopCapture();
+                  } else {
+                    startCapture();
+                  }
+                }}
+                title={isActive ? 'Click an element to capture its selector' : 'Capture selector from page'}
+              >
+                🎯
+              </Button>
+            )}
+          </div>
           {field.showCommonOptions && (
             <div className={styles.commonOptions}>
               {COMMON_REQUIREMENTS.slice(0, 3).map((req) => (
@@ -177,7 +229,7 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
   };
 
   return (
-    <div className={styles.form}>
+    <div className={styles.form} data-wysiwyg-form="true">
       <h4 className={styles.title}>{config.title}</h4>
       <p className={styles.description}>{config.description}</p>
 
