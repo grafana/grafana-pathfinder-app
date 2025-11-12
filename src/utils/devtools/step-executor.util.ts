@@ -115,10 +115,6 @@ export async function executeStepSequence(
 
         // Wait for user to complete the action
         await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            resolve();
-          }, stepTimeout);
-
           // Store timeout ID for listener setup so we can clear it on abort
           let listenerSetupTimeout: NodeJS.Timeout | null = null;
 
@@ -131,6 +127,14 @@ export async function executeStepSequence(
             document.removeEventListener('click', handleCompletion);
             resolve();
           };
+
+          const timeout = setTimeout(() => {
+            if (listenerSetupTimeout) {
+              clearTimeout(listenerSetupTimeout);
+            }
+            document.removeEventListener('click', handleCompletion);
+            reject(new Error(`Step timeout: User did not complete action within ${stepTimeout}ms`));
+          }, stepTimeout);
 
           // Wait a bit before adding listener to avoid immediate trigger
           listenerSetupTimeout = setTimeout(() => {

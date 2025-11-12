@@ -71,10 +71,6 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     setRecordedSteps((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const setRecordedStepsExternal = useCallback((steps: RecordedStep[]) => {
-    setRecordedSteps(steps);
-  }, []);
-
   const exportSteps = useCallback(
     (format: 'string' | 'html', exportOptions?: ExportOptions): string => {
       if (format === 'string') {
@@ -120,6 +116,11 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
       // DON'T preventDefault - let the click proceed normally!
       // Just record the action and let navigation/actions happen
+      //
+      // ⚠️ LIMITATION: During recording, clicking navigation links or submit buttons
+      // will cause page navigation, potentially losing all recorded steps.
+      // Recorded steps are stored in React state only and are not persisted.
+      // Users should avoid navigating away while recording, or export steps frequently.
 
       // Generate selector using shared utility
       const result = generateSelectorFromEvent(target, event);
@@ -284,7 +285,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     stopRecording,
     clearRecording,
     deleteStep,
-    setRecordedSteps: setRecordedStepsExternal,
+    setRecordedSteps, // State setter from useState is already stable
     exportSteps,
   };
 }

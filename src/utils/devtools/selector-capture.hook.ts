@@ -77,6 +77,11 @@ export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): Use
 
       // DON'T preventDefault - let the click proceed normally!
       // Just capture the selector and let navigation/actions happen
+      //
+      // ⚠️ LIMITATION: Clicking navigation links or submit buttons during capture
+      // will cause page navigation. The captured selector is stored in React state
+      // only and will be lost on navigation. Users should copy/use the selector
+      // immediately after capture, or avoid navigating while capturing.
 
       // Generate selector using shared utility
       const result = generateSelectorFromEvent(target, event);
