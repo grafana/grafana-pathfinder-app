@@ -20,7 +20,9 @@ import {
   HoverHandler,
   GuidedHandler,
 } from './action-handlers';
+import type { UseInteractiveElementsOptions } from '../types/hooks.types';
 
+// Re-export CheckResult and InteractiveRequirementsCheck for backward compatibility
 export interface InteractiveRequirementsCheck {
   requirements: string;
   pass: boolean;
@@ -35,10 +37,6 @@ export interface CheckResult {
   canFix?: boolean;
   fixType?: string;
   targetHref?: string;
-}
-
-interface UseInteractiveElementsOptions {
-  containerRef?: React.RefObject<HTMLElement>;
 }
 
 /**

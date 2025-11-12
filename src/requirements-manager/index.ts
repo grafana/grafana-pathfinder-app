@@ -21,7 +21,7 @@ export type {
 // Step checker hook (unified requirements + objectives)
 export { useStepChecker } from './step-checker.hook';
 
-export type { UseStepCheckerProps, UseStepCheckerReturn } from './step-checker.hook';
+export type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
 // Pure requirements checking utilities
 export { checkRequirements, checkPostconditions } from './requirements-checker.utils';

@@ -11,73 +11,7 @@ import { reportAppInteraction, UserInteraction, getSourceDocument } from '../../
 import { interactiveStepStorage } from '../../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
-
-// Shared type definitions
-export interface BaseInteractiveProps {
-  requirements?: string;
-  objectives?: string;
-  hints?: string;
-  onComplete?: () => void;
-  disabled?: boolean;
-  className?: string;
-}
-
-export interface InteractiveStepProps extends BaseInteractiveProps {
-  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover';
-  refTarget: string;
-  targetValue?: string;
-  postVerify?: string;
-  targetComment?: string;
-  doIt?: boolean; // Control whether "Do it" button appears (defaults to true)
-  showMe?: boolean; // Control whether "Show me" button appears (defaults to true)
-  showMeText?: string; // Optional text override for the "Show me" button
-  skippable?: boolean; // Whether this step can be skipped if requirements fail
-  completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
-  title?: string;
-  description?: string;
-  children?: React.ReactNode;
-
-  // New unified state management props (added by parent)
-  stepId?: string;
-  isEligibleForChecking?: boolean;
-  isCompleted?: boolean;
-  isCurrentlyExecuting?: boolean;
-  onStepComplete?: (stepId: string) => void;
-  onStepReset?: (stepId: string) => void; // Signal to parent that step should be reset
-  resetTrigger?: number; // Signal from parent to reset local completion state
-
-  // Step position tracking for analytics (added by section)
-  stepIndex?: number; // 0-indexed position in section (0, 1, 2, etc.)
-  totalSteps?: number; // Total number of steps in the section
-  sectionId?: string; // Section identifier for analytics (e.g., "section-setup-datasource")
-  sectionTitle?: string; // Human-readable section title for analytics
-}
-
-export interface InteractiveSectionProps extends BaseInteractiveProps {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-  isSequence?: boolean;
-  id?: string; // HTML id attribute for section identification
-  skippable?: boolean; // Whether this section can be skipped if requirements fail
-}
-
-// Types for unified state management
-export interface StepInfo {
-  stepId: string;
-  element: React.ReactElement<InteractiveStepProps> | React.ReactElement<any>;
-  index: number;
-  targetAction?: string; // Optional for multi-step and guided
-  refTarget?: string; // Optional for multi-step and guided
-  targetValue?: string;
-  targetComment?: string; // Optional comment to show during execution
-  requirements?: string;
-  postVerify?: string;
-  skippable?: boolean; // Whether this step can be skipped
-  showMe?: boolean; // Whether to show the "Show me" button and phase
-  isMultiStep: boolean; // Flag to identify component type
-  isGuided: boolean; // Flag to identify guided (user-performed) steps
-}
+import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../../types/component-props.types';
 
 // Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;

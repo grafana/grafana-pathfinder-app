@@ -1,19 +1,6 @@
 import { useState, useEffect, useCallback, RefObject } from 'react';
 import { isValidSelection } from './assistant-context.utils';
-
-export interface SelectionPosition {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
-  buttonPlacement: 'top' | 'bottom';
-}
-
-export interface TextSelectionState {
-  selectedText: string;
-  position: SelectionPosition | null;
-  isValid: boolean;
-}
+import type { TextSelectionState } from '../../types/hooks.types';
 
 /**
  * Hook to detect and track text selection within a container

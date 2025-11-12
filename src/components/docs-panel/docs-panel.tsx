@@ -2,7 +2,7 @@
 // Post-refactoring unified component using new content system only
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { SceneObjectBase, SceneObjectState, SceneComponentProps } from '@grafana/scenes';
+import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
@@ -36,7 +36,6 @@ import { SkeletonLoader } from '../SkeletonLoader';
 import {
   fetchContent,
   ContentRenderer,
-  RawContent,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
 } from '../../docs-retrieval';
@@ -60,31 +59,8 @@ import { linkInterceptionState } from '../../global-state/link-interception';
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
 
-interface LearningJourneyTab {
-  id: string;
-  title: string;
-  baseUrl: string;
-  currentUrl: string; // The specific milestone/page URL currently loaded
-  content: RawContent | null; // Unified content type
-  isLoading: boolean;
-  error: string | null;
-  type?: 'learning-journey' | 'docs';
-}
-
-interface PersistedTabData {
-  id: string;
-  title: string;
-  baseUrl: string;
-  currentUrl?: string; // The specific milestone/page URL user was viewing (optional for backward compatibility)
-  type?: 'learning-journey' | 'docs';
-}
-
-interface CombinedPanelState extends SceneObjectState {
-  tabs: LearningJourneyTab[];
-  activeTabId: string;
-  contextPanel: ContextPanel;
-  pluginConfig: DocsPluginConfig;
-}
+// Import centralized types
+import { LearningJourneyTab, PersistedTabData, CombinedPanelState } from '../../types/content-panel.types';
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public static Component = CombinedPanelRenderer;

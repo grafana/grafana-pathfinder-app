@@ -4,10 +4,10 @@ export { InteractiveStep } from './interactive-step';
 export { InteractiveMultiStep } from './interactive-multi-step';
 export { InteractiveGuided } from './interactive-guided';
 
-// Shared types
+// Shared types from centralized location
 export type {
   BaseInteractiveProps,
   InteractiveStepProps,
   InteractiveSectionProps,
   StepInfo,
-} from './interactive-section';
+} from '../../../types/component-props.types';

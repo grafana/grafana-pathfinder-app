@@ -8,13 +8,7 @@ import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties }
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
-
-interface InternalAction {
-  targetAction: string;
-  refTarget?: string;
-  targetValue?: string;
-  requirements?: string;
-}
+import { InternalAction } from '../../../types/interactive-actions.types';
 
 interface InteractiveMultiStepProps {
   internalActions: InternalAction[];
