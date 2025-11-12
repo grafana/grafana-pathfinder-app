@@ -314,7 +314,13 @@ export class ContextService {
     contextData: ContextData,
     bundledRecommendations: Recommendation[]
   ): Promise<{ recommendations: Recommendation[]; error: string | null }> {
+    console.warn('⚠️ FALLING BACK TO STATIC RECOMMENDATIONS');
     const staticLinkRecommendations = this.getStaticLinkRecommendations(contextData);
+    console.warn('📊 Fallback Summary:', {
+      bundledCount: bundledRecommendations.length,
+      staticCount: staticLinkRecommendations.length,
+      totalBeforeProcessing: bundledRecommendations.length + staticLinkRecommendations.length,
+    });
     const allRecommendations = [...bundledRecommendations, ...staticLinkRecommendations];
     const processedRecommendations = await this.processLearningJourneys(allRecommendations, {});
 
@@ -1032,6 +1038,10 @@ export class ContextService {
 
     try {
       const currentPlatform = this.getCurrentPlatform();
+      console.warn('🔍 Static Links Debug - Starting:', {
+        platform: currentPlatform,
+        currentPath: contextData.currentPath,
+      });
 
       // Dynamically load all JSON files from static-links directory
       const staticLinksContext = (require as any).context('../bundled-interactives/static-links', false, /\.json$/);
@@ -1080,6 +1090,11 @@ export class ContextService {
     } catch (error) {
       console.warn('Failed to load static link recommendations:', error);
     }
+
+    console.warn('🔍 Static Links Debug - Final Results:', {
+      totalMatches: staticRecommendations.length,
+      matches: staticRecommendations.map((r) => ({ title: r.title, url: r.url })),
+    });
 
     return staticRecommendations;
   }
