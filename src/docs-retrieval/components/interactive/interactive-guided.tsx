@@ -14,17 +14,10 @@ import { waitForReactUpdates, useStepChecker } from '../../../requirements-manag
 import { getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
-
-interface InternalAction {
-  targetAction: 'hover' | 'button' | 'highlight';
-  refTarget: string;
-  targetValue?: string;
-  requirements?: string;
-  targetComment?: string; // Optional comment to display in tooltip during this step
-}
+import { GuidedAction } from '../../../types/interactive-actions.types';
 
 interface InteractiveGuidedProps {
-  internalActions: InternalAction[];
+  internalActions: GuidedAction[];
 
   // State management (passed by parent section)
   stepId?: string;

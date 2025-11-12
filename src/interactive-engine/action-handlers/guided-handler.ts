@@ -2,14 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { querySelectorAllEnhanced, findButtonByText, isElementVisible } from '../../lib/dom';
-
-interface InternalAction {
-  targetAction: 'hover' | 'button' | 'highlight';
-  refTarget: string;
-  targetValue?: string;
-  requirements?: string;
-  targetComment?: string; // Optional comment to display in tooltip during this step
-}
+import { GuidedAction } from '../../types/interactive-actions.types';
 
 type CompletionResult = 'completed' | 'timeout' | 'cancelled';
 
@@ -64,7 +57,7 @@ export class GuidedHandler {
    * Returns true if user completed, false if timeout/cancelled
    */
   async executeGuidedStep(
-    action: InternalAction,
+    action: GuidedAction,
     stepIndex: number,
     totalSteps: number,
     timeout = 30000
@@ -253,7 +246,7 @@ export class GuidedHandler {
    * Listener is attached immediately to avoid race condition with fast clicks
    */
   private createCompletionListener(
-    action: InternalAction,
+    action: GuidedAction,
     targetElement: HTMLElement,
     timeout: number
   ): Promise<CompletionResult> {

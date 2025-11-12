@@ -1,16 +1,6 @@
 import { useEffect } from 'react';
 import { safeEventHandler } from './safe-event-handler.util';
-
-export interface LearningJourneyTab {
-  id: string;
-  title: string;
-  baseUrl: string;
-  content: any;
-  isLoading: boolean;
-  error: string | null;
-  type?: 'learning-journey' | 'docs';
-  docsContent?: any;
-}
+import type { LearningJourneyTab } from '../types/content-panel.types';
 
 interface UseKeyboardShortcutsProps {
   tabs: LearningJourneyTab[];
