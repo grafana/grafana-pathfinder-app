@@ -181,4 +181,3 @@ describe('action-recorder.util', () => {
     });
   });
 });
-

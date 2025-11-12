@@ -504,4 +504,3 @@ describe('useActionRecorder', () => {
     consoleWarnSpy.mockRestore();
   });
 });
-

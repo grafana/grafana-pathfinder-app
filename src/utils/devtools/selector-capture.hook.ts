@@ -117,4 +117,3 @@ export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): Use
     stopCapture,
   };
 }
-

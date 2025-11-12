@@ -103,4 +103,3 @@ export function useSelectorTester({ executeInteractiveAction }: UseSelectorTeste
     result,
   };
 }
-
