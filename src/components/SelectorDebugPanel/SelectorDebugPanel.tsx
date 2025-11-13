@@ -291,10 +291,10 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     if (!simpleSelector.trim()) {
       return;
     }
-    
+
     const dsl = `highlight|${simpleSelector}|`;
     const hugo = dslToHugoShortcode(dsl, 'Highlight the target element');
-    
+
     try {
       await navigator.clipboard.writeText(hugo);
       setSimpleHugoCopied(true);
@@ -308,15 +308,15 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     if (!multiStepInput.trim()) {
       return;
     }
-    
-    const dslLines = multiStepInput.split('\n').filter(line => line.trim());
+
+    const dslLines = multiStepInput.split('\n').filter((line) => line.trim());
     const hugo = dslListToHugoShortcodes(dslLines, {
       includeComments: true,
       wrapInSequence: true,
       sequenceId: 'tutorial-sequence',
       sequenceTitle: 'Multi-Step Tutorial',
     });
-    
+
     try {
       await navigator.clipboard.writeText(hugo);
       setMultiStepHugoCopied(true);
@@ -330,15 +330,15 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     if (!guidedInput.trim()) {
       return;
     }
-    
-    const dslLines = guidedInput.split('\n').filter(line => line.trim());
+
+    const dslLines = guidedInput.split('\n').filter((line) => line.trim());
     const hugo = dslListToHugoShortcodes(dslLines, {
       includeComments: true,
       wrapInSequence: true,
       sequenceId: 'guided-sequence',
       sequenceTitle: 'Guided Tutorial',
     });
-    
+
     try {
       await navigator.clipboard.writeText(hugo);
       setGuidedHugoCopied(true);
@@ -352,11 +352,11 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     if (!capturedSelector) {
       return;
     }
-    
+
     // Generate Hugo shortcode for a highlight action
     const dsl = `highlight|${capturedSelector}|`;
     const hugo = dslToHugoShortcode(dsl, 'Highlight the captured element');
-    
+
     try {
       await navigator.clipboard.writeText(hugo);
       setWatchHugoCopied(true);

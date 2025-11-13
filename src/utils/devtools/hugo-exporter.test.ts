@@ -2,11 +2,7 @@
  * Tests for Hugo shortcode export utilities
  */
 
-import {
-  exportStepsToHugoShortcodes,
-  dslToHugoShortcode,
-  dslListToHugoShortcodes,
-} from './hugo-exporter';
+import { exportStepsToHugoShortcodes, dslToHugoShortcode, dslListToHugoShortcodes } from './hugo-exporter';
 import type { RecordedStep } from './tutorial-exporter';
 
 describe('Hugo Exporter', () => {
@@ -22,9 +18,9 @@ describe('Hugo Exporter', () => {
       ];
 
       const result = exportStepsToHugoShortcodes(steps, { wrapInSequence: false });
-      
+
       expect(result).toContain('{{< button');
-      expect(result).toContain("reftarget=\"button[data-testid='save']\"");
+      expect(result).toContain('reftarget="button[data-testid=\'save\']"');
       expect(result).toContain('requirements="exists-reftarget"');
       expect(result).toContain('Click the save button');
       expect(result).toContain('{{< /button >}}');
@@ -42,9 +38,9 @@ describe('Hugo Exporter', () => {
       ];
 
       const result = exportStepsToHugoShortcodes(steps, { wrapInSequence: false });
-      
+
       expect(result).toContain('{{< formfill');
-      expect(result).toContain("reftarget=\"input[name='query']\"");
+      expect(result).toContain('reftarget="input[name=\'query\']"');
       expect(result).toContain('targetvalue="prometheus"');
       expect(result).toContain('requirements="exists-reftarget"');
       expect(result).toContain('Enter the query');
@@ -66,7 +62,7 @@ describe('Hugo Exporter', () => {
         sequenceId: 'test-sequence',
         sequenceTitle: 'Test Tutorial',
       });
-      
+
       expect(result).toContain('## Test Tutorial');
       expect(result).toContain('{{< sequence id="test-sequence" >}}');
       expect(result).toContain('{{< /sequence >}}');
@@ -87,7 +83,7 @@ describe('Hugo Exporter', () => {
         includeComments: true,
         wrapInSequence: false,
       });
-      
+
       expect(result).toContain('<!-- Warning: Non-unique selector (3 matches) -->');
       // Verify no indentation
       expect(result).toMatch(/^<!-- Warning:/m);
@@ -117,7 +113,7 @@ describe('Hugo Exporter', () => {
       ];
 
       const result = exportStepsToHugoShortcodes(steps, { wrapInSequence: false });
-      
+
       expect(result).toContain('{{< highlight');
       expect(result).toContain('{{< button');
       expect(result).toContain('{{< formfill');
@@ -135,9 +131,9 @@ describe('Hugo Exporter', () => {
     it('should convert DSL string to Hugo shortcode', () => {
       const dsl = 'button|button[data-testid="save"]|';
       const result = dslToHugoShortcode(dsl, 'Click the save button');
-      
+
       expect(result).toContain('{{< button');
-      expect(result).toContain("reftarget=\"button[data-testid='save']\"");
+      expect(result).toContain('reftarget="button[data-testid=\'save\']"');
       expect(result).toContain('Click the save button');
       expect(result).toContain('{{< /button >}}');
     });
@@ -145,7 +141,7 @@ describe('Hugo Exporter', () => {
     it('should handle formfill with value', () => {
       const dsl = 'formfill|input[name="query"]|prometheus';
       const result = dslToHugoShortcode(dsl, 'Enter query');
-      
+
       expect(result).toContain('{{< formfill');
       expect(result).toContain('targetvalue="prometheus"');
       expect(result).toContain('Enter query');
@@ -154,7 +150,7 @@ describe('Hugo Exporter', () => {
     it('should handle invalid DSL format', () => {
       const dsl = 'invalid';
       const result = dslToHugoShortcode(dsl);
-      
+
       expect(result).toContain('<!-- Invalid DSL format:');
     });
   });
@@ -166,9 +162,9 @@ describe('Hugo Exporter', () => {
         'button|button[data-testid="add-panel"]|',
         'formfill|input[name="title"]|My Panel',
       ];
-      
+
       const result = dslListToHugoShortcodes(dslList, { wrapInSequence: false });
-      
+
       expect(result).toContain('{{< highlight');
       expect(result).toContain('{{< button');
       expect(result).toContain('{{< formfill');
@@ -177,12 +173,12 @@ describe('Hugo Exporter', () => {
 
     it('should wrap in sequence when requested', () => {
       const dslList = ['button|button[data-testid="save"]|'];
-      
+
       const result = dslListToHugoShortcodes(dslList, {
         wrapInSequence: true,
         sequenceTitle: 'Test Steps',
       });
-      
+
       expect(result).toContain('## Test Steps');
       expect(result).toContain('{{< sequence');
       expect(result).toContain('{{< /sequence >}}');
@@ -201,8 +197,8 @@ describe('Hugo Exporter', () => {
       ];
 
       const result = exportStepsToHugoShortcodes(steps, { wrapInSequence: false });
-      
-      expect(result).toContain("reftarget=\"button[aria-label='Click me']\"");
+
+      expect(result).toContain('reftarget="button[aria-label=\'Click me\']"');
     });
 
     it('should escape backslashes in values', () => {
@@ -217,9 +213,8 @@ describe('Hugo Exporter', () => {
       ];
 
       const result = exportStepsToHugoShortcodes(steps, { wrapInSequence: false });
-      
+
       expect(result).toContain('targetvalue="C:\\\\Users\\\\Test"');
     });
   });
 });
-

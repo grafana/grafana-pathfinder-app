@@ -29,11 +29,11 @@ export function exportStepsToHugoShortcodes(steps: RecordedStep[], options: Hugo
 
   if (wrapInSequence) {
     output += `## ${sequenceTitle}\n\n`;
-    
+
     if (sequenceDescription) {
       output += `${sequenceDescription}\n\n`;
     }
-    
+
     output += `{{< sequence id="${escapeShortcodeValue(sequenceId)}" >}}\n\n`;
   }
 
@@ -64,9 +64,9 @@ function formatStepAsHugoShortcode(step: RecordedStep, includeComments: boolean)
   }
 
   const shortcodeName = getShortcodeNameForAction(step.action);
-  
+
   const params = buildShortcodeParams(step);
-  
+
   output += `{{< ${shortcodeName}${params} >}}\n`;
   output += `${step.description}\n`;
   output += `{{< /${shortcodeName} >}}\n\n`;
@@ -93,11 +93,11 @@ function formatMultistepAsHugoShortcode(step: RecordedStep): string {
  */
 function getShortcodeNameForAction(action: string): string {
   const mapping: Record<string, string> = {
-    'button': 'button',
-    'formfill': 'formfill',
-    'highlight': 'highlight',
-    'navigate': 'navigate',
-    'multistep': 'multistep',
+    button: 'button',
+    formfill: 'formfill',
+    highlight: 'highlight',
+    navigate: 'navigate',
+    multistep: 'multistep',
   };
 
   return mapping[action] || action;
@@ -131,17 +131,15 @@ function buildShortcodeParams(step: RecordedStep): string {
  * Converts double quotes to single quotes to avoid escaping in shortcode attributes
  */
 function escapeShortcodeValue(text: string): string {
-  return text
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, "'");
+  return text.replace(/\\/g, '\\\\').replace(/"/g, "'");
 }
 
 /**
  * Convert a single step DSL string (action|selector|value) to Hugo shortcode
  */
 export function dslToHugoShortcode(dsl: string, description?: string): string {
-  const parts = dsl.split('|').map(p => p.trim());
-  
+  const parts = dsl.split('|').map((p) => p.trim());
+
   if (parts.length < 2) {
     return `<!-- Invalid DSL format: ${dsl} -->`;
   }
@@ -166,8 +164,8 @@ export function dslToHugoShortcode(dsl: string, description?: string): string {
  */
 export function dslListToHugoShortcodes(dslList: string[], options: HugoExportOptions = {}): string {
   const steps: RecordedStep[] = dslList.map((dsl, index) => {
-    const parts = dsl.split('|').map(p => p.trim());
-    
+    const parts = dsl.split('|').map((p) => p.trim());
+
     if (parts.length < 2) {
       return {
         action: 'comment',
@@ -205,4 +203,3 @@ export function formatStepsToHugoDSL(steps: RecordedStep[]): string {
     })
     .join('\n');
 }
-
