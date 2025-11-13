@@ -81,7 +81,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
  * Base form component for all interactive action types
  * Eliminates duplication across form components by providing a common structure
  */
-const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseInteractiveFormProps) => {
+const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitchType }: BaseInteractiveFormProps) => {
   const styles = useStyles2(getStyles);
 
   // Initialize state based on field configuration
@@ -247,6 +247,11 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
+        {initialValues && onSwitchType && (
+          <Button variant="secondary" onClick={onSwitchType}>
+            Switch Type
+          </Button>
+        )}
         <Button variant="primary" onClick={handleApply} disabled={!isValid()}>
           Apply
         </Button>

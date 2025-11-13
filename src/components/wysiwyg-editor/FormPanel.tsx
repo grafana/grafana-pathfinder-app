@@ -12,6 +12,7 @@ interface FormPanelProps {
   editor: Editor | null;
   editState: EditState | null;
   onFormSubmit: (attributes: InteractiveAttributesOutput) => void;
+  onSwitchType?: () => void;
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -48,7 +49,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
  * Replaces the editor area when forms are open, using identical CSS sizing to prevent layout shifts.
  * Implements two-step flow: select action type, then configure and insert.
  */
-export const FormPanel: React.FC<FormPanelProps> = ({ onClose, editor, editState, onFormSubmit }) => {
+export const FormPanel: React.FC<FormPanelProps> = ({ onClose, editor, editState, onFormSubmit, onSwitchType }) => {
   const styles = useStyles2(getStyles);
 
   // Track selected action type during creation (when editState is null)
@@ -57,6 +58,15 @@ export const FormPanel: React.FC<FormPanelProps> = ({ onClose, editor, editState
   // Reset selectedActionType when panel closes (component unmounts or editState becomes null)
   // This is handled by the parent component's conditional rendering
   // When FormPanel unmounts, state will reset on next mount
+
+  const handleSwitchType = () => {
+    // Clear local selectedActionType state
+    setSelectedActionType(null);
+    // Call parent callback to clear editState
+    if (onSwitchType) {
+      onSwitchType();
+    }
+  };
 
   const getTitle = () => {
     // Determine action type from either editState or selectedActionType
@@ -81,6 +91,7 @@ export const FormPanel: React.FC<FormPanelProps> = ({ onClose, editor, editState
           onSelectActionType={setSelectedActionType}
           onFormSubmit={onFormSubmit}
           onCancel={onClose}
+          onSwitchType={editState ? handleSwitchType : undefined}
         />
       </div>
     </div>

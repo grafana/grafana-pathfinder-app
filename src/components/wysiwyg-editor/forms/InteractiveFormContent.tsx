@@ -20,6 +20,7 @@ interface InteractiveFormContentProps {
   onSelectActionType: (actionType: string) => void;
   onFormSubmit: (attributes: InteractiveAttributesOutput) => void;
   onCancel: () => void;
+  onSwitchType?: () => void;
 }
 
 /**
@@ -33,6 +34,7 @@ export const InteractiveFormContent: React.FC<InteractiveFormContentProps> = ({
   onSelectActionType,
   onFormSubmit,
   onCancel,
+  onSwitchType,
 }) => {
   if (!editor) {
     return null;
@@ -72,6 +74,7 @@ export const InteractiveFormContent: React.FC<InteractiveFormContentProps> = ({
       }
     },
     onCancel,
+    onSwitchType,
   };
 
   // Render appropriate form based on action type

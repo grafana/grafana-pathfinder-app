@@ -123,6 +123,7 @@ export interface InteractiveFormProps {
   onApply: (attributes: InteractiveAttributesOutput) => void;
   onCancel: () => void;
   initialValues?: Partial<InteractiveAttributesInput>;
+  onSwitchType?: () => void;
 }
 
 // Re-export types from constants for convenience

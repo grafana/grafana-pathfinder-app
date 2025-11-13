@@ -136,7 +136,13 @@ export const WysiwygEditor: React.FC = () => {
 
       {/* Form panel - shown when form is open, uses same CSS sizing as editorWrapper */}
       {isModalOpen && (
-        <FormPanel onClose={closeModal} editor={editor} editState={editState} onFormSubmit={handleFormSubmit} />
+        <FormPanel
+          onClose={closeModal}
+          editor={editor}
+          editState={editState}
+          onFormSubmit={handleFormSubmit}
+          onSwitchType={stopEditing}
+        />
       )}
 
       <CommentDialog
