@@ -54,13 +54,8 @@ export function useEditorModals({
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Use separate hook for comment dialog state management
-  const {
-    isCommentDialogOpen,
-    openCommentDialog,
-    closeCommentDialog,
-    commentDialogMode,
-    commentDialogInitialText,
-  } = useCommentDialog({ editState, stopEditing });
+  const { isCommentDialogOpen, openCommentDialog, closeCommentDialog, commentDialogMode, commentDialogInitialText } =
+    useCommentDialog({ editState, stopEditing });
 
   const openModal = useCallback(() => {
     setIsModalOpen(true);

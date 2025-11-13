@@ -94,4 +94,3 @@ export const InteractiveFormContent: React.FC<InteractiveFormContentProps> = ({
       return <ActionSelector onSelect={onSelectActionType} onCancel={onCancel} />;
   }
 };
-

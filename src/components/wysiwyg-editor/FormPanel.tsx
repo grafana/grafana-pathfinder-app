@@ -58,7 +58,6 @@ export const FormPanel: React.FC<FormPanelProps> = ({ onClose, editor, editState
   // This is handled by the parent component's conditional rendering
   // When FormPanel unmounts, state will reset on next mount
 
-
   const getTitle = () => {
     // Determine action type from either editState or selectedActionType
     const actionType = editState ? editState.attributes['data-targetaction'] : selectedActionType;

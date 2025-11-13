@@ -18,10 +18,7 @@ export interface UseCommentDialogReturn {
  * Hook for managing comment dialog state
  * Handles synchronization between editState and dialog open/closed state
  */
-export function useCommentDialog({
-  editState,
-  stopEditing,
-}: UseCommentDialogOptions): UseCommentDialogReturn {
+export function useCommentDialog({ editState, stopEditing }: UseCommentDialogOptions): UseCommentDialogReturn {
   const [isCommentDialogOpen, setIsCommentDialogOpen] = useState(false);
   const isManuallyControlledRef = useRef(false);
 
@@ -70,4 +67,3 @@ export function useCommentDialog({
     commentDialogInitialText,
   };
 }
-

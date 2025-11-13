@@ -7,7 +7,7 @@
 import type { Editor } from '@tiptap/react';
 import type { InteractiveElementType, InteractiveAttributesOutput } from '../types';
 import { buildInteractiveAttributes, getNodeTypeName } from './attributeBuilder';
-import { ACTION_TYPES, DEFAULT_VALUES } from '../../../constants/interactive-config';
+import { ACTION_TYPES } from '../../../constants/interactive-config';
 import { CSS_CLASSES } from '../../../constants/editor-config';
 import { debug, error as logError } from '../utils/logger';
 

@@ -35,7 +35,7 @@ export function resolveElementPosition(
   // Determine element type if not provided
   if (!elementType) {
     const elementTypeResult = determineInteractiveElementType(element);
-    if (!elementTypeResult) {
+    if (!elementTypeResult || !elementTypeResult.type) {
       return {
         success: false,
         position: null,
@@ -83,10 +83,7 @@ export function resolveElementPosition(
       if (node.type.name === 'sequenceSection') {
         const nodeId = node.attrs.id;
         const nodeAction = node.attrs['data-targetaction'];
-        if (
-          (nodeId && nodeId === elementId) ||
-          (nodeAction === elementAction && nodeAction === 'sequence')
-        ) {
+        if ((nodeId && nodeId === elementId) || (nodeAction === elementAction && nodeAction === 'sequence')) {
           pos = position;
           return false;
         }
@@ -111,4 +108,3 @@ export function resolveElementPosition(
     position: pos,
   };
 }
-

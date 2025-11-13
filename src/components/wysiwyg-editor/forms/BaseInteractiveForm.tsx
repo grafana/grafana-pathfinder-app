@@ -189,7 +189,7 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
       >
         <>
           <div className={isSelectorField ? styles.selectorInputContainer : undefined}>
-          {isSelectorField && (
+            {isSelectorField && (
               <Button
                 className={styles.captureButton}
                 variant={isActive ? 'primary' : 'secondary'}

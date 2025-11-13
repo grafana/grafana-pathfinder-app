@@ -62,7 +62,7 @@ export const InteractiveClickHandler = Extension.create<InteractiveClickHandlerO
 
                 // Determine the type of interactive element
                 const elementTypeResult = determineInteractiveElementType(element);
-                if (!elementTypeResult) {
+                if (!elementTypeResult || !elementTypeResult.type) {
                   logError('[InteractiveClickHandler] Could not determine element type for element:', element);
                   return false;
                 }

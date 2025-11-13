@@ -194,7 +194,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
   if (contentId === 'wysiwyg-preview') {
     try {
       const previewContent = localStorage.getItem(StorageKeys.WYSIWYG_PREVIEW);
-      
+
       if (!previewContent || previewContent.trim() === '') {
         return {
           content: null,
@@ -204,7 +204,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
 
       // SECURITY: sanitize on load (defense in depth, F1, F4)
       const sanitized = sanitizeDocumentationHTML(previewContent);
-      
+
       // Determine content type for preview
       const contentType = determineContentType(url);
       const metadata = await extractMetadata(sanitized, url, contentType);

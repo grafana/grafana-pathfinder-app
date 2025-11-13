@@ -45,7 +45,6 @@ export const FormModal: React.FC<FormModalProps> = ({ isOpen, onClose, editor, e
     }
   }, [isOpen]);
 
-
   const getTitle = () => {
     // Determine action type from either editState or selectedActionType
     const actionType = editState ? editState.attributes['data-targetaction'] : selectedActionType;
