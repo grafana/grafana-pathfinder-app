@@ -305,18 +305,8 @@ export const FormModal: React.FC<FormModalProps> = ({ isOpen, onClose, editor, e
       return 'Select Action Type';
     }
 
-    const typeLabels: Record<string, string> = {
-      [ACTION_TYPES.BUTTON]: 'Button Action',
-      [ACTION_TYPES.HIGHLIGHT]: 'Highlight Action',
-      [ACTION_TYPES.FORM_FILL]: 'Form Fill Action',
-      [ACTION_TYPES.NAVIGATE]: 'Navigate Action',
-      [ACTION_TYPES.HOVER]: 'Hover Action',
-      [ACTION_TYPES.MULTISTEP]: 'Multi-Step Action',
-      [ACTION_TYPES.SEQUENCE]: 'Sequence Section',
-    };
-
     const prefix = editState ? 'Edit' : 'Create';
-    return `${prefix} ${typeLabels[actionType] || 'Interactive Element'}`;
+    return `${prefix} ${actionType}`;
   };
 
   // Don't render modal at all when closed to prevent auto-opening

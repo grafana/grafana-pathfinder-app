@@ -12,7 +12,7 @@ import { sanitizeTextForDisplay } from '../../../security';
  */
 export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
   [ACTION_TYPES.BUTTON]: {
-    title: 'Button Click Action',
+    title: ACTION_TYPES.BUTTON,
     description: 'Click a button with specific text',
     actionType: ACTION_TYPES.BUTTON,
     fields: [
@@ -43,7 +43,7 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
   },
 
   [ACTION_TYPES.HIGHLIGHT]: {
-    title: 'Highlight Element Action',
+    title: ACTION_TYPES.HIGHLIGHT,
     description: 'Highlight a specific UI element',
     actionType: ACTION_TYPES.HIGHLIGHT,
     fields: [
@@ -81,7 +81,7 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
   },
 
   [ACTION_TYPES.FORM_FILL]: {
-    title: 'Form Fill Action',
+    title: ACTION_TYPES.FORM_FILL,
     description: 'Fill a form input field',
     actionType: ACTION_TYPES.FORM_FILL,
     fields: [
@@ -121,7 +121,7 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
   },
 
   [ACTION_TYPES.NAVIGATE]: {
-    title: 'Navigate Action',
+    title: ACTION_TYPES.NAVIGATE,
     description: 'Navigate to a specific page',
     actionType: ACTION_TYPES.NAVIGATE,
     fields: [
@@ -157,7 +157,7 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
   },
 
   [ACTION_TYPES.HOVER]: {
-    title: 'Hover Action',
+    title: ACTION_TYPES.HOVER,
     description: 'Reveal hover-hidden UI elements',
     actionType: ACTION_TYPES.HOVER,
     fields: [
@@ -188,7 +188,7 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
   },
 
   [ACTION_TYPES.MULTISTEP]: {
-    title: 'Multistep Action',
+    title: ACTION_TYPES.MULTISTEP,
     description: 'Multiple related actions in sequence (typically contains nested interactive spans)',
     actionType: ACTION_TYPES.MULTISTEP,
     fields: [
@@ -212,7 +212,7 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
   },
 
   [ACTION_TYPES.SEQUENCE]: {
-    title: 'Sequence Section',
+    title: ACTION_TYPES.SEQUENCE,
     description: 'A section containing multiple steps with a checkpoint',
     actionType: ACTION_TYPES.SEQUENCE,
     fields: [

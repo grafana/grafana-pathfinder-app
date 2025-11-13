@@ -318,18 +318,8 @@ export const FormPanel: React.FC<FormPanelProps> = ({ onClose, editor, editState
       return 'Select Action Type';
     }
 
-    const typeLabels: Record<string, string> = {
-      [ACTION_TYPES.BUTTON]: 'Button Action',
-      [ACTION_TYPES.HIGHLIGHT]: 'Highlight Action',
-      [ACTION_TYPES.FORM_FILL]: 'Form Fill Action',
-      [ACTION_TYPES.NAVIGATE]: 'Navigate Action',
-      [ACTION_TYPES.HOVER]: 'Hover Action',
-      [ACTION_TYPES.MULTISTEP]: 'Multi-Step Action',
-      [ACTION_TYPES.SEQUENCE]: 'Sequence Section',
-    };
-
     const prefix = editState ? 'Edit' : 'Create';
-    return `${prefix} ${typeLabels[actionType] || 'Interactive Element'}`;
+    return `${prefix} ${actionType}`;
   };
 
   return (
