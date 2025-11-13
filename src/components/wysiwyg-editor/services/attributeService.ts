@@ -6,7 +6,6 @@
 
 import type { InteractiveAttributesInput, InteractiveAttributesOutput } from '../types';
 import { ACTION_TYPES, DATA_ATTRIBUTES, DEFAULT_VALUES } from '../../../constants/interactive-config';
-import { sanitizeTextForDisplay } from '../../../security';
 
 // Re-export validation types and functions for backward compatibility
 export type { ValidationError, AttributeValidationResult } from './validation';
@@ -42,35 +41,6 @@ export function transformOutputToInput(
     class: output.class || '',
     id: output.id || '',
   };
-}
-
-/**
- * Sanitize attribute values
- * Removes null/undefined, trims strings, validates formats
- * SECURITY: Sanitizes all string values to prevent XSS via attribute injection (F1, F4)
- */
-export function sanitizeAttributes(attributes: Partial<InteractiveAttributesOutput>): InteractiveAttributesOutput {
-  const sanitized: Partial<InteractiveAttributesOutput> = {};
-
-  // Trim string values, sanitize, and filter out empty ones
-  Object.entries(attributes).forEach(([key, value]) => {
-    if (value === null || value === undefined) {
-      return;
-    }
-
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (trimmed !== '') {
-        // SECURITY: Sanitize string values to prevent XSS via attribute injection (F1, F4)
-        const sanitizedValue = sanitizeTextForDisplay(trimmed);
-        sanitized[key as keyof InteractiveAttributesOutput] = sanitizedValue as any;
-      }
-    } else {
-      sanitized[key as keyof InteractiveAttributesOutput] = value;
-    }
-  });
-
-  return sanitized as InteractiveAttributesOutput;
 }
 
 /**

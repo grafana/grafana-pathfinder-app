@@ -40,6 +40,7 @@ export interface UseEditorModalsReturn {
   handleFormSubmit: (attributes: InteractiveAttributesOutput) => void;
   commentDialogMode: 'insert' | 'edit';
   commentDialogInitialText: string;
+  initialSelectedActionType: string | null;
 }
 
 /**
@@ -52,6 +53,7 @@ export function useEditorModals({
   stopEditing,
 }: UseEditorModalsOptions): UseEditorModalsReturn {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [initialSelectedActionType, setInitialSelectedActionType] = useState<string | null>(null);
 
   // Use separate hook for comment dialog state management
   const { isCommentDialogOpen, openCommentDialog, closeCommentDialog, commentDialogMode, commentDialogInitialText } =
@@ -63,6 +65,7 @@ export function useEditorModals({
 
   const closeModal = useCallback(() => {
     setIsModalOpen(false);
+    setInitialSelectedActionType(null);
     stopEditing();
   }, [stopEditing]);
 
@@ -76,7 +79,7 @@ export function useEditorModals({
       debug('[useEditorModals] Form submitted', { attributes, editState });
 
       // Update attributes based on element type
-      // Note: Comments are handled by CommentDialog, not FormModal
+      // Note: Comments are handled by CommentDialog, not FormPanel
       const { type } = editState;
 
       try {
@@ -117,45 +120,11 @@ export function useEditorModals({
   // Handle adding sequence section
   const handleAddSequence = useCallback(() => {
     debug('[useEditorModals] Add sequence section clicked');
-    if (!editor) {
-      return;
-    }
-
-    // Insert a new sequence section at cursor
-    editor
-      .chain()
-      .focus()
-      .insertContent({
-        type: 'sequenceSection',
-        attrs: {
-          'data-targetaction': ACTION_TYPES.SEQUENCE,
-          'data-reftarget': 'span#guide-section-1',
-          class: CSS_CLASSES.INTERACTIVE,
-        },
-        content: [
-          {
-            type: 'heading',
-            attrs: { level: 3 },
-            content: [{ type: 'text', text: 'Section Title' }],
-          },
-          {
-            type: 'bulletList',
-            content: [
-              {
-                type: 'listItem',
-                content: [
-                  {
-                    type: 'paragraph',
-                    content: [{ type: 'text', text: 'Step 1' }],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      })
-      .run();
-  }, [editor]);
+    // Open modal with sequence action type pre-selected
+    stopEditing();
+    setInitialSelectedActionType(ACTION_TYPES.SEQUENCE);
+    setIsModalOpen(true);
+  }, [stopEditing]);
 
   // Handle adding comment
   const handleAddComment = useCallback(() => {
@@ -259,5 +228,6 @@ export function useEditorModals({
     handleFormSubmit,
     commentDialogMode,
     commentDialogInitialText,
+    initialSelectedActionType,
   };
 }

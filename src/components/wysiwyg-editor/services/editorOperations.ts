@@ -90,6 +90,51 @@ export function updateElementAttributes(editor: Editor, nodeType: string, attrib
 }
 
 /**
+ * Find all existing sequence section IDs in the document
+ *
+ * @param editor - Tiptap editor instance
+ * @returns Set of existing sequence section IDs
+ */
+export function findExistingSequenceIds(editor: Editor): Set<string> {
+  const existingIds = new Set<string>();
+  const { doc } = editor.state;
+
+  doc.descendants((node) => {
+    if (node.type.name === 'sequenceSection' && node.attrs.id) {
+      existingIds.add(node.attrs.id);
+    }
+  });
+
+  return existingIds;
+}
+
+/**
+ * Generate a unique sequence section ID
+ *
+ * @param editor - Tiptap editor instance
+ * @param baseId - Base ID to use (default: 'section')
+ * @returns Unique ID that doesn't exist in the document
+ */
+export function generateUniqueSequenceId(editor: Editor, baseId = 'section'): string {
+  const existingIds = findExistingSequenceIds(editor);
+  let candidateId = baseId;
+  let counter = 1;
+
+  // If baseId is unique, use it
+  if (!existingIds.has(candidateId)) {
+    return candidateId;
+  }
+
+  // Otherwise, append a number until we find a unique one
+  while (existingIds.has(candidateId)) {
+    candidateId = `${baseId}-${counter}`;
+    counter++;
+  }
+
+  return candidateId;
+}
+
+/**
  * Insert a sequence section at the current position
  *
  * @param editor - Tiptap editor instance

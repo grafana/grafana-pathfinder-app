@@ -24,7 +24,7 @@ interface InteractiveFormContentProps {
 }
 
 /**
- * Shared form content component used by both FormModal and FormPanel
+ * Shared form content component used by FormPanel
  * Contains all the form rendering logic and state management
  */
 export const InteractiveFormContent: React.FC<InteractiveFormContentProps> = ({

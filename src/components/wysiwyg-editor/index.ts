@@ -5,7 +5,6 @@
 
 export { default as WysiwygEditor } from './WysiwygEditor';
 export { default as Toolbar } from './Toolbar';
-export { default as FormModal } from './FormModal';
 
 // Type exports
 export type {

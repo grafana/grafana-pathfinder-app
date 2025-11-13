@@ -90,6 +90,7 @@ export const WysiwygEditor: React.FC = () => {
     handleFormSubmit,
     commentDialogMode,
     commentDialogInitialText,
+    initialSelectedActionType,
   } = useEditorModals({
     editor,
     editState,
@@ -142,6 +143,7 @@ export const WysiwygEditor: React.FC = () => {
           editState={editState}
           onFormSubmit={handleFormSubmit}
           onSwitchType={stopEditing}
+          initialSelectedActionType={initialSelectedActionType}
         />
       )}
 

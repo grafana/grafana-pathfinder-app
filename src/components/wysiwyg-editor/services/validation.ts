@@ -44,8 +44,81 @@ export interface AttributeValidationResult {
 }
 
 /**
+ * Check if selector uses enhanced-selector pseudo-selectors
+ * These are custom pseudo-selectors supported by the runtime enhanced-selector engine
+ */
+function isEnhancedSelector(selector: string): boolean {
+  return (
+    selector.includes(':contains(') ||
+    selector.includes(':nth-match(') ||
+    selector.includes(':text(') ||
+    // Check for :has() that might contain enhanced selectors
+    (selector.includes(':has(') && (selector.includes(':contains(') || selector.includes(':nth-match(')))
+  );
+}
+
+/**
+ * Basic syntax validation for enhanced selectors
+ * Validates parentheses matching and basic structure
+ */
+function validateEnhancedSelectorSyntax(selector: string): ValidationResult {
+  // Check for balanced parentheses in pseudo-selectors
+  let parenCount = 0;
+  let inPseudo = false;
+
+  for (let i = 0; i < selector.length; i++) {
+    const char = selector[i];
+    const nextChars = selector.substring(i, i + 5);
+
+    // Detect start of pseudo-selector
+    if (nextChars === ':has(' || nextChars === ':con' || nextChars === ':nth' || nextChars === ':text') {
+      inPseudo = true;
+      parenCount = 1;
+      i += 4; // Skip past ':has(' or start of other pseudo
+      continue;
+    }
+
+    if (inPseudo) {
+      if (char === '(') {
+        parenCount++;
+      } else if (char === ')') {
+        parenCount--;
+        if (parenCount === 0) {
+          inPseudo = false;
+        }
+      }
+    }
+  }
+
+  if (parenCount !== 0) {
+    return {
+      valid: false,
+      error: 'Unbalanced parentheses in enhanced selector',
+    };
+  }
+
+  // Basic structure validation - ensure pseudo-selectors have content
+  const pseudoPatterns = [
+    /:contains\(\s*\)/g, // Empty :contains()
+    /:nth-match\(\s*\)/g, // Empty :nth-match()
+    /:text\(\s*\)/g, // Empty :text()
+  ];
+
+  for (const pattern of pseudoPatterns) {
+    if (pattern.test(selector)) {
+      return {
+        valid: false,
+        error: 'Enhanced pseudo-selector cannot be empty',
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
  * Validates CSS selectors to ensure they're safe and well-formed
- * Uses the browser's native querySelector to validate syntax
+ * Supports both native CSS selectors and enhanced-selector pseudo-selectors
  * SECURITY: Rejects dangerous patterns that could cause XSS (F1, F5)
  */
 export function validateCssSelector(selector: string): ValidationResult {
@@ -128,7 +201,13 @@ export function validateCssSelector(selector: string): ValidationResult {
     }
   }
 
-  // Validate CSS syntax using browser's querySelector
+  // Check if this is an enhanced selector (uses custom pseudo-selectors)
+  if (isEnhancedSelector(trimmedSelector)) {
+    // Validate enhanced selector syntax instead of using native querySelector
+    return validateEnhancedSelectorSyntax(trimmedSelector);
+  }
+
+  // Validate CSS syntax using browser's querySelector for native selectors
   try {
     // Create a temporary div to test the selector
     const testDiv = document.createElement('div');

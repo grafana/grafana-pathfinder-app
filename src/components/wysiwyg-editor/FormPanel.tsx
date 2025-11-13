@@ -13,6 +13,7 @@ interface FormPanelProps {
   editState: EditState | null;
   onFormSubmit: (attributes: InteractiveAttributesOutput) => void;
   onSwitchType?: () => void;
+  initialSelectedActionType?: string | null;
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -49,15 +50,26 @@ const getStyles = (theme: GrafanaTheme2) => ({
  * Replaces the editor area when forms are open, using identical CSS sizing to prevent layout shifts.
  * Implements two-step flow: select action type, then configure and insert.
  */
-export const FormPanel: React.FC<FormPanelProps> = ({ onClose, editor, editState, onFormSubmit, onSwitchType }) => {
+export const FormPanel: React.FC<FormPanelProps> = ({
+  onClose,
+  editor,
+  editState,
+  onFormSubmit,
+  onSwitchType,
+  initialSelectedActionType = null,
+}) => {
   const styles = useStyles2(getStyles);
 
   // Track selected action type during creation (when editState is null)
-  const [selectedActionType, setSelectedActionType] = React.useState<string | null>(null);
+  // Initialize with the provided initialSelectedActionType if available
+  const [selectedActionType, setSelectedActionType] = React.useState<string | null>(initialSelectedActionType);
 
-  // Reset selectedActionType when panel closes (component unmounts or editState becomes null)
-  // This is handled by the parent component's conditional rendering
-  // When FormPanel unmounts, state will reset on next mount
+  // Reset selectedActionType when panel closes or when initialSelectedActionType changes
+  React.useEffect(() => {
+    if (initialSelectedActionType !== null) {
+      setSelectedActionType(initialSelectedActionType);
+    }
+  }, [initialSelectedActionType]);
 
   const handleSwitchType = () => {
     // Clear local selectedActionType state
