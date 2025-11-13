@@ -52,7 +52,7 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
         label: 'Selector:',
         type: 'text',
         placeholder: 'e.g., [data-testid="panel"], .my-class',
-        hint: 'Selector for the element to highlight',
+        hint: 'Click the target to live choose an element from the left.',
         required: true,
         autoFocus: true,
       },

@@ -189,17 +189,9 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
       >
         <>
           <div className={isSelectorField ? styles.selectorInputContainer : undefined}>
-            <Input
-              className={isSelectorField ? styles.selectorInput : undefined}
-              value={values[field.id] || ''}
-              onChange={(e) => handleChange(field.id, e.currentTarget.value)}
-              placeholder={field.placeholder}
-              autoFocus={field.autoFocus}
-            />
-            {isSelectorField && (
+          {isSelectorField && (
               <Button
                 className={styles.captureButton}
-                size="sm"
                 variant={isActive ? 'primary' : 'secondary'}
                 onClick={() => {
                   if (isActive) {
@@ -213,6 +205,14 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues }: BaseI
                 🎯
               </Button>
             )}
+
+            <Input
+              className={isSelectorField ? styles.selectorInput : undefined}
+              value={values[field.id] || ''}
+              onChange={(e) => handleChange(field.id, e.currentTarget.value)}
+              placeholder={field.placeholder}
+              autoFocus={field.autoFocus}
+            />
           </div>
           {field.showCommonOptions && (
             <div className={styles.commonOptions}>
