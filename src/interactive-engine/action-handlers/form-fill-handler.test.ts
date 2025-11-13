@@ -12,6 +12,7 @@ jest.mock('../../lib/dom', () => ({
   ...jest.requireActual('../../lib/dom'),
   resetValueTracker: jest.fn(),
   isElementVisible: jest.fn(),
+  resolveSelector: jest.fn((selector: string) => selector), // Pass through selector as-is for tests
   querySelectorAllEnhanced: jest.fn((selector: string) => ({
     elements: [],
     usedFallback: false,
