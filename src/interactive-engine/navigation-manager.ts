@@ -103,8 +103,7 @@ export class NavigationManager {
     document.querySelectorAll('.interactive-comment-box').forEach((el) => el.remove());
 
     // Remove highlighted class from all elements
-    document.querySelectorAll('.interactive-highlighted, .interactive-guided-active').forEach((el) => {
-      el.classList.remove('interactive-highlighted');
+    document.querySelectorAll('.interactive-guided-active').forEach((el) => {
       el.classList.remove('interactive-guided-active');
     });
   }
@@ -276,7 +275,6 @@ export class NavigationManager {
       if (
         target.closest('.interactive-highlight-outline') ||
         target.closest('.interactive-comment-box') ||
-        target.closest('.interactive-highlighted') ||
         target === element ||
         element.contains(target)
       ) {
@@ -450,9 +448,6 @@ export class NavigationManager {
 
     // No DOM settling delay needed - scrollend event ensures scroll is complete
     // and DOM is stable. Highlight immediately for better responsiveness!
-
-    // Add highlight class for better styling
-    element.classList.add('interactive-highlighted');
 
     // Create a highlight outline element
     const highlightOutline = document.createElement('div');

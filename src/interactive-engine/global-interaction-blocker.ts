@@ -1,5 +1,6 @@
 import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { INTERACTIVE_Z_INDEX } from '../constants/interactive-z-index';
 
 /**
  * Global interaction blocking state (singleton pattern)
@@ -157,7 +158,7 @@ class GlobalInteractionBlocker {
       overlay.style.width = `${rect.width}px`;
       overlay.style.height = `${rect.height}px`;
       overlay.style.background = 'transparent';
-      overlay.style.zIndex = '9999';
+      overlay.style.zIndex = String(INTERACTIVE_Z_INDEX.BLOCKING_OVERLAY);
       overlay.style.pointerEvents = 'auto';
     };
 
