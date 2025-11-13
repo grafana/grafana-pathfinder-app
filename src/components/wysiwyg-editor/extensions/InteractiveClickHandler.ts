@@ -8,6 +8,7 @@ import {
   handleInteractiveSpanClick,
   handleInteractiveCommentClick,
 } from './shared/clickHandlerHelpers';
+import { resolveElementPosition } from '../services/positionResolver';
 
 export interface InteractiveClickHandlerOptions {
   onEditInteractiveListItem?: (attrs: Record<string, string>, pos: number) => void;
@@ -66,63 +67,14 @@ export const InteractiveClickHandler = Extension.create<InteractiveClickHandlerO
                   return false;
                 }
 
-                // Get the position in the document with multiple fallback strategies
-                let pos: number | null | undefined = null;
-
-                // Strategy 1: Try getting position from the element directly
-                pos = view.posAtDOM(element, 0);
-
-                // Strategy 2: If that fails, try with the first child (content wrapper)
-                if (pos === null || pos === undefined || pos < 0) {
-                  const contentWrapper = element.querySelector('[style*="display"]');
-                  if (contentWrapper) {
-                    pos = view.posAtDOM(contentWrapper as HTMLElement, 0);
-                  }
-                }
-
-                // Strategy 3: Try finding the node by walking the document
-                if (pos === null || pos === undefined || pos < 0) {
-                  let foundPos: number | null = null;
-                  view.state.doc.descendants((node, position) => {
-                    const domNode = view.nodeDOM(position);
-                    if (domNode === element) {
-                      foundPos = position;
-                      return false; // stop iteration
-                    }
-                    return true; // continue iteration
-                  });
-                  if (foundPos !== null) {
-                    pos = foundPos;
-                  }
-                }
-
-                // Strategy 4: For sequence sections, try finding by comparing attributes
-                if ((pos === null || pos === undefined || pos < 0) && elementTypeResult.type === 'sequence') {
-                  const elementId = element.getAttribute('id');
-                  const elementAction = element.getAttribute('data-targetaction');
-
-                  view.state.doc.descendants((node, position) => {
-                    if (node.type.name === 'sequenceSection') {
-                      const nodeId = node.attrs.id;
-                      const nodeAction = node.attrs['data-targetaction'];
-                      if (
-                        (nodeId && nodeId === elementId) ||
-                        (nodeAction === elementAction && nodeAction === 'sequence')
-                      ) {
-                        pos = position;
-                        return false;
-                      }
-                    }
-                    return true; // continue iteration
-                  });
-                }
-
-                if (pos === null || pos === undefined || pos < 0) {
-                  logError(
-                    '[InteractiveClickHandler] Could not determine valid position for element. All position resolution strategies failed.'
-                  );
+                // Resolve position using centralized position resolver
+                const positionResult = resolveElementPosition(view, element, elementTypeResult.type);
+                if (!positionResult.success || positionResult.position === null) {
+                  logError('[InteractiveClickHandler] Position resolution failed:', positionResult.error);
                   return false;
                 }
+
+                const pos = positionResult.position;
 
                 // Handle based on element type
                 switch (elementTypeResult.type) {

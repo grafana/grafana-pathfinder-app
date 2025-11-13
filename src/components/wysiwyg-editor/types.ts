@@ -36,12 +36,22 @@ export interface AttributeUpdateOperation {
 }
 
 /**
+ * TipTap node content structure
+ */
+export type TipTapNodeContent = Array<{
+  type: string;
+  attrs?: Record<string, unknown>;
+  content?: TipTapNodeContent | Array<{ type: string; text?: string }>;
+  text?: string;
+}>;
+
+/**
  * Node creation operation
  */
 export interface NodeCreationOperation {
   nodeType: string;
   attributes: InteractiveAttributesOutput;
-  content?: any;
+  content?: TipTapNodeContent;
 }
 
 /**
@@ -77,7 +87,7 @@ export interface ConvertToInteractiveParams {
 export interface UpdateAttributesParams {
   editor: Editor;
   nodeType: string;
-  attributes: Record<string, any>;
+  attributes: InteractiveAttributesOutput | Record<string, string>;
   pos?: number;
 }
 

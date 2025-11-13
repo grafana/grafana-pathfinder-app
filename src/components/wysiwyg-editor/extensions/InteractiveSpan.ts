@@ -17,6 +17,7 @@ import {
 /**
  * Check if the current selection is inside a list item within a sequence section
  * This helper works with TipTap's state object (used in commands)
+ * Uses the same logic as isInsideSequenceSectionListItem from editorOperations
  */
 function isInsideSequenceSectionListItemFromState(state: any): boolean {
   const { $from } = state.selection;

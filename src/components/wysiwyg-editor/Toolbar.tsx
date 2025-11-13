@@ -220,14 +220,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         >
           <strong>B</strong>
         </Button>
-        {/* <Button
-          variant={editor.isActive('italic') ? 'primary' : 'secondary'}
-          size="sm"
-          tooltip="Italic"
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-        >
-          <em>I</em>
-        </Button> */}
         <Button
           variant={editor.isActive('code') ? 'primary' : 'secondary'}
           size="sm"

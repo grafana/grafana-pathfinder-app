@@ -66,6 +66,7 @@ export const WysiwygEditor: React.FC = () => {
   const { editState, startEditing, stopEditing } = useEditState();
 
   // Use ref to store openModal callback to break circular dependency
+  // This allows useEditorInitialization to call openModal before useEditorModals is initialized
   const openModalRef = useRef<() => void>(() => {});
 
   // Initialize editor with modal callback from ref
@@ -100,6 +101,13 @@ export const WysiwygEditor: React.FC = () => {
   useEffect(() => {
     openModalRef.current = openModal;
   }, [openModal]);
+
+  // Open modal when editState changes (for non-comment elements)
+  useEffect(() => {
+    if (editState && editState.type !== 'comment' && !isModalOpen) {
+      openModal();
+    }
+  }, [editState, isModalOpen, openModal]);
 
   // Auto-save functionality (indicator removed, but auto-save still needed)
   useEditorPersistence({ editor });

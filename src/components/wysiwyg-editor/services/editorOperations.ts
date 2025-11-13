@@ -7,6 +7,15 @@
 import type { Editor } from '@tiptap/react';
 import type { InteractiveElementType, InteractiveAttributesOutput } from '../types';
 import { buildInteractiveAttributes, getNodeTypeName } from './attributeBuilder';
+import { ACTION_TYPES, DEFAULT_VALUES } from '../../../constants/interactive-config';
+import { CSS_CLASSES } from '../../../constants/editor-config';
+import { debug, error as logError } from '../utils/logger';
+
+/**
+ * Attributes that can be applied to interactive elements
+ * Can be InteractiveAttributesOutput or a plain record for flexibility
+ */
+export type ElementAttributes = InteractiveAttributesOutput | Record<string, string>;
 
 /**
  * Apply interactive attributes to an element
@@ -42,7 +51,7 @@ export function applyInteractiveAttributes(
  * @param editor - Tiptap editor instance
  * @param attributes - Attributes to apply
  */
-export function convertToInteractiveListItem(editor: Editor, attributes: Record<string, any>): boolean {
+export function convertToInteractiveListItem(editor: Editor, attributes: ElementAttributes): boolean {
   const state = editor.state;
   const { selection } = state;
   const { $from } = selection;
@@ -76,7 +85,7 @@ export function convertToInteractiveListItem(editor: Editor, attributes: Record<
  * @param nodeType - Type of node to update
  * @param attributes - Attributes to set
  */
-export function updateElementAttributes(editor: Editor, nodeType: string, attributes: Record<string, any>): boolean {
+export function updateElementAttributes(editor: Editor, nodeType: string, attributes: ElementAttributes): boolean {
   return editor.chain().focus().updateAttributes(nodeType, attributes).run();
 }
 
@@ -90,8 +99,8 @@ export function updateElementAttributes(editor: Editor, nodeType: string, attrib
 export function insertSequenceSection(editor: Editor, sectionId: string, requirements?: string): boolean {
   const attrs: Record<string, string> = {
     id: sectionId,
-    class: 'interactive',
-    'data-targetaction': 'sequence',
+    class: CSS_CLASSES.INTERACTIVE,
+    'data-targetaction': ACTION_TYPES.SEQUENCE,
     'data-reftarget': `span#${sectionId}`,
   };
 
@@ -112,8 +121,8 @@ export function insertSequenceSection(editor: Editor, sectionId: string, require
 export function updateSequenceSection(editor: Editor, sectionId: string, requirements?: string): boolean {
   const attrs: Record<string, string> = {
     id: sectionId,
-    class: 'interactive',
-    'data-targetaction': 'sequence',
+    class: CSS_CLASSES.INTERACTIVE,
+    'data-targetaction': ACTION_TYPES.SEQUENCE,
     'data-reftarget': `span#${sectionId}`,
   };
 
@@ -199,4 +208,179 @@ export function isInsideSequenceSectionListItem(editor: Editor): boolean {
   }
 
   return false;
+}
+
+/**
+ * Insert a new interactive element into the editor
+ * Handles sequence sections, multistep actions, and inline spans
+ *
+ * @param editor - Tiptap editor instance
+ * @param attributes - Attributes to apply to the new element
+ * @throws Error if insertion fails
+ */
+export function insertNewInteractiveElement(editor: Editor, attributes: ElementAttributes): void {
+  const actionType = attributes['data-targetaction'];
+  const { from, to } = editor.state.selection;
+  const hasSelection = from !== to;
+
+  debug('[editorOperations] Inserting interactive element', {
+    actionType,
+    attributes,
+    hasSelection,
+    selectionRange: { from, to },
+  });
+
+  try {
+    if (actionType === ACTION_TYPES.SEQUENCE) {
+      // Sequence sections: Insert BEFORE selection without destroying it
+      const insertPos = hasSelection ? from : undefined;
+
+      if (!editor.can().insertContent({ type: 'sequenceSection' })) {
+        logError('[editorOperations] Cannot insert sequence section at current position');
+        throw new Error('Cannot insert sequence section at current cursor position');
+      }
+
+      const sequenceContent = {
+        type: 'sequenceSection',
+        attrs: attributes,
+        content: [
+          {
+            type: 'heading',
+            attrs: { level: 3 },
+            content: [{ type: 'text', text: 'Section Title' }],
+          },
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Add content here...' }],
+          },
+        ],
+      };
+
+      if (insertPos !== undefined) {
+        // Insert before selection
+        editor.chain().focus().insertContentAt(insertPos, sequenceContent).run();
+      } else {
+        // Insert at cursor
+        editor.chain().focus().insertContent(sequenceContent).run();
+      }
+    } else if (actionType === ACTION_TYPES.MULTISTEP) {
+      // Multistep: Wrap selection in listItem if present
+      if (!editor.can().insertContent({ type: 'bulletList' })) {
+        logError('[editorOperations] Cannot insert bullet list at current position');
+        throw new Error('Cannot insert multistep action at current cursor position');
+      }
+
+      if (hasSelection) {
+        // Replace selection with bulletList containing selected content
+        const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
+        editor
+          .chain()
+          .focus()
+          .insertContentAt(
+            { from, to },
+            {
+              type: 'bulletList',
+              content: [
+                {
+                  type: 'listItem',
+                  attrs: attributes,
+                  content: [
+                    {
+                      type: 'paragraph',
+                      content: selectedContent,
+                    },
+                  ],
+                },
+              ],
+            }
+          )
+          .run();
+      } else {
+        // Insert at cursor with default text
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: 'bulletList',
+            content: [
+              {
+                type: 'listItem',
+                attrs: attributes,
+                content: [
+                  {
+                    type: 'paragraph',
+                    content: [{ type: 'text', text: 'Action description' }],
+                  },
+                ],
+              },
+            ],
+          })
+          .run();
+      }
+    } else {
+      // Inline spans: Check if we're inside a list item within a sequence section
+      // If so, convert to interactive list item instead of creating a span
+      if (isInsideSequenceSectionListItem(editor)) {
+        debug('[editorOperations] Converting interactive span to list item (inside sequence section)');
+
+        // Apply attributes directly to the list item
+        // Ensure class="interactive" is included
+        const listItemAttributes = {
+          ...attributes,
+          class: attributes.class || CSS_CLASSES.INTERACTIVE,
+        };
+
+        const success = editor.chain().focus().updateAttributes('listItem', listItemAttributes).run();
+
+        if (!success) {
+          logError('[editorOperations] Failed to convert to interactive list item');
+          throw new Error('Cannot convert to interactive list item at current position');
+        }
+
+        debug('[editorOperations] Successfully converted to interactive list item');
+        return;
+      }
+
+      // Normal inline span behavior (not in sequence section)
+      const displayText = attributes['data-reftarget'] || 'Interactive action';
+
+      if (!editor.can().insertContent({ type: 'interactiveSpan' })) {
+        logError('[editorOperations] Cannot insert interactive span at current position');
+        throw new Error('Cannot insert interactive action at current cursor position');
+      }
+
+      if (hasSelection) {
+        // Wrap selected content in interactiveSpan
+        const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
+        editor
+          .chain()
+          .focus()
+          .insertContentAt(
+            { from, to },
+            {
+              type: 'interactiveSpan',
+              attrs: attributes,
+              content: selectedContent,
+            }
+          )
+          .run();
+      } else {
+        // Insert with default text at cursor
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: 'interactiveSpan',
+            attrs: attributes,
+            content: [{ type: 'text', text: displayText }],
+          })
+          .run();
+      }
+    }
+
+    debug('[editorOperations] Element inserted successfully', { actionType, hasSelection });
+  } catch (err) {
+    logError('[editorOperations] Failed to insert interactive element:', err);
+    throw err;
+  }
 }
