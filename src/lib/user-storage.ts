@@ -48,6 +48,7 @@ export const StorageKeys = {
   ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
   INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: grafana-pathfinder-app-interactive-steps-{contentKey}-{sectionId}
   WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview',
+  SECTION_COLLAPSE_PREFIX: 'grafana-pathfinder-app-section-collapse-', // Dynamic: grafana-pathfinder-app-section-collapse-{contentKey}-{sectionId}
 } as const;
 
 // Timestamp suffix for conflict resolution
@@ -710,6 +711,51 @@ export const interactiveStepStorage = {
       await storage.removeItem(key);
     } catch (error) {
       console.warn('Failed to clear completed steps:', error);
+    }
+  },
+};
+
+/**
+ * Section collapse state storage operations
+ */
+export const sectionCollapseStorage = {
+  /**
+   * Gets the collapse state for a specific section
+   */
+  async get(contentKey: string, sectionId: string): Promise<boolean> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-${sectionId}`;
+      const isCollapsed = await storage.getItem<boolean>(key);
+      return isCollapsed ?? false; // Default to expanded (false)
+    } catch {
+      return false; // Default to expanded on error
+    }
+  },
+
+  /**
+   * Sets the collapse state for a specific section
+   */
+  async set(contentKey: string, sectionId: string, isCollapsed: boolean): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-${sectionId}`;
+      await storage.setItem(key, isCollapsed);
+    } catch (error) {
+      console.warn('Failed to save section collapse state:', error);
+    }
+  },
+
+  /**
+   * Clears collapse state for a specific section
+   */
+  async clear(contentKey: string, sectionId: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const key = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-${sectionId}`;
+      await storage.removeItem(key);
+    } catch (error) {
+      console.warn('Failed to clear section collapse state:', error);
     }
   },
 };

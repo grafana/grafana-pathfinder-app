@@ -2,7 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG, CLEAR_COMMAND } from '../../constants/interactive-config';
-import { resetValueTracker, querySelectorAllEnhanced, isElementVisible } from '../../lib/dom';
+import { resetValueTracker, querySelectorAllEnhanced, isElementVisible, resolveSelector } from '../../lib/dom';
 
 export class FormFillHandler {
   constructor(
@@ -32,15 +32,18 @@ export class FormFillHandler {
   }
 
   private async findTargetElement(selector: string): Promise<HTMLElement> {
-    const enhancedResult = querySelectorAllEnhanced(selector);
+    // Resolve grafana: prefix if present
+    const resolvedSelector = resolveSelector(selector);
+
+    const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
     const targetElements = enhancedResult.elements;
 
     if (targetElements.length === 0) {
-      throw new Error(`No elements found matching selector: ${selector}`);
+      throw new Error(`No elements found matching selector: ${resolvedSelector}`);
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${selector}`);
+      console.warn(`Multiple elements found matching selector: ${resolvedSelector}`);
     }
 
     const targetElement = targetElements[0];

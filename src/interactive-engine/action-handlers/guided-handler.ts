@@ -1,7 +1,7 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { querySelectorAllEnhanced, findButtonByText, isElementVisible } from '../../lib/dom';
+import { querySelectorAllEnhanced, findButtonByText, isElementVisible, resolveSelector } from '../../lib/dom';
 import { GuidedAction } from '../../types/interactive-actions.types';
 
 type CompletionResult = 'completed' | 'timeout' | 'cancelled';
@@ -147,32 +147,35 @@ export class GuidedHandler {
   ): Promise<HTMLElement> {
     let targetElements: HTMLElement[];
 
+    // Resolve grafana: prefix if present
+    const resolvedSelector = resolveSelector(selector);
+
     // For button actions, try button-specific finder first (handles text matching with HTML entities)
     if (actionType === 'button') {
       try {
-        targetElements = findButtonByText(selector);
+        targetElements = findButtonByText(resolvedSelector);
         if (targetElements.length > 0) {
           if (targetElements.length > 1) {
-            console.warn(`Multiple buttons found matching text: ${selector}, using first button`);
+            console.warn(`Multiple buttons found matching text: ${resolvedSelector}, using first button`);
           }
           return targetElements[0];
         }
       } catch (error) {
         // Fall through to enhanced selector
-        console.warn(`findButtonByText failed for "${selector}", trying enhanced selector:`, error);
+        console.warn(`findButtonByText failed for "${resolvedSelector}", trying enhanced selector:`, error);
       }
     }
 
     // Fallback to enhanced selector for all action types
-    const enhancedResult = querySelectorAllEnhanced(selector);
+    const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
     targetElements = enhancedResult.elements;
 
     if (targetElements.length === 0) {
-      throw new Error(`No elements found matching selector: ${selector}`);
+      throw new Error(`No elements found matching selector: ${resolvedSelector}`);
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${selector}, using first element`);
+      console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
     }
 
     return targetElements[0];

@@ -274,16 +274,20 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       stateManager.setState(data, 'running');
 
       try {
+        // Resolve grafana: prefix if present
+        const { resolveSelector } = await import('../lib/dom');
+        const resolvedSelector = resolveSelector(data.reftarget);
+
         const searchContainer = containerRef?.current || document;
-        const targetElements = searchContainer.querySelectorAll(data.reftarget);
+        const targetElements = searchContainer.querySelectorAll(resolvedSelector);
 
         if (targetElements.length === 0) {
-          const msg = `No interactive sequence container found matching selector: ${data.reftarget}`;
+          const msg = `No interactive sequence container found matching selector: ${resolvedSelector}`;
           stateManager.handleError(msg, 'interactiveSequence', data, true);
         }
 
         if (targetElements.length > 1) {
-          const msg = `${targetElements.length} interactive sequence containers found matching selector: ${data.reftarget} - this is not supported (must be exactly 1)`;
+          const msg = `${targetElements.length} interactive sequence containers found matching selector: ${resolvedSelector} - this is not supported (must be exactly 1)`;
           stateManager.handleError(msg, 'interactiveSequence', data, true);
         }
 
