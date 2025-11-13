@@ -219,21 +219,16 @@ describe('NavigationManager', () => {
     });
 
     it('should remove highlighted classes from elements', () => {
-      const element1 = document.createElement('div');
-      element1.className = 'interactive-highlighted';
-      const element2 = document.createElement('div');
-      element2.className = 'interactive-guided-active';
+      const element = document.createElement('div');
+      element.className = 'interactive-guided-active';
 
-      document.body.appendChild(element1);
-      document.body.appendChild(element2);
+      document.body.appendChild(element);
 
       navigationManager.clearAllHighlights();
 
-      expect(element1.classList.contains('interactive-highlighted')).toBe(false);
-      expect(element2.classList.contains('interactive-guided-active')).toBe(false);
+      expect(element.classList.contains('interactive-guided-active')).toBe(false);
 
-      document.body.removeChild(element1);
-      document.body.removeChild(element2);
+      document.body.removeChild(element);
     });
   });
 });

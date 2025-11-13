@@ -1,6 +1,7 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { INTERACTIVE_Z_INDEX } from '../constants/interactive-z-index';
 
 // Base interactive element styles
 const getBaseInteractiveStyles = (theme: GrafanaTheme2) => ({
@@ -162,14 +163,13 @@ const getInteractiveSequenceStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     position: 'relative',
 
-    // List items inside sequences
-    'li.interactive': {
+    // Common styles for all list items
+    li: {
       paddingLeft: theme.spacing(2),
       paddingRight: theme.spacing(2),
       margin: `${theme.spacing(1)} 0`,
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'space-between',
       minHeight: '40px',
       position: 'relative',
       '&::before': {
@@ -189,30 +189,14 @@ const getInteractiveSequenceStyles = (theme: GrafanaTheme2) => ({
       },
     },
 
-    // Non-interactive list items
+    // Interactive-specific overrides
+    'li.interactive': {
+      justifyContent: 'space-between',
+    },
+
+    // Non-interactive specific overrides
     'li:not(.interactive)': {
-      margin: `${theme.spacing(1)} 0`,
       color: theme.colors.text.primary,
-      paddingLeft: theme.spacing(2),
-      paddingRight: theme.spacing(2),
-      display: 'flex',
-      alignItems: 'center',
-      minHeight: '40px',
-      position: 'relative',
-      '&::before': {
-        content: '"•"',
-        position: 'absolute',
-        left: `-${theme.spacing(2)}`,
-        top: '50%',
-        transform: 'translateY(-50%)',
-        color: theme.colors.text.secondary,
-        fontSize: '14px',
-        width: '16px',
-        height: '16px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      },
     },
 
     // Button in section
@@ -834,10 +818,6 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
     /* Global interactive highlight styles */
-    .interactive-highlighted {
-      position: relative;
-      z-index: 1;
-    }
     .interactive-highlight-outline {
       position: absolute;
       top: var(--highlight-top);
@@ -845,7 +825,7 @@ export const addGlobalInteractiveStyles = () => {
       width: var(--highlight-width);
       height: var(--highlight-height);
       pointer-events: none;
-      z-index: 9999;
+      z-index: ${INTERACTIVE_Z_INDEX.HIGHLIGHT_OUTLINE};
       border-radius: 4px;
       /* Draw border clockwise using four gradient strokes (no fill) */
       --hl-color: rgba(255, 136, 0, 0.85);
@@ -871,9 +851,6 @@ export const addGlobalInteractiveStyles = () => {
       box-shadow: 0 0 0 4px rgba(180, 180, 180, 0.12);
       animation: subtle-highlight-pulse 1.6s ease-in-out infinite;
     }
-
-
-
 
     @keyframes interactive-draw-border {
       0% {
@@ -975,7 +952,7 @@ export const addGlobalInteractiveStyles = () => {
       max-width: 320px;
       min-width: 240px;
       pointer-events: none;
-      z-index: 10002;
+      z-index: ${INTERACTIVE_Z_INDEX.COMMENT_BOX};
       animation: fadeInComment 0.3s ease-out;
     }
 
