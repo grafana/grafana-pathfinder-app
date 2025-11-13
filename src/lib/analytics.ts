@@ -226,9 +226,10 @@ export function clearScrollTrackingCache(): void {
 
 /**
  * Content interface compatible with journey progress calculations
+ * Accepts both RawContent and legacy content formats
  */
 export interface JourneyContent {
-  type?: 'learning-journey' | 'docs';
+  type?: 'learning-journey' | 'docs' | 'single-doc'; // Include single-doc for RawContent compatibility
   metadata?: {
     learningJourney?: {
       currentMilestone?: number;

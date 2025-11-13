@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { locationService } from '@grafana/runtime';
 import { usePluginContext } from '@grafana/data';
 import { ContextService } from './context.service';
-import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from './context.types';
+import { ContextData, UseContextPanelOptions, UseContextPanelReturn } from '../types/context.types';
 import { useTimeoutManager } from '../utils/timeout-manager';
 
 export function useContextPanel(options: UseContextPanelOptions = {}): UseContextPanelReturn {

@@ -9,7 +9,7 @@ import {
   checkPostconditions,
 } from '../../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
-import type { InteractiveStepProps } from './interactive-section';
+import type { InteractiveStepProps } from '../../../types/component-props.types';
 import { matchesStepAction, type DetectedActionEvent, useInteractiveElements } from '../../../interactive-engine';
 import { getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';

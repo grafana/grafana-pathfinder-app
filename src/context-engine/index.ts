@@ -1,5 +1,5 @@
 // Export all context-related functionality
-export * from './context.types';
+export * from '../types/context.types';
 export * from './context.service';
 export * from './context.hook';
 export * from './context.init';
@@ -12,7 +12,7 @@ export type {
   ContextData,
   UseContextPanelOptions,
   UseContextPanelReturn,
-} from './context.types';
+} from '../types/context.types';
 
 // Re-export main service and hook
 export { ContextService } from './context.service';

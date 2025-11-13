@@ -73,20 +73,10 @@ const LIMITS = {
 // TYPE DEFINITIONS
 // ============================================================================
 
-/**
- * Storage interface for user data operations
- */
-export interface UserStorage {
-  getItem<T>(key: string): Promise<T | null>;
-  setItem<T>(key: string, value: T): Promise<void>;
-  removeItem(key: string): Promise<void>;
-  clear(): Promise<void>;
-}
+import type { UserStorage, StorageBackend } from '../types/storage.types';
 
-/**
- * Storage backend type
- */
-export type StorageBackend = 'user-storage' | 'local-storage';
+// Re-export for backward compatibility with existing imports
+export type { UserStorage, StorageBackend };
 
 // ============================================================================
 // STORAGE IMPLEMENTATION
