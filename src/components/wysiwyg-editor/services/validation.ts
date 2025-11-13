@@ -46,22 +46,42 @@ export interface AttributeValidationResult {
 /**
  * Check if selector uses enhanced-selector pseudo-selectors
  * These are custom pseudo-selectors supported by the runtime enhanced-selector engine
+ * Note: :has() is detected as enhanced even when standalone, because native :has() support
+ * is not available in all browsers (Firefox < 140, Safari < 17.2), so we route through
+ * the custom validator to ensure consistent behavior across browsers.
  */
 function isEnhancedSelector(selector: string): boolean {
   return (
     selector.includes(':contains(') ||
     selector.includes(':nth-match(') ||
     selector.includes(':text(') ||
-    // Check for :has() that might contain enhanced selectors
-    (selector.includes(':has(') && (selector.includes(':contains(') || selector.includes(':nth-match(')))
+    selector.includes(':has(') // Any :has() usage is treated as enhanced for cross-browser compatibility
   );
 }
 
 /**
  * Basic syntax validation for enhanced selectors
  * Validates parentheses matching and basic structure
+ * Handles :has(), :contains(), :nth-match(), and :text() pseudo-selectors
  */
 function validateEnhancedSelectorSyntax(selector: string): ValidationResult {
+  // First, check for empty pseudo-selectors using regex (simpler and more reliable)
+  const emptyPseudoPatterns = [
+    /:has\(\s*\)/g, // Empty :has()
+    /:contains\(\s*\)/g, // Empty :contains()
+    /:nth-match\(\s*\)/g, // Empty :nth-match()
+    /:text\(\s*\)/g, // Empty :text()
+  ];
+
+  for (const pattern of emptyPseudoPatterns) {
+    if (pattern.test(selector)) {
+      return {
+        valid: false,
+        error: 'Enhanced pseudo-selector cannot be empty',
+      };
+    }
+  }
+
   // Check for balanced parentheses in pseudo-selectors
   let parenCount = 0;
   let inPseudo = false;
@@ -74,7 +94,8 @@ function validateEnhancedSelectorSyntax(selector: string): ValidationResult {
     if (nextChars === ':has(' || nextChars === ':con' || nextChars === ':nth' || nextChars === ':text') {
       inPseudo = true;
       parenCount = 1;
-      i += 4; // Skip past ':has(' or start of other pseudo
+      // Skip past ':has(' (5 chars) or start of other pseudo (4 chars for ':con', ':nth', ':text')
+      i += nextChars === ':has(' ? 4 : 3;
       continue;
     }
 
@@ -95,22 +116,6 @@ function validateEnhancedSelectorSyntax(selector: string): ValidationResult {
       valid: false,
       error: 'Unbalanced parentheses in enhanced selector',
     };
-  }
-
-  // Basic structure validation - ensure pseudo-selectors have content
-  const pseudoPatterns = [
-    /:contains\(\s*\)/g, // Empty :contains()
-    /:nth-match\(\s*\)/g, // Empty :nth-match()
-    /:text\(\s*\)/g, // Empty :text()
-  ];
-
-  for (const pattern of pseudoPatterns) {
-    if (pattern.test(selector)) {
-      return {
-        valid: false,
-        error: 'Enhanced pseudo-selector cannot be empty',
-      };
-    }
   }
 
   return { valid: true };
@@ -477,6 +482,14 @@ export function validateFormField(field: FormField, value: any, actionType: stri
     const result = validateText(stringValue, field.label.replace(':', ''));
     if (!result.valid) {
       return result.error || 'Invalid text';
+    }
+  }
+
+  // Section ID validation for sequence actions
+  if (field.id === 'id' && actionType === ACTION_TYPES.SEQUENCE) {
+    const result = validateSectionId(stringValue);
+    if (!result.valid) {
+      return result.error || 'Invalid section ID';
     }
   }
 
