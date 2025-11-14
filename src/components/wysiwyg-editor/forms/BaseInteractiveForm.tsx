@@ -16,6 +16,8 @@ export interface FormField {
   required?: boolean;
   autoFocus?: boolean;
   showCommonOptions?: boolean;
+  disableSelectorCapture?: boolean;
+  selectorCaptureDisabledTooltip?: string;
 }
 
 export interface BaseInteractiveFormConfig {
@@ -130,6 +132,7 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
     }
 
     const isSelectorField = field.id === DATA_ATTRIBUTES.REF_TARGET;
+    const isSelectorCaptureDisabled = field.disableSelectorCapture === true;
 
     return (
       <Field
@@ -146,13 +149,23 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
               <Button
                 variant={isActive ? 'primary' : 'secondary'}
                 onClick={() => {
-                  if (isActive) {
-                    stopCapture();
-                  } else {
-                    startCapture();
+                  if (!isSelectorCaptureDisabled) {
+                    if (isActive) {
+                      stopCapture();
+                    } else {
+                      startCapture();
+                    }
                   }
                 }}
-                title={isActive ? 'Click an element to capture its selector' : 'Capture selector from page'}
+                disabled={isSelectorCaptureDisabled}
+                title={
+                  isSelectorCaptureDisabled
+                    ? field.selectorCaptureDisabledTooltip ||
+                      'This field expects button text, not a DOM selector'
+                    : isActive
+                    ? 'Click an element to capture its selector'
+                    : 'Capture selector from page'
+                }
                 style={{ flexShrink: 0, minWidth: 'auto', padding: '4px 8px' }}
               >
                 🎯

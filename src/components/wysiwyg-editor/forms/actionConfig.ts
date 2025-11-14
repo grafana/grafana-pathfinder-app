@@ -24,6 +24,8 @@ export const ACTION_CONFIGS: Record<string, BaseInteractiveFormConfig> = {
         hint: 'The exact text displayed on the button',
         required: true,
         autoFocus: true,
+        disableSelectorCapture: true,
+        selectorCaptureDisabledTooltip: 'Button actions use button text, not DOM selectors',
       },
       {
         id: DATA_ATTRIBUTES.REQUIREMENTS,
