@@ -27,23 +27,23 @@ export function exportStepsToHugoShortcodes(steps: RecordedStep[], options: Hugo
 
   let output = '';
 
-  if (wrapInSequence) {
-    output += `## ${sequenceTitle}\n\n`;
+    if (wrapInSequence) {
+      output += `## ${sequenceTitle}\n\n`;
 
-    if (sequenceDescription) {
-      output += `${sequenceDescription}\n\n`;
+      if (sequenceDescription) {
+        output += `${sequenceDescription}\n\n`;
+      }
+
+      output += `{{< interactive/sequence id="${escapeShortcodeValue(sequenceId)}" >}}\n\n`;
     }
-
-    output += `{{< sequence id="${escapeShortcodeValue(sequenceId)}" >}}\n\n`;
-  }
 
   for (const step of steps) {
     output += formatStepAsHugoShortcode(step, includeComments);
   }
 
-  if (wrapInSequence) {
-    output += `{{< /sequence >}}\n`;
-  }
+    if (wrapInSequence) {
+      output += `{{< /interactive/sequence >}}\n`;
+    }
 
   return output;
 }
@@ -81,26 +81,27 @@ function formatStepAsHugoShortcode(step: RecordedStep, includeComments: boolean)
 function formatMultistepAsHugoShortcode(step: RecordedStep): string {
   let output = '';
 
-  output += `{{< multistep >}}\n`;
+  output += `{{< interactive/multistep >}}\n`;
   output += `${step.description}\n`;
-  output += `{{< /multistep >}}\n\n`;
+  output += `{{< /interactive/multistep >}}\n\n`;
 
   return output;
 }
 
 /**
  * Get Hugo shortcode name for action type
+ * All interactive shortcodes use the 'interactive/' prefix
  */
 function getShortcodeNameForAction(action: string): string {
   const mapping: Record<string, string> = {
-    button: 'button',
-    formfill: 'formfill',
-    highlight: 'highlight',
-    navigate: 'navigate',
-    multistep: 'multistep',
+    button: 'interactive/button',
+    formfill: 'interactive/formfill',
+    highlight: 'interactive/highlight',
+    navigate: 'interactive/navigate',
+    multistep: 'interactive/multistep',
   };
 
-  return mapping[action] || action;
+  return mapping[action] || `interactive/${action}`;
 }
 
 /**

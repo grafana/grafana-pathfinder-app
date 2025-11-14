@@ -19,10 +19,10 @@ describe('Hugo Exporter', () => {
 
       const result = exportStepsToHugoShortcodes(steps, { wrapInSequence: false });
 
-      expect(result).toContain('{{< button');
+      expect(result).toContain('{{< interactive/button');
       expect(result).toContain('reftarget="button[data-testid=\'save\']"');
       expect(result).toContain('Click the save button');
-      expect(result).toContain('{{< /button >}}');
+      expect(result).toContain('{{< /interactive/button >}}');
     });
 
     it('should export a formfill action with value', () => {
@@ -38,11 +38,11 @@ describe('Hugo Exporter', () => {
 
       const result = exportStepsToHugoShortcodes(steps, { wrapInSequence: false });
 
-      expect(result).toContain('{{< formfill');
+      expect(result).toContain('{{< interactive/formfill');
       expect(result).toContain('reftarget="input[name=\'query\']"');
       expect(result).toContain('targetvalue="prometheus"');
       expect(result).toContain('Enter the query');
-      expect(result).toContain('{{< /formfill >}}');
+      expect(result).toContain('{{< /interactive/formfill >}}');
     });
 
     it('should wrap steps in sequence when requested', () => {
@@ -62,8 +62,8 @@ describe('Hugo Exporter', () => {
       });
 
       expect(result).toContain('## Test Tutorial');
-      expect(result).toContain('{{< sequence id="test-sequence" >}}');
-      expect(result).toContain('{{< /sequence >}}');
+      expect(result).toContain('{{< interactive/sequence id="test-sequence" >}}');
+      expect(result).toContain('{{< /interactive/sequence >}}');
     });
 
     it('should include comments for non-unique selectors', () => {
@@ -112,16 +112,16 @@ describe('Hugo Exporter', () => {
 
       const result = exportStepsToHugoShortcodes(steps, { wrapInSequence: false });
 
-      expect(result).toContain('{{< highlight');
-      expect(result).toContain('{{< button');
-      expect(result).toContain('{{< formfill');
+      expect(result).toContain('{{< interactive/highlight');
+      expect(result).toContain('{{< interactive/button');
+      expect(result).toContain('{{< interactive/formfill');
       expect(result).toContain('Open the navigation menu');
       expect(result).toContain('Click add panel');
       expect(result).toContain('Enter panel title');
       // Verify no indentation on shortcodes
-      expect(result).toMatch(/^{{< highlight/m);
-      expect(result).toMatch(/^{{< button/m);
-      expect(result).toMatch(/^{{< formfill/m);
+      expect(result).toMatch(/^{{< interactive\/highlight/m);
+      expect(result).toMatch(/^{{< interactive\/button/m);
+      expect(result).toMatch(/^{{< interactive\/formfill/m);
     });
   });
 
@@ -130,17 +130,17 @@ describe('Hugo Exporter', () => {
       const dsl = 'button|button[data-testid="save"]|';
       const result = dslToHugoShortcode(dsl, 'Click the save button');
 
-      expect(result).toContain('{{< button');
+      expect(result).toContain('{{< interactive/button');
       expect(result).toContain('reftarget="button[data-testid=\'save\']"');
       expect(result).toContain('Click the save button');
-      expect(result).toContain('{{< /button >}}');
+      expect(result).toContain('{{< /interactive/button >}}');
     });
 
     it('should handle formfill with value', () => {
       const dsl = 'formfill|input[name="query"]|prometheus';
       const result = dslToHugoShortcode(dsl, 'Enter query');
 
-      expect(result).toContain('{{< formfill');
+      expect(result).toContain('{{< interactive/formfill');
       expect(result).toContain('targetvalue="prometheus"');
       expect(result).toContain('Enter query');
     });
@@ -163,9 +163,9 @@ describe('Hugo Exporter', () => {
 
       const result = dslListToHugoShortcodes(dslList, { wrapInSequence: false });
 
-      expect(result).toContain('{{< highlight');
-      expect(result).toContain('{{< button');
-      expect(result).toContain('{{< formfill');
+      expect(result).toContain('{{< interactive/highlight');
+      expect(result).toContain('{{< interactive/button');
+      expect(result).toContain('{{< interactive/formfill');
       expect(result).toContain('targetvalue="My Panel"');
     });
 
@@ -178,8 +178,8 @@ describe('Hugo Exporter', () => {
       });
 
       expect(result).toContain('## Test Steps');
-      expect(result).toContain('{{< sequence');
-      expect(result).toContain('{{< /sequence >}}');
+      expect(result).toContain('{{< interactive/sequence');
+      expect(result).toContain('{{< /interactive/sequence >}}');
     });
   });
 
