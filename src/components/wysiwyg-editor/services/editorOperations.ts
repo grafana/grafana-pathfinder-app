@@ -309,12 +309,6 @@ export function insertNewInteractiveElement(editor: Editor, attributes: ElementA
         editor.chain().focus().insertContent(sequenceContent).run();
       }
     } else if (actionType === ACTION_TYPES.MULTISTEP) {
-      // Multistep: Wrap selection in listItem if present
-      if (!editor.can().insertContent({ type: 'bulletList' })) {
-        logError('[editorOperations] Cannot insert bullet list at current position');
-        throw new Error('Cannot insert multistep action at current cursor position');
-      }
-
       // Extract internal actions and strip from final attributes
       const internalActions = (attributes as any).__internalActions;
       const finalAttributes = { ...attributes };
@@ -343,6 +337,86 @@ export function insertNewInteractiveElement(editor: Editor, attributes: ElementA
             attrs: spanAttrs,
           });
         });
+      }
+
+      // Check if we're already inside a listItem
+      const currentListItem = getCurrentNode(editor, 'listItem');
+
+      if (currentListItem) {
+        // We're inside an existing listItem - replace it in place instead of creating nested list
+        debug('[editorOperations] Replacing existing listItem with multistep (avoiding nested list)');
+
+        const { node: listItemNode, pos: listItemPos } = currentListItem;
+        const listItemSize = listItemNode.nodeSize;
+        const listItemEnd = listItemPos + listItemSize;
+
+        // Verify selection is entirely within the listItem (if there's a selection)
+        const selectionWithinListItem = !hasSelection || (from >= listItemPos && to <= listItemEnd);
+
+        if (selectionWithinListItem) {
+          // Extract text content from selection or existing listItem content
+          if (hasSelection) {
+            const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
+            // Extract inline content from selected content (could be paragraph, heading, etc.)
+            if (selectedContent && Array.isArray(selectedContent)) {
+              selectedContent.forEach((node: any) => {
+                // If it's a paragraph or other block node, extract its inline content
+                if (node.content && Array.isArray(node.content)) {
+                  paragraphContent.push(...node.content);
+                } else if (node.type === 'text') {
+                  paragraphContent.push(node);
+                }
+              });
+            }
+          } else {
+            // Extract text from existing listItem content
+            const existingContent = listItemNode.content;
+            if (existingContent && existingContent.size > 0) {
+              existingContent.forEach((node: any) => {
+                // Extract inline content from paragraphs or other block nodes
+                if (node.content && node.content.size > 0) {
+                  node.content.forEach((inlineNode: any) => {
+                    paragraphContent.push(inlineNode.toJSON());
+                  });
+                }
+              });
+            }
+          }
+
+          // If no content was extracted, add default text
+          if (paragraphContent.length === 0) {
+            paragraphContent.push({ type: 'text', text: 'Action description' });
+          }
+
+          // Create paragraph with all content
+          const paragraphNode = {
+            type: 'paragraph',
+            content: paragraphContent,
+          };
+
+          // Replace the listItem: delete it and insert new one with updated attributes and content
+          editor
+            .chain()
+            .focus()
+            .deleteRange({ from: listItemPos, to: listItemPos + listItemSize })
+            .insertContentAt(listItemPos, {
+              type: 'listItem',
+              attrs: finalAttributes,
+              content: [paragraphNode],
+            })
+            .run();
+
+          debug('[editorOperations] Successfully replaced listItem with multistep');
+          return;
+        }
+        // If selection spans outside listItem, fall through to create new bulletList
+        debug('[editorOperations] Selection spans outside listItem, creating new bulletList');
+      }
+
+      // Not inside a listItem - create new bulletList wrapper (existing behavior)
+      if (!editor.can().insertContent({ type: 'bulletList' })) {
+        logError('[editorOperations] Cannot insert bullet list at current position');
+        throw new Error('Cannot insert multistep action at current cursor position');
       }
 
       // Add text content to the paragraph (either from selection or default)
