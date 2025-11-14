@@ -104,7 +104,19 @@ export interface InteractiveAttributesInput {
 }
 
 /**
+ * Internal action structure for multistep elements
+ * Used to pass recorded steps through the form pipeline
+ */
+export interface InternalAction {
+  targetAction: string;
+  refTarget: string;
+  targetValue?: string;
+  requirements?: string;
+}
+
+/**
  * Interactive attributes as output to HTML (all strings or null)
+ * May include internal properties (prefixed with __) that are stripped before final output
  */
 export interface InteractiveAttributesOutput {
   'data-targetaction'?: string;
@@ -113,6 +125,8 @@ export interface InteractiveAttributesOutput {
   'data-doit'?: 'false' | null; // string 'false' or null in HTML
   class?: string;
   id?: string;
+  // Internal property for multistep: array of recorded actions to inject as spans
+  __internalActions?: InternalAction[];
 }
 
 /**

@@ -315,9 +315,66 @@ export function insertNewInteractiveElement(editor: Editor, attributes: ElementA
         throw new Error('Cannot insert multistep action at current cursor position');
       }
 
+      // Extract internal actions and strip from final attributes
+      const internalActions = (attributes as any).__internalActions;
+      const finalAttributes = { ...attributes };
+      delete (finalAttributes as any).__internalActions;
+
+      // Build paragraph content: spans (inline) + text (inline)
+      // TipTap's listItem requires block content, so we wrap everything in a paragraph
+      const paragraphContent: any[] = [];
+
+      // Add interactive spans for each recorded action (inline nodes)
+      if (internalActions && Array.isArray(internalActions) && internalActions.length > 0) {
+        internalActions.forEach((action: any) => {
+          const spanAttrs: Record<string, string> = {
+            class: CSS_CLASSES.INTERACTIVE,
+            'data-targetaction': action.targetAction,
+            'data-reftarget': action.refTarget,
+          };
+          if (action.targetValue) {
+            spanAttrs['data-targetvalue'] = action.targetValue;
+          }
+          if (action.requirements) {
+            spanAttrs['data-requirements'] = action.requirements;
+          }
+          paragraphContent.push({
+            type: 'interactiveSpan',
+            attrs: spanAttrs,
+          });
+        });
+      }
+
+      // Add text content to the paragraph (either from selection or default)
       if (hasSelection) {
-        // Replace selection with bulletList containing selected content
         const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
+        // Extract inline content from selected content (could be paragraph, heading, etc.)
+        if (selectedContent && Array.isArray(selectedContent)) {
+          selectedContent.forEach((node: any) => {
+            // If it's a paragraph or other block node, extract its inline content
+            if (node.content && Array.isArray(node.content)) {
+              paragraphContent.push(...node.content);
+            } else if (node.type === 'text') {
+              paragraphContent.push(node);
+            }
+          });
+        }
+      } else {
+        // Default text content
+        paragraphContent.push({ type: 'text', text: 'Action description' });
+      }
+
+      // Create a single paragraph containing all inline content (spans + text)
+      const paragraphNode = {
+        type: 'paragraph',
+        content: paragraphContent.length > 0 ? paragraphContent : [{ type: 'text', text: 'Action description' }],
+      };
+
+      // listItem contains block content (the paragraph)
+      const listItemContent = [paragraphNode];
+
+      if (hasSelection) {
+        // Replace selection with bulletList containing the paragraph with spans
         editor
           .chain()
           .focus()
@@ -328,20 +385,15 @@ export function insertNewInteractiveElement(editor: Editor, attributes: ElementA
               content: [
                 {
                   type: 'listItem',
-                  attrs: attributes,
-                  content: [
-                    {
-                      type: 'paragraph',
-                      content: selectedContent,
-                    },
-                  ],
+                  attrs: finalAttributes,
+                  content: listItemContent,
                 },
               ],
             }
           )
           .run();
       } else {
-        // Insert at cursor with default text
+        // Insert at cursor with paragraph containing spans and text
         editor
           .chain()
           .focus()
@@ -350,13 +402,8 @@ export function insertNewInteractiveElement(editor: Editor, attributes: ElementA
             content: [
               {
                 type: 'listItem',
-                attrs: attributes,
-                content: [
-                  {
-                    type: 'paragraph',
-                    content: [{ type: 'text', text: 'Action description' }],
-                  },
-                ],
+                attrs: finalAttributes,
+                content: listItemContent,
               },
             ],
           })

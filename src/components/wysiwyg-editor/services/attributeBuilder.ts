@@ -8,11 +8,16 @@ import { CSS_CLASSES, NODE_TYPES } from '../../../constants/editor-config';
 
 /**
  * Prepare attributes for HTML output, filtering out null/undefined values
+ * Also strips internal properties (prefixed with __) that are used for pipeline communication
  */
 export function prepareHTMLAttributes(attributes: InteractiveAttributesOutput): Record<string, string> {
   const result: Record<string, string> = {};
 
   Object.entries(attributes).forEach(([key, value]) => {
+    // Skip internal properties (prefixed with __)
+    if (key.startsWith('__')) {
+      return;
+    }
     if (value !== null && value !== undefined && value !== '') {
       result[key] = String(value);
     }
