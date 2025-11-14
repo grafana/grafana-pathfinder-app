@@ -47,6 +47,7 @@ export const StorageKeys = {
   TABS: 'grafana-pathfinder-app-tabs',
   ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
   INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: grafana-pathfinder-app-interactive-steps-{contentKey}-{sectionId}
+  WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview',
   SECTION_COLLAPSE_PREFIX: 'grafana-pathfinder-app-section-collapse-', // Dynamic: grafana-pathfinder-app-section-collapse-{contentKey}-{sectionId}
 } as const;
 

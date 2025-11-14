@@ -69,7 +69,12 @@ function extractTitle(url: string) {
 }
 
 function isValidEvent(event: MouseEvent) {
-  return didNotUseModifierKeys(event) && isAnchorElement(event) && isInsidePathfinderContent(event);
+  return (
+    didNotUseModifierKeys(event) &&
+    isAnchorElement(event) &&
+    isInsidePathfinderContent(event) &&
+    isNotInsideWysiwygEditor(event)
+  );
 }
 
 function didNotUseModifierKeys(event: MouseEvent) {
@@ -86,6 +91,16 @@ function isAnchorElement({ target }: MouseEvent) {
 
 function isInsidePathfinderContent({ target }: MouseEvent) {
   return target instanceof Element && target.closest('[data-pathfinder-content]') === null;
+}
+
+// Ignore clicks from within the WYSIWYG editor to prevent interference with editor interactions
+function isNotInsideWysiwygEditor({ target }: MouseEvent): boolean {
+  if (!(target instanceof Element)) {
+    return true;
+  }
+
+  // Don't intercept clicks from within ProseMirror editor or wysiwyg editor container
+  return target.closest('.ProseMirror') === null && target.closest('.wysiwyg-editor-container') === null;
 }
 
 function isValidHref(event: MouseEvent) {
