@@ -27,13 +27,7 @@ describe('insertNewInteractiveElement - Multistep insertion', () => {
     selectionFrom?: number;
     selectionTo?: number;
   }) => {
-    const {
-      isInListItem = false,
-      listItemPos = 0,
-      listItemSize = 10,
-      selectionFrom = 0,
-      selectionTo = 0,
-    } = options;
+    const { isInListItem = false, listItemPos = 0, listItemSize = 10, selectionFrom = 0, selectionTo = 0 } = options;
 
     const mockListItemNode = {
       type: { name: 'listItem' },
@@ -156,22 +150,25 @@ describe('insertNewInteractiveElement - Multistep insertion', () => {
       // Should delete the existing listItem
       expect(chain.deleteRange).toHaveBeenCalledWith({ from: 10, to: 30 });
       // Should insert new listItem at the same position
-      expect(chain.insertContentAt).toHaveBeenCalledWith(10, expect.objectContaining({
-        type: 'listItem',
-        attrs: expect.objectContaining({
-          'data-targetaction': ACTION_TYPES.MULTISTEP,
-          class: CSS_CLASSES.INTERACTIVE,
-        }),
-        content: expect.arrayContaining([
-          expect.objectContaining({
-            type: 'paragraph',
-            content: expect.arrayContaining([
-              expect.objectContaining({ type: 'interactiveSpan' }),
-              expect.objectContaining({ type: 'interactiveSpan' }),
-            ]),
+      expect(chain.insertContentAt).toHaveBeenCalledWith(
+        10,
+        expect.objectContaining({
+          type: 'listItem',
+          attrs: expect.objectContaining({
+            'data-targetaction': ACTION_TYPES.MULTISTEP,
+            class: CSS_CLASSES.INTERACTIVE,
           }),
-        ]),
-      }));
+          content: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'paragraph',
+              content: expect.arrayContaining([
+                expect.objectContaining({ type: 'interactiveSpan' }),
+                expect.objectContaining({ type: 'interactiveSpan' }),
+              ]),
+            }),
+          ]),
+        })
+      );
       // Should NOT create a bulletList wrapper
       expect(chain.insertContent).not.toHaveBeenCalled();
     });
@@ -426,4 +423,3 @@ describe('insertNewInteractiveElement - Multistep insertion', () => {
     });
   });
 });
-

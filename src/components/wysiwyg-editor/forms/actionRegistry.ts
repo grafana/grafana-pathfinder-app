@@ -376,4 +376,3 @@ export function getActionUIMetadata(actionType: string): ActionUIMetadata | unde
 export function getActionFormConfig(actionType: string): BaseInteractiveFormConfig | undefined {
   return ACTION_REGISTRY[actionType]?.formConfig;
 }
-

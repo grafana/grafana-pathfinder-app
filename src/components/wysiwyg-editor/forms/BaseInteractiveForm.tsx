@@ -38,7 +38,6 @@ interface BaseInteractiveFormProps extends InteractiveFormProps {
  * Eliminates duplication across form components by providing a common structure
  */
 const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitchType }: BaseInteractiveFormProps) => {
-
   // Initialize state based on field configuration
   const [values, setValues] = useState<Record<string, any>>(() => {
     const initial: Record<string, any> = {};
@@ -160,11 +159,10 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
                 disabled={isSelectorCaptureDisabled}
                 title={
                   isSelectorCaptureDisabled
-                    ? field.selectorCaptureDisabledTooltip ||
-                      'This field expects button text, not a DOM selector'
+                    ? field.selectorCaptureDisabledTooltip || 'This field expects button text, not a DOM selector'
                     : isActive
-                    ? 'Click an element to capture its selector'
-                    : 'Capture selector from page'
+                      ? 'Click an element to capture its selector'
+                      : 'Capture selector from page'
                 }
                 style={{ flexShrink: 0, minWidth: 'auto', padding: '4px 8px' }}
               >

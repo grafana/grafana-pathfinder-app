@@ -63,7 +63,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
 /**
  * Component for selecting an interactive action type
  * Uses centralized action metadata and Grafana UI components
- * 
+ *
  * Note: Sequence action type is hidden from this selector because it's
  * handled by the "Add Section" button in the toolbar. Sequence sections
  * can still be edited via the edit flow (which doesn't use this selector).

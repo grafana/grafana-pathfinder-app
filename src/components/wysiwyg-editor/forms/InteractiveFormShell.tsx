@@ -53,7 +53,7 @@ export const InteractiveFormShell: React.FC<InteractiveFormShellProps> = ({
   commonRequirementsSlot,
 }) => {
   const styles = useStyles2(getShellStyles);
-  
+
   return (
     <div data-wysiwyg-form="true" className={styles.wrapper}>
       <h4 className={styles.title}>{title}</h4>
@@ -103,4 +103,3 @@ export const CommonRequirementsButtons: React.FC<{
     </HorizontalGroup>
   );
 };
-
