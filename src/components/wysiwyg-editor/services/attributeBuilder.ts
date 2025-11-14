@@ -81,6 +81,7 @@ function buildSpanAttributes(attrs: Record<string, string>): Record<string, stri
     ...(attrs.id && { id: attrs.id }),
     ...(attrs['data-targetaction'] && { 'data-targetaction': attrs['data-targetaction'] }),
     ...(attrs['data-reftarget'] && { 'data-reftarget': attrs['data-reftarget'] }),
+    ...(attrs['data-targetvalue'] && { 'data-targetvalue': attrs['data-targetvalue'] }),
     ...(attrs['data-requirements'] && { 'data-requirements': attrs['data-requirements'] }),
   };
 }
