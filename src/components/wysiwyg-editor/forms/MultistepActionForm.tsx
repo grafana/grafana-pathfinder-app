@@ -1,55 +1,19 @@
 import React, { useState, useCallback } from 'react';
 import { Field, Input, Button, Stack, Badge, Icon, Card, HorizontalGroup, Alert, useStyles2 } from '@grafana/ui';
-import { css } from '@emotion/css';
-import { GrafanaTheme2 } from '@grafana/data';
 import { type InteractiveFormProps } from '../types';
 import { DATA_ATTRIBUTES, DEFAULT_VALUES } from '../../../constants/interactive-config';
 import { useActionRecorder } from '../../../utils/devtools/action-recorder.hook';
 import { getActionConfig } from './actionConfig';
 import { ACTION_TYPES } from '../../../constants/interactive-config';
 import { InteractiveFormShell, CommonRequirementsButtons } from './InteractiveFormShell';
-
-// Only custom animations that Grafana UI cannot express
-const getStyles = (theme: GrafanaTheme2) => ({
-  recordModeActive: css({
-    animation: 'pulse 2s ease-in-out infinite',
-    '@keyframes pulse': {
-      '0%, 100%': { opacity: 1 },
-      '50%': { opacity: 0.8 },
-    },
-  }),
-  recordingDot: css({
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    backgroundColor: theme.colors.error.main,
-    display: 'inline-block',
-    marginRight: theme.spacing(0.5),
-    animation: 'blink 1.5s ease-in-out infinite',
-    '@keyframes blink': {
-      '0%, 100%': { opacity: 1 },
-      '50%': { opacity: 0.3 },
-    },
-  }),
-  stepCode: css({
-    fontFamily: theme.typography.fontFamilyMonospace,
-    fontSize: '11px',
-    color: theme.colors.text.secondary,
-    backgroundColor: theme.colors.background.secondary,
-    padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
-    borderRadius: theme.shape.radius.default,
-    display: 'block',
-    wordBreak: 'break-all',
-    overflowWrap: 'break-word',
-  }),
-});
+import { getMultistepFormStyles } from '../editor.styles';
 
 /**
  * Custom form component for multistep actions with integrated recorder
  * Replaces the generic BaseInteractiveForm wrapper with a purpose-built UI
  */
 const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }: InteractiveFormProps) => {
-  const styles = useStyles2(getStyles);
+  const styles = useStyles2(getMultistepFormStyles);
   const config = getActionConfig(ACTION_TYPES.MULTISTEP);
   
   if (!config) {
@@ -144,9 +108,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
       <Stack direction="column" gap={2}>
         {/* Recorder section */}
         <Card>
-          <h5 style={{ margin: 0, marginBottom: '12px', fontSize: '16px', fontWeight: 500 }}>
-            Record Actions
-          </h5>
+          <h5 className={styles.cardTitle}>Record Actions</h5>
           <Stack direction="column" gap={2}>
               <HorizontalGroup justify="space-between" align="center" wrap>
                 <Button
@@ -164,32 +126,30 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
 
               {recordMode && (
                 <Alert severity="error" title="">
-                  <Icon name="info-circle" size="sm" style={{ marginRight: '8px' }} />
+                  <Icon name="info-circle" size="sm" className={styles.alertIcon} />
                   Click elements and fill forms to record a sequence
                 </Alert>
               )}
 
               {isEditMode && recordedSteps.length === 0 && (
-                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--grafana-colors-text-secondary)', fontSize: '12px', fontStyle: 'italic' }}>
+                <div className={styles.emptyState}>
                   Editing existing multistep. Record new actions to replace existing internal spans.
                 </div>
               )}
 
               {recordedSteps.length > 0 ? (
                 <>
-                  <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--grafana-colors-text-secondary)', marginBottom: '4px', display: 'block' }}>
-                    Recorded Steps
-                  </label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', padding: '8px', backgroundColor: 'var(--grafana-colors-background-primary)', borderRadius: '4px', border: '1px solid var(--grafana-colors-border-weak)' }}>
+                  <label className={styles.stepsLabel}>Recorded Steps</label>
+                  <div className={styles.stepsContainer}>
                     {recordedSteps.map((step, index) => (
-                      <div key={index} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '8px', backgroundColor: 'var(--grafana-colors-background-secondary)', borderRadius: '4px', border: '1px solid var(--grafana-colors-border-weak)' }}>
+                      <div key={index} className={styles.stepItem}>
                         <Badge
                           text={String(index + 1)}
                           color="blue"
-                          style={{ flexShrink: 0, width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                          className={styles.stepBadge}
                         />
-                        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px', overflow: 'hidden' }}>
-                          <div style={{ fontSize: '12px', color: 'var(--grafana-colors-text-primary)', fontWeight: 500, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                        <div className={styles.stepContent}>
+                          <div className={styles.stepDescription}>
                             {step.description}
                             {step.isUnique === false && (
                               <Icon
@@ -204,7 +164,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
                             {step.action}|{step.selector}|{step.value || ''}
                           </code>
                           {(step.contextStrategy || step.isUnique === false) && (
-                            <HorizontalGroup spacing="xs" wrap style={{ marginTop: '4px' }}>
+                            <HorizontalGroup spacing="xs" wrap className={styles.stepBadges}>
                               {step.contextStrategy && <Badge text={step.contextStrategy} color="purple" />}
                               {step.isUnique === false && <Badge text={`${step.matchCount} matches`} color="orange" />}
                             </HorizontalGroup>
@@ -221,7 +181,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
                     ))}
                   </div>
 
-                  <HorizontalGroup spacing="sm" style={{ marginTop: '12px' }}>
+                  <HorizontalGroup spacing="sm" className={styles.clearButtonContainer}>
                     <Button variant="secondary" size="sm" onClick={handleClearRecording}>
                       <Icon name="trash-alt" />
                       Clear All
@@ -229,7 +189,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
                   </HorizontalGroup>
                 </>
               ) : (
-                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--grafana-colors-text-secondary)', fontSize: '12px', fontStyle: 'italic' }}>
+                <div className={styles.emptyState}>
                   {recordMode
                     ? 'Click elements in Grafana to record actions...'
                     : 'Click "Start Recording" to capture a sequence of actions'}
@@ -250,7 +210,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
               placeholder={`e.g., ${DEFAULT_VALUES.REQUIREMENT} (optional)`}
               autoFocus
             />
-            <div style={{ marginTop: '8px' }}>
+            <div className={styles.requirementsButtonContainer}>
               <CommonRequirementsButtons onSelect={setRequirements} />
             </div>
           </>

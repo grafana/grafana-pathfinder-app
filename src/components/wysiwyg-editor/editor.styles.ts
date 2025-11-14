@@ -155,3 +155,137 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
     }),
   };
 };
+
+/**
+ * Shared styles for editor wrapper and form panel
+ * Ensures consistent sizing and layout
+ */
+export const getSharedPanelStyles = (theme: GrafanaTheme2) => ({
+  wrapper: css({
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(2),
+    overflow: 'hidden',
+  }),
+  content: css({
+    flex: 1,
+    overflow: 'auto',
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    backgroundColor: theme.colors.background.primary,
+  }),
+});
+
+/**
+ * Styles for multistep action form recorder UI
+ */
+export const getMultistepFormStyles = (theme: GrafanaTheme2) => ({
+  recordModeActive: css({
+    animation: 'pulse 2s ease-in-out infinite',
+    '@keyframes pulse': {
+      '0%, 100%': { opacity: 1 },
+      '50%': { opacity: 0.8 },
+    },
+  }),
+  recordingDot: css({
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: theme.colors.error.main,
+    display: 'inline-block',
+    marginRight: theme.spacing(0.5),
+    animation: 'blink 1.5s ease-in-out infinite',
+    '@keyframes blink': {
+      '0%, 100%': { opacity: 1 },
+      '50%': { opacity: 0.3 },
+    },
+  }),
+  stepCode: css({
+    fontFamily: theme.typography.fontFamilyMonospace,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    backgroundColor: theme.colors.background.secondary,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
+    borderRadius: theme.shape.radius.default,
+    display: 'block',
+    wordBreak: 'break-all',
+    overflowWrap: 'break-word',
+  }),
+  cardTitle: css({
+    margin: 0,
+    marginBottom: theme.spacing(1.5),
+    fontSize: theme.typography.h5.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+  }),
+  emptyState: css({
+    padding: theme.spacing(2),
+    textAlign: 'center',
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontStyle: 'italic',
+  }),
+  stepsLabel: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    marginBottom: theme.spacing(0.5),
+    display: 'block',
+  }),
+  stepsContainer: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+    maxHeight: '300px',
+    overflowY: 'auto',
+    padding: theme.spacing(1),
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  }),
+  stepItem: css({
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1),
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  }),
+  stepBadge: css({
+    flexShrink: 0,
+    width: '24px',
+    height: '24px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+  }),
+  stepContent: css({
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+    overflow: 'hidden',
+  }),
+  stepDescription: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.primary,
+    fontWeight: theme.typography.fontWeightMedium,
+    wordBreak: 'break-word',
+    overflowWrap: 'break-word',
+  }),
+  stepBadges: css({
+    marginTop: theme.spacing(0.5),
+  }),
+  alertIcon: css({
+    marginRight: theme.spacing(1),
+  }),
+  clearButtonContainer: css({
+    marginTop: theme.spacing(1.5),
+  }),
+  requirementsButtonContainer: css({
+    marginTop: theme.spacing(1),
+  }),
+});

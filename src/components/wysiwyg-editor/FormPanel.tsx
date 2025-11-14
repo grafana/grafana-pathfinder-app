@@ -6,6 +6,7 @@ import { Editor } from '@tiptap/react';
 
 import { EditState, InteractiveAttributesOutput } from './types';
 import { InteractiveFormContent } from './forms/InteractiveFormContent';
+import { getSharedPanelStyles } from './editor.styles';
 
 interface FormPanelProps {
   onClose: () => void;
@@ -17,21 +18,8 @@ interface FormPanelProps {
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
-  // Panel wrapper matches editorWrapper CSS exactly
-  panelWrapper: css({
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2),
-    overflow: 'hidden',
-  }),
-  // Panel content matches editorContent CSS for inner container
+  // Panel content extends shared content with padding
   panelContent: css({
-    flex: 1,
-    overflow: 'auto',
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.primary,
     padding: theme.spacing(2),
   }),
   panelTitle: css({
@@ -59,6 +47,7 @@ export const FormPanel: React.FC<FormPanelProps> = ({
   initialSelectedActionType = null,
 }) => {
   const styles = useStyles2(getStyles);
+  const sharedStyles = useStyles2(getSharedPanelStyles);
 
   // Track selected action type during creation (when editState is null)
   // Initialize with the provided initialSelectedActionType if available
@@ -93,8 +82,8 @@ export const FormPanel: React.FC<FormPanelProps> = ({
   };
 
   return (
-    <div className={styles.panelWrapper}>
-      <div className={styles.panelContent}>
+    <div className={sharedStyles.wrapper}>
+      <div className={`${sharedStyles.content} ${styles.panelContent}`}>
         <h3 className={styles.panelTitle}>{getTitle()}</h3>
         <InteractiveFormContent
           editor={editor}

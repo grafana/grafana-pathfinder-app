@@ -1,17 +1,11 @@
 import React from 'react';
 import { Editor } from '@tiptap/react';
 import ActionSelector from './ActionSelector';
-import ButtonActionForm from './ButtonActionForm';
-import HighlightActionForm from './HighlightActionForm';
-import FormFillActionForm from './FormFillActionForm';
-import NavigateActionForm from './NavigateActionForm';
-import HoverActionForm from './HoverActionForm';
-import MultistepActionForm from './MultistepActionForm';
 import SequenceActionForm from './SequenceActionForm';
 import { EditState, InteractiveAttributesOutput } from '../types';
-import { ACTION_TYPES } from '../../../constants/interactive-config';
 import { error as logError } from '../utils/logger';
 import { insertNewInteractiveElement } from '../services/editorOperations';
+import { getActionDefinition } from './actionRegistry';
 
 interface InteractiveFormContentProps {
   editor: Editor | null;
@@ -77,23 +71,20 @@ export const InteractiveFormContent: React.FC<InteractiveFormContentProps> = ({
     onSwitchType,
   };
 
-  // Render appropriate form based on action type
-  switch (actionType) {
-    case ACTION_TYPES.BUTTON:
-      return <ButtonActionForm {...formProps} />;
-    case ACTION_TYPES.HIGHLIGHT:
-      return <HighlightActionForm {...formProps} />;
-    case ACTION_TYPES.FORM_FILL:
-      return <FormFillActionForm {...formProps} />;
-    case ACTION_TYPES.NAVIGATE:
-      return <NavigateActionForm {...formProps} />;
-    case ACTION_TYPES.HOVER:
-      return <HoverActionForm {...formProps} />;
-    case ACTION_TYPES.MULTISTEP:
-      return <MultistepActionForm {...formProps} />;
-    case ACTION_TYPES.SEQUENCE:
-      return <SequenceActionForm {...formProps} />;
-    default:
-      return <ActionSelector onSelect={onSelectActionType} onCancel={onCancel} />;
+  // Get action definition from unified registry
+  const actionDef = getActionDefinition(actionType);
+
+  if (!actionDef) {
+    // Unknown action type, show selector
+    return <ActionSelector onSelect={onSelectActionType} onCancel={onCancel} />;
   }
+
+  // Special handling for SequenceActionForm (needs unique ID generation)
+  if (actionType === 'sequence') {
+    return <SequenceActionForm {...formProps} />;
+  }
+
+  // Use form component from registry
+  const FormComponent = actionDef.formComponent;
+  return <FormComponent {...formProps} />;
 };

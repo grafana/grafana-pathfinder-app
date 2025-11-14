@@ -256,8 +256,277 @@ export function isInsideSequenceSectionListItem(editor: Editor): boolean {
 }
 
 /**
+ * Insert a sequence section element
+ */
+function insertSequenceSectionElement(
+  editor: Editor,
+  attributes: ElementAttributes,
+  hasSelection: boolean,
+  from: number
+): void {
+  const insertPos = hasSelection ? from : undefined;
+
+  if (!editor.can().insertContent({ type: 'sequenceSection' })) {
+    logError('[editorOperations] Cannot insert sequence section at current position');
+    throw new Error('Cannot insert sequence section at current cursor position');
+  }
+
+  const normalizedAttrs = buildInteractiveAttributes('sequence', attributes as InteractiveAttributesOutput);
+  const sequenceContent = {
+    type: 'sequenceSection',
+    attrs: normalizedAttrs,
+    content: [
+      {
+        type: 'heading',
+        attrs: { level: 3 },
+        content: [{ type: 'text', text: 'Section Title' }],
+      },
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Add content here...' }],
+      },
+    ],
+  };
+
+  if (insertPos !== undefined) {
+    editor.chain().focus().insertContentAt(insertPos, sequenceContent).run();
+  } else {
+    editor.chain().focus().insertContent(sequenceContent).run();
+  }
+}
+
+/**
+ * Extract inline content from selected or existing nodes
+ */
+function extractInlineContent(content: any): any[] {
+  const inlineContent: any[] = [];
+
+  if (Array.isArray(content)) {
+    content.forEach((node: any) => {
+      if (node.content && Array.isArray(node.content)) {
+        inlineContent.push(...node.content);
+      } else if (node.type === 'text') {
+        inlineContent.push(node);
+      }
+    });
+  }
+
+  return inlineContent;
+}
+
+/**
+ * Build paragraph content for multistep actions from internal actions and selection
+ */
+function buildMultistepParagraphContent(
+  editor: Editor,
+  internalActions: any[],
+  hasSelection: boolean,
+  from: number,
+  to: number,
+  currentListItem: { node: any; pos: number } | null
+): any[] {
+  const paragraphContent: any[] = [];
+
+  // Add interactive spans for each recorded action
+  if (internalActions && Array.isArray(internalActions) && internalActions.length > 0) {
+    internalActions.forEach((action: any) => {
+      const spanAttrs = buildInteractiveAttributes('span', {
+        class: CSS_CLASSES.INTERACTIVE,
+        'data-targetaction': action.targetAction,
+        'data-reftarget': action.refTarget,
+        ...(action.targetValue && { 'data-targetvalue': action.targetValue }),
+        ...(action.requirements && { 'data-requirements': action.requirements }),
+      });
+
+      paragraphContent.push({
+        type: 'interactiveSpan',
+        attrs: spanAttrs,
+      });
+    });
+  }
+
+  // Extract text content from selection or existing listItem
+  if (hasSelection) {
+    const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
+    paragraphContent.push(...extractInlineContent(selectedContent));
+  } else if (currentListItem) {
+    const existingContent = currentListItem.node.content;
+    if (existingContent && existingContent.size > 0) {
+      existingContent.forEach((node: any) => {
+        if (node.content && node.content.size > 0) {
+          node.content.forEach((inlineNode: any) => {
+            paragraphContent.push(inlineNode.toJSON());
+          });
+        }
+      });
+    }
+  }
+
+  // Default text if no content
+  if (paragraphContent.length === 0) {
+    paragraphContent.push({ type: 'text', text: 'Action description' });
+  }
+
+  return paragraphContent;
+}
+
+/**
+ * Insert a multistep action element
+ */
+function insertMultistepActionElement(
+  editor: Editor,
+  attributes: ElementAttributes,
+  hasSelection: boolean,
+  from: number,
+  to: number
+): void {
+  const internalActions = (attributes as any).__internalActions;
+  const finalAttributes = { ...attributes };
+  delete (finalAttributes as any).__internalActions;
+
+  const normalizedAttrs = buildInteractiveAttributes('listItem', finalAttributes as InteractiveAttributesOutput);
+  const currentListItem = getCurrentNode(editor, 'listItem');
+
+  // If inside a listItem, replace it in place
+  if (currentListItem) {
+    const { node: listItemNode, pos: listItemPos } = currentListItem;
+    const listItemSize = listItemNode.nodeSize;
+    const listItemEnd = listItemPos + listItemSize;
+    const selectionWithinListItem = !hasSelection || (from >= listItemPos && to <= listItemEnd);
+
+    if (selectionWithinListItem) {
+      debug('[editorOperations] Replacing existing listItem with multistep (avoiding nested list)');
+
+      const paragraphContent = buildMultistepParagraphContent(
+        editor,
+        internalActions,
+        hasSelection,
+        from,
+        to,
+        currentListItem
+      );
+
+      const paragraphNode = {
+        type: 'paragraph',
+        content: paragraphContent,
+      };
+
+      editor
+        .chain()
+        .focus()
+        .deleteRange({ from: listItemPos, to: listItemPos + listItemSize })
+        .insertContentAt(listItemPos, {
+          type: 'listItem',
+          attrs: normalizedAttrs,
+          content: [paragraphNode],
+        })
+        .run();
+
+      debug('[editorOperations] Successfully replaced listItem with multistep');
+      return;
+    }
+    debug('[editorOperations] Selection spans outside listItem, creating new bulletList');
+  }
+
+  // Create new bulletList wrapper
+  if (!editor.can().insertContent({ type: 'bulletList' })) {
+    logError('[editorOperations] Cannot insert bullet list at current position');
+    throw new Error('Cannot insert multistep action at current cursor position');
+  }
+
+  const paragraphContent = buildMultistepParagraphContent(editor, internalActions, hasSelection, from, to, null);
+  const paragraphNode = {
+    type: 'paragraph',
+    content: paragraphContent.length > 0 ? paragraphContent : [{ type: 'text', text: 'Action description' }],
+  };
+
+  const listItemContent = {
+    type: 'bulletList',
+    content: [
+      {
+        type: 'listItem',
+        attrs: normalizedAttrs,
+        content: [paragraphNode],
+      },
+    ],
+  };
+
+  if (hasSelection) {
+    editor.chain().focus().insertContentAt({ from, to }, listItemContent).run();
+  } else {
+    editor.chain().focus().insertContent(listItemContent).run();
+  }
+}
+
+/**
+ * Insert an inline span element (or convert to list item if inside sequence section)
+ */
+function insertInlineSpanElement(
+  editor: Editor,
+  attributes: ElementAttributes,
+  hasSelection: boolean,
+  from: number,
+  to: number
+): void {
+  // Check if we're inside a list item within a sequence section
+  if (isInsideSequenceSectionListItem(editor)) {
+    debug('[editorOperations] Converting interactive span to list item (inside sequence section)');
+
+    const normalizedAttrs = buildInteractiveAttributes('listItem', {
+      ...attributes,
+      class: attributes.class || CSS_CLASSES.INTERACTIVE,
+    } as InteractiveAttributesOutput);
+
+    const success = editor.chain().focus().updateAttributes('listItem', normalizedAttrs).run();
+
+    if (!success) {
+      logError('[editorOperations] Failed to convert to interactive list item');
+      throw new Error('Cannot convert to interactive list item at current position');
+    }
+
+    debug('[editorOperations] Successfully converted to interactive list item');
+    return;
+  }
+
+  // Normal inline span behavior
+  const normalizedAttrs = buildInteractiveAttributes('span', attributes as InteractiveAttributesOutput);
+  const displayText = attributes['data-reftarget'] || 'Interactive action';
+
+  if (!editor.can().insertContent({ type: 'interactiveSpan' })) {
+    logError('[editorOperations] Cannot insert interactive span at current position');
+    throw new Error('Cannot insert interactive action at current cursor position');
+  }
+
+  if (hasSelection) {
+    const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(
+        { from, to },
+        {
+          type: 'interactiveSpan',
+          attrs: normalizedAttrs,
+          content: selectedContent,
+        }
+      )
+      .run();
+  } else {
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: 'interactiveSpan',
+        attrs: normalizedAttrs,
+        content: [{ type: 'text', text: displayText }],
+      })
+      .run();
+  }
+}
+
+/**
  * Insert a new interactive element into the editor
- * Handles sequence sections, multistep actions, and inline spans
+ * Dispatches to action-specific insertion handlers
  *
  * @param editor - Tiptap editor instance
  * @param attributes - Attributes to apply to the new element
@@ -277,271 +546,11 @@ export function insertNewInteractiveElement(editor: Editor, attributes: ElementA
 
   try {
     if (actionType === ACTION_TYPES.SEQUENCE) {
-      // Sequence sections: Insert BEFORE selection without destroying it
-      const insertPos = hasSelection ? from : undefined;
-
-      if (!editor.can().insertContent({ type: 'sequenceSection' })) {
-        logError('[editorOperations] Cannot insert sequence section at current position');
-        throw new Error('Cannot insert sequence section at current cursor position');
-      }
-
-      const sequenceContent = {
-        type: 'sequenceSection',
-        attrs: attributes,
-        content: [
-          {
-            type: 'heading',
-            attrs: { level: 3 },
-            content: [{ type: 'text', text: 'Section Title' }],
-          },
-          {
-            type: 'paragraph',
-            content: [{ type: 'text', text: 'Add content here...' }],
-          },
-        ],
-      };
-
-      if (insertPos !== undefined) {
-        // Insert before selection
-        editor.chain().focus().insertContentAt(insertPos, sequenceContent).run();
-      } else {
-        // Insert at cursor
-        editor.chain().focus().insertContent(sequenceContent).run();
-      }
+      insertSequenceSectionElement(editor, attributes, hasSelection, from);
     } else if (actionType === ACTION_TYPES.MULTISTEP) {
-      // Extract internal actions and strip from final attributes
-      const internalActions = (attributes as any).__internalActions;
-      const finalAttributes = { ...attributes };
-      delete (finalAttributes as any).__internalActions;
-
-      // Build paragraph content: spans (inline) + text (inline)
-      // TipTap's listItem requires block content, so we wrap everything in a paragraph
-      const paragraphContent: any[] = [];
-
-      // Add interactive spans for each recorded action (inline nodes)
-      if (internalActions && Array.isArray(internalActions) && internalActions.length > 0) {
-        internalActions.forEach((action: any) => {
-          const spanAttrs: Record<string, string> = {
-            class: CSS_CLASSES.INTERACTIVE,
-            'data-targetaction': action.targetAction,
-            'data-reftarget': action.refTarget,
-          };
-          if (action.targetValue) {
-            spanAttrs['data-targetvalue'] = action.targetValue;
-          }
-          if (action.requirements) {
-            spanAttrs['data-requirements'] = action.requirements;
-          }
-          paragraphContent.push({
-            type: 'interactiveSpan',
-            attrs: spanAttrs,
-          });
-        });
-      }
-
-      // Check if we're already inside a listItem
-      const currentListItem = getCurrentNode(editor, 'listItem');
-
-      if (currentListItem) {
-        // We're inside an existing listItem - replace it in place instead of creating nested list
-        debug('[editorOperations] Replacing existing listItem with multistep (avoiding nested list)');
-
-        const { node: listItemNode, pos: listItemPos } = currentListItem;
-        const listItemSize = listItemNode.nodeSize;
-        const listItemEnd = listItemPos + listItemSize;
-
-        // Verify selection is entirely within the listItem (if there's a selection)
-        const selectionWithinListItem = !hasSelection || (from >= listItemPos && to <= listItemEnd);
-
-        if (selectionWithinListItem) {
-          // Extract text content from selection or existing listItem content
-          if (hasSelection) {
-            const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
-            // Extract inline content from selected content (could be paragraph, heading, etc.)
-            if (selectedContent && Array.isArray(selectedContent)) {
-              selectedContent.forEach((node: any) => {
-                // If it's a paragraph or other block node, extract its inline content
-                if (node.content && Array.isArray(node.content)) {
-                  paragraphContent.push(...node.content);
-                } else if (node.type === 'text') {
-                  paragraphContent.push(node);
-                }
-              });
-            }
-          } else {
-            // Extract text from existing listItem content
-            const existingContent = listItemNode.content;
-            if (existingContent && existingContent.size > 0) {
-              existingContent.forEach((node: any) => {
-                // Extract inline content from paragraphs or other block nodes
-                if (node.content && node.content.size > 0) {
-                  node.content.forEach((inlineNode: any) => {
-                    paragraphContent.push(inlineNode.toJSON());
-                  });
-                }
-              });
-            }
-          }
-
-          // If no content was extracted, add default text
-          if (paragraphContent.length === 0) {
-            paragraphContent.push({ type: 'text', text: 'Action description' });
-          }
-
-          // Create paragraph with all content
-          const paragraphNode = {
-            type: 'paragraph',
-            content: paragraphContent,
-          };
-
-          // Replace the listItem: delete it and insert new one with updated attributes and content
-          editor
-            .chain()
-            .focus()
-            .deleteRange({ from: listItemPos, to: listItemPos + listItemSize })
-            .insertContentAt(listItemPos, {
-              type: 'listItem',
-              attrs: finalAttributes,
-              content: [paragraphNode],
-            })
-            .run();
-
-          debug('[editorOperations] Successfully replaced listItem with multistep');
-          return;
-        }
-        // If selection spans outside listItem, fall through to create new bulletList
-        debug('[editorOperations] Selection spans outside listItem, creating new bulletList');
-      }
-
-      // Not inside a listItem - create new bulletList wrapper (existing behavior)
-      if (!editor.can().insertContent({ type: 'bulletList' })) {
-        logError('[editorOperations] Cannot insert bullet list at current position');
-        throw new Error('Cannot insert multistep action at current cursor position');
-      }
-
-      // Add text content to the paragraph (either from selection or default)
-      if (hasSelection) {
-        const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
-        // Extract inline content from selected content (could be paragraph, heading, etc.)
-        if (selectedContent && Array.isArray(selectedContent)) {
-          selectedContent.forEach((node: any) => {
-            // If it's a paragraph or other block node, extract its inline content
-            if (node.content && Array.isArray(node.content)) {
-              paragraphContent.push(...node.content);
-            } else if (node.type === 'text') {
-              paragraphContent.push(node);
-            }
-          });
-        }
-      } else {
-        // Default text content
-        paragraphContent.push({ type: 'text', text: 'Action description' });
-      }
-
-      // Create a single paragraph containing all inline content (spans + text)
-      const paragraphNode = {
-        type: 'paragraph',
-        content: paragraphContent.length > 0 ? paragraphContent : [{ type: 'text', text: 'Action description' }],
-      };
-
-      // listItem contains block content (the paragraph)
-      const listItemContent = [paragraphNode];
-
-      if (hasSelection) {
-        // Replace selection with bulletList containing the paragraph with spans
-        editor
-          .chain()
-          .focus()
-          .insertContentAt(
-            { from, to },
-            {
-              type: 'bulletList',
-              content: [
-                {
-                  type: 'listItem',
-                  attrs: finalAttributes,
-                  content: listItemContent,
-                },
-              ],
-            }
-          )
-          .run();
-      } else {
-        // Insert at cursor with paragraph containing spans and text
-        editor
-          .chain()
-          .focus()
-          .insertContent({
-            type: 'bulletList',
-            content: [
-              {
-                type: 'listItem',
-                attrs: finalAttributes,
-                content: listItemContent,
-              },
-            ],
-          })
-          .run();
-      }
+      insertMultistepActionElement(editor, attributes, hasSelection, from, to);
     } else {
-      // Inline spans: Check if we're inside a list item within a sequence section
-      // If so, convert to interactive list item instead of creating a span
-      if (isInsideSequenceSectionListItem(editor)) {
-        debug('[editorOperations] Converting interactive span to list item (inside sequence section)');
-
-        // Apply attributes directly to the list item
-        // Ensure class="interactive" is included
-        const listItemAttributes = {
-          ...attributes,
-          class: attributes.class || CSS_CLASSES.INTERACTIVE,
-        };
-
-        const success = editor.chain().focus().updateAttributes('listItem', listItemAttributes).run();
-
-        if (!success) {
-          logError('[editorOperations] Failed to convert to interactive list item');
-          throw new Error('Cannot convert to interactive list item at current position');
-        }
-
-        debug('[editorOperations] Successfully converted to interactive list item');
-        return;
-      }
-
-      // Normal inline span behavior (not in sequence section)
-      const displayText = attributes['data-reftarget'] || 'Interactive action';
-
-      if (!editor.can().insertContent({ type: 'interactiveSpan' })) {
-        logError('[editorOperations] Cannot insert interactive span at current position');
-        throw new Error('Cannot insert interactive action at current cursor position');
-      }
-
-      if (hasSelection) {
-        // Wrap selected content in interactiveSpan
-        const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
-        editor
-          .chain()
-          .focus()
-          .insertContentAt(
-            { from, to },
-            {
-              type: 'interactiveSpan',
-              attrs: attributes,
-              content: selectedContent,
-            }
-          )
-          .run();
-      } else {
-        // Insert with default text at cursor
-        editor
-          .chain()
-          .focus()
-          .insertContent({
-            type: 'interactiveSpan',
-            attrs: attributes,
-            content: [{ type: 'text', text: displayText }],
-          })
-          .run();
-      }
+      insertInlineSpanElement(editor, attributes, hasSelection, from, to);
     }
 
     debug('[editorOperations] Element inserted successfully', { actionType, hasSelection });

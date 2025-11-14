@@ -2,7 +2,6 @@ import React from 'react';
 import { Button, Stack, Alert, HorizontalGroup, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { type InteractiveFormProps } from '../types';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 
 interface InteractiveFormShellProps {

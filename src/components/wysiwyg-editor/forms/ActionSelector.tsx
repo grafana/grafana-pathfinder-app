@@ -2,7 +2,7 @@ import React from 'react';
 import { Button, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { ACTION_METADATA, ACTION_TYPES } from '../../../constants/interactive-config';
+import { getSelectableActions } from './actionRegistry';
 
 interface ActionSelectorProps {
   onSelect: (actionType: string) => void;
@@ -71,20 +71,20 @@ const getStyles = (theme: GrafanaTheme2) => ({
 const ActionSelector = ({ onSelect, onCancel }: ActionSelectorProps) => {
   const styles = useStyles2(getStyles);
 
-  // Filter out Sequence action type - it's only available via toolbar "Add Section" button
-  const selectableActions = ACTION_METADATA.filter((option) => option.type !== ACTION_TYPES.SEQUENCE);
+  // Get selectable actions (excludes hidden ones like SEQUENCE)
+  const selectableActions = getSelectableActions();
 
   return (
     <div className={styles.container}>
       <p className={styles.description}>Choose the type of interaction for this element</p>
       <div className={styles.grid}>
-        {selectableActions.map((option) => (
-          <div key={option.type} className={styles.actionWrapper}>
-            <Button variant="secondary" onClick={() => onSelect(option.type)} className={styles.actionButton}>
-              <span className={styles.actionIcon}>{option.icon}</span>
-              <span className={styles.actionName}>{option.name}</span>
+        {selectableActions.map((action) => (
+          <div key={action.type} className={styles.actionWrapper}>
+            <Button variant="secondary" onClick={() => onSelect(action.type)} className={styles.actionButton}>
+              <span className={styles.actionIcon}>{action.ui.icon}</span>
+              <span className={styles.actionName}>{action.ui.name}</span>
             </Button>
-            <span className={styles.actionDesc}>{option.description}</span>
+            <span className={styles.actionDesc}>{action.ui.description}</span>
           </div>
         ))}
       </div>

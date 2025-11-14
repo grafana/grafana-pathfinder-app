@@ -16,6 +16,9 @@ import { useEditorPersistence } from './hooks/useEditorPersistence';
 import { useEditorActions } from './hooks/useEditorActions';
 import { useEditorModals } from './hooks/useEditorModals';
 
+// Styles
+import { getSharedPanelStyles } from './editor.styles';
+
 const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
@@ -26,26 +29,12 @@ const getStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.background.primary,
     position: 'relative', // Needed for absolute positioning of hidden editor
   }),
-  editorWrapper: css({
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2),
-    overflow: 'hidden',
-  }),
   editorWrapperHidden: css({
     visibility: 'hidden',
     position: 'absolute',
     width: '100%',
     height: '100%',
     pointerEvents: 'none',
-  }),
-  editorContent: css({
-    flex: 1,
-    overflow: 'auto',
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
-    backgroundColor: theme.colors.background.primary,
   }),
   title: css({
     fontSize: theme.typography.h2.fontSize,
@@ -63,6 +52,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
  */
 export const WysiwygEditor: React.FC = () => {
   const styles = useStyles2(getStyles);
+  const sharedStyles = useStyles2(getSharedPanelStyles);
   const { editState, startEditing, stopEditing } = useEditState();
 
   // Use ref to store openModal callback to break circular dependency
@@ -118,7 +108,7 @@ export const WysiwygEditor: React.FC = () => {
   return (
     <div className={`${styles.container} wysiwyg-editor-container`}>
       {/* Editor wrapper - hidden when form is open, but remains in DOM for auto-save */}
-      <div className={`${styles.editorWrapper} ${isModalOpen ? styles.editorWrapperHidden : ''}`}>
+      <div className={`${sharedStyles.wrapper} ${isModalOpen ? styles.editorWrapperHidden : ''}`}>
         <Toolbar
           editor={editor}
           onAddInteractive={handleAddInteractive}
@@ -130,7 +120,7 @@ export const WysiwygEditor: React.FC = () => {
           onReset={resetGuide}
         />
 
-        <div className={styles.editorContent}>
+        <div className={sharedStyles.content}>
           <EditorContent editor={editor} />
         </div>
       </div>
