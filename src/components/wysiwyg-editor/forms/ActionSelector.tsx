@@ -2,7 +2,7 @@ import React from 'react';
 import { Button, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { ACTION_METADATA } from '../../../constants/interactive-config';
+import { ACTION_METADATA, ACTION_TYPES } from '../../../constants/interactive-config';
 
 interface ActionSelectorProps {
   onSelect: (actionType: string) => void;
@@ -63,15 +63,22 @@ const getStyles = (theme: GrafanaTheme2) => ({
 /**
  * Component for selecting an interactive action type
  * Uses centralized action metadata and Grafana UI components
+ * 
+ * Note: Sequence action type is hidden from this selector because it's
+ * handled by the "Add Section" button in the toolbar. Sequence sections
+ * can still be edited via the edit flow (which doesn't use this selector).
  */
 const ActionSelector = ({ onSelect, onCancel }: ActionSelectorProps) => {
   const styles = useStyles2(getStyles);
+
+  // Filter out Sequence action type - it's only available via toolbar "Add Section" button
+  const selectableActions = ACTION_METADATA.filter((option) => option.type !== ACTION_TYPES.SEQUENCE);
 
   return (
     <div className={styles.container}>
       <p className={styles.description}>Choose the type of interaction for this element</p>
       <div className={styles.grid}>
-        {ACTION_METADATA.map((option) => (
+        {selectableActions.map((option) => (
           <div key={option.type} className={styles.actionWrapper}>
             <Button variant="secondary" onClick={() => onSelect(option.type)} className={styles.actionButton}>
               <span className={styles.actionIcon}>{option.icon}</span>
