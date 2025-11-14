@@ -9,6 +9,7 @@ import { useStepExecutor } from '../../utils/devtools/step-executor.hook';
 import { useSelectorCapture } from '../../utils/devtools/selector-capture.hook';
 import { useActionRecorder } from '../../utils/devtools/action-recorder.hook';
 import { parseStepString } from '../../utils/devtools/step-parser.util';
+import { dslToHugoShortcode, dslListToHugoShortcodes } from '../../utils/devtools/hugo-exporter';
 
 export interface SelectorDebugPanelProps {
   onOpenDocsPage?: (url: string, title: string) => void;
@@ -138,10 +139,17 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
   // Export State
   const [exportCopied, setExportCopied] = useState(false);
+  const [hugoExportCopied, setHugoExportCopied] = useState(false);
 
   // Multistep Selection State
   const [selectedSteps, setSelectedSteps] = useState<Set<number>>(new Set());
   const [multistepMode, setMultistepMode] = useState(false);
+
+  // Hugo export state for each section
+  const [simpleHugoCopied, setSimpleHugoCopied] = useState(false);
+  const [multiStepHugoCopied, setMultiStepHugoCopied] = useState(false);
+  const [guidedHugoCopied, setGuidedHugoCopied] = useState(false);
+  const [watchHugoCopied, setWatchHugoCopied] = useState(false);
 
   // Simple Selector Tester Handlers
   const handleSimpleShow = useCallback(async () => {
@@ -278,6 +286,103 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     setMultistepMode(!multistepMode);
   }, [multistepMode]);
 
+  // Hugo Shortcode Export Handlers
+  const handleCopySimpleAsHugo = useCallback(async () => {
+    if (!simpleSelector.trim()) {
+      return;
+    }
+
+    const dsl = `highlight|${simpleSelector}|`;
+    const hugo = dslToHugoShortcode(dsl, 'Highlight the target element');
+
+    try {
+      await navigator.clipboard.writeText(hugo);
+      setSimpleHugoCopied(true);
+      setTimeout(() => setSimpleHugoCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy Hugo shortcode:', error);
+    }
+  }, [simpleSelector]);
+
+  const handleCopyMultiStepAsHugo = useCallback(async () => {
+    if (!multiStepInput.trim()) {
+      return;
+    }
+
+    const dslLines = multiStepInput.split('\n').filter((line) => line.trim());
+    const hugo = dslListToHugoShortcodes(dslLines, {
+      includeComments: true,
+      wrapInSequence: true,
+      sequenceId: 'tutorial-sequence',
+      sequenceTitle: 'Multi-Step Tutorial',
+    });
+
+    try {
+      await navigator.clipboard.writeText(hugo);
+      setMultiStepHugoCopied(true);
+      setTimeout(() => setMultiStepHugoCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy Hugo shortcode:', error);
+    }
+  }, [multiStepInput]);
+
+  const handleCopyGuidedAsHugo = useCallback(async () => {
+    if (!guidedInput.trim()) {
+      return;
+    }
+
+    const dslLines = guidedInput.split('\n').filter((line) => line.trim());
+    const hugo = dslListToHugoShortcodes(dslLines, {
+      includeComments: true,
+      wrapInSequence: true,
+      sequenceId: 'guided-sequence',
+      sequenceTitle: 'Guided Tutorial',
+    });
+
+    try {
+      await navigator.clipboard.writeText(hugo);
+      setGuidedHugoCopied(true);
+      setTimeout(() => setGuidedHugoCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy Hugo shortcode:', error);
+    }
+  }, [guidedInput]);
+
+  const handleCopyWatchAsHugo = useCallback(async () => {
+    if (!capturedSelector) {
+      return;
+    }
+
+    // Generate Hugo shortcode for a highlight action
+    const dsl = `highlight|${capturedSelector}|`;
+    const hugo = dslToHugoShortcode(dsl, 'Highlight the captured element');
+
+    try {
+      await navigator.clipboard.writeText(hugo);
+      setWatchHugoCopied(true);
+      setTimeout(() => setWatchHugoCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy Hugo shortcode:', error);
+    }
+  }, [capturedSelector]);
+
+  const handleExportHugoShortcode = useCallback(async () => {
+    const hugo = exportStepsFromRecorder('hugo', {
+      includeComments: true,
+      wrapInSequence: true,
+      sequenceId: 'recorded-sequence',
+      sequenceTitle: 'Recorded Tutorial',
+    });
+
+    try {
+      await navigator.clipboard.writeText(hugo);
+      setHugoExportCopied(true);
+      setTimeout(() => setHugoExportCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy Hugo shortcode:', error);
+    }
+  }, [exportStepsFromRecorder]);
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -316,6 +421,16 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                 </Button>
                 <Button variant="primary" size="sm" onClick={handleSimpleDo} disabled={simpleTesting}>
                   {simpleTesting ? 'Testing...' : 'Do it'}
+                </Button>
+                <Button
+                  variant={simpleHugoCopied ? 'success' : 'secondary'}
+                  size="sm"
+                  onClick={handleCopySimpleAsHugo}
+                  disabled={!simpleSelector.trim()}
+                  className={simpleHugoCopied ? styles.copiedButton : ''}
+                >
+                  <Icon name={simpleHugoCopied ? 'check' : 'brackets-curly'} />
+                  {simpleHugoCopied ? 'Copied!' : 'Copy for Grafana website'}
                 </Button>
               </div>
               {simpleResult && (
@@ -361,9 +476,21 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                 Example: <code className={styles.exampleCode}>formfill|input[name=&quot;query&quot;]|prometheus</code>
               </p>
 
-              <Button variant="primary" size="sm" onClick={handleMultiStepRun} disabled={multiStepTesting}>
-                {multiStepTesting ? 'Running...' : 'Run MultiStep'}
-              </Button>
+              <div className={styles.buttonGroup}>
+                <Button variant="primary" size="sm" onClick={handleMultiStepRun} disabled={multiStepTesting}>
+                  {multiStepTesting ? 'Running...' : 'Run MultiStep'}
+                </Button>
+                <Button
+                  variant={multiStepHugoCopied ? 'success' : 'secondary'}
+                  size="sm"
+                  onClick={handleCopyMultiStepAsHugo}
+                  disabled={!multiStepInput.trim()}
+                  className={multiStepHugoCopied ? styles.copiedButton : ''}
+                >
+                  <Icon name={multiStepHugoCopied ? 'check' : 'brackets-curly'} />
+                  {multiStepHugoCopied ? 'Copied!' : 'Copy for Grafana website'}
+                </Button>
+              </div>
 
               {multiStepProgress && (
                 <div className={styles.progressIndicator}>
@@ -409,10 +536,22 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
               <div className={styles.buttonGroup}>
                 {!guidedRunning ? (
-                  <Button variant="primary" size="sm" onClick={handleGuidedStart}>
-                    <Icon name="play" />
-                    Start Guided
-                  </Button>
+                  <>
+                    <Button variant="primary" size="sm" onClick={handleGuidedStart}>
+                      <Icon name="play" />
+                      Start Guided
+                    </Button>
+                    <Button
+                      variant={guidedHugoCopied ? 'success' : 'secondary'}
+                      size="sm"
+                      onClick={handleCopyGuidedAsHugo}
+                      disabled={!guidedInput.trim()}
+                      className={guidedHugoCopied ? styles.copiedButton : ''}
+                    >
+                      <Icon name={guidedHugoCopied ? 'check' : 'brackets-curly'} />
+                      {guidedHugoCopied ? 'Copied!' : 'Copy for Grafana website'}
+                    </Button>
+                  </>
                 ) : (
                   <Button variant="destructive" size="sm" onClick={handleGuidedCancel}>
                     <Icon name="times" />
@@ -503,6 +642,15 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                       <Icon name={selectorCopied ? 'check' : 'copy'} />
                       {selectorCopied ? 'Copied!' : 'Copy'}
                     </Button>
+                    <Button
+                      variant={watchHugoCopied ? 'success' : 'secondary'}
+                      size="sm"
+                      onClick={handleCopyWatchAsHugo}
+                      className={watchHugoCopied ? styles.copiedButton : ''}
+                    >
+                      <Icon name={watchHugoCopied ? 'check' : 'brackets-curly'} />
+                      {watchHugoCopied ? 'Copied!' : 'Copy for Grafana website'}
+                    </Button>
                     <Button variant="primary" size="sm" onClick={handleUseInSimpleTester}>
                       <Icon name="arrow-up" />
                       Use in Simple Tester
@@ -573,6 +721,15 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                     >
                       <Icon name={exportCopied ? 'check' : 'file-alt'} />
                       {exportCopied ? 'Copied!' : 'Export to HTML'}
+                    </Button>
+                    <Button
+                      variant={hugoExportCopied ? 'success' : 'secondary'}
+                      size="sm"
+                      onClick={handleExportHugoShortcode}
+                      className={hugoExportCopied ? styles.copiedButton : ''}
+                    >
+                      <Icon name={hugoExportCopied ? 'check' : 'brackets-curly'} />
+                      {hugoExportCopied ? 'Copied!' : 'Export for Grafana website'}
                     </Button>
                   </div>
 
