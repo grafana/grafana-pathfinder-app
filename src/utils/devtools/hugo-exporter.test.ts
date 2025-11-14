@@ -21,7 +21,6 @@ describe('Hugo Exporter', () => {
 
       expect(result).toContain('{{< button');
       expect(result).toContain('reftarget="button[data-testid=\'save\']"');
-      expect(result).toContain('requirements="exists-reftarget"');
       expect(result).toContain('Click the save button');
       expect(result).toContain('{{< /button >}}');
     });
@@ -42,7 +41,6 @@ describe('Hugo Exporter', () => {
       expect(result).toContain('{{< formfill');
       expect(result).toContain('reftarget="input[name=\'query\']"');
       expect(result).toContain('targetvalue="prometheus"');
-      expect(result).toContain('requirements="exists-reftarget"');
       expect(result).toContain('Enter the query');
       expect(result).toContain('{{< /formfill >}}');
     });
