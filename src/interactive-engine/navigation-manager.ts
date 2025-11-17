@@ -28,7 +28,7 @@ export class NavigationManager {
     const padding = 8; // Minimum padding from viewport edges
 
     // Get comment box dimensions (might vary based on content)
-    const commentWidth = 320; // Fixed width from CSS (increased for better readability with step checklists)
+    const commentWidth = 420; // Fixed width from CSS (increased for better readability with step checklists)
     const commentHeight = commentBox.offsetHeight || 130; // Actual height, fallback to 130 (increased for larger font/line-height)
 
     const viewportWidth = window.innerWidth;
@@ -437,7 +437,8 @@ export class NavigationManager {
     element: HTMLElement,
     comment?: string,
     enableAutoCleanup = true,
-    stepInfo?: { current: number; total: number; completedSteps: number[] }
+    stepInfo?: { current: number; total: number; completedSteps: number[] },
+    onSkipCallback?: () => void
   ): Promise<HTMLElement> {
     // Clear any existing highlights before showing new one
     this.clearAllHighlights();
@@ -481,10 +482,10 @@ export class NavigationManager {
 
     document.body.appendChild(highlightOutline);
 
-    // Create comment box if comment is provided
+    // Create comment box if comment is provided OR if skip callback is provided
     let commentBox: HTMLElement | null = null;
-    if (comment && comment.trim()) {
-      commentBox = this.createCommentBox(comment, rect, scrollTop, scrollLeft, stepInfo);
+    if ((comment && comment.trim()) || onSkipCallback) {
+      commentBox = this.createCommentBox(comment || '', rect, scrollTop, scrollLeft, stepInfo, onSkipCallback);
       document.body.appendChild(commentBox);
     }
 
@@ -515,7 +516,8 @@ export class NavigationManager {
     targetRect: DOMRect,
     scrollTop: number,
     scrollLeft: number,
-    stepInfo?: { current: number; total: number; completedSteps: number[] }
+    stepInfo?: { current: number; total: number; completedSteps: number[] },
+    onSkipCallback?: () => void
   ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
@@ -595,6 +597,22 @@ export class NavigationManager {
     contentWrapper.appendChild(textContainer);
 
     content.appendChild(contentWrapper);
+
+    // Add skip button OUTSIDE wrapper so it's on its own line below everything
+    if (onSkipCallback) {
+      const skipButton = document.createElement('button');
+      skipButton.className = 'interactive-comment-skip-btn';
+      skipButton.textContent = 'Skip step';
+      skipButton.setAttribute('aria-label', 'Skip this step');
+      skipButton.setAttribute('title', 'Skip this step and move to next');
+
+      skipButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onSkipCallback();
+      });
+
+      content.appendChild(skipButton);
+    }
 
     const arrow = document.createElement('div');
     arrow.className = 'interactive-comment-arrow';

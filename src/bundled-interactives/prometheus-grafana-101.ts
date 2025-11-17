@@ -85,8 +85,7 @@ export const prometheusGrafana101Html = `<html>
 
               <li class="interactive"
                   data-targetaction="guided"
-                  data-step-timeout="45000"
-                  data-skippable="true">
+                  data-step-timeout="45000">
                 <span class="interactive" 
                       data-targetaction="hover"
                       data-reftarget='.gf-form:has([data-testid="data-testid prometheus type"]) label > svg[tabindex="0"]'
@@ -95,7 +94,8 @@ export const prometheusGrafana101Html = `<html>
                 </span>
                 <span class="interactive"
                       data-targetaction="highlight"
-                      data-reftarget='grafana:components.DataSource.Prometheus.configPage.prometheusType'>
+                      data-reftarget='grafana:components.DataSource.Prometheus.configPage.prometheusType'
+                      data-skippable="true">
                   <span class="interactive-comment">The <strong>Prometheus type</strong> dropdown lets you specify whether you're connecting to a standard Prometheus server or a compatible service like Cortex or Thanos, which helps Grafana optimize query behavior accordingly.</span>
                 </span>
                 <span class="interactive"
