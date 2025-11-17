@@ -11,6 +11,17 @@ The testing framework:
 - Generates JSON reports with actionable error messages
 - Can be used via CLI or programmatically
 
+### Why Local File Paths Don't Work
+
+**Local file paths (e.g., `./guide.html`, `/path/to/guide.html`) are not supported** because Pathfinder runs in a browser context and needs URLs that can be fetched over HTTP/HTTPS. When you test a guide, Pathfinder must load the guide content from a URL accessible to the browser, not from the local filesystem.
+
+Instead, use:
+- **Bundled guides**: `bundled:welcome-to-grafana` (guides included in the Pathfinder package)
+- **GitHub raw URLs**: `https://raw.githubusercontent.com/grafana/interactive-tutorials/main/path/unstyled.html` (publicly accessible guides)
+- **Data proxy URLs**: `api/plugin-proxy/grafana-pathfinder-app/github-raw/path/unstyled.html` (guides routed through Grafana's data proxy)
+
+These URL formats work with Pathfinder's dev tools and can be loaded from any Grafana instance (local or remote).
+
 ## Installation
 
 The framework is included in the Pathfinder package. For other repositories:
@@ -54,10 +65,17 @@ npx grafana-pathfinder-app test-guide --guide bundled:welcome-to-grafana
 
 #### CLI Options
 
-Test from an HTML file:
+**Guide URL Format**: Guide URLs must be accessible to Pathfinder from the browser. Local file paths are **not supported** because Pathfinder needs URLs that can be fetched from the browser context.
+
+Supported formats:
+- **Bundled guide**: `bundled:welcome-to-grafana`
+- **GitHub raw URL**: `https://raw.githubusercontent.com/grafana/interactive-tutorials/main/path/unstyled.html`
+- **Data proxy URL**: `api/plugin-proxy/grafana-pathfinder-app/github-raw/path/unstyled.html`
+
+Test with a GitHub URL:
 
 ```bash
-npx grafana-pathfinder-app test-guide --guide ./path/to/guide.html
+npx grafana-pathfinder-app test-guide --guide "https://raw.githubusercontent.com/grafana/interactive-tutorials/main/welcome-to-grafana/unstyled.html"
 ```
 
 With custom Grafana URL:
@@ -72,6 +90,58 @@ Specify output directory:
 npx grafana-pathfinder-app test-guide --guide bundled:welcome-to-grafana --output ./test-results
 ```
 
+#### Remote Stack Testing
+
+The framework supports testing guides on remote Grafana instances (Grafana Cloud, Grafana Play, etc.) that require authentication and may have stack-specific data or apps.
+
+**Important**: Some guides require specific data sources, apps, or configurations that are only available on certain stacks. Testing a guide on the wrong stack will cause failures that don't indicate guide problems.
+
+**Authentication**: Remote stacks require Grafana session cookies for authentication. You must provide both `--grafana-session` and `--grafana-session-expiry` flags.
+
+**Dev Mode Setup**: The framework automatically enables dev mode on remote stacks by:
+1. Navigating to the plugin configuration page with `?dev=true`
+2. Enabling the dev mode checkbox if not already enabled
+3. Verifying dev mode is active before running tests
+
+**Example - Grafana Cloud**:
+
+```bash
+npx grafana-pathfinder-app test-guide --guide bundled:welcome-to-grafana \
+  --grafana-url https://your-instance.grafana.net \
+  --grafana-session "your-session-cookie-value" \
+  --grafana-session-expiry "2024-12-31T23:59:59Z"
+```
+
+**Example - Grafana Play**:
+
+```bash
+npx grafana-pathfinder-app test-guide --guide bundled:welcome-to-grafana \
+  --grafana-url https://play.grafana.org \
+  --grafana-session "session-value" \
+  --grafana-session-expiry "2024-12-31T23:59:59Z"
+```
+
+**Getting Session Cookies**:
+
+1. Log into your Grafana instance in a browser
+2. Open browser developer tools (F12)
+3. Go to Application/Storage → Cookies
+4. Find the `grafana_session` cookie and copy its value
+5. Find the `grafana_session_expiry` cookie and copy its value (or calculate expiry date)
+6. Use these values with the CLI flags
+
+**Stack Profile**: You can explicitly specify the stack profile:
+
+```bash
+npx grafana-pathfinder-app test-guide --guide bundled:welcome-to-grafana \
+  --stack-profile remote \
+  --grafana-url https://play.grafana.org \
+  --grafana-session "session-value" \
+  --grafana-session-expiry "2024-12-31T23:59:59Z"
+```
+
+If you provide session cookies, the stack profile is automatically set to `remote`. Use `--stack-profile local` to force local mode even if cookies are provided.
+
 ### Playwright Test Framework (Optional)
 
 For CI/CD integration or when you need Playwright's built-in test reporting, you can use the generic Playwright test file. **No spec files are needed for each guide** - one generic spec file works with any guide.
@@ -82,8 +152,8 @@ For CI/CD integration or when you need Playwright's built-in test reporting, you
 # Test a bundled guide
 GUIDE_URL=bundled:welcome-to-grafana npx playwright test e2e/guides/guide.spec.ts
 
-# Test from an HTML file
-GUIDE_URL=./path/to/guide.html npx playwright test e2e/guides/guide.spec.ts
+# Test with a GitHub URL
+GUIDE_URL="https://raw.githubusercontent.com/grafana/interactive-tutorials/main/welcome-to-grafana/unstyled.html" npx playwright test e2e/guides/guide.spec.ts
 
 # With custom Grafana URL
 GUIDE_URL=bundled:welcome-to-grafana GRAFANA_URL=http://localhost:3000 npx playwright test e2e/guides/guide.spec.ts
@@ -97,6 +167,8 @@ GUIDE_URL=bundled:welcome-to-grafana TEST_OUTPUT_DIR=./results npx playwright te
 The generic spec file (`e2e/guides/guide.spec.ts`) accepts these environment variables:
 
 - `GUIDE_URL`: Guide URL to test (default: `bundled:welcome-to-grafana`)
+  - Must be accessible to Pathfinder (bundled:, GitHub raw URL, or data proxy URL)
+  - Local file paths are not supported
 - `GRAFANA_URL`: Grafana instance URL (default: `http://localhost:3000` or Playwright's `baseURL`)
 - `TEST_OUTPUT_DIR`: Output directory for test results (default: `./test-results`)
 
@@ -112,8 +184,16 @@ The generic spec file (`e2e/guides/guide.spec.ts`) accepts these environment var
 
 ### Prerequisites
 
+**For Local Stack Testing**:
 1. **Build Pathfinder**: Run `npm run build` to create a production build
 2. **Start Grafana**: Run `npm run server` in a separate terminal (or use `--start-stack` flag when implemented)
+
+**For Remote Stack Testing**:
+1. **Build Pathfinder**: Run `npm run build` to create a production build
+2. **Valid Session Cookies**: Obtain `grafana_session` and `grafana_session_expiry` cookies from your browser
+3. **Admin Permissions**: The authenticated user must have admin permissions to enable dev mode
+4. **Plugin Installed**: Pathfinder plugin must be installed and enabled on the remote instance
+5. **Stack Compatibility**: Ensure the guide is compatible with the target stack (some guides require specific data sources or apps)
 
 ### Programmatic Usage
 
@@ -127,6 +207,9 @@ const config: TestConfig = {
   outputDir: './test-results',
   startStack: false,
   timeout: 30000,
+  stackMode: 'local', // or 'remote'
+  grafanaSession: undefined, // Required for remote stacks
+  grafanaSessionExpiry: undefined, // Required for remote stacks
 };
 
 const report = await runGuideTest(config);
@@ -246,9 +329,28 @@ npm run server
 
 ### Guide not loading
 
-- Verify the guide URL is correct
+- Verify the guide URL is correct and accessible to Pathfinder
+- **Local file paths are not supported** - use GitHub URLs or bundled guides instead
+  - Use: `bundled:welcome-to-grafana` or `https://raw.githubusercontent.com/grafana/interactive-tutorials/main/path/unstyled.html`
+  - Don't use: `./guide.html` or `/path/to/guide.html`
 - Check that Pathfinder plugin is installed and enabled
-- Ensure the guide exists in `bundled-interactives/index.json`
+- For bundled guides: Ensure the guide exists in `bundled-interactives/index.json`
+- For GitHub URLs: Verify the URL is accessible and points to a valid HTML file
+- For remote stacks: Verify dev mode is enabled (check plugin configuration page)
+
+### Remote stack authentication failures
+
+- Verify session cookies are valid and not expired
+- Check that cookies are for the correct domain
+- Ensure you have admin permissions on the remote instance
+- Verify the Grafana URL is correct and accessible
+
+### Dev mode not enabling on remote stack
+
+- Check that you have admin permissions to modify plugin settings
+- Verify the plugin configuration page loads correctly
+- Check browser console for errors during dev mode toggle
+- Review screenshots in the output directory for visual debugging
 
 ### Steps not executing
 

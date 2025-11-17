@@ -9,6 +9,7 @@ import { createTestReport, generateReport, printReportSummary } from './reporter
 import { TestConfig, TestReport, StepInfo, StepResult } from './types';
 import { waitForGuideContent, logDOMState } from './wait-helpers';
 import { logInfo, logError, logDebug, logInteraction, logSelectorLookup, logSelectorFound } from './logger';
+import { prepareStackForGuide } from './stack-setup';
 import { join } from 'path';
 import { mkdir } from 'fs/promises';
 
@@ -45,12 +46,37 @@ export async function runGuideTest(config: TestConfig): Promise<TestReport> {
       logError(`Page error: ${error.message}`, { context: 'page-error' });
     });
 
-    // Navigate to Grafana
-    logInfo(`Navigating to ${config.grafanaUrl}...`, { context: 'navigation' });
-    await page.goto(config.grafanaUrl);
-    logDebug('Waiting for network idle', { context: 'navigation' });
-    await page.waitForLoadState('networkidle');
-    logInfo('Navigation complete', { context: 'navigation' });
+    // Prepare stack for testing (handles remote stack auth and dev mode setup)
+    try {
+      await prepareStackForGuide(context, page, config, screenshotDir);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logError(`Stack setup failed: ${errorMessage}`, { context: 'stack-setup' });
+      throw new Error(`Failed to prepare stack: ${errorMessage}`);
+    }
+
+    // For remote stacks, prepareStackForGuide already navigated to Grafana
+    // For local stacks, navigate now
+    if (config.stackMode === 'local') {
+      logInfo(`Navigating to ${config.grafanaUrl}...`, { context: 'navigation' });
+      await page.goto(config.grafanaUrl);
+      logDebug('Waiting for network idle', { context: 'navigation' });
+      await page.waitForLoadState('networkidle');
+      logInfo('Navigation complete', { context: 'navigation' });
+    } else {
+      // For remote stacks, ensure we're on the Grafana home page
+      // (prepareStackForGuide may have navigated to config page)
+      const currentUrl = new URL(page.url());
+      const grafanaUrl = new URL(config.grafanaUrl);
+      
+      // If we're on the config page, navigate back to home
+      if (currentUrl.pathname.includes('/a/grafana-pathfinder-app')) {
+        logInfo('Navigating to Grafana home page...', { context: 'navigation' });
+        await page.goto(config.grafanaUrl);
+        await page.waitForLoadState('networkidle');
+        logInfo('Navigation complete', { context: 'navigation' });
+      }
+    }
 
     // Open Pathfinder panel
     logInfo('Opening Pathfinder panel...', { context: 'panel' });

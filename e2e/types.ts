@@ -76,11 +76,16 @@ export interface TestReport {
   duration: number;
 }
 
+export type StackMode = 'local' | 'remote';
+
 export interface TestConfig {
   guideUrl: string;
   grafanaUrl: string;
   outputDir: string;
   startStack: boolean;
   timeout: number;
+  stackMode: StackMode;
+  grafanaSession?: string;
+  grafanaSessionExpiry?: string;
 }
 
