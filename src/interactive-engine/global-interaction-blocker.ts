@@ -227,6 +227,14 @@ class GlobalInteractionBlocker {
    */
   private addBlockingHandlers(overlay: HTMLElement): void {
     const handleBlockedInteraction = (e: Event) => {
+      const target = e.target as HTMLElement;
+
+      // Allow interactions within the WYSIWYG editor container
+      // This prevents blocking editor buttons and controls
+      if (target.closest('.wysiwyg-editor-container') || target.closest('.ProseMirror')) {
+        return; // Don't block - let the event proceed
+      }
+
       e.preventDefault();
       e.stopPropagation();
       // Only show warning for click events to avoid spam
@@ -330,13 +338,19 @@ class GlobalInteractionBlocker {
    */
   private addBlockingHandlersWithCancelException(overlay: HTMLElement): void {
     const handleBlockedInteraction = (e: Event) => {
-      // Allow clicks on the cancel button
       const target = e.target as HTMLElement;
-      const isCancelButton = target.id === 'cancel-section-btn' || target.closest('#cancel-section-btn');
 
+      // Allow clicks on the cancel button
+      const isCancelButton = target.id === 'cancel-section-btn' || target.closest('#cancel-section-btn');
       if (isCancelButton) {
         // Let the cancel button handle its own click
         return;
+      }
+
+      // Allow interactions within the WYSIWYG editor container
+      // This prevents blocking editor buttons and controls
+      if (target.closest('.wysiwyg-editor-container') || target.closest('.ProseMirror')) {
+        return; // Don't block - let the event proceed
       }
 
       e.preventDefault();
@@ -349,8 +363,12 @@ class GlobalInteractionBlocker {
     };
 
     // Add event listeners for various interaction types
+    // Use capture phase to intercept events before they reach targets
     ['click', 'wheel', 'scroll', 'touchstart', 'touchmove', 'keydown'].forEach((eventType) => {
-      overlay.addEventListener(eventType, handleBlockedInteraction);
+      overlay.addEventListener(eventType, handleBlockedInteraction, {
+        capture: true,
+        passive: false,
+      });
     });
 
     // Add global keyboard shortcut handler for Ctrl+C

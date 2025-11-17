@@ -1,4 +1,4 @@
-import React, { memo, useEffect } from 'react';
+import React, { memo, useEffect, Suspense, lazy } from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
 import { Icon, useStyles2, Card, Badge, Alert } from '@grafana/ui';
@@ -8,8 +8,16 @@ import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
-import { SelectorDebugPanel } from '../SelectorDebugPanel';
 import { locationService, config } from '@grafana/runtime';
+
+// Lazy load dev tools to keep them out of production bundles
+// This component is only loaded when dev mode is enabled
+// Webpack will create a separate chunk for this import, which is only downloaded when dev mode is active
+const SelectorDebugPanel = lazy(() =>
+  import('../SelectorDebugPanel').then((module) => ({
+    default: module.SelectorDebugPanel,
+  }))
+);
 
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
@@ -479,7 +487,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
         {/* Debug Panel - only shown when dev mode is enabled (hybrid: server-side storage, per-user scoping) */}
         {devModeEnabled && (
           <div className={styles.debugSection}>
-            <SelectorDebugPanel onOpenDocsPage={openDocsPage} />
+            <Suspense fallback={<SkeletonLoader type="recommendations" />}>
+              <SelectorDebugPanel onOpenDocsPage={openDocsPage} />
+            </Suspense>
           </div>
         )}
 

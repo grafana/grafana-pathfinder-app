@@ -4,6 +4,7 @@ import { useInteractiveElements } from '../../interactive-engine';
 import { getDebugPanelStyles } from './debug-panel.styles';
 import { combineStepsIntoMultistep } from '../../utils/devtools/tutorial-exporter';
 import { URLTester } from 'components/URLTester';
+import { WysiwygEditor } from '../wysiwyg-editor';
 import { useSelectorTester } from '../../utils/devtools/selector-tester.hook';
 import { useStepExecutor } from '../../utils/devtools/step-executor.hook';
 import { useSelectorCapture } from '../../utils/devtools/selector-capture.hook';
@@ -292,6 +293,8 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
           Leave Dev Mode
         </Button>
       </div>
+
+      <WysiwygEditor />
 
       {/* Simple Selector Tester */}
       <div className={styles.section}>
