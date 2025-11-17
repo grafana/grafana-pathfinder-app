@@ -1,6 +1,6 @@
 import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, usePluginContext } from '@grafana/data';
 import { LoadingPlaceholder } from '@grafana/ui';
-import { getAppEvents } from '@grafana/runtime';
+import { getAppEvents, locationService } from '@grafana/runtime';
 import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
@@ -60,7 +60,12 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     const sessionKey = 'grafana-interactive-learning-panel-auto-opened';
     const hasAutoOpened = sessionStorage.getItem(sessionKey);
 
-    if (!hasAutoOpened) {
+    // Skip auto-open if user is on the setup guide onboarding flow
+    const location = locationService.getLocation();
+    const currentPath = location.pathname || window.location.pathname || '';
+    const isOnboardingFlow = currentPath.includes('/a/grafana-setupguide-app/onboarding-flow');
+
+    if (!hasAutoOpened && !isOnboardingFlow) {
       sessionStorage.setItem(sessionKey, 'true');
 
       // Small delay to ensure Grafana is ready
@@ -89,12 +94,12 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
                 },
               });
               document.dispatchEvent(autoLaunchEvent);
-            }, 2000); // Wait for sidebar to mount
+            }, 800); // Wait for sidebar to mount
           }
         } catch (error) {
           console.error('Failed to auto-open Interactive learning panel:', error);
         }
-      }, 500);
+      }, 200);
     }
   }
 };
