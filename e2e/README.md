@@ -1,26 +1,22 @@
 # E2E Testing Framework for Interactive Guides
 
+## Background
+
+* Pathfinder guides include the use of DOM selectors, which point to particular interactive elements in product
+These can be brittle or can break, if engineering ships changes.
+* Heds wrote a great feedback doc that explored some of these issues
+* Pathfinder wants to create great learning experiences and broken guides aren’t that. We’ve built a lot of defensive features into Pathfinder to make it hard for guides to mess up. What we don’t guard against is the product itself changing.  If you specify a button should be clicked, and Grafana Cloud ships an update that removes the button, the guide will naturally break
+* This directory is part of the medium/long-term game plan for mainteanance
+
 This directory contains the end-to-end testing framework for validating interactive guides in Pathfinder. The framework automatically executes all steps in a guide (Show Me → Do It) and generates detailed failure reports.
 
 ## Overview
 
-The testing framework:
-- Parses HTML guides to extract interactive steps
-- Executes each step automatically (Show Me then Do It)
-- Captures detailed failure information including screenshots
-- Generates JSON reports with actionable error messages
-- Can be used via CLI or programmatically
+* Provide CLI tools where pathfinder can be installed like any other NPM module
+* Allow a single CLI command to test any URL-available guide on any Pathfinder stack (provided auth is available)
+* Generate a detailed JSON report with actionable error messages, and possibly later detailed failure information & screenshots
 
-### Why Local File Paths Don't Work
-
-**Local file paths (e.g., `./guide.html`, `/path/to/guide.html`) are not supported** because Pathfinder runs in a browser context and needs URLs that can be fetched over HTTP/HTTPS. When you test a guide, Pathfinder must load the guide content from a URL accessible to the browser, not from the local filesystem.
-
-Instead, use:
-- **Bundled guides**: `bundled:welcome-to-grafana` (guides included in the Pathfinder package)
-- **GitHub raw URLs**: `https://raw.githubusercontent.com/grafana/interactive-tutorials/main/path/unstyled.html` (publicly accessible guides)
-- **Data proxy URLs**: `api/plugin-proxy/grafana-pathfinder-app/github-raw/path/unstyled.html` (guides routed through Grafana's data proxy)
-
-These URL formats work with Pathfinder's dev tools and can be loaded from any Grafana instance (local or remote).
+Doing this as a CLI should maximize ability to automate this, e.g. in the build chain for the `interactive-tutorials` repo.
 
 ## Installation
 
@@ -146,6 +142,16 @@ If you provide session cookies, the stack profile is automatically set to `remot
 
 For CI/CD integration or when you need Playwright's built-in test reporting, you can use the generic Playwright test file. **No spec files are needed for each guide** - one generic spec file works with any guide.
 
+#### Guides Must be on the Network
+
+**Local file paths (e.g., `./guide.html`, `/path/to/guide.html`) will not be supported** because Pathfinder runs in a browser context and needs URLs that can be fetched over HTTP/HTTPS. When you test a guide, Pathfinder must load the guide content from a URL accessible to the browser, not from the local filesystem.
+
+Instead, we can specify:
+- **Bundled guide URLs**: `bundled:welcome-to-grafana` (guides included in the Pathfinder package)
+- **GitHub raw URLs**: `https://raw.githubusercontent.com/grafana/interactive-tutorials/main/path/unstyled.html` (publicly accessible guides)
+
+These URL formats work with Pathfinder's dev tools and can be loaded from any Grafana instance (local or remote).
+
 #### Running with Playwright
 
 ```bash
@@ -194,27 +200,6 @@ The generic spec file (`e2e/guides/guide.spec.ts`) accepts these environment var
 3. **Admin Permissions**: The authenticated user must have admin permissions to enable dev mode
 4. **Plugin Installed**: Pathfinder plugin must be installed and enabled on the remote instance
 5. **Stack Compatibility**: Ensure the guide is compatible with the target stack (some guides require specific data sources or apps)
-
-### Programmatic Usage
-
-```typescript
-import { runGuideTest } from 'grafana-pathfinder-app/e2e/guide-runner';
-import { TestConfig } from 'grafana-pathfinder-app/e2e/types';
-
-const config: TestConfig = {
-  guideUrl: 'bundled:welcome-to-grafana',
-  grafanaUrl: 'http://localhost:3000',
-  outputDir: './test-results',
-  startStack: false,
-  timeout: 30000,
-  stackMode: 'local', // or 'remote'
-  grafanaSession: undefined, // Required for remote stacks
-  grafanaSessionExpiry: undefined, // Required for remote stacks
-};
-
-const report = await runGuideTest(config);
-console.log(`Test completed: ${report.summary.passed} passed, ${report.summary.failed} failed`);
-```
 
 ## Test Reports
 
@@ -317,53 +302,6 @@ The framework is designed to minimize changes to Pathfinder core code:
 ## Example Test
 
 See `guides/guide.spec.ts` for the generic Playwright test file that works with any guide. This is optional - the CLI approach doesn't require spec files.
-
-## Troubleshooting
-
-### Grafana not accessible
-
-Make sure Grafana is running:
-```bash
-npm run server
-```
-
-### Guide not loading
-
-- Verify the guide URL is correct and accessible to Pathfinder
-- **Local file paths are not supported** - use GitHub URLs or bundled guides instead
-  - Use: `bundled:welcome-to-grafana` or `https://raw.githubusercontent.com/grafana/interactive-tutorials/main/path/unstyled.html`
-  - Don't use: `./guide.html` or `/path/to/guide.html`
-- Check that Pathfinder plugin is installed and enabled
-- For bundled guides: Ensure the guide exists in `bundled-interactives/index.json`
-- For GitHub URLs: Verify the URL is accessible and points to a valid HTML file
-- For remote stacks: Verify dev mode is enabled (check plugin configuration page)
-
-### Remote stack authentication failures
-
-- Verify session cookies are valid and not expired
-- Check that cookies are for the correct domain
-- Ensure you have admin permissions on the remote instance
-- Verify the Grafana URL is correct and accessible
-
-### Dev mode not enabling on remote stack
-
-- Check that you have admin permissions to modify plugin settings
-- Verify the plugin configuration page loads correctly
-- Check browser console for errors during dev mode toggle
-- Review screenshots in the output directory for visual debugging
-
-### Steps not executing
-
-- Check browser console for errors
-- Verify selectors are correct (may have changed in Grafana UI)
-- Review screenshots in the output directory
-
-### Build Issues
-
-Ensure Pathfinder is built before testing:
-```bash
-npm run build
-```
 
 ## Development
 
