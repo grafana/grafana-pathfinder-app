@@ -2,7 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { querySelectorAllEnhanced, isElementVisible } from '../../lib/dom';
+import { querySelectorAllEnhanced, isElementVisible, resolveSelector } from '../../lib/dom';
 
 /**
  * Handler for hover actions that simulate mouse hover to trigger CSS :hover states
@@ -36,15 +36,18 @@ export class HoverHandler {
   }
 
   private async findTargetElement(selector: string): Promise<HTMLElement> {
-    const enhancedResult = querySelectorAllEnhanced(selector);
+    // Resolve grafana: prefix if present
+    const resolvedSelector = resolveSelector(selector);
+
+    const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
     const targetElements = enhancedResult.elements;
 
     if (targetElements.length === 0) {
-      throw new Error(`No elements found matching selector: ${selector}`);
+      throw new Error(`No elements found matching selector: ${resolvedSelector}`);
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${selector}, using first element`);
+      console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
     }
 
     return targetElements[0];

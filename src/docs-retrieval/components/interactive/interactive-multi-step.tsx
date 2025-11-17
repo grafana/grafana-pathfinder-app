@@ -1,4 +1,4 @@
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
@@ -8,13 +8,10 @@ import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties }
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
+import { InternalAction } from '../../../types/interactive-actions.types';
+import { testIds } from '../../../components/testIds';
 
-interface InternalAction {
-  targetAction: string;
-  refTarget?: string;
-  targetValue?: string;
-  requirements?: string;
-}
+let anonymousMultiStepCounter = 0;
 
 interface InteractiveMultiStepProps {
   internalActions: InternalAction[];
@@ -136,6 +133,23 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     },
     ref
   ) => {
+    const generatedStepIdRef = useRef<string>();
+    if (!generatedStepIdRef.current) {
+      anonymousMultiStepCounter += 1;
+      generatedStepIdRef.current = `standalone-multistep-${anonymousMultiStepCounter}`;
+    }
+    const renderedStepId = stepId ?? generatedStepIdRef.current;
+    const analyticsStepMeta = useMemo(
+      () => ({
+        stepId: stepId ?? renderedStepId,
+        stepIndex,
+        totalSteps,
+        sectionId,
+        sectionTitle,
+      }),
+      [stepId, renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
+    );
+
     // Local UI state (similar to InteractiveStep)
     const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
@@ -182,7 +196,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       requirements,
       objectives,
       hints,
-      stepId: stepId || `multistep-${Date.now()}`,
+      stepId: stepId || renderedStepId,
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
     });
 
@@ -247,7 +261,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
       // Check if we're already in a section blocking state (nested in a section)
       const isNestedInSection = isSectionBlocking();
-      const multiStepId = stepId || `multistep-${Date.now()}`;
+      const multiStepId = stepId || renderedStepId;
 
       // Only start blocking if we're not already in a blocking state (avoid double-blocking)
       if (!isNestedInSection) {
@@ -383,6 +397,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       isSectionBlocking,
       handleMultiStepCancel,
       title,
+      renderedStepId,
     ]);
 
     // Expose execute method for parent (sequence execution)
@@ -497,12 +512,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             buildInteractiveStepProperties(
               {
                 target_action: 'multistep',
-                ref_target: stepId || 'unknown',
+                ref_target: renderedStepId,
                 interaction_location: 'interactive_multi_step_auto',
                 completion_method: 'auto_detected',
                 internal_actions_count: internalActions.length,
               },
-              { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+              analyticsStepMeta
             )
           );
         }
@@ -525,10 +540,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       stepId,
       onStepComplete,
       onComplete,
-      stepIndex,
-      totalSteps,
-      sectionId,
-      sectionTitle,
+      renderedStepId,
+      analyticsStepMeta,
     ]);
 
     // Handle "Do it" button click
@@ -543,11 +556,11 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         buildInteractiveStepProperties(
           {
             target_action: 'multistep',
-            ref_target: stepId || 'unknown',
+            ref_target: renderedStepId,
             interaction_location: 'interactive_multi_step',
             internal_actions_count: internalActions.length,
           },
-          { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+          analyticsStepMeta
         )
       );
 
@@ -558,12 +571,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       isCompletedWithObjectives,
       checker.isEnabled,
       executeStep,
-      stepId,
       internalActions.length,
-      stepIndex,
-      totalSteps,
-      sectionId,
-      sectionTitle,
+      renderedStepId,
+      analyticsStepMeta,
     ]);
 
     // Handle individual step reset (redo functionality)
@@ -653,9 +663,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           isCompletedWithObjectives ? ' completed' : ''
         }${isCurrentlyExecuting ? ' executing' : ''}`}
         data-targetaction="multistep"
-        data-reftarget={stepId || 'multistep'}
+        data-reftarget={renderedStepId}
         data-internal-actions={JSON.stringify(internalActions)}
-        data-step-id={stepId}
+        data-step-id={stepId || renderedStepId}
+        data-testid={testIds.interactive.step(renderedStepId)}
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
@@ -672,6 +683,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                 size="sm"
                 variant="primary"
                 className="interactive-step-do-btn"
+                data-testid={testIds.interactive.doItButton(renderedStepId)}
                 title={getButtonTitle()}
               >
                 {getButtonText()}
@@ -701,6 +713,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                 size="sm"
                 variant="secondary"
                 className="interactive-step-skip-btn"
+                data-testid={testIds.interactive.skipButton(renderedStepId)}
                 title="Skip this multi-step without executing"
               >
                 Skip
@@ -710,11 +723,17 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
           {isCompletedWithObjectives && (
             <div className="interactive-step-completion-group">
-              <span className="interactive-step-completed-indicator">✓</span>
+              <span
+                className="interactive-step-completed-indicator"
+                data-testid={testIds.interactive.stepCompleted(renderedStepId)}
+              >
+                ✓
+              </span>
               <button
                 className="interactive-step-redo-btn"
                 onClick={handleStepRedo}
                 disabled={disabled || isAnyActionRunning}
+                data-testid={testIds.interactive.redoButton(renderedStepId)}
                 title="Redo this multi-step (execute again)"
               >
                 <span className="interactive-step-redo-icon">↻</span>
@@ -730,10 +749,18 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           !isCompletedWithObjectives &&
           !checker.isChecking &&
           checker.explanation && (
-            <div className="interactive-step-requirement-explanation">
+            <div
+              className="interactive-step-requirement-explanation"
+              data-testid={testIds.interactive.requirementCheck(renderedStepId)}
+            >
               {checker.explanation}
               <button
                 className="interactive-requirement-retry-btn"
+                data-testid={
+                  checker.canFixRequirement
+                    ? testIds.interactive.requirementFixButton(renderedStepId)
+                    : testIds.interactive.requirementRetryButton(renderedStepId)
+                }
                 onClick={async () => {
                   if (checker.canFixRequirement && checker.fixRequirement) {
                     await checker.fixRequirement();
@@ -749,10 +776,18 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
         {/* Show execution error when available */}
         {executionError && !checker.isChecking && (
-          <div className="interactive-step-execution-error">
+          <div
+            className="interactive-step-execution-error"
+            data-testid={testIds.interactive.errorMessage(renderedStepId)}
+          >
             {executionError}
             <button
               className="interactive-error-retry-btn"
+              data-testid={
+                checker.canFixRequirement
+                  ? testIds.interactive.requirementFixButton(renderedStepId)
+                  : testIds.interactive.requirementRetryButton(renderedStepId)
+              }
               onClick={async () => {
                 setExecutionError(null);
                 if (checker.canFixRequirement && checker.fixRequirement) {

@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "1.1.64",
+  "version": "1.1.67",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
     "dev": "webpack -w -c ./.config/webpack/webpack.config.ts --env development",
@@ -86,6 +86,11 @@
     "@grafana/scenes": "^6.45.0",
     "@grafana/schema": "^12.2.1",
     "@grafana/ui": "^12.2.1",
+    "@tiptap/extension-link": "^3.10.4",
+    "@tiptap/extension-text-style": "^3.10.4",
+    "@tiptap/pm": "^3.10.4",
+    "@tiptap/react": "^3.10.4",
+    "@tiptap/starter-kit": "^3.10.4",
     "dompurify": "^3.3.0",
     "idb": "^8.0.3",
     "peerjs": "^1.5.5",

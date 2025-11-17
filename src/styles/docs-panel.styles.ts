@@ -218,6 +218,20 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     position: 'relative', // Positioning context for absolute dropdown
     flex: 1, // Take full width of parent container
     minWidth: 0, // Allow shrinking
+    // Smooth slide-down animation when tab bar appears
+    animation: 'slideDown 0.3s ease-out',
+    '@keyframes slideDown': {
+      from: {
+        maxHeight: 0,
+        opacity: 0,
+        transform: 'translateY(-8px)',
+      },
+      to: {
+        maxHeight: '60px',
+        opacity: 1,
+        transform: 'translateY(0)',
+      },
+    },
   }),
   tabList: css({
     label: 'combined-journey-tab-list',
@@ -249,6 +263,9 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     '&:hover': {
       backgroundColor: 'transparent',
       color: theme.colors.text.primary,
+      '&::after': {
+        backgroundColor: theme.colors.action.hover,
+      },
     },
     '&:not(:first-child)': {
       marginLeft: theme.spacing(0.25),
@@ -257,12 +274,12 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     '&::after': {
       content: '""',
       position: 'absolute',
-      left: theme.spacing(0.5),
-      right: theme.spacing(0.5),
-      bottom: '-1px',
+      left: 0,
+      right: 0,
+      bottom: 0,
       height: '2px',
       backgroundColor: 'transparent',
-      borderRadius: '1px',
+      borderRadius: theme.shape.radius.default,
       transition: 'background-color 0.2s ease',
     },
   }),
@@ -273,7 +290,7 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
     // Primary blue underline like Grafana UI Tabs
     '&::after': {
-      backgroundColor: theme.colors.warning.main,
+      backgroundImage: theme.colors.gradients.brandHorizontal,
     },
   }),
   tabContent: css({
@@ -296,7 +313,6 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     textOverflow: 'ellipsis',
     overflow: 'hidden',
     whiteSpace: 'nowrap',
-    fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: 'inherit',
     color: 'inherit',
     flex: 1,
@@ -428,7 +444,6 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: 'inherit',
   }),
   dropdownItemClose: css({

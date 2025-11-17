@@ -78,6 +78,7 @@ jest.mock('../lib/dom', () => ({
   // Re-export other commonly needed functions as pass-through mocks
   findButtonByText: jest.fn().mockReturnValue([]),
   querySelectorAllEnhanced: jest.fn().mockReturnValue({ elements: [], usedFallback: false, originalSelector: '' }),
+  resolveSelector: jest.fn((selector: string) => selector), // Pass through selector as-is for tests
 }));
 
 describe('useInteractiveElements', () => {

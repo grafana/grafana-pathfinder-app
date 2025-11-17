@@ -46,6 +46,7 @@ jest.mock('../../lib/dom', () => ({
     originalSelector: selector,
   })),
   isElementVisible: jest.fn(),
+  resolveSelector: jest.fn((selector: string) => selector), // Pass through selector as-is for tests
 }));
 
 describe('FocusHandler', () => {

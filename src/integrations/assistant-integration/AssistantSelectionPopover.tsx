@@ -5,7 +5,7 @@ import { useStyles2, Button } from '@grafana/ui';
 import { openAssistant, type ChatContextItem } from '@grafana/assistant';
 import { getIsAssistantAvailable } from './assistant-dev-mode';
 import { buildAssistantPrompt } from './assistant-context.utils';
-import type { SelectionPosition } from './useTextSelection.hook';
+import type { SelectionPosition } from '../../types/hooks.types';
 
 interface AssistantSelectionPopoverProps {
   selectedText: string;

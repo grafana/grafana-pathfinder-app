@@ -17,59 +17,26 @@ import { useInteractiveElements, useSequentialStepState } from '../interactive-e
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { checkRequirements } from './requirements-checker.utils';
+import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
-export interface UseStepCheckerProps {
-  requirements?: string;
-  objectives?: string;
-  hints?: string;
-  stepId: string;
-  targetAction?: string; // Add targetAction to pass through to requirements checking
-  refTarget?: string; // Add refTarget to pass through to requirements checking
-  isEligibleForChecking: boolean;
-  skippable?: boolean; // Whether this step can be skipped if requirements fail
-}
-
-export interface UseStepCheckerReturn {
-  // Unified state
-  isEnabled: boolean;
-  isCompleted: boolean;
-  isChecking: boolean;
-  isSkipped?: boolean; // Whether this step was skipped due to failed requirements
-
-  // Retry state
-  retryCount?: number; // Current retry attempt
-  maxRetries?: number; // Maximum retry attempts
-  isRetrying?: boolean; // Whether currently in a retry cycle
-
-  // Diagnostics
-  completionReason: 'none' | 'objectives' | 'manual' | 'skipped';
-  explanation?: string;
-  error?: string;
-  canFixRequirement?: boolean; // Whether the requirement can be automatically fixed
-  canSkip?: boolean; // Whether this step can be skipped
-
-  // Actions
-  checkStep: () => Promise<void>;
-  markCompleted: () => void;
-  markSkipped?: () => void; // Function to skip this step
-  resetStep: () => void; // Reset all step state including skipped
-  fixRequirement?: () => Promise<void>; // Function to automatically fix the requirement
-}
+// Re-export for convenience
+export type { UseStepCheckerProps, UseStepCheckerReturn };
 
 /**
  * Unified step checker that handles both requirements and objectives
  * Integrates with SequentialRequirementsManager for state propagation
  */
-export function useStepChecker({
-  requirements,
-  objectives,
-  hints,
-  stepId,
-  targetAction,
-  refTarget,
-  isEligibleForChecking = true,
-  skippable = false,
-}: UseStepCheckerProps): UseStepCheckerReturn {
+export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn {
+  const {
+    requirements,
+    objectives,
+    hints,
+    stepId,
+    targetAction,
+    refTarget,
+    isEligibleForChecking = true,
+    skippable = false,
+  } = props;
   const [state, setState] = useState({
     isEnabled: false,
     isCompleted: false,

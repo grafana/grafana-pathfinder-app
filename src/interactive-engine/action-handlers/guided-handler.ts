@@ -1,15 +1,8 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { querySelectorAllEnhanced, findButtonByText, isElementVisible } from '../../lib/dom';
-
-interface InternalAction {
-  targetAction: 'hover' | 'button' | 'highlight';
-  refTarget: string;
-  targetValue?: string;
-  requirements?: string;
-  targetComment?: string; // Optional comment to display in tooltip during this step
-}
+import { querySelectorAllEnhanced, findButtonByText, isElementVisible, resolveSelector } from '../../lib/dom';
+import { GuidedAction } from '../../types/interactive-actions.types';
 
 type CompletionResult = 'completed' | 'timeout' | 'cancelled';
 
@@ -64,7 +57,7 @@ export class GuidedHandler {
    * Returns true if user completed, false if timeout/cancelled
    */
   async executeGuidedStep(
-    action: InternalAction,
+    action: GuidedAction,
     stepIndex: number,
     totalSteps: number,
     timeout = 30000
@@ -154,32 +147,35 @@ export class GuidedHandler {
   ): Promise<HTMLElement> {
     let targetElements: HTMLElement[];
 
+    // Resolve grafana: prefix if present
+    const resolvedSelector = resolveSelector(selector);
+
     // For button actions, try button-specific finder first (handles text matching with HTML entities)
     if (actionType === 'button') {
       try {
-        targetElements = findButtonByText(selector);
+        targetElements = findButtonByText(resolvedSelector);
         if (targetElements.length > 0) {
           if (targetElements.length > 1) {
-            console.warn(`Multiple buttons found matching text: ${selector}, using first button`);
+            console.warn(`Multiple buttons found matching text: ${resolvedSelector}, using first button`);
           }
           return targetElements[0];
         }
       } catch (error) {
         // Fall through to enhanced selector
-        console.warn(`findButtonByText failed for "${selector}", trying enhanced selector:`, error);
+        console.warn(`findButtonByText failed for "${resolvedSelector}", trying enhanced selector:`, error);
       }
     }
 
     // Fallback to enhanced selector for all action types
-    const enhancedResult = querySelectorAllEnhanced(selector);
+    const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
     targetElements = enhancedResult.elements;
 
     if (targetElements.length === 0) {
-      throw new Error(`No elements found matching selector: ${selector}`);
+      throw new Error(`No elements found matching selector: ${resolvedSelector}`);
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${selector}, using first element`);
+      console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
     }
 
     return targetElements[0];
@@ -253,7 +249,7 @@ export class GuidedHandler {
    * Listener is attached immediately to avoid race condition with fast clicks
    */
   private createCompletionListener(
-    action: InternalAction,
+    action: GuidedAction,
     targetElement: HTMLElement,
     timeout: number
   ): Promise<CompletionResult> {
@@ -310,17 +306,27 @@ export class GuidedHandler {
   private async waitForHover(element: HTMLElement, signal: AbortSignal): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
       let hoverTimeout: NodeJS.Timeout | null = null;
+      let isResolved = false; // Prevent double resolution
       const dwellTime = 500; // User must hover for 500ms
 
       const startDwellTimer = () => {
+        // Clear any existing timer first
+        if (hoverTimeout) {
+          clearTimeout(hoverTimeout);
+        }
         // Start dwell timer
         hoverTimeout = setTimeout(() => {
-          resolve('completed');
+          if (!isResolved) {
+            isResolved = true;
+            resolve('completed');
+          }
         }, dwellTime);
       };
 
       const handleMouseEnter = () => {
-        startDwellTimer();
+        if (!isResolved) {
+          startDwellTimer();
+        }
       };
 
       const handleMouseLeave = () => {
@@ -352,7 +358,10 @@ export class GuidedHandler {
         if (hoverTimeout) {
           clearTimeout(hoverTimeout);
         }
-        resolve('cancelled');
+        if (!isResolved) {
+          isResolved = true;
+          resolve('cancelled');
+        }
       });
     });
   }
@@ -365,6 +374,7 @@ export class GuidedHandler {
    * - Slightly expanded click zone (16px padding) for better targeting
    * - Capture phase listening to catch events before they can be stopped
    * - Better SVG/nested element handling
+   * - Fixed listener cleanup bug (was attaching to document but cleaning up from document.body)
    */
   private async waitForClick(
     element: HTMLElement,
@@ -372,16 +382,25 @@ export class GuidedHandler {
     preventDefaultClick = false
   ): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
-      // Periodically update rect for dynamic elements (like hover-revealed items)
-      // This ensures we always have fresh bounds for click detection
+      let isResolved = false; // Prevent double resolution
+
+      // Periodically verify element is still connected
       const rectUpdateInterval = setInterval(() => {
-        // Just verify element is still connected - rect is recalculated on each click
         if (!element.isConnected) {
           clearInterval(rectUpdateInterval);
+          if (!isResolved) {
+            isResolved = true;
+            resolve('cancelled');
+          }
         }
       }, 100);
 
       const handleClick = (event: Event) => {
+        // Prevent double resolution
+        if (isResolved) {
+          return;
+        }
+
         const mouseEvent = event as MouseEvent;
         const clickedElement = mouseEvent.target as HTMLElement;
 
@@ -394,12 +413,13 @@ export class GuidedHandler {
 
         if (isTargetOrChild) {
           clearInterval(rectUpdateInterval);
+          isResolved = true;
           resolve('completed');
           return;
         }
 
         // Fallback check: Is click within slightly expanded bounds?
-        // Marginally larger padding (16px) provides some forgiveness without being excessive
+        // Recalculate rect on each click to handle dynamic/hover-revealed elements
         const elementRect = element.getBoundingClientRect();
         const padding = 16; // Slightly increased from 12px for better targeting
         const clickX = mouseEvent.clientX;
@@ -419,6 +439,7 @@ export class GuidedHandler {
           if (element.isConnected) {
             element.click();
           }
+          isResolved = true;
           resolve('completed');
         }
       };
@@ -428,9 +449,9 @@ export class GuidedHandler {
       // We still let the event continue (don't preventDefault) so the actual click happens
       document.addEventListener('click', handleClick, { capture: true });
 
-      // Store for cleanup
+      // FIXED: Store document (not document.body) for proper cleanup
       this.activeListeners.push({
-        element: document.body as HTMLElement,
+        element: document as any as HTMLElement, // Cast needed for type compatibility
         type: 'click',
         handler: handleClick,
       });
@@ -438,7 +459,10 @@ export class GuidedHandler {
       // Handle cancellation
       signal.addEventListener('abort', () => {
         clearInterval(rectUpdateInterval);
-        resolve('cancelled');
+        if (!isResolved) {
+          isResolved = true;
+          resolve('cancelled');
+        }
       });
     });
   }

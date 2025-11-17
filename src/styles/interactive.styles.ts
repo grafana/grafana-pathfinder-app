@@ -1,6 +1,7 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { INTERACTIVE_Z_INDEX } from '../constants/interactive-z-index';
 
 // Base interactive element styles
 const getBaseInteractiveStyles = (theme: GrafanaTheme2) => ({
@@ -162,14 +163,13 @@ const getInteractiveSequenceStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     position: 'relative',
 
-    // List items inside sequences
-    'li.interactive': {
+    // Common styles for all list items
+    li: {
       paddingLeft: theme.spacing(2),
       paddingRight: theme.spacing(2),
       margin: `${theme.spacing(1)} 0`,
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'space-between',
       minHeight: '40px',
       position: 'relative',
       '&::before': {
@@ -189,30 +189,14 @@ const getInteractiveSequenceStyles = (theme: GrafanaTheme2) => ({
       },
     },
 
-    // Non-interactive list items
+    // Interactive-specific overrides
+    'li.interactive': {
+      justifyContent: 'space-between',
+    },
+
+    // Non-interactive specific overrides
     'li:not(.interactive)': {
-      margin: `${theme.spacing(1)} 0`,
       color: theme.colors.text.primary,
-      paddingLeft: theme.spacing(2),
-      paddingRight: theme.spacing(2),
-      display: 'flex',
-      alignItems: 'center',
-      minHeight: '40px',
-      position: 'relative',
-      '&::before': {
-        content: '"•"',
-        position: 'absolute',
-        left: `-${theme.spacing(2)}`,
-        top: '50%',
-        transform: 'translateY(-50%)',
-        color: theme.colors.text.secondary,
-        fontSize: '14px',
-        width: '16px',
-        height: '16px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      },
     },
 
     // Button in section
@@ -324,9 +308,13 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     backgroundColor: theme.colors.background.primary,
     overflow: 'hidden',
+    transition: 'all 0.3s ease',
     '&.completed': {
       borderColor: theme.colors.success.border,
       backgroundColor: theme.colors.success.transparent,
+    },
+    '&.collapsed': {
+      marginBottom: theme.spacing(2),
     },
   },
 
@@ -338,6 +326,46 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     padding: `${theme.spacing(1.5)} ${theme.spacing(2)}`,
     backgroundColor: theme.colors.background.secondary,
     borderBottom: `1px solid ${theme.colors.border.weak}`,
+    transition: 'border-bottom 0.3s ease',
+    '&.collapsed': {
+      borderBottom: 'none',
+    },
+  },
+
+  '.interactive-section-toggle-button': {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: theme.colors.text.secondary,
+    fontSize: '14px',
+    lineHeight: 1,
+    transition: 'color 0.2s ease, transform 0.2s ease',
+    minWidth: '24px',
+    minHeight: '24px',
+    flexShrink: 0,
+    '&:hover': {
+      color: theme.colors.text.primary,
+      backgroundColor: theme.colors.action.hover,
+    },
+    '&:focus': {
+      outline: `2px solid ${theme.colors.primary.main}`,
+      outlineOffset: '2px',
+    },
+    '&:active': {
+      backgroundColor: theme.colors.action.selected,
+    },
+  },
+
+  '.interactive-section-toggle-icon': {
+    display: 'block',
+    transition: 'transform 0.2s ease',
+    pointerEvents: 'none', // Ensure clicks go through to button
+    fontSize: '14px',
+    lineHeight: 1,
   },
 
   '.interactive-section-title-container': {
@@ -416,6 +444,10 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   '.interactive-section-content': {
     padding: theme.spacing(2),
+    opacity: 1,
+    maxHeight: '10000px',
+    overflow: 'hidden',
+    transition: 'opacity 0.3s ease, max-height 0.3s ease',
 
     // Step status styles
     '& .step-status-pending': {
@@ -454,12 +486,25 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.background.canvas,
     display: 'flex',
     justifyContent: 'center',
+    transition: 'padding 0.3s ease',
+    '&.collapsed': {
+      padding: `${theme.spacing(1)} ${theme.spacing(2)}`,
+      justifyContent: 'flex-end',
+    },
   },
 
   '.interactive-section-do-button': {
     minWidth: '200px',
     fontWeight: theme.typography.fontWeightMedium,
 
+    '&:disabled': {
+      opacity: 0.6,
+      cursor: 'not-allowed',
+    },
+  },
+
+  '.interactive-section-reset-button': {
+    fontWeight: theme.typography.fontWeightMedium,
     '&:disabled': {
       opacity: 0.6,
       cursor: 'not-allowed',
@@ -773,10 +818,6 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
     /* Global interactive highlight styles */
-    .interactive-highlighted {
-      position: relative;
-      z-index: 1;
-    }
     .interactive-highlight-outline {
       position: absolute;
       top: var(--highlight-top);
@@ -784,7 +825,7 @@ export const addGlobalInteractiveStyles = () => {
       width: var(--highlight-width);
       height: var(--highlight-height);
       pointer-events: none;
-      z-index: 9999;
+      z-index: ${INTERACTIVE_Z_INDEX.HIGHLIGHT_OUTLINE};
       border-radius: 4px;
       /* Draw border clockwise using four gradient strokes (no fill) */
       --hl-color: rgba(255, 136, 0, 0.85);
@@ -810,9 +851,6 @@ export const addGlobalInteractiveStyles = () => {
       box-shadow: 0 0 0 4px rgba(180, 180, 180, 0.12);
       animation: subtle-highlight-pulse 1.6s ease-in-out infinite;
     }
-
-
-
 
     @keyframes interactive-draw-border {
       0% {
@@ -914,7 +952,7 @@ export const addGlobalInteractiveStyles = () => {
       max-width: 320px;
       min-width: 240px;
       pointer-events: none;
-      z-index: 10002;
+      z-index: ${INTERACTIVE_Z_INDEX.COMMENT_BOX};
       animation: fadeInComment 0.3s ease-out;
     }
 
