@@ -25,6 +25,7 @@ import { useContextPanel, Recommendation } from '../../context-engine';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getConfigWithDefaults } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
+import { testIds } from '../testIds';
 
 interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
@@ -105,7 +106,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
   // Show loading state while context is loading OR recommendations are loading
   if (isLoadingRecommendations || isLoadingContext) {
     return (
-      <div className={styles.recommendationsContainer}>
+      <div className={styles.recommendationsContainer} data-testid={testIds.contextPanel.recommendationsContainer}>
         <SkeletonLoader type="recommendations" />
       </div>
     );
@@ -114,7 +115,11 @@ const RecommendationsSection = memo(function RecommendationsSection({
   // If there's an error but no recommendations, show only the error
   if (recommendationsError && recommendations.length === 0) {
     return (
-      <Alert severity="warning" title={t('contextPanel.recommendationsUnavailable', 'Recommendations unavailable')}>
+      <Alert
+        severity="warning"
+        title={t('contextPanel.recommendationsUnavailable', 'Recommendations unavailable')}
+        data-testid={testIds.contextPanel.errorAlert}
+      >
         {recommendationsError}
       </Alert>
     );
@@ -124,7 +129,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
   if (recommendations.length === 0) {
     return (
       <>
-        <div className={styles.emptyContainer}>
+        <div className={styles.emptyContainer} data-testid={testIds.contextPanel.emptyState}>
           <Icon name="info-circle" />
           <span>No recommendations available for your current context.</span>
         </div>
@@ -138,21 +143,26 @@ const RecommendationsSection = memo(function RecommendationsSection({
     <>
       {/* Show error banner when using fallback recommendations */}
       {recommendationsError && (
-        <Alert severity="warning" title={t('contextPanel.recommendationsUnavailable', 'Recommendations unavailable')}>
+        <Alert
+          severity="warning"
+          title={t('contextPanel.recommendationsUnavailable', 'Recommendations unavailable')}
+          data-testid={testIds.contextPanel.errorAlert}
+        >
           {recommendationsError}
         </Alert>
       )}
 
-      <div className={styles.recommendationsContainer}>
+      <div className={styles.recommendationsContainer} data-testid={testIds.contextPanel.recommendationsContainer}>
         {/* Primary Recommendations Section (High-Confidence Items, sorted by accuracy) */}
         {finalPrimaryRecommendations.length > 0 && (
-          <div className={styles.recommendationsGrid}>
+          <div className={styles.recommendationsGrid} data-testid={testIds.contextPanel.recommendationsGrid}>
             {finalPrimaryRecommendations.map((recommendation, index) => (
               <Card
                 key={index}
                 className={`${styles.recommendationCard} ${
                   recommendation.type === 'docs-page' ? styles.compactCard : ''
                 }`}
+                data-testid={testIds.contextPanel.recommendationCard(index)}
               >
                 <div
                   className={`${styles.recommendationCardContent} ${
@@ -164,7 +174,12 @@ const RecommendationsSection = memo(function RecommendationsSection({
                       recommendation.type === 'docs-page' ? styles.compactHeader : ''
                     }`}
                   >
-                    <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
+                    <h3
+                      className={styles.recommendationCardTitle}
+                      data-testid={testIds.contextPanel.recommendationTitle(index)}
+                    >
+                      {recommendation.title}
+                    </h3>
                     <div
                       className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}
                     >
@@ -191,6 +206,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                           }
                         }}
                         className={recommendation.type === 'docs-page' ? styles.secondaryButton : styles.startButton}
+                        data-testid={testIds.contextPanel.recommendationStartButton(index)}
                       >
                         <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
                         {recommendation.type === 'docs-page'
@@ -222,6 +238,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                               toggleSummaryExpansion(recommendation.url);
                             }}
                             className={styles.summaryButton}
+                            data-testid={testIds.contextPanel.recommendationSummaryButton(index)}
                           >
                             <Icon name="info-circle" size="sm" />
                             <span>{t('contextPanel.summary', 'Summary')}</span>
@@ -245,7 +262,10 @@ const RecommendationsSection = memo(function RecommendationsSection({
                       </div>
 
                       {recommendation.summaryExpanded && (
-                        <div className={styles.summaryExpansion}>
+                        <div
+                          className={styles.summaryExpansion}
+                          data-testid={testIds.contextPanel.recommendationSummaryContent(index)}
+                        >
                           {recommendation.summary && (
                             <div className={styles.summaryContent}>
                               <p className={styles.summaryText}>{recommendation.summary}</p>
@@ -256,7 +276,10 @@ const RecommendationsSection = memo(function RecommendationsSection({
                           {recommendation.type !== 'docs-page' &&
                             (recommendation.totalSteps ?? 0) > 0 &&
                             recommendation.milestones && (
-                              <div className={styles.milestonesSection}>
+                              <div
+                                className={styles.milestonesSection}
+                                data-testid={testIds.contextPanel.recommendationMilestones(index)}
+                              >
                                 <div className={styles.milestonesHeader}>
                                   <h4 className={styles.milestonesTitle}>
                                     {t('contextPanel.milestones', 'Milestones:')}
@@ -282,6 +305,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                                         );
                                       }}
                                       className={styles.milestoneItem}
+                                      data-testid={testIds.contextPanel.recommendationMilestoneItem(index, stepIndex)}
                                     >
                                       <div className={styles.milestoneNumber}>{milestone.number}</div>
                                       <div className={styles.milestoneContent}>
@@ -340,9 +364,13 @@ const RecommendationsSection = memo(function RecommendationsSection({
 
         {/* Other Documentation Section - all items beyond top 4, including learning journeys */}
         {secondaryDocs.length > 0 && (
-          <div className={styles.otherDocsSection}>
+          <div className={styles.otherDocsSection} data-testid={testIds.contextPanel.otherDocsSection}>
             <div className={styles.otherDocsHeader}>
-              <button onClick={() => toggleOtherDocsExpansion()} className={styles.otherDocsToggle}>
+              <button
+                onClick={() => toggleOtherDocsExpansion()}
+                className={styles.otherDocsToggle}
+                data-testid={testIds.contextPanel.otherDocsToggle}
+              >
                 <Icon name="file-alt" size="sm" />
                 <span>{t('contextPanel.otherDocumentation', 'Other Documentation')}</span>
                 <span className={styles.otherDocsCount}>
@@ -355,9 +383,13 @@ const RecommendationsSection = memo(function RecommendationsSection({
 
             {otherDocsExpanded && (
               <div className={styles.otherDocsExpansion}>
-                <div className={styles.otherDocsList}>
+                <div className={styles.otherDocsList} data-testid={testIds.contextPanel.otherDocsList}>
                   {secondaryDocs.map((item, index) => (
-                    <div key={index} className={styles.otherDocItem}>
+                    <div
+                      key={index}
+                      className={styles.otherDocItem}
+                      data-testid={testIds.contextPanel.otherDocItem(index)}
+                    >
                       <div className={styles.docIcon}>
                         <Icon name={item.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
                       </div>
@@ -447,13 +479,13 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     !configWithDefaults.acceptedTermsAndConditions;
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} data-testid={testIds.contextPanel.container}>
       <div className={styles.content}>
         <div className={styles.contextSections}>
           {/* Header Section - Always Visible */}
           <div className={styles.sectionHeader}>
             <div className={styles.titleContainer}>
-              <h2 className={styles.sectionTitle}>
+              <h2 className={styles.sectionTitle} data-testid={testIds.contextPanel.heading}>
                 {t('contextPanel.recommendedDocumentation', 'Recommended Documentation')}
               </h2>
               <Badge text="Beta" color="blue" className={styles.betaBadge} />

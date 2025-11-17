@@ -55,6 +55,7 @@ import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, H
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
+import { testIds } from '../testIds';
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -1120,8 +1121,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // ContentRenderer renders the content with styling applied via CSS classes
 
   return (
-    <div id="CombinedLearningJourney" className={styles.container} data-pathfinder-content="true">
-      <div className={styles.headerBar}>
+    <div
+      id="CombinedLearningJourney"
+      className={styles.container}
+      data-pathfinder-content="true"
+      data-testid={testIds.docsPanel.container}
+    >
+      <div className={styles.headerBar} data-testid={testIds.docsPanel.headerBar}>
         <img src={logoSvg} alt="" width={20} height={20} />
         <div className={styles.headerRight}>
           <IconButton
@@ -1137,6 +1143,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
             }}
             aria-label={t('docsPanel.settings', 'Plugin settings')}
+            data-testid={testIds.docsPanel.settingsButton}
           />
           <div className={styles.headerDivider} />
           <IconButton
@@ -1157,6 +1164,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               });
             }}
             aria-label="Close sidebar"
+            data-testid={testIds.docsPanel.closeButton}
           />
         </div>
       </div>
@@ -1284,8 +1292,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         </div>
         {/* Only show tab bar if there are multiple tabs (more than just Recommendations) */}
         {tabs.length > 1 && (
-          <div className={styles.tabBar} ref={tabBarRef}>
-            <div className={styles.tabList} ref={tabListRef}>
+          <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
+            <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
               {visibleTabs.map((tab) => {
                 const getTranslatedTitle = (title: string) => {
                   if (title === 'Recommendations') {
@@ -1306,6 +1314,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
                     onClick={() => model.setActiveTab(tab.id)}
                     title={getTranslatedTitle(tab.title)}
+                    data-testid={
+                      tab.id === 'recommendations'
+                        ? testIds.docsPanel.recommendationsTab
+                        : testIds.docsPanel.tab(tab.id)
+                    }
                   >
                     <div className={styles.tabContent}>
                       {tab.id !== 'recommendations' && (
@@ -1345,6 +1358,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             model.closeTab(tab.id);
                           }}
                           className={styles.closeButton}
+                          data-testid={testIds.docsPanel.tabCloseButton(tab.id)}
                         />
                       )}
                     </div>
@@ -1367,6 +1381,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', { count: overflowedTabs.length })}
                   aria-expanded={isDropdownOpen}
                   aria-haspopup="true"
+                  data-testid={testIds.docsPanel.tabOverflowButton}
                 >
                   <div className={styles.tabContent}>
                     <Icon name="angle-right" size="sm" className={styles.chevronIcon} />
@@ -1384,6 +1399,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 className={styles.tabDropdown}
                 role="menu"
                 aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
+                data-testid={testIds.docsPanel.tabDropdown}
               >
                 {overflowedTabs.map((tab) => {
                   const getTranslatedTitle = (title: string) => {
@@ -1411,6 +1427,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       aria-label={t('docsPanel.switchToTab', 'Switch to {{title}}', {
                         title: getTranslatedTitle(tab.title),
                       })}
+                      data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
                     >
                       <div className={styles.dropdownItemContent}>
                         {tab.id !== 'recommendations' && (
@@ -1466,7 +1483,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         )}
       </div>
 
-      <div className={styles.content}>
+      <div className={styles.content} data-testid={testIds.docsPanel.content}>
         {(() => {
           // Show recommendations tab
           if (isRecommendationsTab) {
@@ -1476,7 +1493,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           // Show loading state with skeleton
           if (!isRecommendationsTab && activeTab?.isLoading) {
             return (
-              <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
+              <div
+                className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}
+                data-testid={testIds.docsPanel.loadingState}
+              >
                 <SkeletonLoader type={activeTab.type === 'docs' ? 'documentation' : 'learning-journey'} />
               </div>
             );
@@ -1490,7 +1510,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               activeTab.error.includes('network');
 
             return (
-              <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
+              <div
+                className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}
+                data-testid={testIds.docsPanel.errorState}
+              >
                 <Alert
                   severity="error"
                   title={`Unable to load ${activeTab.type === 'docs' ? 'documentation' : 'learning journey'}`}

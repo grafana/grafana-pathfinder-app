@@ -145,7 +145,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
           </Text>
           <div className={styles.toggleSection}>
             <Switch
-              data-testid={testIds.appConfig.interactiveFeatures?.toggle}
+              data-testid={testIds.appConfig.interactiveFeatures.toggle}
               id="enable-auto-detection"
               value={state.enableAutoDetection}
               onChange={onToggleAutoDetection}
@@ -195,7 +195,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
               type="number"
               width={20}
               id="requirements-check-timeout"
-              data-testid={testIds.appConfig.interactiveFeatures?.requirementsTimeout}
+              data-testid={testIds.appConfig.interactiveFeatures.requirementsTimeout}
               value={state.requirementsCheckTimeout}
               onChange={onChangeRequirementsTimeout}
               suffix="ms"
@@ -216,7 +216,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
               type="number"
               width={20}
               id="guided-step-timeout"
-              data-testid={testIds.appConfig.interactiveFeatures?.guidedTimeout}
+              data-testid={testIds.appConfig.interactiveFeatures.guidedTimeout}
               value={state.guidedStepTimeout}
               onChange={onChangeGuidedTimeout}
               suffix="ms"
@@ -231,14 +231,14 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
             type="button"
             variant="secondary"
             onClick={onResetDefaults}
-            data-testid={testIds.appConfig.interactiveFeatures?.reset}
+            data-testid={testIds.appConfig.interactiveFeatures.reset}
             disabled={isSaving}
           >
             Reset to defaults
           </Button>
           <Button
             type="submit"
-            data-testid={testIds.appConfig.interactiveFeatures?.submit}
+            data-testid={testIds.appConfig.interactiveFeatures.submit}
             disabled={isSaving || Object.keys(validationErrors).length > 0 || !hasChanges}
           >
             {isSaving ? 'Saving...' : 'Save configuration'}
