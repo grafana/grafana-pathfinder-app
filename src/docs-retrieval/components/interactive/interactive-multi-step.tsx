@@ -3,7 +3,7 @@ import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
 import { useInteractiveElements, matchesStepAction, type DetectedActionEvent } from '../../../interactive-engine';
-import { useStepChecker } from '../../../requirements-manager';
+import { useStepChecker, validateInteractiveRequirements } from '../../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
@@ -190,6 +190,18 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       stopSectionBlocking,
       isSectionBlocking,
     } = useInteractiveElements();
+
+    // Runtime validation: check for impossible requirement configurations
+    useEffect(() => {
+      validateInteractiveRequirements(
+        {
+          requirements,
+          refTarget: undefined, // Multistep containers have no refTarget
+          stepId: renderedStepId,
+        },
+        'InteractiveMultiStep'
+      );
+    }, [requirements, renderedStepId]);
 
     // Use step checker hook for overall multi-step requirements and objectives
     const checker = useStepChecker({

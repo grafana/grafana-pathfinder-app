@@ -24,7 +24,7 @@ export { useStepChecker } from './step-checker.hook';
 export type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
 // Pure requirements checking utilities
-export { checkRequirements, checkPostconditions } from './requirements-checker.utils';
+export { checkRequirements, checkPostconditions, validateInteractiveRequirements } from './requirements-checker.utils';
 
 export type { RequirementsCheckResult, CheckResultError, RequirementsCheckOptions } from './requirements-checker.utils';
 
