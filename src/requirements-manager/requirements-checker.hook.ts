@@ -24,7 +24,7 @@ export function waitForReactUpdates(): Promise<void> {
 
 /**
  * React-based requirements checking system
- * Provides event-driven requirements validation for interactive tutorial steps
+ * Provides event-driven requirements validation for interactive guide steps
  *
  * Features:
  * - Event-driven checking (no continuous polling)

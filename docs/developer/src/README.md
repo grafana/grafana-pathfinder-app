@@ -116,7 +116,7 @@ The codebase was extensively refactored to improve maintainability:
 
 The refactor introduced a clean hook-based architecture:
 
-- `useInteractiveElements()` - Interactive tutorial functionality
+- `useInteractiveElements()` - interactive guide functionality
 - `useContentProcessing()` - Content enhancement and processing
 - `useKeyboardShortcuts()` - Navigation shortcuts
 - `useLinkClickHandler()` - Link and interaction handling

@@ -20,7 +20,7 @@ export type { ParsedElement, ParsedContent };
 
 /**
  * Validate that interactive content comes from trusted sources only
- * Meeting requirement: Interactive tutorials ONLY from grafana.com or grafana/interactive-tutorials repo
+ * Meeting requirement: interactive guides ONLY from grafana.com or grafana/interactive-tutorials repo
  *
  * In production: Only Grafana docs, bundled content, and approved GitHub repos
  * In dev mode: Also allows localhost URLs and any GitHub raw URLs for local testing
@@ -220,7 +220,7 @@ export function parseHTMLToComponents(
   }
 
   // SECURITY: Validate source for interactive content (unless explicitly bypassed for testing)
-  // Meeting requirement: Interactive tutorials ONLY from trusted sources
+  // Meeting requirement: interactive guides ONLY from trusted sources
   if (!bypassSourceValidation) {
     const allowInteractiveContent = isTrustedInteractiveSource(baseUrl);
     if (!allowInteractiveContent && html.includes('data-targetaction')) {

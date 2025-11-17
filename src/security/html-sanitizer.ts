@@ -105,7 +105,7 @@ export function sanitizeDocumentationHTML(html: string): string {
       'blockquote',
       'figure',
       'figcaption',
-      // Forms (used in interactive tutorials)
+      // Forms (used in interactive guides)
       'form',
       'input',
       'textarea',

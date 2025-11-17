@@ -62,25 +62,25 @@ After installation, restart your Grafana instance.
 
 ## Finding the Interactive learning sidebar
 
-After enabling Interactive learning, you can start using it by clicking the **Help** button in the top navigation bar of Grafana. This opens the Interactive learning sidebar. You can then browse the recommendations and click on any item to view the documentation or tutorial.
+After enabling Interactive learning, you can start using it by clicking the **Help** button in the top navigation bar of Grafana. This opens the Interactive learning sidebar. You can then browse the recommendations and click on any item to view the documentation or guide.
 
 ![Interactive learning sidebar](/media/docs/pathfinder/getting-started-panel-open.png)
 
 You can also use the command palette to open the Interactive learning sidebar. Search for `Interactive learning`, `Need help?`, or `Learn Grafana` in the command palette by pressing **Cmd+K** on macOS or **Ctrl+K** on Windows and Linux.
 
-## Try out an interactive tutorial
+## Try out an interactive guide
 
-If you're new to Grafana and want to learn where everything is located, try the **Welcome to Grafana** tutorial. This tutorial guides you through the main areas of Grafana and helps you get familiar with the interface. To start this tutorial, click **View** on the **Welcome to Grafana** recommendation.
+If you're new to Grafana and want to learn where everything is located, try the **Welcome to Grafana** guide. This guide take you through the main areas of Grafana and helps you get familiar with the interface. To start this guide, click **View** on the **Welcome to Grafana** recommendation.
 
 ![Recommendation card](/media/docs/pathfinder/welcome-to-grafana-recommendation.png)
 
-This opens the **Welcome to Grafana** tutorial in a new tab. You can then follow the steps in the tutorial by clicking the **Show me** button to see each step.
+This opens the **Welcome to Grafana** guide in a new tab. You can then follow the steps in the guide by clicking the **Show me** button to see each step.
 
 ### Interactive elements
 
-The interactive tutorial guides you through the main areas of Grafana and helps you get familiar with the interface. It also shows you how to use the interactive elements of the tutorial.
+The interactive guide guides you through the main areas of Grafana and helps you get familiar with the interface. It also shows you how to use the interactive elements of the guide.
 
-![Welcome to Grafana tutorial](/media/docs/pathfinder/welcome-to-grafana-tutorial.png)
+![Welcome to Grafana guide](/media/docs/pathfinder/welcome-to-grafana-tutorial.png)
 
 #### Show me
 

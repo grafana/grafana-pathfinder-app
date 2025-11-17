@@ -50,7 +50,7 @@ declare module '@tiptap/core' {
  * ## HTML Output
  *
  * Despite being a block-level node in the editor, SequenceSection renders as a <span>
- * for compatibility with the Grafana Interactive Tutorials system, which expects:
+ * for compatibility with the Grafana interactive guides system, which expects:
  *
  * ```html
  * <span id="section-id" class="interactive" data-targetaction="sequence" data-reftarget="span#section-id">

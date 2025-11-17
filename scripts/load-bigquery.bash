@@ -4,7 +4,7 @@ set -euf -o pipefail
 
 function usage {
   cat <<EOF
-Manage the loading of interactive tutorial data into the Dev Advocacy BigQuery dataset.
+Manage the loading of interactive guide data into the Dev Advocacy BigQuery dataset.
 
 Usage:
   $0 <create|update>

@@ -40,15 +40,15 @@ The recommender service is enabled by default for Grafana Cloud instances.
 For open source Grafana instances, administrators must enable it manually.
 {{< /admonition >}}
 
-### Auto-launch tutorial URL
+### Auto-launch guide URL
 
-You can configure a tutorial or documentation page to automatically open when users open the Interactive learning sidebar.
+You can configure a guide or documentation page to automatically open when users open the Interactive learning sidebar.
 This feature is useful for demo scenarios or onboarding new users.
 
 **To configure auto-launch:**
 
 1. Navigate to the **Plugin Configuration** section.
-2. Enter the full URL of a learning journey or documentation page in the **Auto-launch tutorial URL** field.
+2. Enter the full URL of a learning journey or documentation page in the **Auto-launch guide URL** field.
 3. Click **Save configuration**.
 
 Example URL:
@@ -97,13 +97,13 @@ The sidebar opens when Grafana loads for the first time in a browser session.
 It won't reopen on subsequent page navigations within Grafana.
 The panel resets to auto-open behavior when you refresh the page or start a new browser session.
 
-### Interactive tutorial features
+### interactive guide features
 
-Interactive tutorials include auto-completion detection and timing parameters that control how tutorials behave.
+interactive guides include auto-completion detection and timing parameters that control how guides behave.
 
 #### Auto-completion detection (Experimental)
 
-Auto-completion detection automatically marks tutorial steps as complete when users perform actions themselves without clicking **Do it** buttons.
+Auto-completion detection automatically marks guide steps as complete when users perform actions themselves without clicking **Do it** buttons.
 
 {{< admonition type="warning" >}}
 This is an experimental feature.
@@ -111,18 +111,18 @@ This is an experimental feature.
 
 **To enable auto-completion:**
 
-1. Navigate to the **Interactive Tutorial Features** section in the configuration page.
+1. Navigate to the **interactive guide Features** section in the configuration page.
 2. Toggle **Enable automatic step completion** to enable the feature.
 3. Click **Save configuration**.
 
-When enabled, the system detects user actions and completes tutorial steps automatically for a more natural learning experience.
+When enabled, the system detects user actions and completes guide steps automatically for a more natural learning experience.
 Steps still verify requirements before completion.
 
-When disabled, users must click **Do it** buttons to complete tutorial steps.
+When disabled, users must click **Do it** buttons to complete guide steps.
 
 #### Advanced settings
 
-You can fine-tune timing parameters for interactive tutorial behavior.
+You can fine-tune timing parameters for interactive guide behavior.
 
 **Requirements check timeout:**
 
@@ -140,7 +140,7 @@ Maximum time to wait for users to complete guided steps.
 
 To modify these settings:
 
-1. Navigate to the **Advanced Settings** section under **Interactive Tutorial Features**.
+1. Navigate to the **Advanced Settings** section under **interactive guide Features**.
 2. Enter new values for the timeout fields.
 3. Click **Save configuration** to apply changes, or click **Reset to defaults** to restore default values.
 

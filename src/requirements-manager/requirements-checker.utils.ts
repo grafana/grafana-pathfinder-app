@@ -915,7 +915,7 @@ async function isAdminCheck(check: string): Promise<CheckResultError> {
  *
  * Example usage:
  * - data-requirements="is-logged-in" - user must be authenticated
- * - Common prerequisite for most interactive tutorials
+ * - Common prerequisite for most interactive guides
  * - Prevents anonymous users from accessing user-specific features
  *
  * Authentication states:
@@ -1364,7 +1364,7 @@ async function datasourceConfiguredCheck(check: string): Promise<CheckResultErro
  * - No required fields are empty or invalid
  * - At least one form exists on the page
  *
- * Example usage in interactive tutorials:
+ * Example usage in interactive guides:
  * - data-requirements="form-valid" - step only proceeds if forms are valid
  * - Useful before "Save" or "Submit" button clicks
  * - Prevents users from clicking submit on incomplete forms

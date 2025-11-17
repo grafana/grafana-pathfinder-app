@@ -3,7 +3,7 @@
  *
  * This utility is generic and can be used to automatically categorize
  * DOM elements into interactive action types for test automation,
- * recording user workflows, or building interactive tutorials.
+ * recording user workflows, or building interactive guides.
  *
  * Supported action types:
  * - 'formfill': Input fields, textareas, selects
