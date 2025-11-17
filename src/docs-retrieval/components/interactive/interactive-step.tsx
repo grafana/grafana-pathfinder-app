@@ -1,4 +1,4 @@
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
@@ -14,6 +14,9 @@ import { matchesStepAction, type DetectedActionEvent, useInteractiveElements } f
 import { getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
+import { testIds } from '../../../components/testIds';
+
+let anonymousStepCounter = 0;
 
 export const InteractiveStep = forwardRef<
   { executeStep: () => Promise<boolean>; markSkipped?: () => void },
@@ -57,6 +60,23 @@ export const InteractiveStep = forwardRef<
     },
     ref
   ) => {
+    const generatedStepIdRef = useRef<string>();
+    if (!generatedStepIdRef.current) {
+      anonymousStepCounter += 1;
+      generatedStepIdRef.current = `standalone-step-${anonymousStepCounter}`;
+    }
+    const renderedStepId = stepId ?? generatedStepIdRef.current;
+    const analyticsStepMeta = useMemo(
+      () => ({
+        stepId: stepId ?? renderedStepId,
+        stepIndex,
+        totalSteps,
+        sectionId,
+        sectionTitle,
+      }),
+      [stepId, renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
+    );
+
     // Local UI state
     const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isShowRunning, setIsShowRunning] = useState(false);
@@ -78,14 +98,14 @@ export const InteractiveStep = forwardRef<
 
     // For section steps, use a simplified checker that respects section authority
     // For standalone steps, use the full global checker
-    const isPartOfSection = stepId?.includes('section-') && stepId?.includes('-step-');
+    const isPartOfSection = renderedStepId.includes('section-') && renderedStepId.includes('-step-');
 
     const checker = useStepChecker({
       requirements,
       hints,
       targetAction,
       refTarget,
-      stepId: stepId || `step-${Date.now()}`, // Fallback if no stepId provided
+      stepId: stepId || renderedStepId, // Fallback if no stepId provided
       isEligibleForChecking: isPartOfSection ? isEligibleForChecking : isEligibleForChecking && !isCompleted,
       skippable,
     });
@@ -169,7 +189,7 @@ export const InteractiveStep = forwardRef<
             targetAction,
             refTarget || '',
             targetValue,
-            stepId || 'post-verify'
+            stepId || renderedStepId
           );
           if (!result.pass) {
             const friendly = getPostVerifyExplanation(
@@ -222,6 +242,7 @@ export const InteractiveStep = forwardRef<
       executeInteractiveAction,
       onStepComplete,
       onComplete,
+      renderedStepId,
     ]);
 
     // Expose execute method for parent (sequence execution)
@@ -301,7 +322,7 @@ export const InteractiveStep = forwardRef<
               targetAction,
               refTarget,
               targetValue,
-              stepId: stepId || 'auto-verify',
+              stepId: stepId || renderedStepId,
             });
 
             if (!result.pass) {
@@ -338,7 +359,7 @@ export const InteractiveStep = forwardRef<
               interaction_location: 'interactive_step_auto',
               completion_method: 'auto_detected',
             },
-            { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+            analyticsStepMeta
           )
         );
       };
@@ -367,6 +388,8 @@ export const InteractiveStep = forwardRef<
       totalSteps,
       sectionId,
       sectionTitle,
+      renderedStepId,
+      analyticsStepMeta,
     ]);
 
     // Handle individual "Show me" action
@@ -385,7 +408,7 @@ export const InteractiveStep = forwardRef<
             ...(targetValue && { target_value: targetValue }),
             interaction_location: 'interactive_step',
           },
-          { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+          analyticsStepMeta
         )
       );
 
@@ -426,10 +449,7 @@ export const InteractiveStep = forwardRef<
       onStepComplete,
       onComplete,
       stepId,
-      stepIndex,
-      totalSteps,
-      sectionId,
-      sectionTitle,
+      analyticsStepMeta,
     ]);
 
     // Handle individual "Do it" action (delegates to executeStep)
@@ -448,7 +468,7 @@ export const InteractiveStep = forwardRef<
             ...(targetValue && { target_value: targetValue }),
             interaction_location: 'interactive_step',
           },
-          { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+          analyticsStepMeta
         )
       );
 
@@ -466,14 +486,10 @@ export const InteractiveStep = forwardRef<
       isCompletedWithObjectives,
       finalIsEnabled,
       executeStep,
-      stepId,
       targetAction,
       refTarget,
       targetValue,
-      stepIndex,
-      totalSteps,
-      sectionId,
-      sectionTitle,
+      analyticsStepMeta,
     ]);
 
     // Handle individual step reset (redo functionality)
@@ -534,7 +550,8 @@ export const InteractiveStep = forwardRef<
         data-reftarget={refTarget}
         data-targetvalue={targetValue}
         data-targetcomment={targetComment}
-        data-step-id={stepId}
+        data-step-id={stepId || renderedStepId}
+        data-testid={testIds.interactive.step(renderedStepId)}
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
@@ -554,6 +571,7 @@ export const InteractiveStep = forwardRef<
                 size="sm"
                 variant="secondary"
                 className="interactive-step-show-btn"
+                data-testid={testIds.interactive.showMeButton(renderedStepId)}
                 title={
                   checker.isChecking
                     ? checker.isRetrying
@@ -584,6 +602,7 @@ export const InteractiveStep = forwardRef<
                 size="sm"
                 variant="primary"
                 className="interactive-step-do-btn"
+                data-testid={testIds.interactive.doItButton(renderedStepId)}
                 title={
                   checker.isChecking
                     ? checker.isRetrying
@@ -623,6 +642,7 @@ export const InteractiveStep = forwardRef<
                 size="sm"
                 variant="secondary"
                 className="interactive-step-skip-btn"
+                data-testid={testIds.interactive.skipButton(renderedStepId)}
                 title="Skip this step without executing"
               >
                 Skip
@@ -634,6 +654,7 @@ export const InteractiveStep = forwardRef<
             <div className="interactive-step-completion-group">
               <span
                 className={`interactive-step-completed-indicator ${checker.completionReason === 'skipped' ? 'skipped' : ''}`}
+                data-testid={testIds.interactive.stepCompleted(renderedStepId)}
               >
                 {checker.completionReason === 'skipped' ? '↷' : '✓'}
               </span>
@@ -641,6 +662,7 @@ export const InteractiveStep = forwardRef<
                 className="interactive-step-redo-btn"
                 onClick={handleStepRedo}
                 disabled={disabled || isAnyActionRunning}
+                data-testid={testIds.interactive.redoButton(renderedStepId)}
                 title={
                   checker.completionReason === 'skipped'
                     ? 'Redo this step (try again)'
@@ -656,7 +678,12 @@ export const InteractiveStep = forwardRef<
 
         {/* Post-verify failure message */}
         {!isCompletedWithObjectives && !checker.isChecking && postVerifyError && (
-          <div className="interactive-step-execution-error">{postVerifyError}</div>
+          <div
+            className="interactive-step-execution-error"
+            data-testid={testIds.interactive.errorMessage(renderedStepId)}
+          >
+            {postVerifyError}
+          </div>
         )}
 
         {/* Show explanation text when requirements aren't met, but objectives always win (clarification 2) */}
@@ -666,13 +693,21 @@ export const InteractiveStep = forwardRef<
           !isCompletedWithObjectives &&
           !checker.isChecking &&
           explanationText && (
-            <div className="interactive-step-requirement-explanation">
+            <div
+              className="interactive-step-requirement-explanation"
+              data-testid={testIds.interactive.requirementCheck(renderedStepId)}
+            >
               {explanationText}
               <div className="interactive-step-requirement-buttons">
                 {/* Retry button for eligible steps or fixable requirements */}
                 {(isEligibleForChecking || checker.canFixRequirement) && (
                   <button
                     className="interactive-requirement-retry-btn"
+                    data-testid={
+                      checker.canFixRequirement
+                        ? testIds.interactive.requirementFixButton(renderedStepId)
+                        : testIds.interactive.requirementRetryButton(renderedStepId)
+                    }
                     onClick={async () => {
                       if (checker.canFixRequirement && checker.fixRequirement) {
                         await checker.fixRequirement();
@@ -689,6 +724,7 @@ export const InteractiveStep = forwardRef<
                 {isEligibleForChecking && checker.canSkip && checker.markSkipped && !checker.isEnabled && (
                   <button
                     className="interactive-requirement-skip-btn"
+                    data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
                     onClick={async () => {
                       if (checker.markSkipped) {
                         await checker.markSkipped();

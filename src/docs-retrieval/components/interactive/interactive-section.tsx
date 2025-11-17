@@ -12,6 +12,7 @@ import { interactiveStepStorage, sectionCollapseStorage } from '../../../lib/use
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../../types/component-props.types';
+import { testIds } from '../../../components/testIds';
 
 // Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;
@@ -1104,6 +1105,7 @@ export function InteractiveSection({
       className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}${
         isCollapsed ? ' collapsed' : ''
       }`}
+      data-testid={testIds.interactive.section(sectionId)}
     >
       <div className={`interactive-section-header${isCollapsed ? ' collapsed' : ''}`}>
         {isCompleted && (
@@ -1141,6 +1143,7 @@ export function InteractiveSection({
             size="sm"
             variant="secondary"
             className="interactive-section-reset-button"
+            data-testid={testIds.interactive.resetSectionButton(sectionId)}
             title="Reset section and clear all step completion"
           >
             Reset Section
@@ -1152,6 +1155,11 @@ export function InteractiveSection({
             size="md"
             variant={isCompleted ? 'secondary' : 'primary'}
             className="interactive-section-do-button"
+            data-testid={
+              stepsCompleted && !isCompletedByObjectives
+                ? testIds.interactive.resetSectionButton(sectionId)
+                : testIds.interactive.doSectionButton(sectionId)
+            }
             title={(() => {
               const resumeInfo = getResumeInfo();
               if (isCompletedByObjectives) {

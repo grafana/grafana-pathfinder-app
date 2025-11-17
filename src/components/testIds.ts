@@ -69,9 +69,16 @@ export const testIds = {
     step: (stepId: string) => `interactive-step-${stepId}`,
     showMeButton: (stepId: string) => `interactive-show-me-${stepId}`,
     doItButton: (stepId: string) => `interactive-do-it-${stepId}`,
+    skipButton: (stepId: string) => `interactive-skip-${stepId}`,
+    redoButton: (stepId: string) => `interactive-redo-${stepId}`,
     doSectionButton: (sectionId: string) => `interactive-do-section-${sectionId}`,
+    resetSectionButton: (sectionId: string) => `interactive-reset-section-${sectionId}`,
     requirementCheck: (requirementId: string) => `interactive-requirement-${requirementId}`,
+    requirementFixButton: (stepId: string) => `interactive-requirement-fix-${stepId}`,
+    requirementRetryButton: (stepId: string) => `interactive-requirement-retry-${stepId}`,
+    requirementSkipButton: (stepId: string) => `interactive-requirement-skip-${stepId}`,
     stepCompleted: (stepId: string) => `interactive-step-completed-${stepId}`,
+    errorMessage: (stepId: string) => `interactive-error-${stepId}`,
   },
 
   // App Configuration
