@@ -852,6 +852,31 @@ export const addGlobalInteractiveStyles = () => {
       animation: subtle-highlight-pulse 1.6s ease-in-out infinite;
     }
 
+    /* Hover highlight for element inspector (watch/record mode) */
+    .interactive-hover-highlight-outline {
+      position: absolute;
+      top: var(--highlight-top);
+      left: var(--highlight-left);
+      width: var(--highlight-width);
+      height: var(--highlight-height);
+      pointer-events: none;
+      z-index: ${INTERACTIVE_Z_INDEX.HIGHLIGHT_OUTLINE};
+      border-radius: 4px;
+      /* Same orange color as regular highlights for consistency */
+      --hl-color: rgba(255, 136, 0, 0.85);
+      --hl-thickness: 2px;
+      background:
+        linear-gradient(var(--hl-color) 0 0) top left / 0 var(--hl-thickness) no-repeat,
+        linear-gradient(var(--hl-color) 0 0) top right / var(--hl-thickness) 0 no-repeat,
+        linear-gradient(var(--hl-color) 0 0) bottom right / 0 var(--hl-thickness) no-repeat,
+        linear-gradient(var(--hl-color) 0 0) bottom left / var(--hl-thickness) 0 no-repeat;
+      /* No animation for hover - instant feedback */
+      background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100%;
+      opacity: 0.95;
+      /* Smooth transitions when moving between elements */
+      transition: top 0.05s ease-out, left 0.05s ease-out, width 0.05s ease-out, height 0.05s ease-out;
+    }
+
     @keyframes interactive-draw-border {
       0% {
         background-size: 0 var(--hl-thickness), var(--hl-thickness) 0, 0 var(--hl-thickness), var(--hl-thickness) 0;
