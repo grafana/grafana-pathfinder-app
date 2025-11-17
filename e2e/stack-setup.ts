@@ -9,6 +9,7 @@ import { BrowserContext, Page } from '@playwright/test';
 import { TestConfig } from './types';
 import { logInfo, logError, logDebug } from './logger';
 import { join } from 'path';
+import { isBundledGuide } from './guide-utils';
 
 /**
  * Prepare a remote stack for guide testing
@@ -30,9 +31,14 @@ export async function prepareStackForGuide(
   config: TestConfig,
   screenshotDir: string
 ): Promise<void> {
-  // No-op for local stacks
+  // For local stacks, enable dev mode if testing non-bundled guide
   if (config.stackMode === 'local') {
-    logInfo('Skipping stack setup for local stack', { context: 'stack-setup' });
+    if (!isBundledGuide(config.guideUrl)) {
+      logInfo('Non-bundled guide detected, enabling dev mode for local stack', { context: 'stack-setup' });
+      await enableDevModeForLocalStack(page, config, screenshotDir);
+    } else {
+      logInfo('Bundled guide detected, skipping dev mode setup', { context: 'stack-setup' });
+    }
     return;
   }
 
@@ -62,7 +68,49 @@ export async function prepareStackForGuide(
     }
     logInfo('Authentication successful', { context: 'stack-setup' });
 
-    // Step 3: Navigate to plugin config page with ?dev=true
+    // Step 3: Enable dev mode for non-bundled guides only
+    if (!isBundledGuide(config.guideUrl)) {
+      logInfo('Non-bundled guide detected, enabling dev mode for remote stack', { context: 'stack-setup' });
+      await enableDevModeForRemoteStack(page, config, screenshotDir);
+    } else {
+      logInfo('Bundled guide detected, skipping dev mode setup', { context: 'stack-setup' });
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logError(`Stack setup failed: ${errorMessage}`, { context: 'stack-setup' });
+
+    // Capture screenshot for debugging
+    try {
+      const screenshotPath = join(screenshotDir, 'stack-setup-error.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      logError(`Screenshot saved to: ${screenshotPath}`, { context: 'stack-setup' });
+    } catch (screenshotError) {
+      // Ignore screenshot errors
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * Enable dev mode for remote stack when testing non-bundled guides
+ * 
+ * This function:
+ * 1. Navigates to the plugin configuration page with ?dev=true
+ * 2. Enables dev mode checkbox if not already enabled
+ * 3. Verifies dev mode is active
+ * 
+ * @param page - Playwright page
+ * @param config - Test configuration
+ * @param screenshotDir - Directory for saving screenshots
+ */
+async function enableDevModeForRemoteStack(
+  page: Page,
+  config: TestConfig,
+  screenshotDir: string
+): Promise<void> {
+  try {
+    // Navigate to plugin config page with ?dev=true
     const configUrl = new URL('/a/grafana-pathfinder-app', config.grafanaUrl);
     configUrl.searchParams.set('tab', 'configuration');
     configUrl.searchParams.set('dev', 'true');
@@ -76,12 +124,15 @@ export async function prepareStackForGuide(
     if (!configPageLoaded) {
       const screenshotPath = join(screenshotDir, 'config-page-load-failure.png');
       await page.screenshot({ path: screenshotPath, fullPage: true });
-      throw new Error(
-        `Failed to load plugin configuration page. Screenshot saved to: ${screenshotPath}`
+      logError(
+        `Failed to load plugin configuration page. Screenshot saved to: ${screenshotPath}`,
+        { context: 'stack-setup' }
       );
+      // Don't throw - allow test to continue, but warn
+      return;
     }
 
-    // Step 4: Check if dev mode checkbox is visible
+    // Check if dev mode checkbox is visible
     const devModeCheckbox = page.locator('#dev-mode');
     const isCheckboxVisible = await devModeCheckbox.isVisible().catch(() => false);
 
@@ -121,14 +172,14 @@ export async function prepareStackForGuide(
       }
     }
 
-    // Step 5: Check if dev mode is already enabled
+    // Check if dev mode is already enabled
     const isChecked = await devModeCheckbox.isChecked();
     if (isChecked) {
       logInfo('Dev mode is already enabled', { context: 'stack-setup' });
       return;
     }
 
-    // Step 6: Enable dev mode by clicking the checkbox
+    // Enable dev mode by clicking the checkbox
     logInfo('Enabling dev mode...', { context: 'stack-setup' });
     await devModeCheckbox.click();
 
@@ -138,11 +189,11 @@ export async function prepareStackForGuide(
       logDebug('Saving indicator not found, waiting for page reload', { context: 'stack-setup' });
     });
 
-    // Step 7: Wait for page reload after dev mode toggle
+    // Wait for page reload after dev mode toggle
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000); // Extra wait for any async operations
 
-    // Step 8: Verify dev mode is enabled
+    // Verify dev mode is enabled
     const finalCheckbox = page.locator('#dev-mode');
     const finalChecked = await finalCheckbox.isChecked().catch(() => false);
 
@@ -160,18 +211,19 @@ export async function prepareStackForGuide(
     logInfo('Dev mode successfully enabled', { context: 'stack-setup' });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logError(`Stack setup failed: ${errorMessage}`, { context: 'stack-setup' });
+    logError(`Remote dev mode setup failed: ${errorMessage}`, { context: 'stack-setup' });
 
     // Capture screenshot for debugging
     try {
-      const screenshotPath = join(screenshotDir, 'stack-setup-error.png');
+      const screenshotPath = join(screenshotDir, 'remote-dev-mode-setup-error.png');
       await page.screenshot({ path: screenshotPath, fullPage: true });
       logError(`Screenshot saved to: ${screenshotPath}`, { context: 'stack-setup' });
     } catch (screenshotError) {
       // Ignore screenshot errors
     }
 
-    throw error;
+    // Don't throw - allow test to continue, but warn
+    logError('Continuing test despite dev mode setup failure', { context: 'stack-setup' });
   }
 }
 
@@ -220,5 +272,139 @@ async function setAuthCookies(context: BrowserContext, config: TestConfig): Prom
   ]);
 
   logInfo('Authentication cookies set successfully', { context: 'stack-setup' });
+}
+
+/**
+ * Enable dev mode for local stack when testing non-bundled guides
+ * 
+ * This function:
+ * 1. Navigates to the plugin configuration page with ?dev=true
+ * 2. Enables dev mode checkbox if not already enabled
+ * 3. Verifies dev mode is active
+ * 
+ * @param page - Playwright page
+ * @param config - Test configuration
+ * @param screenshotDir - Directory for saving screenshots
+ */
+export async function enableDevModeForLocalStack(
+  page: Page,
+  config: TestConfig,
+  screenshotDir: string
+): Promise<void> {
+  try {
+    // Step 1: Navigate to plugin config page with ?dev=true
+    const configUrl = new URL('/a/grafana-pathfinder-app', config.grafanaUrl);
+    configUrl.searchParams.set('tab', 'configuration');
+    configUrl.searchParams.set('dev', 'true');
+
+    logInfo(`Navigating to plugin configuration: ${configUrl.toString()}`, { context: 'stack-setup' });
+    await page.goto(configUrl.toString());
+    await page.waitForLoadState('networkidle');
+
+    // Step 2: Wait for config page to load
+    const configPageLoaded = await page.waitForSelector('form', { timeout: 10000 }).catch(() => null);
+    if (!configPageLoaded) {
+      const screenshotPath = join(screenshotDir, 'config-page-load-failure.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      logError(
+        `Failed to load plugin configuration page. Screenshot saved to: ${screenshotPath}`,
+        { context: 'stack-setup' }
+      );
+      // Don't throw - allow test to continue, but warn
+      return;
+    }
+
+    // Step 3: Check if dev mode checkbox is visible
+    const devModeCheckbox = page.locator('#dev-mode');
+    const isCheckboxVisible = await devModeCheckbox.isVisible().catch(() => false);
+
+    if (!isCheckboxVisible) {
+      logDebug('Dev mode checkbox not visible - may need ?dev=true in URL or dev mode already enabled', {
+        context: 'stack-setup',
+      });
+      // Check if dev mode is already enabled by checking the page state
+      const devModeEnabled = await page.evaluate(() => {
+        // Check if dev mode is enabled by looking at plugin config
+        return (window as any).__pathfinderPluginConfig?.devMode === true;
+      });
+
+      if (devModeEnabled) {
+        logInfo('Dev mode appears to be already enabled', { context: 'stack-setup' });
+        return;
+      }
+
+      // Try navigating with ?dev=true explicitly
+      const urlWithDev = new URL(page.url());
+      urlWithDev.searchParams.set('dev', 'true');
+      await page.goto(urlWithDev.toString());
+      await page.waitForLoadState('networkidle');
+
+      const retryCheckbox = page.locator('#dev-mode');
+      const retryVisible = await retryCheckbox.isVisible().catch(() => false);
+      if (!retryVisible) {
+        const screenshotPath = join(screenshotDir, 'dev-mode-checkbox-not-found.png');
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        logError(
+          `Dev mode checkbox not found. Ensure you have admin permissions and the plugin is installed. Screenshot: ${screenshotPath}`,
+          { context: 'stack-setup' }
+        );
+        // Don't throw - allow test to continue, but warn
+        return;
+      }
+    }
+
+    // Step 4: Check if dev mode is already enabled
+    const isChecked = await devModeCheckbox.isChecked();
+    if (isChecked) {
+      logInfo('Dev mode is already enabled', { context: 'stack-setup' });
+      return;
+    }
+
+    // Step 5: Enable dev mode by clicking the checkbox
+    logInfo('Enabling dev mode...', { context: 'stack-setup' });
+    await devModeCheckbox.click();
+
+    // Wait for the "Saving..." indicator
+    const savingIndicator = page.locator('text=Saving to server and reloading...');
+    await savingIndicator.waitFor({ timeout: 5000 }).catch(() => {
+      logDebug('Saving indicator not found, waiting for page reload', { context: 'stack-setup' });
+    });
+
+    // Step 6: Wait for page reload after dev mode toggle
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2000); // Extra wait for any async operations
+
+    // Step 7: Verify dev mode is enabled
+    const finalCheckbox = page.locator('#dev-mode');
+    const finalChecked = await finalCheckbox.isChecked().catch(() => false);
+
+    if (!finalChecked) {
+      const screenshotPath = join(screenshotDir, 'dev-mode-enable-failure.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      logError(
+        `Failed to enable dev mode. Checkbox is not checked after toggle. Screenshot: ${screenshotPath}`,
+        { context: 'stack-setup' }
+      );
+      // Don't throw - allow test to continue, but warn
+      return;
+    }
+
+    logInfo('Dev mode successfully enabled', { context: 'stack-setup' });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logError(`Local dev mode setup failed: ${errorMessage}`, { context: 'stack-setup' });
+
+    // Capture screenshot for debugging
+    try {
+      const screenshotPath = join(screenshotDir, 'local-dev-mode-setup-error.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      logError(`Screenshot saved to: ${screenshotPath}`, { context: 'stack-setup' });
+    } catch (screenshotError) {
+      // Ignore screenshot errors
+    }
+
+    // Don't throw - allow test to continue, but warn
+    logError('Continuing test despite dev mode setup failure', { context: 'stack-setup' });
+  }
 }
 
