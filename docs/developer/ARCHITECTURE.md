@@ -98,8 +98,7 @@ The architecture follows a clean separation pattern where business logic is extr
 useInteractiveElements(); // Interactive guide functionality
 useKeyboardShortcuts(); // Navigation shortcuts
 useLinkClickHandler(); // Link and interaction handling
-useRequirementsChecker(); // Requirements validation
-useStepChecker(); // Step completion checking
+useStepChecker(); // Step requirements and objectives validation
 
 // Context Management
 useContextPanel(); // Context analysis and recommendations
