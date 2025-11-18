@@ -949,8 +949,8 @@ export const addGlobalInteractiveStyles = () => {
       position: absolute;
       top: var(--comment-top);
       left: var(--comment-left);
-      max-width: 320px;
-      min-width: 240px;
+      max-width: 420px;
+      min-width: 320px;
       pointer-events: none;
       z-index: ${INTERACTIVE_Z_INDEX.COMMENT_BOX};
       animation: fadeInComment 0.3s ease-out;
@@ -1008,6 +1008,41 @@ export const addGlobalInteractiveStyles = () => {
 
     .interactive-comment-close:active {
       transform: scale(0.95);
+    }
+
+    /* Skip button for comment boxes (after instruction text) */
+    .interactive-comment-skip-btn {
+      position: static !important;
+      margin-top: 12px;
+      padding: 6px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.7);
+      border-radius: 4px;
+      cursor: pointer;
+      display: block !important;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.3;
+      pointer-events: auto;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      width: fit-content;
+      float: none !important;
+      top: auto !important;
+      right: auto !important;
+      left: auto !important;
+      bottom: auto !important;
+    }
+
+    .interactive-comment-skip-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.3);
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .interactive-comment-skip-btn:active {
+      transform: scale(0.98);
     }
 
     /* Orange glow border for comment boxes */

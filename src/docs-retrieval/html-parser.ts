@@ -757,6 +757,7 @@ export function parseHTMLToComponents(
             refTarget: string;
             targetValue?: string;
             targetComment?: string;
+            isSkippable?: boolean;
           }> = [];
 
           internalSpans.forEach((span, index) => {
@@ -797,12 +798,15 @@ export function parseHTMLToComponents(
                 // Note: Spans are hidden via CSS rule instead of DOM removal
               }
 
+              const isSkippable = span.getAttribute('data-skippable') === 'true';
+
               internalActions.push({
                 requirements: span.getAttribute('data-requirements') || undefined,
                 targetAction,
                 refTarget,
                 targetValue: span.getAttribute('data-targetvalue') || undefined,
                 targetComment: interactiveComment || undefined,
+                isSkippable,
               });
 
               // Remove the internal span since it's just metadata

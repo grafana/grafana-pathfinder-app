@@ -216,7 +216,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           // Execute guided step and wait for user completion
           const result = await guidedHandler.executeGuidedStep(action, i, internalActions.length, stepTimeout);
 
-          if (result === 'completed') {
+          if (result === 'completed' || result === 'skipped') {
             setCurrentStepStatus('completed');
             // Brief visual feedback before moving to next step
             await new Promise((resolve) => setTimeout(resolve, 500));

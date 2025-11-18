@@ -23,6 +23,7 @@ export interface GuidedAction extends InternalAction {
   targetAction: 'hover' | 'button' | 'highlight';
   refTarget: string; // Required for guided actions
   targetComment?: string; // Optional comment to display in tooltip during this step
+  isSkippable?: boolean; // Whether this specific step can be skipped
 }
 
 /**
