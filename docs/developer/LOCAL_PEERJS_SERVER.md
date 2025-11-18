@@ -114,7 +114,7 @@ npm run peerjs-server
 
 ### What the Server Does NOT Do
 
-- **Data Transfer**: All tutorial data flows directly peer-to-peer
+- **Data Transfer**: All guide data flows directly peer-to-peer
 - **Storage**: No session data is stored on the server
 - **Authentication**: Simple key-based validation only
 

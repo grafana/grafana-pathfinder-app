@@ -14,8 +14,8 @@ Interactive learning is an app-based plugin built using the Grafana plugin SDK. 
 Interactive learning has three main components:
 
 - Context retrieval - Retrieves the context of the current page in Grafana.
-- Documentation rendering - Renders the selected documentation or tutorial.
-- Interactive engine - Facilitates the interactive features within the documentation or tutorial.
+- Documentation rendering - Renders the selected documentation or guide.
+- Interactive engine - Facilitates the interactive features within the documentation or guide.
 
 ![Interactive Learning architecture](/media/docs/pathfinder/architecture.png)
 
@@ -55,19 +55,19 @@ The recommender service is disabled by default for open source Grafana users. Gr
 
 ## Documentation rendering
 
-The documentation rendering component renders documentation or tutorial content. The system parses documentation into a React component tree rather than rendering it in an iframe. This approach allows the documentation to render in the same way as the rest of the Grafana UI, using the same components and styles. It also allows rendering images and videos directly in the sidebar. The renderer covers most elements of documentation and tutorial content. If you notice a rendering issue, let us know by [opening an issue](https://github.com/grafana/grafana-pathfinder-app/issues/new).
+The documentation rendering component renders documentation or guide content. The system parses documentation into a React component tree rather than rendering it in an iframe. This approach allows the documentation to render in the same way as the rest of the Grafana UI, using the same components and styles. It also allows rendering images and videos directly in the sidebar. The renderer covers most elements of documentation and guide content. If you notice a rendering issue, let us know by [opening an issue](https://github.com/grafana/grafana-pathfinder-app/issues/new).
 
 ## Interactive engine
 
-The interactive engine provides interactive features within documentation or tutorials. It powers the **Show me** and **Do it** buttons, as well as interactive elements and the requirements and objectives system. The following components make up the interactive engine:
+The interactive engine provides interactive features within documentation or guides. It powers the **Show me** and **Do it** buttons, as well as interactive elements and the requirements and objectives system. The following components make up the interactive engine:
 
-- **Show me button** - Shows the next step in the documentation or tutorial.
-- **Do it button** - Executes the action of the current step in the documentation or tutorial.
-- **Do section button** - Executes the action of the current section in the documentation or tutorial.
+- **Show me button** - Shows the next step in the documentation or guide.
+- **Do it button** - Executes the action of the current step in the documentation or guide.
+- **Do section button** - Executes the action of the current section in the documentation or guide.
 - **Guided steps** - Steps that guide users through actions by clicking a button to start.
 - **Multistep steps** - Steps that execute in sequence after clicking a button to start.
 - **Requirements and objectives system** - Checks if users have completed requirements and objectives for the current step.
 
 ### Tracking user progress
 
-Interactive learning uses localStorage to track user progress for interactive features within documentation or tutorials. Tutorial progression resets when a user closes the tutorial tab. Tabs and progression persist across sessions until the user closes the tab.
+Interactive learning uses localStorage to track user progress for interactive features within documentation or guides. Guide progression resets when a user closes the guide tab. Tabs and progression persist across sessions until the user closes the tab.

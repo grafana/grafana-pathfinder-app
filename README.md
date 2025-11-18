@@ -4,15 +4,15 @@
 
 [![License](https://img.shields.io/github/license/grafana/docs-plugin)](LICENSE)
 
-Get help exactly when and where you need it. Interactive learning brings contextual documentation and interactive tutorials directly into Grafana, so you can learn and build without leaving your workflow.
+Get help exactly when and where you need it. Interactive learning brings contextual documentation and interactive guides directly into Grafana, so you can learn and build without leaving your workflow.
 
 ## What is Interactive learning?
 
 Interactive learning is your in-app learning companion. It provides:
 
-- **Smart recommendations** – Get relevant docs and tutorials based on what you're working on
-- **Interactive tutorials** – Follow step-by-step guided learning journeys with "Show Me" and "Do It" features
-- **Tab-based navigation** – Open multiple docs and tutorials in tabs, just like a browser
+- **Smart recommendations** – Get relevant docs and guides based on what you're working on
+- **Interactive guides** – Follow step-by-step guided learning journeys with "Show Me" and "Do It" features
+- **Tab-based navigation** – Open multiple docs and guides in tabs, just like a browser
 - **Milestone tracking** – See your progress through learning journeys with clear milestones
 - **Always available** – Access help without switching windows or searching documentation sites
 
@@ -21,15 +21,15 @@ Interactive learning is your in-app learning companion. It provides:
 1. Look for the **Help** button (?) in the top navigation bar of Grafana
 2. Click the Help button to open the Interactive learning panel
 3. Browse recommended documentation based on your current context
-4. Click **View** to read a doc or **Start** to begin an interactive tutorial
+4. Click **View** to read a doc or **Start** to begin an interactive guides
 
 ## Getting Started
 
 Once you open Interactive learning:
 
-1. **Review recommendations** – See docs and tutorials tailored to what you're doing in Grafana
+1. **Review recommendations** – See docs and guides tailored to what you're doing in Grafana
 2. **Open content in tabs** – Click "View" or "Start" to open content in a new tab
-3. **Navigate tutorials** – Use the milestone navigation at the bottom to move through learning journeys
+3. **Navigate guides** – Use the milestone navigation at the bottom to move through learning journeys
 4. **Try interactive features** – Click "Show Me" to see where things are, or "Do It" to have Interactive learning guide you through actions
 5. **Manage your tabs** – Close tabs you're done with, or keep them open for reference
 
@@ -40,7 +40,7 @@ Once you open Interactive learning:
 
 ## Live Sessions (Experimental)
 
-**NEW**: Real-time collaborative learning! One presenter can broadcast interactive tutorials to multiple attendees who follow along in their own Grafana instances.
+**NEW**: Real-time collaborative learning! One presenter can broadcast interactive guides to multiple attendees who follow along in their own Grafana instances.
 
 ### Quick Start
 
@@ -94,7 +94,7 @@ Admins can configure Interactive learning from the plugin's configuration page i
 
 #### 1. Configuration (Basic Settings)
 
-- **Auto-launch tutorial URL** – Set a specific learning journey or documentation page to automatically open when Grafana starts (useful for demos and onboarding)
+- **Auto-launch guide URL** – Set a specific learning journey or documentation page to automatically open when Grafana starts (useful for demos and onboarding)
 - **Global link interception** – (Experimental) When enabled, clicking documentation links anywhere in Grafana will open them in Interactive learning instead of a new tab
 
 #### 2. Recommendations
@@ -105,7 +105,7 @@ Admins can configure Interactive learning from the plugin's configuration page i
 #### 3. Interactive Features
 
 - **Auto-completion detection** – (Experimental) Enable automatic step completion when users perform actions themselves (without clicking "Do it" buttons)
-- **Timing settings** – Configure timeouts for requirement checks and guided steps to optimize the tutorial experience
+- **Timing settings** – Configure timeouts for requirement checks and guided steps to optimize the guide experience
 
 ## Contributing
 

@@ -156,7 +156,7 @@ export type InteractiveConfig = typeof INTERACTIVE_CONFIG_DEFAULTS;
 
 /**
  * HTML data attribute keys
- * Shared between editor and runtime for interactive tutorials
+ * Shared between editor and runtime for interactive guides
  */
 export const DATA_ATTRIBUTES = {
   TARGET_ACTION: 'data-targetaction',
@@ -168,7 +168,7 @@ export const DATA_ATTRIBUTES = {
 
 /**
  * Interactive action types
- * Defines all supported interactive action types for tutorials
+ * Defines all supported interactive action types for guides
  */
 export const ACTION_TYPES = {
   BUTTON: 'button',

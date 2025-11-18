@@ -4,7 +4,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { querySelectorAllEnhanced, findButtonByText, isElementVisible, resolveSelector } from '../../lib/dom';
 import { GuidedAction } from '../../types/interactive-actions.types';
 
-type CompletionResult = 'completed' | 'timeout' | 'cancelled';
+type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped';
 
 /**
  * Handler for guided interactions where users manually perform actions
@@ -78,16 +78,28 @@ export class GuidedHandler {
       // If we highlight first, fast users might click before the listener is ready
       const completionPromise = this.createCompletionListener(action, targetElement, timeout);
 
+      // Create skip promise if step is skippable
+      const skipPromise = action.isSkippable
+        ? this.createSkipListener(stepIndex)
+        : new Promise<CompletionResult>(() => {}); // Never resolves if not skippable
+
       // Now highlight the target element with persistent highlight
       // Note: highlightTarget uses navigationManager.highlightWithComment which includes
       // the 300ms DOM settling delay after scroll
-      await this.highlightTarget(targetElement, action.targetAction, stepIndex, totalSteps, action.targetComment);
+      await this.highlightTarget(
+        targetElement,
+        action.targetAction,
+        stepIndex,
+        totalSteps,
+        action.targetComment,
+        action.isSkippable
+      );
 
-      // Wait for user to complete the action (listener already attached)
-      const result = await completionPromise;
+      // Wait for user to complete the action, skip, timeout, or cancel
+      const result = await Promise.race([completionPromise, skipPromise]);
 
-      // Track completion for progress display
-      if (result === 'completed') {
+      // Track completion for progress display (both completed and skipped count as done)
+      if (result === 'completed' || result === 'skipped') {
         this.completedSteps.push(stepIndex);
       }
 
@@ -203,7 +215,8 @@ export class GuidedHandler {
     actionType: 'hover' | 'button' | 'highlight',
     stepIndex: number,
     totalSteps: number,
-    customComment?: string
+    customComment?: string,
+    isSkippable?: boolean
   ): Promise<void> {
     // Use custom comment if provided, otherwise generate default message
     const message = customComment || this.getActionMessage(actionType, stepIndex, totalSteps);
@@ -215,9 +228,20 @@ export class GuidedHandler {
       completedSteps: [...this.completedSteps], // Copy to avoid mutations
     };
 
+    // Create skip callback if step is skippable
+    const skipCallback = isSkippable
+      ? () => {
+          // Dispatch skip event when skip button is clicked
+          const skipEvent = new CustomEvent('guided-step-skipped', {
+            detail: { stepIndex },
+          });
+          document.dispatchEvent(skipEvent);
+        }
+      : undefined;
+
     // Use existing highlight system with persistent highlight
     // Disable auto-cleanup for guided mode - highlights should only clear when step completes
-    await this.navigationManager.highlightWithComment(element, message, false, stepInfo);
+    await this.navigationManager.highlightWithComment(element, message, false, stepInfo, skipCallback);
 
     // Add a persistent highlight class that won't auto-remove
     element.classList.add('interactive-guided-active');
@@ -275,6 +299,23 @@ export class GuidedHandler {
       // Clean up listeners when promise resolves
       this.cleanupListeners();
       return result;
+    });
+  }
+
+  /**
+   * Create skip listener that resolves when user clicks skip button in comment box
+   */
+  private createSkipListener(stepIndex: number): Promise<CompletionResult> {
+    return new Promise<CompletionResult>((resolve) => {
+      const handleSkip = (event: Event) => {
+        const customEvent = event as CustomEvent<{ stepIndex: number }>;
+        if (customEvent.detail.stepIndex === stepIndex) {
+          document.removeEventListener('guided-step-skipped', handleSkip);
+          resolve('skipped');
+        }
+      };
+
+      document.addEventListener('guided-step-skipped', handleSkip);
     });
   }
 

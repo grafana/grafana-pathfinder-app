@@ -63,7 +63,7 @@ export const testIds = {
     errorAlert: 'context-panel-error-alert',
   },
 
-  // Interactive Tutorial Elements
+  // interactive guide Elements
   interactive: {
     section: (sectionId: string) => `interactive-section-${sectionId}`,
     step: (stepId: string) => `interactive-step-${stepId}`,

@@ -62,12 +62,12 @@ Business logic, data fetching, and utility functions organized by functionality.
 
 ### `interactive.hook.ts` ⭐ **Interactive Elements Handler**
 
-**Purpose**: Manages interactive tutorial elements embedded in documentation
+**Purpose**: Manages interactive guide elements embedded in documentation
 **Role**:
 
 - Handles custom interactive events (highlight, form-fill, button clicks)
 - Provides programmatic interaction with Grafana UI
-- Supports guided tutorial sequences
+- Supports guided sequences
 
 **Extracted From**: Main docs panel (~200 lines)
 **Key Functions**:
@@ -86,7 +86,7 @@ const events = ['interactive-highlight', 'interactive-formfill', 'interactive-bu
 
 **Used By**:
 
-- `src/components/docs-panel/docs-panel.tsx` - Interactive tutorial support
+- `src/components/docs-panel/docs-panel.tsx` - interactive guide support
 
 ---
 
@@ -288,4 +288,4 @@ isElementCompleted(element)
 - Replaces ~200 lines of duplicated logic across multiple files
 - Documented in `/INTERACTIVE_REQUIREMENTS.md` for comprehensive usage guide
 
-This enhancement provides a foundation for sophisticated tutorial flows with automatic step dependency management and progress tracking.
+This enhancement provides a foundation for sophisticated guide flows with automatic step dependency management and progress tracking.

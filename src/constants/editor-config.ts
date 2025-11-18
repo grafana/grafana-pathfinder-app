@@ -1,5 +1,5 @@
 /**
- * Editor-specific constants for the WYSIWYG Interactive Tutorial Editor
+ * Editor-specific constants for the WYSIWYG interactive guide Editor
  * These constants are specific to the editor UI and not shared with the runtime
  */
 

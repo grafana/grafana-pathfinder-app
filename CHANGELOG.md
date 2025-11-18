@@ -32,7 +32,7 @@
 
 ### Changed
 
-- Cleaned up interactive tutorials implementation
+- Cleaned up interactive guides implementation
 - Grouped requirements manager files for better organization
 - Grouped security related files
 

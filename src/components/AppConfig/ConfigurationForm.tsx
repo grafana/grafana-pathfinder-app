@@ -439,8 +439,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   Enable live collaborative learning sessions (Experimental)
                 </Text>
                 <Text variant="body" color="secondary">
-                  Allow presenters to create live sessions where attendees can follow along with interactive tutorials
-                  in real-time
+                  Allow presenters to create live sessions where attendees can follow along with interactive guides in
+                  real-time
                 </Text>
               </div>
             </div>
@@ -488,8 +488,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
               <Alert severity="warning" title="Experimental feature disabled" className={s.marginTop}>
                 <Text variant="body">
                   Live sessions are currently disabled. This is an <strong>experimental feature</strong> that enables
-                  collaborative learning experiences where presenters can guide attendees through interactive tutorials
-                  in real-time.
+                  collaborative learning experiences where presenters can guide attendees through interactive guides in
+                  real-time.
                   <br />
                   <br />
                   <strong>Note:</strong> This feature uses peer-to-peer connections and may have stability issues

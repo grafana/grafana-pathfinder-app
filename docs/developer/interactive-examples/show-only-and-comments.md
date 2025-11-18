@@ -1,6 +1,6 @@
 ### Show-only actions and interactive comments
 
-This guide covers two recently added features that enhance the interactive tutorial experience: **show-only mode** with `data-doit='false'` and **contextual comment boxes** with `<span class="interactive-comment">`.
+This guide covers two recently added features that enhance the interactive guide experience: **show-only mode** with `data-doit='false'` and **contextual comment boxes** with `<span class="interactive-comment">`.
 
 ## Show-only mode with `data-doit='false'`
 
@@ -150,7 +150,7 @@ Show-only mode and interactive comments work perfectly together to create **guid
 
 ### When to use show-only mode
 
-- **Orientation tutorials**: Showing where important UI elements are located
+- **Orientation guides**: Showing where important UI elements are located
 - **Feature explanations**: Pointing out interface elements without changing state
 - **Concept education**: Teaching about what things do rather than how to use them
 - **Progressive disclosure**: Building understanding before hands-on interaction

@@ -10,7 +10,7 @@ import {
   matchesStepAction,
   type DetectedActionEvent,
 } from '../../../interactive-engine';
-import { waitForReactUpdates, useStepChecker } from '../../../requirements-manager';
+import { waitForReactUpdates, useStepChecker, validateInteractiveRequirements } from '../../../requirements-manager';
 import { getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
@@ -135,6 +135,18 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Combined completion state
     const isCompleted = parentCompleted || isLocallyCompleted;
 
+    // Runtime validation: check for impossible requirement configurations
+    useEffect(() => {
+      validateInteractiveRequirements(
+        {
+          requirements,
+          refTarget: undefined, // Guided containers have no refTarget (internal actions do)
+          stepId: renderedStepId,
+        },
+        'InteractiveGuided'
+      );
+    }, [requirements, renderedStepId]);
+
     // Use step checker hook for requirements and objectives
     const checker = useStepChecker({
       requirements,
@@ -204,7 +216,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           // Execute guided step and wait for user completion
           const result = await guidedHandler.executeGuidedStep(action, i, internalActions.length, stepTimeout);
 
-          if (result === 'completed') {
+          if (result === 'completed' || result === 'skipped') {
             setCurrentStepStatus('completed');
             // Brief visual feedback before moving to next step
             await new Promise((resolve) => setTimeout(resolve, 500));

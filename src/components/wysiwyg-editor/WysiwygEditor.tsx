@@ -47,7 +47,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
 /**
  * WysiwygEditor Component
  *
- * Main WYSIWYG editor for creating interactive tutorials.
+ * Main WYSIWYG editor for creating interactive guides.
  * Integrates Tiptap editor with custom extensions, toolbar, and form modal.
  */
 export const WysiwygEditor: React.FC = () => {

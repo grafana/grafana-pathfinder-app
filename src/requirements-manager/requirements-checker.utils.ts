@@ -915,7 +915,7 @@ async function isAdminCheck(check: string): Promise<CheckResultError> {
  *
  * Example usage:
  * - data-requirements="is-logged-in" - user must be authenticated
- * - Common prerequisite for most interactive tutorials
+ * - Common prerequisite for most interactive guides
  * - Prevents anonymous users from accessing user-specific features
  *
  * Authentication states:
@@ -1364,7 +1364,7 @@ async function datasourceConfiguredCheck(check: string): Promise<CheckResultErro
  * - No required fields are empty or invalid
  * - At least one form exists on the page
  *
- * Example usage in interactive tutorials:
+ * Example usage in interactive guides:
  * - data-requirements="form-valid" - step only proceeds if forms are valid
  * - Useful before "Save" or "Submit" button clicks
  * - Prevents users from clicking submit on incomplete forms
@@ -1423,4 +1423,61 @@ async function formValidCheck(check: string): Promise<CheckResultError> {
       context: { error },
     };
   }
+}
+
+/**
+ * Validates interactive element props and logs errors for impossible configurations
+ *
+ * This utility detects impossible requirement combinations and logs console errors
+ * to help authors catch configuration mistakes during development.
+ *
+ * Specifically, it checks if an element has 'exists-reftarget' requirement but
+ * no refTarget, which would make the step impossible to pass.
+ *
+ * @param props - Interactive element props to validate
+ * @param elementType - Human-readable element type (e.g., 'InteractiveStep', 'InteractiveMultiStep')
+ * @returns true if validation passed, false if errors were logged
+ */
+export function validateInteractiveRequirements(
+  props: {
+    requirements?: string;
+    refTarget?: string;
+    stepId?: string;
+    originalHTML?: string;
+  },
+  elementType: string
+): boolean {
+  const { requirements, refTarget, stepId, originalHTML } = props;
+
+  // If no requirements, nothing to validate
+  if (!requirements) {
+    return true;
+  }
+
+  // Check if requirements include 'exists-reftarget'
+  const requirementList = requirements.split(',').map((r) => r.trim());
+  const hasExistsReftarget = requirementList.includes('exists-reftarget');
+
+  // If 'exists-reftarget' is present but no refTarget, this is an impossible configuration
+  if (hasExistsReftarget && !refTarget) {
+    const errorMessage = [
+      `[${elementType}] Invalid requirement configuration:`,
+      `  - Element has 'exists-reftarget' requirement but no refTarget`,
+      `  - Step ID: ${stepId || 'unknown'}`,
+      `  - This step can never pass because there is no target element to check`,
+      `  - Fix: Either add a data-reftarget attribute or remove 'exists-reftarget' from requirements`,
+    ];
+
+    if (originalHTML) {
+      errorMessage.push(
+        `  - Original HTML: ${originalHTML.substring(0, 200)}${originalHTML.length > 200 ? '...' : ''}`
+      );
+    }
+
+    console.error(errorMessage.join('\n'));
+
+    return false;
+  }
+
+  return true;
 }
