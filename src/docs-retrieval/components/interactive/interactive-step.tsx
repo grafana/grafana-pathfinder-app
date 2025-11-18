@@ -7,6 +7,7 @@ import {
   useStepChecker,
   getPostVerifyExplanation,
   checkPostconditions,
+  validateInteractiveRequirements,
 } from '../../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
 import type { InteractiveStepProps } from '../../../types/component-props.types';
@@ -92,6 +93,18 @@ export const InteractiveStep = forwardRef<
 
     // Combined completion state (parent takes precedence for coordination)
     const isCompleted = parentCompleted || isLocallyCompleted;
+
+    // Runtime validation: check for impossible requirement configurations
+    useEffect(() => {
+      validateInteractiveRequirements(
+        {
+          requirements,
+          refTarget,
+          stepId: renderedStepId,
+        },
+        'InteractiveStep'
+      );
+    }, [requirements, refTarget, renderedStepId]);
 
     // Get the interactive functions from the hook
     const { executeInteractiveAction, verifyStepResult } = useInteractiveElements();

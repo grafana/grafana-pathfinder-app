@@ -1,4 +1,8 @@
-import { checkRequirements, RequirementsCheckOptions } from './requirements-checker.utils';
+import {
+  checkRequirements,
+  RequirementsCheckOptions,
+  validateInteractiveRequirements,
+} from './requirements-checker.utils';
 import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv } from '@grafana/runtime';
 import { ContextService } from '../context-engine';
 
@@ -692,6 +696,90 @@ describe('requirements-checker.utils', () => {
       );
 
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('validateInteractiveRequirements', () => {
+    let consoleErrorSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+    });
+
+    afterEach(() => {
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should return true when no requirements are provided', () => {
+      const result = validateInteractiveRequirements(
+        {
+          requirements: undefined,
+        },
+        'InteractiveStep'
+      );
+
+      expect(result).toBe(true);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it('should return true when requirements string is empty', () => {
+      const result = validateInteractiveRequirements(
+        {
+          requirements: '',
+        },
+        'InteractiveStep'
+      );
+
+      expect(result).toBe(true);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it('should return true when requirements do not include exists-reftarget', () => {
+      const result = validateInteractiveRequirements(
+        {
+          requirements: 'is-admin,has-datasources',
+        },
+        'InteractiveStep'
+      );
+
+      expect(result).toBe(true);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it('should return true when exists-reftarget is among multiple requirements and refTarget is provided', () => {
+      const result = validateInteractiveRequirements(
+        {
+          requirements: 'is-admin,exists-reftarget,has-datasources',
+          refTarget: 'button[data-testid="submit"]',
+        },
+        'InteractiveStep'
+      );
+
+      expect(result).toBe(true);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it('should return false when exists-reftarget is among multiple requirements but no refTarget is provided', () => {
+      const result = validateInteractiveRequirements(
+        {
+          requirements: 'is-admin,exists-reftarget,has-datasources',
+        },
+        'InteractiveStep'
+      );
+
+      expect(result).toBe(false);
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should log error message with element type when validation fails', () => {
+      validateInteractiveRequirements(
+        {
+          requirements: 'exists-reftarget',
+        },
+        'InteractiveMultiStep'
+      );
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('[InteractiveMultiStep]'));
     });
   });
 });

@@ -109,6 +109,11 @@ This guide explains the supported interactive types, when to use each, what `dat
 </li>
 ```
 
+**Note**: Normally, multistep actions do not have reftargets, since they act as containers for other
+interactive actions. If you specify the requirement of `exists-reftarget` for a multistep action,
+you are recommended to also specify `data-reftarget` to be equal to the first reftarget of the
+first interactive action in the multistep sequence.
+
 ## Choosing the right type
 
 - **Click by CSS selector**: highlight

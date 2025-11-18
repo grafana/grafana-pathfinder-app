@@ -1,10 +1,15 @@
 import React, { useState, useCallback } from 'react';
 import { Field, Input, Button, Stack, Badge, Icon, Card, HorizontalGroup, Alert, useStyles2 } from '@grafana/ui';
 import { type InteractiveFormProps } from '../types';
-import { DATA_ATTRIBUTES, DEFAULT_VALUES, ACTION_TYPES } from '../../../constants/interactive-config';
+import {
+  DATA_ATTRIBUTES,
+  ACTION_TYPES,
+  COMMON_REQUIREMENTS,
+  DEFAULT_VALUES,
+} from '../../../constants/interactive-config';
 import { useActionRecorder } from '../../../utils/devtools/action-recorder.hook';
 import { getActionConfig } from './actionConfig';
-import { InteractiveFormShell, CommonRequirementsButtons } from './InteractiveFormShell';
+import { InteractiveFormShell } from './InteractiveFormShell';
 import { getMultistepFormStyles } from '../editor.styles';
 
 /**
@@ -20,8 +25,11 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
   }
 
   // Requirements state
+  // NOTE: Multistep containers do NOT support 'exists-reftarget' because they have no data-reftarget.
+  // The multistep wrapper is a container for internal actions, not a targetable element itself.
+  // Requirements should be set on individual internal action spans, not on the wrapper.
   const [requirements, setRequirements] = useState<string>(
-    (initialValues?.[DATA_ATTRIBUTES.REQUIREMENTS] as string) || DEFAULT_VALUES.REQUIREMENT || ''
+    (initialValues?.[DATA_ATTRIBUTES.REQUIREMENTS] as string) || ''
   );
 
   // Action recorder hook - exclude the form panel itself
@@ -68,6 +76,11 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
   };
 
   const handleApply = () => {
+    // Always stop recording when form is submitted
+    if (recordMode) {
+      stopRecording();
+    }
+
     if (!isValid()) {
       return;
     }
@@ -198,16 +211,28 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
         </Card>
 
         {/* Requirements field */}
-        <Field label="Requirements:" description="Requirements are usually set on child interactive spans">
+        <Field
+          label="Requirements:"
+          description="Requirements are usually set on child interactive spans. Note: 'exists-reftarget' is not supported for multistep containers."
+        >
           <>
             <Input
               value={requirements}
               onChange={(e) => setRequirements(e.currentTarget.value)}
-              placeholder={`e.g., ${DEFAULT_VALUES.REQUIREMENT} (optional)`}
+              placeholder="e.g., navmenu-open, is-admin (optional)"
               autoFocus
             />
             <div className={styles.requirementsButtonContainer}>
-              <CommonRequirementsButtons onSelect={setRequirements} />
+              {/* Custom requirements buttons that exclude exists-reftarget for multistep */}
+              <HorizontalGroup spacing="sm" wrap>
+                {COMMON_REQUIREMENTS.filter((req) => req !== 'exists-reftarget')
+                  .slice(0, 3)
+                  .map((req) => (
+                    <Button key={req} size="sm" variant="secondary" onClick={() => setRequirements(req)}>
+                      {req}
+                    </Button>
+                  ))}
+              </HorizontalGroup>
             </div>
           </>
         </Field>
