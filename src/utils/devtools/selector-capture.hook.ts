@@ -5,11 +5,13 @@
 import { useState, useCallback, useEffect } from 'react';
 import { generateSelectorFromEvent } from './selector-generator.util';
 import type { SelectorInfo } from './dev-tools.types';
+import { useElementInspector } from './element-inspector.hook';
 
 export interface UseSelectorCaptureOptions {
   excludeSelectors?: string[];
   onCapture?: (selector: string, info: SelectorInfo) => void;
   autoDisable?: boolean;
+  enableInspector?: boolean;
 }
 
 export interface UseSelectorCaptureReturn {
@@ -18,6 +20,10 @@ export interface UseSelectorCaptureReturn {
   selectorInfo: SelectorInfo | null;
   startCapture: () => void;
   stopCapture: () => void;
+  // Inspector data for tooltip rendering
+  hoveredElement: HTMLElement | null;
+  domPath: string | null;
+  cursorPosition: { x: number; y: number } | null;
 }
 
 /**
@@ -41,12 +47,26 @@ export interface UseSelectorCaptureReturn {
  * startCapture();
  * ```
  */
+// Default exclude selectors - defined outside to prevent recreation
+const DEFAULT_EXCLUDE_SELECTORS = ['[class*="debug"]', '.context-container'];
+
 export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): UseSelectorCaptureReturn {
-  const { excludeSelectors = ['[class*="debug"]', '.context-container'], onCapture, autoDisable = true } = options;
+  const {
+    excludeSelectors = DEFAULT_EXCLUDE_SELECTORS,
+    onCapture,
+    autoDisable = true,
+    enableInspector = true,
+  } = options;
 
   const [isActive, setIsActive] = useState(false);
   const [capturedSelector, setCapturedSelector] = useState<string | null>(null);
   const [selectorInfo, setSelectorInfo] = useState<SelectorInfo | null>(null);
+
+  // Element inspector for hover highlighting and DOM path display
+  const { hoveredElement, domPath, cursorPosition } = useElementInspector({
+    isActive: isActive && enableInspector,
+    excludeSelectors,
+  });
 
   const stopCapture = useCallback(() => {
     setIsActive(false);
@@ -120,5 +140,9 @@ export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): Use
     selectorInfo,
     startCapture,
     stopCapture,
+    // Inspector data
+    hoveredElement,
+    domPath,
+    cursorPosition,
   };
 }

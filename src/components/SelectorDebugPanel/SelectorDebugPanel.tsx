@@ -10,6 +10,7 @@ import { useStepExecutor } from '../../utils/devtools/step-executor.hook';
 import { useSelectorCapture } from '../../utils/devtools/selector-capture.hook';
 import { useActionRecorder } from '../../utils/devtools/action-recorder.hook';
 import { parseStepString } from '../../utils/devtools/step-parser.util';
+import { DomPathTooltip } from '../DomPathTooltip';
 
 export interface SelectorDebugPanelProps {
   onOpenDocsPage?: (url: string, title: string) => void;
@@ -120,6 +121,8 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     selectorInfo,
     startCapture,
     stopCapture,
+    domPath: watchDomPath,
+    cursorPosition: watchCursorPosition,
   } = useSelectorCapture({
     autoDisable: true,
   });
@@ -135,6 +138,8 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     deleteStep,
     setRecordedSteps,
     exportSteps: exportStepsFromRecorder,
+    domPath: recordDomPath,
+    cursorPosition: recordCursorPosition,
   } = useActionRecorder();
 
   // Export State
@@ -663,6 +668,16 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
           </div>
         )}
       </div>
+
+      {/* DOM Path Tooltip for Watch Mode */}
+      {watchMode && watchDomPath && watchCursorPosition && (
+        <DomPathTooltip domPath={watchDomPath} position={watchCursorPosition} visible={true} />
+      )}
+
+      {/* DOM Path Tooltip for Record Mode */}
+      {recordMode && recordDomPath && recordCursorPosition && (
+        <DomPathTooltip domPath={recordDomPath} position={recordCursorPosition} visible={true} />
+      )}
     </div>
   );
 }
