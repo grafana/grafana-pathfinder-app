@@ -7,6 +7,7 @@ import { shouldCaptureElement, getActionDescription } from '../../interactive-en
 import { generateSelectorFromEvent } from './selector-generator.util';
 import { exportStepsToHTML, type RecordedStep, type ExportOptions } from './tutorial-exporter';
 import { formatStepsToString } from './step-parser.util';
+import { exportStepsToHugoShortcodes, type HugoExportOptions } from './hugo-exporter';
 
 export interface UseActionRecorderOptions {
   excludeSelectors?: string[];
@@ -21,7 +22,7 @@ export interface UseActionRecorderReturn {
   clearRecording: () => void;
   deleteStep: (index: number) => void;
   setRecordedSteps: (steps: RecordedStep[]) => void;
-  exportSteps: (format: 'string' | 'html', options?: ExportOptions) => string;
+  exportSteps: (format: 'string' | 'html' | 'hugo', options?: ExportOptions & HugoExportOptions) => string;
 }
 
 /**
@@ -72,7 +73,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   }, []);
 
   const exportSteps = useCallback(
-    (format: 'string' | 'html', exportOptions?: ExportOptions): string => {
+    (format: 'string' | 'html' | 'hugo', exportOptions?: ExportOptions & HugoExportOptions): string => {
       if (format === 'string') {
         return formatStepsToString(
           recordedSteps.map((step) => ({
@@ -81,6 +82,14 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
             value: step.value,
           }))
         );
+      } else if (format === 'hugo') {
+        return exportStepsToHugoShortcodes(recordedSteps, {
+          includeComments: true,
+          wrapInSequence: true,
+          sequenceId: 'tutorial-sequence',
+          sequenceTitle: 'Tutorial Section',
+          ...exportOptions,
+        });
       } else {
         return exportStepsToHTML(recordedSteps, {
           includeComments: true,
