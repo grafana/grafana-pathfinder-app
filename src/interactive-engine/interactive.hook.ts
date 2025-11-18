@@ -337,20 +337,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     [checkRequirementsFromData]
   );
 
-  /**
-   * Enhanced function that returns both requirements check and extracted data
-   */
-  const checkRequirementsWithData = async (
-    element: HTMLElement
-  ): Promise<{
-    requirementsCheck: InteractiveRequirementsCheck;
-    interactiveData: InteractiveElementData;
-  }> => {
-    const data = extractInteractiveDataFromElement(element);
-    const requirementsCheck = await checkRequirementsFromData(data);
-    return { requirementsCheck, interactiveData: data };
-  };
-
   // Legacy custom event system removed - all interactions now handled by modern direct click handlers
 
   /**
@@ -430,17 +416,21 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   );
 
   return {
+    // Low-level action methods - primarily for testing, use executeInteractiveAction for new code
     interactiveFocus,
     interactiveButton,
     interactiveSequence,
     interactiveFormFill,
     interactiveNavigate,
+
+    // Requirements checking
     checkElementRequirements,
-    checkRequirementsFromData,
+    checkRequirementsFromData, // Keep - used in step-checker, multi-step, and section components
     verifyStepResult,
-    checkRequirementsWithData,
-    executeInteractiveAction, // New direct interface for React components
-    fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(), // Add the new function to the return object
+
+    // High-level action method - preferred for new code
+    executeInteractiveAction,
+    fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(),
 
     // Emergency method for safety
     forceUnblock: () => stateManager.forceUnblock(),

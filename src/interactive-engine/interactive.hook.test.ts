@@ -194,7 +194,6 @@ describe('useInteractiveElements', () => {
       expect(result.current.interactiveSequence).toBeDefined();
       expect(result.current.checkElementRequirements).toBeDefined();
       expect(result.current.checkRequirementsFromData).toBeDefined();
-      expect(result.current.checkRequirementsWithData).toBeDefined();
       expect(result.current.executeInteractiveAction).toBeDefined();
       expect(result.current.fixNavigationRequirements).toBeDefined();
     });
@@ -202,7 +201,6 @@ describe('useInteractiveElements', () => {
     it('should work without containerRef', () => {
       const { result } = renderHook(() => useInteractiveElements());
 
-      expect(result.current).toBeDefined();
       expect(result.current.interactiveFocus).toBeDefined();
     });
   });
@@ -572,10 +570,13 @@ describe('useInteractiveElements', () => {
       element.setAttribute('data-targetaction', 'highlight');
       element.setAttribute('data-reftarget', 'test-target');
 
-      const result2 = await result.current.checkRequirementsWithData(element);
+      // checkRequirementsWithData was removed - use checkElementRequirements instead
+      const result2 = await result.current.checkElementRequirements(element);
 
-      expect(result2).toHaveProperty('requirementsCheck');
-      expect(result2).toHaveProperty('interactiveData');
+      // checkElementRequirements returns InteractiveRequirementsCheck directly (not wrapped)
+      expect(result2).toHaveProperty('requirements');
+      expect(result2).toHaveProperty('pass');
+      expect(result2).toHaveProperty('error');
       expect(extractInteractiveDataFromElement).toHaveBeenCalledWith(element);
     });
   });

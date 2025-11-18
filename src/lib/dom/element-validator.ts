@@ -109,6 +109,7 @@ export function isElementVisible(element: HTMLElement | null): boolean {
 /**
  * Check if element or any parent has fixed or sticky positioning
  * Recursively traverses parent hierarchy to detect position: fixed/sticky
+ * Internal helper - not part of public API (exported for testing only)
  *
  * @param element - The element to check
  * @returns true if element has fixed/sticky positioning, false otherwise
@@ -285,6 +286,7 @@ export function hasCustomScrollParent(element: HTMLElement | null): boolean {
 /**
  * Get comprehensive visibility information for an element
  * Useful for debugging and detailed validation
+ * Internal helper - not part of public API (exported for testing only)
  *
  * @param element - The element to analyze
  * @returns Object with detailed visibility information
