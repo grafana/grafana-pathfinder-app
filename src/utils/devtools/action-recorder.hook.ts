@@ -7,10 +7,12 @@ import { shouldCaptureElement, getActionDescription } from '../../interactive-en
 import { generateSelectorFromEvent } from './selector-generator.util';
 import { exportStepsToHTML, type RecordedStep, type ExportOptions } from './tutorial-exporter';
 import { formatStepsToString } from './step-parser.util';
+import { useElementInspector } from './element-inspector.hook';
 
 export interface UseActionRecorderOptions {
   excludeSelectors?: string[];
   onStepRecorded?: (step: RecordedStep) => void;
+  enableInspector?: boolean;
 }
 
 export interface UseActionRecorderReturn {
@@ -22,6 +24,10 @@ export interface UseActionRecorderReturn {
   deleteStep: (index: number) => void;
   setRecordedSteps: (steps: RecordedStep[]) => void;
   exportSteps: (format: 'string' | 'html', options?: ExportOptions) => string;
+  // Inspector data for tooltip rendering
+  hoveredElement: HTMLElement | null;
+  domPath: string | null;
+  cursorPosition: { x: number; y: number } | null;
 }
 
 /**
@@ -45,12 +51,21 @@ export interface UseActionRecorderReturn {
  * const stepsString = exportSteps('string');
  * ```
  */
+// Default empty array - defined outside to prevent recreation
+const DEFAULT_EXCLUDE_SELECTORS: string[] = [];
+
 export function useActionRecorder(options: UseActionRecorderOptions = {}): UseActionRecorderReturn {
-  const { excludeSelectors = [], onStepRecorded } = options;
+  const { excludeSelectors = DEFAULT_EXCLUDE_SELECTORS, onStepRecorded, enableInspector = true } = options;
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordedSteps, setRecordedSteps] = useState<RecordedStep[]>([]);
   const recordingElementsRef = useRef<Map<HTMLElement, { value: string; timestamp: number }>>(new Map());
+
+  // Element inspector for hover highlighting and DOM path display
+  const { hoveredElement, domPath, cursorPosition } = useElementInspector({
+    isActive: isRecording && enableInspector,
+    excludeSelectors,
+  });
 
   const startRecording = useCallback(() => {
     setIsRecording(true);
@@ -287,5 +302,9 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
     deleteStep,
     setRecordedSteps, // State setter from useState is already stable
     exportSteps,
+    // Inspector data
+    hoveredElement,
+    domPath,
+    cursorPosition,
   };
 }
