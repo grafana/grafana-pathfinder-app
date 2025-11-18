@@ -76,6 +76,6 @@ Use `isDevModeEnabled()` from `utils/dev-mode.ts` instead.
 ## Use Cases
 
 - **Testing Interactive Elements**: Use the debug panel to test selectors and interactive actions
-- **Tutorial Development**: Record and export tutorial steps
+- **Guide Development**: Record and export guide steps
 - **Selector Generation**: Generate optimal selectors for DOM elements
 - **Action Detection**: Analyze what actions can be performed on elements

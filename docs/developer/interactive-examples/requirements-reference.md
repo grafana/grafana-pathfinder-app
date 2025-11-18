@@ -1,6 +1,6 @@
 ### Requirements Reference
 
-This comprehensive guide covers all supported requirements for interactive tutorial elements. Requirements are specified using the `data-requirements` attribute and control when interactive elements become enabled.
+This comprehensive guide covers all supported requirements for interactive guide elements. Requirements are specified using the `data-requirements` attribute and control when interactive elements become enabled.
 
 ## Core concepts
 

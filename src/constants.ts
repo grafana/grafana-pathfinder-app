@@ -34,7 +34,7 @@ export const DEFAULT_PEERJS_KEY = 'pathfinder';
 export const DEFAULT_CONTENT_FETCH_TIMEOUT = 10000; // 10 seconds for document retrieval
 export const DEFAULT_RECOMMENDER_TIMEOUT = 5000; // 5 seconds for recommender API
 
-// Security: Allowed GitHub repository paths for interactive tutorials
+// Security: Allowed GitHub repository paths for interactive guides
 // Meeting commitment: ONLY the single controlled interactive-tutorials repo
 // Format: { repo: '/owner/repo/', allowedRefs: ['main', 'v1.0.0'] }
 // Only specified branches/tags are allowed to prevent PR/commit-based attacks

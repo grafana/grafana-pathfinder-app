@@ -24,7 +24,7 @@ export const prometheusGrafana101Html = `<html>
 
         <h1>Prometheus + Grafana 101</h1>
 
-        <p>Welcome to your Prometheus monitoring with Grafana journey! In this interactive tutorial, we'll take you on a tour of key locations in Grafana and help you set up your first Prometheus data source. By the end, you'll be familiar with:</p>
+        <p>Welcome to your Prometheus monitoring with Grafana journey! In this interactive guide, we'll take you on a tour of key locations in Grafana and help you set up your first Prometheus data source. By the end, you'll be familiar with:</p>
         <ul>
             <li>Navigating Grafana's main sections</li>
             <li>Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting</li>

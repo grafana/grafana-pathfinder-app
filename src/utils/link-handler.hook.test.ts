@@ -195,7 +195,7 @@ describe('useLinkClickHandler', () => {
       // Updated to use the ONLY allowed repo: grafana/interactive-tutorials
       const grafanaLink = document.createElement('a');
       grafanaLink.href = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.html';
-      grafanaLink.textContent = 'Interactive Tutorial';
+      grafanaLink.textContent = 'interactive guide';
       contentDiv.appendChild(grafanaLink);
 
       fireEvent.click(grafanaLink);
@@ -203,7 +203,7 @@ describe('useLinkClickHandler', () => {
       // Should try to open in app with unstyled URL
       expect(mockModel.openDocsPage).toHaveBeenCalledWith(
         expect.stringContaining('unstyled.html'),
-        'Interactive Tutorial'
+        'interactive guide'
       );
       expect(windowOpen).not.toHaveBeenCalled();
     });

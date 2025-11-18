@@ -1,6 +1,6 @@
 /**
  * WYSIWYG Editor Exports
- * Main entry point for the interactive tutorial editor
+ * Main entry point for the interactive guide editor
  */
 
 export { default as WysiwygEditor } from './WysiwygEditor';

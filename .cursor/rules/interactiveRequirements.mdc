@@ -1,6 +1,6 @@
 ---
 alwaysApply: false
-description: This document describes the requirements and design constraints of interactive tutorials found in this repository.
+description: This document describes the requirements and design constraints of interactive guides found in this repository.
 ---
 
 # Interactive Elements Requirements System
@@ -10,11 +10,11 @@ This document describes the requirements and objectives system for interactive e
 ## Overview
 
 Interactive elements in documentation content have a system of requirements that must be satisfied before they can be executed, and a potential system of objectives or goals, that the
-tutorials are trying to accomplish.  This document lays all of that out.
+guides are trying to accomplish.  This document lays all of that out.
 
 1. **Docs Plugin Requirements**: Built-in system rules that govern interactive behavior
-2. **Tutorial-Specific Requirements**: Declared in the `data-requirements` attribute by content authors
-3. **Tutorial-Specific Objectives**: Declared in `data-objectives` attribute by content authors.
+2. **Guide-Specific Requirements**: Declared in the `data-requirements` attribute by content authors
+3. **Guide-Specific Objectives**: Declared in `data-objectives` attribute by content authors.
 
 ## Docs Plugin Requirements
 
@@ -26,12 +26,12 @@ The objective of these requirements are as follows:
 3. Maximize safety: the docs-plugin should not allow you to take a step which can't succeed, as
 this creates negative surprise.
 
-## Tutorial-Specific Requirements
+## Guide-Specific Requirements
 
-Tutorial-specific requirements are declared in the `data-requirements` attribute of interactive elements. Multiple requirements are comma-separated. It is expected that this list will grow 
-over time as we have new kinds of interactive tutorials. For example, one tutorial might require
+Guide-specific requirements are declared in the `data-requirements` attribute of interactive elements. Multiple requirements are comma-separated. It is expected that this list will grow 
+over time as we have new kinds of interactive guides. For example, one guide might require
 that you have Alloy set up sending data to Grafana Cloud before you can proceed with learning
-how the Kubernetes product works; for that tutorial, we'd have to extend data-requirements so that
+how the Kubernetes product works; for that guide, we'd have to extend data-requirements so that
 the docs-plugin could check that condition was true.
 
 ### Currently Supported Requirements
@@ -92,8 +92,8 @@ the docs-plugin could check that condition was true.
 - **Example**: `data-requirements="has-feature:alerting"`
 
 #### `in-environment:env`
-- **Purpose**: Ensures the tutorial runs in a specific environment
-- **Usage**: Useful for dev vs prod specific tutorials
+- **Purpose**: Ensures the guide runs in a specific environment
+- **Usage**: Useful for dev vs prod specific guide
 - **Example**: `data-requirements="in-environment:development"`
 
 #### `min-version:x.y.z`
@@ -112,9 +112,9 @@ Multiple requirements can be combined:
 </button>
 ```
 
-## Tutorial-Specific Objectives
+## Guide-Specific Objectives
 
-An objective statement for a tutorial step is a statement of what an interactive step will make
+An objective statement for a guide step is a statement of what an interactive step will make
 true.  It is expressed in the same language as requirements listed above, but instead, uses the
 `data-objectives` attribute in interactive/semantic HTML.
 
@@ -124,11 +124,11 @@ way: `data-objectives="has-plugin:volkovlabs-rss-datasource"`.
 
 This is important for multiple different reasons:
 
-1. By knowing what a tutorial is trying to accomplish, we can optionally add extra UI elements
+1. By knowing what a guide is trying to accomplish, we can optionally add extra UI elements
 to explain that to the user.
-2. State management and completion marking.  Suppose you're doing a tutorial, and you've already
+2. State management and completion marking.  Suppose you're doing a guide, and you've already
 accomplished the first section, resulting in the plugin being installed.  What you'll expect is
-that every time you return to the tutorial, that section is marked "finished". The way the system
+that every time you return to the guide, that section is marked "finished". The way the system
 will accomplish this is by adding "objectives" to requirements checking.  If an interactive step
 states an objective, and that objective has already been met, then the step can be marked as 
 finished without ever being executed!
@@ -217,7 +217,7 @@ mark complete at the end. Do not interrupt the execution of a step.
 
 ## Dual Workflow System
 
-Imagine a tutorial that has multiple sections of instructions. An example might be "create a 
+Imagine a guide that has multiple sections of instructions. An example might be "create a 
 datasource" (5 steps) followed by "configure an alert" (5 steps).  This would be a total of 
 10 steps in two discrete sections.
 
@@ -236,7 +236,7 @@ The system supports two types of workflows:
 3. **Multistep Workflows**: These are a hybrid of the two above. For a full
 discussion, see `multistepActions.mdc`.
 
-Interactive tutorials can be thought of as a sequence of sections, each section having any
+Interactive guide can be thought of as a sequence of sections, each section having any
 number of discrete actions. **No further nesting is permitted**.  Sections may not contain
 sections, only discrete steps/regular workflows.
 
@@ -245,7 +245,7 @@ sections, only discrete steps/regular workflows.
 **Rule**: Only one step in a regular workflow can be enabled at a time. Later steps are automatically disabled until previous steps complete.
 
 In other words, users are not permitted to skip steps, this easily leads to broken states. If steps
-are truly useless, the tutorial's content should change.
+are truly useless, the guide's content should change.
 
 **Implementation**:
 - Interactive elements are processed in DOM order
@@ -319,7 +319,7 @@ as 1.1, 1.2, etc. The function of these step IDs is to keep a logical flow that 
 follow by looking at the step IDs, and also to keep steps guaranteed unique from one another.
 As such, any "identification scheme" that satisfies these requirements is acceptable.**
 
-These attributes are automatically generated by code and attached when importing tutorial HTML, and are not 
+These attributes are automatically generated by code and attached when importing guide HTML, and are not 
 expected to be present in documentation material.
 
 #### Unique Step Keys
@@ -384,7 +384,7 @@ The requirements system manages several visual states:
 |-------|-------------|--------------|-------------------|
 | `requirements-checking` | Requirements being validated | Enabled | Loading spinner |
 | `requirements-satisfied` | All requirements met | Enabled | Normal appearance |
-| `requirements-failed` | Tutorial-specific requirements not met | Disabled | Dimmed, error tooltip |
+| `requirements-failed` | Guide-specific requirements not met | Disabled | Dimmed, error tooltip |
 | `requirements-disabled` | Disabled due to sequential dependency | Disabled | Very dimmed |
 | `requirements-completed` | Action already completed | Disabled | Green background, checkmark |
 
@@ -406,7 +406,7 @@ The requirements system manages several visual states:
 ### DOM Attributes
 
 #### Core Interactive Attributes
-- `data-requirements`: Comma-separated list of tutorial-specific requirements
+- `data-requirements`: Comma-separated list of guide-specific requirements
 - `data-targetaction`: Type of action to perform (button, formfill, highlight, sequence, multistep)
 - `data-reftarget`: Target element selector or button text to interact with
 - `data-targetvalue`: Value to use for formfill actions (optional)
@@ -448,7 +448,7 @@ When using sequential mode, the system stops checking requirements as soon as on
 </span>
 ```
 
-### Sequential Tutorial Steps with Unique IDs
+### Sequential Guide Steps with Unique IDs
 ```html
 <!-- Step 1: Will be checked first -->
 <span class="interactive" 
@@ -488,7 +488,7 @@ When using sequential mode, the system stops checking requirements as soon as on
 </span>
 ```
 
-### Multi-Section Tutorial with Step Isolation
+### Multi-Section Guide with Step Isolation
 ```html
 <!-- Section 1: Create Dashboard -->
 <span class="interactive"
@@ -546,7 +546,7 @@ await checkAllElementRequirements(container, checkFn, true);
 await checkAllElementRequirements(container, checkFn, false);
 ```
 
-Sequential mode is recommended for tutorial-style content where step order matters. Parallel mode can be used for independent interactive elements that don't depend on each other.
+Sequential mode is recommended for guide-style content where step order matters. Parallel mode can be used for independent interactive elements that don't depend on each other.
 
 ## Error Handling
 

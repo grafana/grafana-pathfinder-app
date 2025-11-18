@@ -196,7 +196,7 @@ You can now use advanced selectors for more precise targeting:
 <li data-reftarget='div[data-cy="config-panel"]:has(button:contains("Save"))'>...</li>
 ```
 
-The enhanced selector engine makes interactive tutorials more powerful and precise while maintaining full backward compatibility.
+The enhanced selector engine makes interactive guides more powerful and precise while maintaining full backward compatibility.
 
 ## Hover-Dependent Interactions
 

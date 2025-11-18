@@ -135,7 +135,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               preventDefault: true,
               stopPropagation: true,
             });
-            const linkText = anchor.textContent?.trim() || 'Interactive Tutorial';
+            const linkText = anchor.textContent?.trim() || 'interactive guide';
             if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
               (model as any).openDocsPage(href, linkText);
             } else {
@@ -180,7 +180,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             }
           }
 
-          // Handle Grafana docs and tutorials links (including resolved relative links)
+          // Handle Grafana docs and guides links (including resolved relative links)
           // Use secure URL validation to prevent domain hijacking
           // Resolve any remaining relative paths against the current page's base URL
           let fullUrl: string;
@@ -214,7 +214,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             if (isLearningJourney) {
               model.openLearningJourney(fullUrl, linkText);
             } else {
-              // For regular docs and tutorials, use openDocsPage if available, otherwise openLearningJourney
+              // For regular docs and guides, use openDocsPage if available, otherwise openLearningJourney
               if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
                 (model as any).openDocsPage(fullUrl, linkText);
               } else {

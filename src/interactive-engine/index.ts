@@ -1,6 +1,6 @@
 /**
  * Interactive Engine Module
- * Centralized exports for the interactive tutorial system
+ * Centralized exports for the interactive guide system
  */
 
 // Core interactive hook

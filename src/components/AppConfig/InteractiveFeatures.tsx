@@ -128,7 +128,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
 
   return (
     <form onSubmit={onSubmit}>
-      <FieldSet label="Interactive Tutorial Features" className={styles.fieldSet}>
+      <FieldSet label="interactive guide Features" className={styles.fieldSet}>
         <Alert
           title="Experimental feature"
           severity={state.enableAutoDetection ? 'info' : 'warning'}
@@ -179,7 +179,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
           </Text>
           <div className={styles.sectionDescription}>
             <Text variant="body" color="secondary">
-              Fine-tune timing parameters for interactive tutorial behavior
+              Fine-tune timing parameters for interactive guide behavior
             </Text>
           </div>
 

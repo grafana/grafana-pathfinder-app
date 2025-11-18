@@ -76,7 +76,7 @@ App (SceneApp Root)
 CombinedLearningJourneyPanel        // Main panel with tab management
 ├── ContextPanel                    // Context-aware recommendations
 ├── ContentRenderer                 // Unified content rendering
-├── InteractiveSection              // Interactive tutorial sections
+├── InteractiveSection              // Interactive guide sections
 ├── InteractiveStep                // Individual interactive steps
 └── InteractiveMultiStep           // Multi-step sequences
 
@@ -95,7 +95,7 @@ The architecture follows a clean separation pattern where business logic is extr
 
 ```typescript
 // Content Processing
-useInteractiveElements(); // Interactive tutorial functionality
+useInteractiveElements(); // Interactive guide functionality
 useKeyboardShortcuts(); // Navigation shortcuts
 useLinkClickHandler(); // Link and interaction handling
 useRequirementsChecker(); // Requirements validation
@@ -116,7 +116,7 @@ URL Request → Content Fetcher → HTML Parser → Content Renderer → React C
 
 **Content Types:**
 
-- **Learning Journeys**: Multi-milestone interactive tutorials
+- **Learning Journeys**: Multi-milestone interactive guides
 - **Documentation Pages**: Single standalone documentation
 
 **Processing Stages:**
@@ -222,7 +222,7 @@ interface DocsPluginConfig {
   docsBaseUrl?: string; // Documentation base URL
   docsUsername?: string; // Authentication username
   docsPassword?: string; // Authentication password (secure)
-  tutorialUrl?: string; // Auto-launch tutorial URL
+  tutorialUrl?: string; // Auto-launch guide URL
 }
 ```
 

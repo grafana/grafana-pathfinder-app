@@ -1,6 +1,6 @@
 # DOM Selector Debug Panel
 
-A powerful developer tool for creating and testing interactive tutorial selectors with Watch Mode, Record Mode, and automated testing capabilities.
+A powerful developer tool for creating and testing interactive guide selectors with Watch Mode, Record Mode, and automated testing capabilities.
 
 ## Enabling Debug Mode
 
@@ -452,8 +452,8 @@ Uniqueness: Unique ✓
 2. **Review** - Check generated selectors
 3. **Refine** - Use Watch Mode to improve specific selectors
 4. **Test** - Run in MultiStep Debug
-5. **Verify** - Test in actual tutorial
-6. **Document** - Add to tutorial content
+5. **Verify** - Test in actual guide
+6. **Document** - Add to guide content
 
 ## Technical Details
 
@@ -488,7 +488,7 @@ Uniqueness: Unique ✓
 
 ### Integration with Interactive System
 
-The debug panel uses the same infrastructure as production tutorials:
+The debug panel uses the same infrastructure as production guides:
 
 **Shared Components:**
 
@@ -499,7 +499,7 @@ The debug panel uses the same infrastructure as production tutorials:
 
 **Benefits:**
 
-- Selectors tested in debug panel work in tutorials
+- Selectors tested in debug panel work in guides
 - Same action types and behavior
 - Consistent timing and delays
 - Real production environment testing
@@ -559,16 +559,16 @@ Long selectors automatically wrap:
 3. Verify not clicking modal backdrops
 4. Some rapid clicks may be debounced
 
-### Selector Doesn't Work in Tutorial
+### Selector Doesn't Work in Guides
 
-**Problem:** Captured selector fails when used in tutorial
+**Problem:** Captured selector fails when used in guide
 
 **Solutions:**
 
 1. Check uniqueness badge - orange means multiple matches
 2. Test selector in Simple Tester first
 3. Add parent context if needed
-4. Verify element exists when tutorial runs
+4. Verify element exists when guide runs
 
 ### Generic Button Text
 
@@ -664,6 +664,6 @@ When you discover good selector patterns:
 1. Document them in `docs/interactive-examples/selectors-and-testids.md`
 2. Share findings with the team
 3. Consider adding to selector generator priorities
-4. Update bundled tutorials with improved selectors
+4. Update bundled guides with improved selectors
 
-The DOM Selector Debug Panel is your essential tool for rapid interactive tutorial development! 🎯
+The DOM Selector Debug Panel is your essential tool for rapid interactive guide development! 🎯

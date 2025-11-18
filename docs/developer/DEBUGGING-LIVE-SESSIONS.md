@@ -10,7 +10,7 @@
 
 ### As Presenter (Window 1)
 
-1. Open any interactive tutorial (e.g., "Prometheus & Grafana 101")
+1. Open any interactive guide (e.g., "Prometheus & Grafana 101")
 2. Click "Start Live Session"
 3. Enter a session name (e.g., "Test Session 123")
 4. Click "Create Session"
@@ -35,7 +35,7 @@
 3. Click "Next"
 4. You should see:
    - Session Name: "Session" (placeholder until connected)
-   - Tutorial URL displayed
+   - Guide URL displayed
 5. Select "Guided" mode
 6. Click "Join Session"
 
@@ -47,20 +47,20 @@
 [SessionManager] Connected to presenter: [peer-id]
 [SessionManager] Received event from presenter: {type: 'session_start', ...}
 [SessionState] Successfully joined session: {config: {...}}
-[DocsPanel] Auto-opening tutorial: [url]
+[DocsPanel] Auto-opening guide: [url]
 [DocsPanel] Initializing ActionReplaySystem for attendee
 [ActionReplay] Mode changed: undefined → guided
 [DocsPanel] Setting up event listener for attendee
 ```
 
-7. The tutorial should auto-open in a new tab
+7. The guide should auto-open in a new tab
 8. You should see a green banner: "Connected to: Test Session 123"
 
 ### Testing Show Me Replication
 
 **As Presenter:**
 
-1. Click any "Show Me" button in the tutorial
+1. Click any "Show Me" button in the guide
 
 **Expected Console Logs (Presenter):**
 
@@ -109,14 +109,14 @@
 
 ### Issue: "Show Me doesn't broadcast"
 
-- Verify the tutorial has interactive elements with "Show Me" buttons
+- Verify the guide has interactive elements with "Show Me" buttons
 - Check that the button text actually says "Show Me"
 - Try clicking a different "Show Me" button
-- Verify you're in the tutorial tab, not the Recommendations tab
+- Verify you're in the guide tab, not the Recommendations tab
 
 ### Issue: "Show Me broadcasts but attendee doesn't see highlight"
 
-- Check if the attendee has the same tutorial open
+- Check if the attendee has the same guide open
 - Verify the attendee's console shows the event was received
 - Check if the element exists on the attendee's page (selector might not match)
 - Look for "Element not found" warnings in the console
@@ -141,7 +141,7 @@ Presenter                              Attendee
    │  ───────────────────────────────>  │
    │                            (receives session_start)
    │                            │  └─> sets sessionInfo
-   │                            │  └─> opens tutorial
+   │                            │  └─> opens guide
    │                            └─> initializes ActionReplay
    │                                    │
    │  (user clicks Show Me)             │
@@ -160,9 +160,9 @@ Presenter                              Attendee
    - Presenter: Check if attendee appears in the "Connected Attendees" list
    - Attendee: Check if green "Connected to:" banner appears
 
-2. **Tutorial open?**
-   - Attendee: New tab should open automatically with the tutorial
-   - If not, check console for "Auto-opening tutorial" log
+2. **Guide open?**
+   - Attendee: New tab should open automatically with the guide
+   - If not, check console for "Auto-opening guide" log
 
 3. **Capture active?**
    - Presenter: Look for "[ActionCapture] Capture handlers set up" in console

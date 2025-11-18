@@ -173,7 +173,7 @@ description: Describes technologies, frameworks, and other tools used in this re
                 └───────────────┬────────────────────────┘
                                 │
                 ┌───────────────▼────────────────────────────────────────────┐
-                │              Interactive Tutorial System                    │
+                │              Interactive Guide System                      │
                 │                                                             │
                 │  ┌──────────────────────────────────────────────────────┐  │
                 │  │         Component Layer (React)                       │  │
@@ -337,7 +337,7 @@ description: Describes technologies, frameworks, and other tools used in this re
    │ Start DOM Monitoring (SequentialRequirementsManager)│
    └──────────────────────────────────────────────────┘
 
-4. INTERACTIVE TUTORIAL EXECUTION
+4. INTERACTIVE GUIDE EXECUTION
    ┌──────────────────────────────────────────────────────────────────┐
    │ User clicks "Show me" or "Do it" button                          │
    │         ↓                                                        │
@@ -470,7 +470,7 @@ description: Describes technologies, frameworks, and other tools used in this re
   - Fail-fast error handling with detailed diagnostics
   - Interactive element extraction and configuration
 
-### 3. Interactive Tutorial System (Layered Architecture)
+### 3. Interactive Guide System (Layered Architecture)
 - **Component Layer**: React components (InteractiveSection, InteractiveStep, etc.)
 - **Hook Layer**: Business logic (interactive.hook, step-checker.hook)
 - **Handler Layer**: Action execution (FocusHandler, ButtonHandler, etc.)
@@ -621,7 +621,7 @@ PLUS (if enabled in config):
         ↓
 global-link-interceptor.hook.ts
         ├─→ Listens globally (capture phase)
-        ├─→ Filters: Grafana docs/tutorials/learning-journeys
+        ├─→ Filters: Grafana docs/guides/learning-journeys
         ├─→ Respects modifiers (Ctrl/Cmd+Click → new tab)
         ├─→ Excludes: Already inside [data-pathfinder-content]
         └─→ Opens in Pathfinder instead of browser

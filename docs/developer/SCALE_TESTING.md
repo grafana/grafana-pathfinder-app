@@ -4,7 +4,7 @@ This guide provides procedures for testing live sessions with multiple concurren
 
 ## Overview
 
-Live sessions use a peer-to-peer architecture where the presenter broadcasts tutorial actions to all connected attendees. As the number of attendees increases, the presenter's machine must send more data, and the PeerJS signaling server must handle more connections.
+Live sessions use a peer-to-peer architecture where the presenter broadcasts guide actions to all connected attendees. As the number of attendees increases, the presenter's machine must send more data, and the PeerJS signaling server must handle more connections.
 
 **Current Status**: Tested up to 5 concurrent attendees successfully. Higher scale limits need systematic testing.
 
@@ -14,7 +14,7 @@ Before running scale tests:
 
 - **PeerJS Server**: Running and accessible to all test participants
 - **Test Devices**: Multiple browser windows, devices, or coordinated team members
-- **Interactive Tutorial**: Loaded and ready (e.g., Prometheus & Grafana 101)
+- **Interactive Guide**: Loaded and ready (e.g., Prometheus & Grafana 101)
 - **Monitoring Tools**: Browser DevTools, task manager, or performance monitoring
 - **Network**: Stable connection for all participants
 
@@ -58,9 +58,9 @@ Before running scale tests:
    - Check console shows "PeerJS server running on port 9000"
    - No immediate error messages
 
-3. **Prepare Test Tutorial**:
+3. **Prepare Test Guide**:
    - Open Pathfinder sidebar
-   - Load an interactive tutorial (e.g., "Prometheus & Grafana 101")
+   - Load an interactive guide (e.g., "Prometheus & Grafana 101")
    - Verify all "Show Me" and "Do It" buttons are functional
 
 4. **Set Up Monitoring**:
@@ -105,7 +105,7 @@ Test each action type with all attendees connected:
 **Test 1: Show Me (Highlight)**
 
 ```
-Presenter: Click "Show Me" on any tutorial step
+Presenter: Click "Show Me" on any guide step
 Expected: All guided-mode attendees see highlight within 2 seconds
 Measure: Time from click to attendee sees highlight
 ```
@@ -226,7 +226,7 @@ Document results using this template:
 **Configuration**:
 
 - PeerJS Server: [Local/Cloud]
-- Tutorial: [Name]
+- Guide: [Name]
 - Attendee Mix: [X Guided, Y Follow]
 - Network: [Local/VPN/Remote]
 

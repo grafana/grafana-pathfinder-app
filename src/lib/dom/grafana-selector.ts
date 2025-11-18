@@ -101,7 +101,7 @@ export function findOneByGrafanaSelector(selectorPath: string, selectorId?: stri
 
 /**
  * Check if an element matching the Grafana selector exists
- * Useful for requirement checking in interactive tutorials
+ * Useful for requirement checking in interactive guides
  *
  * @param selectorPath - Dot-notation path to selector
  * @param selectorId - Optional ID for parameterized selectors
