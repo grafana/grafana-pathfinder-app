@@ -9,6 +9,5 @@ export * from './enhanced-selector';
 export * from './selector-generator';
 export * from './selector-validator';
 export * from './element-validator';
-export * from './dom-settling.hook';
 export * from './grafana-selector';
 export * from './selector-resolver';

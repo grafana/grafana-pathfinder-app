@@ -89,6 +89,7 @@ export function findByGrafanaSelector(selectorPath: string, selectorId?: string)
 /**
  * Find a single element using a Grafana selector path
  * Returns the first matching element or null
+ * Internal helper - not part of public API (exported for testing only)
  *
  * @param selectorPath - Dot-notation path to selector
  * @param selectorId - Optional ID for parameterized selectors
@@ -102,6 +103,7 @@ export function findOneByGrafanaSelector(selectorPath: string, selectorId?: stri
 /**
  * Check if an element matching the Grafana selector exists
  * Useful for requirement checking in interactive guides
+ * Internal helper - not part of public API (exported for testing only)
  *
  * @param selectorPath - Dot-notation path to selector
  * @param selectorId - Optional ID for parameterized selectors
@@ -112,29 +114,16 @@ export function existsByGrafanaSelector(selectorPath: string, selectorId?: strin
   return elements.length > 0;
 }
 
-/**
- * Common Grafana selectors exported for convenience
- * Re-export from @grafana/e2e-selectors for easy access
- */
+// Re-export grafanaSelectors for test compatibility (unused in production)
+/** @deprecated Unused in production - kept for test compatibility only */
 export const selectors = grafanaSelectors;
 
-/**
- * Navigation menu selectors
- * Shorthand helpers for common navigation tasks
- */
+// Navigation selectors for test compatibility (unused in production)
+/** @deprecated Unused in production - kept for test compatibility only */
 export const navSelectors = {
-  /**
-   * Get selector for a navigation menu item by its href
-   * @param href - The href attribute (e.g., '/dashboards', '/explore')
-   */
   menuItemByHref: (href: string): string => {
     return `a[data-testid="data-testid Nav menu item"][href="${href}"]`;
   },
-
-  /**
-   * Get selector for a navigation menu item by text content
-   * @param text - The visible text of the menu item
-   */
   menuItemByText: (text: string): string => {
     return `a[data-testid="data-testid Nav menu item"]:contains("${text}")`;
   },

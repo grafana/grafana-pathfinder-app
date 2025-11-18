@@ -3,6 +3,7 @@ import { querySelectorAllEnhanced } from './enhanced-selector';
 
 /**
  * Recursively get all text content from an element and its descendants
+ * Internal helper - not part of public API (exported for testing only)
  */
 export function getAllTextContent(element: Element): string {
   let text = '';
