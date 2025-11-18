@@ -29,4 +29,3 @@ export const getDomPathTooltipStyles = (theme: GrafanaTheme2) => {
     }),
   };
 };
-

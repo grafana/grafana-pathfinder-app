@@ -52,4 +52,3 @@ export function DomPathTooltip({ domPath, position, visible }: DomPathTooltipPro
     </div>
   );
 }
-

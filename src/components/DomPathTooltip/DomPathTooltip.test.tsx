@@ -83,4 +83,3 @@ describe('DomPathTooltip', () => {
     expect(tooltip.style.top).toBe('415px');
   });
 });
-

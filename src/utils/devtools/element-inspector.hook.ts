@@ -100,8 +100,8 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
   const lastElementRef = useRef<HTMLElement | null>(null);
   const lastCursorPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Cleanup function
-  const cleanup = useCallback(() => {
+  // Cleanup function - stable reference
+  const cleanupDOM = useCallback(() => {
     if (highlightRef.current) {
       removeHoverHighlight(highlightRef.current);
       highlightRef.current = null;
@@ -110,16 +110,14 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-    setHoveredElement(null);
-    setDomPath(null);
-    setCursorPosition(null);
     lastElementRef.current = null;
     lastCursorPosRef.current = { x: 0, y: 0 };
   }, []);
 
   useEffect(() => {
     if (!isActive) {
-      cleanup();
+      // Cleanup DOM when inactive - state will naturally stop updating
+      cleanupDOM();
       return;
     }
 
@@ -151,7 +149,10 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
         }
 
         if (!(element instanceof HTMLElement)) {
-          cleanup();
+          cleanupDOM();
+          setHoveredElement(null);
+          setDomPath(null);
+          setCursorPosition(null);
           return;
         }
 
@@ -171,7 +172,10 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
         });
 
         if (shouldExclude) {
-          cleanup();
+          cleanupDOM();
+          setHoveredElement(null);
+          setDomPath(null);
+          setCursorPosition(null);
           return;
         }
 
@@ -216,9 +220,9 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
-      cleanup();
+      cleanupDOM();
     };
-  }, [isActive, excludeSelectors, onHover]); // Don't include cleanup - it's stable and causes re-render loop
+  }, [isActive, excludeSelectors, onHover, cleanupDOM]);
 
   // Memoize return value to prevent causing re-renders in parent
   return useMemo(
@@ -230,4 +234,3 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
     [hoveredElement, domPath, cursorPosition]
   );
 }
-

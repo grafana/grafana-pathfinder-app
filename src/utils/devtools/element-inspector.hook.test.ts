@@ -81,6 +81,11 @@ describe('generateFullDomPath', () => {
 describe('useElementInspector', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
+
+    // Ensure elementFromPoint exists in jsdom
+    if (!document.elementFromPoint) {
+      document.elementFromPoint = jest.fn();
+    }
   });
 
   afterEach(() => {
@@ -275,4 +280,3 @@ describe('useElementInspector', () => {
     elementFromPointSpy.mockRestore();
   });
 });
-
