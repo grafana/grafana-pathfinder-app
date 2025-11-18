@@ -5,3 +5,5 @@ apps:
     org_id: 1
     org_name: 'grafanalabs'
     disabled: false
+    jsonData:
+      openPanelOnLaunch: true

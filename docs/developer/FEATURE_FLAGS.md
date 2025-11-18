@@ -35,6 +35,10 @@ The plugin uses Grafana's core feature toggle system (`config.featureToggles`) t
 3. If no saved preference → use feature toggle value as default
 4. If feature toggle not set → use `DEFAULT_OPEN_PANEL_ON_LAUNCH`
 
+**Multi-instance support**: The auto-open tracking is scoped per Grafana instance (using hostname). This ensures that users with multiple Cloud instances (e.g., `company1.grafana.net` and `company2.grafana.net`) will see the sidebar auto-open once per session on each instance independently.
+
+**Onboarding flow integration**: If a user first lands on the setup guide onboarding flow, the plugin detects this and defers the auto-open. It listens for navigation events (`grafana:location-changed` and `locationService.getHistory().listen()`) and triggers the auto-open when the user navigates away from onboarding to normal Grafana pages. This prevents interrupting the onboarding experience while ensuring the sidebar still opens automatically.
+
 **Example scenarios**:
 
 ```

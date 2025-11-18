@@ -97,6 +97,10 @@ The sidebar opens when Grafana loads for the first time in a browser session.
 It won't reopen on subsequent page navigations within Grafana.
 The panel resets to auto-open behavior when you refresh the page or start a new browser session.
 
+**Onboarding flow handling:** If a user first lands on the setup guide onboarding flow (`/a/grafana-setupguide-app/onboarding-flow`), the sidebar will wait and auto-open when they navigate away to normal Grafana pages. This ensures the onboarding experience isn't interrupted while still providing the auto-open benefit.
+
+**Multi-instance support:** If you have multiple Grafana instances (for example, multiple Cloud instances), each instance tracks its own auto-open state independently, so the sidebar will auto-open once per session on each instance.
+
 ### interactive guide features
 
 interactive guides include auto-completion detection and timing parameters that control how guides behave.
