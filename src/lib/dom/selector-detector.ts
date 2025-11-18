@@ -40,7 +40,8 @@ export function isCssSelector(input: string): boolean {
     /^\.[\w-]+/, // Class selector: .class
     /^\[.*\]/, // Attribute selector: [attr], [attr="value"]
     /^[\w-]+\[/, // Tag with attribute: tag[attr]
-    /^[\w-]+:/, // Pseudo-class/element: tag:hover, :focus
+    /^:[\w-]+/, // Pseudo-class/element without tag: :focus, :hover
+    /^[\w-]+:/, // Pseudo-class/element with tag: button:hover
     /^[\w-]+\s*>\s*/, // Child combinator: div > button
     /^[\w-]+\s*\+\s*/, // Adjacent sibling: div + button
     /^[\w-]+\s*~\s*/, // General sibling: div ~ button
