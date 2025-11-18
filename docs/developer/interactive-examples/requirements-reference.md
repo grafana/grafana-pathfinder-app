@@ -487,6 +487,8 @@ Check requirement state:
 // Access the sequential requirements manager
 const manager = window.SequentialRequirementsManager?.getInstance();
 if (manager) {
-  manager.logCurrentState();
+  // Manager provides step state coordination and reactive checking
+  // Individual step states can be queried via manager.getStepState(stepId)
+  console.log('Manager available for step coordination');
 }
 ```

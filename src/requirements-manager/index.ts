@@ -3,20 +3,10 @@
  * Centralized exports for requirements checking system
  */
 
-// Core requirements checking hook
-export {
-  waitForReactUpdates,
-  useRequirementsChecker,
-  SequentialRequirementsManager,
-  useSequentialRequirements,
-} from './requirements-checker.hook';
+// Core requirements checking manager
+export { waitForReactUpdates, SequentialRequirementsManager } from './requirements-checker.hook';
 
-export type {
-  RequirementsState,
-  RequirementsCheckResultLegacy,
-  UseRequirementsCheckerProps,
-  UseRequirementsCheckerReturn,
-} from './requirements-checker.hook';
+export type { RequirementsState } from './requirements-checker.hook';
 
 // Step checker hook (unified requirements + objectives)
 export { useStepChecker } from './step-checker.hook';
