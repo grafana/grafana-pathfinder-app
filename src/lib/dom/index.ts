@@ -11,3 +11,4 @@ export * from './selector-validator';
 export * from './element-validator';
 export * from './grafana-selector';
 export * from './selector-resolver';
+export * from './selector-detector';

@@ -8,6 +8,7 @@ import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties }
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
+import { isCssSelector } from '../../../lib/dom/selector-detector';
 import { InternalAction } from '../../../types/interactive-actions.types';
 import { testIds } from '../../../components/testIds';
 
@@ -455,9 +456,20 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             const selector = action.refTarget || '';
 
             if (actionType === 'button') {
-              // Use button-specific finder for text matching
-              const buttons = findButtonByText(selector);
-              targetElement = buttons[0] || null;
+              // Try selector first if it looks like CSS
+              if (isCssSelector(selector)) {
+                const result = querySelectorAllEnhanced(selector);
+                const buttons = result.elements.filter(
+                  (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
+                );
+                targetElement = buttons[0] || null;
+              }
+
+              // Fall back to text matching if selector didn't work
+              if (!targetElement) {
+                const buttons = findButtonByText(selector);
+                targetElement = buttons[0] || null;
+              }
             } else if (actionType === 'highlight' || actionType === 'hover') {
               // Use enhanced selector for other action types
               const result = querySelectorAllEnhanced(selector);

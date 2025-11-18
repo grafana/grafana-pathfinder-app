@@ -2,6 +2,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { querySelectorAllEnhanced, findButtonByText, isElementVisible, resolveSelector } from '../../lib/dom';
+import { isCssSelector } from '../../lib/dom/selector-detector';
 import { GuidedAction } from '../../types/interactive-actions.types';
 
 type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped';
@@ -151,7 +152,7 @@ export class GuidedHandler {
 
   /**
    * Find target element using action-specific logic
-   * Buttons use findButtonByText, others use enhanced selector
+   * Buttons support both CSS selectors and text matching with intelligent detection
    */
   private async findTargetElement(
     selector: string,
@@ -162,8 +163,28 @@ export class GuidedHandler {
     // Resolve grafana: prefix if present
     const resolvedSelector = resolveSelector(selector);
 
-    // For button actions, try button-specific finder first (handles text matching with HTML entities)
+    // For button actions, try CSS selector first if it looks like one, then fall back to text
     if (actionType === 'button') {
+      // Try CSS selector first if it looks like one
+      if (isCssSelector(resolvedSelector)) {
+        try {
+          const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
+          targetElements = enhancedResult.elements.filter(
+            (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
+          );
+
+          if (targetElements.length > 0) {
+            if (targetElements.length > 1) {
+              console.warn(`Multiple buttons found matching selector: ${resolvedSelector}, using first button`);
+            }
+            return targetElements[0];
+          }
+        } catch (error) {
+          console.warn(`Button selector matching failed for "${resolvedSelector}", trying text match:`, error);
+        }
+      }
+
+      // Fall back to text matching (existing behavior)
       try {
         targetElements = findButtonByText(resolvedSelector);
         if (targetElements.length > 0) {
@@ -173,7 +194,7 @@ export class GuidedHandler {
           return targetElements[0];
         }
       } catch (error) {
-        // Fall through to enhanced selector
+        // Fall through to enhanced selector as last resort
         console.warn(`findButtonByText failed for "${resolvedSelector}", trying enhanced selector:`, error);
       }
     }

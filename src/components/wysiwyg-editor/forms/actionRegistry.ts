@@ -48,24 +48,24 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
     ui: {
       icon: '🔘',
       name: 'Button',
-      description: 'Click a button by name',
+      description: 'Click a button by text or selector',
       grafanaIcon: 'gf-button',
     },
     formConfig: {
       title: ACTION_TYPES.BUTTON,
-      description: 'Click a button with specific text',
+      description: 'Click a button using text or CSS selector',
       actionType: ACTION_TYPES.BUTTON,
       fields: [
         {
           id: DATA_ATTRIBUTES.REF_TARGET,
-          label: 'Button Text:',
+          label: 'Button Text or Selector:',
           type: 'text',
-          placeholder: 'e.g., Save, Create, Submit',
-          hint: 'The exact text displayed on the button',
+          placeholder: 'e.g., "Save Dashboard" or button[data-testid="save"]',
+          hint: 'Button text OR CSS selector (e.g., "Save Dashboard" or "button[data-testid=\'save\']"). Supports enhanced selectors like highlight action. Click the target icon to capture a selector.',
           required: true,
           autoFocus: true,
-          disableSelectorCapture: true,
-          selectorCaptureDisabledTooltip: 'Button actions use button text, not DOM selectors',
+          disableSelectorCapture: false,
+          selectorCaptureDisabledTooltip: undefined,
         },
         {
           id: DATA_ATTRIBUTES.REQUIREMENTS,

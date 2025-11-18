@@ -132,7 +132,7 @@ export const prometheusGrafana101Html = `<html>
               </li>
 
               <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-targetaction="button" data-reftarget="Add visualization"></span>
+                <span class="interactive" data-targetaction="button" data-reftarget="button[data-testid='data-testid Create new panel button']"></span>
                 <span class="interactive" data-targetaction="button" data-reftarget="prometheus-datasource"></span>
                 Click <strong>Add visualization</strong>, then select your <strong>prometheus-datasource</strong>.
               </li>

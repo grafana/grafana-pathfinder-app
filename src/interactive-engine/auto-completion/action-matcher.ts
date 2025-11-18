@@ -9,6 +9,7 @@
 
 import type { DetectedAction } from './action-detector';
 import { findButtonByText } from '../../lib/dom';
+import { isCssSelector } from '../../lib/dom/selector-detector';
 
 export interface StepActionConfig {
   targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover';
@@ -228,24 +229,33 @@ function isCompatibleActionType(detected: DetectedAction, target: StepActionConf
 }
 
 /**
- * Match button action by text content
+ * Match button action by selector or text content
  *
- * Buttons are identified by their visible text content. This matches
- * the same logic used by findButtonByText in dom-utils.
+ * Buttons can be identified by CSS selectors or visible text content.
+ * Tries selector matching first if pattern detected, then falls back to text.
  *
  * @param element - The clicked element
- * @param buttonText - The button text to match
+ * @param refTarget - The button selector or text to match
  * @param targetElement - Optional target element (already matched via coordinates)
  */
-function matchesButtonAction(element: HTMLElement, buttonText: string, targetElement?: HTMLElement | null): boolean {
+function matchesButtonAction(element: HTMLElement, refTarget: string, targetElement?: HTMLElement | null): boolean {
   // If we already have a target element from coordinate matching,
   // just verify the clicked element is within it
   if (targetElement) {
     return targetElement === element || targetElement.contains(element);
   }
-  // Check if the element itself matches the button text
+
+  // Try selector-based matching first if it looks like CSS
+  if (isCssSelector(refTarget)) {
+    if (elementMatchesSelector(element, refTarget)) {
+      return true;
+    }
+    // Fall through to text matching if selector doesn't match
+  }
+
+  // Text-based matching (existing behavior)
   const elementText = element.textContent?.trim() || '';
-  if (elementText === buttonText) {
+  if (elementText === refTarget) {
     return true;
   }
 
@@ -254,13 +264,13 @@ function matchesButtonAction(element: HTMLElement, buttonText: string, targetEle
   const parentButton = element.closest('button, [role="button"]');
   if (parentButton) {
     const parentText = parentButton.textContent?.trim() || '';
-    if (parentText === buttonText) {
+    if (parentText === refTarget) {
       return true;
     }
   }
 
   // Use findButtonByText to check if this matches the expected button
-  const matchingButtons = findButtonByText(buttonText);
+  const matchingButtons = findButtonByText(refTarget);
   return matchingButtons.some((btn) => btn === element || btn.contains(element));
 }
 

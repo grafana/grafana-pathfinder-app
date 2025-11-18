@@ -14,6 +14,8 @@ import type {
   NavigationEvent,
   InteractiveAction,
 } from '../../types/collaboration.types';
+import { isCssSelector } from '../../lib/dom/selector-detector';
+import { querySelectorAllEnhanced } from '../../lib/dom/enhanced-selector';
 
 /**
  * Action replay system for attendees
@@ -300,7 +302,18 @@ export class ActionReplaySystem {
   private findElements(refTarget: string, targetAction: string): HTMLElement[] {
     try {
       if (targetAction === 'button') {
-        // For button actions, search by text content
+        // Try selector first if it looks like CSS
+        if (isCssSelector(refTarget)) {
+          const result = querySelectorAllEnhanced(refTarget);
+          const buttons = result.elements.filter(
+            (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
+          );
+          if (buttons.length > 0) {
+            return buttons;
+          }
+        }
+
+        // Fall back to text matching
         return this.findButtonsByText(refTarget);
       } else {
         // For other actions, use CSS selector
