@@ -303,7 +303,7 @@ describe('reftargetExistsCheck', () => {
     expect(result).toEqual({
       requirement: 'exists-reftarget',
       pass: false,
-      error: 'Element not found',
+      error: 'Element not found: #non-existent',
     });
   });
 
