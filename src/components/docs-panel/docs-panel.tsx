@@ -1093,6 +1093,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       if (url && title) {
         model.openLearningJourney(url, title);
       }
+
+      // send an event so we know the page has been loaded
+      const launchEvent = new CustomEvent('auto-launch-complete', {
+        detail: event.detail,
+      });
+      window.dispatchEvent(launchEvent);
     };
 
     document.addEventListener('auto-launch-tutorial', handleAutoLaunchTutorial as EventListener);

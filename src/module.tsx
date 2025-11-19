@@ -9,8 +9,6 @@ import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 
-import { OpenExtensionSidebarEvent } from './global-state/sidebar';
-
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
 
@@ -50,94 +48,40 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const config = getConfigWithDefaults(jsonData);
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
 
-  // Listen for sidebar opened events from Grafana core
-  const appEvents = getAppEvents();
-
-  appEvents.subscribe(OpenExtensionSidebarEvent, (event) => {
-    console.log('OpenExtensionSidebarEvent received:', event);
-    if (event.payload.pluginId === pluginJson.id) {
-      console.log('pathfinder opened!', {
-        componentTitle: event.payload.componentTitle,
-        pluginId: event.payload.pluginId,
-        props: event.payload.props,
-      });
-    }
-  });
-
   // Set global config immediately so other code can use it
   (window as any).__pathfinderPluginConfig = config;
 
   // Check for journey query parameter to auto-open specific learning journey
   const urlParams = new URLSearchParams(window.location.search);
   const journeyParam = urlParams.get('journey');
+  let journey = journeyParam ? findLearningJourney(journeyParam) : null;
 
-  if (journeyParam) {
-    // Search for learning journeys in static-links files
-    const findLearningJourney = async () => {
-      try {
-        // Dynamically load all JSON files from static-links directory
-        const staticLinksContext = (require as any).context('./bundled-interactives/static-links', false, /\.json$/);
-        const allFilePaths = staticLinksContext.keys();
+  if (journey) {
+    // listen for completion
+    window.addEventListener('auto-launch-complete', (e) => {
+      // remove journey param from URL to prevent re-triggering on refresh
+      const url = new URL(window.location.href);
+      url.searchParams.delete('journey');
+      window.history.replaceState({}, '', url.toString());
+      console.log('Journey param removed from URL');
+    });
 
-        let foundJourney: any = null;
+    // open the sidebar
+    attemptAutoOpen(200);
 
-        // Search through all static-links files
-        for (const filePath of allFilePaths) {
-          const staticData = staticLinksContext(filePath);
-
-          if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
-            // Find learning journeys that match the URL
-            const journey = staticData.rules.find(
-              (rule: any) =>
-                rule.type === 'learning-journey' && (rule.url === journeyParam || rule.url.includes(journeyParam))
-            );
-
-            if (journey) {
-              foundJourney = journey;
-              break;
-            }
-          }
-        }
-
-        if (!foundJourney) {
-          console.warn(`Learning journey not found for parameter: ${journeyParam}`);
-          return;
-        }
-
-        // Small delay to ensure Grafana is ready
-        setTimeout(() => {
-          try {
-            const appEvents = getAppEvents();
-            appEvents.publish({
-              type: 'open-extension-sidebar',
-              payload: {
-                pluginId: pluginJson.id,
-                componentTitle: 'Interactive learning',
-              },
-            });
-
-            // Auto-launch the specified learning journey
-            setTimeout(() => {
-              const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
-                detail: {
-                  url: foundJourney.url,
-                  title: foundJourney.title,
-                  type: 'learning-journey',
-                },
-              });
-              document.dispatchEvent(autoLaunchEvent);
-            }, 2000); // Wait for sidebar to mount
-          } catch (error) {
-            console.error('Failed to auto-open Interactive learning panel from query param:', error);
-          }
-        }, 500);
-      } catch (error) {
-        console.error('Failed to load learning journeys:', error);
-      }
-    };
-
-    findLearningJourney();
-    return; // Skip other auto-open logic when query param is present
+    // open the journey once the sidebar is mounted
+    window.addEventListener('pathfinder-sidebar-mounted', () => {
+      setTimeout(() => {
+        const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+          detail: {
+            url: journey.url,
+            title: journey.title,
+            type: 'learning-journey',
+          },
+        });
+        document.dispatchEvent(autoLaunchEvent);
+      }, 500);
+    });
   }
 
   // Check if auto-open is enabled
@@ -151,44 +95,6 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     // tracks its own auto-open state independently
     const hostname = window.location.hostname;
     const sessionKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
-
-    /**
-     * Attempts to auto-open the sidebar with configured tutorial
-     * This is extracted as a function so it can be called both on init and after navigation
-     */
-    const attemptAutoOpen = (delay = 200) => {
-      setTimeout(() => {
-        try {
-          const appEvents = getAppEvents();
-          appEvents.publish({
-            type: 'open-extension-sidebar',
-            payload: {
-              pluginId: pluginJson.id,
-              componentTitle: 'Interactive learning',
-            },
-          });
-
-          // Auto-launch tutorial if configured
-          if (config.tutorialUrl) {
-            setTimeout(() => {
-              const isBundled = config.tutorialUrl!.startsWith('bundled:');
-              const isLearningJourney = config.tutorialUrl!.includes('/learning-journeys/') || isBundled;
-
-              const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
-                detail: {
-                  url: config.tutorialUrl,
-                  title: 'Auto-launched Tutorial',
-                  type: isLearningJourney ? 'learning-journey' : 'docs-page',
-                },
-              });
-              document.dispatchEvent(autoLaunchEvent);
-            }, 800); // Wait for sidebar to mount
-          }
-        } catch (error) {
-          console.error('Failed to auto-open Interactive learning panel:', error);
-        }
-      }, delay);
-    };
 
     // Check initial location
     const location = locationService.getLocation();
@@ -261,6 +167,14 @@ plugin.addComponent({
     // Process queued docs links when sidebar mounts
     useEffect(() => {
       sidebarState.setIsSidebarMounted(true);
+
+      // Fire custom event when sidebar component mounts
+      const mountEvent = new CustomEvent('pathfinder-sidebar-mounted', {
+        detail: {
+          timestamp: Date.now(),
+        },
+      });
+      window.dispatchEvent(mountEvent);
 
       return () => {
         sidebarState.setIsSidebarMounted(false);
@@ -342,3 +256,56 @@ plugin.addLink({
   },
   onClick: () => {},
 });
+
+const findLearningJourney = function (param: string) {
+  // Don't search if param is empty
+  if (!param || param.trim() === '') {
+    return null;
+  }
+
+  // Dynamically load all JSON files from static-links directory
+  const staticLinksContext = (require as any).context('./bundled-interactives/static-links', false, /\.json$/);
+  const allFilePaths = staticLinksContext.keys();
+
+  let foundJourney: any = null;
+
+  // Search through all static-links files
+  for (const filePath of allFilePaths) {
+    const staticData = staticLinksContext(filePath);
+
+    if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
+      // Find learning journeys that match the URL
+      const journey = staticData.rules.find(
+        (rule: any) => rule.type === 'learning-journey' && (rule.url === param || rule.url.includes(param))
+      );
+
+      if (journey) {
+        foundJourney = journey;
+        break;
+      }
+    }
+  }
+
+  return foundJourney;
+};
+
+/**
+ * Attempts to auto-open the sidebar with configured tutorial
+ * This is extracted as a function so it can be called both on init and after navigation
+ */
+const attemptAutoOpen = (delay = 500) => {
+  setTimeout(() => {
+    try {
+      const appEvents = getAppEvents();
+      appEvents.publish({
+        type: 'open-extension-sidebar',
+        payload: {
+          pluginId: pluginJson.id,
+          componentTitle: 'Interactive learning',
+        },
+      });
+    } catch (error) {
+      console.error('Failed to auto-open Interactive learning panel:', error);
+    }
+  }, delay);
+};
