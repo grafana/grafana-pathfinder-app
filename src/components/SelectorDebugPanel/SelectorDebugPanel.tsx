@@ -288,12 +288,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     <div className={styles.container}>
       <div className={styles.header}>
         <Icon name="bug" size="lg" />
-        <h3 className={styles.title}>DOM Selector Debug</h3>
         <Badge text="Dev Mode" color="orange" className={styles.badge} />
-      </div>
-
-      {/* Leave Dev Mode button in its own row */}
-      <div className={styles.leaveDevModeRow}>
         <Button variant="secondary" size="sm" onClick={handleLeaveDevMode} icon="times" fill="outline">
           Leave Dev Mode
         </Button>
