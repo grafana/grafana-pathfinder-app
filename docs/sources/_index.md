@@ -1,11 +1,12 @@
 ---
 title: Interactive learning
-description: Get help exactly when and where you need it. Interactive learning brings contextual documentation and interactive tutorials directly into Grafana, so you can learn and build without leaving your workflow.
+description: Get help exactly when and where you need it. Interactive learning brings contextual documentation and interactive guides directly into Grafana, so you can learn and build without leaving your workflow.
 keywords:
   - learn
   - help
   - Grafana Cloud
   - Grafana OSS
+  - Guides
   - Tutorials
 weight: 1
 cards:
@@ -15,8 +16,8 @@ cards:
       href: architecture/
       height: 24
     - title: Get started
-      description: Enable Interactive learning and understand how interactive tutorials work.
-      href: get-started/
+      description: Enable Interactive learning and understand how interactive guides work.
+      href: getting-started/
       height: 24
     - title: Administrators reference
       description: Learn about Interactive learning administrators features. 
@@ -25,7 +26,7 @@ cards:
   title_class: pt-0 lh-1
 weight: 1
 hero:
-  description: Get help exactly when and where you need it. Interactive learning brings contextual documentation and interactive tutorials directly into Grafana, so you can learn and build without leaving your workflow.
+  description: Get help exactly when and where you need it. Interactive learning brings contextual documentation and interactive guides directly into Grafana, so you can learn and build without leaving your workflow.
   height: 110
   image: /media/docs/pathfinder/img_3.png?w=1920
   level: 1
@@ -39,11 +40,11 @@ hero:
 
 ## Overview
 
-Interactive learning brings contextual documentation and interactive tutorials directly into Grafana, so you can learn and build without leaving your workflow:
+Interactive learning brings contextual documentation and interactive guides directly into Grafana, so you can learn and build without leaving your workflow:
 
-- **Smart recommendations** - Get relevant docs and tutorials based on what you're working on.
-- **Interactive tutorials** - Follow step-by-step guided learning journeys with Show me and Do it features.
-- **Tab-based navigation** - Open multiple docs and tutorials in tabs, just like a browser.
+- **Smart recommendations** - Get relevant docs and guides based on what you're working on.
+- **interactive guides** - Follow step-by-step guided learning journeys with Show me and Do it features.
+- **Tab-based navigation** - Open multiple docs and guides in tabs, just like a browser.
 - **Milestone tracking** - See your progress through learning journeys with clear milestones.
 - **Always available** - Access help without switching windows or searching documentation sites.
 

@@ -17,17 +17,7 @@ import {
 } from '../security';
 import { ALLOWED_GITHUB_REPOS } from '../constants';
 import { isDevModeEnabledGlobal } from './dev-mode';
-
-interface LearningJourneyTab {
-  id: string;
-  title: string;
-  baseUrl: string;
-  content: any;
-  isLoading: boolean;
-  error: string | null;
-  type?: 'learning-journey' | 'docs';
-  docsContent?: any;
-}
+import { LearningJourneyTab } from '../types/content-panel.types';
 
 interface UseLinkClickHandlerProps {
   contentRef: React.RefObject<HTMLDivElement>;
@@ -104,16 +94,19 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
           // Navigate directly to the first milestone URL
           model.loadTabContent(activeTab.id, milestoneUrl);
-        } else if (activeTab?.content?.milestones && activeTab.content.milestones.length > 0) {
-          // Fallback: use the first milestone from content
-          const firstMilestone = activeTab.content.milestones[0];
+        } else if (
+          activeTab?.content?.metadata?.learningJourney?.milestones &&
+          activeTab.content.metadata.learningJourney.milestones.length > 0
+        ) {
+          // Fallback: use the first milestone from content metadata
+          const firstMilestone = activeTab.content.metadata.learningJourney.milestones[0];
           if (firstMilestone.url) {
             // Track analytics for fallback case
             reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
               content_title: activeTab.title,
               content_url: activeTab.baseUrl,
               interaction_location: 'ready_to_begin_button_fallback',
-              total_milestones: activeTab.content.milestones.length,
+              total_milestones: activeTab.content.metadata.learningJourney.milestones.length,
             });
 
             model.loadTabContent(activeTab.id, firstMilestone.url);
@@ -142,7 +135,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               preventDefault: true,
               stopPropagation: true,
             });
-            const linkText = anchor.textContent?.trim() || 'Interactive Tutorial';
+            const linkText = anchor.textContent?.trim() || 'interactive guide';
             if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
               (model as any).openDocsPage(href, linkText);
             } else {
@@ -171,7 +164,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           let resolvedUrl = href;
           if (!href.startsWith('http') && !href.startsWith('/')) {
             // This is a relative link like "alertmanager/" or "../parent/"
-            const currentPageUrl = activeTab?.content?.url || activeTab?.content?.metadata?.url;
+            const currentPageUrl = activeTab?.content?.url;
             if (currentPageUrl) {
               try {
                 const baseUrl = new URL(currentPageUrl);
@@ -187,7 +180,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             }
           }
 
-          // Handle Grafana docs and tutorials links (including resolved relative links)
+          // Handle Grafana docs and guides links (including resolved relative links)
           // Use secure URL validation to prevent domain hijacking
           // Resolve any remaining relative paths against the current page's base URL
           let fullUrl: string;
@@ -221,7 +214,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             if (isLearningJourney) {
               model.openLearningJourney(fullUrl, linkText);
             } else {
-              // For regular docs and tutorials, use openDocsPage if available, otherwise openLearningJourney
+              // For regular docs and guides, use openDocsPage if available, otherwise openLearningJourney
               if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
                 (model as any).openDocsPage(fullUrl, linkText);
               } else {
@@ -600,7 +593,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
       };
     }
     return undefined;
-  }, [contentRef, theme, activeTab?.content, activeTab?.docsContent, activeTab?.baseUrl, activeTab?.title, model]);
+  }, [contentRef, theme, activeTab?.content, activeTab?.baseUrl, activeTab?.title, model]);
 }
 
 function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaTheme2) {

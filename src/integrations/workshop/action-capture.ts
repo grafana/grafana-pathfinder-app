@@ -1,7 +1,7 @@
 /**
  * Action Capture System for Collaborative Sessions
  *
- * Intercepts presenter's interactive tutorial actions (Show Me / Do It clicks)
+ * Intercepts presenter's interactive guide actions (Show Me / Do It clicks)
  * and broadcasts them to all connected attendees via WebRTC data channels.
  */
 

@@ -17,7 +17,7 @@
 npm run peerjs-server
 ```
 
-**Explanation**: The PeerJS server handles peer discovery and WebRTC connection setup between presenter and attendees. Once connected, tutorial data flows peer-to-peer directly between browsers.
+**Explanation**: The PeerJS server handles peer discovery and WebRTC connection setup between presenter and attendees. Once connected, guide data flows peer-to-peer directly between browsers.
 
 **Production**: For production use, deploy a dedicated PeerJS server. See `docs/LOCAL_PEERJS_SERVER.md` for deployment options.
 
@@ -29,7 +29,7 @@ npm run peerjs-server
 
 **Cause**: This is a Monaco editor limitation - Monaco does not update its visual display when the browser tab/window is not in focus. The value is actually being set in the underlying textarea, but Monaco's rendering engine waits until the window regains focus to update the display.
 
-**Workaround**: Attendees should keep their browser window focused when following along with interactive tutorials that involve code editors.
+**Workaround**: Attendees should keep their browser window focused when following along with interactive guides that involve code editors.
 
 **Status**: This is a limitation of the Monaco editor component, not a bug in Pathfinder. The action executes correctly and the step completion still works properly.
 
@@ -41,7 +41,7 @@ npm run peerjs-server
 - Step completion is marked correctly
 - Only the visual rendering is delayed until window focus
 
-**Example**: In the "Prometheus & Grafana 101" tutorial, when the presenter fills the PromQL query field, attendees will see the query appear in their editor once they click or focus on their browser window.
+**Example**: In the "Prometheus & Grafana 101" guide, when the presenter fills the PromQL query field, attendees will see the query appear in their editor once they click or focus on their browser window.
 
 #### 2. No Automatic Reconnection
 

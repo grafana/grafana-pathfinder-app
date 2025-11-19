@@ -30,7 +30,7 @@ jobs:
     env:
       GRAFANA_ACCESS_POLICY_TOKEN: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           persist-credentials: false
       - name: Setup Node.js environment
@@ -163,7 +163,7 @@ jobs:
       contents: read # Read repository contents
       pull-requests: write # Upload test report artifacts to PRs
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           persist-credentials: false
       - name: Download plugin
@@ -192,7 +192,7 @@ jobs:
           ANONYMOUS_AUTH_ENABLED=false DEVELOPMENT=false GRAFANA_VERSION=${{ matrix.GRAFANA_IMAGE.VERSION }} GRAFANA_IMAGE=${{ matrix.GRAFANA_IMAGE.NAME }} docker compose up -d
 
       - name: Wait for grafana server
-        uses: grafana/plugin-actions/wait-for-grafana@4294e198084cc8f81f80cb52c43f07d7f543196b
+        uses: grafana/plugin-actions/wait-for-grafana@244c3bc9c6eb94bc1dd6458ade2462499bbf0f5b
         with:
           url: http://localhost:3000/login
 
@@ -204,7 +204,7 @@ jobs:
         run: npm run e2e
 
       - name: Upload e2e test summary
-        uses: grafana/plugin-actions/playwright-gh-pages/upload-report-artifacts@4294e198084cc8f81f80cb52c43f07d7f543196b
+        uses: grafana/plugin-actions/playwright-gh-pages/upload-report-artifacts@244c3bc9c6eb94bc1dd6458ade2462499bbf0f5b
         if: ${{ always() && !cancelled() }}
         with:
           upload-report: false
@@ -236,10 +236,10 @@ jobs:
       contents: write # Deploy to GitHub Pages
       pull-requests: write # Comment on PRs with report links
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           persist-credentials: false
       - name: Publish report
-        uses: grafana/plugin-actions/playwright-gh-pages/deploy-report-pages@4294e198084cc8f81f80cb52c43f07d7f543196b
+        uses: grafana/plugin-actions/playwright-gh-pages/deploy-report-pages@244c3bc9c6eb94bc1dd6458ade2462499bbf0f5b
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

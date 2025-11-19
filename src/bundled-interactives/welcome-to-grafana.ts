@@ -10,7 +10,7 @@ export const welcomeToGrafanaHtml = `<html>
     <body>
         <h1>Welcome to Grafana!</h1>
 
-        <p>Welcome to your Grafana journey! In this interactive tutorial, we'll take you on a tour of key locations in Grafana. By the end, you'll be familiar with:</p>
+        <p>Welcome to your Grafana journey! In this interactive guide, we'll take you on a tour of key locations in Grafana. By the end, you'll be familiar with:</p>
         <ul>
             <li>Navigating Grafana's main sections</li>
             <li>Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting</li>

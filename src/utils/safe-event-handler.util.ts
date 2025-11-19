@@ -2,11 +2,7 @@
  * Safe event handling utilities to prevent browser warnings about canceling non-cancelable events
  */
 
-export interface SafeEventOptions {
-  preventDefault?: boolean;
-  stopPropagation?: boolean;
-  stopImmediatePropagation?: boolean;
-}
+import type { SafeEventOptions } from '../types/hooks.types';
 
 /**
  * Safely handle an event by checking if it's cancelable before calling preventDefault

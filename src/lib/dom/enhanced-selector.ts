@@ -462,8 +462,9 @@ function handleTextSelector(selector: string): SelectorResult {
 
 /**
  * Test if browser supports :has() natively
+ * Internal helper - not part of public API
  */
-export function supportsHasSelector(): boolean {
+function supportsHasSelector(): boolean {
   try {
     // Create a test element structure
     const testContainer = document.createElement('div');

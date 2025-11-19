@@ -1,6 +1,6 @@
 import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, usePluginContext } from '@grafana/data';
 import { LoadingPlaceholder } from '@grafana/ui';
-import { getAppEvents } from '@grafana/runtime';
+import { getAppEvents, locationService } from '@grafana/runtime';
 import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { initPluginTranslations } from '@grafana/i18n';
@@ -128,15 +128,19 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Feature toggle sets the default, but user config always takes precedence
   const shouldAutoOpen = config.openPanelOnLaunch;
 
-  // Auto-open panel if enabled (once per session)
+  // Auto-open panel if enabled (once per session per instance)
   if (shouldAutoOpen) {
-    const sessionKey = 'grafana-interactive-learning-panel-auto-opened';
-    const hasAutoOpened = sessionStorage.getItem(sessionKey);
+    // Include hostname to make this unique per Grafana instance
+    // This ensures each Cloud instance (e.g., company1.grafana.net, company2.grafana.net)
+    // tracks its own auto-open state independently
+    const hostname = window.location.hostname;
+    const sessionKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
 
-    if (!hasAutoOpened) {
-      sessionStorage.setItem(sessionKey, 'true');
-
-      // Small delay to ensure Grafana is ready
+    /**
+     * Attempts to auto-open the sidebar with configured tutorial
+     * This is extracted as a function so it can be called both on init and after navigation
+     */
+    const attemptAutoOpen = (delay = 200) => {
       setTimeout(() => {
         try {
           const appEvents = getAppEvents();
@@ -162,12 +166,57 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
                 },
               });
               document.dispatchEvent(autoLaunchEvent);
-            }, 2000); // Wait for sidebar to mount
+            }, 800); // Wait for sidebar to mount
           }
         } catch (error) {
           console.error('Failed to auto-open Interactive learning panel:', error);
         }
-      }, 500);
+      }, delay);
+    };
+
+    // Check initial location
+    const location = locationService.getLocation();
+    const currentPath = location.pathname || window.location.pathname || '';
+    const isOnboardingFlow = currentPath.includes('/a/grafana-setupguide-app/onboarding-flow');
+    const hasAutoOpened = sessionStorage.getItem(sessionKey);
+
+    // Auto-open immediately if not on onboarding flow
+    if (!hasAutoOpened && !isOnboardingFlow) {
+      sessionStorage.setItem(sessionKey, 'true');
+      attemptAutoOpen(200);
+    }
+
+    // If user starts on onboarding flow, listen for navigation away from it
+    // This ensures the sidebar opens when they navigate to normal Grafana
+    if (!hasAutoOpened && isOnboardingFlow) {
+      const checkLocationChange = () => {
+        const newLocation = locationService.getLocation();
+        const newPath = newLocation.pathname || window.location.pathname || '';
+        const stillOnOnboarding = newPath.includes('/a/grafana-setupguide-app/onboarding-flow');
+        const alreadyOpened = sessionStorage.getItem(sessionKey);
+
+        // If we've left onboarding and haven't auto-opened yet, do it now
+        if (!stillOnOnboarding && !alreadyOpened) {
+          sessionStorage.setItem(sessionKey, 'true');
+          attemptAutoOpen(500); // Slightly longer delay after navigation
+        }
+      };
+
+      // Listen for Grafana location changes (works across SPA navigation)
+      document.addEventListener('grafana:location-changed', checkLocationChange);
+
+      // Also listen via locationService history API (more reliable for some navigation types)
+      try {
+        const history = locationService.getHistory();
+        if (history) {
+          const unlisten = history.listen(checkLocationChange);
+          // Store unlisten function for potential cleanup (though plugin.init typically doesn't get cleaned up)
+          (window as any).__pathfinderAutoOpenUnlisten = unlisten;
+        }
+      } catch (error) {
+        // Fallback to popstate if history API not available
+        window.addEventListener('popstate', checkLocationChange);
+      }
     }
   }
 };

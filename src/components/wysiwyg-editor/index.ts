@@ -1,0 +1,34 @@
+/**
+ * WYSIWYG Editor Exports
+ * Main entry point for the interactive guide editor
+ */
+
+export { default as WysiwygEditor } from './WysiwygEditor';
+export { default as Toolbar } from './Toolbar';
+
+// Type exports
+export type {
+  InteractiveElementType,
+  EditState,
+  EditStateOrNull,
+  InteractiveAttributesInput,
+  InteractiveAttributesOutput,
+  InteractiveFormProps,
+  ActionType,
+  CommonRequirement,
+} from './types';
+
+// Extension exports (for advanced usage)
+export {
+  InteractiveListItem,
+  InteractiveSpan,
+  InteractiveComment,
+  SequenceSection,
+  InteractiveClickHandler,
+} from './extensions';
+
+// Service exports (for advanced usage)
+export * from './services';
+
+// Hook exports
+export { useEditState } from './hooks/useEditState';

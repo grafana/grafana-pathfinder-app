@@ -1,6 +1,6 @@
 ### Requirements Reference
 
-This comprehensive guide covers all supported requirements for interactive tutorial elements. Requirements are specified using the `data-requirements` attribute and control when interactive elements become enabled.
+This comprehensive guide covers all supported requirements for interactive guide elements. Requirements are specified using the `data-requirements` attribute and control when interactive elements become enabled.
 
 ## Core concepts
 
@@ -487,6 +487,8 @@ Check requirement state:
 // Access the sequential requirements manager
 const manager = window.SequentialRequirementsManager?.getInstance();
 if (manager) {
-  manager.logCurrentState();
+  // Manager provides step state coordination and reactive checking
+  // Individual step states can be queried via manager.getStepState(stepId)
+  console.log('Manager available for step coordination');
 }
 ```

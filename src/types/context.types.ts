@@ -1,4 +1,10 @@
-// All context-related interfaces in one place
+/**
+ * Context engine type definitions
+ * Types for the context-aware recommendation system
+ *
+ * Re-exported from src/context-engine/context.types.ts for centralized access
+ */
+
 export interface DataSource {
   id: number;
   name: string;
@@ -94,6 +100,20 @@ export interface RecommenderResponse {
   recommendations: Recommendation[];
 }
 
+export interface BundledInteractive {
+  id: string;
+  title: string;
+  summary: string;
+  filename: string;
+  exportName: string;
+  url: string | string[]; // Can be single URL or array of URLs
+}
+
+export interface BundledInteractivesIndex {
+  interactives: BundledInteractive[];
+}
+
+// Hook types (re-exported from hooks.types.ts for convenience)
 export interface UseContextPanelOptions {
   onOpenLearningJourney?: (url: string, title: string) => void;
   onOpenDocsPage?: (url: string, title: string) => void;
@@ -112,17 +132,4 @@ export interface UseContextPanelReturn {
   toggleSummaryExpansion: (recommendationUrl: string) => void;
   navigateToPath: (path: string) => void;
   toggleOtherDocsExpansion: () => void;
-}
-
-export interface BundledInteractive {
-  id: string;
-  title: string;
-  summary: string;
-  filename: string;
-  exportName: string;
-  url: string | string[]; // Can be single URL or array of URLs
-}
-
-export interface BundledInteractivesIndex {
-  interactives: BundledInteractive[];
 }

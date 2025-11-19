@@ -24,7 +24,7 @@ export const prometheusGrafana101Html = `<html>
 
         <h1>Prometheus + Grafana 101</h1>
 
-        <p>Welcome to your Prometheus monitoring with Grafana journey! In this interactive tutorial, we'll take you on a tour of key locations in Grafana and help you set up your first Prometheus data source. By the end, you'll be familiar with:</p>
+        <p>Welcome to your Prometheus monitoring with Grafana journey! In this interactive guide, we'll take you on a tour of key locations in Grafana and help you set up your first Prometheus data source. By the end, you'll be familiar with:</p>
         <ul>
             <li>Navigating Grafana's main sections</li>
             <li>Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting</li>
@@ -85,8 +85,7 @@ export const prometheusGrafana101Html = `<html>
 
               <li class="interactive"
                   data-targetaction="guided"
-                  data-step-timeout="45000"
-                  data-skippable="true">
+                  data-step-timeout="45000">
                 <span class="interactive" 
                       data-targetaction="hover"
                       data-reftarget='.gf-form:has([data-testid="data-testid prometheus type"]) label > svg[tabindex="0"]'
@@ -95,7 +94,8 @@ export const prometheusGrafana101Html = `<html>
                 </span>
                 <span class="interactive"
                       data-targetaction="highlight"
-                      data-reftarget='[data-testid="data-testid prometheus type"]'>
+                      data-reftarget='grafana:components.DataSource.Prometheus.configPage.prometheusType'
+                      data-skippable="true">
                   <span class="interactive-comment">The <strong>Prometheus type</strong> dropdown lets you specify whether you're connecting to a standard Prometheus server or a compatible service like Cortex or Thanos, which helps Grafana optimize query behavior accordingly.</span>
                 </span>
                 <span class="interactive"
@@ -132,7 +132,7 @@ export const prometheusGrafana101Html = `<html>
               </li>
 
               <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-targetaction="button" data-reftarget="Add visualization"></span>
+                <span class="interactive" data-targetaction="button" data-reftarget="button[data-testid='data-testid Create new panel button']"></span>
                 <span class="interactive" data-targetaction="button" data-reftarget="prometheus-datasource"></span>
                 Click <strong>Add visualization</strong>, then select your <strong>prometheus-datasource</strong>.
               </li>
@@ -161,7 +161,7 @@ export const prometheusGrafana101Html = `<html>
 
               <li class="interactive" data-targetaction="multistep">
                 <span class="interactive"
-                  data-reftarget='button[data-testid="data-testid toggle-viz-picker"]'
+                  data-reftarget='grafana:components.PanelEditor.toggleVizPicker'
                   data-targetaction="highlight">
                   <span class="interactive-comment">Grafana offers <strong>many visualization types</strong>: <em>Time series</em> for trends, <em>Bar charts</em> for comparisons, <em>Heatmaps</em> for distributions, <em>Tables</em> for raw data, and <em>Stat</em> for single values. Choose based on your data story!</span>
                 </span>
@@ -172,7 +172,7 @@ export const prometheusGrafana101Html = `<html>
               </li>
 
               <li class="interactive"
-                  data-reftarget='input[data-testid="data-testid Panel editor option pane field input Title"]'
+                  data-reftarget='grafana:components.PanelEditor.OptionsPane.fieldInput:Title'
                   data-targetaction='formfill' 
                   data-targetvalue='Number of running components'>
                 <span class="interactive-comment">The <strong>Title</strong> is the name of the panel. It's used to identify the panel in the dashboard.</span>
@@ -206,7 +206,7 @@ export const prometheusGrafana101Html = `<html>
               </li>
 
               <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-targetaction="highlight" data-reftarget='input#data-source-picker'></span>
+                <span class="interactive" data-targetaction="highlight" data-reftarget='grafana:components.DataSourcePicker.inputV2'></span>
                 <span class="interactive" data-targetaction="button" data-reftarget='prometheus'></span>
                  Open the data source picker and select <strong>Prometheus</strong>.
               </li>
@@ -227,7 +227,7 @@ export const prometheusGrafana101Html = `<html>
               </li>
 
               <li class="interactive" 
-                  data-reftarget='button[data-testid="data-testid RefreshPicker run button"]'
+                  data-reftarget='grafana:components.RefreshPicker.runButtonV2'
                   data-targetaction='highlight'>
                 <span class="interactive-comment">Click <strong>Run query</strong> to execute your PromQL and see the results. Explore shows both a graph visualization and a table view of your metrics.</span>
                 Click <strong>Run query</strong> to see which targets are being monitored.
@@ -243,7 +243,7 @@ export const prometheusGrafana101Html = `<html>
               </li>
 
               <li class="interactive" 
-                  data-reftarget='button[data-testid="data-testid RefreshPicker run button"]'
+                  data-reftarget='grafana:components.RefreshPicker.runButtonV2'
                   data-targetaction='highlight'>
                 Execute the query to see targets grouped by job.
               </li>
@@ -258,7 +258,7 @@ export const prometheusGrafana101Html = `<html>
               </li>
 
               <li class="interactive" 
-                  data-reftarget='button[data-testid="data-testid RefreshPicker run button"]'
+                  data-reftarget='grafana:components.RefreshPicker.runButtonV2'
                   data-targetaction='highlight'>
                 Run the query to visualize request rates over time.
               </li>
@@ -273,7 +273,7 @@ export const prometheusGrafana101Html = `<html>
               </li>
 
               <li class="interactive" 
-                  data-reftarget='button[data-testid="data-testid RefreshPicker run button"]'
+                  data-reftarget='grafana:components.RefreshPicker.runButtonV2'
                   data-targetaction='highlight'>
                 <span class="interactive-comment">Info metrics like this one typically have a constant value of <strong>1</strong>, but their labels contain the valuable information about the system.</span>
                 Execute to see your Prometheus version and build details.
@@ -281,7 +281,7 @@ export const prometheusGrafana101Html = `<html>
 
               <li class="interactive" data-targetaction="multistep">
                 <span class="interactive" 
-                    data-reftarget='button[data-testid="data-testid TimePicker Open Button"]'
+                    data-reftarget='grafana:components.TimePicker.openButton'
                     data-targetaction="highlight">
                   <span class="interactive-comment">The <strong>time range picker</strong> lets you focus on specific time windows. You can use relative ranges like "Last 5 minutes" or absolute ranges. This is crucial for investigating incidents or comparing different time periods.</span>
                 </span>

@@ -6,7 +6,7 @@
  */
 
 export { useTextSelection } from './useTextSelection.hook';
-export type { TextSelectionState, SelectionPosition } from './useTextSelection.hook';
+export type { TextSelectionState, SelectionPosition } from '../../types/hooks.types';
 
 export { AssistantSelectionPopover } from './AssistantSelectionPopover';
 

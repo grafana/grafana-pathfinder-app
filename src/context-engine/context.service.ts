@@ -21,7 +21,7 @@ import {
   RecommenderResponse,
   BundledInteractive,
   BundledInteractivesIndex,
-} from './context.types';
+} from '../types/context.types';
 
 export class ContextService {
   private static echoLoggingInitialized = false;

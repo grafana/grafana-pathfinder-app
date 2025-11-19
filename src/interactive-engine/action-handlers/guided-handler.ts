@@ -1,17 +1,11 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
-import { querySelectorAllEnhanced, findButtonByText, isElementVisible } from '../../lib/dom';
+import { querySelectorAllEnhanced, findButtonByText, isElementVisible, resolveSelector } from '../../lib/dom';
+import { isCssSelector } from '../../lib/dom/selector-detector';
+import { GuidedAction } from '../../types/interactive-actions.types';
 
-interface InternalAction {
-  targetAction: 'hover' | 'button' | 'highlight';
-  refTarget: string;
-  targetValue?: string;
-  requirements?: string;
-  targetComment?: string; // Optional comment to display in tooltip during this step
-}
-
-type CompletionResult = 'completed' | 'timeout' | 'cancelled';
+type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped';
 
 /**
  * Handler for guided interactions where users manually perform actions
@@ -64,7 +58,7 @@ export class GuidedHandler {
    * Returns true if user completed, false if timeout/cancelled
    */
   async executeGuidedStep(
-    action: InternalAction,
+    action: GuidedAction,
     stepIndex: number,
     totalSteps: number,
     timeout = 30000
@@ -85,16 +79,28 @@ export class GuidedHandler {
       // If we highlight first, fast users might click before the listener is ready
       const completionPromise = this.createCompletionListener(action, targetElement, timeout);
 
+      // Create skip promise if step is skippable
+      const skipPromise = action.isSkippable
+        ? this.createSkipListener(stepIndex)
+        : new Promise<CompletionResult>(() => {}); // Never resolves if not skippable
+
       // Now highlight the target element with persistent highlight
       // Note: highlightTarget uses navigationManager.highlightWithComment which includes
       // the 300ms DOM settling delay after scroll
-      await this.highlightTarget(targetElement, action.targetAction, stepIndex, totalSteps, action.targetComment);
+      await this.highlightTarget(
+        targetElement,
+        action.targetAction,
+        stepIndex,
+        totalSteps,
+        action.targetComment,
+        action.isSkippable
+      );
 
-      // Wait for user to complete the action (listener already attached)
-      const result = await completionPromise;
+      // Wait for user to complete the action, skip, timeout, or cancel
+      const result = await Promise.race([completionPromise, skipPromise]);
 
-      // Track completion for progress display
-      if (result === 'completed') {
+      // Track completion for progress display (both completed and skipped count as done)
+      if (result === 'completed' || result === 'skipped') {
         this.completedSteps.push(stepIndex);
       }
 
@@ -146,7 +152,7 @@ export class GuidedHandler {
 
   /**
    * Find target element using action-specific logic
-   * Buttons use findButtonByText, others use enhanced selector
+   * Buttons support both CSS selectors and text matching with intelligent detection
    */
   private async findTargetElement(
     selector: string,
@@ -154,32 +160,55 @@ export class GuidedHandler {
   ): Promise<HTMLElement> {
     let targetElements: HTMLElement[];
 
-    // For button actions, try button-specific finder first (handles text matching with HTML entities)
+    // Resolve grafana: prefix if present
+    const resolvedSelector = resolveSelector(selector);
+
+    // For button actions, try CSS selector first if it looks like one, then fall back to text
     if (actionType === 'button') {
+      // Try CSS selector first if it looks like one
+      if (isCssSelector(resolvedSelector)) {
+        try {
+          const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
+          targetElements = enhancedResult.elements.filter(
+            (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
+          );
+
+          if (targetElements.length > 0) {
+            if (targetElements.length > 1) {
+              console.warn(`Multiple buttons found matching selector: ${resolvedSelector}, using first button`);
+            }
+            return targetElements[0];
+          }
+        } catch (error) {
+          console.warn(`Button selector matching failed for "${resolvedSelector}", trying text match:`, error);
+        }
+      }
+
+      // Fall back to text matching (existing behavior)
       try {
-        targetElements = findButtonByText(selector);
+        targetElements = findButtonByText(resolvedSelector);
         if (targetElements.length > 0) {
           if (targetElements.length > 1) {
-            console.warn(`Multiple buttons found matching text: ${selector}, using first button`);
+            console.warn(`Multiple buttons found matching text: ${resolvedSelector}, using first button`);
           }
           return targetElements[0];
         }
       } catch (error) {
-        // Fall through to enhanced selector
-        console.warn(`findButtonByText failed for "${selector}", trying enhanced selector:`, error);
+        // Fall through to enhanced selector as last resort
+        console.warn(`findButtonByText failed for "${resolvedSelector}", trying enhanced selector:`, error);
       }
     }
 
     // Fallback to enhanced selector for all action types
-    const enhancedResult = querySelectorAllEnhanced(selector);
+    const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
     targetElements = enhancedResult.elements;
 
     if (targetElements.length === 0) {
-      throw new Error(`No elements found matching selector: ${selector}`);
+      throw new Error(`No elements found matching selector: ${resolvedSelector}`);
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${selector}, using first element`);
+      console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
     }
 
     return targetElements[0];
@@ -207,7 +236,8 @@ export class GuidedHandler {
     actionType: 'hover' | 'button' | 'highlight',
     stepIndex: number,
     totalSteps: number,
-    customComment?: string
+    customComment?: string,
+    isSkippable?: boolean
   ): Promise<void> {
     // Use custom comment if provided, otherwise generate default message
     const message = customComment || this.getActionMessage(actionType, stepIndex, totalSteps);
@@ -219,9 +249,20 @@ export class GuidedHandler {
       completedSteps: [...this.completedSteps], // Copy to avoid mutations
     };
 
+    // Create skip callback if step is skippable
+    const skipCallback = isSkippable
+      ? () => {
+          // Dispatch skip event when skip button is clicked
+          const skipEvent = new CustomEvent('guided-step-skipped', {
+            detail: { stepIndex },
+          });
+          document.dispatchEvent(skipEvent);
+        }
+      : undefined;
+
     // Use existing highlight system with persistent highlight
     // Disable auto-cleanup for guided mode - highlights should only clear when step completes
-    await this.navigationManager.highlightWithComment(element, message, false, stepInfo);
+    await this.navigationManager.highlightWithComment(element, message, false, stepInfo, skipCallback);
 
     // Add a persistent highlight class that won't auto-remove
     element.classList.add('interactive-guided-active');
@@ -253,7 +294,7 @@ export class GuidedHandler {
    * Listener is attached immediately to avoid race condition with fast clicks
    */
   private createCompletionListener(
-    action: InternalAction,
+    action: GuidedAction,
     targetElement: HTMLElement,
     timeout: number
   ): Promise<CompletionResult> {
@@ -279,6 +320,23 @@ export class GuidedHandler {
       // Clean up listeners when promise resolves
       this.cleanupListeners();
       return result;
+    });
+  }
+
+  /**
+   * Create skip listener that resolves when user clicks skip button in comment box
+   */
+  private createSkipListener(stepIndex: number): Promise<CompletionResult> {
+    return new Promise<CompletionResult>((resolve) => {
+      const handleSkip = (event: Event) => {
+        const customEvent = event as CustomEvent<{ stepIndex: number }>;
+        if (customEvent.detail.stepIndex === stepIndex) {
+          document.removeEventListener('guided-step-skipped', handleSkip);
+          resolve('skipped');
+        }
+      };
+
+      document.addEventListener('guided-step-skipped', handleSkip);
     });
   }
 
@@ -310,17 +368,27 @@ export class GuidedHandler {
   private async waitForHover(element: HTMLElement, signal: AbortSignal): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
       let hoverTimeout: NodeJS.Timeout | null = null;
+      let isResolved = false; // Prevent double resolution
       const dwellTime = 500; // User must hover for 500ms
 
       const startDwellTimer = () => {
+        // Clear any existing timer first
+        if (hoverTimeout) {
+          clearTimeout(hoverTimeout);
+        }
         // Start dwell timer
         hoverTimeout = setTimeout(() => {
-          resolve('completed');
+          if (!isResolved) {
+            isResolved = true;
+            resolve('completed');
+          }
         }, dwellTime);
       };
 
       const handleMouseEnter = () => {
-        startDwellTimer();
+        if (!isResolved) {
+          startDwellTimer();
+        }
       };
 
       const handleMouseLeave = () => {
@@ -352,7 +420,10 @@ export class GuidedHandler {
         if (hoverTimeout) {
           clearTimeout(hoverTimeout);
         }
-        resolve('cancelled');
+        if (!isResolved) {
+          isResolved = true;
+          resolve('cancelled');
+        }
       });
     });
   }
@@ -365,6 +436,7 @@ export class GuidedHandler {
    * - Slightly expanded click zone (16px padding) for better targeting
    * - Capture phase listening to catch events before they can be stopped
    * - Better SVG/nested element handling
+   * - Fixed listener cleanup bug (was attaching to document but cleaning up from document.body)
    */
   private async waitForClick(
     element: HTMLElement,
@@ -372,16 +444,25 @@ export class GuidedHandler {
     preventDefaultClick = false
   ): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
-      // Periodically update rect for dynamic elements (like hover-revealed items)
-      // This ensures we always have fresh bounds for click detection
+      let isResolved = false; // Prevent double resolution
+
+      // Periodically verify element is still connected
       const rectUpdateInterval = setInterval(() => {
-        // Just verify element is still connected - rect is recalculated on each click
         if (!element.isConnected) {
           clearInterval(rectUpdateInterval);
+          if (!isResolved) {
+            isResolved = true;
+            resolve('cancelled');
+          }
         }
       }, 100);
 
       const handleClick = (event: Event) => {
+        // Prevent double resolution
+        if (isResolved) {
+          return;
+        }
+
         const mouseEvent = event as MouseEvent;
         const clickedElement = mouseEvent.target as HTMLElement;
 
@@ -394,12 +475,13 @@ export class GuidedHandler {
 
         if (isTargetOrChild) {
           clearInterval(rectUpdateInterval);
+          isResolved = true;
           resolve('completed');
           return;
         }
 
         // Fallback check: Is click within slightly expanded bounds?
-        // Marginally larger padding (16px) provides some forgiveness without being excessive
+        // Recalculate rect on each click to handle dynamic/hover-revealed elements
         const elementRect = element.getBoundingClientRect();
         const padding = 16; // Slightly increased from 12px for better targeting
         const clickX = mouseEvent.clientX;
@@ -419,6 +501,7 @@ export class GuidedHandler {
           if (element.isConnected) {
             element.click();
           }
+          isResolved = true;
           resolve('completed');
         }
       };
@@ -428,9 +511,9 @@ export class GuidedHandler {
       // We still let the event continue (don't preventDefault) so the actual click happens
       document.addEventListener('click', handleClick, { capture: true });
 
-      // Store for cleanup
+      // FIXED: Store document (not document.body) for proper cleanup
       this.activeListeners.push({
-        element: document.body as HTMLElement,
+        element: document as any as HTMLElement, // Cast needed for type compatibility
         type: 'click',
         handler: handleClick,
       });
@@ -438,7 +521,10 @@ export class GuidedHandler {
       // Handle cancellation
       signal.addEventListener('abort', () => {
         clearInterval(rectUpdateInterval);
-        resolve('cancelled');
+        if (!isResolved) {
+          isResolved = true;
+          resolve('cancelled');
+        }
       });
     });
   }

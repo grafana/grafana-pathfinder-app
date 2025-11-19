@@ -8,76 +8,11 @@ import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
 import { reportAppInteraction, UserInteraction, getSourceDocument } from '../../../lib/analytics';
-import { interactiveStepStorage } from '../../../lib/user-storage';
+import { interactiveStepStorage, sectionCollapseStorage } from '../../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
-
-// Shared type definitions
-export interface BaseInteractiveProps {
-  requirements?: string;
-  objectives?: string;
-  hints?: string;
-  onComplete?: () => void;
-  disabled?: boolean;
-  className?: string;
-}
-
-export interface InteractiveStepProps extends BaseInteractiveProps {
-  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover';
-  refTarget: string;
-  targetValue?: string;
-  postVerify?: string;
-  targetComment?: string;
-  doIt?: boolean; // Control whether "Do it" button appears (defaults to true)
-  showMe?: boolean; // Control whether "Show me" button appears (defaults to true)
-  showMeText?: string; // Optional text override for the "Show me" button
-  skippable?: boolean; // Whether this step can be skipped if requirements fail
-  completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
-  title?: string;
-  description?: string;
-  children?: React.ReactNode;
-
-  // New unified state management props (added by parent)
-  stepId?: string;
-  isEligibleForChecking?: boolean;
-  isCompleted?: boolean;
-  isCurrentlyExecuting?: boolean;
-  onStepComplete?: (stepId: string) => void;
-  onStepReset?: (stepId: string) => void; // Signal to parent that step should be reset
-  resetTrigger?: number; // Signal from parent to reset local completion state
-
-  // Step position tracking for analytics (added by section)
-  stepIndex?: number; // 0-indexed position in section (0, 1, 2, etc.)
-  totalSteps?: number; // Total number of steps in the section
-  sectionId?: string; // Section identifier for analytics (e.g., "section-setup-datasource")
-  sectionTitle?: string; // Human-readable section title for analytics
-}
-
-export interface InteractiveSectionProps extends BaseInteractiveProps {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-  isSequence?: boolean;
-  id?: string; // HTML id attribute for section identification
-  skippable?: boolean; // Whether this section can be skipped if requirements fail
-}
-
-// Types for unified state management
-export interface StepInfo {
-  stepId: string;
-  element: React.ReactElement<InteractiveStepProps> | React.ReactElement<any>;
-  index: number;
-  targetAction?: string; // Optional for multi-step and guided
-  refTarget?: string; // Optional for multi-step and guided
-  targetValue?: string;
-  targetComment?: string; // Optional comment to show during execution
-  requirements?: string;
-  postVerify?: string;
-  skippable?: boolean; // Whether this step can be skipped
-  showMe?: boolean; // Whether to show the "Show me" button and phase
-  isMultiStep: boolean; // Flag to identify component type
-  isGuided: boolean; // Flag to identify guided (user-performed) steps
-}
+import type { InteractiveStepProps, InteractiveSectionProps, StepInfo } from '../../../types/component-props.types';
+import { testIds } from '../../../components/testIds';
 
 // Simple counter for sequential section IDs
 let interactiveSectionCounter = 0;
@@ -161,6 +96,7 @@ export function InteractiveSection({
   const [isRunning, setIsRunning] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0); // Track next uncompleted step
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
+  const [isCollapsed, setIsCollapsed] = useState(false); // Collapse state for completed sections
 
   // --- Persistence helpers (restore across refresh) ---
   const getContentKey = useCallback((): string => {
@@ -194,8 +130,29 @@ export function InteractiveSection({
     [getContentKey, sectionId]
   );
 
+  // Toggle collapse state and persist to storage
+  const toggleCollapse = useCallback(() => {
+    const newCollapseState = !isCollapsed;
+    setIsCollapsed(newCollapseState);
+    const contentKey = getContentKey();
+    sectionCollapseStorage.set(contentKey, sectionId, newCollapseState);
+  }, [isCollapsed, getContentKey, sectionId]);
+
+  // Restore collapse state from storage on mount
+  useEffect(() => {
+    const restoreCollapseState = async () => {
+      const contentKey = getContentKey();
+      const savedCollapseState = await sectionCollapseStorage.get(contentKey, sectionId);
+      setIsCollapsed(savedCollapseState);
+    };
+    restoreCollapseState();
+  }, [getContentKey, sectionId]);
+
   // Use ref for cancellation to avoid closure issues
   const isCancelledRef = useRef(false);
+
+  // Track if we've already auto-collapsed to prevent re-collapsing on manual expand
+  const hasAutoCollapsedRef = useRef(false);
 
   // Store refs to multistep components for section-level execution
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
@@ -332,6 +289,19 @@ export function InteractiveSection({
       }
     }
   }, [isCompletedByObjectives, stepComponents, sectionId, completedSteps]);
+
+  // Auto-collapse section when it becomes complete (but only once, don't override manual expansion)
+  useEffect(() => {
+    if (isCompleted && !hasAutoCollapsedRef.current) {
+      hasAutoCollapsedRef.current = true;
+      setIsCollapsed(true);
+      const contentKey = getContentKey();
+      sectionCollapseStorage.set(contentKey, sectionId, true);
+    } else if (!isCompleted) {
+      // Reset the flag when section becomes incomplete (e.g., after reset)
+      hasAutoCollapsedRef.current = false;
+    }
+  }, [isCompleted, getContentKey, sectionId]);
 
   // Get plugin configuration to determine if auto-detection is enabled
   const pluginContext = usePluginContext();
@@ -911,12 +881,19 @@ export function InteractiveSection({
     setCurrentlyExecutingStep(null);
     setCurrentStepIndex(0); // Reset to start from beginning
 
+    // Expand the section if it was collapsed
+    setIsCollapsed(false);
+
+    // Reset the auto-collapse flag so it can auto-collapse again when completed
+    hasAutoCollapsedRef.current = false;
+
     // Signal all child steps to reset their local state
     setResetTrigger((prev) => prev + 1);
 
     // Clear storage persistence
     const contentKey = getContentKey();
     interactiveStepStorage.clear(contentKey, sectionId);
+    sectionCollapseStorage.clear(contentKey, sectionId); // Clear collapse state
 
     // Reset all step states in the global manager
     import('../../../requirements-manager').then(({ SequentialRequirementsManager }) => {
@@ -1125,9 +1102,23 @@ export function InteractiveSection({
   return (
     <div
       id={sectionId}
-      className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}`}
+      className={`interactive-section${className ? ` ${className}` : ''}${isCompleted ? ' completed' : ''}${
+        isCollapsed ? ' collapsed' : ''
+      }`}
+      data-testid={testIds.interactive.section(sectionId)}
     >
-      <div className="interactive-section-header">
+      <div className={`interactive-section-header${isCollapsed ? ' collapsed' : ''}`}>
+        {isCompleted && (
+          <button
+            className="interactive-section-toggle-button"
+            onClick={toggleCollapse}
+            type="button"
+            title={isCollapsed ? 'Expand section' : 'Collapse section'}
+            aria-label={isCollapsed ? 'Expand section' : 'Collapse section'}
+          >
+            <span className="interactive-section-toggle-icon">{isCollapsed ? '▶' : '▼'}</span>
+          </button>
+        )}
         <div className="interactive-section-title-container">
           <span className="interactive-section-title">{title}</span>
           {isCompleted && <span className="interactive-section-checkmark">✓</span>}
@@ -1140,55 +1131,78 @@ export function InteractiveSection({
         )}
       </div>
 
-      {description && <div className="interactive-section-description">{description}</div>}
+      {!isCollapsed && description && <div className="interactive-section-description">{description}</div>}
 
-      <div className="interactive-section-content">{enhancedChildren}</div>
+      {!isCollapsed && <div className="interactive-section-content">{enhancedChildren}</div>}
 
-      <div className="interactive-section-actions">
-        <Button
-          onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
-          disabled={disabled || isRunning || stepComponents.length === 0 || isCompletedByObjectives}
-          size="md"
-          variant={isCompleted ? 'secondary' : 'primary'}
-          className="interactive-section-do-button"
-          title={(() => {
-            const resumeInfo = getResumeInfo();
-            if (isCompletedByObjectives) {
-              return 'Already done!';
+      <div className={`interactive-section-actions${isCollapsed ? ' collapsed' : ''}`}>
+        {isCollapsed ? (
+          <Button
+            onClick={handleResetSection}
+            disabled={disabled || isRunning || isCompletedByObjectives}
+            size="sm"
+            variant="secondary"
+            className="interactive-section-reset-button"
+            data-testid={testIds.interactive.resetSectionButton(sectionId)}
+            title="Reset section and clear all step completion"
+          >
+            Reset Section
+          </Button>
+        ) : (
+          <Button
+            onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
+            disabled={disabled || isRunning || stepComponents.length === 0 || isCompletedByObjectives}
+            size="md"
+            variant={isCompleted ? 'secondary' : 'primary'}
+            className="interactive-section-do-button"
+            data-testid={
+              stepsCompleted && !isCompletedByObjectives
+                ? testIds.interactive.resetSectionButton(sectionId)
+                : testIds.interactive.doSectionButton(sectionId)
             }
-            if (stepsCompleted && !isCompletedByObjectives) {
-              return 'Reset section and clear all step completion to allow manual re-interaction';
-            }
-            if (isRunning) {
-              return `Running Step ${
-                currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'
-              }/${stepComponents.length}...`;
-            }
-            if (resumeInfo.isResume) {
-              return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
-            }
-            return hints || `Run through all ${stepComponents.length} steps in sequence`;
-          })()}
-        >
-          {(() => {
-            const resumeInfo = getResumeInfo();
-            if (isCompletedByObjectives) {
-              return 'Already done!';
-            }
-            if (stepsCompleted && !isCompletedByObjectives) {
-              return 'Reset Section';
-            }
-            if (isRunning) {
-              return `Running Step ${
-                currentlyExecutingStep ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1 : '?'
-              }/${stepComponents.length}...`;
-            }
-            if (resumeInfo.isResume) {
-              return `Resume (${resumeInfo.remainingSteps} steps)`;
-            }
-            return `Do Section (${stepComponents.length} steps)`;
-          })()}
-        </Button>
+            title={(() => {
+              const resumeInfo = getResumeInfo();
+              if (isCompletedByObjectives) {
+                return 'Already done!';
+              }
+              if (stepsCompleted && !isCompletedByObjectives) {
+                return 'Reset section and clear all step completion to allow manual re-interaction';
+              }
+              if (isRunning) {
+                return `Running Step ${
+                  currentlyExecutingStep
+                    ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1
+                    : '?'
+                }/${stepComponents.length}...`;
+              }
+              if (resumeInfo.isResume) {
+                return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
+              }
+              return hints || `Run through all ${stepComponents.length} steps in sequence`;
+            })()}
+          >
+            {(() => {
+              const resumeInfo = getResumeInfo();
+              if (isCompletedByObjectives) {
+                return 'Already done!';
+              }
+              if (stepsCompleted && !isCompletedByObjectives) {
+                return 'Reset Section';
+              }
+              if (isRunning) {
+                return `Running Step ${
+                  currentlyExecutingStep
+                    ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1
+                    : '?'
+                }/${stepComponents.length}...`;
+              }
+              if (resumeInfo.isResume) {
+                return `Resume (${resumeInfo.remainingSteps} steps)`;
+              }
+              return `Do Section (${stepComponents.length} steps)`;
+            })()}
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -278,6 +278,7 @@ export function validateAndCleanSelector(selector: string, action: ActionType): 
 
 /**
  * Batch validate multiple selectors
+ * Internal helper - not part of public API (exported for testing only)
  */
 export function validateMultipleSelectors(
   selectors: Array<{ selector: string; action: ActionType }>
@@ -287,6 +288,7 @@ export function validateMultipleSelectors(
 
 /**
  * Get a human-readable validation report
+ * Internal helper - not part of public API (exported for testing only)
  */
 export function getValidationReport(validated: ValidatedSelector): string {
   const lines: string[] = [];

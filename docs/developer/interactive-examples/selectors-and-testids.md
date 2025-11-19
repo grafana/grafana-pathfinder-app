@@ -1,6 +1,6 @@
 ### Selectors and test IDs mapped to Grafana components
 
-This file lists common, stable selectors and patterns already used across tutorials. Prefer these over brittle CSS class selectors.
+This file lists common, stable selectors and patterns already used across guides. Prefer these over brittle CSS class selectors.
 
 ## Navigation and core areas
 

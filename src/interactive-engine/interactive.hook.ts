@@ -20,7 +20,9 @@ import {
   HoverHandler,
   GuidedHandler,
 } from './action-handlers';
+import type { UseInteractiveElementsOptions } from '../types/hooks.types';
 
+// Re-export CheckResult and InteractiveRequirementsCheck for backward compatibility
 export interface InteractiveRequirementsCheck {
   requirements: string;
   pass: boolean;
@@ -35,10 +37,6 @@ export interface CheckResult {
   canFix?: boolean;
   fixType?: string;
   targetHref?: string;
-}
-
-interface UseInteractiveElementsOptions {
-  containerRef?: React.RefObject<HTMLElement>;
 }
 
 /**
@@ -276,16 +274,20 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       stateManager.setState(data, 'running');
 
       try {
+        // Resolve grafana: prefix if present
+        const { resolveSelector } = await import('../lib/dom');
+        const resolvedSelector = resolveSelector(data.reftarget);
+
         const searchContainer = containerRef?.current || document;
-        const targetElements = searchContainer.querySelectorAll(data.reftarget);
+        const targetElements = searchContainer.querySelectorAll(resolvedSelector);
 
         if (targetElements.length === 0) {
-          const msg = `No interactive sequence container found matching selector: ${data.reftarget}`;
+          const msg = `No interactive sequence container found matching selector: ${resolvedSelector}`;
           stateManager.handleError(msg, 'interactiveSequence', data, true);
         }
 
         if (targetElements.length > 1) {
-          const msg = `${targetElements.length} interactive sequence containers found matching selector: ${data.reftarget} - this is not supported (must be exactly 1)`;
+          const msg = `${targetElements.length} interactive sequence containers found matching selector: ${resolvedSelector} - this is not supported (must be exactly 1)`;
           stateManager.handleError(msg, 'interactiveSequence', data, true);
         }
 
@@ -334,20 +336,6 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
     },
     [checkRequirementsFromData]
   );
-
-  /**
-   * Enhanced function that returns both requirements check and extracted data
-   */
-  const checkRequirementsWithData = async (
-    element: HTMLElement
-  ): Promise<{
-    requirementsCheck: InteractiveRequirementsCheck;
-    interactiveData: InteractiveElementData;
-  }> => {
-    const data = extractInteractiveDataFromElement(element);
-    const requirementsCheck = await checkRequirementsFromData(data);
-    return { requirementsCheck, interactiveData: data };
-  };
 
   // Legacy custom event system removed - all interactions now handled by modern direct click handlers
 
@@ -428,17 +416,21 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   );
 
   return {
+    // Low-level action methods - primarily for testing, use executeInteractiveAction for new code
     interactiveFocus,
     interactiveButton,
     interactiveSequence,
     interactiveFormFill,
     interactiveNavigate,
+
+    // Requirements checking
     checkElementRequirements,
-    checkRequirementsFromData,
+    checkRequirementsFromData, // Keep - used in step-checker, multi-step, and section components
     verifyStepResult,
-    checkRequirementsWithData,
-    executeInteractiveAction, // New direct interface for React components
-    fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(), // Add the new function to the return object
+
+    // High-level action method - preferred for new code
+    executeInteractiveAction,
+    fixNavigationRequirements: () => navigationManager.fixNavigationRequirements(),
 
     // Emergency method for safety
     forceUnblock: () => stateManager.forceUnblock(),

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 
@@ -10,21 +10,17 @@ import {
   matchesStepAction,
   type DetectedActionEvent,
 } from '../../../interactive-engine';
-import { waitForReactUpdates, useStepChecker } from '../../../requirements-manager';
+import { waitForReactUpdates, useStepChecker, validateInteractiveRequirements } from '../../../requirements-manager';
 import { getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
+import { GuidedAction } from '../../../types/interactive-actions.types';
+import { testIds } from '../../../components/testIds';
 
-interface InternalAction {
-  targetAction: 'hover' | 'button' | 'highlight';
-  refTarget: string;
-  targetValue?: string;
-  requirements?: string;
-  targetComment?: string; // Optional comment to display in tooltip during this step
-}
+let anonymousGuidedCounter = 0;
 
 interface InteractiveGuidedProps {
-  internalActions: InternalAction[];
+  internalActions: GuidedAction[];
 
   // State management (passed by parent section)
   stepId?: string;
@@ -86,6 +82,23 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     },
     ref
   ) => {
+    const generatedStepIdRef = useRef<string>();
+    if (!generatedStepIdRef.current) {
+      anonymousGuidedCounter += 1;
+      generatedStepIdRef.current = `guided-step-${anonymousGuidedCounter}`;
+    }
+    const renderedStepId = stepId ?? generatedStepIdRef.current;
+    const analyticsStepMeta = useMemo(
+      () => ({
+        stepId: stepId ?? renderedStepId,
+        stepIndex,
+        totalSteps,
+        sectionId,
+        sectionTitle,
+      }),
+      [stepId, renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
+    );
+
     // Local UI state
     const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
@@ -122,12 +135,24 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Combined completion state
     const isCompleted = parentCompleted || isLocallyCompleted;
 
+    // Runtime validation: check for impossible requirement configurations
+    useEffect(() => {
+      validateInteractiveRequirements(
+        {
+          requirements,
+          refTarget: undefined, // Guided containers have no refTarget (internal actions do)
+          stepId: renderedStepId,
+        },
+        'InteractiveGuided'
+      );
+    }, [requirements, renderedStepId]);
+
     // Use step checker hook for requirements and objectives
     const checker = useStepChecker({
       requirements,
       objectives,
       hints,
-      stepId: stepId || `guided-${Date.now()}`,
+      stepId: stepId || renderedStepId,
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
       skippable,
     });
@@ -191,7 +216,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           // Execute guided step and wait for user completion
           const result = await guidedHandler.executeGuidedStep(action, i, internalActions.length, stepTimeout);
 
-          if (result === 'completed') {
+          if (result === 'completed' || result === 'skipped') {
             setCurrentStepStatus('completed');
             // Brief visual feedback before moving to next step
             await new Promise((resolve) => setTimeout(resolve, 500));
@@ -330,13 +355,13 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           buildInteractiveStepProperties(
             {
               target_action: 'guided',
-              ref_target: stepId || 'unknown',
+              ref_target: renderedStepId,
               interaction_location: 'interactive_guided_auto',
               completion_method: 'auto_detected',
               step_number: currentStepIndex + 1,
               total_steps: internalActions.length,
             },
-            { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+            analyticsStepMeta
           )
         );
       };
@@ -356,10 +381,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       currentStepIndex,
       internalActions,
       stepId,
-      stepIndex,
-      totalSteps,
-      sectionId,
-      sectionTitle,
+      renderedStepId,
+      analyticsStepMeta,
     ]);
 
     // Handle "Do it" button click
@@ -374,11 +397,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         buildInteractiveStepProperties(
           {
             target_action: 'guided',
-            ref_target: stepId || 'unknown',
+            ref_target: renderedStepId,
             interaction_location: 'interactive_guided',
             internal_actions_count: internalActions.length,
           },
-          { stepId, stepIndex, totalSteps, sectionId, sectionTitle }
+          analyticsStepMeta
         )
       );
 
@@ -389,12 +412,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       isCompletedWithObjectives,
       checker.isEnabled,
       executeStep,
-      stepId,
       internalActions.length,
-      stepIndex,
-      totalSteps,
-      sectionId,
-      sectionTitle,
+      renderedStepId,
+      analyticsStepMeta,
     ]);
 
     // Handle step reset (redo functionality)
@@ -501,6 +521,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         className={`interactive-step interactive-guided${className ? ` ${className}` : ''}${
           isCompletedWithObjectives ? ' completed' : ''
         }${isCurrentlyExecuting ? ' executing' : ''}`}
+        data-step-id={stepId || renderedStepId}
+        data-testid={testIds.interactive.step(renderedStepId)}
       >
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
@@ -517,6 +539,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                 size="sm"
                 variant="primary"
                 className="interactive-step-do-btn"
+                data-testid={testIds.interactive.doItButton(renderedStepId)}
                 title={getButtonTitle()}
               >
                 {getButtonText()}
@@ -560,6 +583,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                 size="sm"
                 variant="secondary"
                 className="interactive-step-skip-btn"
+                data-testid={testIds.interactive.skipButton(renderedStepId)}
                 title="Skip this guided interaction without executing"
               >
                 Skip
@@ -569,11 +593,17 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
           {isCompletedWithObjectives && (
             <div className="interactive-step-completion-group">
-              <span className="interactive-step-completed-indicator">✓</span>
+              <span
+                className="interactive-step-completed-indicator"
+                data-testid={testIds.interactive.stepCompleted(renderedStepId)}
+              >
+                ✓
+              </span>
               <button
                 className="interactive-step-redo-btn"
                 onClick={handleStepRedo}
                 disabled={disabled || isAnyActionRunning}
+                data-testid={testIds.interactive.redoButton(renderedStepId)}
                 title="Redo this guided interaction"
               >
                 <span className="interactive-step-redo-icon">↻</span>
@@ -589,10 +619,18 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           !isCompletedWithObjectives &&
           !checker.isChecking &&
           checker.explanation && (
-            <div className="interactive-step-requirement-explanation">
+            <div
+              className="interactive-step-requirement-explanation"
+              data-testid={testIds.interactive.requirementCheck(renderedStepId)}
+            >
               {checker.explanation}
               <button
                 className="interactive-requirement-retry-btn"
+                data-testid={
+                  checker.canFixRequirement
+                    ? testIds.interactive.requirementFixButton(renderedStepId)
+                    : testIds.interactive.requirementRetryButton(renderedStepId)
+                }
                 onClick={async () => {
                   if (checker.canFixRequirement && checker.fixRequirement) {
                     await checker.fixRequirement();
@@ -608,14 +646,25 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
         {/* Show execution error (timeout or other issues) */}
         {executionError && !checker.isChecking && (
-          <div className="interactive-step-execution-error">
+          <div
+            className="interactive-step-execution-error"
+            data-testid={testIds.interactive.errorMessage(renderedStepId)}
+          >
             {executionError}
             <div className="interactive-step-error-buttons">
-              <button className="interactive-error-retry-btn" onClick={handleRetry}>
+              <button
+                className="interactive-error-retry-btn"
+                data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
+                onClick={handleRetry}
+              >
                 Retry
               </button>
               {skippable && (
-                <button className="interactive-requirement-skip-btn" onClick={handleSkipStep}>
+                <button
+                  className="interactive-requirement-skip-btn"
+                  data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
+                  onClick={handleSkipStep}
+                >
                   Skip
                 </button>
               )}
@@ -625,14 +674,25 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
         {/* Show options after cancellation */}
         {wasCancelled && !checker.isChecking && !executionError && (
-          <div className="interactive-step-execution-error">
+          <div
+            className="interactive-step-execution-error"
+            data-testid={testIds.interactive.errorMessage(renderedStepId)}
+          >
             Guided interaction was cancelled.
             <div className="interactive-step-error-buttons">
-              <button className="interactive-error-retry-btn" onClick={handleRetry}>
+              <button
+                className="interactive-error-retry-btn"
+                data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
+                onClick={handleRetry}
+              >
                 Retry
               </button>
               {skippable && (
-                <button className="interactive-requirement-skip-btn" onClick={handleSkipStep}>
+                <button
+                  className="interactive-requirement-skip-btn"
+                  data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
+                  onClick={handleSkipStep}
+                >
                   Skip
                 </button>
               )}

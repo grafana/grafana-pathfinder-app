@@ -7,12 +7,17 @@
   "autoEnabled": true,
   "info": {
     "keywords": ["app", "documentation", "learning", "command palette", "search"],
-    "description": "Get help exactly when and where you need it. Interactive learning brings contextual documentation and interactive tutorials directly into Grafana, so you can learn and build without leaving your workflow.",
+    "description": "Get help exactly when and where you need it. Interactive learning brings contextual documentation and interactive guides directly into Grafana, so you can learn and build without leaving your workflow.",
     "screenshots": [
       { "name": "Context-aware recommendations", "path": "img/img_1.png" },
-      { "name": "Interactive tutorials with guided steps", "path": "img/img_2.png" },
+      { "name": "interactive guides with guided steps", "path": "img/img_2.png" },
       { "name": "Step-by-step guidance throughout Grafana", "path": "img/img_3.png" },
       { "name": "Documentation for any Grafana feature", "path": "img/img_4.png" }
+    ],
+    "links": [
+      { "name": "Website", "url": "https://grafana.com/grafana/plugins/grafana-pathfinder-app/" },
+      { "name": "Documentation", "url": "https://grafana.com/docs/plugins/grafana-pathfinder-app/latest/" },
+      { "name": "GitHub", "url": "https://github.com/grafana/grafana-pathfinder-app" }
     ],
     "author": {
       "name": "Grafana"

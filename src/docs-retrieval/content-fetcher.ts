@@ -20,9 +20,11 @@ import {
   isGitHubRawUrl,
   isAllowedGitHubRawUrl,
   isLocalhostUrl,
+  sanitizeDocumentationHTML,
 } from '../security';
 import { convertGitHubRawToProxyUrl, isDataProxyUrl } from './data-proxy';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
+import { StorageKeys } from '../lib/user-storage';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -188,6 +190,44 @@ function generateUserFriendlyError(error: FetchError | undefined, url: string): 
 async function fetchBundledInteractive(url: string): Promise<ContentFetchResult> {
   const contentId = url.replace('bundled:', '');
 
+  // SPECIAL CASE: Handle WYSIWYG preview from localStorage
+  if (contentId === 'wysiwyg-preview') {
+    try {
+      const previewContent = localStorage.getItem(StorageKeys.WYSIWYG_PREVIEW);
+
+      if (!previewContent || previewContent.trim() === '') {
+        return {
+          content: null,
+          error: 'No preview content available. Create content in the WYSIWYG editor first.',
+        };
+      }
+
+      // SECURITY: sanitize on load (defense in depth, F1, F4)
+      const sanitized = sanitizeDocumentationHTML(previewContent);
+
+      // Determine content type for preview
+      const contentType = determineContentType(url);
+      const metadata = await extractMetadata(sanitized, url, contentType);
+
+      const content: RawContent = {
+        html: sanitized,
+        metadata,
+        type: contentType,
+        url,
+        lastFetched: new Date().toISOString(),
+      };
+
+      return { content };
+    } catch (error) {
+      console.error('Failed to load WYSIWYG preview:', error);
+      return {
+        content: null,
+        error: `Failed to load preview: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  }
+
+  // EXISTING CODE: Load from index.json and TypeScript files
   try {
     let html = '';
 

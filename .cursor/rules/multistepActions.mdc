@@ -1,5 +1,5 @@
 ---
-description: This document describes the requirements and design constraints of multi-step components in interactive tutorials.  This document pairs well with interactiveRequirements.mdc
+description: This document describes the requirements and design constraints of multi-step components in interactive guides.  This document pairs well with interactiveRequirements.mdc
 alwaysApply: false
 ---
 # Multi-step interactive components.
