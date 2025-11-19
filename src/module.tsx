@@ -9,6 +9,8 @@ import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 
+import { OpenExtensionSidebarEvent } from './global-state/sidebar';
+
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
 
@@ -47,6 +49,20 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const jsonData = meta?.jsonData || {};
   const config = getConfigWithDefaults(jsonData);
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
+
+  // Listen for sidebar opened events from Grafana core
+  const appEvents = getAppEvents();
+
+  appEvents.subscribe(OpenExtensionSidebarEvent, (event) => {
+    console.log('OpenExtensionSidebarEvent received:', event);
+    if (event.payload.pluginId === pluginJson.id) {
+      console.log('pathfinder opened!', {
+        componentTitle: event.payload.componentTitle,
+        pluginId: event.payload.pluginId,
+        props: event.payload.props,
+      });
+    }
+  });
 
   // Set global config immediately so other code can use it
   (window as any).__pathfinderPluginConfig = config;
