@@ -475,7 +475,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const showEnableRecommenderBanner =
     !isLoadingRecommendations &&
     !recommendationsError &&
-    !isDevModeEnabled && 
+    !isDevModeEnabled &&
     recommendations.length > 0 &&
     !configWithDefaults.acceptedTermsAndConditions;
 
