@@ -23,41 +23,6 @@ Interactive learning is your in-app learning companion. It provides:
 3. Browse recommended documentation based on your current context
 4. Click **View** to read a doc or **Start** to begin an interactive guides
 
-### Direct Link to Specific Tutorials
-
-You can automatically open the Interactive learning sidebar and launch a specific learning journey by adding a query parameter to your Grafana URL:
-
-```
-https://your-grafana-instance.com/?journey=<journey-path>
-```
-
-**Example:**
-
-```
-http://localhost:3000/?journey=billing-usage
-```
-
-This will automatically open the Interactive learning sidebar and load the "Understand billing and usage in Grafana Cloud" learning journey.
-
-**Available learning journeys:**
-
-The journey parameter accepts any learning journey URL path from the [Grafana learning journeys](https://grafana.com/docs/learning-journeys/). Common examples include:
-
-- `billing-usage` – Understand billing and usage in Grafana Cloud
-- `grafana-cloud-onboarding` – Get started with Grafana Cloud
-- `drilldown-metrics` – Drill down into metrics
-- `drilldown-logs` – Drill down into logs
-- `drilldown-traces` – Drill down into traces
-- `alerting-metrics` – Create alerts for metrics
-- `visualization-metrics` – Visualize metrics
-- `kubernetes` – Monitor Kubernetes
-
-This is useful for:
-
-- Sharing specific tutorials with team members
-- Creating onboarding flows for new users
-- Embedding tutorial links in documentation or training materials
-
 ## Getting Started
 
 Once you open Interactive learning:
