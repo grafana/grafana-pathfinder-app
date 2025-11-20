@@ -51,7 +51,9 @@ export class SequentialRequirementsManager {
   private static instance: SequentialRequirementsManager;
   private steps = new Map<string, RequirementsState>();
   private listeners = new Set<() => void>();
-  private navClickListener?: (e: Event) => void;
+  private lastContextChangeTime = 0;
+  private contextDebounceDelay = 500; // ms - increased to handle multiple rapid EchoSrv events
+  private contextChangeUnsubscribe?: () => void;
 
   static getInstance(): SequentialRequirementsManager {
     if (!SequentialRequirementsManager.instance) {
@@ -204,6 +206,84 @@ export class SequentialRequirementsManager {
     }
   }
 
+  /**
+   * Recheck the next incomplete step (triggered by context changes)
+   * Simple heuristic: find first non-completed step and recheck it
+   */
+  recheckNextSteps(): void {
+    const now = Date.now();
+
+    // Debounce: ignore rapid-fire context changes
+    if (now - this.lastContextChangeTime < this.contextDebounceDelay) {
+      return;
+    }
+
+    this.lastContextChangeTime = now;
+
+    // Find all incomplete steps that aren't currently checking
+    const eligibleSteps: string[] = [];
+
+    for (const [stepId, state] of this.steps.entries()) {
+      if (!state.isCompleted && !state.isChecking) {
+        eligibleSteps.push(stepId);
+      }
+    }
+
+    if (eligibleSteps.length === 0) {
+      return;
+    }
+
+    // Trigger checkers for eligible steps
+    // Let the checker itself decide if it's truly eligible (handles sequential dependencies)
+    const timeoutManager = TimeoutManager.getInstance();
+    timeoutManager.setDebounced(
+      'context-recheck',
+      () => {
+        eligibleSteps.forEach((stepId) => {
+          const checker = this.stepCheckersByID.get(stepId);
+          if (checker) {
+            try {
+              checker();
+            } catch (error) {
+              console.error(`Error in context-triggered check for ${stepId}:`, error);
+            }
+          }
+        });
+      },
+      50 // Small delay for React to settle
+    );
+  }
+
+  /**
+   * Start listening to context changes from ContextService
+   */
+  startContextMonitoring(): void {
+    if (this.contextChangeUnsubscribe) {
+      return; // Already monitoring
+    }
+
+    // Import dynamically to avoid circular deps
+    import('../context-engine')
+      .then(({ ContextService }) => {
+        this.contextChangeUnsubscribe = ContextService.onContextChange(() => {
+          this.recheckNextSteps();
+        });
+      })
+      .catch((error) => {
+        console.error('Failed to start context monitoring:', error);
+      });
+  }
+
+  /**
+   * Stop listening to context changes
+   */
+  stopContextMonitoring(): void {
+    if (this.contextChangeUnsubscribe) {
+      this.contextChangeUnsubscribe();
+      this.contextChangeUnsubscribe = undefined;
+    }
+  }
+
   // Enhanced monitoring for reactive requirements checking
   private domObserver?: MutationObserver;
   private lastUrl?: string;
@@ -214,41 +294,25 @@ export class SequentialRequirementsManager {
       return;
     } // Already monitoring
 
+    // Start context monitoring (lightweight EchoSrv listener)
+    this.startContextMonitoring();
+
     // Monitor URL changes for navigation detection
     this.lastUrl = window.location.href;
     this.startURLMonitoring();
 
-    // Monitor DOM changes (more selective)
+    // Keep minimal DOM observer for edge cases
+    // Remove nav-specific filters since context monitoring handles it
     this.domObserver = new MutationObserver((mutations) => {
       // Only react to meaningful changes
       const significantChange = mutations.some((mutation) => {
         const target = mutation.target as Element;
 
-        // Expanded navigation-related selectors to better detect nav open/close/dock
-        const isNavRelated =
-          target?.closest?.('div[data-testid*="navigation"]') ||
-          target?.closest?.('nav[aria-label*="Navigation"]') ||
-          target?.closest?.('ul[aria-label*="Navigation"]') ||
-          target?.closest?.('ul[aria-label*="Main navigation"]') ||
-          target?.closest?.('[role="navigation"]');
-
+        // Only watch for plugin/datasource related changes (not nav)
         const isKnownHotspot =
-          target?.closest?.('[data-testid*="nav"]') ||
-          target?.closest?.('[data-testid*="plugin"]') ||
-          target?.closest?.('[href*="/connections"]') ||
-          target?.closest?.('[href*="/dashboards"]') ||
-          target?.closest?.('[href*="/admin"]');
+          target?.closest?.('[data-testid*="plugin"]') || target?.closest?.('[data-testid*="datasource"]');
 
-        // Attribute flips commonly used for nav expansion/collapse
-        const attrFlip =
-          (mutation.type === 'attributes' &&
-            (mutation.attributeName === 'aria-expanded' ||
-              mutation.attributeName === 'class' ||
-              mutation.attributeName === 'data-testid' ||
-              mutation.attributeName === 'aria-label')) ||
-          false;
-
-        return Boolean(isNavRelated || isKnownHotspot || attrFlip);
+        return Boolean(isKnownHotspot);
       });
 
       if (significantChange) {
@@ -258,7 +322,7 @@ export class SequentialRequirementsManager {
           () => {
             this.triggerSelectiveRecheck();
           },
-          1200 // Increased from 800ms to 1200ms to allow more DOM settling time
+          1200
         );
       }
     });
@@ -267,15 +331,8 @@ export class SequentialRequirementsManager {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-testid', 'aria-label', 'class', 'href', 'aria-expanded', 'role'],
+      attributeFilter: ['data-testid', 'class'],
     });
-
-    // Add lightweight click listener to capture nav toggle interactions
-    this.navClickListener = () => {
-      const timeoutManager = TimeoutManager.getInstance();
-      timeoutManager.setDebounced('nav-click-recheck', () => this.triggerSelectiveRecheck(), 500, 'reactiveCheck');
-    };
-    document.addEventListener('click', this.navClickListener, { capture: true });
   }
 
   private startURLMonitoring(): void {
@@ -317,6 +374,9 @@ export class SequentialRequirementsManager {
   }
 
   stopDOMMonitoring(): void {
+    // Stop context monitoring
+    this.stopContextMonitoring();
+
     if (this.domObserver) {
       this.domObserver.disconnect();
       this.domObserver = undefined;
@@ -325,15 +385,11 @@ export class SequentialRequirementsManager {
       this.navigationUnlisten();
       this.navigationUnlisten = undefined;
     }
-    // Remove click listener
-    if (this.navClickListener) {
-      document.removeEventListener('click', this.navClickListener, { capture: true } as any);
-      this.navClickListener = undefined;
-    }
+
     // Clear any pending timeouts from the timeout manager
     const timeoutManager = TimeoutManager.getInstance();
     timeoutManager.clear('dom-check-throttle');
     timeoutManager.clear('url-check-throttle');
-    timeoutManager.clear('nav-click-recheck');
+    timeoutManager.clear('context-recheck');
   }
 }

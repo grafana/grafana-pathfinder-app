@@ -20,23 +20,27 @@ export const firstDashboardHtml = `<html>
         
         <p>Let's start by tracking Jack and Jill's hiking altitude using sample data from Grafana's built-in TestData source.</p>
 
-        <span id="tutorial-section"
+        <span id="explore-tutorial"
               class="interactive"
               data-targetaction="sequence"
-              data-reftarget="span#tutorial-section">
+              data-reftarget="span#explore-tutorial">
             <ul>
             <li class="interactive"
                 data-targetaction='highlight'
-                data-reftarget='a[data-testid="data-testid Nav menu item"][href="/explore"]'>
+                data-reftarget='a[data-testid="data-testid Nav menu item"][href="/explore"]'
+                data-requirements='navmenu-open,exists-reftarget'>
                 <span class="interactive-comment">
                     Explore is Grafana's investigation workspace. Unlike dashboards which display predefined visualizations, Explore lets you freely query your data sources and see results immediately. This makes it perfect for experimenting and understanding your data before committing to a dashboard design.
                 </span>
                 Navigate to <strong>Explore</strong> to begin querying data.
             </li>
 
-            <li class="interactive" data-targetaction='multistep'>
-                <span class="interactive" data-targetaction='highlight' data-reftarget='input[data-testid="data-testid Select a data source"]'></span>
-                <span class="interactive" data-targetaction='highlight' data-reftarget='button:contains("gdev-testdata defaultTestData")'></span>
+            <li class="interactive" 
+                data-targetaction='multistep'
+                data-requirements='on-page:/explore'
+                data-objectives='has-datasource:testdata'>
+                <span class="interactive" data-targetaction='highlight' data-reftarget='input[data-testid="data-testid Select a data source"]' data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-targetaction='highlight' data-reftarget='button:contains("gdev-testdata defaultTestData")' data-requirements='exists-reftarget'></span>
                 <span class="interactive-comment">
                     In real-world scenarios, you'd connect to data sources like Prometheus for metrics, Loki for logs, or databases like PostgreSQL. For learning purposes, Grafana includes TestData - a built-in data source that generates realistic sample data without requiring any external setup. This lets you practice building dashboards right away.
                 </span>
@@ -46,7 +50,8 @@ export const firstDashboardHtml = `<html>
             <li class="interactive"
                 data-targetaction='formfill'
                 data-reftarget='input[id="test-data-scenario-select-A"]'
-                data-targetvalue='Random Walk'>
+                data-targetvalue='Random Walk'
+                data-requirements='on-page:/explore,exists-reftarget'>
                 <span class="interactive-comment">
                     Random Walk generates time series data that changes randomly over time, similar to how real metrics behave. Imagine tracking Jack's altitude as he climbs up and down hills - it goes up and down, but with natural variation. This type of data is perfect for simulating real-world metrics like CPU usage, temperature readings, or in our case, hiking altitude.
                 </span>
@@ -56,7 +61,8 @@ export const firstDashboardHtml = `<html>
             <li class="interactive"
                 data-targetaction='formfill'
                 data-reftarget='input[id="labels-A"]'
-                data-targetvalue='walker=jack'>
+                data-targetvalue='walker=jack'
+                data-requirements='on-page:/explore,exists-reftarget'>
                 <span class="interactive-comment">
                     Labels are key-value pairs that add context to your data. Think of them as tags that help you identify and filter your metrics. In our hiking story, we'll use labels to distinguish between Jack and Jill's individual altitude measurements. This is exactly how you'd use labels in production - to distinguish between different servers, applications, or users.
                 </span>
@@ -65,7 +71,8 @@ export const firstDashboardHtml = `<html>
 
             <li class="interactive"
                 data-targetaction='highlight'
-                data-reftarget='button:contains("Add query")'>
+                data-reftarget='button:contains("Add query")'
+                data-requirements='on-page:/explore,exists-reftarget'>
                 <span class="interactive-comment">
                     Now let's add Jill's hiking data! In Grafana, you can display multiple queries on the same graph to compare and contrast data. This is incredibly powerful - imagine comparing CPU usage across different servers, or in our case, comparing Jack and Jill's hiking altitudes to see who climbed higher.
                 </span>
@@ -75,7 +82,8 @@ export const firstDashboardHtml = `<html>
             <li class="interactive"
                 data-targetaction='formfill'
                 data-reftarget='input[id="labels-B"]'
-                data-targetvalue='walker=jill'>
+                data-targetvalue='walker=jill'
+                data-requirements='on-page:/explore,exists-reftarget'>
                 <span class="interactive-comment">
                     Now we'll add Jill's label to the second query. By using the same label key (<code>walker</code>) but different values (<code>jack</code> vs <code>jill</code>), Grafana can automatically differentiate between the two data series in visualizations. This labeling strategy is a best practice in observability - it keeps your data organized and queryable.
                 </span>
@@ -94,30 +102,37 @@ export const firstDashboardHtml = `<html>
         <span id="dashboard-section"
               class="interactive"
               data-targetaction="sequence"
-              data-reftarget="span#dashboard-section">
+              data-reftarget="span#dashboard-section"
+              data-requirements="section-completed:section-explore-tutorial">
             <ul>
-            <li class="interactive" data-targetaction='multistep'>
-                <span class="interactive" data-targetaction='highlight' data-reftarget='button[aria-label="Add"]'></span>
-                <span class="interactive" data-targetaction='highlight' data-reftarget='button:contains("Add to dashboard")'></span>
-                <span class="interactive" data-targetaction='highlight' data-reftarget='button:contains("Open dashboard")'></span>
+            <li class="interactive" 
+                data-targetaction='multistep'
+                data-requirements='section-completed:section-explore-tutorial'>
+                <span class="interactive" data-targetaction='highlight' data-reftarget='button[aria-label="Add"]' data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-targetaction='highlight' data-reftarget='button:contains("Add to dashboard")' data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-targetaction='highlight' data-reftarget='button:contains("Open dashboard")' data-requirements='exists-reftarget'></span>
                 <span class="interactive-comment">
                     One of Grafana's best features is the seamless transition from Explore to dashboards. Instead of manually recreating your queries, you can send them directly from Explore to a new or existing dashboard. This workflow saves time and ensures your carefully crafted queries make it to your dashboard exactly as you tested them.
                 </span>
                 Use the <strong>Add</strong> button to send your queries to a new dashboard.
             </li>
 
-            <li class="interactive" data-targetaction='multistep'>
-                <span class="interactive" data-targetaction='highlight' data-reftarget='button[data-testid="data-testid Panel menu New Panel"]'></span>
-                <span class="interactive" data-targetaction='highlight' data-reftarget='a[data-testid="data-testid Panel menu item Edit"]'></span>
+            <li class="interactive" 
+                data-targetaction='multistep'
+                >
+                <span class="interactive" data-targetaction='highlight' data-reftarget='button[data-testid="data-testid Panel menu New Panel"]' data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-targetaction='highlight' data-reftarget='a[data-testid="data-testid Panel menu item Edit"]' data-requirements='exists-reftarget'></span>
                 <span class="interactive-comment">
                     Welcome to your new dashboard! The panel editor is where the magic happens. Each visualization on a dashboard is called a "panel," and the panel editor gives you complete control over how your data looks and behaves. Let's customize this panel to better tell Jack and Jill's hiking story.
                 </span>
                 Open the panel editor to customize your visualization.
             </li>
 
-            <li class="interactive" data-targetaction='multistep'>
-                <span class="interactive" data-targetaction='highlight' data-reftarget='button[data-testid="data-testid toggle-viz-picker"]'></span>
-                <span class="interactive" data-targetaction='highlight' data-reftarget='div[data-testid="Plugin visualization item Bar chart"]'></span>
+            <li class="interactive" 
+                data-targetaction='multistep'
+                >
+                <span class="interactive" data-targetaction='highlight' data-reftarget='button[data-testid="data-testid toggle-viz-picker"]' data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-targetaction='highlight' data-reftarget='div[data-testid="Plugin visualization item Bar chart"]' data-requirements='exists-reftarget'></span>
                 <span class="interactive-comment">
                     Choosing the right visualization is key to telling your data's story. Time series graphs show trends over time, stat panels display single values, tables show raw data, and bar charts compare values side by side. For comparing Jack and Jill's final altitudes, a bar chart makes the difference instantly clear - you can see at a glance who climbed higher!
                 </span>
@@ -127,7 +142,8 @@ export const firstDashboardHtml = `<html>
             <li class="interactive"
                 data-targetaction='formfill'
                 data-reftarget='input[data-testid="data-testid Panel editor option pane field input Title"]'
-                data-targetvalue='Jack and Jill Walk Altitude'>
+                data-targetvalue='Jack and Jill Walk Altitude'
+                data-requirements='exists-reftarget'>
                 <span class="interactive-comment">
                     A good panel title transforms raw data into a story. Instead of generic names like "Query A" or "Metric 1," use descriptive titles that immediately convey what the data represents. This is especially important when sharing dashboards with teammates who might not know the context. Your future self will thank you too!
                 </span>
@@ -139,17 +155,18 @@ export const firstDashboardHtml = `<html>
                 data-reftarget='input[id="barchart-unit"]'
                 data-targetvalue='ALT'
                 data-doit='false'
-                >
+                data-requirements='exists-reftarget'>
                 <span class="interactive-comment">
                     Units give meaning to numbers. Is that value 42 seconds, bytes, requests, or meters? Without units, numbers are just numbers. Grafana can automatically format values based on their units - bytes become KB/MB/GB, seconds become ms/s/m, and so on. This polish makes your dashboards professional and removes ambiguity.
                 </span>
                 We can give our walking data meaning by setting a unit.
             </li>
-                <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-reftarget="Save Dashboard" data-targetaction="button"></span>
+                <li class="interactive" 
+                data-targetaction="multistep">
+                <span class="interactive" data-reftarget="Save Dashboard" data-targetaction="button" data-requirements='exists-reftarget'></span>
                 <span class="interactive" data-reftarget='input[aria-label="Save dashboard title field"]' 
-                  data-targetaction="formfill" data-targetvalue="Walking Adventure"></span>
-                <span class="interactive" data-reftarget="Save" data-targetaction="button"></span>
+                  data-targetaction="formfill" data-targetvalue="Walking Adventure" data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-reftarget="Save" data-targetaction="button" data-requirements='exists-reftarget'></span>
                 Click <strong>Save Dashboard</strong>, name it <strong>Walking Adventure</strong>, and click <strong>Save</strong>.
               </li>
             </ul>

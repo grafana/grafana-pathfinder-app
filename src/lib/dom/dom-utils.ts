@@ -1,5 +1,7 @@
 import { InteractiveElementData } from '../../types/interactive.types';
 import { querySelectorAllEnhanced } from './enhanced-selector';
+import { resolveSelector } from './selector-resolver';
+import { isCssSelector } from './selector-detector';
 
 /**
  * Recursively get all text content from an element and its descendants
@@ -148,29 +150,40 @@ export async function reftargetExistsCheck(
   fixType?: string;
   targetHref?: string;
 }> {
-  // For button actions, check if buttons with matching text exist
-  if (targetAction === 'button') {
-    const buttons = findButtonByText(reftarget);
+  // Resolve grafana: selectors first
+  const resolvedSelector = resolveSelector(reftarget);
 
-    if (buttons.length > 0) {
-      return {
-        requirement: 'exists-reftarget',
-        pass: true,
-      };
+  // For button actions, determine if we should use text matching or selector matching
+  if (targetAction === 'button') {
+    // If reftarget looks like a CSS selector, use selector matching instead of text matching
+    if (isCssSelector(reftarget) || reftarget.startsWith('grafana:')) {
+      // Use selector-based matching (fall through to selector logic below)
+      // Don't return early - let it use the enhanced selector matching
     } else {
-      return {
-        requirement: 'exists-reftarget',
-        pass: false,
-        error: `No buttons found containing text: "${reftarget}"`,
-      };
+      // Use text-based matching (original behavior)
+      const buttons = findButtonByText(reftarget);
+
+      if (buttons.length > 0) {
+        return {
+          requirement: 'exists-reftarget',
+          pass: true,
+        };
+      } else {
+        return {
+          requirement: 'exists-reftarget',
+          pass: false,
+          error: `No buttons found containing text: "${reftarget}"`,
+        };
+      }
     }
   }
 
   // For other actions, check if the CSS selector matches an element
+  // Use the resolved selector for checking
   // Fast-path check for navigation menu items
-  if (reftarget.includes('data-testid Nav menu item')) {
+  if (resolvedSelector.includes('data-testid Nav menu item')) {
     // Most navigation menu items are immediately visible
-    const targetElement = document.querySelector(reftarget);
+    const targetElement = document.querySelector(resolvedSelector);
     if (targetElement) {
       return {
         requirement: 'exists-reftarget',
@@ -179,7 +192,7 @@ export async function reftargetExistsCheck(
     }
 
     // If not found, it likely needs expansion - fail fast with fix suggestion
-    const navigationMenuItemMatch = reftarget.match(
+    const navigationMenuItemMatch = resolvedSelector.match(
       /a\[data-testid=['"]data-testid Nav menu item['"]\]\[href=['"]([^'"]+)['"]\]/
     );
     if (navigationMenuItemMatch) {
@@ -201,7 +214,7 @@ export async function reftargetExistsCheck(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     // Use enhanced selector to support complex selectors like :has() and :contains()
-    const enhancedResult = querySelectorAllEnhanced(reftarget);
+    const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
     const targetElement = enhancedResult.elements.length > 0 ? enhancedResult.elements[0] : null;
 
     if (targetElement) {
@@ -219,9 +232,9 @@ export async function reftargetExistsCheck(
 
   // Element not found after retries - check for general navigation menu pattern
   if (
-    reftarget.includes('data-testid Nav menu item') &&
-    !reftarget.includes('/alerting/list') &&
-    !reftarget.includes('/plugins')
+    resolvedSelector.includes('data-testid Nav menu item') &&
+    !resolvedSelector.includes('/alerting/list') &&
+    !resolvedSelector.includes('/plugins')
   ) {
     // For general navigation items that don't need expansion, return simple not found
     return {
@@ -234,7 +247,7 @@ export async function reftargetExistsCheck(
   return {
     requirement: 'exists-reftarget',
     pass: false,
-    error: `Element not found`,
+    error: `Element not found: ${reftarget}`,
   };
 }
 

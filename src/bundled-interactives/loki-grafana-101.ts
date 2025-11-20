@@ -40,7 +40,7 @@ export const lokiGrafana101Html = `<html>
             class="interactive" 
             data-targetaction="sequence" 
             data-reftarget="span#setup-datasource"
-            data-requirements="navmenu-open,has-datasource:prometheus" 
+            data-requirements="navmenu-open">
             <ul>
               <li class="interactive" 
                   data-requirements="navmenu-open,exists-reftarget"
@@ -53,41 +53,47 @@ export const lokiGrafana101Html = `<html>
               <li class="interactive" 
                   data-reftarget="input[type='text']"
                   data-targetaction='formfill' 
-                  data-targetvalue='Loki'>
+                  data-targetvalue='Loki'
+                  data-requirements='on-page:/connections,exists-reftarget'>
                 <span class="interactive-comment">Loki is Grafana's log aggregation system, designed to work alongside Prometheus for a complete observability solution.</span>
                 Search for <strong>Loki</strong> in the search bar.
               </li>
 
               <li class="interactive" 
                   data-reftarget="a[href='/connections/datasources/loki']"
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='exists-reftarget'>
                 Click on the <strong>Loki</strong> option that appears.
               </li>
 
               <li class="interactive"
                   data-reftarget="Add new data source"
-                  data-targetaction='button'>
+                  data-targetaction='button'
+                  data-requirements='exists-reftarget'>
                 Click <strong>Add new data source</strong> to create your Loki connection.
               </li>
 
               <li class="interactive"
                   data-reftarget="input[id='basic-settings-name']"
                   data-targetaction='formfill' 
-                  data-targetvalue='loki-datasource'>
+                  data-targetvalue='loki-datasource'
+                  data-requirements='exists-reftarget'>
                 Name your data source <strong>loki-datasource</strong> so you can easily find it later.
               </li>
 
               <li class="interactive"
                   data-reftarget="input[id='connection-url']"
                   data-targetaction='formfill' 
-                  data-targetvalue='http://loki:3100'>
+                  data-targetvalue='http://loki:3100'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">This URL <code>http://loki:3100</code> is the default endpoint for Loki servers. Port <strong>3100</strong> is the standard Loki port.</span>
                 Set the <strong>URL</strong> to <strong>http://loki:3100</strong> to connect to your Loki server.
               </li>
 
               <li class="interactive"
                   data-reftarget="Save & test"
-                  data-targetaction="button">
+                  data-targetaction="button"
+                  data-requirements='exists-reftarget'>
                 Click <strong>Save & test</strong> to create your data source and verify the connection is working.
               </li>
             </ul>
@@ -100,10 +106,10 @@ export const lokiGrafana101Html = `<html>
               class='interactive' 
               data-targetaction='sequence' 
               data-reftarget="span#create-dashboard"
-              data-requirements="has-datasource:prometheus">
+              data-requirements="section-completed:section-setup-datasource">
             <ul>
               <li class="interactive" 
-                  data-requirements="section-completed:section-setup-datasource"
+                  data-requirements="navmenu-open,exists-reftarget"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/dashboards']"
                   data-targetaction='highlight'>
                 Click <strong>Dashboards</strong> in the left-side menu.
@@ -113,37 +119,40 @@ export const lokiGrafana101Html = `<html>
                   data-reftarget='input[placeholder="Search for dashboards and folders"]'
                   data-targetaction='formfill' 
                   data-targetvalue='Alloy Self Monitoring'
-                  data-requirements='has-dashboard-named:Alloy Self Monitoring'>
+                  data-requirements='has-dashboard-named:Alloy Self Monitoring,exists-reftarget'>
                 Search for the <strong>Alloy Self Monitoring</strong> dashboard.
               </li>
 
               <li class="interactive" 
                   data-reftarget='a[title="Alloy Self Monitoring"]'
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='exists-reftarget'>
                 Open the <strong>Alloy Self Monitoring</strong> dashboard.
               </li>
 
               <li class="interactive"
                   data-reftarget='button[data-testid="data-testid Edit dashboard button"]'
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='exists-reftarget'>
                 Click <strong>Edit</strong> to edit the dashboard.
               </li>
 
               <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-targetaction="highlight" data-reftarget='button[data-testid="data-testid Add button"]'></span>
-                <span class="interactive" data-targetaction="highlight" data-reftarget='button[data-testid="data-testid Add new visualization menu item"]'></span>
+                <span class="interactive" data-targetaction="highlight" data-reftarget='button[data-testid="data-testid Add button"]' data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-targetaction="highlight" data-reftarget='button[data-testid="data-testid Add new visualization menu item"]' data-requirements='exists-reftarget'></span>
                 Use <strong>Add</strong> → <strong>Visualization</strong> to create a new panel.
               </li>
 
               <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-targetaction="highlight" data-reftarget='input#data-source-picker'></span>
-                <span class="interactive" data-targetaction="button" data-reftarget='loki-datasource'></span>
+                <span class="interactive" data-targetaction="highlight" data-reftarget='input#data-source-picker' data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-targetaction="button" data-reftarget='loki-datasource' data-requirements='exists-reftarget'></span>
                 Open the data source picker and select <strong>loki-datasource</strong>.
               </li>
 
               <li class="interactive" 
                   data-reftarget='div[data-testid="QueryEditorModeToggle"] label[for^="option-code-radiogroup"]'
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">Code mode lets you write raw <strong>LogQL</strong> queries directly, similar to how PromQL works for Prometheus. This gives you full control over your log queries.</span>
                 Switch to <strong>Code</strong> mode by clicking the raw query toggle to write LogQL directly.
               </li>
@@ -151,7 +160,8 @@ export const lokiGrafana101Html = `<html>
               <li class="interactive" 
                   data-reftarget='textarea.inputarea'
                   data-targetaction='formfill' 
-                  data-targetvalue='{container="alloy"}'>
+                  data-targetvalue='{container="alloy"}'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">This is <strong>LogQL</strong> (Loki Query Language)! The query <code>{container="alloy"}</code> filters logs from containers named "alloy". The curly braces <code>{}</code> are used for label matching in Loki.</span>
                 Enter this LogQL query:
                 <pre>{container="alloy"}</pre>
@@ -159,7 +169,8 @@ export const lokiGrafana101Html = `<html>
 
               <li class="interactive" 
                   data-reftarget='Refresh'
-                  data-targetaction='button'>
+                  data-targetaction='button'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">The <strong>Refresh</strong> button executes your LogQL query and displays the log results from your Loki data source.</span>
                 Click the <strong>Refresh</strong> button to execute the query and see your logs.
               </li>
@@ -167,24 +178,26 @@ export const lokiGrafana101Html = `<html>
               <li class="interactive" data-targetaction="multistep">
                 <span class="interactive"
                   data-reftarget='button[data-testid="data-testid toggle-viz-picker"]'
-                  data-targetaction="highlight">
+                  data-targetaction="highlight"
+                  data-requirements='exists-reftarget'>
                   <span class="interactive-comment">The <strong>Logs</strong> visualization is specifically designed for displaying log data with features like log level highlighting, filtering, and live tailing.</span>
                 </span>
-                <span class="interactive" data-reftarget='div[aria-label="Plugin visualization item Logs"]' data-targetaction="highlight"></span>
+                <span class="interactive" data-reftarget='div[aria-label="Plugin visualization item Logs"]' data-targetaction="highlight" data-requirements='exists-reftarget'></span>
                 Change the <strong>Visualization type</strong> to <strong>Logs</strong>.
               </li>
 
               <li class="interactive"
                   data-reftarget='input[data-testid="data-testid Panel editor option pane field input Title"]'
                   data-targetaction='formfill' 
-                  data-targetvalue='Alloy Logs'>
+                  data-targetvalue='Alloy Logs'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">The <strong>Title</strong> is the name of the panel. It helps identify what logs you're viewing in the dashboard.</span>
                 In the panel options, change the <strong>Title</strong> to <strong>Alloy Logs</strong>.
               </li>
 
               <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-reftarget="Save Dashboard" data-targetaction="button"></span>
-                <span class="interactive" data-reftarget="Save" data-targetaction="button"></span>
+                <span class="interactive" data-reftarget="Save Dashboard" data-targetaction="button" data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-reftarget="Save" data-targetaction="button" data-requirements='exists-reftarget'></span>
                 Click <strong>Save Dashboard</strong> to persist your changes.
               </li>
             </ul>

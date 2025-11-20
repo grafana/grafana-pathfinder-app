@@ -39,7 +39,7 @@ export const prometheusGrafana101Html = `<html>
             class="interactive" 
             data-targetaction="sequence" 
             data-reftarget="span#setup-datasource"
-            data-requirements="navmenu-open"
+            data-requirements="navmenu-open">
             <ul>
               <li class="interactive" 
                   data-requirements="navmenu-open,exists-reftarget"
@@ -52,33 +52,38 @@ export const prometheusGrafana101Html = `<html>
               <li class="interactive" 
                   data-reftarget="input[type='text']"
                   data-targetaction='formfill' 
-                  data-targetvalue='Prometheus'>
+                  data-targetvalue='Prometheus'
+                  data-requirements='on-page:/connections,exists-reftarget'>
                 Search for <strong>Prometheus</strong> in the search bar - this is a popular monitoring system data source.
               </li>
 
               <li class="interactive" 
                   data-reftarget="a[href='/connections/datasources/prometheus']"
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='exists-reftarget'>
                 Click on the <strong>Prometheus</strong> option that appears.
               </li>
 
               <li class="interactive"
                   data-reftarget="Add new data source"
-                  data-targetaction='button'>
+                  data-targetaction='button'
+                  data-requirements='exists-reftarget'>
                 Click <strong>Add new data source</strong> to create your Prometheus connection.
               </li>
 
               <li class="interactive"
                   data-reftarget="input[id='basic-settings-name']"
                   data-targetaction='formfill' 
-                  data-targetvalue='prometheus-datasource'>
+                  data-targetvalue='prometheus-datasource'
+                  data-requirements='exists-reftarget'>
                 Name your data source <strong>prometheus-datasource</strong> so you can easily find it later.
               </li>
 
               <li class="interactive"
                   data-reftarget="input[id='connection-url']"
                   data-targetaction='formfill' 
-                  data-targetvalue='http://prometheus:9090'>
+                  data-targetvalue='http://prometheus:9090'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">This URL <code>http://prometheus:9090</code> is the default endpoint for Prometheus servers. Port <strong>9090</strong> is the standard Prometheus port.</span>
                 Set the <strong>URL</strong> to <strong>http://prometheus:9090</strong> to connect to your Prometheus server.
               </li>
@@ -116,37 +121,39 @@ export const prometheusGrafana101Html = `<html>
               class='interactive' 
               data-targetaction='sequence' 
               data-reftarget="span#create-dashboard"
-              data-requirements="has-datasource:prometheus">
+              data-requirements="section-completed:section-setup-datasource">
             <ul>
               <li class="interactive" 
-                  data-requirements="section-completed:section-setup-datasource"
+                  data-requirements="navmenu-open,exists-reftarget"
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/dashboards']"
                   data-targetaction='highlight'>
                 Click <strong>Dashboards</strong> in the left-side menu.
               </li>
 
               <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-targetaction="button" data-reftarget="New"></span>
-                <span class="interactive" data-targetaction="highlight" data-reftarget="a[href='/dashboard/new']"></span>
+                <span class="interactive" data-targetaction="button" data-reftarget="New" data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-targetaction="highlight" data-reftarget="a[href='/dashboard/new']" data-requirements='exists-reftarget'></span>
                 Click the <strong>New</strong> button, then select <strong>New dashboard</strong>.
               </li>
 
               <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-targetaction="button" data-reftarget="button[data-testid='data-testid Create new panel button']"></span>
-                <span class="interactive" data-targetaction="button" data-reftarget="prometheus-datasource"></span>
+                <span class="interactive" data-targetaction="button" data-reftarget="button[data-testid='data-testid Create new panel button']" data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-targetaction="button" data-reftarget="prometheus-datasource" data-requirements='exists-reftarget'></span>
                 Click <strong>Add visualization</strong>, then select your <strong>prometheus-datasource</strong>.
               </li>
 
               <li class="interactive" 
                   data-reftarget='div[data-testid="QueryEditorModeToggle"] label[for^="option-code-radiogroup"]'
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='exists-reftarget'>
                 Switch to <strong>Code</strong> mode by clicking the raw query toggle to write PromQL directly.
               </li>
 
               <li class="interactive" 
                   data-reftarget='textarea.inputarea'
                   data-targetaction='formfill' 
-                  data-targetvalue='avg(alloy_component_controller_running_components{})'>
+                  data-targetvalue='avg(alloy_component_controller_running_components{})'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">This is <strong>PromQL</strong> (Prometheus Query Language)! The <code>avg()</code> function calculates the average value, and <code>alloy_component_controller_running_components{}</code> is a metric that tracks running components. The empty <code>{}</code> means we're not filtering by labels.</span>
                 Enter this PromQL query:
                 <pre>avg(alloy_component_controller_running_components{})</pre>
@@ -154,7 +161,8 @@ export const prometheusGrafana101Html = `<html>
 
               <li class="interactive" 
                   data-reftarget='Refresh'
-                  data-targetaction='button'>
+                  data-targetaction='button'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">The <strong>Refresh</strong> button is used to execute the query and see your Prometheus data.</span>
                 Click the <strong>Refresh</strong> button to execute the query and see your Prometheus data.
               </li>
@@ -162,28 +170,31 @@ export const prometheusGrafana101Html = `<html>
               <li class="interactive" data-targetaction="multistep">
                 <span class="interactive"
                   data-reftarget='grafana:components.PanelEditor.toggleVizPicker'
-                  data-targetaction="highlight">
+                  data-targetaction="highlight"
+                 >
                   <span class="interactive-comment">Grafana offers <strong>many visualization types</strong>: <em>Time series</em> for trends, <em>Bar charts</em> for comparisons, <em>Heatmaps</em> for distributions, <em>Tables</em> for raw data, and <em>Stat</em> for single values. Choose based on your data story!</span>
                 </span>
                 <span class="interactive"
                   data-reftarget='div[aria-label="Plugin visualization item Stat"]'
-                  data-targetaction="highlight"></span>
+                  data-targetaction="highlight"
+                  data-requirements='exists-reftarget'></span>
                 Click on the <strong>Visualization type</strong>, then select <strong>Stat</strong> to create a simple number display.
               </li>
 
               <li class="interactive"
                   data-reftarget='grafana:components.PanelEditor.OptionsPane.fieldInput:Title'
                   data-targetaction='formfill' 
-                  data-targetvalue='Number of running components'>
+                  data-targetvalue='Number of running components'
+                 >
                 <span class="interactive-comment">The <strong>Title</strong> is the name of the panel. It's used to identify the panel in the dashboard.</span>
                 In the panel options, change the <strong>Title</strong> to <strong>Number of running components</strong>.
               </li>
 
               <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-reftarget="Save Dashboard" data-targetaction="button"></span>
+                <span class="interactive" data-reftarget="Save Dashboard" data-targetaction="button" data-requirements='exists-reftarget'></span>
                 <span class="interactive" data-reftarget='input[aria-label="Save dashboard title field"]' 
-                  data-targetaction="formfill" data-targetvalue="Alloy Self Monitoring"></span>
-                <span class="interactive" data-reftarget="Save" data-targetaction="button"></span>
+                  data-targetaction="formfill" data-targetvalue="Alloy Self Monitoring" data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-reftarget="Save" data-targetaction="button" data-requirements='exists-reftarget'></span>
                 Click <strong>Save Dashboard</strong>, name it <strong>Alloy Self Monitoring</strong>, and click <strong>Save</strong>.
               </li>
             </ul>
@@ -196,31 +207,34 @@ export const prometheusGrafana101Html = `<html>
               class='interactive' 
               data-targetaction='sequence' 
               data-reftarget="span#explore-metrics"
-              data-requirements="has-datasource:prometheus">
+              data-requirements="section-completed:section-create-dashboard">
             <ul>
               <li class="interactive" 
                   data-reftarget="a[data-testid='data-testid Nav menu item'][href='/explore']"
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='navmenu-open,exists-reftarget'>
                 <span class="interactive-comment">The <strong>Explore</strong> tab is designed for ad-hoc querying and investigation. Unlike dashboards which are built for ongoing monitoring, Explore is where you experiment with queries, troubleshoot issues, and discover insights in your data.</span>
                 Click <strong>Explore</strong> in the left-side menu to start querying your data.
               </li>
 
               <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-targetaction="highlight" data-reftarget='grafana:components.DataSourcePicker.inputV2'></span>
-                <span class="interactive" data-targetaction="button" data-reftarget='prometheus'></span>
+                <span class="interactive" data-targetaction="highlight" data-reftarget='grafana:components.DataSourcePicker.inputV2' data-requirements='exists-reftarget'></span>
+                <span class="interactive" data-targetaction="button" data-reftarget='prometheus' data-requirements='exists-reftarget'></span>
                  Open the data source picker and select <strong>Prometheus</strong>.
               </li>
 
               <li class="interactive" 
                   data-reftarget='div[data-testid="QueryEditorModeToggle"] label[for^="option-code-radiogroup"]'
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='exists-reftarget'>
                 Switch to <strong>Code</strong> mode to write PromQL queries directly.
               </li>
 
               <li class="interactive" 
                   data-reftarget='textarea.inputarea'
                   data-targetaction='formfill' 
-                  data-targetvalue='up'>
+                  data-targetvalue='up'
+                  data-requirements='on-page:/explore,exists-reftarget'>
                 <span class="interactive-comment">The <code>up</code> metric is a fundamental Prometheus metric that shows which targets are currently being scraped successfully. A value of <strong>1</strong> means the target is up, <strong>0</strong> means it's down.</span>
                 Enter the query:
                 <pre>up</pre>
@@ -228,7 +242,8 @@ export const prometheusGrafana101Html = `<html>
 
               <li class="interactive" 
                   data-reftarget='grafana:components.RefreshPicker.runButtonV2'
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">Click <strong>Run query</strong> to execute your PromQL and see the results. Explore shows both a graph visualization and a table view of your metrics.</span>
                 Click <strong>Run query</strong> to see which targets are being monitored.
               </li>
@@ -236,7 +251,8 @@ export const prometheusGrafana101Html = `<html>
               <li class="interactive" 
                   data-reftarget='textarea.inputarea'
                   data-targetaction='formfill' 
-                  data-targetvalue='@@CLEAR@@ sum(up) by (job)'>
+                  data-targetvalue='@@CLEAR@@ sum(up) by (job)'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">This query uses <code>sum()</code> to aggregate the <code>up</code> metric and <code>by (job)</code> to group results by the job label. This shows you how many instances are up for each job type in your Prometheus setup.</span>
                 Clear the previous query and enter a new one to count targets by job:
                 <pre>sum(up) by (job)</pre>
@@ -244,14 +260,16 @@ export const prometheusGrafana101Html = `<html>
 
               <li class="interactive" 
                   data-reftarget='grafana:components.RefreshPicker.runButtonV2'
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='exists-reftarget'>
                 Execute the query to see targets grouped by job.
               </li>
 
               <li class="interactive" 
                   data-reftarget='textarea.inputarea'
                   data-targetaction='formfill' 
-                  data-targetvalue='@@CLEAR@@ rate(prometheus_http_requests_total[5m])'>
+                  data-targetvalue='@@CLEAR@@ rate(prometheus_http_requests_total[5m])'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">The <code>rate()</code> function calculates the per-second rate of increase over a time window. Here, <code>[5m]</code> means "over the last 5 minutes". This is essential for understanding trends in counter metrics.</span>
                 Clear and try a rate query to see HTTP request rates:
                 <pre>rate(prometheus_http_requests_total[5m])</pre>
@@ -259,14 +277,16 @@ export const prometheusGrafana101Html = `<html>
 
               <li class="interactive" 
                   data-reftarget='grafana:components.RefreshPicker.runButtonV2'
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='exists-reftarget'>
                 Run the query to visualize request rates over time.
               </li>
 
               <li class="interactive" 
                   data-reftarget='textarea.inputarea'
                   data-targetaction='formfill' 
-                  data-targetvalue='@@CLEAR@@ prometheus_build_info'>
+                  data-targetvalue='@@CLEAR@@ prometheus_build_info'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">The <code>prometheus_build_info</code> metric provides metadata about your Prometheus server, including version, branch, and Go version. It's a useful info metric with labels containing build details.</span>
                 Clear and query Prometheus build information:
                 <pre>prometheus_build_info</pre>
@@ -274,7 +294,8 @@ export const prometheusGrafana101Html = `<html>
 
               <li class="interactive" 
                   data-reftarget='grafana:components.RefreshPicker.runButtonV2'
-                  data-targetaction='highlight'>
+                  data-targetaction='highlight'
+                  data-requirements='exists-reftarget'>
                 <span class="interactive-comment">Info metrics like this one typically have a constant value of <strong>1</strong>, but their labels contain the valuable information about the system.</span>
                 Execute to see your Prometheus version and build details.
               </li>
@@ -282,12 +303,14 @@ export const prometheusGrafana101Html = `<html>
               <li class="interactive" data-targetaction="multistep">
                 <span class="interactive" 
                     data-reftarget='grafana:components.TimePicker.openButton'
-                    data-targetaction="highlight">
+                    data-targetaction="highlight"
+                    data-requirements='exists-reftarget'>
                   <span class="interactive-comment">The <strong>time range picker</strong> lets you focus on specific time windows. You can use relative ranges like "Last 5 minutes" or absolute ranges. This is crucial for investigating incidents or comparing different time periods.</span>
                 </span>
                 <span class="interactive" 
                     data-reftarget='label:contains("Last 30 minutes")'
-                    data-targetaction="highlight">
+                    data-targetaction="highlight"
+                    data-requirements='exists-reftarget'>
                   <span class="interactive-comment">Try different time ranges to see how your metrics change over time. Shorter ranges give more detail, longer ranges show trends.</span>
                 </span>
                 Explore the <strong>time range picker</strong> to adjust your query window.
