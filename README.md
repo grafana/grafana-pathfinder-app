@@ -38,47 +38,6 @@ Once you open Interactive learning:
 - `Alt + Left Arrow` – Previous milestone
 - `Alt + Right Arrow` – Next milestone
 
-## Live Sessions (Experimental)
-
-**NEW**: Real-time collaborative learning! One presenter can broadcast interactive guides to multiple attendees who follow along in their own Grafana instances.
-
-### Quick Start
-
-**Prerequisites** (3 terminals required):
-
-```bash
-# Terminal 1: PeerJS Server (Required!)
-npm run peerjs-server
-
-# Terminal 2: Grafana
-npm run server
-
-# Terminal 3: Plugin Build
-npm run dev
-```
-
-**Enable**: Configuration → Plugins → Pathfinder → Enable "Live Sessions"
-
-**Use**:
-
-- **Presenter**: Click "Start Live Session" → Share join code with attendees
-- **Attendee**: Click "Join Live Session" → Enter code → Choose Guided or Follow mode
-
-**Modes**:
-
-- **Guided Mode**: See highlights when presenter clicks "Show Me"
-- **Follow Mode**: Your Grafana automatically mirrors presenter's "Do It" actions
-
-**Learn More**:
-
-- Setup guide: `README_LIVE_SESSIONS.md`
-- Detailed docs: `docs/LOCAL_PEERJS_SERVER.md`
-- Full plan: `plans/collaborative-live-sessions.md`
-
-**Note**: Requires running PeerJS server. Feature is experimental and optimized for 5-10 concurrent attendees.
-
----
-
 ## For Administrators
 
 ### Discovering Interactive learning
