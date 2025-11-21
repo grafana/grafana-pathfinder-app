@@ -417,6 +417,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {

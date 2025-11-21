@@ -32,7 +32,8 @@
       "summary": "Learn to use Prometheus and Grafana to monitor your infrastructure. Perfect for getting started and understanding where everything is located.",
       "filename": "prometheus-grafana-101.ts",
       "exportName": "prometheusGrafana101Html",
-      "url": ["/connections"]
+      "url": ["/connections"],
+      "targetPlatform": "oss"
     },
     {
       "id": "loki-grafana-101",
@@ -40,7 +41,8 @@
       "summary": "Continue from the Prometheus tutorial: configure Loki and add a logs panel to your existing dashboard.",
       "filename": "loki-grafana-101.ts",
       "exportName": "lokiGrafana101Html",
-      "url": ["/connections"]
+      "url": ["/connections"],
+      "targetPlatform": "oss"
     },
     {
       "id": "first-dashboard",
@@ -49,6 +51,14 @@
       "filename": "first-dashboard.ts",
       "exportName": "firstDashboardHtml",
       "url": ["/"]
+    },
+    {
+      "id": "first-dashboard-cloud",
+      "title": "Create your first dashboard in Grafana Cloud",
+      "summary": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more",
+      "filename": "first-dashboard-cloud.ts",
+      "exportName": "firstDashboardCloudHtml",
+      "url": ["/a/grafana-setupguide-app/home"]
     }
   ]
 }
