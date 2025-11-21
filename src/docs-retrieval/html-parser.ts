@@ -303,6 +303,7 @@ export function parseHTMLToComponents(
   let hasExpandableTables = false;
   let hasImages = false;
   let hasVideos = false;
+  let hasAssistantElements = false;
 
   function walk(node: Element | ChildNode, path = 'root'): ParsedElement | string | null {
     try {
@@ -409,6 +410,31 @@ export function parseHTMLToComponents(
         // CODE BLOCK: <pre>
         if (tag === 'pre') {
           hasCodeBlocks = true;
+
+          // Check if this pre contains an assistant element
+          const assistantEl = el.querySelector('assistant');
+
+          if (assistantEl) {
+            // This is an assistant-customizable code block
+            hasAssistantElements = true;
+            const defaultValue = assistantEl.textContent?.trim() || '';
+            const assistantId = assistantEl.getAttribute('data-assistant-id') || `assistant-${path}`;
+            const assistantType = assistantEl.getAttribute('data-assistant-type') || 'query';
+
+            return {
+              type: 'assistant-customizable',
+              props: {
+                defaultValue,
+                assistantId,
+                assistantType,
+                inline: false, // Pre blocks are always block mode
+              },
+              children: [],
+              originalHTML: el.outerHTML,
+            };
+          }
+
+          // Regular code block (no assistant element)
           const codeEl = el.querySelector('code');
           const code = codeEl ? codeEl.textContent : el.textContent;
 
@@ -524,6 +550,29 @@ export function parseHTMLToComponents(
               color,
               icon,
               tooltip,
+            },
+            children: [],
+            originalHTML: el.outerHTML,
+          };
+        }
+
+        // ASSISTANT CUSTOMIZABLE: <assistant>
+        if (tag === 'assistant') {
+          hasAssistantElements = true;
+          const defaultValue = el.textContent?.trim() || '';
+          const assistantId = el.getAttribute('data-assistant-id') || `assistant-${path}`;
+          const assistantType = el.getAttribute('data-assistant-type') || 'query';
+
+          // Auto-detect inline vs block based on content
+          const inline = !el.querySelector('pre, code') && defaultValue.length < 100;
+
+          return {
+            type: 'assistant-customizable',
+            props: {
+              defaultValue,
+              assistantId,
+              assistantType,
+              inline,
             },
             children: [],
             originalHTML: el.outerHTML,
@@ -1056,6 +1105,7 @@ export function parseHTMLToComponents(
     hasExpandableTables,
     hasImages,
     hasVideos,
+    hasAssistantElements,
   };
 
   return errorCollector.getResult(parsedContent);

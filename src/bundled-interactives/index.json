@@ -6,7 +6,8 @@
       "summary": "Take a guided tour of Grafana's key areas. Perfect for getting started and understanding where everything is located.",
       "filename": "welcome-to-grafana.ts",
       "exportName": "welcomeToGrafanaHtml",
-      "url": ["/"]
+      "url": ["/"],
+      "targetPlatform": "oss"
     },
     {
       "id": "welcome-to-grafana-cloud",
@@ -14,7 +15,16 @@
       "summary": "Take a guided tour of Grafana Cloud's key areas. Perfect for getting started and understanding where everything is located.",
       "filename": "welcome-to-grafana-cloud.ts",
       "exportName": "welcomeToGrafanaCloudHtml",
-      "url": ["/a/grafana-setupguide-app/home"]
+      "url": ["/a/grafana-setupguide-app/home"],
+      "targetPlatform": "cloud"
+    },
+    {
+      "id": "prometheus-advanced-queries",
+      "title": "Advanced Prometheus Queries",
+      "summary": "Master advanced PromQL patterns including aggregations, histograms, predictions, and SLO calculations. Queries can be customized with Assistant for your datasources.",
+      "filename": "prometheus-advanced-queries.ts",
+      "exportName": "prometheusAdvancedQueriesHtml",
+      "url": ["/explore"]
     },
     {
       "id": "prometheus-grafana-101",

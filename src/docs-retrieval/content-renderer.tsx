@@ -24,6 +24,7 @@ import {
   useTextSelection,
   AssistantSelectionPopover,
   buildDocumentContext,
+  AssistantCustomizable,
 } from '../integrations/assistant-integration';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
@@ -307,7 +308,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
 
   return (
     <div ref={ref}>
-      {parsedContent.elements.map((element, index) => renderParsedElement(element, `element-${index}`))}
+      {parsedContent.elements.map((element, index) => renderParsedElement(element, `element-${index}`, baseUrl))}
     </div>
   );
 }
@@ -383,7 +384,7 @@ function TabsWrapper({ element }: { element: ParsedElement }) {
               return <TabContentRenderer html={originalHTML} />;
             }
             // Fallback to normal rendering if no originalHTML
-            return renderParsedElement(content, 'tab-content');
+            return renderParsedElement(content, 'tab-content', undefined);
           }
           return null;
         })()}
@@ -406,13 +407,21 @@ function TabContentRenderer({ html }: { html: string }) {
 
   // Render the parsed content using the existing component system
   return (
-    <div>{parseResult.data.elements.map((element, index) => renderParsedElement(element, `tab-content-${index}`))}</div>
+    <div>
+      {parseResult.data.elements.map((element, index) =>
+        renderParsedElement(element, `tab-content-${index}`, undefined)
+      )}
+    </div>
   );
 }
 
-function renderParsedElement(element: ParsedElement | ParsedElement[], key: string | number): React.ReactNode {
+function renderParsedElement(
+  element: ParsedElement | ParsedElement[],
+  key: string | number,
+  contentKey?: string
+): React.ReactNode {
   if (Array.isArray(element)) {
-    return element.map((child, i) => renderParsedElement(child, `${key}-${i}`));
+    return element.map((child, i) => renderParsedElement(child, `${key}-${i}`, contentKey));
   }
 
   // Handle special cases first
@@ -443,7 +452,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           id={element.props.id} // Pass the HTML id attribute
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
           )}
         </InteractiveSection>
       );
@@ -467,7 +476,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           title={element.props.title}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
           )}
         </InteractiveStep>
       );
@@ -484,7 +493,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           title={element.props.title}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
           )}
         </InteractiveMultiStep>
       );
@@ -502,7 +511,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           title={element.props.title}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
           )}
         </InteractiveGuided>
       );
@@ -561,9 +570,20 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
           isCollapseSection={element.props.isCollapseSection}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
-            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
           )}
         </ExpandableTable>
+      );
+    case 'assistant-customizable':
+      return (
+        <AssistantCustomizable
+          key={key}
+          defaultValue={element.props.defaultValue}
+          assistantId={element.props.assistantId}
+          assistantType={element.props.assistantType}
+          inline={element.props.inline}
+          contentKey={contentKey || ''}
+        />
       );
     case 'raw-html':
       // SECURITY: raw-html type is removed - all HTML must go through the parser
@@ -607,7 +627,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
         if (comp) {
           const children = element.children
             ?.map((child: ParsedElement | string, childIndex: number) =>
-              typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`)
+              typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
             )
             .filter((child: React.ReactNode) => child !== null);
 
@@ -655,7 +675,7 @@ function renderParsedElement(element: ParsedElement | ParsedElement[], key: stri
               // Preserve whitespace in text content
               return child.length > 0 ? child : null;
             }
-            return renderParsedElement(child, `${key}-child-${childIndex}`);
+            return renderParsedElement(child, `${key}-child-${childIndex}`, contentKey);
           })
           .filter((child: React.ReactNode) => child !== null);
 

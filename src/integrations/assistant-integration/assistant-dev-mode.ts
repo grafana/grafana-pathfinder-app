@@ -7,12 +7,20 @@
  * When assistant dev mode is enabled:
  * - isAssistantAvailable() returns Observable that emits true
  * - openAssistant() logs the prompt and context to console instead of opening
+ * - useInlineAssistant() returns a mock that logs instead of generating
  *
  * This allows developers to test the text selection and popover UI locally.
  */
 
+import { useState, useCallback } from 'react';
 import { Observable, BehaviorSubject } from 'rxjs';
-import { isAssistantAvailable, openAssistant, type ChatContextItem } from '@grafana/assistant';
+import {
+  isAssistantAvailable,
+  openAssistant,
+  type ChatContextItem,
+  type InlineAssistantOptions,
+  type InlineAssistantResult,
+} from '@grafana/assistant';
 import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
 
 // Create a persistent BehaviorSubject for mock availability
@@ -75,3 +83,78 @@ export const getOpenAssistant = (props: {
   }
   openAssistant(props);
 };
+
+/**
+ * Mock implementation of useInlineAssistant hook for dev mode
+ * This is a proper React hook that manages state and allows re-generation
+ */
+export const useMockInlineAssistant = (): InlineAssistantResult => {
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [content, setContent] = useState('');
+  const [error, setError] = useState<Error | null>(null);
+
+  const generate = useCallback(async (options: InlineAssistantOptions) => {
+    console.warn('=== Inline Assistant Dev Mode ===');
+    console.warn('Origin:', options.origin);
+    console.warn('Prompt:', options.prompt);
+    console.warn('System Prompt:', options.systemPrompt || '(none)');
+    console.warn('=====================================');
+
+    // Set isGenerating to true at the start
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      // Simulate a successful generation with a mock response
+      const mockResponse = `[MOCK] Customized version of your ${options.origin.split('/').pop()}`;
+      setContent(mockResponse);
+
+      // Call onComplete callback if provided
+      if (options.onComplete) {
+        // Simulate async delay
+        setTimeout(() => {
+          options.onComplete!(mockResponse);
+          // Set isGenerating back to false after completion
+          setIsGenerating(false);
+        }, 500);
+      } else {
+        // If no callback, reset immediately
+        setIsGenerating(false);
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      setError(error);
+      setIsGenerating(false);
+      if (options.onError) {
+        options.onError(error);
+      }
+    }
+  }, []);
+
+  const cancel = useCallback(() => {
+    console.warn('[Dev Mode] Cancel called');
+    setIsGenerating(false);
+  }, []);
+
+  const reset = useCallback(() => {
+    console.warn('[Dev Mode] Reset called');
+    setIsGenerating(false);
+    setContent('');
+    setError(null);
+  }, []);
+
+  return {
+    generate,
+    isGenerating,
+    content,
+    error,
+    cancel,
+    reset,
+  };
+};
+
+/**
+ * @deprecated Use useMockInlineAssistant() instead - this is kept for backward compatibility
+ * but should be replaced with the hook version
+ */
+export const getMockInlineAssistantResult = useMockInlineAssistant;

@@ -82,6 +82,7 @@ export interface ContextData {
   theme: string;
   timestamp: string;
   searchParams: Record<string, string>;
+  platform: string; // 'oss' or 'cloud'
 }
 
 export interface ContextPayload {
@@ -107,6 +108,7 @@ export interface BundledInteractive {
   filename: string;
   exportName: string;
   url: string | string[]; // Can be single URL or array of URLs
+  targetPlatform?: 'oss' | 'cloud'; // Optional: filter by platform (defaults to both if not specified)
 }
 
 export interface BundledInteractivesIndex {
