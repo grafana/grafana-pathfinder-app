@@ -106,6 +106,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {
@@ -136,6 +137,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {
@@ -168,6 +170,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {
@@ -208,6 +211,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       // Static domain list for testing - EXACT matches only (no subdomains)
@@ -252,6 +256,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       // Static list of invalid domains for testing - these should always be rejected
@@ -298,6 +303,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {
@@ -337,6 +343,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {
@@ -373,6 +380,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {
@@ -409,6 +417,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {
@@ -441,6 +450,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {
@@ -488,6 +498,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {
@@ -541,6 +552,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {
@@ -591,6 +603,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {
@@ -628,6 +641,7 @@ describe('Security: Recommender Service URL Validation', () => {
         theme: 'dark',
         timestamp: new Date().toISOString(),
         searchParams: {},
+        platform: 'oss',
       };
 
       const result = await ContextService.fetchRecommendations(mockContextData, {

@@ -160,6 +160,7 @@ export interface ParsedContent {
   hasExpandableTables: boolean;
   hasImages: boolean;
   hasVideos: boolean;
+  hasAssistantElements: boolean;
 }
 
 // Extend existing interfaces with the new result pattern

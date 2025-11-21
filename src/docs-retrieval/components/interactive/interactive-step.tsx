@@ -16,6 +16,7 @@ import { getInteractiveConfig } from '../../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
 import { testIds } from '../../../components/testIds';
+import { AssistantCustomizableProvider } from '../../../integrations/assistant-integration';
 
 let anonymousStepCounter = 0;
 
@@ -83,6 +84,14 @@ export const InteractiveStep = forwardRef<
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
+
+    // Manage targetValue as state to support assistant customization
+    const [currentTargetValue, setCurrentTargetValue] = useState(targetValue);
+
+    // Update targetValue callback for AssistantCustomizable children
+    const updateTargetValue = useCallback((newValue: string) => {
+      setCurrentTargetValue(newValue);
+    }, []);
 
     // Get plugin configuration for auto-detection settings
     const pluginContext = usePluginContext();
@@ -184,7 +193,7 @@ export const InteractiveStep = forwardRef<
         }
 
         // Execute the action using existing interactive logic
-        await executeInteractiveAction(targetAction, refTarget, targetValue, 'do', targetComment);
+        await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'do', targetComment);
 
         // Wait for DOM to settle after action (especially important for navigation, form fills, etc.)
         await waitForReactUpdates();
@@ -201,7 +210,7 @@ export const InteractiveStep = forwardRef<
             postVerify,
             targetAction,
             refTarget || '',
-            targetValue,
+            currentTargetValue,
             stepId || renderedStepId
           );
           if (!result.pass) {
@@ -248,7 +257,7 @@ export const InteractiveStep = forwardRef<
       stepId,
       targetAction,
       refTarget,
-      targetValue,
+      currentTargetValue,
       targetComment,
       postVerify,
       verifyStepResult,
@@ -315,7 +324,7 @@ export const InteractiveStep = forwardRef<
           {
             targetAction,
             refTarget,
-            targetValue,
+            targetValue: currentTargetValue,
           },
           targetElement
         );
@@ -334,7 +343,7 @@ export const InteractiveStep = forwardRef<
               requirements: postVerify,
               targetAction,
               refTarget,
-              targetValue,
+              targetValue: currentTargetValue,
               stepId: stepId || renderedStepId,
             });
 
@@ -368,7 +377,7 @@ export const InteractiveStep = forwardRef<
             {
               target_action: targetAction,
               ref_target: refTarget,
-              ...(targetValue && { target_value: targetValue }),
+              ...(currentTargetValue && { target_value: currentTargetValue }),
               interaction_location: 'interactive_step_auto',
               completion_method: 'auto_detected',
             },
@@ -392,7 +401,7 @@ export const InteractiveStep = forwardRef<
       disabled,
       targetAction,
       refTarget,
-      targetValue,
+      currentTargetValue,
       postVerify,
       stepId,
       onStepComplete,
@@ -418,7 +427,7 @@ export const InteractiveStep = forwardRef<
           {
             target_action: targetAction,
             ref_target: refTarget,
-            ...(targetValue && { target_value: targetValue }),
+            ...(currentTargetValue && { target_value: currentTargetValue }),
             interaction_location: 'interactive_step',
           },
           analyticsStepMeta
@@ -427,7 +436,7 @@ export const InteractiveStep = forwardRef<
 
       setIsShowRunning(true);
       try {
-        await executeInteractiveAction(targetAction, refTarget, targetValue, 'show', targetComment);
+        await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'show', targetComment);
 
         // If doIt is false, mark as completed after showing (like the old highlight-only behavior)
         if (!doIt) {
@@ -451,7 +460,7 @@ export const InteractiveStep = forwardRef<
     }, [
       targetAction,
       refTarget,
-      targetValue,
+      currentTargetValue,
       targetComment,
       doIt,
       disabled,
@@ -478,7 +487,7 @@ export const InteractiveStep = forwardRef<
           {
             target_action: targetAction,
             ref_target: refTarget,
-            ...(targetValue && { target_value: targetValue }),
+            ...(currentTargetValue && { target_value: currentTargetValue }),
             interaction_location: 'interactive_step',
           },
           analyticsStepMeta
@@ -501,7 +510,7 @@ export const InteractiveStep = forwardRef<
       executeStep,
       targetAction,
       refTarget,
-      targetValue,
+      currentTargetValue,
       analyticsStepMeta,
     ]);
 
@@ -540,7 +549,7 @@ export const InteractiveStep = forwardRef<
         case 'highlight':
           return `Highlight element`;
         case 'formfill':
-          return `Fill form with "${targetValue || 'value'}"`;
+          return `Fill form with "${currentTargetValue || 'value'}"`;
         case 'navigate':
           return `Navigate to ${refTarget}`;
         case 'hover':
@@ -561,7 +570,7 @@ export const InteractiveStep = forwardRef<
         }${isCurrentlyExecuting ? ' executing' : ''}`}
         data-targetaction={targetAction}
         data-reftarget={refTarget}
-        data-targetvalue={targetValue}
+        data-targetvalue={currentTargetValue}
         data-targetcomment={targetComment}
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
@@ -569,7 +578,9 @@ export const InteractiveStep = forwardRef<
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
           {description && <div className="interactive-step-description">{description}</div>}
-          {children}
+          <AssistantCustomizableProvider updateTargetValue={updateTargetValue}>
+            {children}
+          </AssistantCustomizableProvider>
         </div>
 
         <div className="interactive-step-actions">

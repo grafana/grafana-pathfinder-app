@@ -258,6 +258,7 @@ export class ContextService {
       theme: config.theme2.isDark ? 'dark' : 'light',
       timestamp: new Date().toISOString(),
       searchParams,
+      platform: this.getCurrentPlatform(),
     };
   }
 
@@ -1213,17 +1214,29 @@ export class ContextService {
       const indexData: BundledInteractivesIndex = require('../bundled-interactives/index.json');
 
       if (indexData && indexData.interactives && Array.isArray(indexData.interactives)) {
-        // Filter interactives that match the current URL/path
+        // Filter interactives that match the current URL/path and platform
         const relevantInteractives = indexData.interactives.filter((interactive: BundledInteractive) => {
-          // Handle both single URL (string) and multiple URLs (array)
+          // First check URL match
+          let urlMatches = false;
           if (Array.isArray(interactive.url)) {
             // Check if any URL in the array matches current path
-            return interactive.url.some((url: string) => url === contextData.currentPath);
+            urlMatches = interactive.url.some((url: string) => url === contextData.currentPath);
           } else if (typeof interactive.url === 'string') {
             // Backward compatibility: single URL as string
-            return interactive.url === contextData.currentPath;
+            urlMatches = interactive.url === contextData.currentPath;
           }
-          return false;
+
+          if (!urlMatches) {
+            return false;
+          }
+
+          // Then check platform match (if targetPlatform is specified)
+          if (interactive.targetPlatform) {
+            return this.matchesPlatform({ targetPlatform: interactive.targetPlatform }, contextData.platform);
+          }
+
+          // If no targetPlatform is specified, show on all platforms
+          return true;
         });
 
         relevantInteractives.forEach((interactive: BundledInteractive) => {

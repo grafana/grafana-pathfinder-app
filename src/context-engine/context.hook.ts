@@ -33,6 +33,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     theme: 'dark',
     timestamp: '',
     searchParams: {},
+    platform: 'oss', // Default to oss, will be updated by getContextData
   });
 
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);

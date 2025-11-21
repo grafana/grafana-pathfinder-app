@@ -132,6 +132,7 @@ export function sanitizeDocumentationHTML(html: string): string {
       // Custom documentation elements (actually used)
       'badge',
       'badge-tooltip',
+      'assistant',
     ],
 
     // Allowlist of attributes - strict list of actually used attributes
@@ -246,6 +247,9 @@ export function sanitizeDocumentationHTML(html: string): string {
       'data-pathfinder-content',
       'data-testid',
       'data-cy',
+      // Assistant customizable attributes
+      'data-assistant-id',
+      'data-assistant-type',
     ],
 
     // Also keep ALLOW_DATA_ATTR for any new attributes tutorial creators add
