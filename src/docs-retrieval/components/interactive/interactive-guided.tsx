@@ -135,17 +135,22 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Combined completion state
     const isCompleted = parentCompleted || isLocallyCompleted;
 
+    // For exists-reftarget requirement, use the first internal action's target
+    // This ensures the requirement checker knows which element to look for
+    const firstActionRefTarget = internalActions.length > 0 ? internalActions[0].refTarget : undefined;
+    const firstActionTargetAction = internalActions.length > 0 ? internalActions[0].targetAction : undefined;
+
     // Runtime validation: check for impossible requirement configurations
     useEffect(() => {
       validateInteractiveRequirements(
         {
           requirements,
-          refTarget: undefined, // Guided containers have no refTarget (internal actions do)
+          refTarget: firstActionRefTarget, // Use first internal action's refTarget for validation
           stepId: renderedStepId,
         },
         'InteractiveGuided'
       );
-    }, [requirements, renderedStepId]);
+    }, [requirements, renderedStepId, firstActionRefTarget]);
 
     // Use step checker hook for requirements and objectives
     const checker = useStepChecker({
@@ -155,6 +160,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       stepId: stepId || renderedStepId,
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
       skippable,
+      refTarget: firstActionRefTarget,
+      targetAction: firstActionTargetAction,
     });
 
     // Combined completion state: objectives always win

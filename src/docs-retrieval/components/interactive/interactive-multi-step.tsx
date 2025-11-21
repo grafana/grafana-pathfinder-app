@@ -183,6 +183,11 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // Combined completion state (parent takes precedence for coordination)
     const isCompleted = parentCompleted || isLocallyCompleted;
 
+    // For exists-reftarget requirement, use the first internal action's target
+    // This ensures the requirement checker knows which element to look for
+    const firstActionRefTarget = internalActions.length > 0 ? internalActions[0].refTarget : undefined;
+    const firstActionTargetAction = internalActions.length > 0 ? internalActions[0].targetAction : undefined;
+
     // Get the interactive functions from the hook
     const {
       executeInteractiveAction,
@@ -197,12 +202,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       validateInteractiveRequirements(
         {
           requirements,
-          refTarget: undefined, // Multistep containers have no refTarget
+          refTarget: firstActionRefTarget, // Use first internal action's refTarget for validation
           stepId: renderedStepId,
         },
         'InteractiveMultiStep'
       );
-    }, [requirements, renderedStepId]);
+    }, [requirements, renderedStepId, firstActionRefTarget]);
 
     // Use step checker hook for overall multi-step requirements and objectives
     const checker = useStepChecker({
@@ -211,6 +216,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       hints,
       stepId: stepId || renderedStepId,
       isEligibleForChecking: isEligibleForChecking && !isCompleted,
+      refTarget: firstActionRefTarget,
+      targetAction: firstActionTargetAction,
     });
 
     // Combined completion state: objectives always win (clarification 1, 2, 18)
