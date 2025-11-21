@@ -51,32 +51,37 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Set global config immediately so other code can use it
   (window as any).__pathfinderPluginConfig = config;
 
-  // Check for journey query parameter to auto-open specific learning journey
+  // Check for doc query parameter to auto-open specific docs page
   const urlParams = new URLSearchParams(window.location.search);
-  const journeyParam = urlParams.get('journey');
-  let journey = journeyParam ? findLearningJourney(journeyParam) : null;
+  const docsParam = urlParams.get('doc');
+  let docsPage = docsParam ? findDocPage(docsParam) : null;
 
-  if (journey) {
+  // Always warn if docsParam is present but no docsPage is found
+  if (docsParam && !docsPage) {
+    console.error('No matching documentation found for param:', docsParam);
+  }
+
+  if (docsPage) {
     // listen for completion
     window.addEventListener('auto-launch-complete', (e) => {
-      // remove journey param from URL to prevent re-triggering on refresh
+      // remove doc param from URL to prevent re-triggering on refresh
       const url = new URL(window.location.href);
-      url.searchParams.delete('journey');
+      url.searchParams.delete('doc');
       window.history.replaceState({}, '', url.toString());
-      console.log('Journey param removed from URL');
+      console.log('Doc param removed from URL');
     });
 
     // open the sidebar
     attemptAutoOpen(200);
 
-    // open the journey once the sidebar is mounted
+    // open the docs page once the sidebar is mounted
     window.addEventListener('pathfinder-sidebar-mounted', () => {
       setTimeout(() => {
         const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
           detail: {
-            url: journey.url,
-            title: journey.title,
-            type: 'learning-journey',
+            url: docsPage.url,
+            title: docsPage.title,
+            type: docsPage.type,
           },
         });
         document.dispatchEvent(autoLaunchEvent);
@@ -257,8 +262,10 @@ plugin.addLink({
   onClick: () => {},
 });
 
-const findLearningJourney = function (param: string) {
-  // Don't search if param is empty
+/**
+ * Finds a docs page or learning-journey rule matching the param (url)
+ */
+const findDocPage = function (param: string) {
   if (!param || param.trim() === '') {
     return null;
   }
@@ -267,26 +274,22 @@ const findLearningJourney = function (param: string) {
   const staticLinksContext = (require as any).context('./bundled-interactives/static-links', false, /\.json$/);
   const allFilePaths = staticLinksContext.keys();
 
-  let foundJourney: any = null;
+  let foundRule: any = null;
 
-  // Search through all static-links files
   for (const filePath of allFilePaths) {
     const staticData = staticLinksContext(filePath);
-
     if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
-      // Find learning journeys that match the URL
-      const journey = staticData.rules.find(
-        (rule: any) => rule.type === 'learning-journey' && (rule.url === param || rule.url.includes(param))
+      // Find doc-page or learning-journey that matches the URL exactly
+      const rule = staticData.rules.find(
+        (r: any) => (r.type === 'docs-page' || r.type === 'learning-journey') && r.url === `https://grafana.com${param}`
       );
-
-      if (journey) {
-        foundJourney = journey;
+      if (rule) {
+        foundRule = rule;
         break;
       }
     }
   }
-
-  return foundJourney;
+  return foundRule;
 };
 
 /**
