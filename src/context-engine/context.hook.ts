@@ -22,6 +22,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     dataSources: [],
     dashboardInfo: null,
     recommendations: [],
+    featuredRecommendations: [],
     tags: [],
     isLoading: true,
     recommendationsError: null,
@@ -84,11 +85,13 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
       setIsLoadingRecommendations(true);
       try {
-        const { recommendations, error, errorType, usingFallbackRecommendations } =
+        const { recommendations, featuredRecommendations, error, errorType, usingFallbackRecommendations } =
           await ContextService.fetchRecommendations(contextData, pluginConfig);
+
         setContextData((prev) => ({
           ...prev,
           recommendations,
+          featuredRecommendations,
           recommendationsError: error,
           recommendationsErrorType: errorType,
           usingFallbackRecommendations,
@@ -230,6 +233,12 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     setContextData((prev) => ({
       ...prev,
       recommendations: prev.recommendations.map((rec) => {
+        if (rec.url === recommendationUrl) {
+          return { ...rec, summaryExpanded: !rec.summaryExpanded };
+        }
+        return rec;
+      }),
+      featuredRecommendations: prev.featuredRecommendations.map((rec) => {
         if (rec.url === recommendationUrl) {
           return { ...rec, summaryExpanded: !rec.summaryExpanded };
         }

@@ -247,6 +247,7 @@ export class ContextService {
       dataSources,
       dashboardInfo,
       recommendations: [], // Will be populated by fetchRecommendations
+      featuredRecommendations: [], // Will be populated by fetchRecommendations
       tags,
       isLoading: false,
       recommendationsError: null,
@@ -268,6 +269,7 @@ export class ContextService {
     pluginConfig: DocsPluginConfig = {}
   ): Promise<{
     recommendations: Recommendation[];
+    featuredRecommendations: Recommendation[];
     error: string | null;
     errorType: 'unavailable' | 'rate-limit' | 'other' | null;
     usingFallbackRecommendations: boolean;
@@ -276,6 +278,7 @@ export class ContextService {
       if (!contextData.currentPath) {
         return {
           recommendations: [],
+          featuredRecommendations: [],
           error: 'No path provided for recommendations',
           errorType: 'other',
           usingFallbackRecommendations: false,
@@ -287,6 +290,7 @@ export class ContextService {
         const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
         return {
           ...fallbackResult,
+          featuredRecommendations: [],
           errorType: null,
           usingFallbackRecommendations: false, // Not using fallback due to error, just disabled
         };
@@ -300,6 +304,7 @@ export class ContextService {
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
         ...fallbackResult,
+        featuredRecommendations: [],
         error: error instanceof Error ? error.message : 'Failed to fetch recommendations',
         errorType: 'other',
         usingFallbackRecommendations: true,
@@ -327,7 +332,7 @@ export class ContextService {
   /**
    * SECURITY: Validate recommender service URL
    * Ensures the URL is HTTPS and from an approved domain to prevent MITM attacks
-   * In dev mode: Also allows localhost URLs for local testing
+   * In dev mode: Allows HTTP and bypasses domain allowlist for local testing
    */
   private static validateRecommenderUrl(url: string): boolean {
     const parsedUrl = parseUrlSafely(url);
@@ -337,21 +342,19 @@ export class ContextService {
       return false;
     }
 
-    // Dev mode exception: Allow localhost URLs for local testing
-    if (
-      isDevModeEnabledGlobal() &&
-      (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1' || parsedUrl.hostname === '::1')
-    ) {
+    // Dev mode: Allow any HTTP/HTTPS URL for local testing
+    if (isDevModeEnabledGlobal()) {
+      console.log('Dev mode enabled: Allowing recommender URL', url);
       return true;
     }
 
-    // Require HTTPS for non-localhost URLs
+    // Production: Require HTTPS
     if (parsedUrl.protocol !== 'https:') {
-      console.error('Recommender service URL must use HTTPS');
+      console.error('Recommender service URL must use HTTPS (dev mode disabled)');
       return false;
     }
 
-    // Check if domain is in allowlist (exact match only, no subdomains)
+    // Production: Check if domain is in allowlist (exact match only, no subdomains)
     const isAllowedDomain = ALLOWED_RECOMMENDER_DOMAINS.some((domain) => {
       return parsedUrl.hostname === domain;
     });
@@ -373,6 +376,7 @@ export class ContextService {
     bundledRecommendations: Recommendation[]
   ): Promise<{
     recommendations: Recommendation[];
+    featuredRecommendations: Recommendation[];
     error: string | null;
     errorType: 'unavailable' | 'rate-limit' | 'other' | null;
     usingFallbackRecommendations: boolean;
@@ -485,32 +489,44 @@ export class ContextService {
 
         // SECURITY: Sanitize external API recommendations to prevent XSS and prototype pollution
         // Use explicit allowlist instead of spread operator to prevent malicious properties
-        const mappedExternalRecommendations = (data.recommendations || []).map((rec: any) => {
-          // SECURITY: Explicit property allowlist - prevents prototype pollution and injection
-          const mappedRec: Recommendation = {
-            title: sanitizeTextForDisplay(rec.title || ''),
-            url: typeof rec.url === 'string' ? rec.url : '', // Validated when opened
-            summary: sanitizeTextForDisplay(rec.summary || rec.description || ''),
-            type: rec.type === 'docs-page' || rec.type === 'learning-journey' ? rec.type : 'docs-page',
-            matchAccuracy: typeof rec.matchAccuracy === 'number' ? rec.matchAccuracy : 0.5,
-            // Explicitly DO NOT spread ...rec to prevent prototype pollution attacks
-            // Properties like __proto__, constructor, onClick, dangerouslySetInnerHTML are blocked
-          };
-          return mappedRec;
+        const sanitizeRecommendation = (rec: any): Recommendation => ({
+          title: sanitizeTextForDisplay(rec.title || ''),
+          url: typeof rec.url === 'string' ? rec.url : '', // Validated when opened
+          summary: sanitizeTextForDisplay(rec.summary || rec.description || ''),
+          type: rec.type === 'docs-page' || rec.type === 'learning-journey' ? rec.type : 'docs-page',
+          matchAccuracy: typeof rec.matchAccuracy === 'number' ? rec.matchAccuracy : 0.5,
+          // Explicitly DO NOT spread ...rec to prevent prototype pollution attacks
+          // Properties like __proto__, constructor, onClick, dangerouslySetInnerHTML are blocked
         });
+
+        const mappedExternalRecommendations = (data.recommendations || []).map(sanitizeRecommendation);
+
+        // SECURITY: Sanitize featured recommendations using same logic
+        const mappedFeaturedRecommendations = (data.featured || []).map(sanitizeRecommendation);
 
         const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
         const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
 
+        // Process featured recommendations separately
+        const processedFeaturedRecommendations = await this.processLearningJourneys(
+          mappedFeaturedRecommendations,
+          pluginConfig
+        );
+
         // Filter and sort recommendations
         const filteredRecommendations = this.filterUsefulRecommendations(processedRecommendations);
         const sortedRecommendations = this.sortRecommendationsByAccuracy(filteredRecommendations);
+
+        // Featured recommendations are curated by the server, so don't filter by confidence
+        // Just keep the server order and all items
+        const filteredFeaturedRecommendations = processedFeaturedRecommendations;
 
         // Clear any previous errors on successful call
         this.lastExternalRecommenderError = null;
 
         return {
           recommendations: sortedRecommendations,
+          featuredRecommendations: filteredFeaturedRecommendations,
           error: null,
           errorType: null,
           usingFallbackRecommendations: false,
@@ -565,6 +581,7 @@ export class ContextService {
     bundledRecommendations: Recommendation[]
   ): Promise<{
     recommendations: Recommendation[];
+    featuredRecommendations: Recommendation[];
     error: string | null;
     errorType: 'unavailable' | 'rate-limit' | 'other' | null;
     usingFallbackRecommendations: boolean;
@@ -584,6 +601,7 @@ export class ContextService {
 
     return {
       ...fallbackResult,
+      featuredRecommendations: [],
       error: userMessage,
       errorType,
       usingFallbackRecommendations: true,
