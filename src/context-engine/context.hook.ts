@@ -22,6 +22,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     dataSources: [],
     dashboardInfo: null,
     recommendations: [],
+    featuredRecommendations: [],
     tags: [],
     isLoading: true,
     recommendationsError: null,
@@ -84,11 +85,20 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
 
       setIsLoadingRecommendations(true);
       try {
-        const { recommendations, error, errorType, usingFallbackRecommendations } =
+        const { recommendations, featuredRecommendations, error, errorType, usingFallbackRecommendations } =
           await ContextService.fetchRecommendations(contextData, pluginConfig);
+
+        // DEBUG: Log what we're storing in state
+        console.log('[Featured Debug] Storing in contextData:', {
+          recommendations: recommendations.length,
+          featuredRecommendations: featuredRecommendations.length,
+          featuredTitles: featuredRecommendations.map((r) => r.title),
+        });
+
         setContextData((prev) => ({
           ...prev,
           recommendations,
+          featuredRecommendations,
           recommendationsError: error,
           recommendationsErrorType: errorType,
           usingFallbackRecommendations,

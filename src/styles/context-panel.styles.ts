@@ -525,6 +525,80 @@ export const getStepsStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
+// Featured section styles
+export const getFeaturedStyles = (theme: GrafanaTheme2) => {
+  // Use a warm orange/amber color for featured highlights
+  const featuredColor = '#FF8C00'; // Dark orange
+  const featuredColorLight = 'rgba(255, 140, 0, 0.15)';
+  const featuredColorMedium = 'rgba(255, 140, 0, 0.25)';
+  const featuredGlow = 'rgba(255, 140, 0, 0.4)';
+
+  return {
+    featuredSection: css({
+      marginBottom: theme.spacing(2),
+      position: 'relative',
+      padding: theme.spacing(2),
+      borderRadius: theme.shape.radius.default,
+      background: `linear-gradient(135deg, ${featuredColorLight} 0%, ${theme.colors.background.primary} 100%)`,
+      border: `1px solid ${featuredColor}`,
+      boxShadow: `0 2px 8px ${featuredGlow}, inset 0 1px 0 rgba(255, 255, 255, 0.1)`,
+    }),
+    featuredHeader: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      marginBottom: theme.spacing(1.5),
+      paddingBottom: theme.spacing(1.5),
+      borderBottom: `1px solid ${featuredColorMedium}`,
+    }),
+    featuredIcon: css({
+      color: featuredColor,
+      filter: 'drop-shadow(0 0 4px rgba(255, 140, 0, 0.6))',
+      animation: 'pulse 2s ease-in-out infinite',
+      '@keyframes pulse': {
+        '0%, 100%': {
+          transform: 'scale(1)',
+          filter: 'drop-shadow(0 0 4px rgba(255, 140, 0, 0.6))',
+        },
+        '50%': {
+          transform: 'scale(1.15)',
+          filter: 'drop-shadow(0 0 8px rgba(255, 140, 0, 0.9))',
+        },
+      },
+    }),
+    featuredTitle: css({
+      margin: 0,
+      fontSize: theme.typography.h5.fontSize,
+      fontWeight: theme.typography.fontWeightBold,
+      background: `linear-gradient(90deg, ${featuredColor}, #FFA500)`,
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      backgroundClip: 'text',
+      letterSpacing: '0.3px',
+    }),
+    featuredGrid: css({
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(1.5),
+      width: '100%',
+      maxWidth: '100%',
+    }),
+    featuredCard: css({
+      position: 'relative',
+      background: theme.colors.background.primary,
+      border: `1px solid ${theme.colors.border.medium}`,
+      boxShadow: `0 2px 4px rgba(0, 0, 0, 0.1)`,
+      transition: 'all 0.2s ease',
+      '&:hover': {
+        background: theme.colors.background.secondary,
+        borderColor: featuredColor,
+        boxShadow: `0 4px 12px ${featuredGlow}`,
+        transform: 'translateY(-1px)',
+      },
+    }),
+  };
+};
+
 // Other docs section styles
 export const getOtherDocsStyles = (theme: GrafanaTheme2) => ({
   otherDocsSection: css({
@@ -649,6 +723,7 @@ export const getStyles = (theme: GrafanaTheme2) => ({
   ...getSummaryStyles(theme),
   ...getMilestoneStyles(theme),
   ...getStepsStyles(theme),
+  ...getFeaturedStyles(theme),
   ...getOtherDocsStyles(theme),
   ...getDebugStyles(theme),
 });

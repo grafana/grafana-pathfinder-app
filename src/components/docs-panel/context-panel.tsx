@@ -71,6 +71,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 // Memoized recommendations section to prevent unnecessary rerenders
 interface RecommendationsSectionProps {
   recommendations: Recommendation[];
+  featuredRecommendations: Recommendation[];
   isLoadingRecommendations: boolean;
   isLoadingContext: boolean;
   recommendationsError: string | null;
@@ -84,6 +85,7 @@ interface RecommendationsSectionProps {
 
 const RecommendationsSection = memo(function RecommendationsSection({
   recommendations,
+  featuredRecommendations,
   isLoadingRecommendations,
   isLoadingContext,
   recommendationsError,
@@ -95,6 +97,13 @@ const RecommendationsSection = memo(function RecommendationsSection({
   toggleOtherDocsExpansion,
 }: RecommendationsSectionProps) {
   const styles = useStyles2(getStyles);
+
+  // DEBUG: Log featured recommendations in component
+  console.log('[Featured Debug] RecommendationsSection render:', {
+    featuredCount: featuredRecommendations.length,
+    regularCount: recommendations.length,
+    featuredTitles: featuredRecommendations.map((r) => r.title),
+  });
 
   // All recommendations are now >= 0.5 confidence and pre-sorted by service
   // Primary recommendations: maximum of 4 items with highest confidence
@@ -112,8 +121,8 @@ const RecommendationsSection = memo(function RecommendationsSection({
     );
   }
 
-  // If there's an error but no recommendations, show only the error
-  if (recommendationsError && recommendations.length === 0) {
+  // If there's an error but no recommendations (regular or featured), show only the error
+  if (recommendationsError && recommendations.length === 0 && featuredRecommendations.length === 0) {
     return (
       <Alert
         severity="warning"
@@ -125,8 +134,8 @@ const RecommendationsSection = memo(function RecommendationsSection({
     );
   }
 
-  // If there are no recommendations and no error, show empty state
-  if (recommendations.length === 0) {
+  // If there are no recommendations (regular or featured) and no error, show empty state
+  if (recommendations.length === 0 && featuredRecommendations.length === 0) {
     return (
       <>
         <div className={styles.emptyContainer} data-testid={testIds.contextPanel.emptyState}>
@@ -138,7 +147,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
     );
   }
 
-  // If we have recommendations (with or without error), render them
+  // If we have recommendations (regular or featured, with or without error), render them
   return (
     <>
       {/* Show error banner when using fallback recommendations */}
@@ -153,6 +162,173 @@ const RecommendationsSection = memo(function RecommendationsSection({
       )}
 
       <div className={styles.recommendationsContainer} data-testid={testIds.contextPanel.recommendationsContainer}>
+        {/* Featured Recommendations Section - Time-based featured content */}
+        {featuredRecommendations.length > 0 && (
+          <div className={styles.featuredSection} data-testid="featured-section">
+            <div className={styles.featuredHeader}>
+              <Icon name="star" className={styles.featuredIcon} />
+              <h3 className={styles.featuredTitle}>{t('contextPanel.featured', 'Featured')}</h3>
+            </div>
+            <div className={styles.featuredGrid}>
+              {featuredRecommendations.map((recommendation, index) => (
+                <Card
+                  key={`featured-${index}`}
+                  className={`${styles.recommendationCard} ${styles.featuredCard} ${
+                    recommendation.type === 'docs-page' ? styles.compactCard : ''
+                  }`}
+                  data-testid={`featured-recommendation-card-${index}`}
+                >
+                  <div
+                    className={`${styles.recommendationCardContent} ${
+                      recommendation.type === 'docs-page' ? styles.compactCardContent : ''
+                    }`}
+                  >
+                    <div
+                      className={`${styles.cardHeader} ${
+                        recommendation.type === 'docs-page' ? styles.compactHeader : ''
+                      }`}
+                    >
+                      <h3 className={styles.recommendationCardTitle}>
+                        {recommendation.title}
+                      </h3>
+                      <div
+                        className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}
+                      >
+                        <button
+                          onClick={() => {
+                            // Track analytics - unified event for opening any resource
+                            reportAppInteraction(UserInteraction.OpenResourceClick, {
+                              content_title: recommendation.title,
+                              content_url: recommendation.url,
+                              content_type: recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
+                              interaction_location: 'featured_card_button',
+                              match_accuracy: recommendation.matchAccuracy || 0,
+                              ...(recommendation.type !== 'docs-page' && {
+                                total_milestones: recommendation.totalSteps || 0,
+                                completion_percentage: recommendation.completionPercentage ?? 0,
+                              }),
+                            });
+
+                            // Open the appropriate content type
+                            if (recommendation.type === 'docs-page') {
+                              openDocsPage(recommendation.url, recommendation.title);
+                            } else {
+                              openLearningJourney(recommendation.url, recommendation.title);
+                            }
+                          }}
+                          className={recommendation.type === 'docs-page' ? styles.secondaryButton : styles.startButton}
+                        >
+                          <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
+                          {recommendation.type === 'docs-page'
+                            ? t('contextPanel.view', 'View')
+                            : t('contextPanel.start', 'Start')}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Only show summary/milestones for learning journeys or docs with summaries */}
+                    {(recommendation.type !== 'docs-page' || recommendation.summary) && (
+                      <>
+                        <div className={styles.cardMetadata}>
+                          <div className={styles.summaryInfo}>
+                            <button
+                              onClick={() => {
+                                // Track summary click analytics
+                                reportAppInteraction(UserInteraction.SummaryClick, {
+                                  content_title: recommendation.title,
+                                  content_url: recommendation.url,
+                                  content_type: recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
+                                  action: recommendation.summaryExpanded ? 'collapse' : 'expand',
+                                  match_accuracy: recommendation.matchAccuracy || 0,
+                                  ...(recommendation.type !== 'docs-page' && {
+                                    total_milestones: recommendation.totalSteps || 0,
+                                  }),
+                                });
+
+                                toggleSummaryExpansion(recommendation.url);
+                              }}
+                              className={styles.summaryButton}
+                            >
+                              <Icon name="info-circle" size="sm" />
+                              <span>{t('contextPanel.summary', 'Summary')}</span>
+                              <Icon name={recommendation.summaryExpanded ? 'angle-up' : 'angle-down'} size="sm" />
+                            </button>
+                            {/* Show completion percentage for learning journeys */}
+                            {recommendation.type !== 'docs-page' &&
+                              typeof recommendation.completionPercentage === 'number' && (
+                                <div className={styles.completionInfo}>
+                                  <div
+                                    className={styles.completionPercentage}
+                                    data-completion={recommendation.completionPercentage}
+                                  >
+                                    {t('contextPanel.percentComplete', '{{percent}}% complete', {
+                                      percent: recommendation.completionPercentage,
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        </div>
+
+                        {recommendation.summaryExpanded && (
+                          <div className={styles.summaryExpansion}>
+                            {recommendation.summary && (
+                              <div className={styles.summaryContent}>
+                                <p className={styles.summaryText}>{recommendation.summary}</p>
+                              </div>
+                            )}
+
+                            {/* Only show milestones for learning journeys */}
+                            {recommendation.type !== 'docs-page' &&
+                              (recommendation.totalSteps ?? 0) > 0 &&
+                              recommendation.milestones && (
+                                <div className={styles.milestonesSection}>
+                                  <div className={styles.milestonesHeader}>
+                                    <h4 className={styles.milestonesTitle}>
+                                      {t('contextPanel.milestones', 'Milestones:')}
+                                    </h4>
+                                  </div>
+                                  <div className={styles.milestonesList}>
+                                    {recommendation.milestones.map((milestone, stepIndex) => (
+                                      <button
+                                        key={stepIndex}
+                                        onClick={() => {
+                                          // Track milestone click analytics
+                                          reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
+                                            content_title: recommendation.title,
+                                            milestone_title: milestone.title,
+                                            milestone_number: milestone.number,
+                                            milestone_url: milestone.url,
+                                            content_url: recommendation.url,
+                                            interaction_location: 'featured_milestone_list',
+                                          });
+                                          openLearningJourney(
+                                            milestone.url,
+                                            `${recommendation.title} - ${milestone.title}`
+                                          );
+                                        }}
+                                        className={styles.milestoneItem}
+                                      >
+                                        <div className={styles.milestoneNumber}>{milestone.number}</div>
+                                        <div className={styles.milestoneContent}>
+                                          <div className={styles.milestoneTitle}>{milestone.title}</div>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Primary Recommendations Section (High-Confidence Items, sorted by accuracy) */}
         {finalPrimaryRecommendations.length > 0 && (
           <div className={styles.recommendationsGrid} data-testid={testIds.contextPanel.recommendationsGrid}>
@@ -504,6 +680,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
           {/* Recommendations Section - Memoized to prevent unnecessary rerenders */}
           <RecommendationsSection
             recommendations={recommendations}
+            featuredRecommendations={contextData.featuredRecommendations}
             isLoadingRecommendations={isLoadingRecommendations}
             isLoadingContext={contextData.isLoading}
             recommendationsError={recommendationsError}

@@ -72,6 +72,7 @@ export interface ContextData {
   dataSources: DataSource[];
   dashboardInfo: DashboardInfo | null;
   recommendations: Recommendation[];
+  featuredRecommendations: Recommendation[];
   tags: string[];
   isLoading: boolean;
   recommendationsError: string | null;
@@ -98,6 +99,7 @@ export interface ContextPayload {
 
 export interface RecommenderResponse {
   recommendations: Recommendation[];
+  featured?: Recommendation[];
 }
 
 export interface BundledInteractive {
