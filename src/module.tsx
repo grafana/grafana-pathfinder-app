@@ -63,30 +63,37 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   if (docsPage) {
     // listen for completion
-    window.addEventListener('auto-launch-complete', (e) => {
-      // remove doc param from URL to prevent re-triggering on refresh
-      const url = new URL(window.location.href);
-      url.searchParams.delete('doc');
-      window.history.replaceState({}, '', url.toString());
-
-    }, { once: true });
+    window.addEventListener(
+      'auto-launch-complete',
+      (e) => {
+        // remove doc param from URL to prevent re-triggering on refresh
+        const url = new URL(window.location.href);
+        url.searchParams.delete('doc');
+        window.history.replaceState({}, '', url.toString());
+      },
+      { once: true }
+    );
 
     // open the sidebar
     attemptAutoOpen(200);
 
     // open the docs page once the sidebar is mounted
-    window.addEventListener('pathfinder-sidebar-mounted', () => {
-      setTimeout(() => {
-        const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
-          detail: {
-            url: docsPage.url,
-            title: docsPage.title,
-            type: docsPage.type,
-          },
-        });
-        document.dispatchEvent(autoLaunchEvent);
-      }, 500);
-    }, { once: true });
+    window.addEventListener(
+      'pathfinder-sidebar-mounted',
+      () => {
+        setTimeout(() => {
+          const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+            detail: {
+              url: docsPage.url,
+              title: docsPage.title,
+              type: docsPage.type,
+            },
+          });
+          document.dispatchEvent(autoLaunchEvent);
+        }, 500);
+      },
+      { once: true }
+    );
   }
 
   // Check if auto-open is enabled
@@ -262,6 +269,12 @@ plugin.addLink({
   onClick: () => {},
 });
 
+interface DocPage {
+  type: 'docs-page' | 'learning-journey';
+  url: string;
+  title: string;
+}
+
 /**
  * Finds a docs page or learning-journey rule matching the param (url)
  */
@@ -275,22 +288,22 @@ const findDocPage = function (param: string) {
     const staticLinksContext = (require as any).context('./bundled-interactives/static-links', false, /\.json$/);
     const allFilePaths = staticLinksContext.keys();
 
-    let foundRule: any = null;
-
+    let foundPage: DocPage | null = null;
     for (const filePath of allFilePaths) {
       const staticData = staticLinksContext(filePath);
       if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
         // Find doc-page or learning-journey that matches the URL exactly
         const rule = staticData.rules.find(
-          (r: any) => (r.type === 'docs-page' || r.type === 'learning-journey') && r.url === `https://grafana.com${param}`
+          (r: { type: string; url: string; title: string }) =>
+            (r.type === 'docs-page' || r.type === 'learning-journey') && r.url === `https://grafana.com${param}`
         );
         if (rule) {
-          foundRule = rule;
+          foundPage = rule;
           break;
         }
       }
     }
-    return foundRule;
+    return foundPage;
   } catch (error) {
     console.error('Failed to load static links:', error);
     return null;
