@@ -54,7 +54,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Check for doc query parameter to auto-open specific docs page
   const urlParams = new URLSearchParams(window.location.search);
   const docsParam = urlParams.get('doc');
-  let docsPage = docsParam ? findDocPage(docsParam) : null;
+  const docsPage = docsParam ? findDocPage(docsParam) : null;
 
   // Always warn if docsParam is present but no docsPage is found
   if (docsParam && !docsPage) {
@@ -68,8 +68,8 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       const url = new URL(window.location.href);
       url.searchParams.delete('doc');
       window.history.replaceState({}, '', url.toString());
-      console.log('Doc param removed from URL');
-    });
+
+    }, { once: true });
 
     // open the sidebar
     attemptAutoOpen(200);
@@ -86,7 +86,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         });
         document.dispatchEvent(autoLaunchEvent);
       }, 500);
-    });
+    }, { once: true });
   }
 
   // Check if auto-open is enabled
@@ -271,32 +271,37 @@ const findDocPage = function (param: string) {
   }
 
   // Dynamically load all JSON files from static-links directory
-  const staticLinksContext = (require as any).context('./bundled-interactives/static-links', false, /\.json$/);
-  const allFilePaths = staticLinksContext.keys();
+  try {
+    const staticLinksContext = (require as any).context('./bundled-interactives/static-links', false, /\.json$/);
+    const allFilePaths = staticLinksContext.keys();
 
-  let foundRule: any = null;
+    let foundRule: any = null;
 
-  for (const filePath of allFilePaths) {
-    const staticData = staticLinksContext(filePath);
-    if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
-      // Find doc-page or learning-journey that matches the URL exactly
-      const rule = staticData.rules.find(
-        (r: any) => (r.type === 'docs-page' || r.type === 'learning-journey') && r.url === `https://grafana.com${param}`
-      );
-      if (rule) {
-        foundRule = rule;
-        break;
+    for (const filePath of allFilePaths) {
+      const staticData = staticLinksContext(filePath);
+      if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
+        // Find doc-page or learning-journey that matches the URL exactly
+        const rule = staticData.rules.find(
+          (r: any) => (r.type === 'docs-page' || r.type === 'learning-journey') && r.url === `https://grafana.com${param}`
+        );
+        if (rule) {
+          foundRule = rule;
+          break;
+        }
       }
     }
+    return foundRule;
+  } catch (error) {
+    console.error('Failed to load static links:', error);
+    return null;
   }
-  return foundRule;
 };
 
 /**
  * Attempts to auto-open the sidebar with configured tutorial
  * This is extracted as a function so it can be called both on init and after navigation
  */
-const attemptAutoOpen = (delay = 500) => {
+const attemptAutoOpen = (delay = 200) => {
   setTimeout(() => {
     try {
       const appEvents = getAppEvents();
