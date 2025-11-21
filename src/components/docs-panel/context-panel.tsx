@@ -188,9 +188,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                         recommendation.type === 'docs-page' ? styles.compactHeader : ''
                       }`}
                     >
-                      <h3 className={styles.recommendationCardTitle}>
-                        {recommendation.title}
-                      </h3>
+                      <h3 className={styles.recommendationCardTitle}>{recommendation.title}</h3>
                       <div
                         className={`${styles.cardActions} ${recommendation.summaryExpanded ? styles.hiddenActions : ''}`}
                       >
