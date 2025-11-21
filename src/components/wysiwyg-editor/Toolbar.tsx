@@ -32,7 +32,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
   divider: css({
     width: '1px',
     background: theme.colors.border.weak,
-    margin: `0 ${theme.spacing(1)}`,
   }),
   dropdownWrapper: css({
     position: 'relative',
