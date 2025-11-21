@@ -98,13 +98,6 @@ const RecommendationsSection = memo(function RecommendationsSection({
 }: RecommendationsSectionProps) {
   const styles = useStyles2(getStyles);
 
-  // DEBUG: Log featured recommendations in component
-  console.log('[Featured Debug] RecommendationsSection render:', {
-    featuredCount: featuredRecommendations.length,
-    regularCount: recommendations.length,
-    featuredTitles: featuredRecommendations.map((r) => r.title),
-  });
-
   // All recommendations are now >= 0.5 confidence and pre-sorted by service
   // Primary recommendations: maximum of 4 items with highest confidence
   const finalPrimaryRecommendations = recommendations.slice(0, 4);
@@ -316,6 +309,39 @@ const RecommendationsSection = memo(function RecommendationsSection({
                                   </div>
                                 </div>
                               )}
+
+                            {/* Sticky CTA button at bottom of summary */}
+                            <div className={styles.summaryCta}>
+                              <button
+                                onClick={() => {
+                                  // Track analytics - unified event for opening any resource
+                                  reportAppInteraction(UserInteraction.OpenResourceClick, {
+                                    content_title: recommendation.title,
+                                    content_url: recommendation.url,
+                                    content_type: recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
+                                    interaction_location: 'featured_summary_cta_button',
+                                    match_accuracy: recommendation.matchAccuracy || 0,
+                                    ...(recommendation.type !== 'docs-page' && {
+                                      total_milestones: recommendation.totalSteps || 0,
+                                      completion_percentage: recommendation.completionPercentage ?? 0,
+                                    }),
+                                  });
+
+                                  // Open the appropriate content type
+                                  if (recommendation.type === 'docs-page') {
+                                    openDocsPage(recommendation.url, recommendation.title);
+                                  } else {
+                                    openLearningJourney(recommendation.url, recommendation.title);
+                                  }
+                                }}
+                                className={styles.summaryCtaButton}
+                              >
+                                <Icon name={recommendation.type === 'docs-page' ? 'file-alt' : 'play'} size="sm" />
+                                {recommendation.type === 'docs-page'
+                                  ? t('contextPanel.viewDocumentation', 'View Documentation')
+                                  : t('contextPanel.startLearningJourney', 'Start Learning Journey')}
+                              </button>
+                            </div>
                           </div>
                         )}
                       </>

@@ -487,13 +487,6 @@ export class ContextService {
 
         const data: RecommenderResponse = await response.json();
 
-        // DEBUG: Log the raw API response to see what we received
-        console.log('[Featured Debug] Raw API response:', {
-          recommendations: data.recommendations?.length || 0,
-          featured: data.featured?.length || 0,
-          featuredData: data.featured,
-        });
-
         // SECURITY: Sanitize external API recommendations to prevent XSS and prototype pollution
         // Use explicit allowlist instead of spread operator to prevent malicious properties
         const sanitizeRecommendation = (rec: any): Recommendation => ({
@@ -511,9 +504,6 @@ export class ContextService {
         // SECURITY: Sanitize featured recommendations using same logic
         const mappedFeaturedRecommendations = (data.featured || []).map(sanitizeRecommendation);
 
-        // DEBUG: Log sanitized featured recommendations
-        console.log('[Featured Debug] Sanitized featured recommendations:', mappedFeaturedRecommendations);
-
         const allRecommendations = [...mappedExternalRecommendations, ...bundledRecommendations];
         const processedRecommendations = await this.processLearningJourneys(allRecommendations, pluginConfig);
 
@@ -530,12 +520,6 @@ export class ContextService {
         // Featured recommendations are curated by the server, so don't filter by confidence
         // Just keep the server order and all items
         const filteredFeaturedRecommendations = processedFeaturedRecommendations;
-
-        // DEBUG: Log final featured recommendations being returned
-        console.log('[Featured Debug] Final featured recommendations being returned:', {
-          count: filteredFeaturedRecommendations.length,
-          titles: filteredFeaturedRecommendations.map((r) => r.title),
-        });
 
         // Clear any previous errors on successful call
         this.lastExternalRecommenderError = null;

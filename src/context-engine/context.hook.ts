@@ -88,13 +88,6 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
         const { recommendations, featuredRecommendations, error, errorType, usingFallbackRecommendations } =
           await ContextService.fetchRecommendations(contextData, pluginConfig);
 
-        // DEBUG: Log what we're storing in state
-        console.log('[Featured Debug] Storing in contextData:', {
-          recommendations: recommendations.length,
-          featuredRecommendations: featuredRecommendations.length,
-          featuredTitles: featuredRecommendations.map((r) => r.title),
-        });
-
         setContextData((prev) => ({
           ...prev,
           recommendations,
@@ -240,6 +233,12 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
     setContextData((prev) => ({
       ...prev,
       recommendations: prev.recommendations.map((rec) => {
+        if (rec.url === recommendationUrl) {
+          return { ...rec, summaryExpanded: !rec.summaryExpanded };
+        }
+        return rec;
+      }),
+      featuredRecommendations: prev.featuredRecommendations.map((rec) => {
         if (rec.url === recommendationUrl) {
           return { ...rec, summaryExpanded: !rec.summaryExpanded };
         }
