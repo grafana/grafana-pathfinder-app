@@ -9,7 +9,7 @@ interface OpenExtensionSidebarPayload {
   props?: Record<string, unknown>;
 }
 
-class OpenExtensionSidebarEvent extends BusEventWithPayload<OpenExtensionSidebarPayload> {
+export class OpenExtensionSidebarEvent extends BusEventWithPayload<OpenExtensionSidebarPayload> {
   static type = 'open-extension-sidebar';
 }
 

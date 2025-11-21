@@ -51,6 +51,51 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Set global config immediately so other code can use it
   (window as any).__pathfinderPluginConfig = config;
 
+  // Check for doc query parameter to auto-open specific docs page
+  const urlParams = new URLSearchParams(window.location.search);
+  const docsParam = urlParams.get('doc');
+  const docsPage = docsParam ? findDocPage(docsParam) : null;
+
+  // Always warn if docsParam is present but no docsPage is found
+  if (docsParam && !docsPage) {
+    console.error('No matching documentation found for param:', docsParam);
+  }
+
+  if (docsPage) {
+    // listen for completion
+    window.addEventListener(
+      'auto-launch-complete',
+      (e) => {
+        // remove doc param from URL to prevent re-triggering on refresh
+        const url = new URL(window.location.href);
+        url.searchParams.delete('doc');
+        window.history.replaceState({}, '', url.toString());
+      },
+      { once: true }
+    );
+
+    // open the sidebar
+    attemptAutoOpen(200);
+
+    // open the docs page once the sidebar is mounted
+    window.addEventListener(
+      'pathfinder-sidebar-mounted',
+      () => {
+        setTimeout(() => {
+          const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
+            detail: {
+              url: docsPage.url,
+              title: docsPage.title,
+              type: docsPage.type,
+            },
+          });
+          document.dispatchEvent(autoLaunchEvent);
+        }, 500);
+      },
+      { once: true }
+    );
+  }
+
   // Check if auto-open is enabled
   // Feature toggle sets the default, but user config always takes precedence
   const shouldAutoOpen = config.openPanelOnLaunch;
@@ -62,44 +107,6 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     // tracks its own auto-open state independently
     const hostname = window.location.hostname;
     const sessionKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
-
-    /**
-     * Attempts to auto-open the sidebar with configured tutorial
-     * This is extracted as a function so it can be called both on init and after navigation
-     */
-    const attemptAutoOpen = (delay = 200) => {
-      setTimeout(() => {
-        try {
-          const appEvents = getAppEvents();
-          appEvents.publish({
-            type: 'open-extension-sidebar',
-            payload: {
-              pluginId: pluginJson.id,
-              componentTitle: 'Interactive learning',
-            },
-          });
-
-          // Auto-launch tutorial if configured
-          if (config.tutorialUrl) {
-            setTimeout(() => {
-              const isBundled = config.tutorialUrl!.startsWith('bundled:');
-              const isLearningJourney = config.tutorialUrl!.includes('/learning-journeys/') || isBundled;
-
-              const autoLaunchEvent = new CustomEvent('auto-launch-tutorial', {
-                detail: {
-                  url: config.tutorialUrl,
-                  title: 'Auto-launched Tutorial',
-                  type: isLearningJourney ? 'learning-journey' : 'docs-page',
-                },
-              });
-              document.dispatchEvent(autoLaunchEvent);
-            }, 800); // Wait for sidebar to mount
-          }
-        } catch (error) {
-          console.error('Failed to auto-open Interactive learning panel:', error);
-        }
-      }, delay);
-    };
 
     // Check initial location
     const location = locationService.getLocation();
@@ -172,6 +179,14 @@ plugin.addComponent({
     // Process queued docs links when sidebar mounts
     useEffect(() => {
       sidebarState.setIsSidebarMounted(true);
+
+      // Fire custom event when sidebar component mounts
+      const mountEvent = new CustomEvent('pathfinder-sidebar-mounted', {
+        detail: {
+          timestamp: Date.now(),
+        },
+      });
+      window.dispatchEvent(mountEvent);
 
       return () => {
         sidebarState.setIsSidebarMounted(false);
@@ -253,3 +268,65 @@ plugin.addLink({
   },
   onClick: () => {},
 });
+
+interface DocPage {
+  type: 'docs-page' | 'learning-journey';
+  url: string;
+  title: string;
+}
+
+/**
+ * Finds a docs page or learning-journey rule matching the param (url)
+ */
+const findDocPage = function (param: string) {
+  if (!param || param.trim() === '') {
+    return null;
+  }
+
+  // Dynamically load all JSON files from static-links directory
+  try {
+    const staticLinksContext = (require as any).context('./bundled-interactives/static-links', false, /\.json$/);
+    const allFilePaths = staticLinksContext.keys();
+
+    let foundPage: DocPage | null = null;
+    for (const filePath of allFilePaths) {
+      const staticData = staticLinksContext(filePath);
+      if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
+        // Find doc-page or learning-journey that matches the URL exactly
+        const rule = staticData.rules.find(
+          (r: { type: string; url: string; title: string }) =>
+            (r.type === 'docs-page' || r.type === 'learning-journey') && r.url === `https://grafana.com${param}`
+        );
+        if (rule) {
+          foundPage = rule;
+          break;
+        }
+      }
+    }
+    return foundPage;
+  } catch (error) {
+    console.error('Failed to load static links:', error);
+    return null;
+  }
+};
+
+/**
+ * Attempts to auto-open the sidebar with configured tutorial
+ * This is extracted as a function so it can be called both on init and after navigation
+ */
+const attemptAutoOpen = (delay = 200) => {
+  setTimeout(() => {
+    try {
+      const appEvents = getAppEvents();
+      appEvents.publish({
+        type: 'open-extension-sidebar',
+        payload: {
+          pluginId: pluginJson.id,
+          componentTitle: 'Interactive learning',
+        },
+      });
+    } catch (error) {
+      console.error('Failed to auto-open Interactive learning panel:', error);
+    }
+  }, delay);
+};
