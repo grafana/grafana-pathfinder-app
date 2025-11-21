@@ -95,6 +95,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -125,6 +126,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -157,6 +159,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -197,6 +200,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -241,6 +245,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -287,6 +292,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -326,6 +332,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -362,6 +369,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -384,6 +392,42 @@ describe('Security: Recommender Service URL Validation', () => {
       expect(global.fetch).toHaveBeenCalled();
     });
 
+    it('should allow any HTTP URL in dev mode', async () => {
+      (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(true);
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ recommendations: [] }),
+      });
+
+      const mockContextData = {
+        currentPath: '/dashboards',
+        currentUrl: 'http://localhost:3000/dashboards',
+        pathSegments: ['dashboards'],
+        dataSources: [],
+        dashboardInfo: null,
+        recommendations: [],
+        featuredRecommendations: [],
+        tags: [],
+        isLoading: false,
+        recommendationsError: null,
+        recommendationsErrorType: null,
+        usingFallbackRecommendations: false,
+        visualizationType: null,
+        grafanaVersion: '10.0.0',
+        theme: 'dark',
+        timestamp: new Date().toISOString(),
+        searchParams: {},
+      };
+
+      const result = await ContextService.fetchRecommendations(mockContextData, {
+        recommenderServiceUrl: 'http://my-local-recommender.test:8080/recommend',
+        acceptedTermsAndConditions: true,
+      });
+
+      expect(result.error).toBeNull();
+      expect(global.fetch).toHaveBeenCalled();
+    });
+
     it('should reject localhost in production mode', async () => {
       (isDevModeEnabledGlobal as jest.Mock).mockReturnValue(false);
 
@@ -394,6 +438,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -441,6 +486,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -494,6 +540,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -544,6 +591,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
@@ -581,6 +629,7 @@ describe('Security: Recommender Service URL Validation', () => {
         dataSources: [],
         dashboardInfo: null,
         recommendations: [],
+        featuredRecommendations: [],
         tags: [],
         isLoading: false,
         recommendationsError: null,
