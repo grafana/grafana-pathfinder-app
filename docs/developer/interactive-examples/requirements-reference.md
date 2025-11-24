@@ -417,21 +417,17 @@ Objectives serve two key purposes:
 
 ### Objectives vs Requirements
 
-| Aspect | Requirements | Objectives |
-|--------|-------------|------------|
-| Purpose | Gate when step CAN execute | Gate WHETHER step NEEDS to execute |
-| When met | Step becomes enabled | Step is auto-completed |
-| Empty/missing | Always allowed to execute | Must be manually completed |
+| Aspect        | Requirements               | Objectives                         |
+| ------------- | -------------------------- | ---------------------------------- |
+| Purpose       | Gate when step CAN execute | Gate WHETHER step NEEDS to execute |
+| When met      | Step becomes enabled       | Step is auto-completed             |
+| Empty/missing | Always allowed to execute  | Must be manually completed         |
 
 ### Objectives examples
 
 ```html
 <!-- Section with objective - auto-completes if plugin is already installed -->
-<section
-  class="interactive"
-  data-targetaction="sequence"
-  data-objectives="has-plugin:grafana-clock-panel"
->
+<section class="interactive" data-targetaction="sequence" data-objectives="has-plugin:grafana-clock-panel">
   <h2>Install Clock Panel</h2>
   <!-- Steps here auto-complete if objective is met -->
 </section>
