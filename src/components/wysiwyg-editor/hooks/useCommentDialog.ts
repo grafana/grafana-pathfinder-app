@@ -67,4 +67,3 @@ export function useCommentDialog({ editState, stopEditing }: UseCommentDialogOpt
     commentDialogInitialText,
   };
 }
-

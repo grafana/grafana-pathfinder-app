@@ -6,6 +6,7 @@ import React from 'react';
 import { render, screen, cleanup } from '@testing-library/react';
 import BaseInteractiveForm, { type BaseInteractiveFormConfig } from './BaseInteractiveForm';
 import { DATA_ATTRIBUTES, ACTION_TYPES, DEFAULT_VALUES } from '../../../constants/interactive-config';
+import type { Editor } from '@tiptap/react';
 
 // Mock the selector capture hook
 const mockStartCapture = jest.fn();
@@ -29,6 +30,11 @@ describe('BaseInteractiveForm', () => {
   const mockOnApply = jest.fn();
   const mockOnCancel = jest.fn();
   const mockOnSwitchType = jest.fn();
+  const mockEditor = {
+    chain: jest.fn(() => mockEditor),
+    focus: jest.fn(() => mockEditor),
+    run: jest.fn(),
+  } as unknown as Editor;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -38,9 +44,7 @@ describe('BaseInteractiveForm', () => {
     cleanup();
   });
 
-  const createConfigWithSelectorField = (
-    disableSelectorCapture?: boolean
-  ): BaseInteractiveFormConfig => ({
+  const createConfigWithSelectorField = (disableSelectorCapture?: boolean): BaseInteractiveFormConfig => ({
     title: 'Test Form',
     description: 'Test description',
     actionType: ACTION_TYPES.HIGHLIGHT,
@@ -95,6 +99,7 @@ describe('BaseInteractiveForm', () => {
 
     render(
       <BaseInteractiveForm
+        editor={mockEditor}
         config={config}
         onApply={mockOnApply}
         onCancel={mockOnCancel}
@@ -110,6 +115,7 @@ describe('BaseInteractiveForm', () => {
 
     render(
       <BaseInteractiveForm
+        editor={mockEditor}
         config={config}
         onApply={mockOnApply}
         onCancel={mockOnCancel}
@@ -125,6 +131,7 @@ describe('BaseInteractiveForm', () => {
 
     render(
       <BaseInteractiveForm
+        editor={mockEditor}
         config={config}
         onApply={mockOnApply}
         onCancel={mockOnCancel}
@@ -140,6 +147,7 @@ describe('BaseInteractiveForm', () => {
 
     const { unmount } = render(
       <BaseInteractiveForm
+        editor={mockEditor}
         config={config}
         onApply={mockOnApply}
         onCancel={mockOnCancel}
@@ -160,6 +168,7 @@ describe('BaseInteractiveForm', () => {
 
     const { unmount } = render(
       <BaseInteractiveForm
+        editor={mockEditor}
         config={config}
         onApply={mockOnApply}
         onCancel={mockOnCancel}
@@ -182,6 +191,7 @@ describe('BaseInteractiveForm', () => {
 
     render(
       <BaseInteractiveForm
+        editor={mockEditor}
         config={config}
         onApply={mockOnApply}
         onCancel={mockOnCancel}
@@ -198,6 +208,7 @@ describe('BaseInteractiveForm', () => {
 
     render(
       <BaseInteractiveForm
+        editor={mockEditor}
         config={config}
         onApply={mockOnApply}
         onCancel={mockOnCancel}
@@ -210,4 +221,3 @@ describe('BaseInteractiveForm', () => {
     expect(captureButton).toBeDisabled();
   });
 });
-

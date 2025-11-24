@@ -69,8 +69,7 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
 
   // Find selector field to determine if we should auto-start capture
   const selectorField = config.fields.find((field) => field.id === DATA_ATTRIBUTES.REF_TARGET);
-  const shouldAutoStartCapture =
-    selectorField !== undefined && selectorField.disableSelectorCapture !== true;
+  const shouldAutoStartCapture = selectorField !== undefined && selectorField.disableSelectorCapture !== true;
 
   // Selector capture hook - exclude pathfinder content sidebar and form panel
   const { isActive, startCapture, stopCapture } = useSelectorCapture({

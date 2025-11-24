@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Field, Input, Button, Stack, Badge, Icon, Card, HorizontalGroup, Alert, useStyles2 } from '@grafana/ui';
+import { Field, Input, Button, Stack, Badge, Icon, HorizontalGroup, Alert, useStyles2 } from '@grafana/ui';
 import { type InteractiveFormProps } from '../types';
 import {
   DATA_ATTRIBUTES,
@@ -34,7 +34,6 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
 
   // Action recorder hook - exclude the form panel itself
   const {
-    isRecording: recordMode,
     recordingState,
     isPaused,
     recordedSteps,
@@ -131,7 +130,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
     >
       <Stack direction="column" gap={2}>
         {/* Recorder section */}
-        
+
         <h5 className={styles.cardTitle}>Record Actions</h5>
         <Stack direction="column" gap={2}>
           <HorizontalGroup justify="space-between" align="center" wrap>
@@ -166,7 +165,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
                 onClick={handleStopRecording}
                 disabled={recordingState === 'idle'}
               >
-                <Icon name="square" />
+                <Icon name="times" />
                 Stop
               </Button>
             </HorizontalGroup>
@@ -183,7 +182,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
           {isPaused && (
             <Alert severity="warning" title="">
               <Icon name="pause" size="sm" className={styles.alertIcon} />
-              Paused. Click "Resume" to continue capturing.
+              Paused. Click &quot;Resume&quot; to continue capturing.
             </Alert>
           )}
 
@@ -253,7 +252,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
                   : 'Click "Start Recording" to capture a sequence of actions'}
             </div>
           )}
-        </Stack>        
+        </Stack>
 
         {/* Requirements field */}
         <Field

@@ -571,7 +571,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                     onClick={handleStopRecording}
                     disabled={recordingState === 'idle'}
                   >
-                    <Icon name="square" />
+                    <Icon name="times" />
                     Stop
                   </Button>
 
@@ -589,7 +589,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
               {isPaused && (
                 <div className={styles.recordModeHint} style={{ color: 'var(--grafana-colors-warning-text)' }}>
                   <Icon name="pause" size="sm" />
-                  Paused. Click "Resume Recording" to continue capturing actions.
+                  Paused. Click &quot;Resume Recording&quot; to continue capturing actions.
                 </div>
               )}
 
