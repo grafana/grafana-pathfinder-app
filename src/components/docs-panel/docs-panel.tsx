@@ -1743,8 +1743,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       onClick={() => {
                         const url = activeTab.content?.url || activeTab.baseUrl;
                         if (url) {
+                          // Strip /unstyled.html from URL for browser viewing (users want the styled docs page)
+                          const cleanUrl = url.replace(/\/unstyled\.html$/, '');
+
                           reportAppInteraction(UserInteraction.OpenExtraResource, {
-                            content_url: url,
+                            content_url: cleanUrl,
                             content_type: activeTab.type || 'learning-journey',
                             link_text: activeTab.title,
                             source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
@@ -1759,7 +1762,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           });
                           // Delay to ensure analytics event is sent before opening new tab
                           setTimeout(() => {
-                            window.open(url, '_blank', 'noopener,noreferrer');
+                            window.open(cleanUrl, '_blank', 'noopener,noreferrer');
                           }, 100);
                         }
                       }}

@@ -278,11 +278,62 @@ interface DocPage {
 /**
  * Finds a docs page or learning-journey rule matching the param (url)
  */
-const findDocPage = function (param: string) {
+const findDocPage = function (param: string): DocPage | null {
   if (!param || param.trim() === '') {
     return null;
   }
 
+  // Case 1: Bundled interactive
+  if (param.startsWith('bundled:')) {
+    try {
+      const indexData = require('./bundled-interactives/index.json');
+      const interactiveId = param.replace('bundled:', '');
+      const interactive = indexData?.interactives?.find((item: any) => item.id === interactiveId);
+
+      if (interactive) {
+        return {
+          type: 'docs-page', // Bundled interactives are essentially learning journeys
+          url: param,
+          title: interactive.title || interactive.id,
+        };
+      }
+    } catch (e) {
+      console.warn('Failed to load bundled interactives index', e);
+    }
+  }
+
+  // Case 2: GitHub URL
+  if (param.includes('github.com')) {
+    // Ensure protocol
+    let url = param;
+    if (!url.startsWith('http')) {
+      url = 'https://' + url;
+    }
+
+    // Security check: must be a valid GitHub URL
+    // We import isAnyGitHubUrl dynamically to avoid circular dependencies if needed
+    // or just use basic validation here and let content-fetcher do the strict check
+    try {
+      const urlObj = new URL(url);
+      if (urlObj.hostname !== 'github.com') {
+        return null;
+      }
+
+      // Basic title extraction from last path segment
+      const parts = url.split('/');
+      const title = parts[parts.length - 1] || 'Interactive Tutorial';
+
+      return {
+        type: 'docs-page',
+        url: url,
+        title: title,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Case 3: Existing Static Links logic (Grafana.com docs)
   // Dynamically load all JSON files from static-links directory
   try {
     const staticLinksContext = (require as any).context('./bundled-interactives/static-links', false, /\.json$/);
