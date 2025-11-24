@@ -47,9 +47,9 @@ the docs-plugin could check that condition was true.
 - **Example**: `data-requirements="has-datasources"`
 
 #### `has-datasource:name`
-- **Purpose**: Ensures that a data source exists with the specified name or UID
-- **Usage**: name should match either the data source name or UID in Grafana. Use `type:typename` to check by data source type instead
-- **Example**: `data-requirements="has-datasource:prometheus"` or `data-requirements="has-datasource:type:loki"`
+- **Purpose**: Ensures that a data source exists with the specified name or type
+- **Usage**: The value is matched against both the data source name AND type (case-insensitive). First match wins.
+- **Example**: `data-requirements="has-datasource:prometheus"` matches a data source named "prometheus" OR of type "prometheus"
 
 #### `has-plugin:plugin-id`
 - **Purpose**: Ensures that a given plugin is installed and enabled
@@ -100,6 +100,11 @@ the docs-plugin could check that condition was true.
 - **Purpose**: Ensures Grafana version meets minimum requirements
 - **Usage**: Uses semantic version comparison (major.minor.patch)
 - **Example**: `data-requirements="min-version:9.0.0"`
+
+#### `section-completed:sectionId`
+- **Purpose**: Creates dependencies between tutorial sections, ensuring prerequisite sections are completed first
+- **Usage**: Looks for a DOM element with the specified ID and checks if it has the `completed` CSS class
+- **Example**: `data-requirements="section-completed:setup-datasource"`
 
 ### Combining Requirements
 
@@ -434,6 +439,41 @@ When using sequential mode, the system stops checking requirements as soon as on
 - **Performance**: Avoids unnecessary requirement checks
 - **User Experience**: Clear indication that previous steps must be completed
 - **Logical Flow**: Enforces step-by-step progression
+
+### Heartbeat Mechanism
+
+For fragile prerequisites like `navmenu-open` that can change frequently, the system supports an optional scoped heartbeat recheck:
+
+- **Purpose**: Re-validates fragile prerequisites within a short window after they pass
+- **Configuration**: Controlled via `INTERACTIVE_CONFIG.requirements.heartbeat`
+- **Default**: Disabled for performance
+- **When enabled**: Periodically rechecks requirements that might change (e.g., nav menu state)
+
+Configuration options:
+- `enabled`: Whether heartbeat is active (default: false)
+- `intervalMs`: How often to recheck
+- `watchWindowMs`: How long to watch after initial pass
+- `onlyForFragile`: Only recheck fragile requirements like `navmenu-open`
+
+### Debug Tools
+
+For development and testing, you can enable detailed logging:
+
+```javascript
+// Enable debug logging
+localStorage.setItem('grafana-docs-debug', 'true');
+// Reload page to see detailed requirement checking logs
+```
+
+Check requirement state:
+```javascript
+// Access the sequential requirements manager
+const manager = window.SequentialRequirementsManager?.getInstance();
+if (manager) {
+  // Manager provides step state coordination
+  console.log('Manager available for step coordination');
+}
+```
 
 ## Usage Examples
 

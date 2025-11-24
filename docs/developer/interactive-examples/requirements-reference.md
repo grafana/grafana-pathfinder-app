@@ -148,16 +148,16 @@ Note: If a user closes the navigation after a Fix, the system will re-detect the
 
 ### `has-datasource:<identifier>`
 
-**Purpose**: Checks for a specific data source by name, UID, or type.
+**Purpose**: Checks for a specific data source by name or type.
 
-**Search methods**:
+**Search behavior**:
 
-- **By name**: Exact data source name match
-- **By UID**: Exact data source UID match
-- **By type**: Data source type (prometheus, loki, influxdb, etc.)
+- Searches both name AND type fields (case-insensitive)
+- First match wins (checks name first, then type)
+- No special prefix needed for type matching
 
 ```html
-<!-- By name -->
+<!-- Matches data source named "prometheus-main" OR type "prometheus-main" -->
 <li
   class="interactive"
   data-targetaction="button"
@@ -167,7 +167,7 @@ Note: If a user closes the navigation after a Fix, the system will re-detect the
   Select your Prometheus data source.
 </li>
 
-<!-- By type -->
+<!-- Matches any data source of type "prometheus" OR named "prometheus" -->
 <li
   class="interactive"
   data-targetaction="formfill"
@@ -178,14 +178,14 @@ Note: If a user closes the navigation after a Fix, the system will re-detect the
   Enter a Prometheus query.
 </li>
 
-<!-- By UID -->
+<!-- Matches data source named "loki" OR type "loki" -->
 <li
   class="interactive"
   data-targetaction="highlight"
   data-reftarget="div[data-testid='data-source-card']"
-  data-requirements="has-datasource:P1809F7CD0C75ACF3"
+  data-requirements="has-datasource:loki"
 >
-  Configure your data source settings.
+  Configure your Loki data source settings.
 </li>
 ```
 
@@ -236,7 +236,7 @@ Note: If a user closes the navigation after a Fix, the system will re-detect the
 **Examples**:
 
 - `has-dashboard-named:System Overview` - Exact title match required
-- `has-dashboard-named:Production Metrics` - Case-sensitive matching
+- `has-dashboard-named:Production Metrics` - Case-insensitive matching
 
 **Explanation when failed**: "The dashboard '{title}' needs to exist first. Complete the previous tutorial or create it manually."
 
@@ -380,6 +380,71 @@ Requirements can be combined using commas. **All requirements must pass** for th
   data-requirements="section-completed:datasource-setup,on-page:/dashboard"
 >
   Add your first panel.
+</li>
+```
+
+## Objectives System
+
+Objectives declare what a guide step will accomplish. They use the `data-objectives` attribute with the same syntax as requirements.
+
+### Purpose
+
+Objectives serve two key purposes:
+
+1. **Auto-completion**: If an objective is already met when a user visits a guide, the step is automatically marked complete
+2. **Skip unnecessary work**: Users don't need to redo steps they've already accomplished
+
+### Syntax
+
+```html
+<li
+  class="interactive"
+  data-targetaction="button"
+  data-reftarget="Install plugin"
+  data-requirements="exists-reftarget"
+  data-objectives="has-plugin:volkovlabs-rss-datasource"
+>
+  Install the RSS data source plugin.
+</li>
+```
+
+### Key behaviors
+
+- **Objectives always win**: If objectives are met, the step is marked complete regardless of requirements state
+- **All-or-nothing**: When multiple objectives are specified (comma-separated), ALL must be met
+- **Same syntax as requirements**: Use any requirement type as an objective
+- **"Already done!" message**: Auto-completed steps show this explanation
+
+### Objectives vs Requirements
+
+| Aspect | Requirements | Objectives |
+|--------|-------------|------------|
+| Purpose | Gate when step CAN execute | Gate WHETHER step NEEDS to execute |
+| When met | Step becomes enabled | Step is auto-completed |
+| Empty/missing | Always allowed to execute | Must be manually completed |
+
+### Objectives examples
+
+```html
+<!-- Section with objective - auto-completes if plugin is already installed -->
+<section
+  class="interactive"
+  data-targetaction="sequence"
+  data-objectives="has-plugin:grafana-clock-panel"
+>
+  <h2>Install Clock Panel</h2>
+  <!-- Steps here auto-complete if objective is met -->
+</section>
+
+<!-- Step with both requirements and objectives -->
+<li
+  class="interactive"
+  data-requirements="on-page:/connections,exists-reftarget"
+  data-objectives="has-datasource:prometheus"
+  data-targetaction="button"
+  data-reftarget="Add data source"
+>
+  Add a Prometheus data source.
 </li>
 ```
 
