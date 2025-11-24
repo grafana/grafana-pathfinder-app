@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Field, Input, Checkbox, Button } from '@grafana/ui';
 import { type InteractiveFormProps } from '../types';
 import { DATA_ATTRIBUTES } from '../../../constants/interactive-config';
@@ -67,6 +67,11 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
     }
   };
 
+  // Find selector field to determine if we should auto-start capture
+  const selectorField = config.fields.find((field) => field.id === DATA_ATTRIBUTES.REF_TARGET);
+  const shouldAutoStartCapture =
+    selectorField !== undefined && selectorField.disableSelectorCapture !== true;
+
   // Selector capture hook - exclude pathfinder content sidebar and form panel
   const { isActive, startCapture, stopCapture } = useSelectorCapture({
     excludeSelectors: ['[data-pathfinder-content]', '[data-wysiwyg-form]'],
@@ -82,6 +87,19 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
       });
     },
   });
+
+  // Auto-start selector capture when form mounts (if selector field exists and isn't disabled)
+  useEffect(() => {
+    if (shouldAutoStartCapture) {
+      startCapture();
+    }
+    // Cleanup: stop capture when component unmounts
+    return () => {
+      if (shouldAutoStartCapture) {
+        stopCapture();
+      }
+    };
+  }, [shouldAutoStartCapture, startCapture, stopCapture]);
 
   const validateField = (field: FormField, value: any): string | null => {
     // Use centralized validation function from validation service
