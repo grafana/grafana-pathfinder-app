@@ -168,5 +168,5 @@ const InteractiveStep = ({ elementData }) => {
 ## See Also
 
 - `docs/developer/engines/requirements-manager.md` - Requirements validation
-- `docs/developer/ARCHITECTURE.md` - Overall architecture
+- `docs/architecture.dot` - Overall architecture, GraphViz DOT format
 - `.cursor/rules/interactiveRequirements.mdc` - Requirements system documentation

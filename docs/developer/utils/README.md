@@ -306,7 +306,7 @@ The `devtools/` subdirectory contains development-only utilities for creating an
 - `content-fetcher.ts` - Content fetching
 - `html-parser.ts` - HTML parsing
 - `content-renderer.tsx` - React rendering
-- See `docs/developer/ARCHITECTURE.md` for details
+- See `docs/architecture.dot` for details (GraphViz DOT architecture)
 
 ---
 

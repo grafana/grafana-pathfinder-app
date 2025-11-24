@@ -131,5 +131,5 @@ Context detection can be configured via plugin settings:
 ## See Also
 
 - `docs/developer/components/docs-panel/README.md` - Context panel component
-- `docs/developer/ARCHITECTURE.md` - Overall architecture
+- `docs/architecture.dot` - Overall architecture (GraphViz DOT format)
 - `src/types/context.types.ts` - Type definitions
