@@ -61,7 +61,7 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
           label: 'Button Text or Selector:',
           type: 'text',
           placeholder: 'e.g., "Save Dashboard" or button[data-testid="save"]',
-          hint: 'Button text OR CSS selector (e.g., "Save Dashboard" or "button[data-testid=\'save\']"). Supports enhanced selectors like highlight action. Click the target icon to capture a selector.',
+          hint: 'Selector which targets the element you want to interact with',
           required: true,
           autoFocus: true,
           disableSelectorCapture: false,
