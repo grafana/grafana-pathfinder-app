@@ -91,6 +91,8 @@ export const EDITOR_DEFAULTS = {
 
   DEFAULT_SECTION_ID: 'section-1',
   DEFAULT_SECTION_TITLE: 'Section Title',
+
+  DOWNLOAD_FILENAME: 'unstyled.html',
 } as const;
 
 /**

@@ -49,7 +49,7 @@ export function useEditorActions({ editor }: UseEditorActionsOptions): UseEditor
     }
   }, [editor]);
 
-  // Download HTML as file
+  // Download HTML as file - opens in new window for user to save
   const downloadHTML = useCallback(async () => {
     if (!editor) {
       return;
@@ -61,27 +61,26 @@ export function useEditorActions({ editor }: UseEditorActionsOptions): UseEditor
       const sanitized = sanitizeDocumentationHTML(html);
       const formatted = await formatHTML(sanitized);
 
-      // Use 'application/octet-stream' to force download instead of display
-      const blob = new Blob([formatted], { type: 'application/octet-stream' });
+      // Open HTML in a new window - user can save with Cmd+S / Ctrl+S
+      const blob = new Blob([formatted], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.download = 'interactive-guide.html'; // Set download before href
-      a.href = url;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-
-      // Delay cleanup to ensure download starts
-      setTimeout(() => {
-        document.body.removeChild(a);
+      
+      // Open in new window
+      const newWindow = window.open(url, '_blank');
+      
+      // Revoke URL after window loads to free memory
+      if (newWindow) {
+        newWindow.onload = () => {
+          URL.revokeObjectURL(url);
+        };
+      } else {
+        // If popup was blocked, revoke immediately
         URL.revokeObjectURL(url);
-      }, EDITOR_TIMING.DOWNLOAD_CLEANUP_DELAY_MS);
+      }
 
-      debug('[useEditorActions] HTML downloaded');
-      // TODO: Show success toast
+      debug('[useEditorActions] HTML opened in new window');
     } catch (error) {
-      logError('[useEditorActions] Failed to download HTML:', error);
-      // TODO: Show error toast
+      logError('[useEditorActions] Failed to open HTML:', error);
     }
   }, [editor]);
 
