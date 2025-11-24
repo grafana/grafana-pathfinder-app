@@ -9,7 +9,7 @@ import { debug, error as logError } from '../utils/logger';
 import { sanitizeDocumentationHTML } from '../../../security';
 
 // Constants
-import { EDITOR_DEFAULTS, EDITOR_TIMING } from '../../../constants/editor-config';
+import { EDITOR_DEFAULTS } from '../../../constants/editor-config';
 
 // Storage
 import { StorageKeys } from '../../../lib/user-storage';
@@ -64,10 +64,10 @@ export function useEditorActions({ editor }: UseEditorActionsOptions): UseEditor
       // Open HTML in a new window - user can save with Cmd+S / Ctrl+S
       const blob = new Blob([formatted], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
-      
+
       // Open in new window
       const newWindow = window.open(url, '_blank');
-      
+
       // Revoke URL after window loads to free memory
       if (newWindow) {
         newWindow.onload = () => {
