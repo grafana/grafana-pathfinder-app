@@ -1,0 +1,235 @@
+digraph GrafanaPathfinder {
+    rankdir=TB;
+    node [shape=box, style=rounded];
+    
+    // Main Entry Points
+    App [label="App.tsx\n(Entry Point)"];
+    ContextPanel [label="Context Panel\n(Scene)"];
+    
+    // Context System
+    subgraph cluster_context {
+        label="Context System";
+        style=filled;
+        color=lightgrey;
+        
+        ContextHook [label="context.hook\n- Location\n- Data srcs\n- Tags"];
+        ContextService [label="context.service\n- Data sources\n- Dashboards\n- Recommend."];
+        GrafanaAPIs [label="Grafana APIs\n- EchoSrv events\n- Backend APIs\n- LocationSrv"];
+        
+        ContextHook -> ContextService;
+        ContextService -> GrafanaAPIs;
+    }
+    
+    ExternalRecommender [label="External Recommender\nService (Optional)"];
+    
+    // Documentation Rendering
+    subgraph cluster_docs {
+        label="Documentation Rendering";
+        style=filled;
+        color=lightblue;
+        
+        ContentFetcher [label="content-fetcher\n- Multi-src\n- Fallback\n- Bundled"];
+        ContentRenderer [label="content-renderer\n- HTML Parser\n- React Bridge\n- Components"];
+        
+        ContentFetcher -> ContentRenderer;
+    }
+    
+    // Interactive Guide System - Component Layer
+    subgraph cluster_interactive_components {
+        label="Component Layer (React)";
+        style=filled;
+        color=lightgreen;
+        
+        InteractiveSection [label="InteractiveSection\n- Do Section\n- Sequential\n- State mgmt"];
+        InteractiveStep [label="InteractiveStep\n- Show me / Do it buttons\n- Requirements/Objectives"];
+        InteractiveMultiStep [label="InteractiveMultiStep\n- Internal actions\n- Automated sequences"];
+        InteractiveGuided [label="InteractiveGuided\n- User-performed actions\n- Auto-detection support"];
+        
+        InteractiveSection -> InteractiveStep;
+        InteractiveStep -> InteractiveMultiStep;
+        InteractiveMultiStep -> InteractiveGuided;
+    }
+    
+    // Execution Layer
+    subgraph cluster_execution {
+        label="Execution Layer (Hooks & Handlers)";
+        style=filled;
+        color=lightyellow;
+        
+        InteractiveHook [label="interactive.hook\n- Action dispatch\n- Requirements\n- Section blocking"];
+        StepCheckerHook [label="step-checker.hook\n- Requirements validation\n- Objectives validation\n- Retry logic\n- Skippable step support"];
+        RequirementsChecker [label="requirements-checker.utils\n- Pure requirement functions\n- API checks\n- DOM checks"];
+        
+        FocusHandler [label="FocusHandler\n(highlight)"];
+        ButtonHandler [label="ButtonHandler\n(button)"];
+        FormFillHandler [label="FormFillHandler\n(formfill)"];
+        NavigateHandler [label="NavigateHandler\n(navigate)"];
+        HoverHandler [label="HoverHandler\n(hover)"];
+        GuidedHandler [label="GuidedHandler\n(guided)"];
+        
+        InteractiveHook -> FocusHandler;
+        InteractiveHook -> ButtonHandler;
+        InteractiveHook -> FormFillHandler;
+        InteractiveHook -> NavigateHandler;
+        InteractiveHook -> HoverHandler;
+        InteractiveHook -> GuidedHandler;
+        
+        StepCheckerHook -> RequirementsChecker;
+        InteractiveHook -> StepCheckerHook;
+    }
+    
+    // State Management Layer
+    subgraph cluster_state {
+        label="State Management Layer";
+        style=filled;
+        color=lightpink;
+        
+        InteractiveStateManager [label="interactive-state-manager\n- Step states\n- Event dispatch\n- Global blocking"];
+        SequentialRequirementsManager [label="SequentialRequirementsManager\n- Step ordering\n- DOM monitoring\n- Reactive checks"];
+        GlobalInteractionBlocker [label="global-interaction-blocker\n- Main overlay\n- Header overlay\n- Fullscreen modal overlay\n- Cancel handling (Ctrl+C)"];
+        
+        InteractiveStateManager -> GlobalInteractionBlocker;
+        SequentialRequirementsManager -> InteractiveStateManager;
+    }
+    
+    // Navigation & Visibility Layer
+    subgraph cluster_nav {
+        label="Navigation & Visibility Layer";
+        style=filled;
+        color=lightcyan;
+        
+        NavigationManager [label="navigation-manager\n- Scroll into view\n- Highlight elements\n- Comment tooltips\n- Nav menu handling"];
+        ElementValidator [label="element-validator\n- Visibility check\n- Viewport check\n- Fixed position\n- Scroll parents"];
+        EnhancedSelector [label="enhanced-selector\n- :has() fallback\n- :contains() support\n- :nth-match() custom"];
+        
+        NavigationManager -> ElementValidator;
+        ElementValidator -> EnhancedSelector;
+    }
+    
+    // Auto-Detection Layer
+    subgraph cluster_autodetect {
+        label="Auto-Detection Layer (Optional)";
+        style=filled;
+        color=wheat;
+        
+        ActionMonitor [label="action-monitor\n(Singleton)\n- Global listeners\n- Event emission\n- Enable/disable"];
+        ActionMatcher [label="action-matcher\n- Step matching\n- Coordinate-based\n- Selector-based"];
+        ActionDetector [label="action-detector\n- Type detection\n- Element filtering"];
+        
+        ActionMonitor -> ActionDetector;
+        ActionDetector -> ActionMatcher;
+    }
+    
+    // Main Flow Connections
+    App -> ContextPanel;
+    App -> InteractiveSection;
+    ContextPanel -> ContextHook;
+    ContextHook -> ExternalRecommender;
+    ExternalRecommender -> ContentFetcher;
+    ContentRenderer -> InteractiveSection;
+    InteractiveSection -> InteractiveHook;
+    InteractiveHook -> NavigationManager;
+    InteractiveHook -> InteractiveStateManager;
+    InteractiveStateManager -> SequentialRequirementsManager;
+    ActionMonitor -> InteractiveStep;
+    
+    // Data Flow 1: User Opens Pathfinder
+    subgraph cluster_flow1 {
+        label="1. USER OPENS PATHFINDER";
+        style=dashed;
+        color=blue;
+        
+        Flow1_App [label="App.tsx"];
+        Flow1_SceneApp [label="SceneApp"];
+        Flow1_DocsPanel [label="CombinedLearningJourneyPanel\n(docs-panel.tsx)"];
+        
+        Flow1_App -> Flow1_SceneApp -> Flow1_DocsPanel;
+    }
+    
+    // Data Flow 2: Context Detection
+    subgraph cluster_flow2 {
+        label="2. CONTEXT DETECTION (Automatic)";
+        style=dashed;
+        color=blue;
+        
+        Flow2_Location [label="Location Change\n(URL, search params)"];
+        Flow2_ContextHook [label="context.hook.ts\n(useContextPanel)"];
+        Flow2_ContextService [label="context.service.ts\n(getContextData)"];
+        Flow2_ParallelFetch [label="Parallel Fetch:\n- Data sources (API)\n- Dashboard info (API)\n- EchoSrv events"];
+        Flow2_Tags [label="Generate Context Tags"];
+        Flow2_Recommendations [label="Fetch Recommendations:\n- External Recommender OR\n- Fallback (bundled + static)"];
+        Flow2_Display [label="Display Recommendations\nin Context Panel"];
+        
+        Flow2_Location -> Flow2_ContextHook -> Flow2_ContextService -> Flow2_ParallelFetch -> Flow2_Tags -> Flow2_Recommendations -> Flow2_Display;
+    }
+    
+    // Data Flow 3: Documentation Loading
+    subgraph cluster_flow3 {
+        label="3. DOCUMENTATION LOADING";
+        style=dashed;
+        color=blue;
+        
+        Flow3_Click [label="User clicks recommendation"];
+        Flow3_TabMgmt [label="Tab Management\n(CombinedLearningJourneyPanel)"];
+        Flow3_Fetcher [label="content-fetcher.ts\n(fetchContent)\n- Determine content type\n- Fetch raw HTML\n- Extract metadata"];
+        Flow3_Renderer [label="content-renderer.tsx\n(ContentRenderer)"];
+        Flow3_Parser [label="html-parser.ts\n(parseHTMLToComponents)\n- Parse HTML → React\n- Extract interactive elements\n- Fail-fast error handling"];
+        Flow3_Components [label="Render React Components:\n- InteractiveSection\n- InteractiveStep\n- InteractiveMultiStep\n- InteractiveGuided\n- CodeBlock, Images, Videos"];
+        Flow3_DOM [label="Start DOM Monitoring\n(SequentialRequirementsManager)"];
+        
+        Flow3_Click -> Flow3_TabMgmt -> Flow3_Fetcher -> Flow3_Renderer -> Flow3_Parser -> Flow3_Components -> Flow3_DOM;
+    }
+    
+    // Data Flow 4: Interactive Guide Execution
+    subgraph cluster_flow4 {
+        label="4. INTERACTIVE GUIDE EXECUTION";
+        style=dashed;
+        color=blue;
+        
+        Flow4_Click [label="User clicks\n'Show me' or 'Do it'"];
+        Flow4_Step [label="InteractiveStep.tsx\n→ executeInteractiveAction()"];
+        Flow4_Checker [label="step-checker.hook.ts\nPriority Logic:\n1. Check objectives\n2. Check eligibility\n3. Check requirements"];
+        Flow4_Requirements [label="requirements-checker.utils.ts\n- Pure checks\n- DOM checks\n- Retry logic"];
+        Flow4_InteractiveHook [label="interactive.hook.ts\n(useInteractiveElements)"];
+        Flow4_Handlers [label="Action Handler\n(based on targetAction)"];
+        Flow4_StateUpdate [label="State Update\n(interactive-state-manager)\n- Dispatch event"];
+        Flow4_Unlock [label="Sequential Step Unlock\n- Next step becomes eligible"];
+        
+        Flow4_Click -> Flow4_Step -> Flow4_Checker -> Flow4_Requirements -> Flow4_InteractiveHook -> Flow4_Handlers -> Flow4_StateUpdate -> Flow4_Unlock;
+    }
+    
+    // Data Flow 5: Auto-Detection
+    subgraph cluster_flow5 {
+        label="5. AUTO-DETECTION (Optional)";
+        style=dashed;
+        color=blue;
+        
+        Flow5_Monitor [label="ActionMonitor (Singleton)\n- Global DOM listeners"];
+        Flow5_UserAction [label="User performs action\n(click, input, hover)"];
+        Flow5_Detector [label="action-detector.ts\n- Detect action type\n- Filter non-interactive"];
+        Flow5_Emit [label="Emit 'user-action-detected'\ncustom event"];
+        Flow5_Components [label="InteractiveStep/MultiStep/Guided\n- Listen for events\n- Match against config\n(action-matcher)"];
+        Flow5_Match [label="Coordinate-based +\nselector-based matching"];
+        Flow5_Complete [label="Auto-complete step\n- Mark as completed\n- Track analytics\n- Unlock next step"];
+        
+        Flow5_Monitor -> Flow5_UserAction -> Flow5_Detector -> Flow5_Emit -> Flow5_Components -> Flow5_Match -> Flow5_Complete;
+    }
+    
+    // Data Flow 6: Section Execution
+    subgraph cluster_flow6 {
+        label="6. SECTION EXECUTION";
+        style=dashed;
+        color=blue;
+        
+        Flow6_Click [label="User clicks\n'Do Section' button"];
+        Flow6_Section [label="InteractiveSection.tsx\n(handleDoSection)"];
+        Flow6_Blocking [label="Start Section Blocking\n(global-interaction-blocker)\n- Prevents user interference"];
+        Flow6_Disable [label="Disable ActionMonitor\n(prevent auto-detection)"];
+        Flow6_Loop [label="For each step in sequence:\n1. Check requirements\n2. Show phase (1.5s)\n3. Do phase (execute)\n4. Mark completed\n5. Delay (1.8s)\n6. Handle failures"];
+        Flow6_Pause [label="PAUSE for Guided steps\n- user must click 'Do it'"];
+        Flow6_Stop [label="Stop Section Blocking\nRe-enable ActionMonitor\nPersist to localStorage"];
+        
+        Flow6_Click -> Flow6_Section -> Flow6_Blocking -> Flow6_Disable -> Flow6_Loop -> Flow6_Pause -> Flow6_Stop;
+    }
+}
+
