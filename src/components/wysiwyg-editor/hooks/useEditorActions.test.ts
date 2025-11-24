@@ -4,7 +4,6 @@
 
 import { renderHook, act, cleanup } from '@testing-library/react';
 import { useEditorActions } from './useEditorActions';
-import { EDITOR_DEFAULTS } from '../../../constants/editor-config';
 import type { Editor } from '@tiptap/react';
 
 // Mock dependencies
@@ -111,52 +110,55 @@ describe('useEditorActions', () => {
   });
 
   describe('downloadHTML', () => {
-    it('should download HTML file with correct filename', async () => {
-      const createElementSpy = jest.spyOn(document, 'createElement');
+    it('should open HTML in new window', async () => {
+      const windowOpenSpy = jest.spyOn(window, 'open').mockReturnValue({
+        onload: null,
+      } as Window);
+
       const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
 
       await act(async () => {
         await result.current.downloadHTML();
       });
 
-      // Verify anchor element was created
-      expect(createElementSpy).toHaveBeenCalledWith('a');
+      // Verify blob URL was created
+      expect(mockCreateObjectURL).toHaveBeenCalled();
 
-      // Verify download attribute is set to the correct filename
-      expect(mockAnchorElement.download).toBe(EDITOR_DEFAULTS.DOWNLOAD_FILENAME);
+      // Verify window.open was called with blob URL
+      expect(windowOpenSpy).toHaveBeenCalledWith('blob:mock-url', '_blank');
 
-      // Verify anchor was appended and clicked
-      expect(document.body.appendChild).toHaveBeenCalledWith(mockAnchorElement);
-      expect(mockAnchorElement.click).toHaveBeenCalled();
-
-      // Verify cleanup happens after delay
-      act(() => {
-        jest.advanceTimersByTime(100);
-      });
-
-      expect(document.body.removeChild).toHaveBeenCalled();
+      // Verify URL is revoked after window loads
+      const mockWindow = windowOpenSpy.mock.results[0].value as Window & { onload: (() => void) | null };
+      if (mockWindow.onload) {
+        mockWindow.onload();
+      }
       expect(mockRevokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
 
-      createElementSpy.mockRestore();
+      windowOpenSpy.mockRestore();
     });
 
-    it('should not download if editor is null', async () => {
-      const createElementSpy = jest.spyOn(document, 'createElement');
+    it('should not open window if editor is null', async () => {
+      const windowOpenSpy = jest.spyOn(window, 'open').mockReturnValue({
+        onload: null,
+      } as Window);
+
       const { result } = renderHook(() => useEditorActions({ editor: null }));
 
       await act(async () => {
         await result.current.downloadHTML();
       });
 
-      // createElement may be called for other elements (like container divs),
-      // but should not be called with 'a' for anchor element
-      expect(createElementSpy).not.toHaveBeenCalledWith('a');
+      expect(windowOpenSpy).not.toHaveBeenCalled();
       expect(mockCreateObjectURL).not.toHaveBeenCalled();
 
-      createElementSpy.mockRestore();
+      windowOpenSpy.mockRestore();
     });
 
     it('should create blob with correct type', async () => {
+      const windowOpenSpy = jest.spyOn(window, 'open').mockReturnValue({
+        onload: null,
+      } as Window);
+
       const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
 
       await act(async () => {
@@ -167,7 +169,30 @@ describe('useEditorActions', () => {
       expect(mockCreateObjectURL).toHaveBeenCalled();
       // The blob type is checked indirectly through the createObjectURL call
       // We can't easily inspect the Blob constructor call in jsdom, but we verify
-      // the download filename which is the main requirement
+      // that window.open is called which is the main requirement
+
+      windowOpenSpy.mockRestore();
+    });
+
+    it('should revoke URL immediately if popup is blocked', async () => {
+      const windowOpenSpy = jest.spyOn(window, 'open').mockReturnValue(null);
+
+      const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
+
+      await act(async () => {
+        await result.current.downloadHTML();
+      });
+
+      // Verify blob URL was created
+      expect(mockCreateObjectURL).toHaveBeenCalled();
+
+      // Verify window.open was attempted
+      expect(windowOpenSpy).toHaveBeenCalledWith('blob:mock-url', '_blank');
+
+      // Verify URL is revoked immediately when popup is blocked
+      expect(mockRevokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+
+      windowOpenSpy.mockRestore();
     });
   });
 
