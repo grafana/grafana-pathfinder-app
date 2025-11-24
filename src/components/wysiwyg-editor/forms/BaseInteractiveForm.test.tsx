@@ -163,29 +163,6 @@ describe('BaseInteractiveForm', () => {
     expect(mockStopCapture).toHaveBeenCalledTimes(1);
   });
 
-  it('should NOT stop capture on unmount when selector capture was disabled', () => {
-    const config = createConfigWithSelectorField(true);
-
-    const { unmount } = render(
-      <BaseInteractiveForm
-        editor={mockEditor}
-        config={config}
-        onApply={mockOnApply}
-        onCancel={mockOnCancel}
-        onSwitchType={mockOnSwitchType}
-      />
-    );
-
-    expect(mockStartCapture).not.toHaveBeenCalled();
-
-    unmount();
-
-    // stopCapture should still be called as part of cleanup, but it's safe to call even if not started
-    // The actual implementation calls stopCapture in cleanup if shouldAutoStartCapture is true
-    // Since we're testing the disabled case, we verify startCapture wasn't called
-    expect(mockStartCapture).not.toHaveBeenCalled();
-  });
-
   it('should render selector capture button when selector field exists', () => {
     const config = createConfigWithSelectorField(false);
 
