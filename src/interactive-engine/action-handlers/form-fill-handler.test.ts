@@ -187,6 +187,7 @@ describe('FormFillHandler', () => {
         ...mockElement,
         tagName: 'DIV',
         textContent: '',
+        querySelector: jest.fn().mockReturnValue(null), // Mock no nested input found
       } as unknown as HTMLElement;
       mockQuerySelectorAll.mockReturnValue([divElement]);
 
