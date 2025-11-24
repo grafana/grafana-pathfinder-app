@@ -69,33 +69,69 @@ export class FormFillHandler {
     // Clear any existing highlights before performing action
     this.navigationManager.clearAllHighlights();
 
+    // Refine target: if the user selected a wrapper (e.g. div), try to find the actual input inside
+    const refinedElement = this.descendToFormElement(targetElement);
+
     const value = data.targetvalue || '';
     const { shouldClear, remainingValue } = this.parseClearCommand(value);
 
-    const tagName = targetElement.tagName.toLowerCase();
-    const inputType = this.getInputType(targetElement);
-    const isMonacoEditor = this.isMonacoEditor(targetElement);
+    const tagName = refinedElement.tagName.toLowerCase();
+    const inputType = this.getInputType(refinedElement);
+    const isMonacoEditor = this.isMonacoEditor(refinedElement);
 
     // Clear element if command detected
     if (shouldClear) {
-      await this.clearElement(targetElement, tagName, isMonacoEditor);
+      await this.clearElement(refinedElement, tagName, isMonacoEditor);
     }
 
     // Process remaining value (if any)
-    const isCombobox = this.isAriaCombobox(targetElement);
+    const isCombobox = this.isAriaCombobox(refinedElement);
     if (isCombobox) {
-      await this.fillComboboxStaged(targetElement, remainingValue);
+      await this.fillComboboxStaged(refinedElement, remainingValue);
       // Combobox flow handles its own events/enters; still dispatch final blur/change to settle state
-      await this.dispatchEvents(targetElement, tagName, false);
+      await this.dispatchEvents(refinedElement, tagName, false);
       await this.markAsCompleted(data);
       return;
     }
 
     // For non-combobox elements, set value and dispatch events
     // Always dispatch events even if remainingValue is empty to maintain backward compatibility
-    await this.setElementValue(targetElement, remainingValue, tagName, inputType, isMonacoEditor);
-    await this.dispatchEvents(targetElement, tagName, isMonacoEditor);
+    await this.setElementValue(refinedElement, remainingValue, tagName, inputType, isMonacoEditor);
+    await this.dispatchEvents(refinedElement, tagName, isMonacoEditor);
     await this.markAsCompleted(data);
+  }
+
+  /**
+   * Helper to find the best actionable element.
+   * If the target is a wrapper (div, span), it looks for a nested input/textarea/select.
+   */
+  private descendToFormElement(element: HTMLElement): HTMLElement {
+    const tagName = element.tagName.toLowerCase();
+
+    // 1. If it's already a supported form element, return it
+    if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+      return element;
+    }
+
+    // 2. If it's a Monaco editor (special class detection), return it
+    if (this.isMonacoEditor(element)) {
+      return element;
+    }
+
+    // 3. If it's contenteditable, it accepts input directly
+    if (element.isContentEditable) {
+      return element;
+    }
+
+    // 4. Try to find a nested form element
+    // We exclude hidden inputs to avoid targeting metadata fields
+    const nestedInput = element.querySelector('input:not([type="hidden"]), textarea, select');
+    if (nestedInput instanceof HTMLElement) {
+      return nestedInput;
+    }
+
+    // 5. Fallback: return the original element (e.g. for div-based custom inputs we don't recognize)
+    return element;
   }
 
   private getInputType(element: HTMLElement): string {
@@ -111,7 +147,14 @@ export class FormFillHandler {
     const ariaAutocomplete = element.getAttribute('aria-autocomplete');
 
     // Primary: ARIA role detection (most reliable)
+    // Check element itself OR its parent (if we descended into an input inside a combobox wrapper)
+    // Some libraries put role="combobox" on the wrapper div
     if (role === 'combobox' && (ariaAutocomplete === 'list' || ariaAutocomplete === 'both')) {
+      return true;
+    }
+
+    const parentElement = element.parentElement;
+    if (parentElement && parentElement.getAttribute('role') === 'combobox') {
       return true;
     }
 
