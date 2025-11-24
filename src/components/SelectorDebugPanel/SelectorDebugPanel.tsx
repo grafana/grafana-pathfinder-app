@@ -130,7 +130,6 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   // Record Mode
   const [allStepsCopied, setAllStepsCopied] = useState(false);
   const {
-    isRecording: recordMode,
     recordingState,
     isPaused,
     recordedSteps,
