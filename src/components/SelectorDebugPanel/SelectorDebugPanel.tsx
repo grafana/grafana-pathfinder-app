@@ -714,7 +714,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       )}
 
       {/* DOM Path Tooltip for Record Mode */}
-      {recordMode && recordDomPath && recordCursorPosition && (
+      {recordingState !== 'idle' && recordDomPath && recordCursorPosition && (
         <DomPathTooltip domPath={recordDomPath} position={recordCursorPosition} visible={true} />
       )}
     </div>
