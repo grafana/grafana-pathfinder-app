@@ -24,17 +24,20 @@ The Requirements Manager ensures that interactive steps can only be executed whe
 **Purpose**: Unified hook for checking both requirements and objectives
 
 **Key Features**:
+
 - Checks objectives first (for auto-completion)
 - Validates requirements (for execution eligibility)
 - Provides user-friendly error messages
 - Integrates with sequential step management
 
 **Priority Logic**:
+
 1. Check objectives (auto-complete if met)
 2. Check sequential eligibility
 3. Check requirements (preconditions)
 
 **Usage**:
+
 ```typescript
 import { useStepChecker } from '../requirements-manager';
 
@@ -45,7 +48,7 @@ const InteractiveStep = ({ requirements, objectives }) => {
     stepId: '1.1',
     // ...
   });
-  
+
   // Use state to enable/disable step
 };
 ```
@@ -59,6 +62,7 @@ const InteractiveStep = ({ requirements, objectives }) => {
 **Purpose**: Pure functions for checking individual requirements
 
 **Supported Requirements**:
+
 - `exists-reftarget` - Element exists in DOM
 - `has-datasources` - At least one datasource configured
 - `has-datasource:<name>` - Specific datasource exists
@@ -75,6 +79,7 @@ const InteractiveStep = ({ requirements, objectives }) => {
 
 **Check Functions**:
 Each requirement has a corresponding check function:
+
 - `checkHasDatasource()`
 - `checkHasPlugin()`
 - `checkIsAdmin()`
@@ -97,6 +102,7 @@ Objectives are checked using the same functions as requirements, but with differ
 **Purpose**: Provides user-friendly error messages for failed requirements
 
 **Features**:
+
 - Maps requirement names to explanations
 - Provides fix suggestions where applicable
 - Supports custom hints via `data-hint` attribute
@@ -104,6 +110,7 @@ Objectives are checked using the same functions as requirements, but with differ
 ## Sequential Step Management
 
 The Requirements Manager integrates with `interactive-engine/sequence-manager.ts` to:
+
 - Enforce sequential dependencies
 - Track step completion
 - Unlock next steps when previous steps complete
@@ -111,11 +118,13 @@ The Requirements Manager integrates with `interactive-engine/sequence-manager.ts
 ## Error Handling
 
 **Retry Logic**:
+
 - 3 attempts with 200ms delay
 - Exponential backoff for network errors
 - Fail-open for unknown requirements (passes with warning)
 
 **User Feedback**:
+
 - Clear error messages
 - "Fix this" buttons for fixable requirements
 - "Skip" buttons for skippable steps
@@ -134,7 +143,7 @@ The Requirements Manager integrates with:
 import { useStepChecker } from '../requirements-manager';
 
 const InteractiveStep = ({ elementData }) => {
-  const { 
+  const {
     requirementsState,
     objectivesState,
     isEligible,
@@ -145,10 +154,10 @@ const InteractiveStep = ({ elementData }) => {
     stepId: elementData.stepId,
     sectionId: elementData.sectionId,
   });
-  
+
   const isEnabled = canExecute && isEligible;
   const isCompleted = objectivesState.pass;
-  
+
   return (
     <button disabled={!isEnabled || isCompleted}>
       {isCompleted ? '✓ Completed' : 'Do it'}
@@ -162,4 +171,3 @@ const InteractiveStep = ({ elementData }) => {
 - `.cursor/rules/interactiveRequirements.mdc` - Comprehensive requirements documentation
 - `docs/developer/interactive-examples/requirements-reference.md` - Requirements reference
 - `docs/developer/engines/interactive-engine.md` - Interactive engine documentation
-

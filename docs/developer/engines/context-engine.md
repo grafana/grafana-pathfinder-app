@@ -23,12 +23,14 @@ The Context Engine continuously monitors the user's activity in Grafana (current
 **Purpose**: Fetches context data and generates recommendations
 
 **Key Features**:
+
 - Analyzes current Grafana state
 - Generates context tags
 - Fetches recommendations from ML service
 - Provides fallback recommendations
 
 **Context Data Collected**:
+
 - Current page path and URL
 - Active datasources
 - Dashboard information
@@ -45,12 +47,14 @@ The Context Engine continuously monitors the user's activity in Grafana (current
 **Purpose**: React hook for context panel component
 
 **Key Features**:
+
 - Monitors location changes
 - Debounces context updates
 - Manages recommendation state
 - Handles errors gracefully
 
 **Usage**:
+
 ```typescript
 import { useContextPanel } from '../context-engine';
 
@@ -59,7 +63,7 @@ const ContextPanel = () => {
     onOpenLearningJourney: handleOpenJourney,
     onOpenDocsPage: handleOpenDocs,
   });
-  
+
   // Render recommendations
 };
 ```
@@ -76,6 +80,7 @@ The engine detects context through multiple sources:
 ## Tag Generation
 
 Context tags are generated from:
+
 - Page paths (e.g., `/dashboard`, `/datasources`)
 - Datasource types (e.g., `prometheus`, `loki`)
 - Visualization types (e.g., `graph`, `table`)
@@ -94,6 +99,7 @@ Tags are sent to the recommendation service to find relevant content.
 ## Timeout Management
 
 The engine uses `src/utils/timeout-manager.ts` for:
+
 - Debouncing context updates (500ms)
 - Preventing rapid-fire API calls
 - Managing timeout cleanup
@@ -101,6 +107,7 @@ The engine uses `src/utils/timeout-manager.ts` for:
 ## Event Buffering
 
 EchoSrv events are buffered to handle:
+
 - Plugin close/reopen scenarios
 - Missed events during plugin downtime
 - Initialization from recent events
@@ -116,6 +123,7 @@ The Context Engine integrates with:
 ## Configuration
 
 Context detection can be configured via plugin settings:
+
 - Enable/disable context-aware recommendations
 - Configure recommendation service URL
 - Set data usage preferences
@@ -125,4 +133,3 @@ Context detection can be configured via plugin settings:
 - `docs/developer/components/docs-panel/README.md` - Context panel component
 - `docs/developer/ARCHITECTURE.md` - Overall architecture
 - `src/types/context.types.ts` - Type definitions
-

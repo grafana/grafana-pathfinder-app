@@ -65,6 +65,7 @@ Located in `src/components/wysiwyg-editor/hooks/`:
 ### Interactive Element Creation
 
 The editor allows creating interactive elements through:
+
 - Visual selection of elements
 - Form-based configuration
 - Attribute editing
@@ -102,6 +103,7 @@ const EditorPage = () => {
 ## Integration
 
 The WYSIWYG Editor integrates with:
+
 - **TipTap** - Rich text editing framework
 - **Interactive Engine** - For testing interactive elements
 - **Content Renderer** - For preview functionality
@@ -110,4 +112,3 @@ The WYSIWYG Editor integrates with:
 
 - `docs/developer/interactive-examples/authoring-interactive-journeys.md` - Guide authoring
 - TipTap documentation: https://tiptap.dev/
-

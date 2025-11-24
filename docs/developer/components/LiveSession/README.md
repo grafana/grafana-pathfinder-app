@@ -40,12 +40,14 @@ Live Session enables multiple users to participate in shared learning sessions, 
 ## Integration
 
 Live Session uses:
+
 - **PeerJS** (`peerjs` package) - P2P communication
 - **Live Session Service** - Session management (see `src/integrations/workshop/`)
 
 ## Configuration
 
 Live Session can be configured via:
+
 - Plugin settings for PeerJS server
 - Session parameters
 - Connection options
@@ -67,4 +69,3 @@ import { PresenterControls, AttendeeJoin } from '../components/LiveSession';
 - `docs/developer/README_LIVE_SESSIONS.md` - Live sessions documentation
 - `docs/developer/LOCAL_PEERJS_SERVER.md` - Local PeerJS server setup
 - `docs/developer/DEBUGGING-LIVE-SESSIONS.md` - Debugging guide
-

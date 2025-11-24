@@ -15,6 +15,7 @@ The Workshop integration enables recording and replaying user actions, which is 
 **Purpose**: Captures user actions for later replay
 
 **Features**:
+
 - Records user interactions (clicks, inputs, navigation)
 - Captures element selectors and context
 - Stores action sequences
@@ -26,6 +27,7 @@ The Workshop integration enables recording and replaying user actions, which is 
 **Purpose**: Replays captured actions
 
 **Features**:
+
 - Executes actions in sequence
 - Validates element existence before replay
 - Handles timing and delays
@@ -33,6 +35,7 @@ The Workshop integration enables recording and replaying user actions, which is 
 ## Usage
 
 The Workshop integration is typically used in development mode for:
+
 - Creating interactive guides
 - Testing action sequences
 - Debugging interactive elements
@@ -46,4 +49,3 @@ The Workshop integration is typically used in development mode for:
 
 - `docs/developer/DEV_MODE.md` - Development mode documentation
 - `src/utils/devtools/action-recorder.hook.ts` - Action recording hook
-

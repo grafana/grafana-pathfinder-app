@@ -121,6 +121,7 @@ CombinedLearningJourneyPanel        // Main panel with tab management (docs-pane
 The codebase is organized into specialized engine modules that encapsulate related functionality:
 
 **Core Engines:**
+
 - **`interactive-engine/`**: Interactive guide execution system
   - `interactive.hook.ts` - Main interactive elements hook
   - `action-handlers/` - Action execution handlers (button, formfill, navigate, etc.)
@@ -166,9 +167,9 @@ useContentRenderer(); // Content rendering logic (from content-renderer.tsx)
 **Content Flow Pipeline:**
 
 ```
-URL Request → Content Fetcher (docs-retrieval/content-fetcher.ts) 
-  → HTML Parser (docs-retrieval/html-parser.ts) 
-  → Content Renderer (docs-retrieval/content-renderer.tsx) 
+URL Request → Content Fetcher (docs-retrieval/content-fetcher.ts)
+  → HTML Parser (docs-retrieval/html-parser.ts)
+  → Content Renderer (docs-retrieval/content-renderer.tsx)
   → React Components (docs-retrieval/components/)
 ```
 
@@ -185,6 +186,7 @@ URL Request → Content Fetcher (docs-retrieval/content-fetcher.ts)
 4. **Render**: Theme-aware React component output (`content-renderer.tsx`)
 
 **Content System Location:**
+
 - All content retrieval logic is in `src/docs-retrieval/` (top-level, not under utils)
 - Components are in `src/docs-retrieval/components/`
   - Interactive components: `components/interactive/`
@@ -244,9 +246,9 @@ Content Request → Strategy Selection → Fetch Execution → Metadata Extracti
 ### 3. Interactive System Flow
 
 ```
-HTML Elements → Parser (docs-retrieval/html-parser.ts) 
-  → React Components (docs-retrieval/components/interactive/) 
-  → Requirements Checker (requirements-manager/step-checker.hook.ts) 
+HTML Elements → Parser (docs-retrieval/html-parser.ts)
+  → React Components (docs-retrieval/components/interactive/)
+  → Requirements Checker (requirements-manager/step-checker.hook.ts)
   → Action Executor (interactive-engine/action-handlers/)
 ```
 
@@ -456,6 +458,7 @@ src/styles/
 ### Security Module Location
 
 All security utilities are centralized in `src/security/`:
+
 - `html-sanitizer.ts` - HTML content sanitization
 - `url-validator.ts` - URL validation and sanitization
 - `log-sanitizer.ts` - Log output sanitization

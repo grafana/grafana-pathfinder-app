@@ -275,6 +275,7 @@ The `devtools/` subdirectory contains development-only utilities for creating an
 ### Interactive Guide System
 
 **Location**: `src/interactive-engine/`
+
 - `interactive.hook.ts` - Main interactive elements hook
 - `action-handlers/` - Action execution handlers
 - `navigation-manager.ts` - Element navigation
@@ -284,6 +285,7 @@ The `devtools/` subdirectory contains development-only utilities for creating an
 ### Context & Recommendations
 
 **Location**: `src/context-engine/`
+
 - `context.hook.ts` - Context panel hook
 - `context.service.ts` - Context data service
 - See `docs/developer/engines/context-engine.md` for details
@@ -291,6 +293,7 @@ The `devtools/` subdirectory contains development-only utilities for creating an
 ### Requirements System
 
 **Location**: `src/requirements-manager/`
+
 - `step-checker.hook.ts` - Step requirements/objectives checking
 - `requirements-checker.hook.ts` - Requirements validation
 - `requirements-checker.utils.ts` - Requirement check functions
@@ -299,6 +302,7 @@ The `devtools/` subdirectory contains development-only utilities for creating an
 ### Content Retrieval
 
 **Location**: `src/docs-retrieval/` (top-level, not under utils)
+
 - `content-fetcher.ts` - Content fetching
 - `html-parser.ts` - HTML parsing
 - `content-renderer.tsx` - React rendering

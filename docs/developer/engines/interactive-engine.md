@@ -27,22 +27,24 @@ The Interactive Engine provides the core functionality for "Show me" and "Do it"
 **Purpose**: Main hook for managing interactive guide elements
 
 **Key Features**:
+
 - Attaches event listeners to interactive elements
 - Handles action execution (show/do)
 - Manages requirements checking
 - Coordinates with action handlers
 
 **Usage**:
+
 ```typescript
 import { useInteractiveElements } from '../interactive-engine';
 
 const MyComponent = () => {
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
   useInteractiveElements({
     containerRef,
   });
-  
+
   return <div ref={containerRef}>Content</div>;
 };
 ```
@@ -59,6 +61,7 @@ Located in `src/interactive-engine/action-handlers/`:
 - **`guided-handler.ts`** - Handles guided user-performed actions
 
 Each handler follows a consistent pattern:
+
 1. Find target element(s)
 2. Validate visibility
 3. Navigate if needed
@@ -72,6 +75,7 @@ Each handler follows a consistent pattern:
 **Purpose**: Ensures elements are visible and navigates to them if needed
 
 **Key Functions**:
+
 - `ensureNavigationOpen()` - Opens/docks navigation menu
 - `ensureElementVisible()` - Scrolls elements into view
 - `highlightWithComment()` - Highlights elements with tooltips
@@ -84,6 +88,7 @@ Each handler follows a consistent pattern:
 **Purpose**: Manages sequential execution of multiple steps
 
 **Key Features**:
+
 - Coordinates step-by-step execution
 - Handles timing between steps
 - Manages failure recovery
@@ -98,6 +103,7 @@ Each handler follows a consistent pattern:
 **Purpose**: Tracks execution state and coordinates with global blocker
 
 **Key Features**:
+
 - Tracks step execution state
 - Dispatches completion events
 - Coordinates section blocking
@@ -109,6 +115,7 @@ Each handler follows a consistent pattern:
 **Purpose**: Blocks user interactions during section execution
 
 **Features**:
+
 - Creates overlays (main, header, fullscreen modal)
 - Prevents user interference during automation
 - Handles cancellation (Ctrl+C or cancel button)
@@ -139,17 +146,17 @@ import { useStepChecker } from '../requirements-manager';
 
 const InteractiveStep = ({ elementData }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
   // Set up interactive elements
   useInteractiveElements({ containerRef });
-  
+
   // Check requirements
   const { requirementsState } = useStepChecker({
     requirements: elementData.requirements,
     objectives: elementData.objectives,
     // ...
   });
-  
+
   return (
     <div ref={containerRef}>
       {/* Step content */}
@@ -163,4 +170,3 @@ const InteractiveStep = ({ elementData }) => {
 - `docs/developer/engines/requirements-manager.md` - Requirements validation
 - `docs/developer/ARCHITECTURE.md` - Overall architecture
 - `.cursor/rules/interactiveRequirements.mdc` - Requirements system documentation
-
