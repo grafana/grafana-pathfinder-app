@@ -281,7 +281,7 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
     },
     formConfig: {
       title: ACTION_TYPES.MULTISTEP,
-      description: 'Multiple related actions in sequence (typically contains nested interactive spans)',
+      description: 'Multiple related actions in sequence',
       actionType: ACTION_TYPES.MULTISTEP,
       fields: [
         {

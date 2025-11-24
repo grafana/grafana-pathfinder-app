@@ -201,6 +201,23 @@ export const getMultistepFormStyles = (theme: GrafanaTheme2) => ({
       '50%': { opacity: 0.3 },
     },
   }),
+
+  pausedModeActive: css({
+    backgroundColor: theme.colors.warning.main,
+    color: theme.colors.warning.contrastText,
+    '&:hover': {
+      backgroundColor: theme.colors.warning.shade,
+    },
+  }),
+
+  pausedDot: css({
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: theme.colors.warning.main,
+    display: 'inline-block',
+    marginRight: theme.spacing(0.5),
+  }),
   stepCode: css({
     fontFamily: theme.typography.fontFamilyMonospace,
     fontSize: theme.typography.bodySmall.fontSize,

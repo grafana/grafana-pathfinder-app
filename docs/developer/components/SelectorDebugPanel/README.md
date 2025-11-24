@@ -153,9 +153,10 @@ button|Save Dashboard|
 
 **Features:**
 
-- "Start Recording" / "Stop Recording" toggle
-- Red blinking dot indicator
-- Captures clicks instantly
+- Three-button control toolbar (Record/Resume, Pause, Stop) modeled after media player controls
+- Red blinking dot indicator when actively recording
+- Amber indicator when paused
+- Captures clicks instantly (only when recording, not paused)
 - Captures form fills on blur/change (final value)
 - Shows step count badge
 - Displays recorded steps with:
@@ -166,6 +167,7 @@ button|Save Dashboard|
 - "Clear All" button
 - "Copy All" button (clipboard)
 - "Load into MultiStep" button (auto-fills MultiStep textarea)
+- **Pause/Resume support** - Pause recording to inspect UI without losing captured steps
 
 **Workflow:**
 
@@ -174,12 +176,22 @@ button|Save Dashboard|
 2. Perform actions in Grafana:
    - Click "Dashboards" menu
    - Fill search field: "Prometheus"
-   - Click "Prometheus" result
-3. Click "Stop Recording"
-4. See 3 captured steps with selectors
-5. Click "Load into MultiStep"
-6. Click "Run MultiStep" to replay
+3. Click "Pause" (amber indicator) - stops capturing but keeps steps
+4. Inspect UI, navigate around, etc.
+5. Click "Resume Recording" - continues capturing from where you left off
+6. Click "Prometheus" result
+7. Click "Stop" - exits record mode, keeps all steps
+8. See 3 captured steps with selectors
+9. Click "Load into MultiStep"
+10. Click "Run MultiStep" to replay
 ```
+
+**Pause/Resume Behavior:**
+
+- **Pausing** stops event capture but preserves all recorded steps
+- **Resuming** continues capturing new actions without losing previous steps
+- Steps are seamlessly stitched together - pause/resume is transparent to the final sequence
+- Perfect for inspecting UI state mid-recording or handling interruptions
 
 **Action Detection:**
 

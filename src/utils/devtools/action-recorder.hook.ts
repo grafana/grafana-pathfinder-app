@@ -9,6 +9,8 @@ import { exportStepsToHTML, type RecordedStep, type ExportOptions } from './tuto
 import { formatStepsToString } from './step-parser.util';
 import { useElementInspector } from './element-inspector.hook';
 
+export type RecordingState = 'idle' | 'recording' | 'paused';
+
 export interface UseActionRecorderOptions {
   excludeSelectors?: string[];
   onStepRecorded?: (step: RecordedStep) => void;
@@ -16,9 +18,13 @@ export interface UseActionRecorderOptions {
 }
 
 export interface UseActionRecorderReturn {
-  isRecording: boolean;
+  isRecording: boolean; // Backward compatibility: true when state is 'recording'
+  recordingState: RecordingState;
+  isPaused: boolean;
   recordedSteps: RecordedStep[];
   startRecording: () => void;
+  pauseRecording: () => void;
+  resumeRecording: () => void;
   stopRecording: () => void;
   clearRecording: () => void;
   deleteStep: (index: number) => void;
@@ -40,12 +46,21 @@ export interface UseActionRecorderReturn {
  *
  * @example
  * ```typescript
- * const { isRecording, recordedSteps, startRecording, stopRecording, exportSteps } = useActionRecorder({
+ * const { isRecording, recordedSteps, startRecording, pauseRecording, resumeRecording, stopRecording, exportSteps } = useActionRecorder({
  *   onStepRecorded: (step) => console.log('Recorded:', step)
  * });
  *
  * // Start recording
  * startRecording();
+ *
+ * // Pause recording (keeps steps, stops capturing)
+ * pauseRecording();
+ *
+ * // Resume recording (continues capturing)
+ * resumeRecording();
+ *
+ * // Stop recording (keeps steps, exits record mode)
+ * stopRecording();
  *
  * // Export as string
  * const stepsString = exportSteps('string');
@@ -57,23 +72,42 @@ const DEFAULT_EXCLUDE_SELECTORS: string[] = [];
 export function useActionRecorder(options: UseActionRecorderOptions = {}): UseActionRecorderReturn {
   const { excludeSelectors = DEFAULT_EXCLUDE_SELECTORS, onStepRecorded, enableInspector = true } = options;
 
-  const [isRecording, setIsRecording] = useState(false);
+  const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordedSteps, setRecordedSteps] = useState<RecordedStep[]>([]);
   const recordingElementsRef = useRef<Map<HTMLElement, { value: string; timestamp: number }>>(new Map());
 
+  // Backward compatibility: isRecording is true when actively recording (not paused)
+  const isRecording = recordingState === 'recording';
+  const isPaused = recordingState === 'paused';
+
   // Element inspector for hover highlighting and DOM path display
+  // Only active when actually recording (not paused)
   const { hoveredElement, domPath, cursorPosition } = useElementInspector({
     isActive: isRecording && enableInspector,
     excludeSelectors,
   });
 
   const startRecording = useCallback(() => {
-    setIsRecording(true);
+    setRecordingState('recording');
     recordingElementsRef.current.clear();
   }, []);
 
+  const pauseRecording = useCallback(() => {
+    if (recordingState === 'recording') {
+      setRecordingState('paused');
+      // Keep recorded steps and tracking refs - just stop capturing
+    }
+  }, [recordingState]);
+
+  const resumeRecording = useCallback(() => {
+    if (recordingState === 'paused') {
+      setRecordingState('recording');
+      // Resume capturing - reuse existing state/refs
+    }
+  }, [recordingState]);
+
   const stopRecording = useCallback(() => {
-    setIsRecording(false);
+    setRecordingState('idle');
     // Keep recorded steps when stopping
   }, []);
 
@@ -111,8 +145,9 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
   );
 
   // Record Mode event listeners
+  // Only active when recording (not paused or idle)
   useEffect(() => {
-    if (!isRecording) {
+    if (recordingState !== 'recording') {
       return;
     }
 
@@ -291,12 +326,16 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
       document.removeEventListener('input', handleInput, true);
       document.removeEventListener('change', handleChange, true);
     };
-  }, [isRecording, excludeSelectors, onStepRecorded]);
+  }, [recordingState, excludeSelectors, onStepRecorded]);
 
   return {
-    isRecording,
+    isRecording, // Backward compatibility
+    recordingState,
+    isPaused,
     recordedSteps,
     startRecording,
+    pauseRecording,
+    resumeRecording,
     stopRecording,
     clearRecording,
     deleteStep,
