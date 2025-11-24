@@ -66,6 +66,5 @@ import { PresenterControls, AttendeeJoin } from '../components/LiveSession';
 
 ## See Also
 
-- `docs/developer/README_LIVE_SESSIONS.md` - Live sessions documentation
-- `docs/developer/LOCAL_PEERJS_SERVER.md` - Local PeerJS server setup
-- `docs/developer/DEBUGGING-LIVE-SESSIONS.md` - Debugging guide
+- `docs/developer/LIVE_SESSIONS.md` - Live sessions setup, debugging, and troubleshooting
+- `docs/developer/KNOWN_ISSUES.md` - Known issues and limitations
