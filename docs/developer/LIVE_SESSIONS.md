@@ -297,4 +297,3 @@ See `KNOWN_ISSUES.md` for current limitations including:
 
 - [PeerJS Documentation](https://peerjs.com/docs/)
 - [WebRTC Overview](https://webrtc.org/getting-started/overview)
-
