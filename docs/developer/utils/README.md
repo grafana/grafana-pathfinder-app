@@ -1,105 +1,63 @@
 # Utils Directory
 
-Business logic, data fetching, and utility functions organized by functionality. This directory contains the core logic extracted from the main components during refactoring.
+Utility functions and helper modules. **Note**: Most business logic hooks have been moved to specialized engine directories. This directory now contains only general-purpose utilities.
+
+## Important: Hook Location Changes
+
+**⚠️ CRITICAL**: Many hooks previously documented here have been moved to specialized engine directories:
+
+- **Interactive hooks** → `src/interactive-engine/` (see `interactive-engine/interactive.hook.ts`)
+- **Context hooks** → `src/context-engine/` (see `context-engine/context.hook.ts`)
+- **Requirements hooks** → `src/requirements-manager/` (see `requirements-manager/step-checker.hook.ts`)
+
+Only the following hooks remain in `src/utils/`:
 
 ## File Organization
 
-### 🔄 **Data Fetching**
+### 🎣 **React Hooks** (Remaining in utils/)
 
-- `docs-retrieval/` - Unified content fetching system (replaces old docs-fetcher.ts and single-docs-fetcher.ts)
-
-### 🎣 **React Hooks** (Post-Refactor)
-
-- `interactive.hook.ts` - Interactive element handling
-- `keyboard-shortcuts.hook.ts` - Keyboard navigation
+- `keyboard-shortcuts.hook.ts` - Keyboard navigation shortcuts
 - `link-handler.hook.ts` - Link click handling and lightbox
-
-### ⚙️ **Requirements System**
-
-- `requirements-checker.hook.ts` and `requirements-checker.utils.ts` - Requirements checking and helpers
 
 ### 🛠️ **Utilities & Configuration**
 
-- `docs.utils.ts` - Component utilities and factories
 - `utils.plugin.ts` - Plugin props context management
 - `utils.routing.ts` - Route prefixing utilities
+- `timeout-manager.ts` - Centralized timeout/debounce management
+- `dev-mode.ts` - Development mode utilities
+- `openfeature.ts` - Feature toggle utilities
+
+### 🔧 **Development Tools** (`devtools/`)
+
+- `action-recorder.hook.ts` - Record user actions for guide creation
+- `element-inspector.hook.ts` - DOM element inspection
+- `selector-capture.hook.ts` - CSS selector generation
+- `selector-generator.util.ts` - Automated selector generation
+- `selector-tester.hook.ts` - Test CSS selectors
+- `step-executor.hook.ts` - Test step execution
+- `step-parser.util.ts` - Parse step definitions
+- `tutorial-exporter.ts` - Export tutorials
+- `action-recorder.util.ts` - Action recording utilities
+
+### 🔒 **Security & Safety**
+
+- `safe-event-handler.util.ts` - Safe event handler utilities
 
 ---
 
-## New Unified Data Fetching System
-
-### `docs-retrieval/` ⭐ **Unified Content System**
-
-**Purpose**: Modern React-first architecture for all content fetching and rendering
-**Role**:
-
-- Unified system replacing old `docs-fetcher.ts`, `single-docs-fetcher.ts`, and `content-processing.hook.ts`
-- Fetches both learning journeys and documentation pages
-- React component-based rendering instead of DOM manipulation
-- Clean separation between data fetching and presentation
-
-**Key Features**:
-
-- **Unified Fetching**: Single system handles all content types
-- **React Components**: Interactive elements as proper React components
-- **Type Safety**: Complete TypeScript coverage with unified `RawContent` type
-- **Performance**: Smart HTML parsing only when needed, React virtual DOM optimization
-- **Testable Architecture**: Each component easily unit tested
-
-**Core Functions/Components**:
-
-- `fetchContent()` - Main unified content fetching
-- `ContentRenderer` - React component for rendering content
-
-**Used By**:
-
-- `src/components/docs-panel/docs-panel.tsx` - All content rendering
-- `src/utils/context/context.service.ts` - Recommendation processing
-
----
-
-## React Hooks (Post-Refactor)
-
-### `interactive.hook.ts` ⭐ **Interactive Elements Handler**
-
-**Purpose**: Manages interactive guide elements embedded in documentation
-**Role**:
-
-- Handles custom interactive events (highlight, form-fill, button clicks)
-- Provides programmatic interaction with Grafana UI
-- Supports guided sequences
-
-**Extracted From**: Main docs panel (~200 lines)
-**Key Functions**:
-
-- `interactiveFocus()` - Highlights and focuses UI elements
-- `interactiveButton()` - Finds and clicks buttons by text
-- `interactiveFormFill()` - Fills form fields with values
-- `interactiveNavigate()` - Navigates to URLs using Grafana's locationService
-- `interactiveSequence()` - Runs sequences of interactions
-
-**Event Handling**:
-
-```typescript
-const events = ['interactive-highlight', 'interactive-formfill', 'interactive-button', 'interactive-sequence'];
-```
-
-**Used By**:
-
-- `src/components/docs-panel/docs-panel.tsx` - interactive guide support
-
----
+## React Hooks (In utils/)
 
 ### `keyboard-shortcuts.hook.ts` ⭐ **Navigation Shortcuts**
 
 **Purpose**: Provides keyboard shortcuts for efficient navigation
+**Location**: `src/utils/keyboard-shortcuts.hook.ts`
+
 **Role**:
 
 - Tab switching with Ctrl/Cmd+Tab
 - Tab closing with Ctrl/Cmd+W
 - Milestone navigation with Alt+Arrow keys
 
-**Extracted From**: Main docs panel (keyboard event handling)
 **Shortcuts**:
 
 - `Ctrl/Cmd + W` - Close current tab
@@ -116,6 +74,8 @@ const events = ['interactive-highlight', 'interactive-formfill', 'interactive-bu
 ### `link-handler.hook.ts` ⭐ **Link & Interaction Handler**
 
 **Purpose**: Handles clicks on various interactive elements in content
+**Location**: `src/utils/link-handler.hook.ts`
+
 **Role**:
 
 - Journey start button handling
@@ -123,7 +83,6 @@ const events = ['interactive-highlight', 'interactive-formfill', 'interactive-bu
 - Side journey and related journey link handling
 - Bottom navigation (Previous/Next) button handling
 
-**Extracted From**: Main docs panel (~200 lines)
 **Key Features**:
 
 - **Journey Start**: Navigates to first milestone
@@ -151,6 +110,8 @@ const events = ['interactive-highlight', 'interactive-formfill', 'interactive-bu
 ### `utils.plugin.ts` ⭐ **Plugin Props Management**
 
 **Purpose**: Context management for plugin props throughout the component tree
+**Location**: `src/utils/utils.plugin.ts`
+
 **Role**:
 
 - Provides React context for plugin props
@@ -173,6 +134,8 @@ const events = ['interactive-highlight', 'interactive-formfill', 'interactive-bu
 ### `utils.routing.ts` ⭐ **Route Utilities**
 
 **Purpose**: URL and routing utilities for consistent plugin navigation
+**Location**: `src/utils/utils.routing.ts`
+
 **Role**:
 
 - Prefixes routes with plugin base URL
@@ -194,98 +157,155 @@ function prefixRoute(route: string): string {
 
 ---
 
-## Architecture Benefits
+### `timeout-manager.ts` ⭐ **Timeout Management**
 
-### Refactoring Impact
+**Purpose**: Centralized timeout and debounce management
+**Location**: `src/utils/timeout-manager.ts`
 
-This directory represents the successful extraction of business logic from a monolithic ~3,500 line component:
+**Role**:
 
-#### Before Refactor ❌
+- Prevents competing timeout mechanisms
+- Provides debounced function creation
+- Manages timeout cleanup
 
-- All logic embedded in single component file
-- Mixed concerns (UI, data, styling, events)
-- Difficult to test individual pieces
-- Hard to maintain and extend
+**Key Exports**:
 
-#### After Refactor ✅
+- `useTimeoutManager()` - Hook for timeout management
+- Debounce utilities for UI updates and API calls
 
-- **Separation of Concerns**: Each file has single responsibility
-- **Reusability**: Hooks can be used across components
-- **Testability**: Individual functions can be unit tested
-- **Maintainability**: Easy to find and modify specific functionality
-- **Performance**: Better tree-shaking and code splitting potential
+**Used By**:
 
-### Design Patterns
-
-#### Hook-Based Architecture
-
-- Custom hooks for stateful logic
-- Clean separation from UI components
-- Reusable across different components
-- Easy to test and mock
-
-#### Functional Programming
-
-- Pure functions where possible
-- Immutable data patterns
-- Composable utility functions
-- Predictable behavior
-
-#### Caching Strategy
-
-- Intelligent caching with TTL
-- Memory management for large content
-- Cache invalidation strategies
-- Performance optimization
-
-This organization makes the codebase significantly more maintainable and allows developers to easily understand, modify, and extend specific functionality without affecting other parts of the system.
+- `src/context-engine/context.hook.ts` - Context refresh debouncing
+- Various components requiring debounced updates
 
 ---
 
-## Requirements System (Enhancement)
+### `openfeature.ts` ⭐ **Feature Toggle Utilities**
 
-### `requirements.util.ts` ⭐ **Unified Requirements Engine**
+**Purpose**: Feature flag management using Grafana's feature toggle system
+**Location**: `src/utils/openfeature.ts`
 
-**Purpose**: Centralized requirements checking with implicit requirements support
 **Role**:
 
-- Consolidates duplicated requirements logic from multiple hooks
-- Implements implicit requirements (sequential dependency and completion tracking)
-- Provides unified element state management
-- Optimizes performance with short-circuit evaluation
+- Provides utilities for checking Grafana feature toggles
+- Centralized feature flag constants
+- Type-safe feature flag access
 
-**Key Features**:
+**Key Exports**:
 
-- **Sequential Processing**: Elements are checked in DOM order with dependency enforcement
-- **Completion Tracking**: Automatically marks completed actions and prevents re-execution
-- **State Management**: Unified visual state system with CSS classes
-- **Performance Optimization**: Short-circuit evaluation when requirements fail
-- **Backwards Compatibility**: Supports both sequential and parallel checking modes
+- `FeatureFlags` - Feature flag constants
+- `getFeatureToggle()` - Function to check feature toggle state
 
-**Implicit Requirements**:
+**Used By**:
 
-1. **Sequential Dependency**: If step N fails, all subsequent steps are automatically disabled
-2. **Completion State**: Completed actions are disabled and marked with checkmarks
+- `src/components/AppConfig/ConfigurationForm.tsx` - Feature configuration
+- Components requiring feature flag checks
 
-**Major Functions**:
+---
 
-```typescript
-// Unified requirements checking
-checkAllElementRequirements(container, checkFn, sequential?: boolean)
+### `dev-mode.ts` ⭐ **Development Mode Utilities**
 
-// Element state management
-updateElementState(element, config)
+**Purpose**: Development mode detection and utilities
+**Location**: `src/utils/dev-mode.ts`
 
-// Completion tracking
-markElementCompleted(element)
-isElementCompleted(element)
-```
+**Role**:
 
-**Integration**:
+- Detects development mode
+- Provides dev-only functionality
+- Enables debug features
 
-- Used by `interactive.hook.ts` for completion tracking and requirements checking
-- Used by React interactive components in `docs-retrieval/components/`
-- Replaces ~200 lines of duplicated logic across multiple files
-- Documented in `/INTERACTIVE_REQUIREMENTS.md` for comprehensive usage guide
+**Used By**:
 
-This enhancement provides a foundation for sophisticated guide flows with automatic step dependency management and progress tracking.
+- Development tools and debug panels
+- Components requiring dev-mode checks
+
+---
+
+### `safe-event-handler.util.ts` ⭐ **Safe Event Handlers**
+
+**Purpose**: Safe event handler utilities with error handling
+**Location**: `src/utils/safe-event-handler.util.ts`
+
+**Role**:
+
+- Wraps event handlers with error boundaries
+- Prevents event handler errors from crashing the app
+- Provides safe event handling patterns
+
+**Used By**:
+
+- Components requiring robust event handling
+- Interactive elements with user-triggered events
+
+---
+
+## Development Tools (`devtools/`)
+
+The `devtools/` subdirectory contains development-only utilities for creating and testing interactive guides:
+
+### Action Recording
+
+- **`action-recorder.hook.ts`** - React hook for recording user actions
+- **`action-recorder.util.ts`** - Action recording utilities
+
+### Element Inspection
+
+- **`element-inspector.hook.ts`** - DOM element inspection hook
+- **`hover-highlight.util.ts`** - Visual element highlighting
+
+### Selector Tools
+
+- **`selector-capture.hook.ts`** - Capture CSS selectors from user interactions
+- **`selector-generator.util.ts`** - Generate CSS selectors automatically
+- **`selector-tester.hook.ts`** - Test CSS selectors against DOM
+
+### Step Execution
+
+- **`step-executor.hook.ts`** - Execute test steps programmatically
+- **`step-parser.util.ts`** - Parse step definitions
+
+### Export
+
+- **`tutorial-exporter.ts`** - Export tutorials in various formats
+
+---
+
+## Where to Find Other Functionality
+
+### Interactive Guide System
+
+**Location**: `src/interactive-engine/`
+- `interactive.hook.ts` - Main interactive elements hook
+- `action-handlers/` - Action execution handlers
+- `navigation-manager.ts` - Element navigation
+- `sequence-manager.ts` - Sequential execution
+- See `docs/developer/engines/interactive-engine.md` for details
+
+### Context & Recommendations
+
+**Location**: `src/context-engine/`
+- `context.hook.ts` - Context panel hook
+- `context.service.ts` - Context data service
+- See `docs/developer/engines/context-engine.md` for details
+
+### Requirements System
+
+**Location**: `src/requirements-manager/`
+- `step-checker.hook.ts` - Step requirements/objectives checking
+- `requirements-checker.hook.ts` - Requirements validation
+- `requirements-checker.utils.ts` - Requirement check functions
+- See `docs/developer/engines/requirements-manager.md` for details
+
+### Content Retrieval
+
+**Location**: `src/docs-retrieval/` (top-level, not under utils)
+- `content-fetcher.ts` - Content fetching
+- `html-parser.ts` - HTML parsing
+- `content-renderer.tsx` - React rendering
+- See `docs/developer/ARCHITECTURE.md` for details
+
+---
+
+## Architecture Note
+
+This directory structure reflects a major architectural refactoring where business logic was moved from a monolithic component into specialized engine modules. The `utils/` directory now contains only general-purpose utilities and development tools, while domain-specific logic lives in dedicated engine directories.

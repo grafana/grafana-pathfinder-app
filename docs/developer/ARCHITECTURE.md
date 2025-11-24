@@ -1,4 +1,4 @@
-# Grafana Pathfinder - Architecture
+# Interactive learning - Architecture
 
 This document provides a comprehensive overview of the plugin's architecture, design patterns, and system organization.
 
@@ -16,7 +16,7 @@ This document provides a comprehensive overview of the plugin's architecture, de
             │                               │
             ▼                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Grafana Pathfinder                     │
+│                    Interactive learning                       │
 │                                                                 │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────┐ │
 │  │  Context Panel  │    │  Journey Panel  │    │   App Core  │ │
@@ -29,6 +29,20 @@ This document provides a comprehensive overview of the plugin's architecture, de
 │            └───────────────────────┼─────────────────────┘     │
 │                                    │                           │
 └────────────────────────────────────┼───────────────────────────┘
+                                     │
+                    ┌────────────────┼────────────────┐
+                    │                │                │
+                    ▼                ▼                ▼
+    ┌──────────────────┐  ┌──────────────┐  ┌──────────────────┐
+    │ Context Engine   │  │ Interactive  │  │  Requirements   │
+    │                  │  │    Engine    │  │    Manager       │
+    │ • Context Service│  │ • Action     │  │ • Step Checker   │
+    │ • Context Hook   │  │   Handlers   │  │ • Requirements   │
+    │ • Tag Generation │  │ • Navigation │  │   Checker        │
+    │ • Recommendations│  │ • State Mgmt │  │ • Objectives    │
+    └──────────────────┘  └──────────────┘  └──────────────────┘
+                    │                │                │
+                    └────────────────┼────────────────┘
                                      │
                                      ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -73,36 +87,78 @@ App (SceneApp Root)
 
 ```typescript
 // Main Components
-CombinedLearningJourneyPanel        // Main panel with tab management
-├── ContextPanel                    // Context-aware recommendations
-├── ContentRenderer                 // Unified content rendering
-├── InteractiveSection              // Interactive guide sections
-├── InteractiveStep                // Individual interactive steps
-└── InteractiveMultiStep           // Multi-step sequences
+CombinedLearningJourneyPanel        // Main panel with tab management (docs-panel.tsx)
+├── ContextPanel                    // Context-aware recommendations (context-panel.tsx)
+├── ContentRenderer                 // Unified content rendering (docs-retrieval/content-renderer.tsx)
+├── InteractiveSection              // Interactive guide sections (docs-retrieval/components/interactive/interactive-section.tsx)
+├── InteractiveStep                // Individual interactive steps (docs-retrieval/components/interactive/interactive-step.tsx)
+├── InteractiveMultiStep           // Multi-step sequences (docs-retrieval/components/interactive/interactive-multi-step.tsx)
+└── InteractiveGuided              // Guided interaction steps (docs-retrieval/components/interactive/interactive-guided.tsx)
 
 // Supporting Components
-├── CodeBlock                      // Syntax highlighted code
-├── ExpandableTable               // Collapsible content sections
-├── ImageRenderer                 // Lightbox image display
-└── SideJourneyLink              // Cross-journey navigation
+├── CodeBlock                      // Syntax highlighted code (docs-retrieval/components/docs/code-block.tsx)
+├── ExpandableTable               // Collapsible content sections (docs-retrieval/components/docs/expandable-table.tsx)
+├── ImageRenderer                 // Lightbox image display (docs-retrieval/components/docs/image-renderer.tsx)
+├── SideJourneyLink              // Cross-journey navigation (docs-retrieval/components/docs/side-journey-link.tsx)
+├── VideoRenderer                 // Video embedding (docs-retrieval/components/docs/video-renderer.tsx)
+└── YouTubeVideoRenderer          // YouTube video embedding (docs-retrieval/components/docs/youtube-video-renderer.tsx)
+
+// Additional UI Components
+├── WysiwygEditor                 // Content authoring editor (components/wysiwyg-editor/)
+├── LiveSession                   // Live collaboration features (components/LiveSession/)
+├── EnableRecommenderBanner       // Recommendation enablement UI (components/EnableRecommenderBanner/)
+├── HelpFooter                    // Help and footer content (components/HelpFooter/)
+├── DomPathTooltip                // DOM path visualization (components/DomPathTooltip/)
+├── SelectorDebugPanel            // Selector debugging tools (components/SelectorDebugPanel/)
+├── SkeletonLoader                // Loading state UI (components/SkeletonLoader/)
+└── URLTester                     // URL testing utilities (components/URLTester/)
 ```
 
 ## System Architecture Patterns
 
-### 1. Hook-Based Business Logic
+### 1. Engine-Based Architecture
 
-The architecture follows a clean separation pattern where business logic is extracted into focused React hooks:
+The codebase is organized into specialized engine modules that encapsulate related functionality:
+
+**Core Engines:**
+- **`interactive-engine/`**: Interactive guide execution system
+  - `interactive.hook.ts` - Main interactive elements hook
+  - `action-handlers/` - Action execution handlers (button, formfill, navigate, etc.)
+  - `navigation-manager.ts` - Element visibility and navigation
+  - `sequence-manager.ts` - Sequential step execution
+  - `interactive-state-manager.ts` - State coordination
+  - `global-interaction-blocker.ts` - Section execution blocking
+  - `auto-completion/` - Auto-detection system for user actions
+
+- **`context-engine/`**: Context analysis and recommendation engine
+  - `context.service.ts` - Context data fetching and tag generation
+  - `context.hook.ts` - React hook for context panel
+  - `context.init.ts` - Service initialization
+
+- **`requirements-manager/`**: Requirements and objectives validation
+  - `step-checker.hook.ts` - Unified step requirements/objectives checking
+  - `requirements-checker.hook.ts` - Requirements validation hook
+  - `requirements-checker.utils.ts` - Requirement check functions
+  - `requirements-explanations.ts` - User-friendly error messages
+
+**Hook-Based Business Logic:**
 
 ```typescript
-// Content Processing
+// Interactive Engine (src/interactive-engine/)
 useInteractiveElements(); // Interactive guide functionality
-useKeyboardShortcuts(); // Navigation shortcuts
-useLinkClickHandler(); // Link and interaction handling
+
+// Context Engine (src/context-engine/)
+useContextPanel(); // Context analysis and recommendations
+
+// Requirements Manager (src/requirements-manager/)
 useStepChecker(); // Step requirements and objectives validation
 
-// Context Management
-useContextPanel(); // Context analysis and recommendations
-useContentRenderer(); // Content rendering logic
+// Utils (src/utils/)
+useKeyboardShortcuts(); // Navigation shortcuts
+useLinkClickHandler(); // Link and interaction handling
+
+// Content Rendering (src/docs-retrieval/)
+useContentRenderer(); // Content rendering logic (from content-renderer.tsx)
 ```
 
 ### 2. Unified Content System
@@ -110,7 +166,10 @@ useContentRenderer(); // Content rendering logic
 **Content Flow Pipeline:**
 
 ```
-URL Request → Content Fetcher → HTML Parser → Content Renderer → React Components
+URL Request → Content Fetcher (docs-retrieval/content-fetcher.ts) 
+  → HTML Parser (docs-retrieval/html-parser.ts) 
+  → Content Renderer (docs-retrieval/content-renderer.tsx) 
+  → React Components (docs-retrieval/components/)
 ```
 
 **Content Types:**
@@ -120,10 +179,16 @@ URL Request → Content Fetcher → HTML Parser → Content Renderer → React C
 
 **Processing Stages:**
 
-1. **Fetch**: Multi-strategy content retrieval with fallbacks
-2. **Parse**: HTML to React component tree conversion
+1. **Fetch**: Multi-strategy content retrieval with fallbacks (`content-fetcher.ts`)
+2. **Parse**: HTML to React component tree conversion (`html-parser.ts`)
 3. **Enhance**: Interactive elements and metadata extraction
-4. **Render**: Theme-aware React component output
+4. **Render**: Theme-aware React component output (`content-renderer.tsx`)
+
+**Content System Location:**
+- All content retrieval logic is in `src/docs-retrieval/` (top-level, not under utils)
+- Components are in `src/docs-retrieval/components/`
+  - Interactive components: `components/interactive/`
+  - Documentation components: `components/docs/`
 
 ### 3. Scene-Based State Management
 
@@ -179,22 +244,27 @@ Content Request → Strategy Selection → Fetch Execution → Metadata Extracti
 ### 3. Interactive System Flow
 
 ```
-HTML Elements → Parser → React Components → Requirements Checker → Action Executor
+HTML Elements → Parser (docs-retrieval/html-parser.ts) 
+  → React Components (docs-retrieval/components/interactive/) 
+  → Requirements Checker (requirements-manager/step-checker.hook.ts) 
+  → Action Executor (interactive-engine/action-handlers/)
 ```
 
 **Interactive Elements:**
 
-- **Interactive Steps**: Individual actions with "Show Me"/"Do It" buttons
-- **Interactive Sections**: Grouped steps with sequential execution
-- **Requirements System**: Validation before step execution
-- **Completion Tracking**: Progress persistence across sessions
+- **Interactive Steps**: Individual actions with "Show Me"/"Do It" buttons (`interactive-step.tsx`)
+- **Interactive Sections**: Grouped steps with sequential execution (`interactive-section.tsx`)
+- **Interactive Multi-Step**: Multi-action steps executed as one (`interactive-multi-step.tsx`)
+- **Interactive Guided**: User-performed actions with auto-detection (`interactive-guided.tsx`)
+- **Requirements System**: Validation before step execution (`requirements-manager/`)
+- **Completion Tracking**: Progress persistence across sessions (`lib/user-storage.ts`)
 
 ## Storage and Persistence
 
 ### Tab Persistence
 
 ```typescript
-// Stored in localStorage
+// Stored in localStorage via lib/user-storage.ts
 interface PersistedTabData {
   id: string; // Tab identifier
   title: string; // Display title
@@ -207,9 +277,19 @@ interface PersistedTabData {
 ### Journey Progress
 
 ```typescript
-// Learning journey completion tracking
+// Learning journey completion tracking (lib/user-storage.ts)
 interface JourneyProgress {
   [journeyBaseUrl: string]: number; // Completion percentage (0-100)
+}
+```
+
+### User Preferences
+
+```typescript
+// User preferences stored via lib/user-storage.ts
+interface UserPreferences {
+  openPanelOnLaunch?: boolean; // Auto-open sidebar preference
+  // Additional preferences managed through user-storage utilities
 }
 ```
 
@@ -354,14 +434,15 @@ src/styles/
 
 ## Security Considerations
 
-### Content Security
+### Content Security (`src/security/`)
 
 **Safe Rendering:**
 
-- **HTML Sanitization**: Controlled HTML parsing and rendering
+- **HTML Sanitization**: Controlled HTML parsing and rendering (`security/html-sanitizer.ts`)
 - **XSS Prevention**: Attribute sanitization and content validation
 - **CSP Compliance**: Content Security Policy adherence
-- **URL Validation**: Safe URL handling and redirect prevention
+- **URL Validation**: Safe URL handling and redirect prevention (`security/url-validator.ts`)
+- **Log Sanitization**: Prevents sensitive data leakage in logs (`security/log-sanitizer.ts`)
 
 ### Authentication Security
 
@@ -371,6 +452,14 @@ src/styles/
 - **Token Handling**: Secure API token management
 - **Permission Validation**: User capability checking before actions
 - **Audit Logging**: Interaction tracking for security monitoring
+
+### Security Module Location
+
+All security utilities are centralized in `src/security/`:
+- `html-sanitizer.ts` - HTML content sanitization
+- `url-validator.ts` - URL validation and sanitization
+- `log-sanitizer.ts` - Log output sanitization
+- `security.test.ts` - Security test suite
 
 ## Monitoring and Analytics
 
@@ -404,24 +493,45 @@ enum UserInteraction {
 - **Feature Usage**: Interactive element engagement rates
 - **Error Rates**: Failed actions and recovery patterns
 
+## Additional System Modules
+
+### Global State Management (`src/global-state/`)
+
+- **Link Interception**: Global link interception for docs/guides (`global-state/link-interception.ts`)
+- **Sidebar State**: Sidebar visibility and state management (`global-state/sidebar.ts`)
+
+### Integrations (`src/integrations/`)
+
+- **Assistant Integration**: Grafana Assistant integration (`integrations/assistant-integration/`)
+- **Workshop Integration**: Workshop mode features (`integrations/workshop/`)
+
+### Development Tools (`src/utils/devtools/`)
+
+- **Action Recorder**: Record user actions for guide creation (`devtools/action-recorder.hook.ts`)
+- **Element Inspector**: DOM element inspection (`devtools/element-inspector.hook.ts`)
+- **Selector Capture**: CSS selector generation (`devtools/selector-capture.hook.ts`)
+- **Selector Generator**: Automated selector generation (`devtools/selector-generator.util.ts`)
+- **Step Executor**: Test step execution (`devtools/step-executor.hook.ts`)
+- **Tutorial Exporter**: Export tutorials (`devtools/tutorial-exporter.ts`)
+
 ## Extension Points
 
 ### Content Source Integration
 
 **Pluggable Architecture:**
 
-- **Content Fetchers**: Custom content source implementations
-- **Parser Extensions**: Additional HTML element support
-- **Renderer Plugins**: Custom React component renderers
+- **Content Fetchers**: Custom content source implementations (`docs-retrieval/content-fetcher.ts`)
+- **Parser Extensions**: Additional HTML element support (`docs-retrieval/html-parser.ts`)
+- **Renderer Plugins**: Custom React component renderers (`docs-retrieval/content-renderer.tsx`)
 - **Authentication Providers**: Custom auth mechanism support
 
 ### Interactive Element Extensions
 
 **Custom Actions:**
 
-- **Action Types**: New interactive action implementations
-- **Requirement Checkers**: Custom validation logic
-- **UI Components**: Custom interactive UI elements
+- **Action Types**: New interactive action implementations (`interactive-engine/action-handlers/`)
+- **Requirement Checkers**: Custom validation logic (`requirements-manager/requirements-checker.utils.ts`)
+- **UI Components**: Custom interactive UI elements (`docs-retrieval/components/interactive/`)
 - **Completion Handlers**: Custom success criteria
 
 ## Future Architecture Considerations

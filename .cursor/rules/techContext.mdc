@@ -6,12 +6,12 @@ description: Describes technologies, frameworks, and other tools used in this re
 
 ## Technologies Used
 
-- **Frontend**: React 18.2.0 + TypeScript 5.5.4 + Grafana Scenes 6.10.4
+- **Frontend**: React 18.3.1 + TypeScript 5.9.3 + Grafana Scenes 6.45.0
 - **Styling**: Emotion CSS-in-JS with Grafana UI theming system
 - **State Management**: Grafana Scenes for complex scene-based state
-- **Bundling**: Webpack 5.94.0 with custom configuration
-- **Testing**: Jest 29.5.0 + React Testing Library + Playwright for E2E
-- **Runtime**: Node.js 22+ with npm 11.4.1 package management
+- **Bundling**: Webpack 5.102.1 with custom configuration
+- **Testing**: Jest 30.2.0 + React Testing Library + Playwright 1.56.1 for E2E
+- **Runtime**: Node.js 22+ with npm 11.6.2 package management
 
 ## Development Setup
 
@@ -23,7 +23,7 @@ description: Describes technologies, frameworks, and other tools used in this re
 
 ## Technical Constraints
 
-- **Grafana Version**: Requires Grafana 12.0.0+ for extension points compatibility
+- **Grafana Version**: Requires Grafana >=12.3.0-0 for extension points compatibility
 - **Plugin Architecture**: Must use Grafana's app plugin structure with `plugin.json`
 - **Extension Points**: Limited to `grafana/extension-sidebar/v0-alpha` integration
 - **Browser Support**: Modern browsers only (ES2020+), no IE support
@@ -32,20 +32,20 @@ description: Describes technologies, frameworks, and other tools used in this re
 ## Dependencies
 
 **Core Runtime**:
-- `@grafana/data`, `@grafana/ui`, `@grafana/runtime`, `@grafana/scenes` (12.0.2)
-- `react` + `react-dom` (18.2.0), `react-router-dom` (6.22.0)
-- `@emotion/css` (11.10.6) for styling
+- `@grafana/data`, `@grafana/ui`, `@grafana/runtime`, `@grafana/scenes` (12.2.1)
+- `react` + `react-dom` (18.3.1), `react-router-dom` (6.28.0)
+- `@emotion/css` (11.13.5) for styling
 
 **Development**:
-- `typescript` (5.5.4), `webpack` + loaders, `jest` + testing utilities
-- `@grafana/eslint-config`, `@playwright/test`, `@swc/core` for compilation
-- `sass`, `terser-webpack-plugin` for asset processing
+- `typescript` (5.9.3), `webpack` (5.102.1) + loaders, `jest` (30.2.0) + testing utilities
+- `@grafana/eslint-config`, `@playwright/test` (1.56.1), `@swc/core` (1.15.1) for compilation
+- `sass` (1.94.0), `terser-webpack-plugin` (5.3.14) for asset processing
 
 ## Project Version & Release Management
 
-- **Current Version**: 1.0.2 (Post-Refactoring Release)
+- **Current Version**: 1.1.71 (see package.json)
 - **License**: Apache-2.0
-- **Package Manager**: npm@11.4.1 with lockfile-based dependency management
+- **Package Manager**: npm@11.6.2 with lockfile-based dependency management
 - **Release Strategy**: Semantic versioning with automated plugin signing
 
 ## Tool Usage Patterns
@@ -54,105 +54,34 @@ description: Describes technologies, frameworks, and other tools used in this re
 - **Component Architecture**: Functional components with hooks, no class components
 - **Styling**: Emotion CSS-in-JS with `useStyles2` hook and Grafana theme integration
 - **Testing Strategy**: Unit tests with Jest, component tests with RTL, E2E with Playwright
-- **Code Organization**: Feature-based modules with clear separation of concerns (components/utils/styles)
+- **Code Organization**: Engine-based modules with clear separation of concerns (interactive-engine, context-engine, requirements-manager)
 - **Build Pipeline**: Development with watch mode, production with optimization and signing
-
-## Post-Refactoring Architecture
-
-- **Modular Design**: Clean separation between UI components, business logic hooks, and styling
-- **Hook-Based Logic**: Business logic extracted into focused, reusable React hooks
-- **Type Safety**: Comprehensive TypeScript integration with strict mode enabled
-- **Performance Optimization**: Tree-shaking friendly architecture with optimized bundle splitting
-- **Maintainability**: Each module has single responsibility with clear interfaces
-# Tech Context
-
-## Technologies Used
-
-- **Frontend**: React 18.2.0 + TypeScript 5.5.4 + Grafana Scenes 6.10.4
-- **Styling**: Emotion CSS-in-JS with Grafana UI theming system
-- **State Management**: Grafana Scenes for complex scene-based state
-- **Bundling**: Webpack 5.94.0 with custom configuration
-- **Testing**: Jest 29.5.0 + React Testing Library + Playwright for E2E
-- **Runtime**: Node.js 22+ with npm 11.4.1 package management
-
-## Development Setup
-
-- **Build System**: Webpack with TypeScript, SWC compilation, and hot reloading
-- **Dev Environment**: Docker Compose with Grafana OSS for local testing
-- **Scripts**: `npm run dev` (watch mode), `npm run build` (production), `npm run server` (Docker)
-- **Code Quality**: ESLint + Prettier with Grafana configs, TypeScript strict mode
-- **Testing**: `npm run test` (Jest), `npm run e2e` (Playwright), `npm run typecheck`
-
-## Technical Constraints
-
-- **Grafana Version**: Requires Grafana 12.0.0+ for extension points compatibility
-- **Plugin Architecture**: Must use Grafana's app plugin structure with `plugin.json`
-- **Extension Points**: Limited to `grafana/extension-sidebar/v0-alpha` integration
-- **Browser Support**: Modern browsers only (ES2020+), no IE support
-- **Bundle Size**: Webpack optimization required for performance in Grafana context
-
-## Dependencies
-
-**Core Runtime**:
-- `@grafana/data`, `@grafana/ui`, `@grafana/runtime`, `@grafana/scenes` (12.0.2)
-- `react` + `react-dom` (18.2.0), `react-router-dom` (6.22.0)
-- `@emotion/css` (11.10.6) for styling
-
-**Development**:
-- `typescript` (5.5.4), `webpack` + loaders, `jest` + testing utilities
-- `@grafana/eslint-config`, `@playwright/test`, `@swc/core` for compilation
-- `sass`, `terser-webpack-plugin` for asset processing
-
-## Project Version & Release Management
-
-- **Current Version**: 1.0.2 (Post-Refactoring Release)
-- **License**: Apache-2.0
-- **Package Manager**: npm@11.4.1 with lockfile-based dependency management
-- **Release Strategy**: Semantic versioning with automated plugin signing
-
-## Tool Usage Patterns
-
-- **TypeScript**: Strict mode with comprehensive type definitions for all components
-- **Component Architecture**: Functional components with hooks, no class components
-- **Styling**: Emotion CSS-in-JS with `useStyles2` hook and Grafana theme integration
-- **Testing Strategy**: Unit tests with Jest, component tests with RTL, E2E with Playwright
-- **Code Organization**: Feature-based modules with clear separation of concerns (components/utils/styles)
-- **Build Pipeline**: Development with watch mode, production with optimization and signing
-
-## Post-Refactoring Architecture
-
-- **Modular Design**: Clean separation between UI components, business logic hooks, and styling
-- **Hook-Based Logic**: Business logic extracted into focused, reusable React hooks
-- **Type Safety**: Comprehensive TypeScript integration with strict mode enabled
-- **Performance Optimization**: Tree-shaking friendly architecture with optimized bundle splitting
-- **Maintainability**: Each module has single responsibility with clear interfaces
-
 
 ## Current Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              Grafana Pathfinder                                  │
-│                          (Extension Sidebar Plugin)                              │
+│                              Grafana Pathfinder                                 │
+│                          (Extension Sidebar Plugin)                             │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                       │
                     ┌─────────────────┼─────────────────┐
                     │                 │                 │
-         ┌──────────▼──────────┐  ┌──▼──────────────┐ │
-         │   App.tsx           │  │ Context Panel   │ │
-         │  (Entry Point)      │  │  (Scene)        │ │
-         └──────────┬──────────┘  └──┬──────────────┘ │
-                    │                │                 │
-                    │                │                 │
+         ┌──────────▼──────────┐  ┌──▼──────────────┐   │
+         │   App.tsx           │  │ Context Panel   │   │
+         │  (Entry Point)      │  │  (Scene)        │   │
+         └──────────┬──────────┘  └──┬──────────────┘   │
+                    │                │                  │
+                    │                │                  │
          ┌──────────▼────────────────▼──────────────────────────────────┐
-         │                    Context System                             │
-         │  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐   │
-         │  │context.hook │─▶│context.service│─▶│ Grafana APIs     │   │
-         │  │             │  │               │  │ - EchoSrv events │   │
-         │  │- Location   │  │- Data sources │  │ - Backend APIs   │   │
-         │  │- Data srcs  │  │- Dashboards   │  │ - LocationSrv    │   │
-         │  │- Tags       │  │- Recommend.   │  └──────────────────┘   │
-         │  └─────────────┘  └──────────────┘                           │
+         │                    Context System                            │
+         │  ┌─────────────┐  ┌───────────────┐  ┌──────────────────┐    │
+         │  │context.hook │─▶│context.service│─▶│ Grafana APIs     │    │
+         │  │             │  │               │  │ - EchoSrv events │    │
+         │  │- Location   │  │- Data sources │  │ - Backend APIs   │    │
+         │  │- Data srcs  │  │- Dashboards   │  │ - LocationSrv    │    │
+         │  │- Tags       │  │- Recommend.   │  └──────────────────┘    │
+         │  └─────────────┘  └───────────────┘                          │
          └──────────────────────┬───────────────────────────────────────┘
                                 │ Recommendations
                     ┌───────────▼──────────────┐
@@ -162,69 +91,69 @@ description: Describes technologies, frameworks, and other tools used in this re
                                 │
                 ┌───────────────▼────────────────────────┐
                 │    Documentation Rendering             │
-                │  ┌─────────────┐  ┌─────────────────┐ │
-                │  │content-     │─▶│ content-renderer│ │
-                │  │fetcher      │  │                 │ │
-                │  │             │  │ - HTML Parser   │ │
-                │  │- Multi-src  │  │ - React Bridge  │ │
-                │  │- Fallback   │  │ - Components    │ │
-                │  │- Bundled    │  └─────────────────┘ │
+                │  ┌─────────────┐  ┌─────────────────┐  │
+                │  │content-     │─▶│ content-renderer│  │
+                │  │fetcher      │  │                 │  │
+                │  │             │  │ - HTML Parser   │  │
+                │  │- Multi-src  │  │ - React Bridge  │  │
+                │  │- Fallback   │  │ - Components    │  │
+                │  │- Bundled    │  └─────────────────┘  │
                 │  └─────────────┘                       │
                 └───────────────┬────────────────────────┘
                                 │
                 ┌───────────────▼────────────────────────────────────────────┐
                 │              Interactive Guide System                      │
-                │                                                             │
+                │                                                            │
                 │  ┌──────────────────────────────────────────────────────┐  │
-                │  │         Component Layer (React)                       │  │
-                │  │  ┌────────────────┐  ┌──────────────────────────┐   │  │
-                │  │  │InteractiveSection│ │InteractiveStep           │   │  │
-                │  │  │- Do Section    │  │- Show me / Do it buttons │   │  │
-                │  │  │- Sequential    │  │- Requirements/Objectives │   │  │
-                │  │  │- State mgmt    │  └──────────┬───────────────┘   │  │
+                │  │         Component Layer (React)                      │  │
+                │  │  ┌────────────────┐  ┌──────────────────────────┐    │  │
+                │  │  │InteractiveSection│ │InteractiveStep          │    │  │
+                │  │  │- Do Section    │  │- Show me / Do it buttons │    │  │
+                │  │  │- Sequential    │  │- Requirements/Objectives │    │  │
+                │  │  │- State mgmt    │  └──────────┬───────────────┘    │  │
                 │  │  └────────┬───────┘             │                    │  │
-                │  │           │  ┌──────────────────▼───────────────┐   │  │
-                │  │           │  │InteractiveMultiStep              │   │  │
-                │  │           │  │- Internal actions                │   │  │
-                │  │           │  │- Automated sequences             │   │  │
-                │  │           │  └──────────┬───────────────────────┘   │  │
+                │  │           │  ┌──────────────────▼───────────────┐    │  │
+                │  │           │  │InteractiveMultiStep              │    │  │
+                │  │           │  │- Internal actions                │    │  │
+                │  │           │  │- Automated sequences             │    │  │
+                │  │           │  └──────────┬───────────────────────┘    │  │
                 │  │           │             │                            │  │
-                │  │           │  ┌──────────▼───────────────────────┐   │  │
-                │  │           └─▶│InteractiveGuided                 │   │  │
-                │  │              │- User-performed actions          │   │  │
-                │  │              │- Auto-detection support          │   │  │
-                │  │              └──────────┬───────────────────────┘   │  │
-                │  └─────────────────────────┼───────────────────────────┘  │
-                │                            │                              │
-                │  ┌─────────────────────────▼──────────────────────────┐  │
-                │  │         Execution Layer (Hooks & Handlers)          │  │
-                │  │  ┌──────────────────┐  ┌────────────────────────┐  │  │
-                │  │  │interactive.hook  │─▶│Action Handlers:        │  │  │
-                │  │  │                  │  │- FocusHandler          │  │  │
-                │  │  │- Action dispatch │  │- ButtonHandler         │  │  │
-                │  │  │- Requirements    │  │- FormFillHandler       │  │  │
-                │  │  │- Section blocking│  │- NavigateHandler       │  │  │
-                │  │  └──────────┬───────┘  │- HoverHandler          │  │  │
-                │  │             │          │- GuidedHandler         │  │  │
-                │  │             │          └────────────────────────┘  │  │
-                │  │  ┌──────────▼───────────────────────────────────┐ │  │
-                │  │  │         step-checker.hook                     │ │  │
-                │  │  │- Requirements validation (preconditions)      │ │  │
-                │  │  │- Objectives validation (auto-completion)      │ │  │
-                │  │  │- Retry logic with state updates              │ │  │
-                │  │  │- Skippable step support                      │ │  │
-                │  │  └──────────┬───────────────────────────────────┘ │  │
-                │  │             │                                      │  │
-                │  │  ┌──────────▼───────────────────────────────────┐ │  │
-                │  │  │  requirements-checker.utils                   │ │  │
-                │  │  │- Pure requirement functions                   │ │  │
-                │  │  │- API checks (datasources, plugins, etc.)     │ │  │
-                │  │  │- DOM checks (exists-reftarget, navmenu-open) │ │  │
-                │  │  └───────────────────────────────────────────────┘ │  │
-                │  └─────────────────────────────────────────────────────┘  │
-                │                                                           │
-                │  ┌───────────────────────────────────────────────────┐   │
-                │  │         State Management Layer                     │   │
+                │  │           │  ┌──────────▼───────────────────────┐    │  │
+                │  │           └─▶│InteractiveGuided                 │    │  │
+                │  │              │- User-performed actions          │    │  │
+                │  │              │- Auto-detection support          │    │  │
+                │  │              └──────────┬───────────────────────┘    │  │
+                │  └─────────────────────────┼────────────────────────────┘  │
+                │                            │                               │
+                │  ┌─────────────────────────▼──────────────────────────┐    │
+                │  │         Execution Layer (Hooks & Handlers)         │    │
+                │  │  ┌──────────────────┐  ┌────────────────────────┐  │    │
+                │  │  │interactive.hook  │─▶│Action Handlers:        │  │    │
+                │  │  │                  │  │- FocusHandler          │  │    │
+                │  │  │- Action dispatch │  │- ButtonHandler         │  │    │
+                │  │  │- Requirements    │  │- FormFillHandler       │  │    │
+                │  │  │- Section blocking│  │- NavigateHandler       │  │    │
+                │  │  └──────────┬───────┘  │- HoverHandler          │  │    │
+                │  │             │          │- GuidedHandler         │  │    │
+                │  │             │          └────────────────────────┘  │    │
+                │  │  ┌──────────▼───────────────────────────────────┐  │    │
+                │  │  │         step-checker.hook                    │  │    │
+                │  │  │- Requirements validation (preconditions)     │  │    │
+                │  │  │- Objectives validation (auto-completion)     │  │    │
+                │  │  │- Retry logic with state updates              │  │    │
+                │  │  │- Skippable step support                      │  │    │
+                │  │  └──────────┬───────────────────────────────────┘  │    │
+                │  │             │                                      │    │
+                │  │  ┌──────────▼───────────────────────────────────┐  │    │
+                │  │  │  requirements-checker.utils                  │  │    │
+                │  │  │- Pure requirement functions                  │  │    │
+                │  │  │- API checks (datasources, plugins, etc.)     │  │    │
+                │  │  │- DOM checks (exists-reftarget, navmenu-open) │  │    │
+                │  │  └──────────────────────────────────────────────┘  │    │
+                │  └────────────────────────────────────────────────────┘    │
+                │                                                            │
+                │  ┌───────────────────────────────────────────────────┐     │
+                │  │         State Management Layer                    │     │
                 │  │  ┌──────────────────────┐ ┌───────────────────┐  │   │
                 │  │  │interactive-state-    │ │SequentialRequire- │  │   │
                 │  │  │manager               │ │mentsManager       │  │   │

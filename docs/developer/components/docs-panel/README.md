@@ -56,10 +56,11 @@ interface LearningJourneyTab {
 
 **Hook Integration** (Post-Refactor):
 
-- `useInteractiveElements()` - Handles interactive document features
-- `useContentProcessing()` - Manages code copy buttons, tables, collapsibles
-- `useKeyboardShortcuts()` - Tab switching and milestone navigation
-- `useLinkClickHandler()` - Journey starts, image lightbox, navigation
+- `useInteractiveElements()` - Handles interactive document features (`interactive-engine/interactive.hook.ts`)
+- `useStepChecker()` - Step requirements and objectives validation (`requirements-manager/step-checker.hook.ts`)
+- `useKeyboardShortcuts()` - Tab switching and milestone navigation (`utils/keyboard-shortcuts.hook.ts`)
+- `useLinkClickHandler()` - Journey starts, image lightbox, navigation (`utils/link-handler.hook.ts`)
+- `useContentRenderer()` - Content rendering logic (`docs-retrieval/content-renderer.tsx`)
 
 ---
 
@@ -118,10 +119,12 @@ This component underwent major refactoring to improve maintainability:
 
 ### Extracted Modules (Post-Refactor)
 
-- `src/utils/interactive.hook.ts` - Interactive elements (~200 lines)
-- `src/utils/docs-retrieval/content-renderer.tsx` - Unified renderer
+- `src/interactive-engine/interactive.hook.ts` - Interactive elements hook
+- `src/requirements-manager/step-checker.hook.ts` - Requirements/objectives checking
+- `src/docs-retrieval/content-renderer.tsx` - Unified content renderer
+- `src/docs-retrieval/html-parser.ts` - HTML to React component parsing
 - `src/utils/keyboard-shortcuts.hook.ts` - Keyboard navigation
-- `src/utils/link-handler.hook.ts` - Link handling (~200 lines)
+- `src/utils/link-handler.hook.ts` - Link handling
 - `src/styles/docs-panel.styles.ts` - Component styling
 - `src/styles/content-html.styles.ts` - Content HTML styling
 - `src/constants/selectors.ts` - UI selectors and constants
@@ -132,13 +135,14 @@ This component underwent major refactoring to improve maintainability:
 CombinedLearningJourneyPanel (main)
 ├── ContextPanel (recommendations)
 ├── Interactive Hooks
-│   ├── useInteractiveElements()
-│   ├── useContentProcessing()
-│   ├── useKeyboardShortcuts()
-│   └── useLinkClickHandler()
-├── Data Fetching
-│   ├── docs-fetcher.ts (learning journeys)
-│   └── single-docs-fetcher.ts (docs pages)
+│   ├── useInteractiveElements() (interactive-engine/)
+│   ├── useStepChecker() (requirements-manager/)
+│   ├── useKeyboardShortcuts() (utils/)
+│   └── useLinkClickHandler() (utils/)
+├── Content System
+│   ├── content-fetcher.ts (docs-retrieval/)
+│   ├── html-parser.ts (docs-retrieval/)
+│   └── content-renderer.tsx (docs-retrieval/)
 └── Styling
     ├── docs-panel.styles.ts
     └── content-html.styles.ts
@@ -178,9 +182,8 @@ model.closeTab(tabId);
 
 ### Data Sources
 
-- `src/utils/docs-fetcher.ts` - Learning journey content and milestones
-- `src/utils/single-docs-fetcher.ts` - Single documentation pages
-- Context panel recommendation API
+- `src/docs-retrieval/content-fetcher.ts` - Unified content fetching (learning journeys and docs)
+- `src/context-engine/context.service.ts` - Context panel recommendation API
 
 ### Styling
 
