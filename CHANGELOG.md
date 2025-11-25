@@ -1,5 +1,126 @@
 # Changelog
 
+## 1.1.73 (2025-11-25)
+
+### Added
+
+- Added assistant RudderStack analytics integration
+- Added cancel button and cleanup for guided components
+
+### Fixed
+
+- Applied React anti-pattern validator fixes
+
+## 1.1.72 (2025-11-25)
+
+### Added
+
+- Added support for bundled and GitHub links
+
+### Changed
+
+- Improved WYSIWYG editor based on RichiH feedback
+- Refreshed documentation to align with current architecture
+
+### Fixed
+
+- Fixed issues with sections not rechecking requirements
+- Fixed DOM selector logic in interactive engine
+- Fixed formfill selectors to descend into input elements
+
+## 1.1.71 (2025-11-21)
+
+### Fixed
+
+- Hotfix for requirements in guided step
+- Fixed documentation issues
+
+## 1.1.70 (2025-11-21)
+
+### Added
+
+- Added new inline assistant feature
+- Added ability to open learning journeys and docs on load
+- Implemented featured recommendations
+
+### Changed
+
+- WYSIWYG cosmetic improvements
+
+## 1.1.69 (2025-11-19)
+
+### Changed
+
+- Changed requirements to be event driven rather than poll-based
+
+## 1.1.68 (2025-11-18)
+
+### Added
+
+- Added highlight feature to dev tools
+- Added skip button for steps in guided mode
+
+### Changed
+
+- Renamed "Pathfinder Tutorials" to "Pathfinder Guides" throughout
+- Allows buttons to also use CSS selectors
+
+### Fixed
+
+- Fixed issue with auto loading
+- Fixed multistep validation for reftargets in WYSIWYG editor
+
+### Removed
+
+- Removed old interactive code
+- Removed dead requirements code
+
+### Chore
+
+- Updated grafana/plugin-actions
+- Updated grafana/plugin-ci-workflows/ci-cd-workflows action to v4.0.0
+- Updated actions/checkout
+- Updated dependency glob to v11.1.0 (security)
+- Added new e2e test and updated test IDs to best practices
+
+## 1.1.67 (2025-11-17)
+
+### Added
+
+- Added WYSIWYG interactive HTML editor (initial implementation)
+
+### Fixed
+
+- Prevent opening sidebar on onboarding
+
+## 1.1.66 (2025-11-13)
+
+### Added
+
+- Added Grafana e2e selectors
+- Added collapse on complete feature
+
+### Fixed
+
+- Fixed interactive styles
+- Fixed UI theme and tab appearance
+
+## 1.1.65 (2025-11-12)
+
+### Changed
+
+- Centralized types to reduce duplication
+- Refactored devtools
+
+### Fixed
+
+- Fixed regression for guided handler
+
+### Chore
+
+- Updated grafana/plugin-actions
+- Added changelog and documentation links
+
 ## 1.1.64 (2025-11-11)
 
 ### Added
