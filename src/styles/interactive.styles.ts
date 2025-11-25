@@ -1038,7 +1038,6 @@ export const addGlobalInteractiveStyles = () => {
     /* Skip button for comment boxes (after instruction text) */
     .interactive-comment-skip-btn {
       position: static !important;
-      margin-top: 12px;
       padding: 6px 12px;
       border: 1px solid rgba(255, 255, 255, 0.2);
       background: rgba(255, 255, 255, 0.05);
@@ -1067,6 +1066,47 @@ export const addGlobalInteractiveStyles = () => {
     }
 
     .interactive-comment-skip-btn:active {
+      transform: scale(0.98);
+    }
+
+    /* Button container for skip and cancel buttons */
+    .interactive-comment-buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    /* Cancel button for comment boxes - always available during guided execution */
+    .interactive-comment-cancel-btn {
+      position: static !important;
+      padding: 6px 12px;
+      border: 1px solid rgba(255, 100, 100, 0.3);
+      background: rgba(255, 100, 100, 0.1);
+      color: rgba(255, 200, 200, 0.9);
+      border-radius: 4px;
+      cursor: pointer;
+      display: block !important;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.3;
+      pointer-events: auto;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      width: fit-content;
+      float: none !important;
+      top: auto !important;
+      right: auto !important;
+      left: auto !important;
+      bottom: auto !important;
+    }
+
+    .interactive-comment-cancel-btn:hover {
+      background: rgba(255, 100, 100, 0.25);
+      border-color: rgba(255, 100, 100, 0.5);
+      color: rgba(255, 220, 220, 1);
+    }
+
+    .interactive-comment-cancel-btn:active {
       transform: scale(0.98);
     }
 

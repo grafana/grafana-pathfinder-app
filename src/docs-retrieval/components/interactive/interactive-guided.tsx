@@ -121,6 +121,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       return new GuidedHandler(stateManager, navigationManager, waitForReactUpdates);
     }, []);
 
+    // Cleanup on unmount: cancel any running guided interaction and clear highlights
+    useEffect(() => {
+      return () => {
+        guidedHandler.cancel();
+        const navManager = new NavigationManager();
+        navManager.clearAllHighlights();
+      };
+    }, [guidedHandler]);
+
     // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {

@@ -431,6 +431,8 @@ export class NavigationManager {
    * @param comment - Optional comment text to display in a comment box
    * @param enableAutoCleanup - Whether to enable auto-cleanup on scroll/click (default: true, false for guided mode)
    * @param stepInfo - Optional step progress info for guided interactions
+   * @param onSkipCallback - Optional callback when skip button is clicked
+   * @param onCancelCallback - Optional callback when cancel button is clicked (for guided mode)
    * @returns Promise that resolves when highlighting is complete
    */
   async highlightWithComment(
@@ -438,7 +440,8 @@ export class NavigationManager {
     comment?: string,
     enableAutoCleanup = true,
     stepInfo?: { current: number; total: number; completedSteps: number[] },
-    onSkipCallback?: () => void
+    onSkipCallback?: () => void,
+    onCancelCallback?: () => void
   ): Promise<HTMLElement> {
     // Clear any existing highlights before showing new one
     this.clearAllHighlights();
@@ -482,10 +485,18 @@ export class NavigationManager {
 
     document.body.appendChild(highlightOutline);
 
-    // Create comment box if comment is provided OR if skip callback is provided
+    // Create comment box if comment is provided OR if skip/cancel callback is provided
     let commentBox: HTMLElement | null = null;
-    if ((comment && comment.trim()) || onSkipCallback) {
-      commentBox = this.createCommentBox(comment || '', rect, scrollTop, scrollLeft, stepInfo, onSkipCallback);
+    if ((comment && comment.trim()) || onSkipCallback || onCancelCallback) {
+      commentBox = this.createCommentBox(
+        comment || '',
+        rect,
+        scrollTop,
+        scrollLeft,
+        stepInfo,
+        onSkipCallback,
+        onCancelCallback
+      );
       document.body.appendChild(commentBox);
     }
 
@@ -517,7 +528,8 @@ export class NavigationManager {
     scrollTop: number,
     scrollLeft: number,
     stepInfo?: { current: number; total: number; completedSteps: number[] },
-    onSkipCallback?: () => void
+    onSkipCallback?: () => void,
+    onCancelCallback?: () => void
   ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
@@ -598,20 +610,44 @@ export class NavigationManager {
 
     content.appendChild(contentWrapper);
 
-    // Add skip button OUTSIDE wrapper so it's on its own line below everything
-    if (onSkipCallback) {
-      const skipButton = document.createElement('button');
-      skipButton.className = 'interactive-comment-skip-btn';
-      skipButton.textContent = 'Skip step';
-      skipButton.setAttribute('aria-label', 'Skip this step');
-      skipButton.setAttribute('title', 'Skip this step and move to next');
+    // Add action buttons OUTSIDE wrapper so they're on their own line below everything
+    if (onSkipCallback || onCancelCallback) {
+      const buttonContainer = document.createElement('div');
+      buttonContainer.className = 'interactive-comment-buttons';
 
-      skipButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        onSkipCallback();
-      });
+      // Add cancel button (always available during guided execution)
+      if (onCancelCallback) {
+        const cancelButton = document.createElement('button');
+        cancelButton.className = 'interactive-comment-cancel-btn';
+        cancelButton.textContent = 'Cancel';
+        cancelButton.setAttribute('aria-label', 'Cancel guided interaction');
+        cancelButton.setAttribute('title', 'Cancel the entire guided interaction');
 
-      content.appendChild(skipButton);
+        cancelButton.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onCancelCallback();
+        });
+
+        buttonContainer.appendChild(cancelButton);
+      }
+
+      // Add skip button (only for skippable steps)
+      if (onSkipCallback) {
+        const skipButton = document.createElement('button');
+        skipButton.className = 'interactive-comment-skip-btn';
+        skipButton.textContent = 'Skip step';
+        skipButton.setAttribute('aria-label', 'Skip this step');
+        skipButton.setAttribute('title', 'Skip this step and move to next');
+
+        skipButton.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onSkipCallback();
+        });
+
+        buttonContainer.appendChild(skipButton);
+      }
+
+      content.appendChild(buttonContainer);
     }
 
     const arrow = document.createElement('div');

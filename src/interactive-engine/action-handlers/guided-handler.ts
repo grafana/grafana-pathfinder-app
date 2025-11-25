@@ -84,6 +84,9 @@ export class GuidedHandler {
         ? this.createSkipListener(stepIndex)
         : new Promise<CompletionResult>(() => {}); // Never resolves if not skippable
 
+      // Create cancel promise - always available via comment box cancel button
+      const cancelPromise = this.createCancelListener(stepIndex);
+
       // Now highlight the target element with persistent highlight
       // Note: highlightTarget uses navigationManager.highlightWithComment which includes
       // the 300ms DOM settling delay after scroll
@@ -96,8 +99,8 @@ export class GuidedHandler {
         action.isSkippable
       );
 
-      // Wait for user to complete the action, skip, timeout, or cancel
-      const result = await Promise.race([completionPromise, skipPromise]);
+      // Wait for user to complete the action, skip, cancel, or timeout
+      const result = await Promise.race([completionPromise, skipPromise, cancelPromise]);
 
       // Track completion for progress display (both completed and skipped count as done)
       if (result === 'completed' || result === 'skipped') {
@@ -260,9 +263,18 @@ export class GuidedHandler {
         }
       : undefined;
 
+    // Create cancel callback - always available during guided execution
+    const cancelCallback = () => {
+      // Dispatch cancel event when cancel button is clicked
+      const cancelEvent = new CustomEvent('guided-step-cancelled', {
+        detail: { stepIndex },
+      });
+      document.dispatchEvent(cancelEvent);
+    };
+
     // Use existing highlight system with persistent highlight
     // Disable auto-cleanup for guided mode - highlights should only clear when step completes
-    await this.navigationManager.highlightWithComment(element, message, false, stepInfo, skipCallback);
+    await this.navigationManager.highlightWithComment(element, message, false, stepInfo, skipCallback, cancelCallback);
 
     // Add a persistent highlight class that won't auto-remove
     element.classList.add('interactive-guided-active');
@@ -337,6 +349,25 @@ export class GuidedHandler {
       };
 
       document.addEventListener('guided-step-skipped', handleSkip);
+    });
+  }
+
+  /**
+   * Create cancel listener that resolves when user clicks cancel button in comment box
+   */
+  private createCancelListener(stepIndex: number): Promise<CompletionResult> {
+    return new Promise<CompletionResult>((resolve) => {
+      const handleCancel = (event: Event) => {
+        const customEvent = event as CustomEvent<{ stepIndex: number }>;
+        if (customEvent.detail.stepIndex === stepIndex) {
+          document.removeEventListener('guided-step-cancelled', handleCancel);
+          // Clear highlights when cancelled from comment box
+          this.navigationManager.clearAllHighlights();
+          resolve('cancelled');
+        }
+      };
+
+      document.addEventListener('guided-step-cancelled', handleCancel);
     });
   }
 
