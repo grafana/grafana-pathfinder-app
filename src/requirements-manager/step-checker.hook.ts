@@ -36,6 +36,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     refTarget,
     isEligibleForChecking = true,
     skippable = false,
+    stepIndex,
   } = props;
   const [state, setState] = useState({
     isEnabled: false,
@@ -67,7 +68,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   // Subscribe to manager state changes via useSyncExternalStore
   // This ensures React renders are synchronized with manager state updates
-  const managerStepState = useSequentialStepState(stepId);
+  // Note: We keep this subscription active but don't use the value directly in effects
+  // to prevent infinite loops. The registered step checker callback handles rechecks instead.
+  useSequentialStepState(stepId);
 
   // Custom requirements checker that provides state updates for retry feedback
   const checkRequirementsWithStateUpdates = useCallback(
@@ -140,6 +143,13 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     managerRef.current = SequentialRequirementsManager.getInstance();
   }
 
+  // Ensure manager has the latest stepIndex
+  useEffect(() => {
+    if (stepIndex !== undefined && managerRef.current) {
+      managerRef.current.updateStep(stepId, { stepIndex });
+    }
+  }, [stepId, stepIndex]);
+
   /**
    * Update manager with unified state for cross-step propagation
    */
@@ -154,10 +164,11 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           explanation: newState.explanation,
           // Add completion reason for future extensibility
           ...(newState.completionReason !== 'none' && { completionReason: newState.completionReason }),
+          stepIndex,
         });
       }
     },
-    [stepId]
+    [stepId, stepIndex]
   );
 
   // Get the interactive elements hook for proper requirements checking
@@ -641,11 +652,18 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- Intentionally empty - only run on mount
 
   // Register step checker with global manager for targeted re-checking
+  // This is called by context changes (EchoSrv), watchNextStep, and triggerStepCheck
   useEffect(() => {
     if (managerRef.current) {
       const unregisterChecker = managerRef.current.registerStepCheckerByID(stepId, () => {
         const currentState = managerRef.current?.getStepState(stepId);
-        if (!currentState?.isCompleted && isEligibleForChecking) {
+        // Recheck if:
+        // 1. Step is not completed
+        // 2. Step is not currently checking (prevent concurrent checks)
+        // 3. Step is either eligible OR has failed requirements (needs recheck on context change)
+        const shouldRecheck = !currentState?.isCompleted && !currentState?.isChecking;
+
+        if (shouldRecheck) {
           checkStepRef.current();
         }
       });
@@ -655,17 +673,18 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       };
     }
     return undefined;
-  }, [stepId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [stepId]);
 
   // Check requirements when step eligibility changes (both true and false)
-  // Also recheck when manager state changes (via useSyncExternalStore)
+  // Note: We removed managerStepState from deps to prevent infinite loops
+  // The manager state changes are handled by the registered step checker callback instead
   useEffect(() => {
-    if (!state.isCompleted) {
+    if (!state.isCompleted && !state.isChecking) {
       // Always recheck when eligibility changes, whether becoming eligible or ineligible
       // This ensures steps show the correct "blocked" state when they become ineligible
       checkStepRef.current();
     }
-  }, [isEligibleForChecking, managerStepState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isEligibleForChecking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for section completion events (for section dependencies)
   useEffect(() => {
@@ -690,6 +709,86 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       document.removeEventListener('step-auto-skipped', handleAutoSkip as EventListener);
     };
   }, [checkStep, state.isCompleted, requirements, stepId, markSkipped]);
+
+  // Track state values in refs to avoid re-subscribing when they change during checks
+  const isCheckingRef = useRef(state.isChecking);
+  isCheckingRef.current = state.isChecking;
+
+  const isCompletedRef = useRef(state.isCompleted);
+  isCompletedRef.current = state.isCompleted;
+
+  const isEnabledRef = useRef(state.isEnabled);
+  isEnabledRef.current = state.isEnabled;
+
+  // Subscribe to context changes (EchoSrv events) AND URL changes for blocked steps
+  // This ensures steps in "requirements not met" state get rechecked when user performs actions
+  useEffect(() => {
+    // Only subscribe when step is eligible for checking (sequential dependency met)
+    // We check isBlocked inside the callbacks using refs to avoid re-subscription cycles
+    if (!isEligibleForChecking) {
+      return;
+    }
+
+    // If already completed, no need to subscribe
+    if (state.isCompleted) {
+      return;
+    }
+
+    // Subscribe to context changes from EchoSrv
+    let contextUnsubscribe: (() => void) | undefined;
+    let isSubscribed = true;
+
+    // Shared recheck function that checks current state via refs
+    const triggerRecheckIfBlocked = () => {
+      // Use refs to get current state without causing re-subscription
+      const isBlocked = !isCompletedRef.current && !isEnabledRef.current;
+
+      if (isBlocked && !isCheckingRef.current) {
+        checkStepRef.current();
+      }
+    };
+
+    import('../context-engine').then(({ ContextService }) => {
+      if (!isSubscribed) {
+        return; // Component unmounted or state changed before import resolved
+      }
+      contextUnsubscribe = ContextService.onContextChange(() => triggerRecheckIfBlocked());
+    });
+
+    // Also subscribe to URL changes (navigation) since EchoSrv doesn't capture menu clicks
+    let lastUrl = window.location.href;
+    const handleUrlChange = () => {
+      const currentUrl = window.location.href;
+      if (currentUrl !== lastUrl) {
+        lastUrl = currentUrl;
+        // Small delay to let the page settle
+        setTimeout(() => {
+          if (isSubscribed) {
+            triggerRecheckIfBlocked();
+          }
+        }, 500);
+      }
+    };
+
+    // Listen for navigation events
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    document.addEventListener('grafana:location-changed', handleUrlChange);
+
+    // Also check periodically for SPA navigation that doesn't fire events
+    const urlCheckInterval = setInterval(handleUrlChange, 1000);
+
+    return () => {
+      isSubscribed = false;
+      if (contextUnsubscribe) {
+        contextUnsubscribe();
+      }
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+      document.removeEventListener('grafana:location-changed', handleUrlChange);
+      clearInterval(urlCheckInterval);
+    };
+  }, [isEligibleForChecking, state.isCompleted, stepId]); // Only re-subscribe when eligibility or completion changes
 
   // Scoped heartbeat recheck for fragile prerequisites
   useEffect(() => {

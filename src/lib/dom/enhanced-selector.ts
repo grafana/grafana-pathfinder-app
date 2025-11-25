@@ -95,8 +95,6 @@ function tryNativeSelector(selector: string): NodeListOf<Element> | null {
     const testResult = document.querySelectorAll(selector);
     return testResult;
   } catch (error) {
-    // Selector not supported natively, need fallback
-    console.warn(`Native querySelector failed for: "${selector}"`, error);
     return null;
   }
 }

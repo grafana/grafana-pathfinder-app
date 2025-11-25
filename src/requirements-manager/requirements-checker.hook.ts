@@ -40,6 +40,7 @@ export interface RequirementsState {
   retryCount?: number; // Current retry attempt
   maxRetries?: number; // Maximum retry attempts
   isRetrying?: boolean; // Whether currently in a retry cycle
+  stepIndex?: number; // Global step index for sequence awareness
 }
 
 /**
@@ -54,6 +55,7 @@ export class SequentialRequirementsManager {
   private lastContextChangeTime = 0;
   private contextDebounceDelay = 500; // ms - increased to handle multiple rapid EchoSrv events
   private contextChangeUnsubscribe?: () => void;
+  private watchInterval?: ReturnType<typeof setInterval>;
 
   static getInstance(): SequentialRequirementsManager {
     if (!SequentialRequirementsManager.instance) {
@@ -73,9 +75,34 @@ export class SequentialRequirementsManager {
   }
 
   updateStep(id: string, state: Partial<RequirementsState>): void {
-    const currentState = this.steps.get(id);
-    if (currentState) {
-      this.steps.set(id, { ...currentState, ...state });
+    const currentState = this.steps.get(id) || {
+      isEnabled: false,
+      isCompleted: false,
+      isChecking: false,
+    };
+
+    // Check if this is a meaningful state change (not just stepIndex sync)
+    const newState = { ...currentState, ...state };
+    const isOnlyStepIndexUpdate =
+      Object.keys(state).length === 1 && state.stepIndex !== undefined && currentState.stepIndex === state.stepIndex;
+
+    // Skip notification if only updating stepIndex to same value
+    if (isOnlyStepIndexUpdate) {
+      return;
+    }
+
+    this.steps.set(id, newState);
+
+    // Only notify if there's a meaningful state change
+    // Compare key fields to avoid notification loops
+    const hasSignificantChange =
+      currentState.isEnabled !== newState.isEnabled ||
+      currentState.isCompleted !== newState.isCompleted ||
+      currentState.isChecking !== newState.isChecking ||
+      currentState.error !== newState.error ||
+      (currentState.stepIndex === undefined && newState.stepIndex !== undefined);
+
+    if (hasSignificantChange) {
       this.notifyListeners();
     }
   }
@@ -99,6 +126,65 @@ export class SequentialRequirementsManager {
 
   private notifyListeners(): void {
     this.listeners.forEach((listener) => listener());
+  }
+
+  /**
+   * Watch the next sequential step for a duration
+   * This finds the first incomplete step and repeatedly checks it to help it unlock
+   * Useful when a section completes and the next step needs to become available
+   */
+  watchNextStep(durationMs: number): void {
+    // Clear any existing watch
+    if (this.watchInterval) {
+      clearInterval(this.watchInterval);
+      this.watchInterval = undefined;
+    }
+
+    // Find the next incomplete step by lowest stepIndex
+    let nextStepId: string | undefined;
+    let lowestIndex = Infinity;
+
+    for (const [stepId, state] of this.steps.entries()) {
+      if (!state.isCompleted && state.stepIndex !== undefined) {
+        if (state.stepIndex < lowestIndex) {
+          lowestIndex = state.stepIndex;
+          nextStepId = stepId;
+        }
+      }
+    }
+
+    if (!nextStepId) {
+      return;
+    }
+
+    // Start polling this specific step
+    const startTime = Date.now();
+
+    // Initial immediate check
+    this.triggerStepCheck(nextStepId);
+
+    this.watchInterval = setInterval(() => {
+      // Check if we've exceeded duration
+      if (Date.now() - startTime >= durationMs) {
+        if (this.watchInterval) {
+          clearInterval(this.watchInterval);
+          this.watchInterval = undefined;
+        }
+        return;
+      }
+
+      // Stop watching if step completes or becomes enabled
+      const currentState = this.steps.get(nextStepId!);
+      if (currentState?.isCompleted || currentState?.isEnabled) {
+        if (this.watchInterval) {
+          clearInterval(this.watchInterval);
+          this.watchInterval = undefined;
+        }
+        return;
+      }
+
+      this.triggerStepCheck(nextStepId!);
+    }, 500); // Check every 500ms
   }
 
   // Trigger reactive checking of all steps (e.g., after completing a step or DOM changes)
