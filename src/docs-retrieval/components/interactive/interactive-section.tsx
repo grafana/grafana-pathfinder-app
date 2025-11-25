@@ -338,6 +338,13 @@ export function InteractiveSection({
         detail: { sectionId },
       });
       document.dispatchEvent(completionEvent);
+
+      // Trigger global reactive check to enable next eligible steps
+      // Also trigger watchNextStep to help the next step unlock if it has requirements
+      import('../../../requirements-manager').then(({ SequentialRequirementsManager }) => {
+        SequentialRequirementsManager.getInstance().triggerReactiveCheck();
+        SequentialRequirementsManager.getInstance().watchNextStep(3000); // Watch for 3 seconds
+      });
     }
   }, [isCompleted, sectionId, stepComponents.length]);
 

@@ -20,6 +20,7 @@ export interface UseStepCheckerProps {
   refTarget?: string; // Pass through to requirements checking
   isEligibleForChecking: boolean;
   skippable?: boolean; // Whether this step can be skipped if requirements fail
+  stepIndex?: number; // Document-wide step index for sequence awareness
 }
 
 /**

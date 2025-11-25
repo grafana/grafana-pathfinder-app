@@ -130,6 +130,7 @@ export const InteractiveStep = forwardRef<
       stepId: stepId || renderedStepId, // Fallback if no stepId provided
       isEligibleForChecking: isPartOfSection ? isEligibleForChecking : isEligibleForChecking && !isCompleted,
       skippable,
+      stepIndex, // Pass document-wide step index for sequence awareness
     });
 
     // Combined completion state: objectives always win, skipped also counts as completed (clarification 1, 2)
