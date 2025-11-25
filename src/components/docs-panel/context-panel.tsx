@@ -358,7 +358,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
           <div className={styles.recommendationsGrid} data-testid={testIds.contextPanel.recommendationsGrid}>
             {finalPrimaryRecommendations.map((recommendation, index) => (
               <Card
-                key={index}
+                key={recommendation.url}
                 className={`${styles.recommendationCard} ${
                   recommendation.type === 'docs-page' ? styles.compactCard : ''
                 }`}
@@ -586,7 +586,7 @@ const RecommendationsSection = memo(function RecommendationsSection({
                 <div className={styles.otherDocsList} data-testid={testIds.contextPanel.otherDocsList}>
                   {secondaryDocs.map((item, index) => (
                     <div
-                      key={index}
+                      key={item.url}
                       className={styles.otherDocItem}
                       data-testid={testIds.contextPanel.otherDocItem(index)}
                     >

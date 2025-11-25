@@ -197,7 +197,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
               <label className={styles.stepsLabel}>Recorded Steps</label>
               <div className={styles.stepsContainer}>
                 {recordedSteps.map((step, index) => (
-                  <div key={index} className={styles.stepItem}>
+                  <div key={`${step.selector}-${step.action}-${index}`} className={styles.stepItem}>
                     <Badge text={String(index + 1)} color="blue" className={styles.stepBadge} />
                     <div className={styles.stepContent}>
                       <div className={styles.stepDescription}>

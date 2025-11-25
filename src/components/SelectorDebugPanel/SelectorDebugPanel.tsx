@@ -625,7 +625,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                   <label className={styles.label}>Recorded Steps</label>
                   <div className={styles.recordedStepsList}>
                     {recordedSteps.map((step, index) => (
-                      <div key={index} className={styles.recordedStep}>
+                      <div key={`${step.selector}-${step.action}-${index}`} className={styles.recordedStep}>
                         {multistepMode && (
                           <input
                             type="checkbox"

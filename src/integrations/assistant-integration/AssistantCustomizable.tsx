@@ -2,7 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2, Button } from '@grafana/ui';
-import { useInlineAssistant, createAssistantContextItem, useProvidePageContext } from '@grafana/assistant';
+import {
+  useInlineAssistant,
+  createAssistantContextItem,
+  useProvidePageContext,
+  type ChatContextItem,
+} from '@grafana/assistant';
 import { getDataSourceSrv, locationService } from '@grafana/runtime';
 import { getIsAssistantAvailable, useMockInlineAssistant } from './assistant-dev-mode';
 import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
@@ -20,6 +25,9 @@ export interface AssistantCustomizableProps {
   /** Current content URL for localStorage key */
   contentKey: string;
 }
+
+// REACT: Stable array reference to prevent context thrashing (R3)
+const EMPTY_CONTEXT_DEPS: ChatContextItem[] = [];
 
 const getStyles = (theme: GrafanaTheme2) => ({
   wrapper: css({
@@ -167,7 +175,7 @@ export function AssistantCustomizable({
   const isInitialMount = useRef(true);
 
   // Provide page context for datasource - the assistant will automatically use this
-  const setPageContext = useProvidePageContext('/explore', []);
+  const setPageContext = useProvidePageContext('/explore', EMPTY_CONTEXT_DEPS);
 
   // Get context from parent InteractiveStep (if available)
   const customizableContext = useAssistantCustomizableContext();
