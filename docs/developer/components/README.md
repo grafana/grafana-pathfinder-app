@@ -12,6 +12,18 @@ The components are organized into logical groups with clear responsibilities:
 - **AppConfig/**: Plugin configuration interface for admin settings
 - **docs-panel/**: Core documentation features (recommendations, learning journeys)
 
+### Additional UI Components
+
+- **wysiwyg-editor/**: WYSIWYG content authoring editor (50+ files)
+- **LiveSession/**: Live collaboration features with PeerJS integration
+- **EnableRecommenderBanner/**: Banner for enabling recommendation service
+- **HelpFooter/**: Help content and footer
+- **DomPathTooltip/**: DOM path visualization tooltip
+- **SelectorDebugPanel/**: CSS selector debugging panel
+- **SkeletonLoader/**: Loading state skeleton UI
+- **URLTester/**: URL testing utilities
+- **FeedbackButton/**: User feedback collection button
+
 ## Component Files
 
 ### `testIds.ts`
@@ -53,9 +65,18 @@ Contains the main documentation functionality including:
 ```
 App (root)
 ├── AppConfig (admin only)
-└── docs-panel/
-    ├── context-panel (recommendations)
-    └── docs-panel (main viewer)
+├── docs-panel/
+│   ├── context-panel (recommendations)
+│   └── docs-panel (main viewer)
+├── wysiwyg-editor/ (content authoring)
+├── LiveSession/ (live collaboration)
+├── EnableRecommenderBanner/ (recommendation enablement)
+├── HelpFooter/ (help content)
+├── DomPathTooltip/ (DOM visualization)
+├── SelectorDebugPanel/ (selector debugging)
+├── SkeletonLoader/ (loading states)
+├── URLTester/ (URL testing)
+└── FeedbackButton/ (user feedback)
 ```
 
 ## Design Patterns

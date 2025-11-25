@@ -19,7 +19,7 @@ npm run peerjs-server
 
 **Explanation**: The PeerJS server handles peer discovery and WebRTC connection setup between presenter and attendees. Once connected, guide data flows peer-to-peer directly between browsers.
 
-**Production**: For production use, deploy a dedicated PeerJS server. See `docs/LOCAL_PEERJS_SERVER.md` for deployment options.
+**Production**: For production use, deploy a dedicated PeerJS server. See `docs/developer/LIVE_SESSIONS.md` for deployment options.
 
 ### Known Limitations
 
@@ -108,7 +108,7 @@ npm run peerjs-server
 
 **Workaround**:
 
-- Use TURN server fallback (see `docs/LOCAL_PEERJS_SERVER.md`)
+- Use TURN server fallback (see `docs/developer/LIVE_SESSIONS.md`)
 - Configure firewall to allow WebRTC ports
 - Test connection in unrestricted network first
 
@@ -132,7 +132,7 @@ If you encounter issues not listed here:
 1. Check browser console for errors
 2. Verify PeerJS server is running (`npm run peerjs-server`)
 3. Test in incognito/private window
-4. See troubleshooting in `docs/LOCAL_PEERJS_SERVER.md`
+4. See troubleshooting in `docs/developer/LIVE_SESSIONS.md`
 5. File issue with:
    - Browser and version
    - Number of attendees
