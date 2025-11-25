@@ -1,0 +1,787 @@
+---
+title: React Anti-Patterns and Code Quality Rule
+description: Critical React patterns the agent must check during reviews and feature development.
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+alwaysApply: true
+---
+
+# React Anti-Patterns and Code Quality Rules
+
+These rules cover the most critical code-level issues in React applications. During `/review` or when implementing features, the agent MUST check for these patterns.
+
+---
+
+## R1 — Missing useEffect Cleanup
+Subscriptions, event listeners, and timers created in `useEffect` must be cleaned up to prevent memory leaks.
+
+**Don't**
+```tsx
+useEffect(() => {
+  const subscription = dataSource.subscribe(handleData);
+  window.addEventListener('resize', handleResize);
+  const timer = setInterval(pollData, 5000);
+  // No cleanup - resources persist after unmount
+}, []);
+```
+
+**Do**
+```tsx
+useEffect(() => {
+  const subscription = dataSource.subscribe(handleData);
+  window.addEventListener('resize', handleResize);
+  const timer = setInterval(pollData, 5000);
+
+  // REACT: cleanup subscriptions, listeners, timers (R1)
+  return () => {
+    subscription.unsubscribe();
+    window.removeEventListener('resize', handleResize);
+    clearInterval(timer);
+  };
+}, []);
+```
+
+**Agent behavior**
+- Flag any `useEffect` with `addEventListener`, `subscribe`, `setInterval`, or `setTimeout` that lacks a cleanup return.
+- Ensure WebSocket connections, MutationObservers, and ResizeObservers are disconnected on cleanup.
+- When reviewing, check that every resource acquisition has a corresponding release.
+
+---
+
+## R2 — Stale Closure in Callbacks
+Closures in `useEffect` or callbacks capture variable values at creation time. Without proper handling, they reference stale data.
+
+**Don't**
+```tsx
+const [count, setCount] = useState(0);
+
+useEffect(() => {
+  const timer = setInterval(() => {
+    setCount(count + 1); // Always reads initial count (0)
+  }, 1000);
+  return () => clearInterval(timer);
+}, []); // count not in deps - stale closure
+```
+
+**Do**
+```tsx
+const [count, setCount] = useState(0);
+
+useEffect(() => {
+  const timer = setInterval(() => {
+    // REACT: functional update avoids stale closure (R2)
+    setCount(prev => prev + 1);
+  }, 1000);
+  return () => clearInterval(timer);
+}, []);
+
+// Alternative: useRef for latest value
+const countRef = useRef(count);
+useEffect(() => {
+  countRef.current = count;
+}, [count]);
+```
+
+**Agent behavior**
+- When state is used inside `setInterval`, `setTimeout`, or event callbacks, prefer functional updates (`setState(prev => ...)`) over direct state references.
+- If a callback needs the latest value but can't use functional updates, use a ref to track current state.
+- Flag any `useEffect` where state variables are used but not in the dependency array without functional updates.
+
+---
+
+## R3 — Object/Array Dependencies Causing Infinite Loops
+Objects and arrays are compared by reference. Creating new objects in render causes `useEffect` to see them as "changed" every time.
+
+**Don't**
+```tsx
+function UserProfile({ userId }) {
+  const [user, setUser] = useState(null);
+  
+  // New object every render
+  const options = { userId, includeDetails: true };
+  
+  useEffect(() => {
+    fetchUser(options).then(setUser);
+  }, [options]); // Infinite loop - options is always "new"
+}
+```
+
+**Do**
+```tsx
+function UserProfile({ userId }) {
+  const [user, setUser] = useState(null);
+  
+  // REACT: memoize object dependencies (R3)
+  const options = useMemo(
+    () => ({ userId, includeDetails: true }),
+    [userId]
+  );
+  
+  useEffect(() => {
+    fetchUser(options).then(setUser);
+  }, [options]);
+}
+
+// Better: use primitive dependencies directly
+useEffect(() => {
+  fetchUser({ userId, includeDetails: true }).then(setUser);
+}, [userId]); // Primitives compare by value
+```
+
+**Agent behavior**
+- Flag any object or array literal in a `useEffect` dependency array.
+- Recommend `useMemo` for complex objects or extracting primitive values as dependencies.
+- When reviewing, trace dependency array items to their definitions—if defined inline during render, they will cause re-runs.
+
+---
+
+## R4 — State Update on Unmounted Component
+Async operations may complete after component unmounts. Attempting to `setState` on unmounted components causes memory leaks.
+
+**Don't**
+```tsx
+useEffect(() => {
+  fetch(`/api/users/${userId}`)
+    .then(res => res.json())
+    .then(setData); // May run after unmount
+}, [userId]);
+```
+
+**Do**
+```tsx
+useEffect(() => {
+  const controller = new AbortController();
+  
+  fetch(`/api/users/${userId}`, { signal: controller.signal })
+    .then(res => res.json())
+    .then(setData)
+    .catch(err => {
+      // REACT: ignore abort errors (R4)
+      if (err.name !== 'AbortError') throw err;
+    });
+  
+  return () => controller.abort();
+}, [userId]);
+
+// Alternative: mounted flag
+useEffect(() => {
+  let isMounted = true;
+  
+  fetchData().then(result => {
+    if (isMounted) setData(result);
+  });
+  
+  return () => { isMounted = false; };
+}, []);
+```
+
+**Agent behavior**
+- For any `fetch` or async operation in `useEffect`, require either `AbortController` or a mounted flag.
+- Prefer `AbortController` as it actually cancels the network request.
+- Flag async callbacks that call `setState` without cancellation handling.
+
+---
+
+## R5 — Direct State Mutation
+React uses reference equality to detect changes. Mutating objects/arrays in place prevents re-renders.
+
+**Don't**
+```tsx
+const [todos, setTodos] = useState([{ id: 1, text: 'Learn React' }]);
+
+const updateTodo = (id, newText) => {
+  const todo = todos.find(t => t.id === id);
+  todo.text = newText; // Mutation!
+  setTodos(todos); // Same reference - no re-render
+};
+
+const addTodo = (text) => {
+  todos.push({ id: Date.now(), text }); // Mutation!
+  setTodos(todos);
+};
+```
+
+**Do**
+```tsx
+const updateTodo = (id, newText) => {
+  // REACT: immutable update (R5)
+  setTodos(todos.map(todo => 
+    todo.id === id ? { ...todo, text: newText } : todo
+  ));
+};
+
+const addTodo = (text) => {
+  // REACT: spread to create new array (R5)
+  setTodos([...todos, { id: Date.now(), text }]);
+};
+
+// For deeply nested state, consider Immer:
+import { produce } from 'immer';
+setTodos(produce(todos, draft => {
+  const todo = draft.find(t => t.id === id);
+  todo.text = newText;
+}));
+```
+
+**Agent behavior**
+- Flag any direct property assignment on state objects (`state.prop = value`).
+- Flag `.push()`, `.pop()`, `.splice()`, `.sort()` on state arrays without spread.
+- Recommend spread operators or `map`/`filter` for immutable updates.
+- For complex nested updates, suggest Immer if not already in use.
+
+---
+
+## R6 — Missing Error Boundaries
+Without error boundaries, any render error crashes the entire React tree with a white screen.
+
+**Don't**
+```tsx
+function App() {
+  return (
+    <div>
+      <Header />
+      <UserProfile userId={userId} /> {/* Error here crashes everything */}
+      <Footer />
+    </div>
+  );
+}
+```
+
+**Do**
+```tsx
+class ErrorBoundary extends React.Component {
+  state = { hasError: false, error: null };
+  
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  
+  componentDidCatch(error, errorInfo) {
+    console.error('Error boundary caught:', error, errorInfo);
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return <ErrorFallback error={this.state.error} />;
+    }
+    return this.props.children;
+  }
+}
+
+// REACT: wrap risky components with error boundaries (R6)
+function App() {
+  return (
+    <div>
+      <Header />
+      <ErrorBoundary>
+        <UserProfile userId={userId} />
+      </ErrorBoundary>
+      <Footer />
+    </div>
+  );
+}
+```
+
+**Agent behavior**
+- Recommend error boundaries around components that fetch data, parse external content, or render user-provided data.
+- Note that error boundaries don't catch errors in event handlers, async code, or the boundary itself.
+- When implementing new features with external data, suggest wrapping in an error boundary.
+
+---
+
+## R7 — Race Condition in Async State Updates
+Network requests don't complete in order. Earlier requests may resolve after later ones, showing stale data.
+
+**Don't**
+```tsx
+function SearchResults({ query }) {
+  const [results, setResults] = useState([]);
+  
+  useEffect(() => {
+    fetchResults(query).then(setResults);
+    // User types "re" -> "rea" -> "react"
+    // Responses may arrive out of order
+  }, [query]);
+}
+```
+
+**Do**
+```tsx
+function SearchResults({ query }) {
+  const [results, setResults] = useState([]);
+  
+  useEffect(() => {
+    let cancelled = false;
+    
+    fetchResults(query).then(data => {
+      // REACT: ignore stale responses (R7)
+      if (!cancelled) setResults(data);
+    });
+    
+    return () => { cancelled = true; };
+  }, [query]);
+}
+
+// Better: AbortController
+useEffect(() => {
+  const controller = new AbortController();
+  
+  fetchResults(query, { signal: controller.signal })
+    .then(setResults)
+    .catch(err => {
+      if (err.name !== 'AbortError') throw err;
+    });
+    
+  return () => controller.abort();
+}, [query]);
+```
+
+**Agent behavior**
+- For any search/filter/autocomplete pattern, require race condition handling.
+- Flag effects that fetch based on rapidly-changing inputs (search terms, filters) without cancellation.
+- Prefer `AbortController` over boolean flags when possible.
+
+---
+
+## R8 — Conditional Hook Calls
+React tracks hooks by call order. Conditional hooks break this tracking.
+
+**Don't**
+```tsx
+function UserDashboard({ user }) {
+  if (!user) {
+    return <LoginPrompt />;
+  }
+  
+  // These hooks only run sometimes - violates rules
+  const [data, setData] = useState(null);
+  const theme = useContext(ThemeContext);
+  
+  useEffect(() => {
+    fetchUserData(user.id).then(setData);
+  }, [user.id]);
+  
+  return <Dashboard data={data} theme={theme} />;
+}
+```
+
+**Do**
+```tsx
+function UserDashboard({ user }) {
+  // REACT: all hooks at top level, always called (R8)
+  const [data, setData] = useState(null);
+  const theme = useContext(ThemeContext);
+  
+  useEffect(() => {
+    if (user) {
+      fetchUserData(user.id).then(setData);
+    }
+  }, [user]);
+  
+  // Conditional rendering AFTER all hooks
+  if (!user) {
+    return <LoginPrompt />;
+  }
+  
+  return <Dashboard data={data} theme={theme} />;
+}
+```
+
+**Agent behavior**
+- Flag any hook call that appears after a conditional return statement.
+- Flag hooks inside `if` blocks, loops, or nested functions.
+- Ensure all hooks are called unconditionally at the top of the component.
+- ESLint rule `react-hooks/rules-of-hooks` should catch this—ensure it's enabled.
+
+---
+
+## R9 — Index as Key in Dynamic Lists
+When items are reordered or deleted, index-based keys cause React to mismatch component state.
+
+**Don't**
+```tsx
+function TodoList({ todos, onRemove }) {
+  return (
+    <ul>
+      {todos.map((todo, index) => (
+        <li key={index}> {/* Index shifts on delete */}
+          <input defaultValue={todo.text} />
+          <button onClick={() => onRemove(index)}>×</button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+**Do**
+```tsx
+function TodoList({ todos, onRemove }) {
+  return (
+    <ul>
+      {todos.map((todo) => (
+        // REACT: stable unique identifier (R9)
+        <li key={todo.id}>
+          <input defaultValue={todo.text} />
+          <button onClick={() => onRemove(todo.id)}>×</button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Generate stable IDs when creating items:
+const addTodo = (text) => {
+  setTodos([...todos, { id: crypto.randomUUID(), text }]);
+};
+```
+
+**Agent behavior**
+- Flag `key={index}` in lists where items can be added, removed, or reordered.
+- Index keys are acceptable ONLY for static lists that never change.
+- When reviewing, check that keys are stable across re-renders (not generated randomly each render).
+
+---
+
+## R10 — Unhandled Promise Rejections
+Promises without error handling fail silently, leaving users stuck with loading states.
+
+**Don't**
+```tsx
+useEffect(() => {
+  fetch(url)
+    .then(res => res.json())
+    .then(setData);
+  // No error handling - failures are silent
+}, [url]);
+
+const handleSubmit = async () => {
+  await submitForm(formData); // Uncaught rejection
+  navigate('/success');
+};
+```
+
+**Do**
+```tsx
+useEffect(() => {
+  setLoading(true);
+  setError(null);
+  
+  fetch(url)
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then(setData)
+    // REACT: handle errors explicitly (R10)
+    .catch(setError)
+    .finally(() => setLoading(false));
+}, [url]);
+
+const handleSubmit = async () => {
+  try {
+    await submitForm(formData);
+    navigate('/success');
+  } catch (err) {
+    setError(err.message);
+  }
+};
+```
+
+**Agent behavior**
+- Every `fetch` or async operation must have error handling (`.catch()` or `try/catch`).
+- Flag promise chains without `.catch()`.
+- Recommend tracking loading and error states for user feedback.
+- Check that HTTP error responses (4xx, 5xx) are treated as errors.
+
+---
+
+## R11 — Context Overuse for Frequent Updates
+Context re-renders ALL consuming components when its value changes.
+
+**Don't**
+```tsx
+const AppContext = createContext();
+
+function App() {
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  
+  useEffect(() => {
+    const handler = (e) => setMousePosition({ x: e.clientX, y: e.clientY });
+    window.addEventListener('mousemove', handler);
+    return () => window.removeEventListener('mousemove', handler);
+  }, []);
+  
+  // Every mouse move re-renders ALL consumers
+  return (
+    <AppContext.Provider value={{ mousePosition, user, theme }}>
+      <EntireApp />
+    </AppContext.Provider>
+  );
+}
+```
+
+**Do**
+```tsx
+// REACT: separate contexts by update frequency (R11)
+const MouseContext = createContext();
+const UserContext = createContext();
+const ThemeContext = createContext();
+
+function App() {
+  const mousePosition = useMousePosition(); // Custom hook
+  
+  // Memoize context value to prevent object reference changes
+  const mouseValue = useMemo(() => mousePosition, [mousePosition.x, mousePosition.y]);
+  
+  return (
+    <ThemeContext.Provider value={theme}>
+      <UserContext.Provider value={user}>
+        <MouseContext.Provider value={mouseValue}>
+          <EntireApp />
+        </MouseContext.Provider>
+      </UserContext.Provider>
+    </ThemeContext.Provider>
+  );
+}
+```
+
+**Agent behavior**
+- Flag context providers with frequently-changing values (mouse position, timers, input values).
+- Recommend splitting contexts by update frequency.
+- Ensure context values are memoized to prevent unnecessary reference changes.
+- For high-frequency updates, suggest state management libraries or component-local state.
+
+---
+
+## R12 — Inline Functions Breaking Memoization
+Inline functions create new references each render, defeating `React.memo`.
+
+**Don't**
+```tsx
+function ParentList({ items }) {
+  return (
+    <div>
+      {items.map(item => (
+        <MemoizedChild
+          key={item.id}
+          item={item}
+          onClick={() => handleClick(item.id)} // New function every render
+          style={{ color: 'blue' }} // New object every render
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+**Do**
+```tsx
+function ParentList({ items }) {
+  // REACT: stable callback reference (R12)
+  const handleClick = useCallback((id) => {
+    console.log('Clicked:', id);
+  }, []);
+  
+  // REACT: stable object reference (R12)
+  const itemStyle = useMemo(() => ({ color: 'blue' }), []);
+  
+  return (
+    <div>
+      {items.map(item => (
+        <MemoizedChild
+          key={item.id}
+          item={item}
+          onClick={handleClick}
+          style={itemStyle}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+**Agent behavior**
+- When passing callbacks to memoized children, use `useCallback`.
+- When passing objects/arrays as props to memoized children, use `useMemo`.
+- Flag inline arrow functions and object literals passed to `React.memo` components.
+- Note: Only optimize when there's a measurable performance issue—don't prematurely optimize.
+
+---
+
+## R13 — Missing Dependency Array in useEffect
+Without a dependency array, `useEffect` runs after every render, potentially causing infinite loops.
+
+**Don't**
+```tsx
+useEffect(() => {
+  fetchUserData(userId).then(setData);
+}); // Missing [] - runs EVERY render
+
+// setData triggers re-render -> effect runs -> setData -> infinite loop
+```
+
+**Do**
+```tsx
+// REACT: explicit dependencies (R13)
+useEffect(() => {
+  fetchUserData(userId).then(setData);
+}, [userId]); // Runs when userId changes
+
+// For one-time setup:
+useEffect(() => {
+  initializeApp();
+}, []); // Empty array = mount only
+```
+
+**Agent behavior**
+- Every `useEffect` MUST have a dependency array (even if empty).
+- Flag any `useEffect` without a second argument.
+- Use the `react-hooks/exhaustive-deps` ESLint rule.
+- When reviewing, verify that all values used inside the effect are in the dependency array.
+
+---
+
+## R14 — Derived State Anti-Pattern
+Storing computed values in state creates synchronization bugs and unnecessary renders.
+
+**Don't**
+```tsx
+function FilteredList({ items, filter }) {
+  // Storing derived data in state - must manually sync
+  const [filteredItems, setFilteredItems] = useState(
+    items.filter(i => i.category === filter)
+  );
+  
+  useEffect(() => {
+    setFilteredItems(items.filter(i => i.category === filter));
+  }, [items, filter]); // Extra render to sync
+  
+  return <List items={filteredItems} />;
+}
+```
+
+**Do**
+```tsx
+function FilteredList({ items, filter }) {
+  // REACT: compute during render - always in sync (R14)
+  const filteredItems = useMemo(
+    () => items.filter(i => i.category === filter),
+    [items, filter]
+  );
+  
+  return <List items={filteredItems} />;
+}
+
+// For simple calculations, memoization may not be needed:
+function FilteredList({ items, filter }) {
+  const filteredItems = items.filter(i => i.category === filter);
+  return <List items={filteredItems} />;
+}
+```
+
+**Agent behavior**
+- If a value can be computed from props or other state, don't store it in state.
+- Flag `useState` + `useEffect` patterns that sync derived values.
+- Prefer computing during render with optional `useMemo` for expensive calculations.
+- When reviewing, ask: "Can this state be derived from existing props/state?"
+
+---
+
+## R15 — Ref Manipulation Without Cleanup
+DOM refs can accumulate event listeners and external library instances if not cleaned up.
+
+**Don't**
+```tsx
+function VideoPlayer({ src }) {
+  const videoRef = useRef();
+  
+  useEffect(() => {
+    const video = videoRef.current;
+    video.addEventListener('ended', handleEnded);
+    video.addEventListener('error', handleError);
+    
+    const player = new FancyPlayer(video);
+    player.init();
+    // No cleanup - listeners accumulate, player not destroyed
+  }, []);
+}
+```
+
+**Do**
+```tsx
+function VideoPlayer({ src }) {
+  const videoRef = useRef();
+  const playerRef = useRef();
+  
+  useEffect(() => {
+    const video = videoRef.current;
+    
+    video.addEventListener('ended', handleEnded);
+    video.addEventListener('error', handleError);
+    
+    playerRef.current = new FancyPlayer(video);
+    playerRef.current.init();
+    
+    // REACT: clean up DOM listeners and external libraries (R15)
+    return () => {
+      video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('error', handleError);
+      playerRef.current?.destroy();
+    };
+  }, []);
+}
+```
+
+**Agent behavior**
+- Any `addEventListener` on a ref element requires `removeEventListener` in cleanup.
+- External libraries attached to DOM elements must be destroyed/disposed on cleanup.
+- Flag direct DOM manipulation without corresponding cleanup.
+- Remember: React synthetic events (onClick, etc.) are cleaned up automatically—native DOM events are not.
+
+---
+
+## Agent Conduct
+
+### During `/review`
+Check code against all R1-R15 rules. Prioritize:
+1. **Critical (R1-R5)**: Memory leaks, race conditions, infinite loops, state bugs
+2. **High (R6-R10)**: Error handling, hook violations, key issues
+3. **Medium (R11-R15)**: Performance and patterns
+
+### When Implementing Features
+- Always add cleanup to `useEffect` with subscriptions/listeners.
+- Use `AbortController` for fetch operations.
+- Prefer functional updates for state used in callbacks.
+- Compute derived values during render, not in state.
+- Use stable references (`useCallback`, `useMemo`) when passing to memoized children.
+
+### Comment Annotations
+When fixing anti-patterns, annotate with rule reference:
+```tsx
+// REACT: cleanup subscription (R1)
+// REACT: functional update avoids stale closure (R2)
+// REACT: memoize object dependency (R3)
+// REACT: abort on unmount (R4)
+// REACT: immutable update (R5)
+```
+
+### Quick Detection Checklist
+| Pattern | Rule | Action |
+|---------|------|--------|
+| `useEffect` without cleanup return | R1 | Add cleanup |
+| State in callback without functional update | R2 | Use `prev =>` |
+| Object/array in dependency array | R3 | Use `useMemo` or primitives |
+| `fetch` without `AbortController` | R4 | Add abort handling |
+| `.push()`, `.splice()` on state | R5 | Use spread/map |
+| No error boundary around risky component | R6 | Wrap with boundary |
+| Search effect without cancellation | R7 | Add cancelled flag |
+| Hook after conditional return | R8 | Move hooks to top |
+| `key={index}` in dynamic list | R9 | Use stable ID |
+| Promise without `.catch()` | R10 | Add error handling |
+| Context with frequent updates | R11 | Split context |
+| Inline function to memoized child | R12 | Use `useCallback` |
+| `useEffect` without dependency array | R13 | Add `[]` or deps |
+| `useState` + `useEffect` for derived value | R14 | Compute in render |
+| DOM listener without cleanup | R15 | Add `removeEventListener` |

@@ -1,10 +1,114 @@
-import { AppRootProps } from '@grafana/data';
-import React, { useMemo, useEffect } from 'react';
+import { AppRootProps, GrafanaTheme2 } from '@grafana/data';
+import React, { useMemo, useEffect, Component, ReactNode } from 'react';
 import { SceneApp } from '@grafana/scenes';
+import { Button, useStyles2 } from '@grafana/ui';
+import { css } from '@emotion/css';
 import { docsPage } from '../../pages/docsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { onPluginStart } from '../../context-engine';
+
+/**
+ * Error Boundary to catch render errors in the plugin tree (R6)
+ * Prevents white screen of death and provides recovery option
+ */
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: React.ErrorInfo | null;
+}
+
+class PluginErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = {
+    hasError: false,
+    error: null,
+    errorInfo: null,
+  };
+
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Pathfinder plugin error:', error, errorInfo);
+    this.setState({ errorInfo });
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return <ErrorFallback error={this.state.error} onReset={this.handleReset} />;
+    }
+    return this.props.children;
+  }
+}
+
+/**
+ * Fallback UI when an error occurs
+ */
+function ErrorFallback({ error, onReset }: { error: Error | null; onReset: () => void }) {
+  const styles = useStyles2(getErrorStyles);
+
+  return (
+    <div className={styles.container}>
+      <div className={styles.content}>
+        <h3 className={styles.title}>Something went wrong</h3>
+        <p className={styles.message}>
+          The Pathfinder plugin encountered an error. You can try again or refresh the page.
+        </p>
+        {error && <code className={styles.errorCode}>{error.message}</code>}
+        <div className={styles.actions}>
+          <Button variant="primary" onClick={onReset}>
+            Try Again
+          </Button>
+          <Button variant="secondary" onClick={() => window.location.reload()}>
+            Refresh Page
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const getErrorStyles = (theme: GrafanaTheme2) => ({
+  container: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+    padding: theme.spacing(4),
+  }),
+  content: css({
+    textAlign: 'center',
+    maxWidth: '400px',
+  }),
+  title: css({
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing(2),
+  }),
+  message: css({
+    color: theme.colors.text.secondary,
+    marginBottom: theme.spacing(2),
+  }),
+  errorCode: css({
+    display: 'block',
+    padding: theme.spacing(1),
+    marginBottom: theme.spacing(2),
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.error.text,
+    wordBreak: 'break-word',
+  }),
+  actions: css({
+    display: 'flex',
+    gap: theme.spacing(1),
+    justifyContent: 'center',
+  }),
+});
 
 function getSceneApp() {
   return new SceneApp({
@@ -30,7 +134,9 @@ function App(props: AppRootProps) {
 
   return (
     <PluginPropsContext.Provider value={props}>
-      <scene.Component model={scene} />
+      <PluginErrorBoundary>
+        <scene.Component model={scene} />
+      </PluginErrorBoundary>
     </PluginPropsContext.Provider>
   );
 }
