@@ -13,7 +13,11 @@ describe('DomPathTooltip', () => {
 
     render(<DomPathTooltip domPath={domPath} position={position} visible={true} />);
 
-    expect(screen.getByText(domPath)).toBeInTheDocument();
+    // DOM path is split across multiple spans, so we check for parts
+    expect(screen.getByText('body')).toBeInTheDocument();
+    expect(screen.getByText('div.container')).toBeInTheDocument();
+    expect(screen.getByText('button')).toBeInTheDocument();
+    expect(screen.getByText('[data-testid="save"]')).toBeInTheDocument();
   });
 
   it('positions tooltip at specified coordinates with offset', () => {
@@ -50,7 +54,11 @@ describe('DomPathTooltip', () => {
 
     render(<DomPathTooltip domPath={domPath} position={position} visible={true} />);
 
-    expect(screen.getByText(domPath)).toBeInTheDocument();
+    // Check for key parts of the complex path
+    expect(screen.getByText('body')).toBeInTheDocument();
+    expect(screen.getByText('div.css-abc123.container')).toBeInTheDocument();
+    expect(screen.getByText('main#content')).toBeInTheDocument();
+    expect(screen.getByText('[data-testid="save"]')).toBeInTheDocument();
   });
 
   it('handles very long DOM paths', () => {
@@ -60,7 +68,11 @@ describe('DomPathTooltip', () => {
 
     render(<DomPathTooltip domPath={longPath} position={position} visible={true} />);
 
-    expect(screen.getByText(longPath)).toBeInTheDocument();
+    // Check for key parts of the long path
+    expect(screen.getByText('body')).toBeInTheDocument();
+    expect(screen.getByText('div.wrapper')).toBeInTheDocument();
+    expect(screen.getByText('[data-testid="very-long-test-id"]')).toBeInTheDocument();
+    expect(screen.getByText('.btn.primary.large')).toBeInTheDocument();
   });
 
   it('updates position when prop changes', () => {

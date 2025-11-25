@@ -155,6 +155,6 @@ npm run lint
 
 ## Related Documentation
 
-- [Architecture Overview](ARCHITECTURE.md)
+- [Architecture Overview (GraphViz DOT format)](../architecture.dot)
 - [Local Development](LOCAL_DEV.md)
 - [Component Documentation](components/README.md)

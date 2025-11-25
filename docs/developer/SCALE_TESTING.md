@@ -406,5 +406,5 @@ Based on scale testing findings:
 ## References
 
 - Live Sessions Plan: `/plans/collaborative-live-sessions.md`
-- PeerJS Server Setup: `/docs/LOCAL_PEERJS_SERVER.md`
+- Live Sessions Setup: `/docs/developer/LIVE_SESSIONS.md`
 - Known Issues: `/docs/KNOWN_ISSUES.md`

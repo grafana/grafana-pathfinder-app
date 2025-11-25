@@ -16,37 +16,41 @@ A multi-step works like any other interactivestep for purposes of things like co
 
 Finally, a regular interactive step is expressed like this in HTML, and we'll need to adapt it for multi-step.  Here's what a regular set of 3 interactive step looks like:
 
-              <li class="interactive" data-requirements="navmenu-open"
-                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
-                  data-targetaction='highlight'>
-                Click Administration &gt; Plugins &amp; Data in the left-side menu.</li>
+```html
+  <li class="interactive" data-requirements="navmenu-open"
+      data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
+      data-targetaction='highlight'>
+    Click Administration &gt; Plugins &amp; Data in the left-side menu.</li>
 
-              <li class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'>
-                  Click the Plugins button
-              </li>
+  <li class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'>
+      Click the Plugins button
+  </li>
 
-              <li class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'>
-                 Use the search bar to search for "Business News" (the plugin we'll be using)
-              </li>
+  <li class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'>
+      Use the search bar to search for "Business News" (the plugin we'll be using)
+  </li>
 
-              <li class="interactive" data-reftarget="a[href='/plugins/volkovlabs-rss-datasource']" data-targetaction='highlight'>
-                Click the Business News button that appears.
-              </li>
+  <li class="interactive" data-reftarget="a[href='/plugins/volkovlabs-rss-datasource']" data-targetaction='highlight'>
+    Click the Business News button that appears.
+  </li>
+```
 
 Notice that we can put attributes all on the li element because we're only doing one thing.   A multi-step componet will be specified like this in HTML:
 
-              <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-requirements="navmenu-open"
-                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
-                  data-targetaction='highlight'/>
-                <span class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'/>
-                <span class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'/>
-                Take 3 steps at once!
-              </li>
+```html
+  <li class="interactive" data-targetaction="multistep">
+    <span class="interactive" data-requirements="navmenu-open"
+      data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
+      data-targetaction='highlight'/>
+    <span class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'/>
+    <span class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'/>
+    Take 3 steps at once!
+  </li>
+```
 
 Critical differences:
 * The interactive element is specified as data-targetaction="multistep"
-* The interactive element contains a series of class="interactive" empty <span> elements, whose attributes carry the details of each step to be executed.
+* The interactive element contains a series of class="interactive" empty `<span>` elements, whose attributes carry the details of each step to be executed.
 
 Examine all of this information carefully, and discuss your plans of how you would implement this.  There are at least three concerns to be aware of:
 
@@ -134,33 +138,37 @@ A multi-step works like any other interactivestep for purposes of things like co
 
 Finally, a regular interactive step is expressed like this in HTML, and we'll need to adapt it for multi-step.  Here's what a regular set of 3 interactive step looks like:
 
-              <li class="interactive" data-requirements="navmenu-open"
-                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
-                  data-targetaction='highlight'>
-                Click Administration &gt; Plugins &amp; Data in the left-side menu.</li>
+```html
+  <li class="interactive" data-requirements="navmenu-open"
+      data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
+      data-targetaction='highlight'>
+    Click Administration &gt; Plugins &amp; Data in the left-side menu.</li>
 
-              <li class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'>
-                  Click the Plugins button
-              </li>
+  <li class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'>
+      Click the Plugins button
+  </li>
 
-              <li class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'>
-                 Use the search bar to search for "Business News" (the plugin we'll be using)
-              </li>
+  <li class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'>
+      Use the search bar to search for "Business News" (the plugin we'll be using)
+  </li>
 
-              <li class="interactive" data-reftarget="a[href='/plugins/volkovlabs-rss-datasource']" data-targetaction='highlight'>
-                Click the Business News button that appears.
-              </li>
+  <li class="interactive" data-reftarget="a[href='/plugins/volkovlabs-rss-datasource']" data-targetaction='highlight'>
+    Click the Business News button that appears.
+  </li>
+```
 
 Notice that we can put attributes all on the li element because we're only doing one thing.   A multi-step componet will be specified like this in HTML:
 
-              <li class="interactive" data-targetaction="multistep">
-                <span class="interactive" data-requirements="navmenu-open"
-                  data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
-                  data-targetaction='highlight'/>
-                <span class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'/>
-                <span class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'/>
-                Take 3 steps at once!
-              </li>
+```html
+  <li class="interactive" data-targetaction="multistep">
+    <span class="interactive" data-requirements="navmenu-open"
+      data-reftarget="a[data-testid='data-testid Nav menu item'][href='/admin/plugins']"
+      data-targetaction='highlight'/>
+    <span class="interactive" data-reftarget="a[href='/plugins']" data-targetaction='highlight'/>
+    <span class="interactive" data-reftarget="input[type='text']" data-targetaction='formfill' data-targetvalue='Business News'/>
+    Take 3 steps at once!
+  </li>
+```
 
 Critical differences:
 * The interactive element is specified as data-targetaction="multistep"

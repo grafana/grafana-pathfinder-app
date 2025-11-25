@@ -323,10 +323,9 @@ describe('Selector Generator', () => {
       document.body.appendChild(link);
 
       const selector = generateBestSelector(link);
-      // Should normalize href to just the path
-      expect(selector).toContain('[href="/dashboard"]');
-      expect(selector).not.toContain('?tab=overview');
-      expect(selector).not.toContain('#section1');
+      // Test ID is unique, so should just return simple selector
+      // Our logic now keeps testid unique if available
+      expect(selector).toBe('a[data-testid="nav-link"]');
     });
 
     it('should handle multiple buttons with same text using context', () => {
@@ -381,9 +380,8 @@ describe('Selector Generator', () => {
       document.body.appendChild(link);
 
       const selector = generateBestSelector(link);
-      // Should include both testid and href for specificity
-      expect(selector).toContain('data-testid="nav-item"');
-      expect(selector).toContain('[href="/dashboard"]');
+      // Since testid is unique, we just use the simple testid selector
+      expect(selector).toBe('a[data-testid="nav-item"]');
     });
 
     it('should handle generic button text with parent context', () => {

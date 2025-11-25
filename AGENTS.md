@@ -128,16 +128,6 @@ src/
 └── types/             # TypeScript type definitions
 ```
 
-## AI Agent Roles
-
-This project supports role-based agent behavior via slash commands:
-
-- **`/fp`** - Functional Programming Engineer (default): Write functional-first code with pure functions and immutability
-- **`/review`** - Code Reviewer: Review for clarity, correctness, and maintainability
-- **`/secure`** - Security Analyst: Check for vulnerabilities and unsafe patterns
-- **`/test`** - Test Writer: Write fast, isolated, reliable tests
-- **`/docs`** - Documentation Writer: Write clear, human-first documentation
-
 ## File Creation Policy
 
 Do NOT create summary `.md` files unless explicitly requested. This saves tokens and keeps the repository clean.
@@ -150,3 +140,4 @@ When uncertain about:
 - **Security concerns**: Follow `.cursor/rules/frontend-security.mdc` and ask user to reach out in #security channel
 - **Interactive tutorials**: Consult `.cursor/rules/interactiveRequirements.mdc`
 - **Memory/context**: The agent instructions in `.cursor/rules/instructions.mdc` explain the memory bank system
+- **Commands such as /review, /secure, /test, /docs**: Command descriptions are in `.cursor/rules/instructions.mdc`

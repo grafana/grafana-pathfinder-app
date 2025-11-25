@@ -23,21 +23,26 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 ## Component Relationships
 
 - `App.tsx` → Scene setup and auto-launch logic
-- `CombinedLearningJourneyPanel` → Tab orchestration and content rendering
-- `ContextPanel` → Recommendations display using `useContextPanel` hook
-- **Hooks** → Business logic in `src/utils/*.hook.ts`
+- `CombinedLearningJourneyPanel` → Tab orchestration and content rendering (`docs-panel.tsx`)
+- `ContextPanel` → Recommendations display using `useContextPanel` hook (`context-panel.tsx`)
+- **Interactive Engine** → Business logic in `src/interactive-engine/`
+- **Context Engine** → Context analysis in `src/context-engine/`
+- **Requirements Manager** → Requirements validation in `src/requirements-manager/`
+- **Utils** → General utilities in `src/utils/` (keyboard shortcuts, link handling)
 - **Styles** → Theme-aware functions in `src/styles/*.styles.ts`
 
 ## Critical Implementation Paths
 
 **Context Analysis → Recommendations**:
-1. `context-analysis.ts` → Extract context tags from Grafana state
-2. `context-data-fetcher.ts` → Call recommender service
-3. `useContextPanel` → Process and render recommendations
+1. `context-engine/context.service.ts` → Extract context tags from Grafana state
+2. `context-engine/context.service.ts` → Call recommender service
+3. `context-engine/context.hook.ts` (useContextPanel) → Process and render recommendations
 4. User interaction → Tab creation with content
 
 **Content Loading with Interactive Elements**:
-1. `docs-fetcher.ts` → Multi-strategy HTML fetching with fallbacks
-2. `useContentProcessing` → Parse HTML, inject interactive buttons, resolve asset URLs
-3. `useInteractiveElements` → Handle "show me"/"do it" events, check requirements, highlight/automate UI elements
-4. Render in tab with progress tracking
+1. `docs-retrieval/content-fetcher.ts` → Multi-strategy HTML fetching with fallbacks
+2. `docs-retrieval/html-parser.ts` → Parse HTML to React component tree
+3. `docs-retrieval/content-renderer.tsx` → Render React components with interactive elements
+4. `interactive-engine/interactive.hook.ts` (useInteractiveElements) → Handle "show me"/"do it" events, check requirements, highlight/automate UI elements
+5. `requirements-manager/step-checker.hook.ts` → Validate requirements and objectives
+6. Render in tab with progress tracking
