@@ -46,7 +46,19 @@ export function querySelectorAllEnhanced(selector: string): SelectorResult {
       };
     }
 
-    // If native fails or it's a complex selector, parse and handle complex selectors
+    // If native selector failed (threw error), check if it's just a simple selector with no elements
+    // Don't treat standard CSS selectors as "complex" just because they failed
+    if (nativeResult === null && !isComplexSelector(selector)) {
+      console.warn(`Native selector failed for standard CSS selector: "${selector}"`);
+      return {
+        elements: [],
+        usedFallback: false,
+        originalSelector: selector,
+      };
+    }
+
+    // If native fails or it's a complex selector (including data-testid selectors we want to trace),
+    // parse and handle complex selectors
     return handleComplexSelector(selector);
   } catch (error) {
     console.warn(`Enhanced selector failed for "${selector}":`, error);
@@ -67,7 +79,10 @@ function isComplexSelector(selector: string): boolean {
     selector.includes(':contains(') ||
     selector.includes(':has(') ||
     selector.includes(':text(') ||
-    selector.includes(':nth-match(')
+    selector.includes(':nth-match(') ||
+    // Treat data-testid selectors as complex to ensure we can debug/trace hierarchy issues
+    // especially when they involve parent-child relationships
+    (selector.includes('data-testid') && (selector.includes(' ') || selector.includes('>')))
   );
 }
 
@@ -81,6 +96,7 @@ function tryNativeSelector(selector: string): NodeListOf<Element> | null {
     return testResult;
   } catch (error) {
     // Selector not supported natively, need fallback
+    console.warn(`Native querySelector failed for: "${selector}"`, error);
     return null;
   }
 }
@@ -110,8 +126,18 @@ function handleComplexSelector(selector: string): SelectorResult {
     return handleTextSelector(selector);
   }
 
-  // If no special handling needed, return empty result
-  console.warn(`Unsupported complex selector: ${selector}`);
+  // Handle data-testid selectors specifically to ensure proper context
+  if (selector.includes('data-testid')) {
+    return handleTestIdSelector(selector);
+  }
+
+  // If no special handling needed but we got here, the native selector must have failed
+  // This could be an invalid selector or just a selector with no matches
+  // Log more details to help debug
+  console.warn(`Unsupported complex selector (no :contains, :has, :text, or :nth-match found): "${selector}"`);
+  console.warn('This selector was flagged as complex but has no recognized pseudo-selectors');
+  console.warn('It may be corrupted or invalid. Original length:', selector.length);
+
   return {
     elements: [],
     usedFallback: true,
@@ -126,7 +152,7 @@ function handleComplexSelector(selector: string): SelectorResult {
  */
 function handleContainsSelector(selector: string): SelectorResult {
   // Parse :contains() syntax - handle both quoted and unquoted text
-  const containsMatch = selector.match(/^(.+?):contains\((['"]?)([^'"\)]*?)\2\)(.*)$/);
+  const containsMatch = selector.match(/^(.+?):contains\((['"]?)(.*?)\2\)(.*)$/);
 
   if (!containsMatch) {
     console.warn(`Invalid :contains() syntax: ${selector}`);
@@ -458,6 +484,75 @@ function handleTextSelector(selector: string): SelectorResult {
       effectiveSelector: 'ERROR_IN_TEXT',
     };
   }
+}
+
+/**
+ * Handle data-testid selectors with enhanced validation
+ * Ensures that parent-child relationships are respected
+ */
+function handleTestIdSelector(selector: string): SelectorResult {
+  // 1. Try native selector first as it's the most reliable for standard CSS
+  try {
+    const nativeResult = document.querySelectorAll(selector);
+    if (nativeResult.length > 0) {
+      return {
+        elements: Array.from(nativeResult) as HTMLElement[],
+        usedFallback: false,
+        originalSelector: selector,
+      };
+    }
+  } catch (error) {
+    console.warn(`Native selector failed for testid selector: "${selector}"`, error);
+  }
+
+  // 2. Fallback: If selector uses strict child combinator (>), try relaxing to descendant (space)
+  // This handles cases where intermediate divs (wrappers) exist but were missed by the generator
+  // e.g. "section > a" fails because of "section > div > a"
+  if (selector.includes('>')) {
+    const relaxedSelector = selector.replace(/\s*>\s*/g, ' ');
+
+    try {
+      const relaxedResult = document.querySelectorAll(relaxedSelector);
+      if (relaxedResult.length > 0) {
+        return {
+          elements: Array.from(relaxedResult) as HTMLElement[],
+          usedFallback: true,
+          originalSelector: selector,
+          effectiveSelector: relaxedSelector,
+        };
+      }
+    } catch (e) {
+      // Ignore relaxed attempt errors
+    }
+  }
+
+  // 3. If native failed or we want to be smarter about "wrong element" detection
+  // If the selector is a loose descendant selector "A B", try stricter "A > B" if appropriate?
+  if (selector.includes(' ') && !selector.includes('>') && selector.includes('data-testid')) {
+    // Attempt to "tighten" the selector to a direct child if it helps
+    const strictSelector = selector.replace(' ', ' > ');
+    try {
+      const strictResult = document.querySelectorAll(strictSelector);
+      if (strictResult.length > 0) {
+        return {
+          elements: Array.from(strictResult) as HTMLElement[],
+          usedFallback: true, // We modified the logic
+          originalSelector: selector,
+          effectiveSelector: strictSelector,
+        };
+      }
+    } catch (e) {
+      // Ignore strict attempt errors
+    }
+  }
+
+  // If native failed, return empty result (we could add manual traversal here if needed)
+  return {
+    elements: [],
+    usedFallback: true,
+    originalSelector: selector,
+    effectiveSelector: 'TESTID_NOT_FOUND',
+  };
 }
 
 /**

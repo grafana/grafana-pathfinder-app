@@ -57,6 +57,13 @@ export function generateSelectorFromEvent(target: HTMLElement, event: MouseEvent
   const validated = validateAndCleanSelector(selector, action);
   selector = validated.selector;
 
+  // Check for fragility (nth-match/nth-of-type)
+  if (selector.includes(':nth-match') || selector.includes(':nth-of-type')) {
+    validated.warnings.push(
+      'Generated selector is fragile (depends on order). Try adding stable attributes to the component.'
+    );
+  }
+
   // Apply action type normalization AFTER validation (using cleaned selector)
   // This ensures we normalize based on the final cleaned selector, not the original
   // If selector is plain text (no CSS syntax), force button action for text-based matching

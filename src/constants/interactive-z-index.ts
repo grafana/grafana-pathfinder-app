@@ -14,4 +14,6 @@ export const INTERACTIVE_Z_INDEX = {
   HIGHLIGHT_OUTLINE: 9999,
   /** Comment boxes/tooltips that explain interactive steps */
   COMMENT_BOX: 10002,
+  /** DOM path tooltip for element inspector (same as highlight to avoid stacking context issues) */
+  DOM_PATH_TOOLTIP: 9999,
 } as const;

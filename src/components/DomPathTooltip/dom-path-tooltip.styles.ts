@@ -4,12 +4,13 @@
 
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
+import { INTERACTIVE_Z_INDEX } from '../../constants/interactive-z-index';
 
 export const getDomPathTooltipStyles = (theme: GrafanaTheme2) => {
   return {
     tooltip: css({
       position: 'fixed',
-      zIndex: 10000, // Above everything including highlights
+      zIndex: INTERACTIVE_Z_INDEX.DOM_PATH_TOOLTIP, // Same as highlight box to ensure visibility in modals
       padding: theme.spacing(1, 1.5),
       backgroundColor: theme.isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
       color: theme.colors.text.primary,
@@ -23,6 +24,10 @@ export const getDomPathTooltipStyles = (theme: GrafanaTheme2) => {
       pointerEvents: 'none', // Don't interfere with mouse events
       whiteSpace: 'pre-wrap',
       lineHeight: 1.4,
+    }),
+    testidHighlight: css({
+      color: '#ff8800', // Orange color for testid attributes
+      fontWeight: theme.typography.fontWeightMedium,
     }),
     hidden: css({
       display: 'none',
