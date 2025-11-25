@@ -12,6 +12,7 @@ import { getDataSourceSrv, locationService } from '@grafana/runtime';
 import { getIsAssistantAvailable, useMockInlineAssistant } from './assistant-dev-mode';
 import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { useAssistantCustomizableContext } from './AssistantCustomizableContext';
+import { reportAppInteraction, UserInteraction, buildAssistantCustomizableProperties } from '../../lib/analytics';
 
 export interface AssistantCustomizableProps {
   /** Default value from the HTML */
@@ -284,6 +285,11 @@ export function AssistantCustomizable({
     }
   }, [setPageContext]);
 
+  // Build analytics context for this customizable element
+  const getAnalyticsContext = useCallback(() => {
+    return { assistantId, assistantType, contentKey, inline };
+  }, [assistantId, assistantType, contentKey, inline]);
+
   // Handle customize button click
   const handleCustomize = useCallback(async () => {
     // Get datasource context
@@ -296,6 +302,14 @@ export function AssistantCustomizable({
 
     // Build datasource context for the prompt
     const datasourceType = dsContext.currentDatasource.type;
+
+    // Track customize button click
+    reportAppInteraction(
+      UserInteraction.AssistantCustomizeClick,
+      buildAssistantCustomizableProperties(getAnalyticsContext(), {
+        datasource_type: datasourceType,
+      })
+    );
 
     // Simplified prompt - inline assistant will make educated guesses based on common patterns
     const prompt = `Customize this ${assistantType} for a ${datasourceType} datasource using realistic metric names.
@@ -330,18 +344,38 @@ Output only the query - no markdown, no explanation.`;
         if (customized && customized !== defaultValue) {
           saveCustomizedValue(customized);
           setIsPinned(false);
+
+          // Track successful customization
+          reportAppInteraction(
+            UserInteraction.AssistantCustomizeSuccess,
+            buildAssistantCustomizableProperties(getAnalyticsContext(), {
+              datasource_type: datasourceType,
+              original_length: defaultValue.length,
+              customized_length: customized.length,
+            })
+          );
         }
       },
       onError: (err) => {
         console.error('[AssistantCustomizable] Generation failed:', err);
+
+        // Track customization error
+        reportAppInteraction(
+          UserInteraction.AssistantCustomizeError,
+          buildAssistantCustomizableProperties(getAnalyticsContext(), {
+            datasource_type: datasourceType,
+            error_message: err instanceof Error ? err.message : 'Unknown error',
+          })
+        );
       },
     });
-  }, [assistantType, defaultValue, generate, saveCustomizedValue, getDatasourceContext]);
+  }, [assistantType, defaultValue, generate, saveCustomizedValue, getDatasourceContext, getAnalyticsContext]);
 
   // Handle revert button click
   const handleRevert = useCallback(() => {
     try {
       const storageKey = getStorageKey();
+      const previousValue = currentValue; // Capture before clearing
       localStorage.removeItem(storageKey);
       setCurrentValue(defaultValue);
       setIsCustomized(false);
@@ -352,10 +386,19 @@ Output only the query - no markdown, no explanation.`;
       if (customizableContext) {
         customizableContext.updateTargetValue(defaultValue);
       }
+
+      // Track revert action
+      reportAppInteraction(
+        UserInteraction.AssistantRevertClick,
+        buildAssistantCustomizableProperties(getAnalyticsContext(), {
+          reverted_from_length: previousValue.length,
+          reverted_to_length: defaultValue.length,
+        })
+      );
     } catch (error) {
       console.warn('[AssistantCustomizable] Failed to revert:', error);
     }
-  }, [getStorageKey, defaultValue, reset, customizableContext]);
+  }, [getStorageKey, defaultValue, reset, customizableContext, currentValue, getAnalyticsContext]);
 
   // Mouse handlers
   const handleMouseEnter = useCallback(() => {

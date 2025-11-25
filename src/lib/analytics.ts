@@ -51,6 +51,14 @@ export enum UserInteraction {
 
   // Global Link Interception
   GlobalDocsLinkIntercepted = 'global_docs_link_intercepted',
+
+  // Assistant Integration
+  AssistantCustomizeClick = 'assistant_customize_click',
+  AssistantCustomizeSuccess = 'assistant_customize_success',
+  AssistantCustomizeError = 'assistant_customize_error',
+  AssistantRevertClick = 'assistant_revert_click',
+  AssistantTextSelectionMade = 'assistant_text_selection_made',
+  AssistantAskButtonClick = 'assistant_ask_button_click',
 }
 
 // ============================================================================
@@ -489,4 +497,100 @@ export function enrichWithStepContext(
   }
 
   return baseProperties;
+}
+
+// ============================================================================
+// ASSISTANT INTEGRATION ANALYTICS HELPERS
+// ============================================================================
+
+/**
+ * Context information for assistant customizable elements
+ */
+export interface AssistantCustomizableContext {
+  assistantId: string;
+  assistantType: string;
+  contentKey: string;
+  inline: boolean;
+}
+
+/**
+ * Builds analytics properties for assistant customizable interactions
+ *
+ * @param context - The customizable element context
+ * @param additionalProps - Additional properties to include
+ * @returns Properties object ready for reportAppInteraction
+ *
+ * @example
+ * ```typescript
+ * reportAppInteraction(
+ *   UserInteraction.AssistantCustomizeClick,
+ *   buildAssistantCustomizableProperties(
+ *     { assistantId, assistantType, contentKey, inline },
+ *     { datasource_type: 'prometheus' }
+ *   )
+ * );
+ * ```
+ */
+export function buildAssistantCustomizableProperties(
+  context: AssistantCustomizableContext,
+  additionalProps: Record<string, string | number | boolean> = {}
+): Record<string, string | number | boolean> {
+  const { assistantId, assistantType, contentKey, inline } = context;
+  const docInfo = getSourceDocument(assistantId);
+
+  return {
+    ...docInfo,
+    assistant_id: assistantId,
+    assistant_type: assistantType,
+    content_key: contentKey,
+    display_mode: inline ? 'inline' : 'block',
+    ...additionalProps,
+  };
+}
+
+/**
+ * Context information for assistant text selection
+ */
+export interface AssistantTextSelectionContext {
+  selectedText: string;
+  selectionLength: number;
+  buttonPlacement: 'top' | 'bottom';
+}
+
+/**
+ * Builds analytics properties for assistant text selection interactions
+ *
+ * @param context - The text selection context
+ * @param additionalProps - Additional properties to include
+ * @returns Properties object ready for reportAppInteraction
+ *
+ * @example
+ * ```typescript
+ * reportAppInteraction(
+ *   UserInteraction.AssistantAskButtonClick,
+ *   buildAssistantTextSelectionProperties({
+ *     selectedText: 'How do I query metrics?',
+ *     selectionLength: 25,
+ *     buttonPlacement: 'top'
+ *   })
+ * );
+ * ```
+ */
+export function buildAssistantTextSelectionProperties(
+  context: AssistantTextSelectionContext,
+  additionalProps: Record<string, string | number | boolean> = {}
+): Record<string, string | number | boolean> {
+  const { selectedText, selectionLength, buttonPlacement } = context;
+  const docInfo = getSourceDocument();
+
+  // Truncate selected text for analytics (avoid sending very long text)
+  const truncatedText = selectedText.length > 100 ? selectedText.substring(0, 100) + '...' : selectedText;
+
+  return {
+    ...docInfo,
+    selected_text_preview: truncatedText,
+    selection_length: selectionLength,
+    button_placement: buttonPlacement,
+    ...additionalProps,
+  };
 }
