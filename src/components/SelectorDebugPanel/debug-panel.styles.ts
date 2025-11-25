@@ -251,6 +251,23 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
     animation: 'pulse 2s ease-in-out infinite',
   }),
 
+  pausedModeActive: css({
+    backgroundColor: theme.colors.warning.main,
+    color: theme.colors.warning.contrastText,
+    '&:hover': {
+      backgroundColor: theme.colors.warning.shade,
+    },
+  }),
+
+  pausedDot: css({
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: theme.colors.warning.main,
+    display: 'inline-block',
+    marginRight: theme.spacing(0.5),
+  }),
+
   recordModeHint: css({
     display: 'flex',
     alignItems: 'center',

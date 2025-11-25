@@ -152,6 +152,22 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         borderBottom: `2px dotted ${theme.colors.border.medium}`,
         padding: `0 ${theme.spacing(0.25)}`,
       },
+
+      // Multistep: Hide nested lightning bolts and their containers
+      // Only show the outer lightning bolt on the multistep container itself
+      '& li.interactive[data-targetaction="multistep"]': {
+        // Hide lightning bolts inside nested interactive spans
+        '& span.interactive .interactive-lightning': {
+          display: 'none !important',
+        },
+        // Hide border and background of nested interactive spans
+        // Info icons remain visible because they have their own display rules
+        '& span.interactive': {
+          border: 'none',
+          padding: 0,
+          background: 'transparent',
+        },
+      },
     }),
   };
 };
@@ -200,6 +216,23 @@ export const getMultistepFormStyles = (theme: GrafanaTheme2) => ({
       '0%, 100%': { opacity: 1 },
       '50%': { opacity: 0.3 },
     },
+  }),
+
+  pausedModeActive: css({
+    backgroundColor: theme.colors.warning.main,
+    color: theme.colors.warning.contrastText,
+    '&:hover': {
+      backgroundColor: theme.colors.warning.shade,
+    },
+  }),
+
+  pausedDot: css({
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: theme.colors.warning.main,
+    display: 'inline-block',
+    marginRight: theme.spacing(0.5),
   }),
   stepCode: css({
     fontFamily: theme.typography.fontFamilyMonospace,

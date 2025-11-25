@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Button, Input, Badge, Icon, useStyles2, TextArea } from '@grafana/ui';
+import { Button, Input, Badge, Icon, useStyles2, TextArea, HorizontalGroup } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive-engine';
 import { getDebugPanelStyles } from './debug-panel.styles';
 import { combineStepsIntoMultistep } from '../../utils/devtools/tutorial-exporter';
@@ -130,9 +130,12 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   // Record Mode
   const [allStepsCopied, setAllStepsCopied] = useState(false);
   const {
-    isRecording: recordMode,
+    recordingState,
+    isPaused,
     recordedSteps,
     startRecording,
+    pauseRecording,
+    resumeRecording,
     stopRecording,
     clearRecording,
     deleteStep,
@@ -196,13 +199,21 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   }, [capturedSelector, stopCapture]);
 
   // Record Mode Handlers
-  const handleRecordModeToggle = useCallback(() => {
-    if (recordMode) {
-      stopRecording();
+  const handleStartRecording = useCallback(() => {
+    if (isPaused) {
+      resumeRecording();
     } else {
       startRecording();
     }
-  }, [recordMode, startRecording, stopRecording]);
+  }, [isPaused, startRecording, resumeRecording]);
+
+  const handlePauseRecording = useCallback(() => {
+    pauseRecording();
+  }, [pauseRecording]);
+
+  const handleStopRecording = useCallback(() => {
+    stopRecording();
+  }, [stopRecording]);
 
   const handleClearRecording = useCallback(() => {
     clearRecording();
@@ -528,24 +539,56 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
           <div className={styles.sectionContent}>
             <div className={styles.formGroup}>
               <div className={styles.recordModeControls}>
-                <Button
-                  variant={recordMode ? 'destructive' : 'primary'}
-                  size="md"
-                  onClick={handleRecordModeToggle}
-                  className={recordMode ? styles.recordModeActive : ''}
-                >
-                  {recordMode && <span className={styles.recordingDot} />}
-                  <Icon name={recordMode ? 'pause' : 'circle'} />
-                  {recordMode ? 'Stop Recording' : 'Start Recording'}
-                </Button>
+                <HorizontalGroup spacing="sm" wrap>
+                  <Button
+                    variant={recordingState === 'idle' ? 'primary' : 'secondary'}
+                    size="sm"
+                    onClick={handleStartRecording}
+                    disabled={recordingState === 'recording'}
+                    className={recordingState === 'recording' ? styles.recordModeActive : ''}
+                  >
+                    {recordingState === 'recording' && <span className={styles.recordingDot} />}
+                    <Icon name={isPaused ? 'play' : 'circle'} />
+                    {isPaused ? 'Resume Recording' : 'Start Recording'}
+                  </Button>
 
-                {recordedSteps.length > 0 && <Badge text={`${recordedSteps.length} steps`} color="blue" />}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handlePauseRecording}
+                    disabled={recordingState !== 'recording'}
+                    className={isPaused ? styles.pausedModeActive : ''}
+                  >
+                    {isPaused && <span className={styles.pausedDot} />}
+                    <Icon name="pause" />
+                    Pause
+                  </Button>
+
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleStopRecording}
+                    disabled={recordingState === 'idle'}
+                  >
+                    <Icon name="times" />
+                    Stop
+                  </Button>
+
+                  {recordedSteps.length > 0 && <Badge text={`${recordedSteps.length} steps`} color="blue" />}
+                </HorizontalGroup>
               </div>
 
-              {recordMode && (
+              {recordingState === 'recording' && (
                 <div className={styles.recordModeHint}>
                   <Icon name="info-circle" size="sm" />
-                  Click elements and fill forms to record a sequence
+                  Click elements to record a sequence
+                </div>
+              )}
+
+              {isPaused && (
+                <div className={styles.recordModeHint} style={{ color: 'var(--grafana-colors-warning-text)' }}>
+                  <Icon name="pause" size="sm" />
+                  Paused. Click &quot;Resume Recording&quot; to continue capturing actions.
                 </div>
               )}
 
@@ -670,7 +713,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       )}
 
       {/* DOM Path Tooltip for Record Mode */}
-      {recordMode && recordDomPath && recordCursorPosition && (
+      {recordingState !== 'idle' && recordDomPath && recordCursorPosition && (
         <DomPathTooltip domPath={recordDomPath} position={recordCursorPosition} visible={true} />
       )}
     </div>

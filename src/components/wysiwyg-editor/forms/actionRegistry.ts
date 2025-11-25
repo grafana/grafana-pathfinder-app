@@ -61,7 +61,7 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
           label: 'Button Text or Selector:',
           type: 'text',
           placeholder: 'e.g., "Save Dashboard" or button[data-testid="save"]',
-          hint: 'Button text OR CSS selector (e.g., "Save Dashboard" or "button[data-testid=\'save\']"). Supports enhanced selectors like highlight action. Click the target icon to capture a selector.',
+          hint: 'Selector which targets the element you want to interact with',
           required: true,
           autoFocus: true,
           disableSelectorCapture: false,
@@ -281,7 +281,7 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
     },
     formConfig: {
       title: ACTION_TYPES.MULTISTEP,
-      description: 'Multiple related actions in sequence (typically contains nested interactive spans)',
+      description: 'Multiple related actions in sequence',
       actionType: ACTION_TYPES.MULTISTEP,
       fields: [
         {

@@ -503,4 +503,251 @@ describe('useActionRecorder', () => {
 
     consoleWarnSpy.mockRestore();
   });
+
+  describe('pause/resume functionality', () => {
+    it('should pause recording and preserve steps', () => {
+      (generateSelectorFromEvent as jest.Mock).mockReturnValue({
+        selector: 'button[data-testid="test-button"]',
+        action: 'highlight',
+        selectorInfo: {
+          method: 'data-testid',
+          isUnique: true,
+          matchCount: 1,
+        },
+        warnings: [],
+        wasModified: false,
+      });
+
+      const { result } = renderHook(() => useActionRecorder());
+
+      act(() => {
+        result.current.startRecording();
+      });
+
+      // Record a step
+      act(() => {
+        mockButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+
+      expect(result.current.recordedSteps.length).toBe(1);
+      expect(result.current.isRecording).toBe(true);
+      expect(result.current.recordingState).toBe('recording');
+      expect(result.current.isPaused).toBe(false);
+
+      // Pause recording
+      act(() => {
+        result.current.pauseRecording();
+      });
+
+      expect(result.current.isRecording).toBe(false);
+      expect(result.current.recordingState).toBe('paused');
+      expect(result.current.isPaused).toBe(true);
+      expect(result.current.recordedSteps.length).toBe(1); // Steps preserved
+
+      // Try to record while paused - should not record
+      act(() => {
+        mockButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+
+      expect(result.current.recordedSteps.length).toBe(1); // No new step recorded
+    });
+
+    it('should resume recording and continue capturing', () => {
+      const mockButton2 = document.createElement('button');
+      mockButton2.setAttribute('data-testid', 'test-button-2');
+      mockButton2.textContent = 'Test Button 2';
+      document.body.appendChild(mockButton2);
+
+      (generateSelectorFromEvent as jest.Mock).mockImplementation((target) => {
+        if (target === mockButton) {
+          return {
+            selector: 'button[data-testid="test-button"]',
+            action: 'highlight',
+            selectorInfo: {
+              method: 'data-testid',
+              isUnique: true,
+              matchCount: 1,
+            },
+            warnings: [],
+            wasModified: false,
+          };
+        } else if (target === mockButton2) {
+          return {
+            selector: 'button[data-testid="test-button-2"]',
+            action: 'highlight',
+            selectorInfo: {
+              method: 'data-testid',
+              isUnique: true,
+              matchCount: 1,
+            },
+            warnings: [],
+            wasModified: false,
+          };
+        }
+        return {
+          selector: 'button[data-testid="test-button"]',
+          action: 'highlight',
+          selectorInfo: {
+            method: 'data-testid',
+            isUnique: true,
+            matchCount: 1,
+          },
+          warnings: [],
+          wasModified: false,
+        };
+      });
+
+      const { result } = renderHook(() => useActionRecorder());
+
+      act(() => {
+        result.current.startRecording();
+      });
+
+      // Record a step
+      act(() => {
+        mockButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+
+      expect(result.current.recordedSteps.length).toBe(1);
+
+      // Pause
+      act(() => {
+        result.current.pauseRecording();
+      });
+
+      expect(result.current.isPaused).toBe(true);
+      expect(result.current.recordedSteps.length).toBe(1);
+
+      // Resume
+      act(() => {
+        result.current.resumeRecording();
+      });
+
+      expect(result.current.isRecording).toBe(true);
+      expect(result.current.recordingState).toBe('recording');
+      expect(result.current.isPaused).toBe(false);
+
+      // Record another step after resume (using different button to avoid duplicate detection)
+      act(() => {
+        mockButton2.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+
+      expect(result.current.recordedSteps.length).toBe(2); // New step recorded
+
+      // Cleanup
+      document.body.removeChild(mockButton2);
+    });
+
+    it('should not pause when idle', () => {
+      const { result } = renderHook(() => useActionRecorder());
+
+      expect(result.current.recordingState).toBe('idle');
+
+      act(() => {
+        result.current.pauseRecording();
+      });
+
+      // Should remain idle (pause only works when recording)
+      expect(result.current.recordingState).toBe('idle');
+    });
+
+    it('should not resume when not paused', () => {
+      const { result } = renderHook(() => useActionRecorder());
+
+      expect(result.current.recordingState).toBe('idle');
+
+      act(() => {
+        result.current.resumeRecording();
+      });
+
+      // Should remain idle (resume only works when paused)
+      expect(result.current.recordingState).toBe('idle');
+
+      // Start recording
+      act(() => {
+        result.current.startRecording();
+      });
+
+      expect(result.current.recordingState).toBe('recording');
+
+      // Try to resume while recording - should remain recording
+      act(() => {
+        result.current.resumeRecording();
+      });
+
+      expect(result.current.recordingState).toBe('recording');
+    });
+
+    it('should stop recording from paused state', () => {
+      (generateSelectorFromEvent as jest.Mock).mockReturnValue({
+        selector: 'button[data-testid="test-button"]',
+        action: 'highlight',
+        selectorInfo: {
+          method: 'data-testid',
+          isUnique: true,
+          matchCount: 1,
+        },
+        warnings: [],
+        wasModified: false,
+      });
+
+      const { result } = renderHook(() => useActionRecorder());
+
+      act(() => {
+        result.current.startRecording();
+      });
+
+      // Record a step
+      act(() => {
+        mockButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+
+      expect(result.current.recordedSteps.length).toBe(1);
+
+      // Pause
+      act(() => {
+        result.current.pauseRecording();
+      });
+
+      expect(result.current.isPaused).toBe(true);
+
+      // Stop from paused state
+      act(() => {
+        result.current.stopRecording();
+      });
+
+      expect(result.current.recordingState).toBe('idle');
+      expect(result.current.isPaused).toBe(false);
+      expect(result.current.recordedSteps.length).toBe(1); // Steps preserved
+    });
+
+    it('should have backward compatible isRecording flag', () => {
+      const { result } = renderHook(() => useActionRecorder());
+
+      expect(result.current.isRecording).toBe(false);
+      expect(result.current.recordingState).toBe('idle');
+
+      act(() => {
+        result.current.startRecording();
+      });
+
+      expect(result.current.isRecording).toBe(true);
+      expect(result.current.recordingState).toBe('recording');
+
+      act(() => {
+        result.current.pauseRecording();
+      });
+
+      expect(result.current.isRecording).toBe(false);
+      expect(result.current.recordingState).toBe('paused');
+      expect(result.current.isPaused).toBe(true);
+
+      act(() => {
+        result.current.resumeRecording();
+      });
+
+      expect(result.current.isRecording).toBe(true);
+      expect(result.current.recordingState).toBe('recording');
+    });
+  });
 });
