@@ -16,6 +16,62 @@ import { getConfigWithDefaults } from '../../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
 import { GuidedAction } from '../../../types/interactive-actions.types';
 import { testIds } from '../../../components/testIds';
+import { sanitizeDocumentationHTML } from '../../../security';
+
+/**
+ * SafeHTML - Renders sanitized HTML as React components
+ * Parses simple HTML (strong, em, code, etc.) into React elements without dangerouslySetInnerHTML
+ * SECURITY: HTML is sanitized before parsing
+ */
+function SafeHTML({ html, className }: { html: string; className?: string }) {
+  const sanitized = sanitizeDocumentationHTML(html);
+
+  // Parse the sanitized HTML into React elements
+  const elements = useMemo(() => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(sanitized, 'text/html');
+
+    function nodeToReact(node: Node, key: number): React.ReactNode {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return node.textContent;
+      }
+
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const element = node as Element;
+        const tagName = element.tagName.toLowerCase();
+
+        // Only allow safe inline elements
+        const allowedTags = ['strong', 'b', 'em', 'i', 'code', 'span', 'br', 'a'];
+        if (!allowedTags.includes(tagName)) {
+          // For disallowed tags, just render children
+          return Array.from(node.childNodes).map((child, i) => nodeToReact(child, i));
+        }
+
+        const children = Array.from(node.childNodes).map((child, i) => nodeToReact(child, i));
+
+        // Build props safely
+        const props: Record<string, unknown> = { key };
+
+        if (tagName === 'a') {
+          const href = element.getAttribute('href');
+          if (href) {
+            props.href = href;
+            props.target = '_blank';
+            props.rel = 'noopener noreferrer';
+          }
+        }
+
+        return React.createElement(tagName, props, ...children);
+      }
+
+      return null;
+    }
+
+    return Array.from(doc.body.childNodes).map((node, i) => nodeToReact(node, i));
+  }, [sanitized]);
+
+  return <span className={className}>{elements}</span>;
+}
 
 let anonymousGuidedCounter = 0;
 
@@ -492,156 +548,121 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 
-    // Generate button text
-    const getButtonText = () => {
-      if (checker.completionReason === 'objectives') {
-        return 'Already done!';
-      }
-      if (checker.isChecking) {
-        return checker.isRetrying ? `Checking... (${checker.retryCount}/${checker.maxRetries})` : 'Checking...';
-      }
+    // Get current action info for display
+    const currentAction = internalActions[currentStepIndex];
+    const currentActionComment = currentAction?.targetComment || 'Complete this step';
+
+    // Determine the current UI state for cleaner rendering
+    const uiState = (() => {
       if (isCompletedWithObjectives) {
-        return '✓ Completed';
-      }
-      if (isExecuting) {
-        if (currentStepStatus === 'timeout') {
-          return 'Timed out';
-        }
-        return `Waiting for step ${currentStepIndex + 1}/${internalActions.length}...`;
+        return 'completed';
       }
       if (executionError) {
-        return 'Error';
+        return 'error';
       }
-      if (!checker.isEnabled && !isCompletedWithObjectives) {
-        return 'Requirements not met';
-      }
-      return 'Start guided interaction';
-    };
-
-    // Generate button title/tooltip
-    const getButtonTitle = () => {
-      if (checker.completionReason === 'objectives') {
-        return 'Already done!';
+      if (wasCancelled) {
+        return 'cancelled';
       }
       if (isExecuting) {
-        return `Follow the highlighted instructions. Step ${currentStepIndex + 1} of ${internalActions.length}.`;
+        return 'executing';
+      }
+      if (checker.isChecking) {
+        return 'checking';
       }
       if (!checker.isEnabled) {
-        return 'Requirements not met for guided interaction';
+        return 'requirements-not-met';
       }
-      return hints || `Guide you through ${internalActions.length} manual steps`;
-    };
+      return 'idle';
+    })();
 
     return (
       <div
-        className={`interactive-step interactive-guided${className ? ` ${className}` : ''}${
-          isCompletedWithObjectives ? ' completed' : ''
-        }${isCurrentlyExecuting ? ' executing' : ''}`}
+        className={`interactive-step interactive-guided${className ? ` ${className}` : ''} interactive-guided--${uiState}`}
         data-step-id={stepId || renderedStepId}
+        data-state={uiState}
         data-testid={testIds.interactive.step(renderedStepId)}
       >
+        {/* Title and description - always shown */}
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
           {children}
         </div>
 
-        <div className="interactive-step-actions">
-          <div className="interactive-step-action-buttons">
-            {/* Show "Start" button when not completed */}
-            {!isCompletedWithObjectives && checker.isEnabled && !isExecuting && (
+        {/* ═══════════════════════════════════════════════════════════════════
+            STATE: IDLE - Ready to start
+        ═══════════════════════════════════════════════════════════════════ */}
+        {uiState === 'idle' && (
+          <div className="interactive-guided-idle">
+            <div className="interactive-guided-actions">
               <Button
                 onClick={handleDoAction}
-                disabled={disabled || isAnyActionRunning || !checker.isEnabled}
+                disabled={disabled || isAnyActionRunning}
                 size="sm"
                 variant="primary"
-                className="interactive-step-do-btn"
+                className="interactive-guided-start-btn"
                 data-testid={testIds.interactive.doItButton(renderedStepId)}
-                title={getButtonTitle()}
+                title={
+                  hints || `Guide you through ${internalActions.length} step${internalActions.length > 1 ? 's' : ''}`
+                }
               >
-                {getButtonText()}
+                ▶ Start guided interaction
               </Button>
-            )}
-
-            {/* Show "Cancel" button during execution */}
-            {isExecuting && !executionError && (
-              <Button
-                onClick={handleCancel}
-                disabled={disabled}
-                size="sm"
-                variant="secondary"
-                className="interactive-step-cancel-btn"
-                title="Cancel guided interaction"
-              >
-                Cancel
-              </Button>
-            )}
-
-            {/* Show "Skip" button when guided step is skippable and not executing (always available, not just on error) */}
-            {skippable && !isCompletedWithObjectives && !isExecuting && (
-              <Button
-                onClick={async () => {
-                  if (checker.markSkipped) {
-                    await checker.markSkipped();
-
-                    // Mark as completed and notify parent
-                    setIsLocallyCompleted(true);
-
-                    if (onStepComplete && stepId) {
-                      onStepComplete(stepId);
+              {skippable && (
+                <Button
+                  onClick={async () => {
+                    if (checker.markSkipped) {
+                      await checker.markSkipped();
+                      setIsLocallyCompleted(true);
+                      if (onStepComplete && stepId) {
+                        onStepComplete(stepId);
+                      }
+                      if (onComplete) {
+                        onComplete();
+                      }
                     }
-
-                    if (onComplete) {
-                      onComplete();
-                    }
-                  }
-                }}
-                disabled={disabled || isAnyActionRunning}
-                size="sm"
-                variant="secondary"
-                className="interactive-step-skip-btn"
-                data-testid={testIds.interactive.skipButton(renderedStepId)}
-                title="Skip this guided interaction without executing"
-              >
-                Skip
-              </Button>
-            )}
-          </div>
-
-          {isCompletedWithObjectives && (
-            <div className="interactive-step-completion-group">
-              <span
-                className="interactive-step-completed-indicator"
-                data-testid={testIds.interactive.stepCompleted(renderedStepId)}
-              >
-                ✓
-              </span>
-              <button
-                className="interactive-step-redo-btn"
-                onClick={handleStepRedo}
-                disabled={disabled || isAnyActionRunning}
-                data-testid={testIds.interactive.redoButton(renderedStepId)}
-                title="Redo this guided interaction"
-              >
-                <span className="interactive-step-redo-icon">↻</span>
-                <span className="interactive-step-redo-text">Redo</span>
-              </button>
+                  }}
+                  disabled={disabled || isAnyActionRunning}
+                  size="sm"
+                  variant="secondary"
+                  className="interactive-guided-skip-btn"
+                  data-testid={testIds.interactive.skipButton(renderedStepId)}
+                >
+                  Skip
+                </Button>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Show explanation when requirements aren't met */}
-        {checker.completionReason !== 'objectives' &&
-          !checker.isEnabled &&
-          !isCompletedWithObjectives &&
-          !checker.isChecking &&
+        {/* ═══════════════════════════════════════════════════════════════════
+            STATE: CHECKING - Verifying requirements (only show if no explanation to recheck)
+        ═══════════════════════════════════════════════════════════════════ */}
+        {uiState === 'checking' && !checker.explanation && (
+          <div className="interactive-guided-checking">
+            <div className="interactive-guided-status">
+              <span className="interactive-guided-spinner" />
+              <span className="interactive-guided-status-text">
+                {checker.isRetrying
+                  ? `Checking requirements (${checker.retryCount}/${checker.maxRetries})...`
+                  : 'Checking requirements...'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            STATE: REQUIREMENTS NOT MET (also show during rechecking)
+        ═══════════════════════════════════════════════════════════════════ */}
+        {(uiState === 'requirements-not-met' || (uiState === 'checking' && checker.explanation)) &&
           checker.explanation && (
-            <div
-              className="interactive-step-requirement-explanation"
-              data-testid={testIds.interactive.requirementCheck(renderedStepId)}
-            >
-              {checker.explanation}
+            <div className={`interactive-guided-requirements${checker.isChecking ? ' rechecking' : ''}`}>
+              <div className="interactive-guided-requirement-box">
+                <span className="interactive-guided-requirement-icon">👣</span>
+                <span className="interactive-guided-requirement-text">{checker.explanation}</span>
+                {checker.isChecking && <span className="interactive-requirement-spinner">⟳</span>}
+              </div>
               <button
-                className="interactive-requirement-retry-btn"
+                className="interactive-guided-fix-btn"
                 data-testid={
                   checker.canFixRequirement
                     ? testIds.interactive.requirementFixButton(renderedStepId)
@@ -655,80 +676,164 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   }
                 }}
               >
-                {checker.canFixRequirement ? 'Fix this' : 'Retry'}
+                {checker.canFixRequirement ? 'Fix this' : 'Check again'}
               </button>
             </div>
           )}
 
-        {/* Show execution error (timeout or other issues) */}
-        {executionError && !checker.isChecking && (
-          <div
-            className="interactive-step-execution-error"
-            data-testid={testIds.interactive.errorMessage(renderedStepId)}
-          >
-            {executionError}
-            <div className="interactive-step-error-buttons">
-              <button
-                className="interactive-error-retry-btn"
-                data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
-                onClick={handleRetry}
-              >
-                Retry
-              </button>
-              {skippable && (
-                <button
-                  className="interactive-requirement-skip-btn"
-                  data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
-                  onClick={handleSkipStep}
-                >
-                  Skip
-                </button>
+        {/* ═══════════════════════════════════════════════════════════════════
+            STATE: EXECUTING - Waiting for user action
+        ═══════════════════════════════════════════════════════════════════ */}
+        {uiState === 'executing' && (
+          <div className="interactive-guided-executing">
+            {/* Step indicator */}
+            <div className="interactive-guided-step-indicator">
+              <span className="interactive-guided-step-badge">
+                Step {currentStepIndex + 1} of {internalActions.length}
+              </span>
+              {currentStepStatus === 'completed' && <span className="interactive-guided-step-done">✓</span>}
+            </div>
+
+            {/* Current instruction */}
+            <div className="interactive-guided-instruction">
+              {currentStepStatus === 'waiting' && (
+                <>
+                  <span className="interactive-guided-instruction-icon">👆</span>
+                  <SafeHTML html={currentActionComment} className="interactive-guided-instruction-text" />
+                </>
+              )}
+              {currentStepStatus === 'completed' && (
+                <>
+                  <span className="interactive-guided-instruction-icon">✓</span>
+                  <span className="interactive-guided-instruction-text">Step completed! Moving on...</span>
+                </>
               )}
             </div>
-          </div>
-        )}
 
-        {/* Show options after cancellation */}
-        {wasCancelled && !checker.isChecking && !executionError && (
-          <div
-            className="interactive-step-execution-error"
-            data-testid={testIds.interactive.errorMessage(renderedStepId)}
-          >
-            Guided interaction was cancelled.
-            <div className="interactive-step-error-buttons">
-              <button
-                className="interactive-error-retry-btn"
-                data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
-                onClick={handleRetry}
-              >
-                Retry
-              </button>
-              {skippable && (
-                <button
-                  className="interactive-requirement-skip-btn"
-                  data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
-                  onClick={handleSkipStep}
-                >
-                  Skip
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Show progress indicator when executing */}
-        {isExecuting && !executionError && (
-          <div className="interactive-guided-progress">
-            <div className="interactive-guided-progress-text">
-              {currentStepStatus === 'waiting' && 'Follow the highlighted instruction'}
-              {currentStepStatus === 'completed' && '✓ Moving to next step...'}
-            </div>
-            <div className="interactive-guided-progress-bar">
+            {/* Progress bar */}
+            <div className="interactive-guided-progress">
               <div
                 className="interactive-guided-progress-fill"
-                style={{ width: `${((currentStepIndex + 1) / internalActions.length) * 100}%` }}
+                style={{ width: `${(currentStepIndex / internalActions.length) * 100}%` }}
+              />
+              <div
+                className="interactive-guided-progress-active"
+                style={{
+                  left: `${(currentStepIndex / internalActions.length) * 100}%`,
+                  width: `${(1 / internalActions.length) * 100}%`,
+                }}
               />
             </div>
+
+            {/* Cancel button */}
+            <Button
+              onClick={handleCancel}
+              disabled={disabled}
+              size="sm"
+              variant="secondary"
+              className="interactive-guided-cancel-btn"
+              title="Cancel guided tour"
+            >
+              Cancel tour
+            </Button>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            STATE: ERROR - Timeout or execution failure
+        ═══════════════════════════════════════════════════════════════════ */}
+        {uiState === 'error' && (
+          <div className="interactive-guided-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
+            <div className="interactive-guided-error-box">
+              <span className="interactive-guided-error-icon">✕</span>
+              <div className="interactive-guided-error-content">
+                <span className="interactive-guided-error-title">Step {currentStepIndex + 1} didn&apos;t complete</span>
+                <span className="interactive-guided-error-detail">
+                  {currentStepStatus === 'timeout' ? 'Timed out waiting for action' : 'Something went wrong'}
+                </span>
+              </div>
+            </div>
+            <div className="interactive-guided-error-actions">
+              <Button
+                onClick={handleRetry}
+                size="sm"
+                variant="primary"
+                className="interactive-guided-retry-btn"
+                data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
+              >
+                ↻ Try again
+              </Button>
+              {skippable && (
+                <Button
+                  onClick={handleSkipStep}
+                  size="sm"
+                  variant="secondary"
+                  className="interactive-guided-skip-btn"
+                  data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
+                >
+                  Skip this step
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            STATE: CANCELLED - User cancelled the tour
+        ═══════════════════════════════════════════════════════════════════ */}
+        {uiState === 'cancelled' && (
+          <div className="interactive-guided-cancelled" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
+            <div className="interactive-guided-cancelled-box">
+              <span className="interactive-guided-cancelled-text">Tour cancelled</span>
+            </div>
+            <div className="interactive-guided-cancelled-actions">
+              <Button
+                onClick={handleRetry}
+                size="sm"
+                variant="primary"
+                className="interactive-guided-restart-btn"
+                data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
+              >
+                ↻ Restart tour
+              </Button>
+              {skippable && (
+                <Button
+                  onClick={handleSkipStep}
+                  size="sm"
+                  variant="secondary"
+                  className="interactive-guided-skip-btn"
+                  data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
+                >
+                  Skip entirely
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            STATE: COMPLETED
+        ═══════════════════════════════════════════════════════════════════ */}
+        {uiState === 'completed' && (
+          <div className="interactive-guided-completed">
+            <div className="interactive-guided-completed-badge">
+              <span
+                className="interactive-guided-completed-icon"
+                data-testid={testIds.interactive.stepCompleted(renderedStepId)}
+              >
+                ✓
+              </span>
+              <span className="interactive-guided-completed-text">Completed</span>
+            </div>
+            <button
+              className="interactive-guided-redo-btn"
+              onClick={handleStepRedo}
+              disabled={disabled || isAnyActionRunning}
+              data-testid={testIds.interactive.redoButton(renderedStepId)}
+              title="Redo this guided tour"
+            >
+              ↻ Redo
+            </button>
           </div>
         )}
       </div>

@@ -154,7 +154,7 @@ export const InteractiveStep = forwardRef<
     // Choose appropriate explanation text based on step state
     const explanationText = isPartOfSection
       ? !isEligibleForChecking
-        ? 'Complete the previous steps in order before this one becomes available.'
+        ? 'Complete previous step'
         : checker.explanation
       : checker.explanation;
 
@@ -586,13 +586,11 @@ export const InteractiveStep = forwardRef<
 
         <div className="interactive-step-actions">
           <div className="interactive-step-action-buttons">
-            {/* Only show "Show me" button when showMe prop is true */}
-            {showMe && !isCompletedWithObjectives && (
+            {/* Only show "Show me" button when showMe prop is true AND step is enabled */}
+            {showMe && !isCompletedWithObjectives && finalIsEnabled && (
               <Button
                 onClick={handleShowAction}
-                disabled={
-                  disabled || isAnyActionRunning || (!finalIsEnabled && checker.completionReason !== 'objectives')
-                }
+                disabled={disabled || isAnyActionRunning}
                 size="sm"
                 variant="secondary"
                 className="interactive-step-show-btn"
@@ -611,9 +609,7 @@ export const InteractiveStep = forwardRef<
                     : 'Checking...'
                   : isShowRunning
                     ? 'Showing...'
-                    : !finalIsEnabled
-                      ? 'Requirements not met'
-                      : showMeText || 'Show me'}
+                    : showMeText || 'Show me'}
               </Button>
             )}
 
@@ -676,15 +672,20 @@ export const InteractiveStep = forwardRef<
           </div>
 
           {isCompletedWithObjectives && (
-            <div className="interactive-step-completion-group">
-              <span
-                className={`interactive-step-completed-indicator ${checker.completionReason === 'skipped' ? 'skipped' : ''}`}
-                data-testid={testIds.interactive.stepCompleted(renderedStepId)}
-              >
-                {checker.completionReason === 'skipped' ? '↷' : '✓'}
-              </span>
+            <div className="interactive-guided-completed">
+              <div className="interactive-guided-completed-badge">
+                <span
+                  className={`interactive-guided-completed-icon${checker.completionReason === 'skipped' ? ' skipped' : ''}`}
+                  data-testid={testIds.interactive.stepCompleted(renderedStepId)}
+                >
+                  {checker.completionReason === 'skipped' ? '↷' : '✓'}
+                </span>
+                <span className="interactive-guided-completed-text">
+                  {checker.completionReason === 'skipped' ? 'Skipped' : 'Completed'}
+                </span>
+              </div>
               <button
-                className="interactive-step-redo-btn"
+                className="interactive-guided-redo-btn"
                 onClick={handleStepRedo}
                 disabled={disabled || isAnyActionRunning}
                 data-testid={testIds.interactive.redoButton(renderedStepId)}
@@ -694,8 +695,7 @@ export const InteractiveStep = forwardRef<
                     : 'Redo this step (execute again)'
                 }
               >
-                <span className="interactive-step-redo-icon">↻</span>
-                <span className="interactive-step-redo-text">Redo</span>
+                ↻ Redo
               </button>
             </div>
           )}
@@ -716,13 +716,13 @@ export const InteractiveStep = forwardRef<
           checker.completionReason !== 'skipped' &&
           shouldShowExplanation &&
           !isCompletedWithObjectives &&
-          !checker.isChecking &&
           explanationText && (
             <div
-              className="interactive-step-requirement-explanation"
+              className={`interactive-step-requirement-explanation${checker.isChecking ? ' rechecking' : ''}`}
               data-testid={testIds.interactive.requirementCheck(renderedStepId)}
             >
               {explanationText}
+              {checker.isChecking && <span className="interactive-requirement-spinner">⟳</span>}
               <div className="interactive-step-requirement-buttons">
                 {/* Retry button for eligible steps or fixable requirements */}
                 {(isEligibleForChecking || checker.canFixRequirement) && (

@@ -13,89 +13,24 @@ export interface NavigationOptions {
 export class NavigationManager {
   private activeCleanupHandlers: Array<() => void> = [];
 
-  /**
-   * Calculate optimal position for comment box ensuring it stays fully on screen
-   * Tries positions in order: right, left, bottom, top
-   * Returns the first position that fits without going off-screen
-   */
-  private calculateOptimalCommentPosition(
-    targetRect: DOMRect,
-    scrollTop: number,
-    scrollLeft: number,
-    commentBox: HTMLElement
-  ): { top: number; left: number; arrowPosition: string } {
-    const margin = 16; // Space between target and comment
-    const padding = 8; // Minimum padding from viewport edges
-
-    // Get comment box dimensions (might vary based on content)
-    const commentWidth = 420; // Fixed width from CSS (increased for better readability with step checklists)
-    const commentHeight = commentBox.offsetHeight || 130; // Actual height, fallback to 130 (increased for larger font/line-height)
-
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
-    // Helper to check if a position is valid (fully on screen)
-    const isValidPosition = (top: number, left: number): boolean => {
-      return (
-        left >= padding &&
-        left + commentWidth <= viewportWidth - padding &&
-        top >= padding &&
-        top + commentHeight <= viewportHeight + scrollTop - padding
-      );
-    };
-
-    // Try position 1: Right side (preferred)
-    let left = targetRect.right + scrollLeft + margin;
-    let top = targetRect.top + scrollTop + (targetRect.height - commentHeight) / 2;
-    if (isValidPosition(top, left)) {
-      return { top: Math.max(padding, top), left, arrowPosition: 'left' };
-    }
-
-    // Try position 2: Left side
-    left = targetRect.left + scrollLeft - commentWidth - margin;
-    top = targetRect.top + scrollTop + (targetRect.height - commentHeight) / 2;
-    if (isValidPosition(top, left)) {
-      return { top: Math.max(padding, top), left: Math.max(padding, left), arrowPosition: 'right' };
-    }
-
-    // Try position 3: Bottom (below target)
-    left = targetRect.left + scrollLeft + (targetRect.width - commentWidth) / 2;
-    top = targetRect.bottom + scrollTop + margin;
-    if (isValidPosition(top, left)) {
-      return {
-        top,
-        left: Math.max(padding, Math.min(left, viewportWidth - commentWidth - padding)),
-        arrowPosition: 'top',
-      };
-    }
-
-    // Try position 4: Top (above target)
-    left = targetRect.left + scrollLeft + (targetRect.width - commentWidth) / 2;
-    top = targetRect.top + scrollTop - commentHeight - margin;
-    if (isValidPosition(top, left)) {
-      return {
-        top: Math.max(padding, top),
-        left: Math.max(padding, Math.min(left, viewportWidth - commentWidth - padding)),
-        arrowPosition: 'bottom',
-      };
-    }
-
-    // Fallback: Force it to fit on right side with adjustments
-    // This ensures we always have a position even if none of the ideal positions work
-    left = Math.min(targetRect.right + scrollLeft + margin, viewportWidth - commentWidth - padding);
-    top = targetRect.top + scrollTop + (targetRect.height - commentHeight) / 2;
-    top = Math.max(padding, Math.min(top, viewportHeight + scrollTop - commentHeight - padding));
-
-    return { top, left, arrowPosition: 'left' };
-  }
+  // Drift detection state for guided mode
+  private driftDetectionRafHandle: number | null = null;
+  private driftDetectionLastCheck = 0;
+  private driftDetectionElement: HTMLElement | null = null;
+  private driftDetectionHighlight: HTMLElement | null = null;
+  private driftDetectionComment: HTMLElement | null = null;
 
   /**
    * Clear all existing highlights and comment boxes from the page
    * Called before showing new highlights to prevent stacking
    */
   clearAllHighlights(): void {
-    // First, cleanup any active auto-cleanup handlers
+    // First, stop any active drift detection RAF loop
+    this.stopDriftDetection();
+
+    // Cleanup any active auto-cleanup handlers (ResizeObserver, event listeners, etc.)
     this.cleanupAutoHandlers();
+
     // Remove all existing highlight outlines
     document.querySelectorAll('.interactive-highlight-outline').forEach((el) => el.remove());
 
@@ -119,13 +54,121 @@ export class NavigationManager {
   }
 
   /**
+   * Start active drift detection for guided mode
+   * Uses requestAnimationFrame with throttling to check if highlight has drifted from element
+   * Only runs during guided interactions where auto-cleanup is disabled
+   */
+  private startDriftDetection(
+    element: HTMLElement,
+    highlightOutline: HTMLElement,
+    commentBox: HTMLElement | null
+  ): void {
+    // Stop any existing drift detection
+    this.stopDriftDetection();
+
+    // Store references for the RAF loop
+    this.driftDetectionElement = element;
+    this.driftDetectionHighlight = highlightOutline;
+    this.driftDetectionComment = commentBox;
+    this.driftDetectionLastCheck = 0;
+
+    const { driftThreshold, checkIntervalMs } = INTERACTIVE_CONFIG.positionTracking;
+
+    const checkDrift = (timestamp: number) => {
+      // Check if we should continue
+      if (!this.driftDetectionElement || !this.driftDetectionHighlight) {
+        return;
+      }
+
+      // Throttle checks to configured interval
+      if (timestamp - this.driftDetectionLastCheck < checkIntervalMs) {
+        this.driftDetectionRafHandle = requestAnimationFrame(checkDrift);
+        return;
+      }
+      this.driftDetectionLastCheck = timestamp;
+
+      // Check if element is still connected to DOM
+      if (!this.driftDetectionElement.isConnected) {
+        this.stopDriftDetection();
+        return;
+      }
+
+      // Get current element center
+      const elementRect = this.driftDetectionElement.getBoundingClientRect();
+      const elementCenterX = elementRect.left + elementRect.width / 2;
+      const elementCenterY = elementRect.top + elementRect.height / 2;
+
+      // Get current highlight center from CSS custom properties
+      const highlightStyle = this.driftDetectionHighlight.style;
+      const highlightTop = parseFloat(highlightStyle.getPropertyValue('--highlight-top')) || 0;
+      const highlightLeft = parseFloat(highlightStyle.getPropertyValue('--highlight-left')) || 0;
+      const highlightWidth = parseFloat(highlightStyle.getPropertyValue('--highlight-width')) || 0;
+      const highlightHeight = parseFloat(highlightStyle.getPropertyValue('--highlight-height')) || 0;
+
+      // Calculate highlight center (accounting for scroll)
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
+      const highlightCenterX = highlightLeft - scrollLeft + highlightWidth / 2;
+      const highlightCenterY = highlightTop - scrollTop + highlightHeight / 2;
+
+      // Calculate drift distance
+      const driftX = Math.abs(elementCenterX - highlightCenterX);
+      const driftY = Math.abs(elementCenterY - highlightCenterY);
+      const totalDrift = Math.sqrt(driftX * driftX + driftY * driftY);
+
+      // If drift exceeds threshold, update position immediately
+      if (totalDrift > driftThreshold) {
+        // Update highlight position - comment follows automatically as it's a child
+        highlightStyle.setProperty('--highlight-top', `${elementRect.top + scrollTop - 4}px`);
+        highlightStyle.setProperty('--highlight-left', `${elementRect.left + scrollLeft - 4}px`);
+        highlightStyle.setProperty('--highlight-width', `${elementRect.width + 8}px`);
+        highlightStyle.setProperty('--highlight-height', `${elementRect.height + 8}px`);
+
+        // Update comment box offsets if it exists (recalculate in case viewport changed)
+        if (this.driftDetectionComment) {
+          const { offsetX, offsetY } = this.calculateCommentPosition(elementRect);
+          this.driftDetectionComment.style.setProperty('--comment-offset-x', `${offsetX}px`);
+          this.driftDetectionComment.style.setProperty('--comment-offset-y', `${offsetY}px`);
+        }
+      }
+
+      // Continue the loop
+      this.driftDetectionRafHandle = requestAnimationFrame(checkDrift);
+    };
+
+    // Start the RAF loop
+    this.driftDetectionRafHandle = requestAnimationFrame(checkDrift);
+  }
+
+  /**
+   * Stop the active drift detection loop
+   * Called when highlights are cleared or component unmounts
+   */
+  private stopDriftDetection(): void {
+    if (this.driftDetectionRafHandle !== null) {
+      cancelAnimationFrame(this.driftDetectionRafHandle);
+      this.driftDetectionRafHandle = null;
+    }
+    this.driftDetectionElement = null;
+    this.driftDetectionHighlight = null;
+    this.driftDetectionComment = null;
+    this.driftDetectionLastCheck = 0;
+  }
+
+  /**
    * Set up position tracking for highlights
    * Updates highlight position when element moves (resize, dynamic content, etc.)
+   *
+   * @param element - The target element being highlighted
+   * @param highlightOutline - The highlight outline element
+   * @param commentBox - Optional comment box element
+   * @param enableDriftDetection - Enable active drift detection (for guided mode)
    */
   private setupPositionTracking(
     element: HTMLElement,
     highlightOutline: HTMLElement,
-    commentBox: HTMLElement | null
+    commentBox: HTMLElement | null,
+    enableDriftDetection = false
   ): void {
     let updateTimeout: NodeJS.Timeout | null = null;
 
@@ -172,18 +215,17 @@ export class NavigationManager {
           commentBox.style.display = '';
         }
 
-        // Update highlight position
+        // Update highlight position - comment follows automatically as it's a child
         highlightOutline.style.setProperty('--highlight-top', `${rect.top + scrollTop - 4}px`);
         highlightOutline.style.setProperty('--highlight-left', `${rect.left + scrollLeft - 4}px`);
         highlightOutline.style.setProperty('--highlight-width', `${rect.width + 8}px`);
         highlightOutline.style.setProperty('--highlight-height', `${rect.height + 8}px`);
 
-        // Update comment box position if it exists
+        // Update comment box offsets if it exists (recalculate in case viewport changed)
         if (commentBox) {
-          const position = this.calculateOptimalCommentPosition(rect, scrollTop, scrollLeft, commentBox);
-          commentBox.style.setProperty('--comment-top', `${position.top}px`);
-          commentBox.style.setProperty('--comment-left', `${position.left}px`);
-          commentBox.style.setProperty('--comment-arrow-position', position.arrowPosition);
+          const { offsetX, offsetY } = this.calculateCommentPosition(rect);
+          commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
+          commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
         }
       }, 150); // 150ms debounce for smooth updates
     };
@@ -223,6 +265,12 @@ export class NavigationManager {
     };
 
     this.activeCleanupHandlers.push(trackingCleanup);
+
+    // Start drift detection for guided mode (more responsive than event-based tracking alone)
+    // This catches slow DOM renders and position changes that don't trigger resize/scroll events
+    if (enableDriftDetection) {
+      this.startDriftDetection(element, highlightOutline, commentBox);
+    }
   }
 
   /**
@@ -486,18 +534,12 @@ export class NavigationManager {
     document.body.appendChild(highlightOutline);
 
     // Create comment box if comment is provided OR if skip/cancel callback is provided
+    // Comment box is now a CHILD of the highlight, positioned via CSS
     let commentBox: HTMLElement | null = null;
     if ((comment && comment.trim()) || onSkipCallback || onCancelCallback) {
-      commentBox = this.createCommentBox(
-        comment || '',
-        rect,
-        scrollTop,
-        scrollLeft,
-        stepInfo,
-        onSkipCallback,
-        onCancelCallback
-      );
-      document.body.appendChild(commentBox);
+      commentBox = this.createCommentBox(comment || '', rect, stepInfo, onSkipCallback, onCancelCallback);
+      // Append as child of highlight - follows automatically when highlight moves
+      highlightOutline.appendChild(commentBox);
     }
 
     // Highlights and comments now persist until explicitly cleared
@@ -509,7 +551,9 @@ export class NavigationManager {
     // 5. (If auto-cleanup enabled) User clicks outside
 
     // Always set up position tracking (efficient with ResizeObserver)
-    this.setupPositionTracking(element, highlightOutline, commentBox);
+    // Enable drift detection for guided mode (!enableAutoCleanup) for more responsive tracking
+    const enableDriftDetection = !enableAutoCleanup;
+    this.setupPositionTracking(element, highlightOutline, commentBox, enableDriftDetection);
 
     // Set up smart auto-cleanup (unless disabled for guided mode)
     if (enableAutoCleanup) {
@@ -520,19 +564,29 @@ export class NavigationManager {
   }
 
   /**
-   * Create a themed comment box positioned near the highlighted element
+   * Create a themed comment box positioned near the highlighted element.
+   * Uses offset positioning relative to highlight parent, clamped to viewport.
    */
   private createCommentBox(
     comment: string,
     targetRect: DOMRect,
-    scrollTop: number,
-    scrollLeft: number,
     stepInfo?: { current: number; total: number; completedSteps: number[] },
     onSkipCallback?: () => void,
     onCancelCallback?: () => void
   ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
+
+    // Calculate offsets relative to highlight parent
+    const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect);
+    commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
+    commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
+    commentBox.setAttribute('data-position', position);
+
+    // Defer visibility to prevent layout bounce
+    requestAnimationFrame(() => {
+      commentBox.setAttribute('data-ready', 'true');
+    });
 
     // Create content structure with logo and text
     const content = document.createElement('div');
@@ -650,27 +704,112 @@ export class NavigationManager {
       content.appendChild(buttonContainer);
     }
 
-    const arrow = document.createElement('div');
-    arrow.className = 'interactive-comment-arrow';
-
     commentBox.appendChild(content);
-    commentBox.appendChild(arrow);
-
-    // Add to DOM first so we can measure its actual height
-    document.body.appendChild(commentBox);
-
-    // Use intelligent positioning to keep comment box fully on screen
-    const position = this.calculateOptimalCommentPosition(targetRect, scrollTop, scrollLeft, commentBox);
-
-    // Set position using CSS custom properties
-    commentBox.style.setProperty('--comment-top', `${position.top}px`);
-    commentBox.style.setProperty('--comment-left', `${position.left}px`);
-    commentBox.style.setProperty('--comment-arrow-position', position.arrowPosition);
-
-    // Remove from DOM - caller will add it back
-    commentBox.remove();
-
     return commentBox;
+  }
+
+  /**
+   * Calculate the optimal position for the comment box.
+   * Returns offsets relative to the highlight parent, clamped to stay on screen.
+   */
+  private calculateCommentPosition(targetRect: DOMRect): {
+    offsetX: number;
+    offsetY: number;
+    position: string;
+  } {
+    const commentWidth = 420;
+    const commentHeight = 180; // Estimate
+    const gap = 16;
+    const padding = 8; // Viewport edge padding
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Highlight dimensions (with 4px padding on each side = 8px total)
+    const highlightWidth = targetRect.width + 8;
+    const highlightHeight = targetRect.height + 8;
+
+    // Calculate available space on each side
+    const highlightRight = targetRect.right + 4;
+    const highlightLeft = targetRect.left - 4;
+    const highlightTop = targetRect.top - 4;
+    const highlightBottom = targetRect.bottom + 4;
+
+    const spaceRight = viewportWidth - highlightRight - gap;
+    const spaceLeft = highlightLeft - gap;
+    const spaceBottom = viewportHeight - highlightBottom - gap;
+    const spaceTop = highlightTop - gap;
+
+    // Helper to clamp vertical offset so comment stays on screen
+    const clampVertical = (baseOffsetY: number): number => {
+      // Calculate where the comment would be in viewport coords
+      const commentTop = highlightTop + baseOffsetY;
+      const commentBottom = commentTop + commentHeight;
+
+      // Adjust if it would go off screen
+      if (commentTop < padding) {
+        return baseOffsetY + (padding - commentTop);
+      }
+      if (commentBottom > viewportHeight - padding) {
+        return baseOffsetY - (commentBottom - (viewportHeight - padding));
+      }
+      return baseOffsetY;
+    };
+
+    // Helper to clamp horizontal offset so comment stays on screen
+    const clampHorizontal = (baseOffsetX: number): number => {
+      const commentLeft = highlightLeft + baseOffsetX;
+      const commentRight = commentLeft + commentWidth;
+
+      if (commentLeft < padding) {
+        return baseOffsetX + (padding - commentLeft);
+      }
+      if (commentRight > viewportWidth - padding) {
+        return baseOffsetX - (commentRight - (viewportWidth - padding));
+      }
+      return baseOffsetX;
+    };
+
+    // Try positions in order: right, left, bottom, top
+    // RIGHT position: offset to the right of highlight
+    if (spaceRight >= commentWidth) {
+      const offsetX = highlightWidth + gap;
+      const offsetY = clampVertical((highlightHeight - commentHeight) / 2);
+      return { offsetX, offsetY, position: 'right' };
+    }
+
+    // LEFT position: offset to the left of highlight
+    if (spaceLeft >= commentWidth) {
+      const offsetX = -commentWidth - gap;
+      const offsetY = clampVertical((highlightHeight - commentHeight) / 2);
+      return { offsetX, offsetY, position: 'left' };
+    }
+
+    // BOTTOM position: offset below highlight
+    if (spaceBottom >= commentHeight) {
+      const offsetY = highlightHeight + gap;
+      const offsetX = clampHorizontal((highlightWidth - commentWidth) / 2);
+      return { offsetX, offsetY, position: 'bottom' };
+    }
+
+    // TOP position: offset above highlight
+    if (spaceTop >= commentHeight) {
+      const offsetY = -commentHeight - gap;
+      const offsetX = clampHorizontal((highlightWidth - commentWidth) / 2);
+      return { offsetX, offsetY, position: 'top' };
+    }
+
+    // Fallback: use side with most space
+    const maxSpace = Math.max(spaceRight, spaceLeft, spaceBottom, spaceTop);
+
+    if (maxSpace === spaceBottom || maxSpace === spaceTop) {
+      const offsetY = maxSpace === spaceBottom ? highlightHeight + gap : -commentHeight - gap;
+      const offsetX = clampHorizontal((highlightWidth - commentWidth) / 2);
+      return { offsetX, offsetY, position: maxSpace === spaceBottom ? 'bottom' : 'top' };
+    }
+
+    const offsetX = maxSpace === spaceRight ? highlightWidth + gap : -commentWidth - gap;
+    const offsetY = clampVertical((highlightHeight - commentHeight) / 2);
+    return { offsetX, offsetY, position: maxSpace === spaceRight ? 'right' : 'left' };
   }
 
   /**

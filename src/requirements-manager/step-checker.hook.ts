@@ -324,7 +324,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
             isChecking: false,
             isSkipped: false,
             completionReason: 'none' as const,
-            explanation: 'Complete the previous steps in order before this one becomes available.',
+            explanation: 'Complete previous step',
             error: 'Sequential dependency not met',
             canFixRequirement: false,
             canSkip: false, // Never allow skipping for sequential dependencies
@@ -344,7 +344,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
             isChecking: false,
             isSkipped: false,
             completionReason: 'none' as const,
-            explanation: 'Complete the previous steps in order before this one becomes available.',
+            explanation: 'Complete previous step',
             error: 'Sequential dependency not met',
             canFixRequirement: false,
             canSkip: false, // Never allow skipping for sequential dependencies
