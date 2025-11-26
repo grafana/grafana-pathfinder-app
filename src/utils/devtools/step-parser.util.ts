@@ -97,7 +97,7 @@ export function formatStepsToString(steps: StepDefinition[]): string {
  */
 export function extractSelector(input: string): string {
   const trimmed = input.trim();
-  
+
   if (!trimmed) {
     return '';
   }
@@ -105,13 +105,13 @@ export function extractSelector(input: string): string {
   // Check if input contains pipe character (step format)
   if (trimmed.includes('|')) {
     const parts = trimmed.split('|').map((p) => p.trim());
-    
+
     // Step format requires at least 2 parts: action|selector
     // parts[0] = action, parts[1] = selector, parts[2] = optional value
     if (parts.length >= 2 && parts[1]) {
       return parts[1];
     }
-    
+
     // Malformed step format (e.g., "highlight|" with no selector)
     return '';
   }

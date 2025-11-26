@@ -45,7 +45,7 @@ export function useSelectorTester({ executeInteractiveAction }: UseSelectorTeste
     async (selector: string, mode: 'show' | 'do'): Promise<TestResult> => {
       // Detect if input is in step format (contains pipe character)
       const isStepFormat = selector.trim().includes('|');
-      
+
       // Extract selector from step format (action|selector|value) or use as-is
       const cleanSelector = extractSelector(selector);
 
