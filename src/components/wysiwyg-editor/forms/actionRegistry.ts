@@ -7,7 +7,7 @@
 import type React from 'react';
 import type { BaseInteractiveFormConfig } from './BaseInteractiveForm';
 import type { InteractiveFormProps } from '../types';
-import { DATA_ATTRIBUTES, DEFAULT_VALUES, ACTION_TYPES } from '../../../constants/interactive-config';
+import { DATA_ATTRIBUTES, DEFAULT_VALUES, ACTION_TYPES, getActionIcon } from '../../../constants/interactive-config';
 import { sanitizeTextForDisplay } from '../../../security';
 import MultistepActionForm from './MultistepActionForm';
 import ButtonActionForm from './ButtonActionForm';
@@ -46,7 +46,7 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
   [ACTION_TYPES.BUTTON]: {
     type: ACTION_TYPES.BUTTON,
     ui: {
-      icon: '🔘',
+      icon: getActionIcon(ACTION_TYPES.BUTTON),
       name: 'Button',
       description: 'Click a button by text or selector',
       grafanaIcon: 'gf-button',
@@ -89,7 +89,7 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
   [ACTION_TYPES.HIGHLIGHT]: {
     type: ACTION_TYPES.HIGHLIGHT,
     ui: {
-      icon: '✨',
+      icon: getActionIcon(ACTION_TYPES.HIGHLIGHT),
       name: 'Highlight',
       description: 'Click/Highlight an element',
       grafanaIcon: 'star',
@@ -137,7 +137,7 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
   [ACTION_TYPES.FORM_FILL]: {
     type: ACTION_TYPES.FORM_FILL,
     ui: {
-      icon: '📝',
+      icon: getActionIcon(ACTION_TYPES.FORM_FILL),
       name: 'Form Fill',
       description: 'Fill an input field',
       grafanaIcon: 'document-info',
@@ -187,7 +187,7 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
   [ACTION_TYPES.NAVIGATE]: {
     type: ACTION_TYPES.NAVIGATE,
     ui: {
-      icon: '🧭',
+      icon: getActionIcon(ACTION_TYPES.NAVIGATE),
       name: 'Navigate',
       description: 'Go to a page',
       grafanaIcon: 'compass',
@@ -233,7 +233,7 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
   [ACTION_TYPES.HOVER]: {
     type: ACTION_TYPES.HOVER,
     ui: {
-      icon: '👆',
+      icon: getActionIcon(ACTION_TYPES.HOVER),
       name: 'Hover',
       description: 'Reveal on hover',
       grafanaIcon: 'mouse',
@@ -274,7 +274,7 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
   [ACTION_TYPES.MULTISTEP]: {
     type: ACTION_TYPES.MULTISTEP,
     ui: {
-      icon: '📋',
+      icon: getActionIcon(ACTION_TYPES.MULTISTEP),
       name: 'Multistep',
       description: 'Multiple actions',
       grafanaIcon: 'clipboard-list',
@@ -308,7 +308,7 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
   [ACTION_TYPES.SEQUENCE]: {
     type: ACTION_TYPES.SEQUENCE,
     ui: {
-      icon: '📑',
+      icon: getActionIcon(ACTION_TYPES.SEQUENCE),
       name: 'Sequence',
       description: 'Section with steps',
       grafanaIcon: 'folder-open',
