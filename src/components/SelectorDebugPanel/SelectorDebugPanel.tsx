@@ -331,10 +331,10 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       <Icon name="info-circle" size="sm" />
-                      <span>
-                        Oops! You pasted a selector in step format. We've automatically extracted the selector for you,
-                        but note that other tools might expect plain CSS selectors.
-                      </span>
+                    <span>
+                      Oops! You pasted a selector in step format. We&apos;ve automatically extracted the selector for you,
+                      but note that other tools might expect plain CSS selectors.
+                    </span>
                     </div>
                     <div
                       style={{
