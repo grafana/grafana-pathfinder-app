@@ -62,3 +62,60 @@ export function formatStepsToString(steps: StepDefinition[]): string {
     })
     .join('\n');
 }
+
+/**
+ * Extract CSS selector from step format or plain selector
+ *
+ * Intelligently extracts the selector portion from either:
+ * - Step format: `action|selector|value` → returns `selector`
+ * - Plain selector: `button[data-testid="save"]` → returns as-is
+ *
+ * This allows Simple Selector Tester to accept copy/pasted step sequences
+ * from Multistep Debug without requiring manual reformatting.
+ *
+ * @param input - Either a step format string or plain CSS selector
+ * @returns The extracted CSS selector
+ *
+ * @example
+ * ```typescript
+ * // Step format - extracts selector
+ * extractSelector('highlight|a[href="/alerting"]|');
+ * // Returns: 'a[href="/alerting"]'
+ *
+ * // Plain selector - returns as-is
+ * extractSelector('button[data-testid="save"]');
+ * // Returns: 'button[data-testid="save"]'
+ *
+ * // Empty or whitespace - returns empty string
+ * extractSelector('   ');
+ * // Returns: ''
+ *
+ * // Malformed step (missing selector) - returns empty string
+ * extractSelector('highlight|');
+ * // Returns: ''
+ * ```
+ */
+export function extractSelector(input: string): string {
+  const trimmed = input.trim();
+
+  if (!trimmed) {
+    return '';
+  }
+
+  // Check if input contains pipe character (step format)
+  if (trimmed.includes('|')) {
+    const parts = trimmed.split('|').map((p) => p.trim());
+
+    // Step format requires at least 2 parts: action|selector
+    // parts[0] = action, parts[1] = selector, parts[2] = optional value
+    if (parts.length >= 2 && parts[1]) {
+      return parts[1];
+    }
+
+    // Malformed step format (e.g., "highlight|" with no selector)
+    return '';
+  }
+
+  // Plain selector - return as-is
+  return trimmed;
+}

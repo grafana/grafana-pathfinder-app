@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Button, Input, Badge, Icon, useStyles2, TextArea, HorizontalGroup } from '@grafana/ui';
+import { Button, Input, Badge, Icon, useStyles2, TextArea, HorizontalGroup, Alert } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive-engine';
 import { getDebugPanelStyles } from './debug-panel.styles';
 import { combineStepsIntoMultistep } from '../../utils/devtools/tutorial-exporter';
@@ -63,6 +63,8 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     testSelector,
     isTesting: simpleTesting,
     result: simpleResult,
+    wasStepFormatExtracted,
+    extractedSelector,
   } = useSelectorTester({
     executeInteractiveAction,
   });
@@ -324,6 +326,32 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                 placeholder='button[data-testid="save-button"]'
                 disabled={simpleTesting}
               />
+              {wasStepFormatExtracted && extractedSelector && (
+                <Alert title="" severity="info" style={{ marginTop: '8px', marginBottom: '8px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <Icon name="info-circle" size="sm" />
+                      <span>
+                        Oops! You pasted a selector in step format. We&apos;ve automatically extracted the selector for
+                        you, but note that other tools might expect plain CSS selectors.
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: '8px',
+                        padding: '6px 8px',
+                        backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                        borderRadius: '4px',
+                        fontFamily: 'monospace',
+                        fontSize: '12px',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      <strong>Extracted selector:</strong> {extractedSelector}
+                    </div>
+                  </div>
+                </Alert>
+              )}
               <div className={styles.buttonGroup}>
                 <Button variant="secondary" size="sm" onClick={handleSimpleShow} disabled={simpleTesting}>
                   {simpleTesting ? 'Testing...' : 'Show me'}
