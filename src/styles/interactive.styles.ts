@@ -1231,12 +1231,10 @@ export const addGlobalInteractiveStyles = () => {
         linear-gradient(var(--hl-color) 0 0) bottom right / 0 var(--hl-thickness) no-repeat,
         linear-gradient(var(--hl-color) 0 0) bottom left / var(--hl-thickness) 0 no-repeat;
       opacity: 0.95;
-      /* Draw border animation only - no fade out, stays visible */
-      animation-name: interactive-draw-border;
-      animation-duration: ${drawMs}ms;
-      animation-timing-function: cubic-bezier(0.18, 0.6, 0.2, 1);
-      animation-delay: 0ms;
-      animation-fill-mode: forwards;
+      /* Draw border animation, then breathing glow activates after draw completes */
+      animation:
+        interactive-draw-border ${drawMs}ms cubic-bezier(0.18, 0.6, 0.2, 1) forwards,
+        interactive-glow-breathe 2s ease-in-out ${drawMs}ms infinite;
     }
 
     /* Subtle variant to reuse animation cadence for blocked areas */
@@ -1287,6 +1285,16 @@ export const addGlobalInteractiveStyles = () => {
       }
       100% {
         background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100%;
+      }
+    }
+
+    /* Breathing orange glow that activates after border draw completes */
+    @keyframes interactive-glow-breathe {
+      0%, 100% {
+        box-shadow: 0 0 8px 2px rgba(255, 136, 0, 0.3);
+      }
+      50% {
+        box-shadow: 0 0 16px 4px rgba(255, 136, 0, 0.5);
       }
     }
 

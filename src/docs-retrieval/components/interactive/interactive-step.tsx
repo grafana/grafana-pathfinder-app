@@ -154,7 +154,7 @@ export const InteractiveStep = forwardRef<
     // Choose appropriate explanation text based on step state
     const explanationText = isPartOfSection
       ? !isEligibleForChecking
-        ? 'Complete the previous step first.'
+        ? 'Complete previous step'
         : checker.explanation
       : checker.explanation;
 

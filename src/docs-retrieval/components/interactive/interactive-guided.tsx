@@ -605,7 +605,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                   hints || `Guide you through ${internalActions.length} step${internalActions.length > 1 ? 's' : ''}`
                 }
               >
-                ▶ Start guided tour
+                ▶ Start guided interaction
               </Button>
               {skippable && (
                 <Button
