@@ -601,7 +601,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
                 variant="primary"
                 className="interactive-guided-start-btn"
                 data-testid={testIds.interactive.doItButton(renderedStepId)}
-                title={hints || `Guide you through ${internalActions.length} step${internalActions.length > 1 ? 's' : ''}`}
+                title={
+                  hints || `Guide you through ${internalActions.length} step${internalActions.length > 1 ? 's' : ''}`
+                }
               >
                 ▶ Start guided tour
               </Button>
@@ -633,9 +635,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            STATE: CHECKING - Verifying requirements
+            STATE: CHECKING - Verifying requirements (only show if no explanation to recheck)
         ═══════════════════════════════════════════════════════════════════ */}
-        {uiState === 'checking' && (
+        {uiState === 'checking' && !checker.explanation && (
           <div className="interactive-guided-checking">
             <div className="interactive-guided-status">
               <span className="interactive-guided-spinner" />
@@ -649,33 +651,35 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            STATE: REQUIREMENTS NOT MET
+            STATE: REQUIREMENTS NOT MET (also show during rechecking)
         ═══════════════════════════════════════════════════════════════════ */}
-        {uiState === 'requirements-not-met' && checker.explanation && (
-          <div className="interactive-guided-requirements">
-            <div className="interactive-guided-requirement-box">
-              <span className="interactive-guided-requirement-icon">👣</span>
-              <span className="interactive-guided-requirement-text">{checker.explanation}</span>
-            </div>
-            <button
-              className="interactive-guided-fix-btn"
-              data-testid={
-                checker.canFixRequirement
-                  ? testIds.interactive.requirementFixButton(renderedStepId)
-                  : testIds.interactive.requirementRetryButton(renderedStepId)
-              }
-              onClick={async () => {
-                if (checker.canFixRequirement && checker.fixRequirement) {
-                  await checker.fixRequirement();
-                } else {
-                  checker.checkStep();
+        {(uiState === 'requirements-not-met' || (uiState === 'checking' && checker.explanation)) &&
+          checker.explanation && (
+            <div className={`interactive-guided-requirements${checker.isChecking ? ' rechecking' : ''}`}>
+              <div className="interactive-guided-requirement-box">
+                <span className="interactive-guided-requirement-icon">👣</span>
+                <span className="interactive-guided-requirement-text">{checker.explanation}</span>
+                {checker.isChecking && <span className="interactive-requirement-spinner">⟳</span>}
+              </div>
+              <button
+                className="interactive-guided-fix-btn"
+                data-testid={
+                  checker.canFixRequirement
+                    ? testIds.interactive.requirementFixButton(renderedStepId)
+                    : testIds.interactive.requirementRetryButton(renderedStepId)
                 }
-              }}
-            >
-              {checker.canFixRequirement ? 'Fix this' : 'Check again'}
-            </button>
-          </div>
-        )}
+                onClick={async () => {
+                  if (checker.canFixRequirement && checker.fixRequirement) {
+                    await checker.fixRequirement();
+                  } else {
+                    checker.checkStep();
+                  }
+                }}
+              >
+                {checker.canFixRequirement ? 'Fix this' : 'Check again'}
+              </button>
+            </div>
+          )}
 
         {/* ═══════════════════════════════════════════════════════════════════
             STATE: EXECUTING - Waiting for user action
@@ -687,9 +691,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               <span className="interactive-guided-step-badge">
                 Step {currentStepIndex + 1} of {internalActions.length}
               </span>
-              {currentStepStatus === 'completed' && (
-                <span className="interactive-guided-step-done">✓</span>
-              )}
+              {currentStepStatus === 'completed' && <span className="interactive-guided-step-done">✓</span>}
             </div>
 
             {/* Current instruction */}
@@ -745,9 +747,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             <div className="interactive-guided-error-box">
               <span className="interactive-guided-error-icon">✕</span>
               <div className="interactive-guided-error-content">
-                <span className="interactive-guided-error-title">
-                  Step {currentStepIndex + 1} didn&apos;t complete
-                </span>
+                <span className="interactive-guided-error-title">Step {currentStepIndex + 1} didn&apos;t complete</span>
                 <span className="interactive-guided-error-detail">
                   {currentStepStatus === 'timeout' ? 'Timed out waiting for action' : 'Something went wrong'}
                 </span>

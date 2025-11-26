@@ -537,13 +537,7 @@ export class NavigationManager {
     // Comment box is now a CHILD of the highlight, positioned via CSS
     let commentBox: HTMLElement | null = null;
     if ((comment && comment.trim()) || onSkipCallback || onCancelCallback) {
-      commentBox = this.createCommentBox(
-        comment || '',
-        rect,
-        stepInfo,
-        onSkipCallback,
-        onCancelCallback
-      );
+      commentBox = this.createCommentBox(comment || '', rect, stepInfo, onSkipCallback, onCancelCallback);
       // Append as child of highlight - follows automatically when highlight moves
       highlightOutline.appendChild(commentBox);
     }

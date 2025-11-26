@@ -516,11 +516,18 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     margin: `${theme.spacing(2)} 0`,
     padding: theme.spacing(2),
     backgroundColor: theme.colors.background.primary,
+    borderRadius: '8px',
+    border: '2px solid transparent',
+    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
     '&.completed': {
       backgroundColor: theme.colors.success.transparent,
     },
     '&.skipped': {
       backgroundColor: theme.colors.info.transparent,
+    },
+    '&.executing': {
+      borderColor: theme.colors.success.main,
+      boxShadow: `0 0 0 1px ${theme.colors.success.transparent}, 0 0 12px ${theme.colors.success.transparent}`,
     },
   },
 
@@ -627,12 +634,30 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     fontSize: '0.875rem',
     lineHeight: '1.5',
     color: theme.colors.text.secondary,
+    position: 'relative',
     // Add footprints icon via ::before with inline layout
     '&::before': {
       content: '"👣"',
       marginRight: '8px',
       fontSize: '0.9rem',
     },
+    '&.rechecking': {
+      opacity: 0.85,
+    },
+  },
+
+  '.interactive-requirement-spinner': {
+    position: 'absolute',
+    top: '8px',
+    right: '8px',
+    fontSize: '0.85rem',
+    color: theme.colors.text.secondary,
+    animation: 'spin 1s linear infinite',
+  },
+
+  '@keyframes spin': {
+    from: { transform: 'rotate(0deg)' },
+    to: { transform: 'rotate(360deg)' },
   },
 
   '.interactive-step-requirement-buttons': {
@@ -774,6 +799,9 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // ─── REQUIREMENTS NOT MET STATE (subtle - part of normal flow) ────────────
   '.interactive-guided-requirements': {
     marginTop: '12px',
+    '&.rechecking': {
+      opacity: 0.85,
+    },
   },
 
   '.interactive-guided-requirement-box': {
@@ -785,6 +813,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     border: `1px solid ${theme.colors.border.medium}`,
     borderRadius: '6px',
     marginBottom: '10px',
+    position: 'relative',
   },
 
   '.interactive-guided-requirement-icon': {

@@ -716,13 +716,13 @@ export const InteractiveStep = forwardRef<
           checker.completionReason !== 'skipped' &&
           shouldShowExplanation &&
           !isCompletedWithObjectives &&
-          !checker.isChecking &&
           explanationText && (
             <div
-              className="interactive-step-requirement-explanation"
+              className={`interactive-step-requirement-explanation${checker.isChecking ? ' rechecking' : ''}`}
               data-testid={testIds.interactive.requirementCheck(renderedStepId)}
             >
               {explanationText}
+              {checker.isChecking && <span className="interactive-requirement-spinner">⟳</span>}
               <div className="interactive-step-requirement-buttons">
                 {/* Retry button for eligible steps or fixable requirements */}
                 {(isEligibleForChecking || checker.canFixRequirement) && (

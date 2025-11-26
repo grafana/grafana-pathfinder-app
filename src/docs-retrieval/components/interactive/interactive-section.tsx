@@ -101,7 +101,8 @@ export function InteractiveSection({
 
   // Track if user has manually scrolled to avoid fighting with auto-scroll
   const userScrolledRef = useRef(false);
-  const lastScrollTimeRef = useRef(0);
+  // Track if we're currently doing a programmatic scroll (to ignore it in listener)
+  const isProgrammaticScrollRef = useRef(false);
 
   // --- Persistence helpers (restore across refresh) ---
   const getContentKey = useCallback((): string => {
@@ -159,37 +160,59 @@ export function InteractiveSection({
   // Track if we've already auto-collapsed to prevent re-collapsing on manual expand
   const hasAutoCollapsedRef = useRef(false);
 
-  // Track user scroll to disable auto-scroll temporarily
+  // Track user scroll to disable auto-scroll for the rest of section execution
   useEffect(() => {
     if (!isRunning) {
       return;
     }
 
-    const handleScroll = () => {
-      userScrolledRef.current = true;
-      lastScrollTimeRef.current = Date.now();
+    // Target the docs panel scrollable container directly (inner-docs-content)
+    const scrollContainer = document.getElementById('inner-docs-content');
 
-      // Reset after 3 seconds of no scrolling
-      setTimeout(() => {
-        if (Date.now() - lastScrollTimeRef.current >= 3000) {
-          userScrolledRef.current = false;
-        }
-      }, 3000);
+    console.warn('[Section] Setting up scroll listener, container found:', !!scrollContainer);
+
+    if (!scrollContainer) {
+      console.warn('[Section] No scroll container found!');
+      return;
+    }
+
+    const handleScroll = () => {
+      console.warn(
+        '[Section] Scroll event fired, isProgrammatic:',
+        isProgrammaticScrollRef.current,
+        'userScrolled:',
+        userScrolledRef.current
+      );
+      // Ignore programmatic scrolls (our own auto-scroll)
+      if (isProgrammaticScrollRef.current) {
+        console.warn('[Section] Ignoring programmatic scroll');
+        return;
+      }
+      console.warn('[Section] USER SCROLLED - disabling auto-scroll');
+      userScrolledRef.current = true; // Permanently disable for this section run
     };
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll);
+    };
   }, [isRunning]);
 
   // Auto-scroll to current executing step
   const scrollToStep = useCallback((stepId: string) => {
+    console.warn('[Section] scrollToStep called for:', stepId, 'userScrolled:', userScrolledRef.current);
     if (userScrolledRef.current) {
+      console.warn('[Section] Skipping scroll - user has scrolled');
       return; // User has scrolled, don't fight them
     }
 
     // Find the step element by data-step-id
     const stepElement = document.querySelector(`[data-step-id="${stepId}"]`);
+    console.warn('[Section] Step element found:', !!stepElement);
     if (stepElement) {
+      // isProgrammaticScrollRef is already true during section execution
+      // so we don't need to set/reset it here
       stepElement.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
@@ -576,6 +599,12 @@ export function InteractiveSection({
     setIsRunning(true);
     setExecutingStepNumber(0); // Reset step counter
     userScrolledRef.current = false; // Reset user scroll tracking
+    // Keep isProgrammaticScroll TRUE for entire section execution
+    // This prevents step execution (button clicks, etc.) from triggering the cancel
+    isProgrammaticScrollRef.current = true;
+    console.warn(
+      '[Section] Starting section run, reset userScrolled=false, isProgrammatic=TRUE (will stay true during execution)'
+    );
 
     // Disable action monitor during section execution to prevent auto-completion conflicts
     const actionMonitor = ActionMonitor.getInstance();
@@ -902,6 +931,9 @@ export function InteractiveSection({
       setIsRunning(false);
       setCurrentlyExecutingStep(null);
       setExecutingStepNumber(0);
+      // Reset programmatic scroll flag now that section is done
+      isProgrammaticScrollRef.current = false;
+      console.warn('[Section] Section finished, isProgrammaticScroll = false');
       // Keep isCancelled state for UI feedback, will be reset on next run
     }
   }, [
@@ -1214,9 +1246,7 @@ export function InteractiveSection({
             </div>
             <div className="interactive-guided-instruction">
               <span className="interactive-guided-instruction-icon">⚡</span>
-              <span className="interactive-guided-instruction-text">
-                Running step {executingStepNumber || 1}...
-              </span>
+              <span className="interactive-guided-instruction-text">Running step {executingStepNumber || 1}...</span>
             </div>
             <div className="interactive-guided-progress">
               <div

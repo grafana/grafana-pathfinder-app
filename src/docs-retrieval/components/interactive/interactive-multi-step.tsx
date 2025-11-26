@@ -744,9 +744,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             {/* Current action description */}
             <div className="interactive-guided-instruction">
               <span className="interactive-guided-instruction-icon">⚡</span>
-              <span className="interactive-guided-instruction-text">
-                Executing action {currentActionIndex + 1}...
-              </span>
+              <span className="interactive-guided-instruction-text">Executing action {currentActionIndex + 1}...</span>
             </div>
 
             {/* Progress bar */}
