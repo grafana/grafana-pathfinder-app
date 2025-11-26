@@ -155,6 +155,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     const [isLocallyCompleted, setIsLocallyCompleted] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
     const [currentActionIndex, setCurrentActionIndex] = useState(-1);
+    const [failedStepIndex, setFailedStepIndex] = useState(-1); // Track which step failed for error display
     const [executionError, setExecutionError] = useState<string | null>(null);
 
     // Track which internal actions have been auto-completed by user
@@ -175,6 +176,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       if (resetTrigger && resetTrigger > 0) {
         setIsLocallyCompleted(false);
         setExecutionError(null); // Also clear any execution errors
+        setFailedStepIndex(-1); // Reset failed step tracking
         setAutoCompletedActions(new Set()); // Clear auto-completed actions
         isCancelledRef.current = false; // Reset cancellation state
       }
@@ -271,6 +273,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
       setIsExecuting(true);
       setExecutionError(null);
+      setFailedStepIndex(-1); // Reset failed step tracking
 
       isCancelledRef.current = false; // Reset ref as well
 
@@ -317,6 +320,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                 `Multi-step ${stepId}: Internal action ${i + 1} requirements failed`,
                 requirementsResult.explanation
               );
+              setFailedStepIndex(i);
               setExecutionError(requirementsResult.explanation || 'Action requirements not met');
               return false;
             }
@@ -358,6 +362,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           } catch (actionError) {
             console.error(`Multi-step ${stepId}: Internal action ${i + 1} execution failed`, actionError);
             const errorMessage = actionError instanceof Error ? actionError.message : 'Action execution failed';
+            setFailedStepIndex(i);
             setExecutionError(`Step ${i + 1} failed: ${errorMessage}`);
             return false;
           }
@@ -618,6 +623,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
       // Clear any execution errors
       setExecutionError(null);
+      setFailedStepIndex(-1);
 
       // Reset cancellation state
       isCancelledRef.current = false;
@@ -637,31 +643,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // - isCancelledRef: ref changes don't trigger re-creation, including would cause unnecessary updates
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
-
-    // Generate button text based on current state
-    const getButtonText = () => {
-      if (checker.completionReason === 'objectives') {
-        return 'Already done!';
-      }
-      if (checker.isChecking) {
-        return checker.isRetrying ? `Checking... (${checker.retryCount}/${checker.maxRetries})` : 'Checking...';
-      }
-      if (isCompletedWithObjectives) {
-        return '✓ Completed';
-      }
-      if (isExecuting) {
-        return currentActionIndex >= 0
-          ? `Executing ${currentActionIndex + 1}/${internalActions.length}...`
-          : 'Executing...';
-      }
-      if (executionError) {
-        return executionError;
-      }
-      if (!checker.isEnabled && !isCompletedWithObjectives) {
-        return 'Requirements not met';
-      }
-      return 'Do it';
-    };
 
     // Generate button title/tooltip based on current state
     const getButtonTitle = () => {
@@ -704,132 +685,190 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           {children}
         </div>
 
-        <div className="interactive-step-actions">
-          <div className="interactive-step-action-buttons">
-            {/* Only show "Do it" when not completed */}
-            {!isCompletedWithObjectives && checker.isEnabled && (
+        {/* ═══════════════════════════════════════════════════════════════════
+            IDLE STATE - Ready to start
+        ═══════════════════════════════════════════════════════════════════ */}
+        {!isExecuting && !isCompletedWithObjectives && checker.isEnabled && !executionError && (
+          <div className="interactive-guided-idle">
+            <div className="interactive-guided-actions">
               <Button
                 onClick={handleDoAction}
-                disabled={disabled || isAnyActionRunning || !checker.isEnabled}
+                disabled={disabled || isAnyActionRunning}
                 size="sm"
                 variant="primary"
-                className="interactive-step-do-btn"
+                className="interactive-guided-start-btn"
                 data-testid={testIds.interactive.doItButton(renderedStepId)}
                 title={getButtonTitle()}
               >
-                {getButtonText()}
+                ▶ Run {internalActions.length} steps
               </Button>
-            )}
-
-            {/* Show "Skip" button when multi-step is skippable (always available, not just on error) */}
-            {skippable && !isCompletedWithObjectives && (
-              <Button
-                onClick={async () => {
-                  if (checker.markSkipped) {
-                    await checker.markSkipped();
-
-                    // Mark as completed and notify parent
-                    setIsLocallyCompleted(true);
-
-                    if (onStepComplete && stepId) {
-                      onStepComplete(stepId);
+              {skippable && (
+                <Button
+                  onClick={async () => {
+                    if (checker.markSkipped) {
+                      await checker.markSkipped();
+                      setIsLocallyCompleted(true);
+                      if (onStepComplete && stepId) {
+                        onStepComplete(stepId);
+                      }
+                      if (onComplete) {
+                        onComplete();
+                      }
                     }
-
-                    if (onComplete) {
-                      onComplete();
-                    }
-                  }
-                }}
-                disabled={disabled || isAnyActionRunning}
-                size="sm"
-                variant="secondary"
-                className="interactive-step-skip-btn"
-                data-testid={testIds.interactive.skipButton(renderedStepId)}
-                title="Skip this multi-step without executing"
-              >
-                Skip
-              </Button>
-            )}
+                  }}
+                  disabled={disabled || isAnyActionRunning}
+                  size="sm"
+                  variant="secondary"
+                  className="interactive-guided-skip-btn"
+                  data-testid={testIds.interactive.skipButton(renderedStepId)}
+                >
+                  Skip
+                </Button>
+              )}
+            </div>
           </div>
+        )}
 
-          {isCompletedWithObjectives && (
-            <div className="interactive-step-completion-group">
+        {/* ═══════════════════════════════════════════════════════════════════
+            EXECUTING STATE - Running automated steps
+        ═══════════════════════════════════════════════════════════════════ */}
+        {isExecuting && !executionError && (
+          <div className="interactive-guided-executing">
+            {/* Step indicator */}
+            <div className="interactive-guided-step-indicator">
+              <span className="interactive-guided-step-badge">
+                Step {currentActionIndex + 1} of {internalActions.length}
+              </span>
+            </div>
+
+            {/* Current action description */}
+            <div className="interactive-guided-instruction">
+              <span className="interactive-guided-instruction-icon">⚡</span>
+              <span className="interactive-guided-instruction-text">
+                Executing action {currentActionIndex + 1}...
+              </span>
+            </div>
+
+            {/* Progress bar */}
+            <div className="interactive-guided-progress">
+              <div
+                className="interactive-guided-progress-fill"
+                style={{ width: `${(currentActionIndex / internalActions.length) * 100}%` }}
+              />
+              <div
+                className="interactive-guided-progress-active"
+                style={{
+                  left: `${(currentActionIndex / internalActions.length) * 100}%`,
+                  width: `${(1 / internalActions.length) * 100}%`,
+                }}
+              />
+            </div>
+
+            {/* Cancel button */}
+            <Button
+              onClick={handleMultiStepCancel}
+              disabled={disabled}
+              size="sm"
+              variant="secondary"
+              className="interactive-guided-cancel-btn"
+              title="Cancel execution"
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            COMPLETED STATE
+        ═══════════════════════════════════════════════════════════════════ */}
+        {isCompletedWithObjectives && (
+          <div className="interactive-guided-completed">
+            <div className="interactive-guided-completed-badge">
               <span
-                className="interactive-step-completed-indicator"
+                className="interactive-guided-completed-icon"
                 data-testid={testIds.interactive.stepCompleted(renderedStepId)}
               >
                 ✓
               </span>
-              <button
-                className="interactive-step-redo-btn"
-                onClick={handleStepRedo}
-                disabled={disabled || isAnyActionRunning}
-                data-testid={testIds.interactive.redoButton(renderedStepId)}
-                title="Redo this multi-step (execute again)"
-              >
-                <span className="interactive-step-redo-icon">↻</span>
-                <span className="interactive-step-redo-text">Redo</span>
-              </button>
+              <span className="interactive-guided-completed-text">Completed</span>
             </div>
-          )}
-        </div>
+            <button
+              className="interactive-guided-redo-btn"
+              onClick={handleStepRedo}
+              disabled={disabled || isAnyActionRunning}
+              data-testid={testIds.interactive.redoButton(renderedStepId)}
+              title="Redo this multi-step"
+            >
+              ↻ Redo
+            </button>
+          </div>
+        )}
 
-        {/* Show explanation text when requirements aren't met, but objectives always win (clarification 2) */}
+        {/* ═══════════════════════════════════════════════════════════════════
+            REQUIREMENTS NOT MET STATE
+        ═══════════════════════════════════════════════════════════════════ */}
         {checker.completionReason !== 'objectives' &&
           !checker.isEnabled &&
           !isCompletedWithObjectives &&
           !checker.isChecking &&
+          !isExecuting &&
           checker.explanation && (
             <div
               className="interactive-step-requirement-explanation"
               data-testid={testIds.interactive.requirementCheck(renderedStepId)}
             >
               {checker.explanation}
-              <button
-                className="interactive-requirement-retry-btn"
-                data-testid={
-                  checker.canFixRequirement
-                    ? testIds.interactive.requirementFixButton(renderedStepId)
-                    : testIds.interactive.requirementRetryButton(renderedStepId)
-                }
-                onClick={async () => {
-                  if (checker.canFixRequirement && checker.fixRequirement) {
-                    await checker.fixRequirement();
-                  } else {
-                    checker.checkStep();
-                  }
-                }}
-              >
-                {checker.canFixRequirement ? 'Fix this' : 'Retry'}
-              </button>
             </div>
           )}
 
-        {/* Show execution error when available */}
+        {/* ═══════════════════════════════════════════════════════════════════
+            ERROR STATE
+        ═══════════════════════════════════════════════════════════════════ */}
         {executionError && !checker.isChecking && (
-          <div
-            className="interactive-step-execution-error"
-            data-testid={testIds.interactive.errorMessage(renderedStepId)}
-          >
-            {executionError}
-            <button
-              className="interactive-error-retry-btn"
-              data-testid={
-                checker.canFixRequirement
-                  ? testIds.interactive.requirementFixButton(renderedStepId)
-                  : testIds.interactive.requirementRetryButton(renderedStepId)
-              }
-              onClick={async () => {
-                setExecutionError(null);
-                if (checker.canFixRequirement && checker.fixRequirement) {
-                  await checker.fixRequirement();
-                } else {
-                  checker.checkStep();
-                }
-              }}
-            >
-              {checker.canFixRequirement ? 'Fix this' : 'Retry'}
-            </button>
+          <div className="interactive-guided-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
+            <div className="interactive-guided-error-box">
+              <span className="interactive-guided-error-icon">!</span>
+              <div className="interactive-guided-error-content">
+                <span className="interactive-guided-error-title">Step {failedStepIndex + 1} failed</span>
+                <span className="interactive-guided-error-detail">{executionError}</span>
+              </div>
+            </div>
+            <div className="interactive-guided-error-actions">
+              <Button
+                onClick={async () => {
+                  setExecutionError(null);
+                  await executeStep();
+                }}
+                size="sm"
+                variant="primary"
+                className="interactive-guided-retry-btn"
+                data-testid={testIds.interactive.requirementRetryButton(renderedStepId)}
+              >
+                ↻ Try again
+              </Button>
+              {skippable && (
+                <Button
+                  onClick={async () => {
+                    if (checker.markSkipped) {
+                      await checker.markSkipped();
+                      setIsLocallyCompleted(true);
+                      if (onStepComplete && stepId) {
+                        onStepComplete(stepId);
+                      }
+                      if (onComplete) {
+                        onComplete();
+                      }
+                    }
+                  }}
+                  size="sm"
+                  variant="secondary"
+                  className="interactive-guided-skip-btn"
+                  data-testid={testIds.interactive.requirementSkipButton(renderedStepId)}
+                >
+                  Skip this step
+                </Button>
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -98,6 +98,11 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
     feedbackDuration: 1500, // Duration to show auto-completion feedback (ms)
     eventTypes: ['click', 'input', 'change', 'mouseenter'] as const, // DOM events to monitor
   },
+  // Position tracking configuration for highlight drift detection
+  positionTracking: {
+    driftThreshold: 5, // Pixels of center drift before triggering position correction
+    checkIntervalMs: 100, // Throttle interval for RAF-based drift checks
+  },
 } as const;
 
 /**

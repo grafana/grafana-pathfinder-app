@@ -95,8 +95,13 @@ export function InteractiveSection({
   const [currentlyExecutingStep, setCurrentlyExecutingStep] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0); // Track next uncompleted step
+  const [executingStepNumber, setExecutingStepNumber] = useState(0); // Track which step is being executed (1-indexed for display)
   const [resetTrigger, setResetTrigger] = useState(0); // Trigger to reset child steps
   const [isCollapsed, setIsCollapsed] = useState(false); // Collapse state for completed sections
+
+  // Track if user has manually scrolled to avoid fighting with auto-scroll
+  const userScrolledRef = useRef(false);
+  const lastScrollTimeRef = useRef(0);
 
   // --- Persistence helpers (restore across refresh) ---
   const getContentKey = useCallback((): string => {
@@ -153,6 +158,44 @@ export function InteractiveSection({
 
   // Track if we've already auto-collapsed to prevent re-collapsing on manual expand
   const hasAutoCollapsedRef = useRef(false);
+
+  // Track user scroll to disable auto-scroll temporarily
+  useEffect(() => {
+    if (!isRunning) {
+      return;
+    }
+
+    const handleScroll = () => {
+      userScrolledRef.current = true;
+      lastScrollTimeRef.current = Date.now();
+
+      // Reset after 3 seconds of no scrolling
+      setTimeout(() => {
+        if (Date.now() - lastScrollTimeRef.current >= 3000) {
+          userScrolledRef.current = false;
+        }
+      }, 3000);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isRunning]);
+
+  // Auto-scroll to current executing step
+  const scrollToStep = useCallback((stepId: string) => {
+    if (userScrolledRef.current) {
+      return; // User has scrolled, don't fight them
+    }
+
+    // Find the step element by data-step-id
+    const stepElement = document.querySelector(`[data-step-id="${stepId}"]`);
+    if (stepElement) {
+      stepElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, []);
 
   // Store refs to multistep components for section-level execution
   const multiStepRefs = useRef<Map<string, { executeStep: () => Promise<boolean> }>>(new Map());
@@ -531,6 +574,8 @@ export function InteractiveSection({
     });
 
     setIsRunning(true);
+    setExecutingStepNumber(0); // Reset step counter
+    userScrolledRef.current = false; // Reset user scroll tracking
 
     // Disable action monitor during section execution to prevent auto-completion conflicts
     const actionMonitor = ActionMonitor.getInstance();
@@ -655,6 +700,8 @@ export function InteractiveSection({
         }
 
         setCurrentlyExecutingStep(stepInfo.stepId);
+        setExecutingStepNumber(i + 1); // 1-indexed for display
+        scrollToStep(stepInfo.stepId); // Auto-scroll to the step
 
         // Check step requirements before attempting execution
         if (stepInfo.requirements) {
@@ -854,6 +901,7 @@ export function InteractiveSection({
       stopSectionBlocking(sectionId);
       setIsRunning(false);
       setCurrentlyExecutingStep(null);
+      setExecutingStepNumber(0);
       // Keep isCancelled state for UI feedback, will be reset on next run
     }
   }, [
@@ -872,6 +920,7 @@ export function InteractiveSection({
     requirements,
     checkRequirementsFromData,
     persistCompletedSteps,
+    scrollToStep,
   ]);
 
   /**
@@ -1155,10 +1204,48 @@ export function InteractiveSection({
           >
             Reset Section
           </Button>
+        ) : isRunning ? (
+          /* Running state - show progress bar and status */
+          <div className="interactive-guided-executing">
+            <div className="interactive-guided-step-indicator">
+              <span className="interactive-guided-step-badge">
+                Step {executingStepNumber || 1} of {stepComponents.length}
+              </span>
+            </div>
+            <div className="interactive-guided-instruction">
+              <span className="interactive-guided-instruction-icon">⚡</span>
+              <span className="interactive-guided-instruction-text">
+                Running step {executingStepNumber || 1}...
+              </span>
+            </div>
+            <div className="interactive-guided-progress">
+              <div
+                className="interactive-guided-progress-fill"
+                style={{ width: `${((executingStepNumber - 1) / stepComponents.length) * 100}%` }}
+              />
+              <div
+                className="interactive-guided-progress-active"
+                style={{
+                  left: `${((executingStepNumber - 1) / stepComponents.length) * 100}%`,
+                  width: `${(1 / stepComponents.length) * 100}%`,
+                }}
+              />
+            </div>
+            <Button
+              onClick={handleSectionCancel}
+              disabled={disabled}
+              size="sm"
+              variant="secondary"
+              className="interactive-guided-cancel-btn"
+              title="Cancel section execution"
+            >
+              Cancel
+            </Button>
+          </div>
         ) : (
           <Button
             onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
-            disabled={disabled || isRunning || stepComponents.length === 0 || isCompletedByObjectives}
+            disabled={disabled || stepComponents.length === 0 || isCompletedByObjectives}
             size="md"
             variant={isCompleted ? 'secondary' : 'primary'}
             className="interactive-section-do-button"
@@ -1175,13 +1262,6 @@ export function InteractiveSection({
               if (stepsCompleted && !isCompletedByObjectives) {
                 return 'Reset section and clear all step completion to allow manual re-interaction';
               }
-              if (isRunning) {
-                return `Running Step ${
-                  currentlyExecutingStep
-                    ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1
-                    : '?'
-                }/${stepComponents.length}...`;
-              }
               if (resumeInfo.isResume) {
                 return `Resume from step ${resumeInfo.nextStepIndex + 1}, ${resumeInfo.remainingSteps} steps remaining`;
               }
@@ -1196,17 +1276,10 @@ export function InteractiveSection({
               if (stepsCompleted && !isCompletedByObjectives) {
                 return 'Reset Section';
               }
-              if (isRunning) {
-                return `Running Step ${
-                  currentlyExecutingStep
-                    ? stepComponents.findIndex((s) => s.stepId === currentlyExecutingStep) + 1
-                    : '?'
-                }/${stepComponents.length}...`;
-              }
               if (resumeInfo.isResume) {
-                return `Resume (${resumeInfo.remainingSteps} steps)`;
+                return `▶ Resume (${resumeInfo.remainingSteps} steps)`;
               }
-              return `Do Section (${stepComponents.length} steps)`;
+              return `▶ Do Section (${stepComponents.length} steps)`;
             })()}
           </Button>
         )}

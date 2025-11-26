@@ -614,30 +614,44 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
-  // Requirement explanation styles
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REQUIREMENT/INFO STYLES - Subtle box for sequential step messaging
+  // ═══════════════════════════════════════════════════════════════════════════
+
   '.interactive-step-requirement-explanation': {
-    color: theme.colors.text.secondary,
+    marginTop: '12px',
+    padding: '10px 12px',
+    background: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: '6px',
     fontSize: '0.875rem',
-    marginTop: '8px',
-    fontStyle: 'italic',
-    lineHeight: '1.4',
-    paddingLeft: '12px',
+    lineHeight: '1.5',
+    color: theme.colors.text.secondary,
+    // Add footprints icon via ::before with inline layout
+    '&::before': {
+      content: '"👣"',
+      marginRight: '8px',
+      fontSize: '0.9rem',
+    },
   },
 
   '.interactive-step-requirement-buttons': {
     display: 'flex',
     gap: theme.spacing(1),
     marginTop: theme.spacing(1),
+    width: '100%',
   },
 
   '.interactive-requirement-retry-btn': {
-    padding: '2px 8px',
-    fontSize: '0.75rem',
+    padding: '4px 10px',
+    fontSize: '0.8rem',
+    fontWeight: 500,
     border: `1px solid ${theme.colors.border.medium}`,
     background: 'transparent',
     color: theme.colors.text.secondary,
     borderRadius: '4px',
     cursor: 'pointer',
+    transition: 'all 0.15s ease',
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
       borderColor: theme.colors.border.strong,
@@ -646,41 +660,393 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-requirement-skip-btn': {
-    padding: '2px 8px',
-    fontSize: '0.75rem',
-    border: `1px solid ${theme.colors.info.border}`,
-    background: theme.colors.info.transparent,
-    color: theme.colors.info.text,
+    padding: '4px 10px',
+    fontSize: '0.8rem',
+    fontWeight: 500,
+    border: `1px solid ${theme.colors.border.medium}`,
+    background: 'transparent',
+    color: theme.colors.text.secondary,
     borderRadius: '4px',
     cursor: 'pointer',
+    transition: 'all 0.15s ease',
     '&:hover': {
-      backgroundColor: theme.colors.info.main,
-      borderColor: theme.colors.info.border,
-      color: theme.colors.info.contrastText,
+      backgroundColor: theme.colors.action.hover,
+      borderColor: theme.colors.border.strong,
+      color: theme.colors.text.primary,
     },
   },
 
-  // Execution error styles
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EXECUTION ERROR STYLES - Warning amber (not critical)
+  // ═══════════════════════════════════════════════════════════════════════════
+
   '.interactive-step-execution-error': {
-    color: '#dc3545',
+    marginTop: '12px',
+    padding: '10px 12px',
+    background: theme.colors.warning.transparent,
+    border: `1px solid ${theme.colors.warning.border}`,
+    borderRadius: '6px',
     fontSize: '0.875rem',
-    marginTop: '8px',
-    fontStyle: 'italic',
     lineHeight: '1.4',
-    paddingLeft: '12px',
+    color: theme.colors.warning.text,
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '8px',
+    flexWrap: 'wrap',
+    // Add warning icon via ::before
+    '&::before': {
+      content: '"⚠"',
+      fontSize: '1rem',
+      flexShrink: 0,
+    },
+  },
+
+  '.interactive-step-error-buttons': {
+    display: 'flex',
+    gap: theme.spacing(1),
+    marginTop: theme.spacing(0.5),
+    width: '100%',
   },
 
   '.interactive-error-retry-btn': {
-    marginLeft: '8px',
-    padding: '2px 8px',
-    fontSize: '0.75rem',
-    border: '1px solid #dc3545',
+    padding: '4px 10px',
+    fontSize: '0.8rem',
+    fontWeight: 500,
+    border: `1px solid ${theme.colors.warning.border}`,
     background: 'transparent',
-    color: '#dc3545',
+    color: theme.colors.warning.text,
     borderRadius: '4px',
     cursor: 'pointer',
+    transition: 'all 0.15s ease',
     '&:hover': {
-      backgroundColor: 'rgba(220, 53, 69, 0.1)',
+      background: theme.colors.warning.main,
+      color: theme.colors.warning.contrastText,
+      borderColor: theme.colors.warning.main,
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GUIDED INTERACTION STYLES - Redesigned with clear state-based UI
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Base guided container with state modifier
+  '.interactive-guided': {
+    position: 'relative',
+  },
+
+  // ─── IDLE STATE ───────────────────────────────────────────────────────────
+  '.interactive-guided-idle': {
+    marginTop: '12px',
+  },
+
+  '.interactive-guided-actions': {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+  },
+
+  '.interactive-guided-start-btn': {
+    fontWeight: 500,
+  },
+
+  // ─── CHECKING STATE ───────────────────────────────────────────────────────
+  '.interactive-guided-checking': {
+    marginTop: '12px',
+  },
+
+  '.interactive-guided-status': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    color: theme.colors.text.secondary,
+    fontSize: '0.875rem',
+  },
+
+  '.interactive-guided-spinner': {
+    width: '14px',
+    height: '14px',
+    border: `2px solid ${theme.colors.border.weak}`,
+    borderTopColor: theme.colors.primary.main,
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
+  },
+
+  // ─── REQUIREMENTS NOT MET STATE (subtle - part of normal flow) ────────────
+  '.interactive-guided-requirements': {
+    marginTop: '12px',
+  },
+
+  '.interactive-guided-requirement-box': {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '8px',
+    padding: '10px 12px',
+    background: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: '6px',
+    marginBottom: '10px',
+  },
+
+  '.interactive-guided-requirement-icon': {
+    color: theme.colors.text.secondary,
+    fontSize: '1rem',
+    lineHeight: 1.4,
+    flexShrink: 0,
+  },
+
+  '.interactive-guided-requirement-text': {
+    color: theme.colors.text.secondary,
+    fontSize: '0.875rem',
+    lineHeight: 1.4,
+  },
+
+  '.interactive-guided-fix-btn': {
+    padding: '6px 12px',
+    fontSize: '0.8rem',
+    fontWeight: 500,
+    border: `1px solid ${theme.colors.border.medium}`,
+    background: 'transparent',
+    color: theme.colors.text.secondary,
+    borderRadius: '4px',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    '&:hover': {
+      background: theme.colors.action.hover,
+      color: theme.colors.text.primary,
+      borderColor: theme.colors.border.strong,
+    },
+  },
+
+  // ─── EXECUTING STATE ──────────────────────────────────────────────────────
+  '.interactive-guided-executing': {
+    marginTop: '12px',
+    padding: '12px 0',
+  },
+
+  '.interactive-guided-step-indicator': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '8px',
+  },
+
+  '.interactive-guided-step-badge': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '2px 8px',
+    background: theme.colors.text.secondary,
+    color: theme.colors.background.primary,
+    borderRadius: '10px',
+    fontSize: '0.7rem',
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.3px',
+    opacity: 0.9,
+  },
+
+  '.interactive-guided-step-done': {
+    color: theme.colors.success.main,
+    fontSize: '0.9rem',
+  },
+
+  '.interactive-guided-instruction': {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '10px',
+    marginBottom: '14px',
+    paddingLeft: '2px',
+  },
+
+  '.interactive-guided-instruction-icon': {
+    fontSize: '1rem',
+    lineHeight: 1.5,
+    flexShrink: 0,
+  },
+
+  '.interactive-guided-instruction-text': {
+    color: theme.colors.text.primary,
+    fontSize: '0.875rem',
+    lineHeight: 1.5,
+    '& strong': {
+      fontWeight: 600,
+      color: theme.colors.text.maxContrast,
+    },
+  },
+
+  '.interactive-guided-progress': {
+    position: 'relative',
+    height: '3px',
+    background: theme.colors.border.weak,
+    borderRadius: '2px',
+    marginBottom: '14px',
+    overflow: 'hidden',
+  },
+
+  '.interactive-guided-progress-fill': {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    height: '100%',
+    background: theme.colors.success.shade,
+    borderRadius: '2px',
+    transition: 'width 0.3s ease',
+  },
+
+  '.interactive-guided-progress-active': {
+    position: 'absolute',
+    top: 0,
+    height: '100%',
+    background: `linear-gradient(90deg, ${theme.colors.primary.main} 0%, ${theme.colors.primary.shade} 100%)`,
+    borderRadius: '2px',
+    animation: 'progressPulse 1.2s ease-in-out infinite',
+  },
+
+  '.interactive-guided-cancel-btn': {
+    opacity: 0.7,
+    fontSize: '0.8rem',
+    '&:hover': {
+      opacity: 1,
+    },
+  },
+
+  // ─── ERROR/TIMEOUT STATE (uses warning colors - not critical) ─────────────
+  '.interactive-guided-error': {
+    marginTop: '12px',
+  },
+
+  '.interactive-guided-error-box': {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '10px',
+    padding: '12px 14px',
+    background: theme.colors.warning.transparent,
+    border: `1px solid ${theme.colors.warning.border}`,
+    borderRadius: '6px',
+    marginBottom: '12px',
+  },
+
+  '.interactive-guided-error-icon': {
+    width: '20px',
+    height: '20px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: theme.colors.warning.main,
+    color: theme.colors.warning.contrastText,
+    borderRadius: '50%',
+    fontSize: '0.75rem',
+    fontWeight: 'bold',
+    flexShrink: 0,
+  },
+
+  '.interactive-guided-error-content': {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+  },
+
+  '.interactive-guided-error-title': {
+    color: theme.colors.warning.text,
+    fontSize: '0.9rem',
+    fontWeight: 600,
+  },
+
+  '.interactive-guided-error-detail': {
+    color: theme.colors.text.secondary,
+    fontSize: '0.8rem',
+  },
+
+  '.interactive-guided-error-actions': {
+    display: 'flex',
+    gap: '8px',
+  },
+
+  '.interactive-guided-retry-btn': {
+    fontWeight: 500,
+  },
+
+  // ─── CANCELLED STATE ──────────────────────────────────────────────────────
+  '.interactive-guided-cancelled': {
+    marginTop: '12px',
+  },
+
+  '.interactive-guided-cancelled-box': {
+    padding: '10px 14px',
+    background: theme.colors.secondary.transparent,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: '6px',
+    marginBottom: '12px',
+  },
+
+  '.interactive-guided-cancelled-text': {
+    color: theme.colors.text.secondary,
+    fontSize: '0.875rem',
+  },
+
+  '.interactive-guided-cancelled-actions': {
+    display: 'flex',
+    gap: '8px',
+  },
+
+  // ─── COMPLETED STATE ──────────────────────────────────────────────────────
+  '.interactive-guided-completed': {
+    marginTop: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+
+  '.interactive-guided-completed-badge': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 12px',
+    background: theme.colors.success.transparent,
+    border: `1px solid ${theme.colors.success.border}`,
+    borderRadius: '16px',
+  },
+
+  '.interactive-guided-completed-icon': {
+    color: theme.colors.success.main,
+    fontSize: '1rem',
+    fontWeight: 'bold',
+
+    '&.skipped': {
+      color: theme.colors.text.secondary,
+    },
+  },
+
+  '.interactive-guided-completed-text': {
+    color: theme.colors.success.text,
+    fontSize: '0.875rem',
+    fontWeight: 500,
+  },
+
+  '.interactive-guided-completed-badge:has(.skipped) .interactive-guided-completed-text': {
+    color: theme.colors.text.secondary,
+  },
+
+  '.interactive-guided-redo-btn': {
+    padding: '4px 10px',
+    fontSize: '0.8rem',
+    border: `1px solid ${theme.colors.border.weak}`,
+    background: 'transparent',
+    color: theme.colors.text.secondary,
+    borderRadius: '4px',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    '&:hover': {
+      borderColor: theme.colors.border.medium,
+      color: theme.colors.text.primary,
+      background: theme.colors.action.hover,
+    },
+  },
+
+  // ─── SKIP BUTTON (shared) ─────────────────────────────────────────────────
+  '.interactive-guided-skip-btn': {
+    opacity: 0.8,
+    '&:hover': {
+      opacity: 1,
     },
   },
 });
@@ -926,6 +1292,23 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
 
+    /* Spinner animation for loading states */
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Progress bar pulse animation */
+    @keyframes progressPulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.6;
+      }
+    }
+
     @keyframes subtle-highlight-pulse {
       0% {
         opacity: 0.55;
@@ -969,28 +1352,56 @@ export const addGlobalInteractiveStyles = () => {
       }
     }
 
-    /* Interactive comment box - positioning only (no theme colors) */
+    /* Interactive comment box - child of highlight, offset positioning */
     .interactive-comment-box {
       position: absolute;
-      top: var(--comment-top);
-      left: var(--comment-left);
-      max-width: 420px;
-      min-width: 320px;
+      left: var(--comment-offset-x);
+      top: var(--comment-offset-y);
+      width: 420px;
+      max-width: calc(100vw - 32px);
       pointer-events: none;
       z-index: ${INTERACTIVE_Z_INDEX.COMMENT_BOX};
-      animation: fadeInComment 0.3s ease-out;
+      /* Initial state - hidden with slight offset for slide-in effect */
+      opacity: 0;
+      transform: scale(0.96);
+      transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                  transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Slide-in from different directions based on position */
+    .interactive-comment-box[data-position="right"] {
+      transform: scale(0.96) translateX(-8px);
+    }
+    .interactive-comment-box[data-position="left"] {
+      transform: scale(0.96) translateX(8px);
+    }
+    .interactive-comment-box[data-position="bottom"] {
+      transform: scale(0.96) translateY(-8px);
+    }
+    .interactive-comment-box[data-position="top"] {
+      transform: scale(0.96) translateY(8px);
+    }
+
+    /* Final state - visible and in position */
+    .interactive-comment-box[data-ready="true"] {
+      opacity: 1;
+      transform: scale(1) translateX(0) translateY(0);
     }
 
     .interactive-comment-content {
-      border-radius: 6px;
+      border-radius: 8px;
       padding: 12px;
       font-size: 14px;
       line-height: 1.5;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      /* Layered shadow: soft glow + depth shadow */
+      box-shadow: 
+        0 0 20px rgba(255, 152, 0, 0.15),
+        0 4px 20px rgba(0, 0, 0, 0.25),
+        0 1px 3px rgba(0, 0, 0, 0.1);
       position: relative;
       /* Essential styling that needs to be global to avoid theme override conflicts */
       background: var(--grafana-colors-background-primary, #1f1f23);
-      border: 1px solid var(--grafana-colors-border-medium, #404040);
+      border: 1px solid rgba(255, 152, 0, 0.3);
       color: var(--grafana-colors-text-primary, #d9d9d9);
       /* Ensure content fits within container bounds */
       overflow: hidden;
@@ -1110,14 +1521,31 @@ export const addGlobalInteractiveStyles = () => {
       transform: scale(0.98);
     }
 
-    /* Orange glow border for comment boxes */
+    /* Orange glow border for comment boxes with entrance animation */
     .interactive-comment-glow {
-      border: 2px solid rgba(255, 136, 0, 0.5) !important;
-      box-shadow:
-        0 4px 12px rgba(0, 0, 0, 0.15),
-        0 0 0 3px rgba(255, 136, 0, 0.6),
-        0 0 15px rgba(255, 136, 0, 0.4),
-        0 0 25px rgba(255, 136, 0, 0.2) !important;
+      border: 1px solid rgba(255, 136, 0, 0.4) !important;
+      animation: commentGlowEntrance 0.6s ease-out forwards;
+    }
+
+    @keyframes commentGlowEntrance {
+      0% {
+        box-shadow:
+          0 4px 20px rgba(0, 0, 0, 0.25),
+          0 0 0 0 rgba(255, 136, 0, 0),
+          0 0 0 rgba(255, 136, 0, 0);
+      }
+      50% {
+        box-shadow:
+          0 4px 20px rgba(0, 0, 0, 0.25),
+          0 0 0 4px rgba(255, 136, 0, 0.4),
+          0 0 30px rgba(255, 136, 0, 0.3);
+      }
+      100% {
+        box-shadow:
+          0 4px 20px rgba(0, 0, 0, 0.25),
+          0 0 0 2px rgba(255, 136, 0, 0.25),
+          0 0 15px rgba(255, 136, 0, 0.15);
+      }
     }
 
     /* Logo and text layout */
@@ -1179,14 +1607,16 @@ export const addGlobalInteractiveStyles = () => {
       overflow-wrap: break-word;
     }
 
-    .interactive-comment-arrow {
+    /* Arrow using CSS pseudo-element - positioned based on data-position */
+    .interactive-comment-content::before {
+      content: '';
       position: absolute;
       width: 0;
       height: 0;
     }
 
-    /* Arrow positioning and colors */
-    .interactive-comment-box[style*="--comment-arrow-position: left"] .interactive-comment-arrow {
+    /* Arrow pointing LEFT (comment is to the right of highlight) */
+    .interactive-comment-box[data-position="right"] .interactive-comment-content::before {
       top: 50%;
       left: -8px;
       transform: translateY(-50%);
@@ -1195,31 +1625,36 @@ export const addGlobalInteractiveStyles = () => {
       border-right: 8px solid var(--grafana-colors-background-primary, #1f1f23);
     }
 
-    .interactive-comment-box[style*="--comment-arrow-position: right"] .interactive-comment-arrow {
+    /* Arrow pointing RIGHT (comment is to the left of highlight) */
+    .interactive-comment-box[data-position="left"] .interactive-comment-content::before {
       top: 50%;
       right: -8px;
+      left: auto;
       transform: translateY(-50%);
       border-top: 8px solid transparent;
       border-bottom: 8px solid transparent;
       border-left: 8px solid var(--grafana-colors-background-primary, #1f1f23);
     }
 
-    .interactive-comment-box[style*="--comment-arrow-position: bottom"] .interactive-comment-arrow {
-      bottom: -8px;
-      left: 50%;
-      transform: translateX(-50%);
-      border-left: 8px solid transparent;
-      border-right: 8px solid transparent;
-      border-top: 8px solid var(--grafana-colors-background-primary, #1f1f23);
-    }
-
-    .interactive-comment-box[style*="--comment-arrow-position: top"] .interactive-comment-arrow {
+    /* Arrow pointing UP (comment is below highlight) */
+    .interactive-comment-box[data-position="bottom"] .interactive-comment-content::before {
       top: -8px;
       left: 50%;
       transform: translateX(-50%);
       border-left: 8px solid transparent;
       border-right: 8px solid transparent;
       border-bottom: 8px solid var(--grafana-colors-background-primary, #1f1f23);
+    }
+
+    /* Arrow pointing DOWN (comment is above highlight) */
+    .interactive-comment-box[data-position="top"] .interactive-comment-content::before {
+      bottom: -8px;
+      top: auto;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid var(--grafana-colors-background-primary, #1f1f23);
     }
 
     /* Step checklist in guided comment tooltips */
