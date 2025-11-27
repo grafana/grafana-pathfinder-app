@@ -1,6 +1,6 @@
 {
-  "id": "prometheus-advanced-queries-json",
-  "title": "Advanced Prometheus Queries (JSON)",
+  "id": "prometheus-advanced-queries",
+  "title": "Advanced Prometheus Queries",
   "blocks": [
     {
       "type": "markdown",

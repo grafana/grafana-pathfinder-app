@@ -279,10 +279,9 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
     }
   }
 
-  // EXISTING CODE: Load from index.json and TypeScript/JSON files
+  // Load bundled interactive from index.json
+  // JSON format is the standard - all bundled interactives should be .json files
   try {
-    let html = '';
-
     // Load the index.json to find the correct filename for this interactive
     const indexData = require('../bundled-interactives/index.json');
     const interactive = indexData?.interactives?.find((item: any) => item.id === contentId);
@@ -294,72 +293,30 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       };
     }
 
-    // Check if this is a JSON format guide
-    if (interactive.format === 'json') {
-      // Load JSON guide directly
-      const filename = interactive.filename || `${contentId}.json`;
-      const jsonModule = require(`../bundled-interactives/${filename}`);
+    // Load JSON guide (standard format)
+    const filename = interactive.filename || `${contentId}.json`;
+    const jsonModule = require(`../bundled-interactives/${filename}`);
 
-      // JSON files are imported as objects by webpack, stringify for consistent handling
-      const jsonContent = typeof jsonModule === 'string' ? jsonModule : JSON.stringify(jsonModule);
+    // JSON files are imported as objects by webpack, stringify for consistent handling
+    const jsonContent = typeof jsonModule === 'string' ? jsonModule : JSON.stringify(jsonModule);
 
-      if (!jsonContent || jsonContent.trim() === '' || jsonContent === '{}') {
-        return {
-          content: null,
-          error: `Bundled JSON interactive content is empty: ${contentId}`,
-        };
-      }
-
-      // For JSON guides, we store the JSON string in the content field
-      // The ContentProcessor will detect and parse it appropriately
-      const rawContent: RawContent = {
-        content: jsonContent,
-        metadata: {
-          title: interactive.title || contentId,
-        },
-        type: 'single-doc',
-        url,
-        lastFetched: new Date().toISOString(),
-      };
-
-      return { content: rawContent };
-    }
-
-    // Load the TypeScript file using the filename from index.json (existing HTML path)
-    const filename = interactive.filename || `${contentId}.ts`;
-    const exportName = interactive.exportName || `${contentId}Html`;
-
-    // Import the TypeScript module (webpack handles this properly)
-    const importedModule = require(`../bundled-interactives/${filename}`) as any;
-
-    // Get the HTML content from the exported constant
-    if (importedModule && typeof importedModule[exportName] === 'string') {
-      html = importedModule[exportName];
-    } else {
-      throw new Error(`Could not find export '${exportName}' in ${filename} or it's not a string`);
-    }
-
-    if (!html || html.trim() === '') {
+    if (!jsonContent || jsonContent.trim() === '' || jsonContent === '{}') {
       return {
         content: null,
         error: `Bundled interactive content is empty: ${contentId}`,
       };
     }
 
-    // Determine content type for bundled content (don't assume single-doc)
-    const contentType = determineContentType(url);
-    const metadata = await extractMetadata(html, url, contentType);
-
-    // Wrap content as JSON guide for unified rendering pipeline
-    const jsonContent = wrapContentAsJsonGuide(html, url, metadata.title);
-
+    // For JSON guides, we store the JSON string in the content field
+    // The ContentProcessor will detect and parse it appropriately
     const rawContent: RawContent = {
       content: jsonContent,
-      metadata,
-      type: contentType, // Use detected type (learning-journey or single-doc)
+      metadata: {
+        title: interactive.title || contentId,
+      },
+      type: 'single-doc',
       url,
       lastFetched: new Date().toISOString(),
-      // No hash fragment support for bundled content for now
     };
 
     return { content: rawContent };

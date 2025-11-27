@@ -1,6 +1,6 @@
 {
-  "id": "welcome-to-grafana-json",
-  "title": "Welcome to Grafana (JSON)",
+  "id": "welcome-to-grafana",
+  "title": "Welcome to Grafana",
   "blocks": [
     {
       "type": "markdown",

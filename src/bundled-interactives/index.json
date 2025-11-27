@@ -4,17 +4,7 @@
       "id": "welcome-to-grafana",
       "title": "Welcome to Grafana",
       "summary": "Take a guided tour of Grafana's key areas. Perfect for getting started and understanding where everything is located.",
-      "filename": "welcome-to-grafana.ts",
-      "exportName": "welcomeToGrafanaHtml",
-      "url": ["/"],
-      "targetPlatform": "oss"
-    },
-    {
-      "id": "welcome-to-grafana-json",
-      "title": "Welcome to Grafana (JSON)",
-      "summary": "Take a guided tour of Grafana's key areas. This is the JSON-based version of the welcome guide.",
       "filename": "welcome-to-grafana.json",
-      "format": "json",
       "url": ["/"],
       "targetPlatform": "oss"
     },
@@ -23,7 +13,6 @@
       "title": "JSON Guide Demo - All Block Types",
       "summary": "Comprehensive demo showcasing all JSON guide block types: markdown, html, images, videos, sections, interactive steps, multistep, and guided blocks.",
       "filename": "json-guide-demo.json",
-      "format": "json",
       "url": ["/"],
       "targetPlatform": "oss"
     },
@@ -31,17 +20,7 @@
       "id": "welcome-to-grafana-cloud",
       "title": "Welcome to Grafana Cloud",
       "summary": "Take a guided tour of Grafana Cloud's key areas. Perfect for getting started and understanding where everything is located.",
-      "filename": "welcome-to-grafana-cloud.ts",
-      "exportName": "welcomeToGrafanaCloudHtml",
-      "url": ["/a/grafana-setupguide-app/home"],
-      "targetPlatform": "cloud"
-    },
-    {
-      "id": "welcome-to-grafana-cloud-json",
-      "title": "Welcome to Grafana Cloud (JSON)",
-      "summary": "Take a guided tour of Grafana Cloud's key areas. JSON-based version.",
       "filename": "welcome-to-grafana-cloud.json",
-      "format": "json",
       "url": ["/a/grafana-setupguide-app/home"],
       "targetPlatform": "cloud"
     },
@@ -49,33 +28,14 @@
       "id": "prometheus-advanced-queries",
       "title": "Advanced Prometheus Queries",
       "summary": "Master advanced PromQL patterns including aggregations, histograms, predictions, and SLO calculations. Queries can be customized with Assistant for your datasources.",
-      "filename": "prometheus-advanced-queries.ts",
-      "exportName": "prometheusAdvancedQueriesHtml",
-      "url": ["/explore"]
-    },
-    {
-      "id": "prometheus-advanced-queries-json",
-      "title": "Advanced Prometheus Queries (JSON)",
-      "summary": "Master advanced PromQL patterns. JSON-based version.",
       "filename": "prometheus-advanced-queries.json",
-      "format": "json",
       "url": ["/explore"]
     },
     {
       "id": "prometheus-grafana-101",
       "title": "Prometheus & Grafana 101",
       "summary": "Learn to use Prometheus and Grafana to monitor your infrastructure. Perfect for getting started and understanding where everything is located.",
-      "filename": "prometheus-grafana-101.ts",
-      "exportName": "prometheusGrafana101Html",
-      "url": ["/connections"],
-      "targetPlatform": "oss"
-    },
-    {
-      "id": "prometheus-grafana-101-json",
-      "title": "Prometheus & Grafana 101 (JSON)",
-      "summary": "Learn to use Prometheus and Grafana to monitor your infrastructure. JSON-based version.",
       "filename": "prometheus-grafana-101.json",
-      "format": "json",
       "url": ["/connections"],
       "targetPlatform": "oss"
     },
@@ -83,17 +43,7 @@
       "id": "loki-grafana-101",
       "title": "Loki & Grafana 101",
       "summary": "Continue from the Prometheus tutorial: configure Loki and add a logs panel to your existing dashboard.",
-      "filename": "loki-grafana-101.ts",
-      "exportName": "lokiGrafana101Html",
-      "url": ["/connections"],
-      "targetPlatform": "oss"
-    },
-    {
-      "id": "loki-grafana-101-json",
-      "title": "Loki & Grafana 101 (JSON)",
-      "summary": "Continue from the Prometheus tutorial: configure Loki and add a logs panel to your existing dashboard. JSON-based version.",
       "filename": "loki-grafana-101.json",
-      "format": "json",
       "url": ["/connections"],
       "targetPlatform": "oss"
     },
@@ -101,32 +51,14 @@
       "id": "first-dashboard",
       "title": "Create your first dashboard",
       "summary": "Learn to create a dashboard in Grafana. Covering features such as Explore, dashboard creation, visualizations and more",
-      "filename": "first-dashboard.ts",
-      "exportName": "firstDashboardHtml",
-      "url": ["/"]
-    },
-    {
-      "id": "first-dashboard-json",
-      "title": "Create your first dashboard (JSON)",
-      "summary": "Learn to create a dashboard in Grafana. JSON-based version.",
       "filename": "first-dashboard.json",
-      "format": "json",
       "url": ["/"]
     },
     {
       "id": "first-dashboard-cloud",
       "title": "Create your first dashboard in Grafana Cloud",
       "summary": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more",
-      "filename": "first-dashboard-cloud.ts",
-      "exportName": "firstDashboardCloudHtml",
-      "url": ["/a/grafana-setupguide-app/home"]
-    },
-    {
-      "id": "first-dashboard-cloud-json",
-      "title": "Create your first dashboard in Grafana Cloud (JSON)",
-      "summary": "Learn to create a dashboard in Grafana Cloud. JSON-based version.",
       "filename": "first-dashboard-cloud.json",
-      "format": "json",
       "url": ["/a/grafana-setupguide-app/home"]
     }
   ]

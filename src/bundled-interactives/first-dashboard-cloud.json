@@ -1,6 +1,6 @@
 {
-  "id": "first-dashboard-cloud-json",
-  "title": "Create your first dashboard in Grafana Cloud (JSON)",
+  "id": "first-dashboard-cloud",
+  "title": "Create your first dashboard in Grafana Cloud",
   "blocks": [
     {
       "type": "markdown",

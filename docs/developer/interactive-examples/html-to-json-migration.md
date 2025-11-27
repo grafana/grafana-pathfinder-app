@@ -4,10 +4,18 @@ This guide walks through converting existing HTML interactive guides to the new 
 
 ## Why Migrate?
 
-- **Better maintainability**: Structured blocks are easier to edit and review
-- **Type safety**: TypeScript catches errors at build time
+> **⚠️ Raw HTML support is deprecated.** All new guides must use JSON format. Existing HTML guides will continue to work but should be migrated to JSON.
+
+**Raw HTML rendering is being phased out.** The plugin now routes all content through the JSON pipeline internally—even HTML content gets wrapped in a JSON guide with a single `html` block. This migration guide helps you convert to native JSON blocks for the best experience.
+
+### Benefits of JSON Format
+
+- **Required for new guides**: Raw HTML is deprecated; JSON is the only supported format for new content
+- **Better maintainability**: Structured blocks are easier to edit, review, and diff
+- **Type safety**: TypeScript definitions catch errors at build time
 - **Cleaner separation**: Content and interactivity are clearly organized
-- **Future-proof**: JSON is the recommended format going forward
+- **Tooling support**: Better editor support, linting, and validation
+- **Smaller payloads**: Native blocks are more compact than equivalent HTML
 
 ## Migration Strategy
 
@@ -406,27 +414,17 @@ Show-only steps only display the "Show me" button—no "Do it" action is require
 
 Update `src/bundled-interactives/index.json`:
 
-**Before (HTML):**
-
 ```json
 {
   "id": "first-dashboard",
   "title": "First Dashboard",
-  "filename": "first-dashboard.ts",
-  "exportName": "firstDashboardHtml"
+  "summary": "Learn to create a dashboard in Grafana.",
+  "filename": "first-dashboard.json",
+  "url": ["/"]
 }
 ```
 
-**After (JSON):**
-
-```json
-{
-  "id": "first-dashboard",
-  "title": "First Dashboard",
-  "format": "json",
-  "filename": "first-dashboard.json"
-}
-```
+JSON is the standard format—no `format` field needed.
 
 ---
 

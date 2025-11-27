@@ -1,6 +1,6 @@
 {
-  "id": "loki-grafana-101-json",
-  "title": "Loki & Grafana 101 (JSON)",
+  "id": "loki-grafana-101",
+  "title": "Loki & Grafana 101",
   "blocks": [
     {
       "type": "markdown",

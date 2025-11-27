@@ -1,6 +1,6 @@
 {
-  "id": "first-dashboard-json",
-  "title": "Create your first dashboard (JSON)",
+  "id": "first-dashboard",
+  "title": "Create your first dashboard",
   "blocks": [
     {
       "type": "markdown",

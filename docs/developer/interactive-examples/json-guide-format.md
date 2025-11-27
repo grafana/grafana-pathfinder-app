@@ -413,10 +413,21 @@ To add a JSON guide to the plugin:
 {
   "id": "my-guide",
   "title": "My Guide Title",
-  "format": "json",
-  "filename": "my-guide.json"
+  "summary": "A brief description of what this guide covers.",
+  "filename": "my-guide.json",
+  "url": ["/"],
+  "targetPlatform": "oss"
 }
 ```
+
+| Field            | Required | Description                                  |
+| ---------------- | -------- | -------------------------------------------- |
+| `id`             | ✅       | Unique identifier, matches `bundled:id` URL  |
+| `title`          | ✅       | Display title in the guide list              |
+| `summary`        | ✅       | Brief description shown in the guide list    |
+| `filename`       | ✅       | JSON filename in `src/bundled-interactives/` |
+| `url`            | ❌       | URL patterns where this guide is recommended |
+| `targetPlatform` | ❌       | `"oss"` or `"cloud"` to filter by platform   |
 
 The guide will appear in the homepage list and can be opened via `bundled:my-guide`.
 

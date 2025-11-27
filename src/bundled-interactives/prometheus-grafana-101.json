@@ -1,6 +1,6 @@
 {
-  "id": "prometheus-grafana-101-json",
-  "title": "Prometheus & Grafana 101 (JSON)",
+  "id": "prometheus-grafana-101",
+  "title": "Prometheus & Grafana 101",
   "blocks": [
     {
       "type": "markdown",
