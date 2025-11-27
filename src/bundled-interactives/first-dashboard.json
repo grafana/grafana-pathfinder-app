@@ -36,7 +36,7 @@
             },
             {
               "action": "highlight",
-              "reftarget": "button:contains(\"gdev-testdata defaultTestData\")",
+              "reftarget": "button:contains(\"gdev-testdata TestData\")",
               "requirements": ["exists-reftarget"],
               "tooltip": "In real-world scenarios, you'd connect to data sources like Prometheus for metrics, Loki for logs, or databases like PostgreSQL. For learning purposes, Grafana includes TestData - a built-in data source that generates realistic sample data without requiring any external setup. This lets you practice building dashboards right away."
             }
