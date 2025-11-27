@@ -1551,9 +1551,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             return (
               <div className={styles.devToolsContent} data-testid="devtools-tab-content">
                 <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-                  <SelectorDebugPanel
-                    onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title)}
-                  />
+                  <SelectorDebugPanel onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title)} />
                 </Suspense>
               </div>
             );

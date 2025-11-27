@@ -3,7 +3,10 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { shouldCaptureElement, getActionDescription } from '../../../interactive-engine/auto-completion/action-detector';
+import {
+  shouldCaptureElement,
+  getActionDescription,
+} from '../../../interactive-engine/auto-completion/action-detector';
 import { generateSelectorFromEvent } from './selector-generator.util';
 import { exportStepsToHTML, type RecordedStep, type ExportOptions } from './tutorial-exporter';
 import { formatStepsToString } from './step-parser.util';

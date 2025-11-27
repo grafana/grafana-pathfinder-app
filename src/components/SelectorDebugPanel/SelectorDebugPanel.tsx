@@ -349,7 +349,12 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                   Pause
                 </Button>
 
-                <Button variant="destructive" size="sm" onClick={handleStopRecording} disabled={recordingState === 'idle'}>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleStopRecording}
+                  disabled={recordingState === 'idle'}
+                >
                   <Icon name="times" />
                   Stop
                 </Button>
@@ -430,7 +435,9 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                             {(step.contextStrategy || step.isUnique === false) && (
                               <div className={styles.stepMeta}>
                                 {step.contextStrategy && <Badge text={step.contextStrategy} color="purple" />}
-                                {step.isUnique === false && <Badge text={`${step.matchCount} matches`} color="orange" />}
+                                {step.isUnique === false && (
+                                  <Badge text={`${step.matchCount} matches`} color="orange" />
+                                )}
                               </div>
                             )}
                           </div>
