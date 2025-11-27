@@ -183,6 +183,7 @@ export const ACTION_TYPES = {
   HOVER: 'hover',
   MULTISTEP: 'multistep',
   SEQUENCE: 'sequence',
+  NOOP: 'noop',
 } as const;
 
 /**
@@ -190,12 +191,13 @@ export const ACTION_TYPES = {
  * Used in both the WYSIWYG editor and ActionSelector UI
  */
 export const ACTION_ICONS: Record<string, string> = {
-  [ACTION_TYPES.HIGHLIGHT]: '✨',
-  [ACTION_TYPES.FORM_FILL]: '📝',
-  [ACTION_TYPES.NAVIGATE]: '🧭',
   [ACTION_TYPES.BUTTON]: '🔘',
+  [ACTION_TYPES.FORM_FILL]: '📝',
+  [ACTION_TYPES.HIGHLIGHT]: '✨',
   [ACTION_TYPES.HOVER]: '👆',
   [ACTION_TYPES.MULTISTEP]: '📋',
+  [ACTION_TYPES.NAVIGATE]: '🧭',
+  [ACTION_TYPES.NOOP]: '📖',
   [ACTION_TYPES.SEQUENCE]: '📑',
 } as const;
 
@@ -234,6 +236,17 @@ export const COMMON_REQUIREMENTS = [
   'has-plugin:',
   'section-completed:',
 ] as const;
+
+/**
+ * Action metadata for UI display in the editor
+ */
+export interface ActionMetadata {
+  type: string;
+  icon: string;
+  name: string;
+  description: string;
+  grafanaIcon?: string; // Grafana UI icon name mapping
+}
 
 // Type exports for type safety
 export type ActionType = (typeof ACTION_TYPES)[keyof typeof ACTION_TYPES];

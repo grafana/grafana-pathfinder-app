@@ -26,6 +26,7 @@ function getActionConfigs(): Record<string, BaseInteractiveFormConfig> {
       [ACTION_TYPES.HOVER]: getActionFormConfig(ACTION_TYPES.HOVER)!,
       [ACTION_TYPES.MULTISTEP]: getActionFormConfig(ACTION_TYPES.MULTISTEP)!,
       [ACTION_TYPES.SEQUENCE]: getActionFormConfig(ACTION_TYPES.SEQUENCE)!,
+      [ACTION_TYPES.NOOP]: getActionFormConfig(ACTION_TYPES.NOOP)!,
     };
   }
   return _actionConfigsCache;
