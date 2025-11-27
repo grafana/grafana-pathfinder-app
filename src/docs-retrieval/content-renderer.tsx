@@ -164,9 +164,12 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 
   const processedContent = React.useMemo(() => {
     let html = content.html;
-    html = resolveRelativeUrls(html, content.url);
-    if (content.type === 'learning-journey' && content.metadata.learningJourney) {
-      html = generateJourneyContentWithExtras(html, content.metadata.learningJourney);
+    // Skip URL resolution for JSON guides (they don't have relative URLs and DOMParser would corrupt them)
+    if (!isJsonGuideContent(html)) {
+      html = resolveRelativeUrls(html, content.url);
+      if (content.type === 'learning-journey' && content.metadata.learningJourney) {
+        html = generateJourneyContentWithExtras(html, content.metadata.learningJourney);
+      }
     }
     return html;
   }, [content]);

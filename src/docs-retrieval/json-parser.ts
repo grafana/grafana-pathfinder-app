@@ -166,13 +166,16 @@ function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: s
 
 /**
  * Convert markdown content to ParsedElement children.
- * Handles basic markdown syntax: headings, bold, italic, code, links, lists.
+ * Handles basic markdown syntax: headings, bold, italic, code, links, lists, code blocks.
  */
 function parseMarkdownToElements(content: string): ParsedElement[] {
   const elements: ParsedElement[] = [];
   const lines = content.split('\n');
   let currentList: ParsedElement | null = null;
   let currentListItems: ParsedElement[] = [];
+  let inCodeBlock = false;
+  let codeBlockLanguage = '';
+  let codeBlockLines: string[] = [];
 
   const flushList = () => {
     if (currentList && currentListItems.length > 0) {
@@ -183,9 +186,48 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
     }
   };
 
+  const flushCodeBlock = () => {
+    if (codeBlockLines.length > 0) {
+      // Use the code-block type to get the CodeBlock component with copy button and syntax highlighting
+      elements.push({
+        type: 'code-block',
+        props: {
+          code: codeBlockLines.join('\n'),
+          language: codeBlockLanguage || undefined,
+          showCopy: true,
+          inline: false,
+        },
+        children: [],
+      });
+      codeBlockLines = [];
+      codeBlockLanguage = '';
+    }
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmedLine = line.trim();
+
+    // Check for fenced code block start/end
+    if (trimmedLine.startsWith('```')) {
+      if (inCodeBlock) {
+        // End of code block
+        flushCodeBlock();
+        inCodeBlock = false;
+      } else {
+        // Start of code block
+        flushList();
+        inCodeBlock = true;
+        codeBlockLanguage = trimmedLine.slice(3).trim();
+      }
+      continue;
+    }
+
+    // If we're inside a code block, collect the lines
+    if (inCodeBlock) {
+      codeBlockLines.push(line);
+      continue;
+    }
 
     // Skip empty lines (but flush lists)
     if (trimmedLine === '') {
@@ -244,8 +286,9 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
     });
   }
 
-  // Flush any remaining list
+  // Flush any remaining list or code block
   flushList();
+  flushCodeBlock();
 
   return elements;
 }
@@ -300,11 +343,15 @@ function parseInlineMarkdown(text: string): Array<ParsedElement | string> {
         children: [content],
       });
     } else if (fullMatch.startsWith('`')) {
-      // Code
+      // Inline code - use code-block type for consistent styling
       children.push({
-        type: 'code',
-        props: {},
-        children: [match[4]],
+        type: 'code-block',
+        props: {
+          code: match[4],
+          showCopy: true,
+          inline: true,
+        },
+        children: [],
       });
     } else if (fullMatch.startsWith('[')) {
       // Link
@@ -361,21 +408,113 @@ function convertMarkdownBlock(block: JsonMarkdownBlock, path: string): Conversio
 }
 
 function convertHtmlBlock(block: JsonHtmlBlock, path: string): ConversionResult {
-  // SECURITY: Sanitize HTML content
+  // SECURITY: Sanitize HTML content first
   const sanitized = sanitizeDocumentationHTML(block.content);
 
-  // Create a raw HTML element that will be parsed by the HTML parser
-  // For now, wrap in a div - the actual HTML parsing happens in the renderer
-  return {
-    element: {
-      type: 'div',
+  // Parse sanitized HTML into a single ParsedElement
+  // Wrap in a div and recursively convert all children
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div class="html-block">${sanitized}</div>`, 'text/html');
+    const root = doc.body.firstElementChild;
+
+    if (!root) {
+      return {
+        element: null,
+        warning: `Failed to parse HTML block at ${path}`,
+      };
+    }
+
+    // Convert the root div with all its contents
+    const element = convertDomNodeToParsedElement(root);
+
+    return {
+      element,
+      warning: 'HTML blocks should be migrated to markdown for better security and maintainability',
+    };
+  } catch (e) {
+    return {
+      element: null,
+      warning: `Failed to parse HTML block at ${path}: ${e instanceof Error ? e.message : 'Unknown error'}`,
+    };
+  }
+}
+
+/**
+ * Recursively convert a DOM node and all its children to a ParsedElement.
+ */
+function convertDomNodeToParsedElement(node: Element, parentTag?: string): ParsedElement {
+  const tagName = node.tagName.toLowerCase();
+
+  // Handle <pre> elements - convert to code-block for consistent styling
+  if (tagName === 'pre') {
+    const codeEl = node.querySelector('code');
+    const code = codeEl ? codeEl.textContent : node.textContent;
+
+    // Try to detect language from class names
+    const languageMatch =
+      (node.className || '').match(/language-([^\s"]+)/) ||
+      (codeEl?.className || '').match(/language-([^\s"]+)/);
+
+    return {
+      type: 'code-block',
       props: {
-        className: 'html-block',
-        dangerouslySetInnerHTML: { __html: sanitized },
+        code: code?.trim() ?? '',
+        language: languageMatch ? languageMatch[1] : undefined,
+        showCopy: true,
+        inline: false,
       },
       children: [],
-    },
-    warning: 'HTML blocks should be migrated to markdown for better security and maintainability',
+    };
+  }
+
+  // Handle inline <code> elements (not inside pre)
+  if (tagName === 'code' && parentTag !== 'pre') {
+    const code = node.textContent;
+    const languageMatch = (node.className || '').match(/language-([^\s"]+)/);
+
+    return {
+      type: 'code-block',
+      props: {
+        code: code?.trim() ?? '',
+        language: languageMatch ? languageMatch[1] : undefined,
+        showCopy: true,
+        inline: true,
+      },
+      children: [],
+    };
+  }
+
+  const props: Record<string, string> = {};
+
+  // Convert attributes to props
+  for (const attr of Array.from(node.attributes)) {
+    let propName = attr.name;
+    if (propName === 'class') {
+      propName = 'className';
+    } else if (propName === 'for') {
+      propName = 'htmlFor';
+    }
+    props[propName] = attr.value;
+  }
+
+  // Convert children (both text and elements)
+  const children: Array<ParsedElement | string> = [];
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      const text = child.textContent || '';
+      if (text) {
+        children.push(text);
+      }
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      children.push(convertDomNodeToParsedElement(child as Element, tagName));
+    }
+  }
+
+  return {
+    type: tagName,
+    props,
+    children,
   };
 }
 

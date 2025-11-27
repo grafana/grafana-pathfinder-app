@@ -1,0 +1,372 @@
+{
+  "id": "prometheus-advanced-queries-json",
+  "title": "Advanced Prometheus Queries (JSON)",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "## Prerequisites\n\nThis tutorial builds on [Prometheus + Grafana 101](bundled:prometheus-grafana-101). You should have:\n\n- Completed the Prometheus + Grafana 101 tutorial\n- A working Prometheus data source configured\n- Basic understanding of PromQL syntax\n- Familiarity with the Explore tab\n\n**Assistant Customization:** This tutorial uses queries you can customize with Grafana Assistant to match your specific datasources and metrics!"
+    },
+    {
+      "type": "markdown",
+      "content": "# Advanced Prometheus Queries\n\nWelcome to advanced PromQL! In this guide, we'll explore powerful query patterns that help you extract deeper insights from your metrics. Each query example can be customized using Grafana Assistant to work with your specific environment."
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 1: Advanced Aggregations and Grouping\n\nMaster the art of aggregating metrics across multiple dimensions and time ranges."
+    },
+    {
+      "type": "multistep",
+      "content": "Select your **Prometheus** data source from the picker.",
+      "requirements": ["on-page:/explore", "has-datasource:prometheus"],
+      "steps": [
+        {
+          "action": "highlight",
+          "reftarget": "grafana:components.DataSourcePicker.inputV2",
+          "requirements": ["exists-reftarget"]
+        },
+        {
+          "action": "button",
+          "reftarget": "prometheus",
+          "requirements": ["exists-reftarget"],
+          "tooltip": "This tutorial uses Prometheus as the data source. If you completed the Prometheus + Grafana 101 tutorial, you should already have a Prometheus datasource configured. If not, you can select any available Prometheus datasource in your instance."
+        }
+      ]
+    },
+    {
+      "type": "interactive",
+      "action": "highlight",
+      "reftarget": "div[data-testid=\"QueryEditorModeToggle\"] label[for^=\"option-code-radiogroup\"]",
+      "requirements": ["exists-reftarget"],
+      "content": "Make sure you're in **Code** mode to write PromQL queries directly."
+    },
+    {
+      "type": "markdown",
+      "content": "### Multi-Dimensional Grouping\n\nGroup metrics by multiple labels to create detailed breakdowns:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total[5m])) by (job, instance, handler)",
+      "requirements": ["exists-reftarget"],
+      "content": "Try this multi-dimensional grouping query:\n\n`sum(rate(prometheus_http_requests_total[5m])) by (job, instance, handler)`"
+    },
+    {
+      "type": "markdown",
+      "content": "This query calculates the request rate per second, grouped by job, instance, and handler (endpoint). The `rate()` function handles counter resets, and `sum()` aggregates across other labels."
+    },
+    {
+      "type": "markdown",
+      "content": "### Top-K Results\n\nFind the highest or lowest values using `topk()` and `bottomk()`:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ topk(5, sum(rate(prometheus_http_requests_total[5m])) by (handler))",
+      "requirements": ["exists-reftarget"],
+      "content": "Find the top 5 endpoints by request rate:\n\n`topk(5, sum(rate(prometheus_http_requests_total[5m])) by (handler))`"
+    },
+    {
+      "type": "markdown",
+      "content": "This identifies the 5 handlers (API endpoints) receiving the most requests. Perfect for finding hotspots in your Prometheus server."
+    },
+    {
+      "type": "markdown",
+      "content": "### Without and By - Advanced Label Selection\n\nUse `without` to exclude specific labels from grouping:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total[5m])) without (instance)",
+      "requirements": ["exists-reftarget"],
+      "content": "Aggregate across instances using `without`:\n\n`sum(rate(prometheus_http_requests_total[5m])) without (instance)`"
+    },
+    {
+      "type": "markdown",
+      "content": "This aggregates across all instances, keeping only job and other labels. Useful when you care about service-level metrics but not individual instances."
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 2: Label Matching and Filtering\n\nLearn powerful techniques for filtering and matching metrics based on labels."
+    },
+    {
+      "type": "markdown",
+      "content": "### Regular Expression Matching\n\nUse regex to match multiple label values:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ prometheus_http_requests_total{code=~\"5..\", handler!~\"/|/-/.*\"}",
+      "requirements": ["exists-reftarget"],
+      "content": "Filter using regex patterns:\n\n`prometheus_http_requests_total{code=~\"5..\", handler!~\"/|/-/.*\"}`"
+    },
+    {
+      "type": "markdown",
+      "content": "This matches all 5xx status codes (`=~`) and excludes root and health check handlers (`!~`). The `=~` operator allows regex patterns for flexible label matching."
+    },
+    {
+      "type": "markdown",
+      "content": "### Label Joins with On and Ignoring\n\nCombine metrics from different time series:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ rate(prometheus_http_requests_total[5m]) * on(instance) group_left(version) alloy_build_info",
+      "requirements": ["exists-reftarget"],
+      "content": "Join metrics using label matching:\n\n`rate(prometheus_http_requests_total[5m]) * on(instance) group_left(version) alloy_build_info`"
+    },
+    {
+      "type": "markdown",
+      "content": "This enriches request rate data with version information from Alloy build info. The `on(instance)` clause specifies the matching label, and `group_left` brings labels from the right side."
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 3: Time-Based Analysis\n\nUnlock the power of time-based calculations and comparisons."
+    },
+    {
+      "type": "markdown",
+      "content": "### Over-Time Aggregations\n\nCalculate statistics over a time range:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ max_over_time(rate(process_cpu_seconds_total[5m])[1h:1m])",
+      "requirements": ["exists-reftarget"],
+      "content": "Calculate maximum CPU rate over time:\n\n`max_over_time(rate(process_cpu_seconds_total[5m])[1h:1m])`"
+    },
+    {
+      "type": "markdown",
+      "content": "This finds the maximum CPU rate in the last hour for each process. Other functions: `min_over_time`, `avg_over_time`, `stddev_over_time`."
+    },
+    {
+      "type": "markdown",
+      "content": "### Derivatives and Rates\n\nCalculate change rates for gauges and counters:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ deriv(process_resident_memory_bytes[5m])",
+      "requirements": ["exists-reftarget"],
+      "content": "Calculate derivative for gauge metrics:\n\n`deriv(process_resident_memory_bytes[5m])`"
+    },
+    {
+      "type": "markdown",
+      "content": "The `deriv()` function calculates how fast a gauge is changing per second. Unlike `rate()`, this works for gauges that can go up or down (like memory usage)."
+    },
+    {
+      "type": "markdown",
+      "content": "### Offset Modifier\n\nCompare current values with past values:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ (rate(prometheus_http_requests_total[5m]) - rate(prometheus_http_requests_total[5m] offset 1h)) / rate(prometheus_http_requests_total[5m] offset 1h) * 100",
+      "requirements": ["exists-reftarget"],
+      "content": "Compare current vs 1 hour ago:\n\n`(rate(prometheus_http_requests_total[5m]) - rate(prometheus_http_requests_total[5m] offset 1h)) / rate(prometheus_http_requests_total[5m] offset 1h) * 100`"
+    },
+    {
+      "type": "markdown",
+      "content": "This calculates the percentage change in request rate compared to 1 hour ago. The `offset` modifier shifts the time window backward."
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 4: Arithmetic and Binary Operations\n\nCombine metrics using mathematical operations."
+    },
+    {
+      "type": "markdown",
+      "content": "### Error Rate Calculation\n\nCalculate the percentage of failed requests:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total{code=~\"5..\"}[5m])) by (job) / sum(rate(prometheus_http_requests_total[5m])) by (job) * 100",
+      "requirements": ["exists-reftarget"],
+      "content": "Calculate error rate percentage:\n\n`sum(rate(prometheus_http_requests_total{code=~\"5..\"}[5m])) by (job) / sum(rate(prometheus_http_requests_total[5m])) by (job) * 100`"
+    },
+    {
+      "type": "markdown",
+      "content": "This divides error requests by total requests and multiplies by 100 to get a percentage. Perfect for SLO tracking."
+    },
+    {
+      "type": "markdown",
+      "content": "### Resource Utilization Ratios\n\nCalculate utilization as a percentage:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ (process_resident_memory_bytes / process_virtual_memory_max_bytes) * 100",
+      "requirements": ["exists-reftarget"],
+      "content": "Calculate memory utilization percentage:\n\n`(process_resident_memory_bytes / process_virtual_memory_max_bytes) * 100`"
+    },
+    {
+      "type": "markdown",
+      "content": "This calculates process memory utilization percentage. The formula: (resident/max) * 100 shows how much of the available memory is in use."
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 5: Histogram and Summary Metrics\n\nWork with distribution metrics for advanced percentile analysis."
+    },
+    {
+      "type": "markdown",
+      "content": "### Quantile Calculation\n\nCalculate the 95th percentile from a histogram:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ histogram_quantile(0.95, sum(rate(go_gc_duration_seconds_bucket[5m])) by (le, job))",
+      "requirements": ["exists-reftarget"],
+      "content": "Calculate 95th percentile GC duration:\n\n`histogram_quantile(0.95, sum(rate(go_gc_duration_seconds_bucket[5m])) by (le, job))`"
+    },
+    {
+      "type": "markdown",
+      "content": "This calculates the 95th percentile of garbage collection duration. The `le` label (less than or equal) is required for histogram buckets."
+    },
+    {
+      "type": "markdown",
+      "content": "### Histogram Average\n\nCalculate the average from histogram buckets:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ sum(rate(go_gc_duration_seconds_sum[5m])) / sum(rate(go_gc_duration_seconds_count[5m]))",
+      "requirements": ["exists-reftarget"],
+      "content": "Calculate average from histogram:\n\n`sum(rate(go_gc_duration_seconds_sum[5m])) / sum(rate(go_gc_duration_seconds_count[5m]))`"
+    },
+    {
+      "type": "markdown",
+      "content": "Histograms expose `_sum` (total duration) and `_count` (number of observations). Dividing them gives the average GC duration."
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 6: Predictive and Statistical Functions\n\nUse statistical functions for forecasting and anomaly detection."
+    },
+    {
+      "type": "markdown",
+      "content": "### Linear Prediction\n\nPredict future values based on past trends:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ predict_linear(process_resident_memory_bytes[1h], 4 * 3600)",
+      "requirements": ["exists-reftarget"],
+      "content": "Predict memory usage 4 hours ahead:\n\n`predict_linear(process_resident_memory_bytes[1h], 4 * 3600)`"
+    },
+    {
+      "type": "markdown",
+      "content": "This predicts resident memory usage 4 hours from now based on the last hour's trend. Useful for capacity planning and memory leak detection alerts."
+    },
+    {
+      "type": "markdown",
+      "content": "### Standard Deviation\n\nDetect anomalies using standard deviation:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ abs(rate(prometheus_http_requests_total[5m]) - avg_over_time(rate(prometheus_http_requests_total[5m])[1h:5m])) > (2 * stddev_over_time(rate(prometheus_http_requests_total[5m])[1h:5m]))",
+      "requirements": ["exists-reftarget"],
+      "content": "Detect anomalies with standard deviation:\n\n`abs(rate(prometheus_http_requests_total[5m]) - avg_over_time(rate(prometheus_http_requests_total[5m])[1h:5m])) > (2 * stddev_over_time(rate(prometheus_http_requests_total[5m])[1h:5m]))`"
+    },
+    {
+      "type": "markdown",
+      "content": "This detects when the current rate is more than 2 standard deviations from the 1-hour average. Classic anomaly detection pattern."
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 7: Subqueries and Complex Aggregations\n\nMaster subqueries for advanced time-series analysis."
+    },
+    {
+      "type": "markdown",
+      "content": "### Rolling Average\n\nCalculate a moving average using subqueries:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ avg_over_time(rate(prometheus_http_requests_total[5m])[30m:1m])",
+      "requirements": ["exists-reftarget"],
+      "content": "Calculate 30-minute rolling average:\n\n`avg_over_time(rate(prometheus_http_requests_total[5m])[30m:1m])`"
+    },
+    {
+      "type": "markdown",
+      "content": "This calculates a 30-minute rolling average of the 5-minute rate. The syntax `[30m:1m]` means \"evaluate over 30 minutes with 1-minute resolution\"."
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 8: Recording Rules Patterns\n\nLearn patterns commonly used in recording rules for pre-computation."
+    },
+    {
+      "type": "markdown",
+      "content": "### SLI Calculation\n\nCalculate Service Level Indicators:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total{code=~\"2..\"}[5m])) / sum(rate(prometheus_http_requests_total[5m]))",
+      "requirements": ["exists-reftarget"],
+      "content": "Calculate success rate SLI:\n\n`sum(rate(prometheus_http_requests_total{code=~\"2..\"}[5m])) / sum(rate(prometheus_http_requests_total[5m]))`"
+    },
+    {
+      "type": "markdown",
+      "content": "This calculates the success rate (SLI) as successful requests divided by total requests. Perfect for recording rules."
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 9: Alert Query Patterns\n\nQueries designed for effective alerting rules."
+    },
+    {
+      "type": "markdown",
+      "content": "### Absent Metric Alert\n\nDetect when metrics stop being reported:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ absent(up{job=\"prometheus\"})",
+      "requirements": ["exists-reftarget"],
+      "content": "Detect missing metrics:\n\n`absent(up{job=\"prometheus\"})`"
+    },
+    {
+      "type": "markdown",
+      "content": "The `absent()` function returns 1 if no time series match the selector. Critical for detecting monitoring gaps."
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 10: Performance Optimization Patterns\n\nWrite efficient queries that scale with your data volume."
+    },
+    {
+      "type": "markdown",
+      "content": "### Limit Time Range\n\nUse appropriate time ranges for your metrics:"
+    },
+    {
+      "type": "interactive",
+      "action": "formfill",
+      "reftarget": "textarea.inputarea",
+      "targetvalue": "@@CLEAR@@ rate(prometheus_http_requests_total[2m])",
+      "requirements": ["exists-reftarget"],
+      "content": "Use efficient time ranges:\n\n`rate(prometheus_http_requests_total[2m])`"
+    },
+    {
+      "type": "markdown",
+      "content": "For high-frequency metrics (scraped every 10-15s), a 2-5 minute window is sufficient. Longer windows add computation cost."
+    },
+    {
+      "type": "markdown",
+      "content": "## Congratulations!\n\nYou've mastered advanced PromQL! You now know:\n\n- Multi-dimensional aggregation with `by`, `without`, `topk`\n- Advanced label matching with regex (`=~`, `!~`)\n- Label joins using `on`, `ignoring`, and `group_left/right`\n- Time-based analysis with `offset`, `over_time` functions\n- Binary operations for error rates and utilization calculations\n- Histogram analysis with `histogram_quantile`\n- Predictive functions: `predict_linear`, `holt_winters`\n- Subqueries for rolling aggregations\n- Recording rule and alert patterns\n- Performance optimization techniques\n\n**Pro Tip:** Use the Grafana Assistant to customize any of these queries for your specific metrics, datasources, and use cases. Just hover over any query and click \"Customize with Assistant\"!\n\n**Next Steps:**\n\n- Apply these patterns to your own metrics\n- Create recording rules for frequently used queries\n- Build comprehensive dashboards using these advanced patterns\n- Set up SLO-based alerting using burn rate calculations\n- Explore [all PromQL functions](https://prometheus.io/docs/prometheus/latest/querying/functions/) in the official docs"
+    }
+  ]
+}
+

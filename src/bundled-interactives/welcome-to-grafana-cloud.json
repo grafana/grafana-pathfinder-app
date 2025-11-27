@@ -1,0 +1,82 @@
+{
+  "id": "welcome-to-grafana-cloud-json",
+  "title": "Welcome to Grafana Cloud (JSON)",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# Welcome to Grafana!\n\nWelcome to your Grafana Cloud journey! In this interactive guide, we'll take you on a tour of key locations in Grafana Cloud. By the end, you'll be familiar with:\n\n- Navigating Grafana Cloud's main sections\n- Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting\n- Finding your way around the interface"
+    },
+    {
+      "type": "markdown",
+      "content": "## Tour of Grafana Cloud\n\nLet's start by exploring the main areas of Grafana. We'll visit each key section so you know where everything is located."
+    },
+    {
+      "type": "section",
+      "id": "grafana-tour",
+      "title": "Tour of Grafana Cloud",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/a/grafana-setupguide-app/home']",
+          "requirements": ["navmenu-open"],
+          "content": "First, let's visit the **Home** page - your starting point in Grafana.",
+          "tooltip": "The **Home** page in Grafana Cloud is your central hub. It shows your cloud instance overview, recent activity, and quick access to getting started guides. Perfect *starting point* for your observability journey!"
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+          "content": "Next, **Dashboards** - where you'll create and manage your visualizations.",
+          "tooltip": "In Grafana Cloud, **Dashboards** can display data from multiple cloud services simultaneously. Create `time series` from Prometheus, `logs panels` from Loki, and `traces` from Tempo - all in one view!"
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/explore']",
+          "skippable": true,
+          "content": "Then **Explore** - perfect for ad-hoc queries and data exploration.",
+          "tooltip": "**Explore** is your data playground! Query logs with `LogQL`, run `PromQL` queries against metrics, and investigate traces with `TraceQL`. Perfect for troubleshooting and *data discovery*."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/alerts-and-incidents']",
+          "content": "**Alerting** - where you'll set up notifications when things go wrong.",
+          "tooltip": "Grafana Cloud's **Alerting** system can monitor your metrics, logs, and traces simultaneously. Set up `Slack`, `PagerDuty`, or `email` notifications. Get alerted before your users notice issues!"
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/connections']",
+          "requirements": ["is-admin"],
+          "skippable": true,
+          "hint": "Connections requires admin permissions to access",
+          "content": "You need the Admin role to connect data sources. You can skip this step if you don't have permissions.",
+          "tooltip": "Grafana Cloud comes with **pre-configured data sources**! Your `Prometheus`, `Loki`, and `Tempo` instances are already connected. You can also add external sources like `AWS`, `GCP`, or your own infrastructure."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/admin']",
+          "content": "Finally, **Administration** - for managing users, plugins, and system settings.",
+          "tooltip": "Cloud **Administration** gives you control over team management, `API keys`, usage analytics, and billing. Manage your entire cloud stack from here - *powerful stuff*!"
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/admin/plugins']",
+          "requirements": ["exists-reftarget"],
+          "skippable": true,
+          "content": "Plugins extend Grafana by adding capabilities that are not available by default. For example, you can install plugins that add the ability to import data from diverse sources, that bundle data sources and panels, or that provide new visualization types for use in dashboards.",
+          "tooltip": "Plugins and data allows you to extend Grafana's functionality. You can install custom plugins from here."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## Congratulations!\n\nAmazing work! You've completed your welcome tour of Grafana Cloud. You now know:\n\n- Where to find Dashboards, Explore, Alerting, Connections, and Administration\n- How to navigate around Grafana Cloud's main interface\n- The key areas you'll be working with\n\n**You're now ready to explore Grafana Cloud!** Try visiting each section to get familiar with the different features available."
+    }
+  ]
+}
+
