@@ -934,8 +934,7 @@ export function parseHTMLToComponents(
           /\binteractive\b/.test(el.className || '') &&
           el.getAttribute('data-targetaction') &&
           el.getAttribute('data-targetaction') !== 'sequence' &&
-          el.getAttribute('data-targetaction') !== 'multistep' &&
-          el.getAttribute('data-targetaction') !== 'noop'
+          el.getAttribute('data-targetaction') !== 'multistep'
         ) {
           hasInteractiveElements = true;
 
@@ -943,7 +942,8 @@ export function parseHTMLToComponents(
           const targetAction = el.getAttribute('data-targetaction');
           const refTarget = el.getAttribute('data-reftarget');
 
-          if (!refTarget) {
+          // noop actions don't need a refTarget since they don't perform any actions
+          if (!refTarget && targetAction !== 'noop') {
             errorCollector.addError(
               'element_creation',
               `Interactive element missing required 'data-reftarget' attribute`,
