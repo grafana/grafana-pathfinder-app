@@ -1,7 +1,7 @@
 import { QueuedDocsLink } from 'global-state/link-interception';
 import { ALLOWED_GITHUB_REPOS } from '../constants';
 import { isAllowedContentUrl, isAllowedGitHubRawUrl, isGitHubRawUrl, isGitHubUrl, isLocalhostUrl } from 'security';
-import { isDevModeEnabledGlobal } from 'utils/dev-mode';
+import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
 
 export const getDocsLinkFromEvent = (event: MouseEvent): QueuedDocsLink | undefined => {
   if (!(event.target instanceof Element)) {

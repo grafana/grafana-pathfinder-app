@@ -13,7 +13,7 @@ const mockStartCapture = jest.fn();
 const mockStopCapture = jest.fn();
 const mockIsActive = false;
 
-jest.mock('../../../utils/devtools/selector-capture.hook', () => ({
+jest.mock('../devtools/selector-capture.hook', () => ({
   useSelectorCapture: jest.fn(() => ({
     isActive: mockIsActive,
     startCapture: mockStartCapture,

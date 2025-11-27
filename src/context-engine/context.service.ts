@@ -8,7 +8,7 @@ import {
 } from '../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import { hashUserData } from '../lib/hash.util';
-import { isDevModeEnabledGlobal } from '../utils/dev-mode';
+import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
   ContextData,

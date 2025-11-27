@@ -16,7 +16,7 @@ import {
   isLocalhostUrl,
 } from '../security';
 import { ALLOWED_GITHUB_REPOS } from '../constants';
-import { isDevModeEnabledGlobal } from './dev-mode';
+import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
 import { LearningJourneyTab } from '../types/content-panel.types';
 
 interface UseLinkClickHandlerProps {

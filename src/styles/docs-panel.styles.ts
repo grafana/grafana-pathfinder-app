@@ -477,6 +477,13 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'column',
   }),
+  // Dev Tools panel has its own internal layout - just provide scrolling container
+  devToolsContent: css({
+    backgroundColor: theme.colors.background.primary,
+    overflow: 'auto',
+    flex: 1,
+    minHeight: 0, // Allow flex shrinking for proper scrolling
+  }),
   contentMeta: css({
     padding: theme.spacing(1, 2),
     backgroundColor: theme.colors.background.canvas,

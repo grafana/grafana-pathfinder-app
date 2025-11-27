@@ -4,8 +4,8 @@
  */
 
 import { generateSelectorFromEvent } from './selector-generator.util';
-import * as domUtils from '../../lib/dom';
-import * as actionDetector from '../../interactive-engine/auto-completion/action-detector';
+import * as domUtils from '../../../lib/dom';
+import * as actionDetector from '../../../interactive-engine/auto-completion/action-detector';
 
 // Mock console methods to avoid noise in tests
 const originalConsoleWarn = console.warn;
@@ -20,14 +20,14 @@ afterEach(() => {
 });
 
 // Mock DOM utilities
-jest.mock('../../lib/dom', () => ({
+jest.mock('../../../lib/dom', () => ({
   generateBestSelector: jest.fn(),
   getSelectorInfo: jest.fn(),
   validateAndCleanSelector: jest.fn(),
 }));
 
 // Mock action detector
-jest.mock('../../interactive-engine/auto-completion/action-detector', () => ({
+jest.mock('../../../interactive-engine/auto-completion/action-detector', () => ({
   detectActionType: jest.fn(),
 }));
 

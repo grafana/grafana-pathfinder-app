@@ -1,9 +1,17 @@
 // Combined Learning Journey and Docs Panel
 // Post-refactoring unified component using new content system only
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
+
+// Lazy load dev tools to keep them out of production bundles
+// This component is only loaded when dev mode is enabled and the tab is opened
+const SelectorDebugPanel = lazy(() =>
+  import('../SelectorDebugPanel').then((module) => ({
+    default: module.SelectorDebugPanel,
+  }))
+);
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import {
@@ -16,7 +24,7 @@ import {
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
-import { isDevModeEnabledGlobal, isDevModeEnabled } from '../../utils/dev-mode';
+import { isDevModeEnabledGlobal, isDevModeEnabled } from '../wysiwyg-editor/dev-mode';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -86,7 +94,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
     const contextPanel = new ContextPanel(
       (url: string, title: string) => this.openLearningJourney(url, title),
-      (url: string, title: string) => this.openDocsPage(url, title)
+      (url: string, title: string) => this.openDocsPage(url, title),
+      () => this.openDevToolsTab()
     );
 
     super({
@@ -235,13 +244,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   private async saveTabsToStorage(): Promise<void> {
     try {
       const tabsToSave: PersistedTabData[] = this.state.tabs
-        .filter((tab) => tab.id !== 'recommendations')
+        .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools')
         .map((tab) => ({
           id: tab.id,
           title: tab.title,
           baseUrl: tab.baseUrl,
           currentUrl: tab.currentUrl,
-          type: tab.type,
+          // Cast type since we've filtered out 'devtools' tabs above
+          type: tab.type as 'learning-journey' | 'docs' | undefined,
         }));
 
       // Save both tabs and active tab
@@ -453,6 +463,39 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public canNavigatePrevious(): boolean {
     const activeTab = this.getActiveTab();
     return activeTab?.content ? getPreviousMilestoneUrlFromContent(activeTab.content) !== null : false;
+  }
+
+  /**
+   * Open the Dev Tools tab (or switch to it if already open)
+   * This tab is not persisted to storage since it's tied to dev mode state
+   */
+  public openDevToolsTab(): void {
+    // Check if devtools tab already exists
+    const existingTab = this.state.tabs.find((t) => t.id === 'devtools');
+    if (existingTab) {
+      // Just switch to it
+      this.setState({ activeTabId: 'devtools' });
+      return;
+    }
+
+    // Create new devtools tab
+    const newTab: LearningJourneyTab = {
+      id: 'devtools',
+      title: 'Dev Tools',
+      baseUrl: '',
+      currentUrl: '',
+      content: null,
+      isLoading: false,
+      error: null,
+      type: 'devtools',
+    };
+
+    this.setState({
+      tabs: [...this.state.tabs, newTab],
+      activeTabId: 'devtools',
+    });
+
+    // Note: We don't save to storage since devtools tab is not persisted
   }
 
   public async openDocsPage(url: string, title?: string): Promise<string> {
@@ -1331,7 +1374,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   >
                     <div className={styles.tabContent}>
                       {tab.id !== 'recommendations' && (
-                        <Icon name={tab.type === 'docs' ? 'file-alt' : 'book'} size="xs" className={styles.tabIcon} />
+                        <Icon
+                          name={tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
+                          size="xs"
+                          className={styles.tabIcon}
+                        />
                       )}
                       <span className={styles.tabTitle}>
                         {tab.isLoading ? (
@@ -1343,7 +1390,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           getTranslatedTitle(tab.title)
                         )}
                       </span>
-                      {tab.id !== 'recommendations' && (
+                      {tab.id !== 'recommendations' && tab.id !== 'devtools' && (
                         <IconButton
                           name="times"
                           size="sm"
@@ -1441,7 +1488,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       <div className={styles.dropdownItemContent}>
                         {tab.id !== 'recommendations' && (
                           <Icon
-                            name={tab.type === 'docs' ? 'file-alt' : 'book'}
+                            name={tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
                             size="xs"
                             className={styles.dropdownItemIcon}
                           />
@@ -1456,7 +1503,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             getTranslatedTitle(tab.title)
                           )}
                         </span>
-                        {tab.id !== 'recommendations' && (
+                        {tab.id !== 'recommendations' && tab.id !== 'devtools' && (
                           <IconButton
                             name="times"
                             size="sm"
@@ -1497,6 +1544,17 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           // Show recommendations tab
           if (isRecommendationsTab) {
             return <contextPanel.Component model={contextPanel} />;
+          }
+
+          // Show dev tools tab
+          if (activeTabId === 'devtools') {
+            return (
+              <div className={styles.devToolsContent} data-testid="devtools-tab-content">
+                <Suspense fallback={<SkeletonLoader type="recommendations" />}>
+                  <SelectorDebugPanel onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title)} />
+                </Suspense>
+              </div>
+            );
           }
 
           // Show loading state with skeleton

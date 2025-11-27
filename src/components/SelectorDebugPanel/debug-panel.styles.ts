@@ -5,33 +5,20 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(2),
+    gap: theme.spacing(1.5),
+    padding: theme.spacing(2),
   }),
 
   header: css({
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-  }),
-
-  title: css({
-    fontSize: theme.typography.h4.fontSize,
-    fontWeight: theme.typography.h4.fontWeight,
-    color: theme.colors.text.primary,
-    margin: 0,
+    justifyContent: 'space-between',
+    paddingBottom: theme.spacing(1.5),
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
   }),
 
   badge: css({
     fontSize: theme.typography.bodySmall.fontSize,
-  }),
-
-  leaveDevModeRow: css({
-    display: 'flex',
-    justifyContent: 'center',
-    marginBottom: theme.spacing(2),
-    paddingBottom: theme.spacing(2),
-    borderBottom: `1px solid ${theme.colors.border.weak}`,
   }),
 
   section: css({
@@ -41,7 +28,7 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
   }),
 
   sectionHeader: css({
-    padding: theme.spacing(2),
+    padding: theme.spacing(1.5),
     backgroundColor: theme.colors.background.secondary,
     cursor: 'pointer',
     display: 'flex',
@@ -66,19 +53,6 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
     borderTop: `1px solid ${theme.colors.border.weak}`,
   }),
 
-  formGroup: css({
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1.5),
-  }),
-
-  label: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    color: theme.colors.text.secondary,
-    marginBottom: theme.spacing(0.5),
-  }),
-
   selectorInput: css({
     fontFamily: theme.typography.fontFamilyMonospace,
     fontSize: theme.typography.bodySmall.fontSize,
@@ -91,12 +65,6 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
     resize: 'vertical',
   }),
 
-  buttonGroup: css({
-    display: 'flex',
-    gap: theme.spacing(1),
-    marginTop: theme.spacing(1),
-  }),
-
   copiedButton: css({
     transition: 'all 0.3s ease-in-out',
     '&:hover': {
@@ -105,7 +73,6 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
   }),
 
   resultBox: css({
-    marginTop: theme.spacing(2),
     padding: theme.spacing(1.5),
     borderRadius: theme.shape.radius.default,
     backgroundColor: theme.colors.background.secondary,
@@ -144,8 +111,7 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
   helpText: css({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
-    fontStyle: 'italic',
-    marginTop: theme.spacing(0.5),
+    margin: 0,
   }),
 
   exampleCode: css({
@@ -153,10 +119,8 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.primary,
     backgroundColor: theme.colors.background.secondary,
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
     borderRadius: theme.shape.radius.default,
-    display: 'block',
-    marginTop: theme.spacing(0.5),
   }),
 
   progressIndicator: css({
@@ -168,7 +132,6 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     color: theme.colors.info.text,
     fontSize: theme.typography.bodySmall.fontSize,
-    marginTop: theme.spacing(1),
   }),
 
   // Guided progress styles
@@ -181,22 +144,11 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     color: theme.colors.warning.text,
     fontSize: theme.typography.bodySmall.fontSize,
-    marginTop: theme.spacing(1),
   }),
 
   guidedStepHint: css({
     marginTop: theme.spacing(0.5),
     paddingLeft: theme.spacing(3),
-  }),
-
-  dropdownRow: css({
-    display: 'flex',
-    gap: theme.spacing(1),
-    alignItems: 'flex-end',
-  }),
-
-  dropdownField: css({
-    flex: 1,
   }),
 
   // Watch Mode styles
@@ -233,20 +185,7 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
   }),
 
-  selectorMeta: css({
-    display: 'flex',
-    gap: theme.spacing(1),
-    marginTop: theme.spacing(1),
-  }),
-
   // Record Mode styles
-  recordModeControls: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1.5),
-    flexWrap: 'wrap',
-  }),
-
   recordModeActive: css({
     animation: 'pulse 2s ease-in-out infinite',
   }),

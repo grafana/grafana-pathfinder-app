@@ -299,7 +299,7 @@ describe('Security: Interactive Content Source Validation', () => {
     // Reimport with mocked dev mode
     jest.isolateModules(() => {
       // Mock dev mode as enabled
-      jest.doMock('../utils/dev-mode', () => ({
+      jest.doMock('../components/wysiwyg-editor/dev-mode', () => ({
         isDevModeEnabled: () => true,
         isDevModeEnabledGlobal: () => true, // NEW: Mock global check
         enableDevMode: jest.fn(),
@@ -328,7 +328,7 @@ describe('Security: Interactive Content Source Validation', () => {
     // Reimport with mocked dev mode
     jest.isolateModules(() => {
       // Mock dev mode as enabled
-      jest.doMock('../utils/dev-mode', () => ({
+      jest.doMock('../components/wysiwyg-editor/dev-mode', () => ({
         isDevModeEnabled: () => true,
         isDevModeEnabledGlobal: () => true, // NEW: Mock global check
         enableDevMode: jest.fn(),

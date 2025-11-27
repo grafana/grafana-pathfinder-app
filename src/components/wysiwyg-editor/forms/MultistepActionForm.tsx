@@ -7,7 +7,7 @@ import {
   COMMON_REQUIREMENTS,
   DEFAULT_VALUES,
 } from '../../../constants/interactive-config';
-import { useActionRecorder } from '../../../utils/devtools/action-recorder.hook';
+import { useActionRecorder } from '../devtools/action-recorder.hook';
 import { getActionConfig } from './actionConfig';
 import { InteractiveFormShell } from './InteractiveFormShell';
 import { getMultistepFormStyles } from '../editor.styles';
