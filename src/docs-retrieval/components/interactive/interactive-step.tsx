@@ -557,6 +557,8 @@ export const InteractiveStep = forwardRef<
           return `Hover over element`;
         case 'sequence':
           return `Run sequence`;
+        case 'noop':
+          return `Instructional step`;
         default:
           return targetAction;
       }

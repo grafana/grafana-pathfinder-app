@@ -12,7 +12,7 @@ import { findButtonByText } from '../../lib/dom';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 
 export interface StepActionConfig {
-  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover';
+  targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover' | 'noop';
   refTarget: string;
   targetValue?: string;
 }

@@ -183,6 +183,7 @@ export const ACTION_TYPES = {
   HOVER: 'hover',
   MULTISTEP: 'multistep',
   SEQUENCE: 'sequence',
+  NOOP: 'noop',
 } as const;
 
 /**
@@ -271,6 +272,13 @@ export const ACTION_METADATA: ActionMetadata[] = [
     name: 'Sequence',
     description: 'Section with steps',
     grafanaIcon: 'folder-open',
+  },
+  {
+    type: ACTION_TYPES.NOOP,
+    icon: '📖',
+    name: 'No action',
+    description: 'Instructional only (no buttons)',
+    grafanaIcon: 'book',
   },
 ];
 

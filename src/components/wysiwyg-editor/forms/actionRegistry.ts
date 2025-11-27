@@ -16,6 +16,7 @@ import FormFillActionForm from './FormFillActionForm';
 import NavigateActionForm from './NavigateActionForm';
 import HoverActionForm from './HoverActionForm';
 import SequenceActionForm from './SequenceActionForm';
+import NoopActionForm from './NoopActionForm';
 
 /**
  * UI metadata for action selector display
@@ -346,6 +347,42 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
     },
     formComponent: SequenceActionForm,
     hiddenInSelector: true, // Only available via toolbar "Add Section" button
+  },
+
+  [ACTION_TYPES.NOOP]: {
+    type: ACTION_TYPES.NOOP,
+    ui: {
+      icon: '📖',
+      name: 'No action',
+      description: 'Instructional only (no buttons)',
+      grafanaIcon: 'book',
+    },
+    formConfig: {
+      title: ACTION_TYPES.NOOP,
+      description: 'Instructional step with no Show me or Do it buttons',
+      actionType: ACTION_TYPES.NOOP,
+      fields: [
+        {
+          id: DATA_ATTRIBUTES.REQUIREMENTS,
+          label: 'Requirements:',
+          type: 'text',
+          placeholder: 'Optional',
+          hint: 'Requirements for displaying this step, for example, section-completed:previous-section',
+          showCommonOptions: true,
+        },
+      ],
+      infoBox:
+        'This creates an instructional step that displays content without Show me or Do it buttons. ' +
+        'Useful for manual steps that users must complete themselves, or for providing context between automated steps.',
+      buildAttributes: (values) => ({
+        [DATA_ATTRIBUTES.TARGET_ACTION]: ACTION_TYPES.NOOP,
+        [DATA_ATTRIBUTES.REQUIREMENTS]: values[DATA_ATTRIBUTES.REQUIREMENTS],
+        'data-doit': DEFAULT_VALUES.DO_IT_FALSE,
+        'data-showme': DEFAULT_VALUES.DO_IT_FALSE,
+        class: DEFAULT_VALUES.CLASS,
+      }),
+    },
+    formComponent: NoopActionForm,
   },
 };
 

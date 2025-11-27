@@ -934,7 +934,8 @@ export function parseHTMLToComponents(
           /\binteractive\b/.test(el.className || '') &&
           el.getAttribute('data-targetaction') &&
           el.getAttribute('data-targetaction') !== 'sequence' &&
-          el.getAttribute('data-targetaction') !== 'multistep'
+          el.getAttribute('data-targetaction') !== 'multistep' &&
+          el.getAttribute('data-targetaction') !== 'noop'
         ) {
           hasInteractiveElements = true;
 
