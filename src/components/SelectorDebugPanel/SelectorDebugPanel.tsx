@@ -298,7 +298,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   }, [multistepMode]);
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} data-devtools-panel="true">
       <div className={styles.header}>
         <Stack direction="row" gap={1} alignItems="center">
           <Icon name="bug" size="lg" />

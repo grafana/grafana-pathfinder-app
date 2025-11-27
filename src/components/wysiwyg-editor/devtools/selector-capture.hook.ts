@@ -48,7 +48,7 @@ export interface UseSelectorCaptureReturn {
  * ```
  */
 // Default exclude selectors - defined outside to prevent recreation
-const DEFAULT_EXCLUDE_SELECTORS = ['[class*="debug"]', '.context-container'];
+const DEFAULT_EXCLUDE_SELECTORS = ['[class*="debug"]', '.context-container', '[data-devtools-panel]'];
 
 export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): UseSelectorCaptureReturn {
   const {

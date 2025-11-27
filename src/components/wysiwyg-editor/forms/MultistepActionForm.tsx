@@ -11,6 +11,7 @@ import { useActionRecorder } from '../devtools/action-recorder.hook';
 import { getActionConfig } from './actionConfig';
 import { InteractiveFormShell } from './InteractiveFormShell';
 import { getMultistepFormStyles } from '../editor.styles';
+import { DomPathTooltip } from '../../DomPathTooltip';
 
 /**
  * Custom form component for multistep actions with integrated recorder
@@ -32,7 +33,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
     (initialValues?.[DATA_ATTRIBUTES.REQUIREMENTS] as string) || ''
   );
 
-  // Action recorder hook - exclude the form panel itself
+  // Action recorder hook - exclude pathfinder content sidebar, form panel, and dev tools panel
   const {
     recordingState,
     isPaused,
@@ -43,8 +44,10 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
     stopRecording,
     clearRecording,
     deleteStep,
+    domPath,
+    cursorPosition,
   } = useActionRecorder({
-    excludeSelectors: ['[data-pathfinder-content]', '[data-wysiwyg-form]'],
+    excludeSelectors: ['[data-pathfinder-content]', '[data-wysiwyg-form]', '[data-devtools-panel]'],
   });
 
   const handleStartRecording = useCallback(() => {
@@ -118,163 +121,170 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
   };
 
   return (
-    <InteractiveFormShell
-      title={config.title}
-      description={config.description}
-      infoBox={config.infoBox}
-      onCancel={onCancel}
-      onSwitchType={onSwitchType}
-      initialValues={initialValues}
-      isValid={isValid()}
-      onApply={handleApply}
-    >
-      <Stack direction="column" gap={2}>
-        {/* Prominent recording status banner */}
-        {(recordingState === 'recording' || isPaused) && (
-          <div className={`${styles.recordingBanner} ${isPaused ? styles.recordingBannerPaused : ''}`}>
-            <span className={`${styles.recordingBannerDot} ${isPaused ? styles.recordingBannerDotPaused : ''}`} />
-            <span className={styles.recordingBannerText}>
-              {isPaused
-                ? 'Recording paused - Click "Resume" to continue'
-                : 'Recording active - Click elements in Grafana to capture actions'}
-            </span>
-            <Badge text={`${recordedSteps.length} steps`} color={isPaused ? 'orange' : 'red'} />
-          </div>
-        )}
-
-        {/* Recorder section */}
-        <h5 className={styles.cardTitle}>Record Actions</h5>
-
-        <div className={styles.controlsContainer}>
-          <div className={styles.controlsRow}>
-            <div className={styles.controlButtons}>
-              <Button
-                variant={recordingState === 'idle' ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={handleStartRecording}
-                disabled={recordingState === 'recording'}
-                icon={isPaused ? 'play' : 'circle'}
-              >
-                {isPaused ? 'Resume' : 'Start Recording'}
-              </Button>
-
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handlePauseRecording}
-                disabled={recordingState !== 'recording'}
-                icon="pause"
-              >
-                Pause
-              </Button>
-
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleStopRecording}
-                disabled={recordingState === 'idle'}
-                icon="square-shape"
-              >
-                Stop
-              </Button>
+    <>
+      <InteractiveFormShell
+        title={config.title}
+        description={config.description}
+        infoBox={config.infoBox}
+        onCancel={onCancel}
+        onSwitchType={onSwitchType}
+        initialValues={initialValues}
+        isValid={isValid()}
+        onApply={handleApply}
+      >
+        <Stack direction="column" gap={2}>
+          {/* Prominent recording status banner */}
+          {(recordingState === 'recording' || isPaused) && (
+            <div className={`${styles.recordingBanner} ${isPaused ? styles.recordingBannerPaused : ''}`}>
+              <span className={`${styles.recordingBannerDot} ${isPaused ? styles.recordingBannerDotPaused : ''}`} />
+              <span className={styles.recordingBannerText}>
+                {isPaused
+                  ? 'Recording paused - Click "Resume" to continue'
+                  : 'Recording active - Click elements in Grafana to capture actions'}
+              </span>
+              <Badge text={`${recordedSteps.length} steps`} color={isPaused ? 'orange' : 'red'} />
             </div>
-            {recordedSteps.length > 0 && recordingState === 'idle' && (
-              <Badge text={`${recordedSteps.length} steps recorded`} color="blue" />
+          )}
+
+          {/* Recorder section */}
+          <h5 className={styles.cardTitle}>Record Actions</h5>
+
+          <div className={styles.controlsContainer}>
+            <div className={styles.controlsRow}>
+              <div className={styles.controlButtons}>
+                <Button
+                  variant={recordingState === 'idle' ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={handleStartRecording}
+                  disabled={recordingState === 'recording'}
+                  icon={isPaused ? 'play' : 'circle'}
+                >
+                  {isPaused ? 'Resume' : 'Start Recording'}
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handlePauseRecording}
+                  disabled={recordingState !== 'recording'}
+                  icon="pause"
+                >
+                  Pause
+                </Button>
+
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleStopRecording}
+                  disabled={recordingState === 'idle'}
+                  icon="square-shape"
+                >
+                  Stop
+                </Button>
+              </div>
+              {recordedSteps.length > 0 && recordingState === 'idle' && (
+                <Badge text={`${recordedSteps.length} steps recorded`} color="blue" />
+              )}
+            </div>
+
+            {recordingState === 'idle' && recordedSteps.length === 0 && (
+              <div className={styles.emptyState}>Click &quot;Start Recording&quot; to begin capturing actions</div>
+            )}
+
+            {isEditMode && recordedSteps.length === 0 && recordingState === 'idle' && (
+              <div className={styles.emptyState}>
+                Editing existing multistep. Record new actions to replace existing internal spans.
+              </div>
             )}
           </div>
 
-          {recordingState === 'idle' && recordedSteps.length === 0 && (
-            <div className={styles.emptyState}>Click &quot;Start Recording&quot; to begin capturing actions</div>
-          )}
-
-          {isEditMode && recordedSteps.length === 0 && recordingState === 'idle' && (
-            <div className={styles.emptyState}>
-              Editing existing multistep. Record new actions to replace existing internal spans.
-            </div>
-          )}
-        </div>
-
-        {/* Recorded steps list */}
-        {recordedSteps.length > 0 && (
-          <>
-            <label className={styles.stepsLabel}>Recorded Steps</label>
-            <div className={styles.stepsContainer}>
-              {recordedSteps.map((step, index) => (
-                <div key={`${step.selector}-${step.action}-${index}`} className={styles.stepItem}>
-                  <Badge text={String(index + 1)} color="blue" className={styles.stepBadge} />
-                  <div className={styles.stepContent}>
-                    <div className={styles.stepDescription}>
-                      {step.description}
-                      {step.isUnique === false && (
-                        <Icon
-                          name="exclamation-triangle"
-                          size="sm"
-                          style={{
-                            marginLeft: '4px',
-                            color: 'var(--grafana-colors-warning-text)',
-                            verticalAlign: 'middle',
-                          }}
-                          title={`Non-unique selector (${step.matchCount} matches)`}
-                        />
+          {/* Recorded steps list */}
+          {recordedSteps.length > 0 && (
+            <>
+              <label className={styles.stepsLabel}>Recorded Steps</label>
+              <div className={styles.stepsContainer}>
+                {recordedSteps.map((step, index) => (
+                  <div key={`${step.selector}-${step.action}-${index}`} className={styles.stepItem}>
+                    <Badge text={String(index + 1)} color="blue" className={styles.stepBadge} />
+                    <div className={styles.stepContent}>
+                      <div className={styles.stepDescription}>
+                        {step.description}
+                        {step.isUnique === false && (
+                          <Icon
+                            name="exclamation-triangle"
+                            size="sm"
+                            style={{
+                              marginLeft: '4px',
+                              color: 'var(--grafana-colors-warning-text)',
+                              verticalAlign: 'middle',
+                            }}
+                            title={`Non-unique selector (${step.matchCount} matches)`}
+                          />
+                        )}
+                      </div>
+                      <code className={styles.stepCode}>
+                        {step.action}|{step.selector}|{step.value || ''}
+                      </code>
+                      {(step.contextStrategy || step.isUnique === false) && (
+                        <HorizontalGroup spacing="xs" wrap className={styles.stepBadges}>
+                          {step.contextStrategy && <Badge text={step.contextStrategy} color="purple" />}
+                          {step.isUnique === false && <Badge text={`${step.matchCount} matches`} color="orange" />}
+                        </HorizontalGroup>
                       )}
                     </div>
-                    <code className={styles.stepCode}>
-                      {step.action}|{step.selector}|{step.value || ''}
-                    </code>
-                    {(step.contextStrategy || step.isUnique === false) && (
-                      <HorizontalGroup spacing="xs" wrap className={styles.stepBadges}>
-                        {step.contextStrategy && <Badge text={step.contextStrategy} color="purple" />}
-                        {step.isUnique === false && <Badge text={`${step.matchCount} matches`} color="orange" />}
-                      </HorizontalGroup>
-                    )}
+                    <Button
+                      variant="secondary"
+                      size="xs"
+                      onClick={() => handleDeleteStep(index)}
+                      icon="trash-alt"
+                      aria-label="Delete step"
+                    />
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="xs"
-                    onClick={() => handleDeleteStep(index)}
-                    icon="trash-alt"
-                    aria-label="Delete step"
-                  />
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
 
-            <HorizontalGroup spacing="sm" className={styles.clearButtonContainer}>
-              <Button variant="secondary" size="sm" onClick={handleClearRecording} icon="trash-alt">
-                Clear All
-              </Button>
-            </HorizontalGroup>
-          </>
-        )}
-
-        {/* Requirements field */}
-        <Field
-          label="Requirements:"
-          description="Requirements are usually set on child interactive spans. Note: 'exists-reftarget' is not supported for multistep containers."
-        >
-          <>
-            <Input
-              value={requirements}
-              onChange={(e) => setRequirements(e.currentTarget.value)}
-              placeholder="e.g., navmenu-open, is-admin (optional)"
-              autoFocus
-            />
-            <div className={styles.requirementsButtonContainer}>
-              {/* Custom requirements buttons that exclude exists-reftarget for multistep */}
-              <HorizontalGroup spacing="sm" wrap>
-                {COMMON_REQUIREMENTS.filter((req) => req !== 'exists-reftarget')
-                  .slice(0, 3)
-                  .map((req) => (
-                    <Button key={req} size="sm" variant="secondary" onClick={() => setRequirements(req)}>
-                      {req}
-                    </Button>
-                  ))}
+              <HorizontalGroup spacing="sm" className={styles.clearButtonContainer}>
+                <Button variant="secondary" size="sm" onClick={handleClearRecording} icon="trash-alt">
+                  Clear All
+                </Button>
               </HorizontalGroup>
-            </div>
-          </>
-        </Field>
-      </Stack>
-    </InteractiveFormShell>
+            </>
+          )}
+
+          {/* Requirements field */}
+          <Field
+            label="Requirements:"
+            description="Requirements are usually set on child interactive spans. Note: 'exists-reftarget' is not supported for multistep containers."
+          >
+            <>
+              <Input
+                value={requirements}
+                onChange={(e) => setRequirements(e.currentTarget.value)}
+                placeholder="e.g., navmenu-open, is-admin (optional)"
+                autoFocus
+              />
+              <div className={styles.requirementsButtonContainer}>
+                {/* Custom requirements buttons that exclude exists-reftarget for multistep */}
+                <HorizontalGroup spacing="sm" wrap>
+                  {COMMON_REQUIREMENTS.filter((req) => req !== 'exists-reftarget')
+                    .slice(0, 3)
+                    .map((req) => (
+                      <Button key={req} size="sm" variant="secondary" onClick={() => setRequirements(req)}>
+                        {req}
+                      </Button>
+                    ))}
+                </HorizontalGroup>
+              </div>
+            </>
+          </Field>
+        </Stack>
+      </InteractiveFormShell>
+
+      {/* DOM Path Tooltip for recording mode */}
+      {recordingState === 'recording' && domPath && cursorPosition && (
+        <DomPathTooltip domPath={domPath} position={cursorPosition} visible={true} />
+      )}
+    </>
   );
 };
 

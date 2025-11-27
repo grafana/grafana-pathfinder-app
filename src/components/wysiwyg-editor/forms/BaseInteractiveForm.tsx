@@ -7,6 +7,7 @@ import { DATA_ATTRIBUTES } from '../../../constants/interactive-config';
 import { validateFormField } from '../services/validation';
 import { useSelectorCapture } from '../devtools/selector-capture.hook';
 import { InteractiveFormShell, CommonRequirementsButtons } from './InteractiveFormShell';
+import { DomPathTooltip } from '../../DomPathTooltip';
 
 const getSelectorCaptureStyles = (theme: GrafanaTheme2) => ({
   selectorRow: css({
@@ -124,9 +125,9 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
   const selectorField = config.fields.find((field) => field.id === DATA_ATTRIBUTES.REF_TARGET);
   const shouldAutoStartCapture = selectorField !== undefined && selectorField.disableSelectorCapture !== true;
 
-  // Selector capture hook - exclude pathfinder content sidebar and form panel
-  const { isActive, startCapture, stopCapture } = useSelectorCapture({
-    excludeSelectors: ['[data-pathfinder-content]', '[data-wysiwyg-form]'],
+  // Selector capture hook - exclude pathfinder content sidebar, form panel, and dev tools panel
+  const { isActive, startCapture, stopCapture, domPath, cursorPosition } = useSelectorCapture({
+    excludeSelectors: ['[data-pathfinder-content]', '[data-wysiwyg-form]', '[data-devtools-panel]'],
     autoDisable: true,
     onCapture: (selector: string) => {
       // Populate the selector field
@@ -274,18 +275,25 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
   };
 
   return (
-    <InteractiveFormShell
-      title={config.title}
-      description={config.description}
-      infoBox={config.infoBox}
-      onCancel={onCancel}
-      onSwitchType={onSwitchType}
-      initialValues={initialValues}
-      isValid={isValid()}
-      onApply={handleApply}
-    >
-      {config.fields.map(renderField)}
-    </InteractiveFormShell>
+    <>
+      <InteractiveFormShell
+        title={config.title}
+        description={config.description}
+        infoBox={config.infoBox}
+        onCancel={onCancel}
+        onSwitchType={onSwitchType}
+        initialValues={initialValues}
+        isValid={isValid()}
+        onApply={handleApply}
+      >
+        {config.fields.map(renderField)}
+      </InteractiveFormShell>
+
+      {/* DOM Path Tooltip for selector capture mode */}
+      {isActive && domPath && cursorPosition && (
+        <DomPathTooltip domPath={domPath} position={cursorPosition} visible={true} />
+      )}
+    </>
   );
 };
 

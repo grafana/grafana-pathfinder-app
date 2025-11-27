@@ -5,6 +5,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createHoverHighlight, updateHoverHighlight, removeHoverHighlight } from './hover-highlight.util';
+import { addGlobalInteractiveStyles } from '../../../styles/interactive.styles';
 
 export interface UseElementInspectorOptions {
   isActive: boolean;
@@ -100,6 +101,20 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
   const lastElementRef = useRef<HTMLElement | null>(null);
   const lastCursorPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  // Stabilize excludeSelectors reference to prevent effect re-runs on every render
+  // when callers pass inline arrays like ['selector1', 'selector2']
+  const excludeSelectorsRef = useRef<string[]>(excludeSelectors);
+  const excludeSelectorsKey = JSON.stringify(excludeSelectors);
+  useEffect(() => {
+    excludeSelectorsRef.current = excludeSelectors;
+  }, [excludeSelectorsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Stabilize onHover callback reference - it's often defined inline and would cause effect re-runs
+  const onHoverRef = useRef(onHover);
+  useEffect(() => {
+    onHoverRef.current = onHover;
+  }, [onHover]);
+
   // Cleanup function - stable reference
   const cleanupDOM = useCallback(() => {
     if (highlightRef.current) {
@@ -120,6 +135,9 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
       cleanupDOM();
       return;
     }
+
+    // Ensure global interactive styles (including hover highlight CSS) are injected
+    addGlobalInteractiveStyles();
 
     const handleMouseMove = (event: MouseEvent) => {
       // Cancel previous RAF if still pending
@@ -163,7 +181,8 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
         }
 
         // Check if element should be excluded from user's excludeSelectors
-        const shouldExclude = excludeSelectors.some((selector) => {
+        // Use ref to avoid effect re-runs when caller passes inline arrays
+        const shouldExclude = excludeSelectorsRef.current.some((selector) => {
           try {
             return element.closest(selector);
           } catch {
@@ -208,9 +227,9 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
           highlightRef.current = createHoverHighlight(element);
         }
 
-        // Call onHover callback
-        if (onHover) {
-          onHover(element, path);
+        // Call onHover callback using ref to avoid effect re-runs
+        if (onHoverRef.current) {
+          onHoverRef.current(element, path);
         }
       });
     };
@@ -222,7 +241,10 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
       document.removeEventListener('mousemove', handleMouseMove);
       cleanupDOM();
     };
-  }, [isActive, excludeSelectors, onHover, cleanupDOM]);
+    // Use excludeSelectorsKey (serialized) instead of excludeSelectors (array reference)
+    // to prevent effect re-runs when callers pass inline arrays with same values.
+    // onHover is accessed via ref so it's not needed in deps.
+  }, [isActive, excludeSelectorsKey, cleanupDOM]);
 
   // Memoize return value to prevent causing re-renders in parent
   return useMemo(
