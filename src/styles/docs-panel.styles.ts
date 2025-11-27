@@ -558,6 +558,54 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
       flexShrink: 0,
     },
   }),
+  // Return to Editor Banner - shown for WYSIWYG preview tabs
+  returnToEditorBanner: css({
+    padding: theme.spacing(1, 2),
+    backgroundColor: theme.colors.info.transparent,
+    borderBottom: `1px solid ${theme.colors.info.border}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.primary,
+    flexShrink: 0,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: theme.spacing(2),
+  }),
+  returnToEditorLeft: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    color: theme.colors.info.text,
+    fontWeight: theme.typography.fontWeightMedium,
+  }),
+  returnToEditorButton: css({
+    backgroundColor: theme.colors.info.main,
+    color: theme.colors.info.contrastText,
+    border: 'none',
+    borderRadius: theme.shape.radius.default,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1.5)}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    '&:hover': {
+      backgroundColor: theme.colors.info.shade,
+      transform: 'translateY(-1px)',
+      boxShadow: theme.shadows.z1,
+    },
+    '&:active': {
+      transform: 'translateY(0)',
+      boxShadow: 'none',
+    },
+    '& svg': {
+      width: '12px',
+      height: '12px',
+      flexShrink: 0,
+    },
+  }),
 });
 
 export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
