@@ -130,7 +130,7 @@ export type JsonInteractiveAction = 'highlight' | 'button' | 'formfill' | 'navig
 
 /**
  * Single-action interactive step.
- * Renders with "Show me" and "Do it" buttons.
+ * Renders with "Show me" and "Do it" buttons (unless showOnly is true).
  */
 export interface JsonInteractiveBlock {
   type: 'interactive';
@@ -152,6 +152,8 @@ export interface JsonInteractiveBlock {
   skippable?: boolean;
   /** Hint shown when step cannot be completed */
   hint?: string;
+  /** Show-only mode: only "Show me" button, no "Do it" - for educational highlighting */
+  showOnly?: boolean;
 }
 
 /**

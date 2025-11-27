@@ -638,7 +638,7 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
         objectives,
         skippable: block.skippable ?? false,
         hints: block.hint,
-        doIt: true,
+        doIt: !block.showOnly, // showOnly: true means no "Do it" button
         showMe: true,
       },
       children,
