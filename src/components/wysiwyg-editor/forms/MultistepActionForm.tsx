@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Field, Input, Button, Stack, Badge, Icon, HorizontalGroup, Alert, useStyles2 } from '@grafana/ui';
+import { Field, Input, Button, Stack, Badge, Icon, HorizontalGroup, useStyles2 } from '@grafana/ui';
 import { type InteractiveFormProps } from '../types';
 import {
   DATA_ATTRIBUTES,
@@ -129,22 +129,33 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
       onApply={handleApply}
     >
       <Stack direction="column" gap={2}>
-        {/* Recorder section */}
+        {/* Prominent recording status banner */}
+        {(recordingState === 'recording' || isPaused) && (
+          <div className={`${styles.recordingBanner} ${isPaused ? styles.recordingBannerPaused : ''}`}>
+            <span className={`${styles.recordingBannerDot} ${isPaused ? styles.recordingBannerDotPaused : ''}`} />
+            <span className={styles.recordingBannerText}>
+              {isPaused
+                ? 'Recording paused - Click "Resume" to continue'
+                : 'Recording active - Click elements in Grafana to capture actions'}
+            </span>
+            <Badge text={`${recordedSteps.length} steps`} color={isPaused ? 'orange' : 'red'} />
+          </div>
+        )}
 
+        {/* Recorder section */}
         <h5 className={styles.cardTitle}>Record Actions</h5>
-        <Stack direction="column" gap={2}>
-          <HorizontalGroup justify="space-between" align="center" wrap>
-            <HorizontalGroup spacing="sm" wrap>
+
+        <div className={styles.controlsContainer}>
+          <div className={styles.controlsRow}>
+            <div className={styles.controlButtons}>
               <Button
                 variant={recordingState === 'idle' ? 'primary' : 'secondary'}
                 size="sm"
                 onClick={handleStartRecording}
                 disabled={recordingState === 'recording'}
-                className={recordingState === 'recording' ? styles.recordModeActive : ''}
+                icon={isPaused ? 'play' : 'circle'}
               >
-                {recordingState === 'recording' && <span className={styles.recordingDot} />}
-                <Icon name={isPaused ? 'play' : 'circle'} />
-                {isPaused ? 'Resume Recording' : 'Start Recording'}
+                {isPaused ? 'Resume' : 'Start Recording'}
               </Button>
 
               <Button
@@ -152,10 +163,8 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
                 size="sm"
                 onClick={handlePauseRecording}
                 disabled={recordingState !== 'recording'}
-                className={isPaused ? styles.pausedModeActive : ''}
+                icon="pause"
               >
-                {isPaused && <span className={styles.pausedDot} />}
-                <Icon name="pause" />
                 Pause
               </Button>
 
@@ -164,95 +173,79 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
                 size="sm"
                 onClick={handleStopRecording}
                 disabled={recordingState === 'idle'}
+                icon="square-shape"
               >
-                <Icon name="times" />
                 Stop
               </Button>
-            </HorizontalGroup>
-            {recordedSteps.length > 0 && <Badge text={`${recordedSteps.length} steps`} color="blue" />}
-          </HorizontalGroup>
+            </div>
+            {recordedSteps.length > 0 && recordingState === 'idle' && (
+              <Badge text={`${recordedSteps.length} steps recorded`} color="blue" />
+            )}
+          </div>
 
-          {recordingState === 'recording' && (
-            <Alert severity="error" title="">
-              <Icon name="info-circle" size="sm" className={styles.alertIcon} />
-              Click elements to record a sequence
-            </Alert>
+          {recordingState === 'idle' && recordedSteps.length === 0 && (
+            <div className={styles.emptyState}>Click &quot;Start Recording&quot; to begin capturing actions</div>
           )}
 
-          {isPaused && (
-            <Alert severity="warning" title="">
-              <Icon name="pause" size="sm" className={styles.alertIcon} />
-              Paused. Click &quot;Resume&quot; to continue capturing.
-            </Alert>
-          )}
-
-          {isEditMode && recordedSteps.length === 0 && (
+          {isEditMode && recordedSteps.length === 0 && recordingState === 'idle' && (
             <div className={styles.emptyState}>
               Editing existing multistep. Record new actions to replace existing internal spans.
             </div>
           )}
+        </div>
 
-          {recordedSteps.length > 0 ? (
-            <>
-              <label className={styles.stepsLabel}>Recorded Steps</label>
-              <div className={styles.stepsContainer}>
-                {recordedSteps.map((step, index) => (
-                  <div key={`${step.selector}-${step.action}-${index}`} className={styles.stepItem}>
-                    <Badge text={String(index + 1)} color="blue" className={styles.stepBadge} />
-                    <div className={styles.stepContent}>
-                      <div className={styles.stepDescription}>
-                        {step.description}
-                        {step.isUnique === false && (
-                          <Icon
-                            name="exclamation-triangle"
-                            size="sm"
-                            style={{
-                              marginLeft: '4px',
-                              color: 'var(--grafana-colors-warning-text)',
-                              verticalAlign: 'middle',
-                            }}
-                            title={`Non-unique selector (${step.matchCount} matches)`}
-                          />
-                        )}
-                      </div>
-                      <code className={styles.stepCode}>
-                        {step.action}|{step.selector}|{step.value || ''}
-                      </code>
-                      {(step.contextStrategy || step.isUnique === false) && (
-                        <HorizontalGroup spacing="xs" wrap className={styles.stepBadges}>
-                          {step.contextStrategy && <Badge text={step.contextStrategy} color="purple" />}
-                          {step.isUnique === false && <Badge text={`${step.matchCount} matches`} color="orange" />}
-                        </HorizontalGroup>
+        {/* Recorded steps list */}
+        {recordedSteps.length > 0 && (
+          <>
+            <label className={styles.stepsLabel}>Recorded Steps</label>
+            <div className={styles.stepsContainer}>
+              {recordedSteps.map((step, index) => (
+                <div key={`${step.selector}-${step.action}-${index}`} className={styles.stepItem}>
+                  <Badge text={String(index + 1)} color="blue" className={styles.stepBadge} />
+                  <div className={styles.stepContent}>
+                    <div className={styles.stepDescription}>
+                      {step.description}
+                      {step.isUnique === false && (
+                        <Icon
+                          name="exclamation-triangle"
+                          size="sm"
+                          style={{
+                            marginLeft: '4px',
+                            color: 'var(--grafana-colors-warning-text)',
+                            verticalAlign: 'middle',
+                          }}
+                          title={`Non-unique selector (${step.matchCount} matches)`}
+                        />
                       )}
                     </div>
-                    <Button
-                      variant="secondary"
-                      size="xs"
-                      onClick={() => handleDeleteStep(index)}
-                      icon="trash-alt"
-                      aria-label="Delete step"
-                    />
+                    <code className={styles.stepCode}>
+                      {step.action}|{step.selector}|{step.value || ''}
+                    </code>
+                    {(step.contextStrategy || step.isUnique === false) && (
+                      <HorizontalGroup spacing="xs" wrap className={styles.stepBadges}>
+                        {step.contextStrategy && <Badge text={step.contextStrategy} color="purple" />}
+                        {step.isUnique === false && <Badge text={`${step.matchCount} matches`} color="orange" />}
+                      </HorizontalGroup>
+                    )}
                   </div>
-                ))}
-              </div>
-
-              <HorizontalGroup spacing="sm" className={styles.clearButtonContainer}>
-                <Button variant="secondary" size="sm" onClick={handleClearRecording}>
-                  <Icon name="trash-alt" />
-                  Clear All
-                </Button>
-              </HorizontalGroup>
-            </>
-          ) : (
-            <div className={styles.emptyState}>
-              {recordingState === 'recording'
-                ? 'Click elements in Grafana to record actions...'
-                : recordingState === 'paused'
-                  ? 'Recording paused. Click "Resume Recording" to continue.'
-                  : 'Click "Start Recording" to capture a sequence of actions'}
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    onClick={() => handleDeleteStep(index)}
+                    icon="trash-alt"
+                    aria-label="Delete step"
+                  />
+                </div>
+              ))}
             </div>
-          )}
-        </Stack>
+
+            <HorizontalGroup spacing="sm" className={styles.clearButtonContainer}>
+              <Button variant="secondary" size="sm" onClick={handleClearRecording} icon="trash-alt">
+                Clear All
+              </Button>
+            </HorizontalGroup>
+          </>
+        )}
 
         {/* Requirements field */}
         <Field

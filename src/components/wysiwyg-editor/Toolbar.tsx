@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Button, useStyles2 } from '@grafana/ui';
+import React from 'react';
+import { Button, IconButton, useStyles2, Menu, Dropdown } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { Editor } from '@tiptap/react';
@@ -24,57 +24,41 @@ const getStyles = (theme: GrafanaTheme2) => ({
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
     background: theme.colors.background.secondary,
+    alignItems: 'center',
   }),
   buttonGroup: css({
     display: 'flex',
     gap: theme.spacing(0.5),
+    alignItems: 'center',
   }),
   divider: css({
     width: '1px',
+    height: '24px',
     background: theme.colors.border.weak,
+    alignSelf: 'center',
   }),
   dropdownWrapper: css({
     position: 'relative',
   }),
-  dropdownMenu: css({
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    marginTop: theme.spacing(0.5),
-    minWidth: '160px',
-    background: theme.colors.background.primary,
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
-    boxShadow: theme.shadows.z3,
-    zIndex: 1000,
-    padding: theme.spacing(0.5),
-  }),
-  dropdownMenuItem: css({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    padding: `${theme.spacing(0.75)} ${theme.spacing(1)}`,
-    border: 'none',
-    background: 'transparent',
-    cursor: 'pointer',
-    borderRadius: theme.shape.radius.default,
-    fontSize: theme.typography.body.fontSize,
-    color: theme.colors.text.primary,
-    '&:hover': {
-      background: theme.colors.action.hover,
-    },
-  }),
-  dropdownMenuItemActive: css({
-    fontWeight: theme.typography.fontWeightMedium,
-  }),
-  dropdownCheckmark: css({
-    marginLeft: theme.spacing(1),
-    color: theme.colors.primary.text,
-  }),
   resetButtonWrapper: css({
     marginLeft: 'auto',
     display: 'flex',
+  }),
+  // Text formatting buttons need consistent sizing
+  formatButton: css({
+    minWidth: '32px',
+    height: '32px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+  }),
+  formatButtonActive: css({
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    '&:hover': {
+      backgroundColor: theme.colors.primary.shade,
+    },
   }),
 });
 
@@ -96,27 +80,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onReset,
 }) => {
   const styles = useStyles2(getStyles);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const dropdownWrapperRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownWrapperRef.current && !dropdownWrapperRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    };
-
-    if (isDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-
-    return undefined;
-  }, [isDropdownOpen]);
 
   if (!editor) {
     return null;
@@ -133,119 +96,109 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     if (editor.isActive('heading', { level: 3 })) {
       return 'Heading 3';
     }
-    return 'Normal text'; // paragraph is default
+    return 'Normal text';
   };
-
-  // Style options for dropdown
-  const styleOptions = [
-    { label: 'Normal text', action: () => editor.chain().focus().setParagraph().run() },
-    { label: 'Heading 1', action: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
-    { label: 'Heading 2', action: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
-    { label: 'Heading 3', action: () => editor.chain().focus().toggleHeading({ level: 3 }).run() },
-  ];
 
   const currentStyle = getCurrentStyle();
-  const isStyleActive = (label: string): boolean => {
-    return label === currentStyle;
-  };
 
-  const handleStyleSelect = (action: () => void) => {
-    action();
-    setIsDropdownOpen(false);
-  };
+  // Build menu for text style dropdown using Grafana Menu
+  const renderStyleMenu = () => (
+    <Menu>
+      <Menu.Item
+        label="Normal text"
+        icon={currentStyle === 'Normal text' ? 'check' : undefined}
+        onClick={() => editor.chain().focus().setParagraph().run()}
+      />
+      <Menu.Item
+        label="Heading 1"
+        icon={currentStyle === 'Heading 1' ? 'check' : undefined}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+      />
+      <Menu.Item
+        label="Heading 2"
+        icon={currentStyle === 'Heading 2' ? 'check' : undefined}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+      />
+      <Menu.Item
+        label="Heading 3"
+        icon={currentStyle === 'Heading 3' ? 'check' : undefined}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+      />
+    </Menu>
+  );
 
   return (
     <div className={styles.toolbar}>
       {/* Undo/Redo */}
       <div className={styles.buttonGroup}>
-        <Button
-          variant="secondary"
-          size="sm"
-          tooltip="Undo"
+        <IconButton
+          name="history-alt"
+          tooltip="Undo (Ctrl+Z)"
           onClick={() => editor.chain().focus().undo().run()}
           disabled={!editor.can().undo()}
-        >
-          ↶
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          tooltip="Redo"
+          size="md"
+          aria-label="Undo"
+        />
+        <IconButton
+          name="repeat"
+          tooltip="Redo (Ctrl+Y)"
           onClick={() => editor.chain().focus().redo().run()}
           disabled={!editor.can().redo()}
-        >
-          ↷
-        </Button>
+          size="md"
+          aria-label="Redo"
+        />
       </div>
 
       <div className={styles.divider} />
 
-      {/* Heading Style Dropdown */}
-      <div ref={dropdownWrapperRef} className={styles.dropdownWrapper}>
-        <Button
-          variant="secondary"
-          size="sm"
-          tooltip="Text Style"
-          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          icon={isDropdownOpen ? 'angle-up' : 'angle-down'}
-        >
+      {/* Heading Style Dropdown - using Grafana Dropdown with Menu */}
+      <Dropdown overlay={renderStyleMenu} placement="bottom-start">
+        <Button variant="secondary" size="sm" icon="angle-down">
           {currentStyle}
         </Button>
-        {isDropdownOpen && (
-          <div ref={dropdownRef} className={styles.dropdownMenu}>
-            {styleOptions.map((option) => (
-              <button
-                key={option.label}
-                className={`${styles.dropdownMenuItem} ${isStyleActive(option.label) ? styles.dropdownMenuItemActive : ''}`}
-                onClick={() => handleStyleSelect(option.action)}
-              >
-                <span>{option.label}</span>
-                {isStyleActive(option.label) && <span className={styles.dropdownCheckmark}>✓</span>}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      </Dropdown>
 
       <div className={styles.divider} />
 
       {/* Text Formatting */}
       <div className={styles.buttonGroup}>
-        <Button
-          variant={editor.isActive('bold') ? 'primary' : 'secondary'}
-          size="sm"
-          tooltip="Bold"
+        <IconButton
+          name="font"
+          tooltip="Bold (Ctrl+B)"
           onClick={() => editor.chain().focus().toggleBold().run()}
-        >
-          <strong>B</strong>
-        </Button>
-        <Button
-          variant={editor.isActive('code') ? 'primary' : 'secondary'}
-          size="sm"
-          tooltip="Code"
+          variant={editor.isActive('bold') ? 'primary' : 'secondary'}
+          size="md"
+          aria-label="Bold"
+        />
+        <IconButton
+          name="brackets-curly"
+          tooltip="Code (Ctrl+`)"
           onClick={() => editor.chain().focus().toggleCode().run()}
-        >
-          {'<>'}
-        </Button>
+          variant={editor.isActive('code') ? 'primary' : 'secondary'}
+          size="md"
+          aria-label="Code"
+        />
       </div>
 
       <div className={styles.divider} />
 
       {/* Lists */}
       <div className={styles.buttonGroup}>
-        <Button
-          icon="list-ul"
-          variant={editor.isActive('bulletList') ? 'primary' : 'secondary'}
-          size="sm"
+        <IconButton
+          name="list-ul"
           tooltip="Bullet List"
           onClick={() => editor.chain().focus().toggleBulletList().run()}
+          variant={editor.isActive('bulletList') ? 'primary' : 'secondary'}
+          size="md"
+          aria-label="Bullet List"
         />
-        <Button
-          icon="list-ol"
-          variant={editor.isActive('orderedList') ? 'primary' : 'secondary'}
-          size="sm"
+        <IconButton
+          name="list-ol"
           tooltip="Ordered List"
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          variant={editor.isActive('orderedList') ? 'primary' : 'secondary'}
+          size="md"
+          aria-label="Ordered List"
         />
       </div>
 
@@ -268,21 +221,21 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Action Buttons (Clear Formatting + Copy/Download/Test) */}
       <div className={styles.buttonGroup}>
-        <Button
-          icon="trash-alt"
-          variant="secondary"
-          size="sm"
+        <IconButton
+          name="trash-alt"
           tooltip="Clear Formatting"
           onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
+          size="md"
+          aria-label="Clear Formatting"
         />
-        <Button icon="copy" variant="secondary" size="sm" onClick={onCopy} tooltip="Copy"></Button>
-        <Button icon="download-alt" variant="secondary" size="sm" onClick={onDownload} tooltip="Download"></Button>
-        <Button icon="play" variant="primary" size="sm" onClick={onTest} tooltip="Test"></Button>
+        <IconButton name="copy" tooltip="Copy HTML" onClick={onCopy} size="md" aria-label="Copy" />
+        <IconButton name="download-alt" tooltip="Download" onClick={onDownload} size="md" aria-label="Download" />
+        <IconButton name="play" tooltip="Test Guide" onClick={onTest} variant="primary" size="md" aria-label="Test" />
       </div>
 
       {/* Reset button - right-aligned with spacing */}
       <div className={styles.resetButtonWrapper}>
-        <Button icon="arrow-from-right" variant="secondary" size="sm" onClick={onReset} tooltip="Reset"></Button>
+        <IconButton name="times" tooltip="Reset Editor" onClick={onReset} size="md" aria-label="Reset" />
       </div>
     </div>
   );

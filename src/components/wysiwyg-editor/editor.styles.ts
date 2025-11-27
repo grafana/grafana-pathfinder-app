@@ -197,6 +197,77 @@ export const getSharedPanelStyles = (theme: GrafanaTheme2) => ({
  * Styles for multistep action form recorder UI
  */
 export const getMultistepFormStyles = (theme: GrafanaTheme2) => ({
+  // Recording status banner - prominent indicator at top of section
+  recordingBanner: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1.5),
+    borderRadius: theme.shape.radius.default,
+    marginBottom: theme.spacing(2),
+    backgroundColor: theme.colors.error.transparent,
+    border: `2px solid ${theme.colors.error.border}`,
+    animation: 'recording-pulse 2s ease-in-out infinite',
+    '@keyframes recording-pulse': {
+      '0%, 100%': {
+        borderColor: theme.colors.error.border,
+        boxShadow: `0 0 0 0 ${theme.colors.error.main}00`,
+      },
+      '50%': {
+        borderColor: theme.colors.error.main,
+        boxShadow: `0 0 8px 2px ${theme.colors.error.main}40`,
+      },
+    },
+  }),
+  recordingBannerPaused: css({
+    backgroundColor: theme.colors.warning.transparent,
+    border: `2px solid ${theme.colors.warning.border}`,
+    animation: 'none',
+  }),
+  recordingBannerText: css({
+    flex: 1,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+  }),
+  recordingBannerDot: css({
+    width: '12px',
+    height: '12px',
+    borderRadius: '50%',
+    backgroundColor: theme.colors.error.main,
+    animation: 'blink-dot 1s ease-in-out infinite',
+    '@keyframes blink-dot': {
+      '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+      '50%': { opacity: 0.5, transform: 'scale(0.8)' },
+    },
+  }),
+  recordingBannerDotPaused: css({
+    backgroundColor: theme.colors.warning.main,
+    animation: 'none',
+  }),
+
+  // Control buttons container
+  controlsContainer: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1.5),
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  }),
+  controlsRow: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1),
+  }),
+  controlButtons: css({
+    display: 'flex',
+    gap: theme.spacing(0.5),
+  }),
+
   recordModeActive: css({
     animation: 'pulse 2s ease-in-out infinite',
     '@keyframes pulse': {

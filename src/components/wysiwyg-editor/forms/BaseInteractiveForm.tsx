@@ -1,10 +1,61 @@
 import React, { useState, useEffect } from 'react';
-import { Field, Input, Checkbox, Button } from '@grafana/ui';
+import { Field, Input, Checkbox, Button, Icon, useStyles2 } from '@grafana/ui';
+import { GrafanaTheme2 } from '@grafana/data';
+import { css } from '@emotion/css';
 import { type InteractiveFormProps } from '../types';
 import { DATA_ATTRIBUTES } from '../../../constants/interactive-config';
 import { validateFormField } from '../services/validation';
 import { useSelectorCapture } from '../devtools/selector-capture.hook';
 import { InteractiveFormShell, CommonRequirementsButtons } from './InteractiveFormShell';
+
+const getSelectorCaptureStyles = (theme: GrafanaTheme2) => ({
+  selectorRow: css({
+    display: 'flex',
+    gap: theme.spacing(1),
+    alignItems: 'flex-start',
+  }),
+  captureButton: css({
+    flexShrink: 0,
+    minWidth: '40px',
+    height: '32px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(0.5),
+  }),
+  captureButtonActive: css({
+    animation: 'pulse-capture 1.5s ease-in-out infinite',
+    '@keyframes pulse-capture': {
+      '0%, 100%': { boxShadow: `0 0 0 0 ${theme.colors.primary.main}40` },
+      '50%': { boxShadow: `0 0 0 4px ${theme.colors.primary.main}20` },
+    },
+  }),
+  inputWrapper: css({
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+  }),
+  captureIndicator: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.primary.text,
+    marginTop: theme.spacing(0.5),
+  }),
+  pulsingDot: css({
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
+    backgroundColor: theme.colors.primary.main,
+    animation: 'pulse-dot 1s ease-in-out infinite',
+    '@keyframes pulse-dot': {
+      '0%, 100%': { opacity: 1 },
+      '50%': { opacity: 0.4 },
+    },
+  }),
+});
 
 export interface FormField {
   id: string;
@@ -38,6 +89,8 @@ interface BaseInteractiveFormProps extends InteractiveFormProps {
  * Eliminates duplication across form components by providing a common structure
  */
 const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitchType }: BaseInteractiveFormProps) => {
+  const captureStyles = useStyles2(getSelectorCaptureStyles);
+
   // Initialize state based on field configuration
   const [values, setValues] = useState<Record<string, any>>(() => {
     const initial: Record<string, any> = {};
@@ -161,7 +214,7 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
       >
         <>
           {isSelectorField && (
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+            <div className={captureStyles.selectorRow}>
               <Button
                 variant={isActive ? 'primary' : 'secondary'}
                 onClick={() => {
@@ -174,24 +227,32 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
                   }
                 }}
                 disabled={isSelectorCaptureDisabled}
-                title={
+                tooltip={
                   isSelectorCaptureDisabled
                     ? field.selectorCaptureDisabledTooltip || 'This field expects button text, not a DOM selector'
                     : isActive
                       ? 'Click an element to capture its selector'
                       : 'Capture selector from page'
                 }
-                style={{ flexShrink: 0, minWidth: 'auto', padding: '4px 8px' }}
+                className={`${captureStyles.captureButton} ${isActive ? captureStyles.captureButtonActive : ''}`}
+                aria-label="Capture selector"
               >
-                🎯
+                <Icon name="crosshair" />
               </Button>
-              <Input
-                value={values[field.id] || ''}
-                onChange={(e) => handleChange(field.id, e.currentTarget.value)}
-                placeholder={field.placeholder}
-                autoFocus={field.autoFocus}
-                style={{ flex: 1 }}
-              />
+              <div className={captureStyles.inputWrapper}>
+                <Input
+                  value={values[field.id] || ''}
+                  onChange={(e) => handleChange(field.id, e.currentTarget.value)}
+                  placeholder={field.placeholder}
+                  autoFocus={field.autoFocus}
+                />
+                {isActive && (
+                  <div className={captureStyles.captureIndicator}>
+                    <span className={captureStyles.pulsingDot} />
+                    <span>Capture mode active - click any element</span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {!isSelectorField && (

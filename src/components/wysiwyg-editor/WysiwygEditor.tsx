@@ -8,6 +8,7 @@ import { css } from '@emotion/css';
 import Toolbar from './Toolbar';
 import FormPanel from './FormPanel';
 import CommentDialog from './CommentDialog';
+import BubbleMenuBar from './BubbleMenuBar';
 
 // Hooks
 import { useEditState } from './hooks/useEditState';
@@ -122,6 +123,8 @@ export const WysiwygEditor: React.FC = () => {
 
         <div className={sharedStyles.content}>
           <EditorContent editor={editor} />
+          {/* Floating bubble menu for text selection formatting */}
+          <BubbleMenuBar editor={editor} />
         </div>
       </div>
 
