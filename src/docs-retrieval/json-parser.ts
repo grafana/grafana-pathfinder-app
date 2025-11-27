@@ -6,7 +6,7 @@
  */
 
 import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from './content.types';
-import { sanitizeDocumentationHTML } from '../security';
+import { parseHTMLToComponents } from './html-parser';
 import type {
   JsonGuide,
   JsonBlock,
@@ -143,7 +143,7 @@ function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: s
     case 'markdown':
       return convertMarkdownBlock(block, path);
     case 'html':
-      return convertHtmlBlock(block, path);
+      return convertHtmlBlock(block, path, baseUrl);
     case 'section':
       return convertSectionBlock(block, path, baseUrl);
     case 'interactive':
@@ -407,30 +407,55 @@ function convertMarkdownBlock(block: JsonMarkdownBlock, path: string): Conversio
   };
 }
 
-function convertHtmlBlock(block: JsonHtmlBlock, path: string): ConversionResult {
-  // SECURITY: Sanitize HTML content first
-  const sanitized = sanitizeDocumentationHTML(block.content);
-
-  // Parse sanitized HTML into a single ParsedElement
-  // Wrap in a div and recursively convert all children
+function convertHtmlBlock(block: JsonHtmlBlock, path: string, baseUrl?: string): ConversionResult {
+  // Use the full HTML parser to support interactive elements, code blocks, etc.
+  // The HTML parser handles sanitization internally via DOMPurify
+  // Pass baseUrl so the parser knows interactive content is from a trusted source
   try {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(`<div class="html-block">${sanitized}</div>`, 'text/html');
-    const root = doc.body.firstElementChild;
+    const parseResult = parseHTMLToComponents(block.content, baseUrl);
 
-    if (!root) {
+    if (!parseResult.isValid || !parseResult.data) {
       return {
         element: null,
-        warning: `Failed to parse HTML block at ${path}`,
+        warning: `Failed to parse HTML block at ${path}: ${parseResult.errors?.map((e) => e.message).join(', ') || 'Unknown error'}`,
       };
     }
 
-    // Convert the root div with all its contents
-    const element = convertDomNodeToParsedElement(root);
+    const elements = parseResult.data.elements;
 
+    // If no elements, return null
+    if (elements.length === 0) {
+      return {
+        element: null,
+        warning: `Empty HTML block at ${path}`,
+      };
+    }
+
+    // If only one element, return it directly
+    if (elements.length === 1) {
+      return {
+        element: elements[0],
+        // Only show migration warning if no interactive elements detected
+        warning: parseResult.data.hasInteractiveElements
+          ? undefined
+          : 'HTML blocks should be migrated to markdown/JSON blocks for better maintainability',
+        hasInteractive: parseResult.data.hasInteractiveElements,
+        hasCode: parseResult.data.hasCodeBlocks,
+      };
+    }
+
+    // Wrap multiple elements in a div
     return {
-      element,
-      warning: 'HTML blocks should be migrated to markdown for better security and maintainability',
+      element: {
+        type: 'div',
+        props: { className: 'html-block' },
+        children: elements,
+      },
+      warning: parseResult.data.hasInteractiveElements
+        ? undefined
+        : 'HTML blocks should be migrated to markdown/JSON blocks for better maintainability',
+      hasInteractive: parseResult.data.hasInteractiveElements,
+      hasCode: parseResult.data.hasCodeBlocks,
     };
   } catch (e) {
     return {
@@ -438,84 +463,6 @@ function convertHtmlBlock(block: JsonHtmlBlock, path: string): ConversionResult 
       warning: `Failed to parse HTML block at ${path}: ${e instanceof Error ? e.message : 'Unknown error'}`,
     };
   }
-}
-
-/**
- * Recursively convert a DOM node and all its children to a ParsedElement.
- */
-function convertDomNodeToParsedElement(node: Element, parentTag?: string): ParsedElement {
-  const tagName = node.tagName.toLowerCase();
-
-  // Handle <pre> elements - convert to code-block for consistent styling
-  if (tagName === 'pre') {
-    const codeEl = node.querySelector('code');
-    const code = codeEl ? codeEl.textContent : node.textContent;
-
-    // Try to detect language from class names
-    const languageMatch =
-      (node.className || '').match(/language-([^\s"]+)/) ||
-      (codeEl?.className || '').match(/language-([^\s"]+)/);
-
-    return {
-      type: 'code-block',
-      props: {
-        code: code?.trim() ?? '',
-        language: languageMatch ? languageMatch[1] : undefined,
-        showCopy: true,
-        inline: false,
-      },
-      children: [],
-    };
-  }
-
-  // Handle inline <code> elements (not inside pre)
-  if (tagName === 'code' && parentTag !== 'pre') {
-    const code = node.textContent;
-    const languageMatch = (node.className || '').match(/language-([^\s"]+)/);
-
-    return {
-      type: 'code-block',
-      props: {
-        code: code?.trim() ?? '',
-        language: languageMatch ? languageMatch[1] : undefined,
-        showCopy: true,
-        inline: true,
-      },
-      children: [],
-    };
-  }
-
-  const props: Record<string, string> = {};
-
-  // Convert attributes to props
-  for (const attr of Array.from(node.attributes)) {
-    let propName = attr.name;
-    if (propName === 'class') {
-      propName = 'className';
-    } else if (propName === 'for') {
-      propName = 'htmlFor';
-    }
-    props[propName] = attr.value;
-  }
-
-  // Convert children (both text and elements)
-  const children: Array<ParsedElement | string> = [];
-  for (const child of Array.from(node.childNodes)) {
-    if (child.nodeType === Node.TEXT_NODE) {
-      const text = child.textContent || '';
-      if (text) {
-        children.push(text);
-      }
-    } else if (child.nodeType === Node.ELEMENT_NODE) {
-      children.push(convertDomNodeToParsedElement(child as Element, tagName));
-    }
-  }
-
-  return {
-    type: tagName,
-    props,
-    children,
-  };
 }
 
 function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: string): ConversionResult {
