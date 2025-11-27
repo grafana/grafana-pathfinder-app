@@ -166,7 +166,7 @@ function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: s
 
 /**
  * Convert markdown content to ParsedElement children.
- * Handles basic markdown syntax: headings, bold, italic, code, links, lists, code blocks.
+ * Handles basic markdown syntax: headings, bold, italic, code, links, lists, code blocks, tables.
  */
 function parseMarkdownToElements(content: string): ParsedElement[] {
   const elements: ParsedElement[] = [];
@@ -176,6 +176,9 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
   let inCodeBlock = false;
   let codeBlockLanguage = '';
   let codeBlockLines: string[] = [];
+  let inTable = false;
+  let tableHeaders: string[] = [];
+  let tableRows: string[][] = [];
 
   const flushList = () => {
     if (currentList && currentListItems.length > 0) {
@@ -204,6 +207,78 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
     }
   };
 
+  const flushTable = () => {
+    if (tableHeaders.length > 0 || tableRows.length > 0) {
+      const headerCells: ParsedElement[] = tableHeaders.map((cell) => ({
+        type: 'th',
+        props: {},
+        children: parseInlineMarkdown(cell.trim()),
+      }));
+
+      const bodyRows: ParsedElement[] = tableRows.map((row) => ({
+        type: 'tr',
+        props: {},
+        children: row.map((cell) => ({
+          type: 'td',
+          props: {},
+          children: parseInlineMarkdown(cell.trim()),
+        })),
+      }));
+
+      const tableElement: ParsedElement = {
+        type: 'table',
+        props: {},
+        children: [
+          {
+            type: 'thead',
+            props: {},
+            children: [
+              {
+                type: 'tr',
+                props: {},
+                children: headerCells,
+              },
+            ],
+          },
+          {
+            type: 'tbody',
+            props: {},
+            children: bodyRows,
+          },
+        ],
+      };
+
+      elements.push(tableElement);
+      tableHeaders = [];
+      tableRows = [];
+      inTable = false;
+    }
+  };
+
+  // Helper to parse table row cells
+  const parseTableRow = (line: string): string[] => {
+    // Remove leading/trailing pipes and split by pipe
+    const trimmed = line.trim();
+    const withoutLeadingPipe = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
+    const withoutTrailingPipe = withoutLeadingPipe.endsWith('|')
+      ? withoutLeadingPipe.slice(0, -1)
+      : withoutLeadingPipe;
+    return withoutTrailingPipe.split('|');
+  };
+
+  // Helper to check if a line is a table separator (|---|---|)
+  const isTableSeparator = (line: string): boolean => {
+    const trimmed = line.trim();
+    // Must contain | and only |, -, :, and spaces
+    return trimmed.includes('|') && /^[\s|:\-]+$/.test(trimmed);
+  };
+
+  // Helper to check if a line looks like a table row
+  const isTableRow = (line: string): boolean => {
+    const trimmed = line.trim();
+    return trimmed.includes('|') && !isTableSeparator(trimmed);
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmedLine = line.trim();
@@ -217,6 +292,7 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
       } else {
         // Start of code block
         flushList();
+        flushTable();
         inCodeBlock = true;
         codeBlockLanguage = trimmedLine.slice(3).trim();
       }
@@ -229,9 +305,36 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
       continue;
     }
 
-    // Skip empty lines (but flush lists)
+    // Table handling
+    if (isTableRow(trimmedLine)) {
+      flushList();
+
+      if (!inTable) {
+        // This could be the header row - check if next line is separator
+        const nextLine = lines[i + 1]?.trim() || '';
+        if (isTableSeparator(nextLine)) {
+          // Start of table - this is the header
+          inTable = true;
+          tableHeaders = parseTableRow(trimmedLine);
+          i++; // Skip the separator line
+          continue;
+        }
+      }
+
+      if (inTable) {
+        // This is a body row
+        tableRows.push(parseTableRow(trimmedLine));
+        continue;
+      }
+    } else if (inTable) {
+      // End of table (non-table line encountered)
+      flushTable();
+    }
+
+    // Skip empty lines (but flush lists and tables)
     if (trimmedLine === '') {
       flushList();
+      flushTable();
       continue;
     }
 
@@ -239,6 +342,7 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
     const headingMatch = trimmedLine.match(/^(#{1,6})\s+(.+)$/);
     if (headingMatch) {
       flushList();
+      flushTable();
       const level = headingMatch[1].length;
       const text = headingMatch[2];
       elements.push({
@@ -251,6 +355,7 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
 
     // Unordered list items
     if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
+      flushTable();
       if (!currentList) {
         currentList = { type: 'ul', props: {}, children: [] };
       }
@@ -265,6 +370,7 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
     // Ordered list items
     const orderedMatch = trimmedLine.match(/^(\d+)\.\s+(.+)$/);
     if (orderedMatch) {
+      flushTable();
       if (!currentList || currentList.type !== 'ol') {
         flushList();
         currentList = { type: 'ol', props: {}, children: [] };
@@ -279,6 +385,7 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
 
     // Regular paragraph
     flushList();
+    flushTable();
     elements.push({
       type: 'p',
       props: {},
@@ -286,9 +393,10 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
     });
   }
 
-  // Flush any remaining list or code block
+  // Flush any remaining list, code block, or table
   flushList();
   flushCodeBlock();
+  flushTable();
 
   return elements;
 }

@@ -4,7 +4,7 @@
   "blocks": [
     {
       "type": "markdown",
-      "content": "# Welcome to Grafana (JSON)!\n\nWelcome to your Grafana journey! In this interactive guide, we'll take you on a tour of key locations in Grafana. By the end, you'll be familiar with:\n\n- Navigating Grafana's main sections\n- Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting\n- Finding your way around the interface"
+      "content": "# Welcome to Grafana!\n\nWelcome to your Grafana journey! In this interactive guide, we'll take you on a tour of key locations in Grafana. By the end, you'll be familiar with:\n\n- Navigating Grafana's main sections\n- Understanding the key areas: Dashboards, Data Sources, Explore, and Alerting\n- Finding your way around the interface"
     },
     {
       "type": "markdown",
@@ -76,8 +76,7 @@
     },
     {
       "type": "markdown",
-      "content": "## Congratulations!\n\nAmazing work! You've completed your welcome tour of Grafana. You now know:\n\n- Where to find Dashboards, Explore, Alerting, Connections, and Administration\n- How to navigate around Grafana's main interface\n- The key areas you'll be working with\n\n**You're now ready to explore Grafana!** Try visiting each section to get familiar with the different features available."
+      "content": "## 🎉 Congratulations!\n\nAmazing work! You've completed your welcome tour of Grafana. You now know:\n\n- ✅ Where to find Dashboards, Explore, Alerting, Connections, and Administration\n- ✅ How to navigate around Grafana's main interface\n- ✅ The key areas you'll be working with\n\n**You're now ready to explore Grafana!** Try visiting each section to get familiar with the different features available."
     }
   ]
 }
-
