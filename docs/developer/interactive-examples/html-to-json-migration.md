@@ -22,15 +22,15 @@ You don't need to migrate everything at once. The JSON format supports `html` bl
 The fastest migration is wrapping your entire HTML in a JSON guide:
 
 **Before (HTML):**
+
 ```html
 <h1>Welcome to Grafana</h1>
 <p>This guide will show you around.</p>
-<div data-targetaction="highlight" data-reftarget="[href='/dashboards']">
-  Click Dashboards to continue.
-</div>
+<div data-targetaction="highlight" data-reftarget="[href='/dashboards']">Click Dashboards to continue.</div>
 ```
 
 **After (JSON with HTML block):**
+
 ```json
 {
   "id": "welcome-to-grafana",
@@ -52,17 +52,18 @@ This works because `html` blocks support all existing interactive attributes.
 
 ### Basic Content
 
-| HTML | JSON Block |
-|------|------------|
-| `<h1>`, `<h2>`, etc. | `markdown` with `#`, `##` |
-| `<p>` | `markdown` |
-| `<ul>`, `<ol>` | `markdown` with `-` or `1.` |
-| `<code>` | `markdown` with backticks |
-| `<pre><code>` | `markdown` with fenced code blocks |
-| `<img>` | `image` block |
-| `<iframe>` (YouTube) | `video` block |
+| HTML                 | JSON Block                         |
+| -------------------- | ---------------------------------- |
+| `<h1>`, `<h2>`, etc. | `markdown` with `#`, `##`          |
+| `<p>`                | `markdown`                         |
+| `<ul>`, `<ol>`       | `markdown` with `-` or `1.`        |
+| `<code>`             | `markdown` with backticks          |
+| `<pre><code>`        | `markdown` with fenced code blocks |
+| `<img>`              | `image` block                      |
+| `<iframe>` (YouTube) | `video` block                      |
 
 **HTML:**
+
 ```html
 <h2>Getting Started</h2>
 <p>Welcome to <strong>Grafana</strong>!</p>
@@ -73,6 +74,7 @@ This works because `html` blocks support all existing interactive attributes.
 ```
 
 **JSON:**
+
 ```json
 {
   "type": "markdown",
@@ -83,11 +85,13 @@ This works because `html` blocks support all existing interactive attributes.
 ### Images
 
 **HTML:**
+
 ```html
-<img src="https://example.com/image.png" alt="Screenshot" width="400">
+<img src="https://example.com/image.png" alt="Screenshot" width="400" />
 ```
 
 **JSON:**
+
 ```json
 {
   "type": "image",
@@ -100,26 +104,30 @@ This works because `html` blocks support all existing interactive attributes.
 ### Code Blocks
 
 **HTML:**
+
 ```html
 <pre><code class="language-promql">rate(http_requests_total[5m])</code></pre>
 ```
 
 **JSON (markdown):**
-```json
+
+````json
 {
   "type": "markdown",
   "content": "```promql\nrate(http_requests_total[5m])\n```"
 }
-```
+````
 
 ### Videos
 
 **HTML:**
+
 ```html
 <iframe src="https://www.youtube.com/embed/VIDEO_ID" title="Tutorial"></iframe>
 ```
 
 **JSON:**
+
 ```json
 {
   "type": "video",
@@ -136,19 +144,21 @@ This works because `html` blocks support all existing interactive attributes.
 ### Single Interactive Step
 
 **HTML:**
+
 ```html
-<div data-targetaction="highlight"
-     data-reftarget="a[href='/dashboards']"
-     data-requirements="navmenu-open"
-     data-skippable="true">
+<div
+  data-targetaction="highlight"
+  data-reftarget="a[href='/dashboards']"
+  data-requirements="navmenu-open"
+  data-skippable="true"
+>
   <p>Find the <strong>Dashboards</strong> menu item.</p>
-  <aside data-targetcomment>
-    Dashboards contain your visualization panels.
-  </aside>
+  <aside data-targetcomment>Dashboards contain your visualization panels.</aside>
 </div>
 ```
 
 **JSON:**
+
 ```json
 {
   "type": "interactive",
@@ -163,19 +173,20 @@ This works because `html` blocks support all existing interactive attributes.
 
 ### Attribute Mapping
 
-| HTML Attribute | JSON Field |
-|----------------|------------|
-| `data-targetaction` | `action` |
-| `data-reftarget` | `reftarget` |
-| `data-targetvalue` | `targetvalue` |
-| `data-requirements` | `requirements` (array) |
-| `data-objectives` | `objectives` (array) |
-| `data-skippable="true"` | `skippable: true` |
-| `data-hint` | `hint` |
-| `data-doit="false"` | `showOnly: true` |
-| `<aside data-targetcomment>` | `tooltip` |
+| HTML Attribute               | JSON Field             |
+| ---------------------------- | ---------------------- |
+| `data-targetaction`          | `action`               |
+| `data-reftarget`             | `reftarget`            |
+| `data-targetvalue`           | `targetvalue`          |
+| `data-requirements`          | `requirements` (array) |
+| `data-objectives`            | `objectives` (array)   |
+| `data-skippable="true"`      | `skippable: true`      |
+| `data-hint`                  | `hint`                 |
+| `data-doit="false"`          | `showOnly: true`       |
+| `<aside data-targetcomment>` | `tooltip`              |
 
 **Note:** Requirements in HTML are comma-separated strings; in JSON they're arrays:
+
 - HTML: `data-requirements="navmenu-open, is-admin"`
 - JSON: `"requirements": ["navmenu-open", "is-admin"]`
 
@@ -184,18 +195,16 @@ This works because `html` blocks support all existing interactive attributes.
 Show-only steps only display the "Show me" button—no "Do it" action is required. Use for educational highlighting.
 
 **HTML:**
+
 ```html
-<div data-targetaction="highlight"
-     data-reftarget="div[data-testid='dashboard-panel']"
-     data-doit="false">
+<div data-targetaction="highlight" data-reftarget="div[data-testid='dashboard-panel']" data-doit="false">
   <p>Notice the <strong>metrics panel</strong> displaying your data.</p>
-  <aside data-targetcomment>
-    This panel shows real-time metrics from your Prometheus data source.
-  </aside>
+  <aside data-targetcomment>This panel shows real-time metrics from your Prometheus data source.</aside>
 </div>
 ```
 
 **JSON:**
+
 ```json
 {
   "type": "interactive",
@@ -210,6 +219,7 @@ Show-only steps only display the "Show me" button—no "Do it" action is require
 ### Interactive Sections (Sequences)
 
 **HTML:**
+
 ```html
 <section id="tour" data-targetaction="sequence">
   <h3>Tour of Grafana</h3>
@@ -223,6 +233,7 @@ Show-only steps only display the "Show me" button—no "Do it" action is require
 ```
 
 **JSON:**
+
 ```json
 {
   "type": "section",
@@ -248,6 +259,7 @@ Show-only steps only display the "Show me" button—no "Do it" action is require
 ### Multistep (Internal Actions)
 
 **HTML:**
+
 ```html
 <div data-targetaction="multistep" data-requirements="navmenu-open">
   <p>This will navigate automatically.</p>
@@ -257,6 +269,7 @@ Show-only steps only display the "Show me" button—no "Do it" action is require
 ```
 
 **JSON:**
+
 ```json
 {
   "type": "multistep",
@@ -278,21 +291,17 @@ Show-only steps only display the "Show me" button—no "Do it" action is require
 ### Guided (User-Performed)
 
 **HTML:**
+
 ```html
-<div data-targetaction="guided" 
-     data-step-timeout="30000"
-     data-complete-early="true">
+<div data-targetaction="guided" data-step-timeout="30000" data-complete-early="true">
   <p>Follow along by clicking each element.</p>
-  <div data-guidedaction="highlight" 
-       data-reftarget="[href='/dashboards']"
-       data-targetcomment="Click Dashboards"></div>
-  <div data-guidedaction="highlight"
-       data-reftarget="[aria-label='New']"
-       data-targetcomment="Now click New"></div>
+  <div data-guidedaction="highlight" data-reftarget="[href='/dashboards']" data-targetcomment="Click Dashboards"></div>
+  <div data-guidedaction="highlight" data-reftarget="[aria-label='New']" data-targetcomment="Now click New"></div>
 </div>
 ```
 
 **JSON:**
+
 ```json
 {
   "type": "guided",
@@ -325,24 +334,17 @@ Show-only steps only display the "Show me" button—no "Do it" action is require
 
 <p>Learn to create your first Grafana dashboard.</p>
 
-<img src="https://grafana.com/dashboard-example.png" alt="Dashboard">
+<img src="https://grafana.com/dashboard-example.png" alt="Dashboard" />
 
 <section id="create-dashboard" data-targetaction="sequence">
   <h3>Create a Dashboard</h3>
-  
-  <div data-targetaction="highlight"
-       data-reftarget="a[href='/dashboards']"
-       data-requirements="navmenu-open">
+
+  <div data-targetaction="highlight" data-reftarget="a[href='/dashboards']" data-requirements="navmenu-open">
     <p>Navigate to <strong>Dashboards</strong>.</p>
-    <aside data-targetcomment>
-      The Dashboards section contains all your visualizations.
-    </aside>
+    <aside data-targetcomment>The Dashboards section contains all your visualizations.</aside>
   </div>
-  
-  <div data-targetaction="button"
-       data-reftarget="New"
-       data-requirements="on-page:/dashboards"
-       data-skippable="true">
+
+  <div data-targetaction="button" data-reftarget="New" data-requirements="on-page:/dashboards" data-skippable="true">
     <p>Click <strong>New</strong> to create a dashboard.</p>
   </div>
 </section>
@@ -405,6 +407,7 @@ Show-only steps only display the "Show me" button—no "Do it" action is require
 Update `src/bundled-interactives/index.json`:
 
 **Before (HTML):**
+
 ```json
 {
   "id": "first-dashboard",
@@ -415,6 +418,7 @@ Update `src/bundled-interactives/index.json`:
 ```
 
 **After (JSON):**
+
 ```json
 {
   "id": "first-dashboard",
@@ -486,7 +490,7 @@ Or escape inner quotes:
 
 ```json
 {
-  "type": "html", 
+  "type": "html",
   "content": "<div class=\"container\" data-value=\"test\">Content</div>"
 }
 ```
@@ -498,4 +502,3 @@ Or escape inner quotes:
 - See [json-guide-format.md](./json-guide-format.md) for the complete format reference
 - See [requirements-reference.md](./requirements-reference.md) for available requirements
 - Check `src/bundled-interactives/json-guide-demo.json` for a working example of all block types
-

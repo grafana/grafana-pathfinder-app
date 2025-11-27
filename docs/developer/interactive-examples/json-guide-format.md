@@ -29,12 +29,12 @@ Every JSON guide has three required fields and one optional field:
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | ✅ | Unique identifier for the guide |
-| `title` | string | ✅ | Display title shown in the UI |
-| `blocks` | JsonBlock[] | ✅ | Array of content and interactive blocks |
-| `match` | object | ❌ | Metadata for recommendation matching |
+| Field    | Type        | Required | Description                             |
+| -------- | ----------- | -------- | --------------------------------------- |
+| `id`     | string      | ✅       | Unique identifier for the guide         |
+| `title`  | string      | ✅       | Display title shown in the UI           |
+| `blocks` | JsonBlock[] | ✅       | Array of content and interactive blocks |
+| `match`  | object      | ❌       | Metadata for recommendation matching    |
 
 ## Block Types
 
@@ -44,14 +44,15 @@ Every JSON guide has three required fields and one optional field:
 
 The primary block type for formatted text content.
 
-```json
+````json
 {
   "type": "markdown",
   "content": "# Heading\n\nParagraph with **bold** and *italic* text.\n\n- List item 1\n- List item 2\n\n```promql\nrate(http_requests_total[5m])\n```"
 }
-```
+````
 
 **Supported Markdown Features:**
+
 - Headings (`#`, `##`, `###`, etc.)
 - Bold (`**text**`) and italic (`*text*`)
 - Inline code (`` `code` ``)
@@ -82,6 +83,7 @@ For raw HTML content. Use sparingly—prefer markdown for new content.
 ```
 
 **Notes:**
+
 - HTML is sanitized before rendering (XSS protection)
 - Supports interactive attributes (`data-targetaction`, etc.)
 - Best used for migration from existing HTML guides
@@ -101,12 +103,12 @@ Embed images with optional dimensions.
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `src` | string | ✅ | Image URL |
-| `alt` | string | ❌ | Alt text for accessibility |
-| `width` | number | ❌ | Display width in pixels |
-| `height` | number | ❌ | Display height in pixels |
+| Field    | Type   | Required | Description                |
+| -------- | ------ | -------- | -------------------------- |
+| `src`    | string | ✅       | Image URL                  |
+| `alt`    | string | ❌       | Alt text for accessibility |
+| `width`  | number | ❌       | Display width in pixels    |
+| `height` | number | ❌       | Display height in pixels   |
 
 #### Video Block
 
@@ -121,13 +123,14 @@ Embed YouTube or native HTML5 video.
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `src` | string | ✅ | Video URL (embed URL for YouTube) |
-| `provider` | `"youtube"` \| `"native"` | ❌ | Video provider (default: `"youtube"`) |
-| `title` | string | ❌ | Video title for accessibility |
+| Field      | Type                      | Required | Description                           |
+| ---------- | ------------------------- | -------- | ------------------------------------- |
+| `src`      | string                    | ✅       | Video URL (embed URL for YouTube)     |
+| `provider` | `"youtube"` \| `"native"` | ❌       | Video provider (default: `"youtube"`) |
+| `title`    | string                    | ❌       | Video title for accessibility         |
 
 **YouTube Example:**
+
 ```json
 {
   "type": "video",
@@ -138,6 +141,7 @@ Embed YouTube or native HTML5 video.
 ```
 
 **Native Video Example:**
+
 ```json
 {
   "type": "video",
@@ -169,28 +173,28 @@ A single interactive step with "Show me" and "Do it" buttons.
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `action` | string | ✅ | Action type (see below) |
-| `reftarget` | string | ✅ | CSS selector or button text |
-| `content` | string | ✅ | Markdown description shown to user |
-| `targetvalue` | string | ❌ | Value for `formfill` actions |
-| `tooltip` | string | ❌ | Tooltip shown on highlight (supports markdown) |
-| `requirements` | string[] | ❌ | Conditions that must be met |
-| `objectives` | string[] | ❌ | Objectives marked complete after this step |
-| `skippable` | boolean | ❌ | Allow skipping if requirements fail |
-| `hint` | string | ❌ | Hint shown when step cannot be completed |
-| `showOnly` | boolean | ❌ | Show-only mode: only "Show me" button, no "Do it" |
+| Field          | Type     | Required | Description                                       |
+| -------------- | -------- | -------- | ------------------------------------------------- |
+| `action`       | string   | ✅       | Action type (see below)                           |
+| `reftarget`    | string   | ✅       | CSS selector or button text                       |
+| `content`      | string   | ✅       | Markdown description shown to user                |
+| `targetvalue`  | string   | ❌       | Value for `formfill` actions                      |
+| `tooltip`      | string   | ❌       | Tooltip shown on highlight (supports markdown)    |
+| `requirements` | string[] | ❌       | Conditions that must be met                       |
+| `objectives`   | string[] | ❌       | Objectives marked complete after this step        |
+| `skippable`    | boolean  | ❌       | Allow skipping if requirements fail               |
+| `hint`         | string   | ❌       | Hint shown when step cannot be completed          |
+| `showOnly`     | boolean  | ❌       | Show-only mode: only "Show me" button, no "Do it" |
 
 **Action Types:**
 
-| Action | Description | `reftarget` | `targetvalue` |
-|--------|-------------|-------------|---------------|
-| `highlight` | Highlight an element | CSS selector | — |
-| `button` | Click a button | Button text or selector | — |
-| `formfill` | Enter text in input | CSS selector | Text to enter |
-| `navigate` | Navigate to URL | URL path | — |
-| `hover` | Hover over element | CSS selector | — |
+| Action      | Description          | `reftarget`             | `targetvalue` |
+| ----------- | -------------------- | ----------------------- | ------------- |
+| `highlight` | Highlight an element | CSS selector            | —             |
+| `button`    | Click a button       | Button text or selector | —             |
+| `formfill`  | Enter text in input  | CSS selector            | Text to enter |
+| `navigate`  | Navigate to URL      | URL path                | —             |
+| `hover`     | Hover over element   | CSS selector            | —             |
 
 **Show-Only Mode:**
 
@@ -208,6 +212,7 @@ Use `showOnly: true` to create educational steps that only highlight elements wi
 ```
 
 When `showOnly` is true:
+
 - Only the "Show me" button appears (no "Do it" button)
 - Step completes automatically after showing the element
 - No state changes occur in the application
@@ -241,13 +246,13 @@ Groups related interactive steps into a sequence with "Do Section" functionality
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | ❌ | HTML id for the section |
-| `title` | string | ❌ | Section heading |
-| `blocks` | JsonBlock[] | ✅ | Nested blocks (usually interactive) |
-| `requirements` | string[] | ❌ | Section-level requirements |
-| `objectives` | string[] | ❌ | Objectives for the entire section |
+| Field          | Type        | Required | Description                         |
+| -------------- | ----------- | -------- | ----------------------------------- |
+| `id`           | string      | ❌       | HTML id for the section             |
+| `title`        | string      | ❌       | Section heading                     |
+| `blocks`       | JsonBlock[] | ✅       | Nested blocks (usually interactive) |
+| `requirements` | string[]    | ❌       | Section-level requirements          |
+| `objectives`   | string[]    | ❌       | Objectives for the entire section   |
 
 #### Multistep Block
 
@@ -274,13 +279,13 @@ Executes multiple actions **automatically** when user clicks "Do it".
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `content` | string | ✅ | Description shown to user |
-| `steps` | JsonStep[] | ✅ | Sequence of steps to execute |
-| `requirements` | string[] | ❌ | Requirements for the entire block |
-| `objectives` | string[] | ❌ | Objectives tracked |
-| `skippable` | boolean | ❌ | Allow skipping |
+| Field          | Type       | Required | Description                       |
+| -------------- | ---------- | -------- | --------------------------------- |
+| `content`      | string     | ✅       | Description shown to user         |
+| `steps`        | JsonStep[] | ✅       | Sequence of steps to execute      |
+| `requirements` | string[]   | ❌       | Requirements for the entire block |
+| `objectives`   | string[]   | ❌       | Objectives tracked                |
+| `skippable`    | boolean    | ❌       | Allow skipping                    |
 
 #### Guided Block
 
@@ -300,7 +305,7 @@ Highlights elements and **waits for user** to perform actions.
       "tooltip": "Click Dashboards to continue..."
     },
     {
-      "action": "highlight", 
+      "action": "highlight",
       "reftarget": "button[aria-label='New dashboard']",
       "tooltip": "Now click New to create a dashboard"
     }
@@ -308,15 +313,15 @@ Highlights elements and **waits for user** to perform actions.
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `content` | string | ✅ | Description shown to user |
-| `steps` | JsonStep[] | ✅ | Sequence of steps for user to perform |
-| `stepTimeout` | number | ❌ | Timeout per step in ms (default: 30000) |
-| `completeEarly` | boolean | ❌ | Complete when user performs action early |
-| `requirements` | string[] | ❌ | Requirements for the block |
-| `objectives` | string[] | ❌ | Objectives tracked |
-| `skippable` | boolean | ❌ | Allow skipping |
+| Field           | Type       | Required | Description                              |
+| --------------- | ---------- | -------- | ---------------------------------------- |
+| `content`       | string     | ✅       | Description shown to user                |
+| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform    |
+| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)  |
+| `completeEarly` | boolean    | ❌       | Complete when user performs action early |
+| `requirements`  | string[]   | ❌       | Requirements for the block               |
+| `objectives`    | string[]   | ❌       | Objectives tracked                       |
+| `skippable`     | boolean    | ❌       | Allow skipping                           |
 
 ---
 
@@ -341,13 +346,13 @@ Steps used in `multistep` and `guided` blocks share this structure:
 
 Requirements control when interactive elements are accessible. Common requirements:
 
-| Requirement | Description |
-|-------------|-------------|
-| `navmenu-open` | Navigation menu must be open |
-| `is-admin` | User must have admin role |
-| `is-logged-in` | User must be authenticated |
+| Requirement        | Description                      |
+| ------------------ | -------------------------------- |
+| `navmenu-open`     | Navigation menu must be open     |
+| `is-admin`         | User must have admin role        |
+| `is-logged-in`     | User must be authenticated       |
 | `exists-reftarget` | Target element must exist in DOM |
-| `on-page:/path` | User must be on specific page |
+| `on-page:/path`    | User must be on specific page    |
 
 See [requirements-reference.md](./requirements-reference.md) for the complete list.
 
@@ -388,7 +393,7 @@ See [requirements-reference.md](./requirements-reference.md) for the complete li
       ]
     },
     {
-      "type": "markdown", 
+      "type": "markdown",
       "content": "## Congratulations!\n\nYou've learned the basics of dashboard navigation. Next, try adding panels to your dashboard."
     }
   ]
@@ -407,7 +412,7 @@ To add a JSON guide to the plugin:
 ```json
 {
   "id": "my-guide",
-  "title": "My Guide Title", 
+  "title": "My Guide Title",
   "format": "json",
   "filename": "my-guide.json"
 }
@@ -422,7 +427,7 @@ The guide will appear in the homepage list and can be opened via `bundled:my-gui
 All types are exported from `src/types/json-guide.types.ts`:
 
 ```typescript
-import { 
+import {
   JsonGuide,
   JsonBlock,
   JsonMarkdownBlock,
@@ -433,14 +438,14 @@ import {
   JsonGuidedBlock,
   JsonImageBlock,
   JsonVideoBlock,
-  JsonStep
+  JsonStep,
 } from '../types/json-guide.types';
 ```
 
 Type guards are also available:
 
 ```typescript
-import { 
+import {
   isMarkdownBlock,
   isHtmlBlock,
   isSectionBlock,
@@ -448,7 +453,6 @@ import {
   isMultistepBlock,
   isGuidedBlock,
   isImageBlock,
-  isVideoBlock
+  isVideoBlock,
 } from '../types/json-guide.types';
 ```
-

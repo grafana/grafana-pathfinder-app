@@ -276,4 +276,3 @@ export function isImageBlock(block: JsonBlock): block is JsonImageBlock {
 export function isVideoBlock(block: JsonBlock): block is JsonVideoBlock {
   return block.type === 'video';
 }
-

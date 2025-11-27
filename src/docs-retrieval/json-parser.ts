@@ -260,9 +260,7 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
     // Remove leading/trailing pipes and split by pipe
     const trimmed = line.trim();
     const withoutLeadingPipe = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
-    const withoutTrailingPipe = withoutLeadingPipe.endsWith('|')
-      ? withoutLeadingPipe.slice(0, -1)
-      : withoutLeadingPipe;
+    const withoutTrailingPipe = withoutLeadingPipe.endsWith('|') ? withoutLeadingPipe.slice(0, -1) : withoutLeadingPipe;
     return withoutTrailingPipe.split('|');
   };
 
@@ -406,17 +404,19 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
  * Used for targetComment which expects HTML.
  */
 function markdownToHtml(text: string): string {
-  return text
-    // Bold: **text** or __text__
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    // Italic: *text* or _text_ (but not inside words)
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>')
-    // Inline code: `code`
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Links: [text](url)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  return (
+    text
+      // Bold: **text** or __text__
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')
+      // Italic: *text* or _text_ (but not inside words)
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>')
+      // Inline code: `code`
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      // Links: [text](url)
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+  );
 }
 
 /**
@@ -776,4 +776,3 @@ export function isJsonGuideContent(content: string): boolean {
     return false;
   }
 }
-
