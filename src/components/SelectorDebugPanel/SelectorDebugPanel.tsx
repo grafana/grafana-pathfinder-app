@@ -1,15 +1,15 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Button, Input, Badge, Icon, useStyles2, TextArea, HorizontalGroup, Alert } from '@grafana/ui';
+import { Button, Input, Badge, Icon, useStyles2, TextArea, Stack, Alert, Field } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive-engine';
 import { getDebugPanelStyles } from './debug-panel.styles';
-import { combineStepsIntoMultistep } from '../../utils/devtools/tutorial-exporter';
+import { combineStepsIntoMultistep } from '../wysiwyg-editor/devtools/tutorial-exporter';
 import { URLTester } from 'components/URLTester';
 import { WysiwygEditor } from '../wysiwyg-editor';
-import { useSelectorTester } from '../../utils/devtools/selector-tester.hook';
-import { useStepExecutor } from '../../utils/devtools/step-executor.hook';
-import { useSelectorCapture } from '../../utils/devtools/selector-capture.hook';
-import { useActionRecorder } from '../../utils/devtools/action-recorder.hook';
-import { parseStepString } from '../../utils/devtools/step-parser.util';
+import { useSelectorTester } from '../wysiwyg-editor/devtools/selector-tester.hook';
+import { useStepExecutor } from '../wysiwyg-editor/devtools/step-executor.hook';
+import { useSelectorCapture } from '../wysiwyg-editor/devtools/selector-capture.hook';
+import { useActionRecorder } from '../wysiwyg-editor/devtools/action-recorder.hook';
+import { parseStepString } from '../wysiwyg-editor/devtools/step-parser.util';
 import { DomPathTooltip } from '../DomPathTooltip';
 
 export interface SelectorDebugPanelProps {
@@ -20,13 +20,13 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   const styles = useStyles2(getDebugPanelStyles);
   const { executeInteractiveAction } = useInteractiveElements();
 
-  // Section expansion state
-  const [simpleExpanded, setSimpleExpanded] = useState(false);
-  const [multiStepExpanded, setMultiStepExpanded] = useState(false);
-  const [guidedExpanded, setGuidedExpanded] = useState(false);
+  // Section expansion state - priority sections expanded by default
+  const [recordExpanded, setRecordExpanded] = useState(true); // Priority: expanded by default
+  const [githubExpanded, setGithubExpanded] = useState(true); // Priority: expanded by default
   const [watchExpanded, setWatchExpanded] = useState(false);
-  const [recordExpanded, setRecordExpanded] = useState(false);
-  const [githubExpanded, setGithubExpanded] = useState(false);
+  const [simpleExpanded, setSimpleExpanded] = useState(false);
+  const [guidedExpanded, setGuidedExpanded] = useState(false);
+  const [multiStepExpanded, setMultiStepExpanded] = useState(false);
 
   // Handle leaving dev mode
   const handleLeaveDevMode = useCallback(async () => {
@@ -37,13 +37,13 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       const currentUserIds = globalConfig?.devModeUserIds ?? [];
 
       // Import dynamically to avoid circular dependency
-      const { disableDevModeForUser } = await import('../../utils/dev-mode');
+      const { disableDevModeForUser } = await import('../wysiwyg-editor/dev-mode');
 
       if (currentUserId) {
         await disableDevModeForUser(currentUserId, currentUserIds);
       } else {
         // Fallback: disable for all if can't determine user
-        const { disableDevMode } = await import('../../utils/dev-mode');
+        const { disableDevMode } = await import('../wysiwyg-editor/dev-mode');
         await disableDevMode();
       }
 
@@ -300,8 +300,10 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <Icon name="bug" size="lg" />
-        <Badge text="Dev Mode" color="orange" className={styles.badge} />
+        <Stack direction="row" gap={1} alignItems="center">
+          <Icon name="bug" size="lg" />
+          <Badge text="Dev Mode" color="orange" className={styles.badge} />
+        </Stack>
         <Button variant="secondary" size="sm" onClick={handleLeaveDevMode} icon="times" fill="outline">
           Leave Dev Mode
         </Button>
@@ -309,302 +311,49 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
       <WysiwygEditor />
 
-      {/* Simple Selector Tester */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader} onClick={() => setSimpleExpanded(!simpleExpanded)}>
-          <h4 className={styles.sectionTitle}>Simple Selector Tester</h4>
-          <Icon name={simpleExpanded ? 'angle-up' : 'angle-down'} />
-        </div>
-        {simpleExpanded && (
-          <div className={styles.sectionContent}>
-            <div className={styles.formGroup}>
-              <label className={styles.label}>CSS Selector (supports :contains, :has, :nth-match)</label>
-              <Input
-                className={styles.selectorInput}
-                value={simpleSelector}
-                onChange={(e) => setSimpleSelector(e.currentTarget.value)}
-                placeholder='button[data-testid="save-button"]'
-                disabled={simpleTesting}
-              />
-              {wasStepFormatExtracted && extractedSelector && (
-                <Alert title="" severity="info" style={{ marginTop: '8px', marginBottom: '8px' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <Icon name="info-circle" size="sm" />
-                      <span>
-                        Oops! You pasted a selector in step format. We&apos;ve automatically extracted the selector for
-                        you, but note that other tools might expect plain CSS selectors.
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        marginTop: '8px',
-                        padding: '6px 8px',
-                        backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                        borderRadius: '4px',
-                        fontFamily: 'monospace',
-                        fontSize: '12px',
-                        wordBreak: 'break-all',
-                      }}
-                    >
-                      <strong>Extracted selector:</strong> {extractedSelector}
-                    </div>
-                  </div>
-                </Alert>
-              )}
-              <div className={styles.buttonGroup}>
-                <Button variant="secondary" size="sm" onClick={handleSimpleShow} disabled={simpleTesting}>
-                  {simpleTesting ? 'Testing...' : 'Show me'}
-                </Button>
-                <Button variant="primary" size="sm" onClick={handleSimpleDo} disabled={simpleTesting}>
-                  {simpleTesting ? 'Testing...' : 'Do it'}
-                </Button>
-              </div>
-              {simpleResult && (
-                <div
-                  className={`${styles.resultBox} ${simpleResult.success ? styles.resultSuccess : styles.resultError}`}
-                >
-                  <p className={styles.resultText}>
-                    {simpleResult.success && <Icon name="check" />} {simpleResult.message}
-                  </p>
-                  {simpleResult.matchCount !== undefined && simpleResult.matchCount > 0 && (
-                    <span className={styles.matchCount}>
-                      <Icon name="crosshair" size="sm" />
-                      {simpleResult.matchCount} match{simpleResult.matchCount !== 1 ? 'es' : ''}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* MultiStep Debug (renamed from Do Section) */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader} onClick={() => setMultiStepExpanded(!multiStepExpanded)}>
-          <h4 className={styles.sectionTitle}>MultiStep Debug (Auto-Execute)</h4>
-          <Icon name={multiStepExpanded ? 'angle-up' : 'angle-down'} />
-        </div>
-        {multiStepExpanded && (
-          <div className={styles.sectionContent}>
-            <div className={styles.formGroup}>
-              <label className={styles.label}>Steps (one per line: action|selector|value)</label>
-              <TextArea
-                className={styles.textArea}
-                value={multiStepInput}
-                onChange={(e) => setMultiStepInput(e.currentTarget.value)}
-                placeholder="highlight|button[data-testid='save']|&#10;formfill|input[name='query']|prometheus&#10;button|Save Dashboard|"
-                disabled={multiStepTesting}
-              />
-              <p className={styles.helpText}>
-                Format: <code className={styles.exampleCode}>action|selector|value</code>
-                <br />
-                Example: <code className={styles.exampleCode}>formfill|input[name=&quot;query&quot;]|prometheus</code>
-              </p>
-
-              <Button variant="primary" size="sm" onClick={handleMultiStepRun} disabled={multiStepTesting}>
-                {multiStepTesting ? 'Running...' : 'Run MultiStep'}
-              </Button>
-
-              {multiStepProgress && (
-                <div className={styles.progressIndicator}>
-                  <Icon name="sync" className="fa-spin" />
-                  Step {multiStepProgress.current} of {multiStepProgress.total}
-                </div>
-              )}
-
-              {multiStepResult && (
-                <div
-                  className={`${styles.resultBox} ${multiStepResult.success ? styles.resultSuccess : styles.resultError}`}
-                >
-                  <p className={styles.resultText}>
-                    {multiStepResult.success && <Icon name="check" />} {multiStepResult.message}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Guided Debug - User Performs Actions */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader} onClick={() => setGuidedExpanded(!guidedExpanded)}>
-          <h4 className={styles.sectionTitle}>Guided Debug (Manual Execution)</h4>
-          <Icon name={guidedExpanded ? 'angle-up' : 'angle-down'} />
-        </div>
-        {guidedExpanded && (
-          <div className={styles.sectionContent}>
-            <div className={styles.formGroup}>
-              <label className={styles.label}>Steps (one per line: action|selector|value)</label>
-              <TextArea
-                className={styles.textArea}
-                value={guidedInput}
-                onChange={(e) => setGuidedInput(e.currentTarget.value)}
-                placeholder="highlight|button[data-testid='save']|&#10;formfill|input[name='query']|prometheus&#10;button|Save Dashboard|"
-                disabled={guidedRunning}
-              />
-              <p className={styles.helpText}>
-                Highlights elements one at a time. You manually perform each action, then it moves to the next step.
-              </p>
-
-              <div className={styles.buttonGroup}>
-                {!guidedRunning ? (
-                  <Button variant="primary" size="sm" onClick={handleGuidedStart}>
-                    <Icon name="play" />
-                    Start Guided
-                  </Button>
-                ) : (
-                  <Button variant="destructive" size="sm" onClick={handleGuidedCancel}>
-                    <Icon name="times" />
-                    Cancel
-                  </Button>
-                )}
-              </div>
-
-              {guidedRunning && (
-                <div className={styles.guidedProgress}>
-                  <Icon name="user" />
-                  Waiting for you to perform step {guidedCurrentStep + 1} of {guidedSteps.length}
-                  <div className={styles.guidedStepHint}>
-                    {guidedSteps[guidedCurrentStep] && (
-                      <code className={styles.exampleCode}>
-                        {guidedSteps[guidedCurrentStep].action}|{guidedSteps[guidedCurrentStep].selector}|
-                        {guidedSteps[guidedCurrentStep].value || ''}
-                      </code>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {guidedResult && (
-                <div
-                  className={`${styles.resultBox} ${guidedResult.success ? styles.resultSuccess : styles.resultError}`}
-                >
-                  <p className={styles.resultText}>
-                    {guidedResult.success && <Icon name="check" />} {guidedResult.message}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Watch Mode - Click to Capture Selectors */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader} onClick={() => setWatchExpanded(!watchExpanded)}>
-          <h4 className={styles.sectionTitle}>Watch Mode - Capture Selectors</h4>
-          <Icon name={watchExpanded ? 'angle-up' : 'angle-down'} />
-        </div>
-        {watchExpanded && (
-          <div className={styles.sectionContent}>
-            <div className={styles.formGroup}>
-              <Button
-                variant={watchMode ? 'destructive' : 'primary'}
-                size="md"
-                onClick={handleWatchModeToggle}
-                className={watchMode ? styles.watchModeActive : ''}
-              >
-                {watchMode && <span className={styles.recordingDot} />}
-                <Icon name={watchMode ? 'eye' : 'eye-slash'} />
-                {watchMode ? 'Watch Mode: ON' : 'Watch Mode: OFF'}
-              </Button>
-
-              {watchMode && (
-                <div className={styles.watchModeHint}>
-                  <Icon name="info-circle" size="sm" />
-                  Click any element in Grafana to capture its selector
-                </div>
-              )}
-
-              {capturedSelector && (
-                <>
-                  <label className={styles.label}>Captured Selector</label>
-                  <Input className={styles.selectorInput} value={capturedSelector} readOnly />
-
-                  {selectorInfo && (
-                    <div className={styles.selectorMeta}>
-                      <Badge text={selectorInfo.method} color="blue" />
-                      <Badge
-                        text={selectorInfo.isUnique ? 'Unique' : `${selectorInfo.matchCount} matches`}
-                        color={selectorInfo.isUnique ? 'green' : 'orange'}
-                      />
-                      {selectorInfo.contextStrategy && <Badge text={selectorInfo.contextStrategy} color="purple" />}
-                    </div>
-                  )}
-
-                  <div className={styles.buttonGroup}>
-                    <Button
-                      variant={selectorCopied ? 'success' : 'secondary'}
-                      size="sm"
-                      onClick={handleCopySelector}
-                      className={selectorCopied ? styles.copiedButton : ''}
-                    >
-                      <Icon name={selectorCopied ? 'check' : 'copy'} />
-                      {selectorCopied ? 'Copied!' : 'Copy'}
-                    </Button>
-                    <Button variant="primary" size="sm" onClick={handleUseInSimpleTester}>
-                      <Icon name="arrow-up" />
-                      Use in Simple Tester
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Record Mode - Capture Multi-Step Sequences */}
+      {/* PRIORITY SECTION 1: Record Mode - Capture Multi-Step Sequences */}
       <div className={styles.section}>
         <div className={styles.sectionHeader} onClick={() => setRecordExpanded(!recordExpanded)}>
-          <h4 className={styles.sectionTitle}>Record Mode - Capture Sequences</h4>
+          <Stack direction="row" gap={1} alignItems="center">
+            <Icon name="circle" />
+            <h4 className={styles.sectionTitle}>Record Mode - Capture Sequences</h4>
+            {recordedSteps.length > 0 && <Badge text={`${recordedSteps.length} steps`} color="blue" />}
+          </Stack>
           <Icon name={recordExpanded ? 'angle-up' : 'angle-down'} />
         </div>
         {recordExpanded && (
           <div className={styles.sectionContent}>
-            <div className={styles.formGroup}>
-              <div className={styles.recordModeControls}>
-                <HorizontalGroup spacing="sm" wrap>
-                  <Button
-                    variant={recordingState === 'idle' ? 'primary' : 'secondary'}
-                    size="sm"
-                    onClick={handleStartRecording}
-                    disabled={recordingState === 'recording'}
-                    className={recordingState === 'recording' ? styles.recordModeActive : ''}
-                  >
-                    {recordingState === 'recording' && <span className={styles.recordingDot} />}
-                    <Icon name={isPaused ? 'play' : 'circle'} />
-                    {isPaused ? 'Resume Recording' : 'Start Recording'}
-                  </Button>
+            <Stack direction="column" gap={2}>
+              <Stack direction="row" gap={1} wrap="wrap" alignItems="center">
+                <Button
+                  variant={recordingState === 'idle' ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={handleStartRecording}
+                  disabled={recordingState === 'recording'}
+                  className={recordingState === 'recording' ? styles.recordModeActive : ''}
+                >
+                  {recordingState === 'recording' && <span className={styles.recordingDot} />}
+                  <Icon name={isPaused ? 'play' : 'circle'} />
+                  {isPaused ? 'Resume Recording' : 'Start Recording'}
+                </Button>
 
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handlePauseRecording}
-                    disabled={recordingState !== 'recording'}
-                    className={isPaused ? styles.pausedModeActive : ''}
-                  >
-                    {isPaused && <span className={styles.pausedDot} />}
-                    <Icon name="pause" />
-                    Pause
-                  </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handlePauseRecording}
+                  disabled={recordingState !== 'recording'}
+                  className={isPaused ? styles.pausedModeActive : ''}
+                >
+                  {isPaused && <span className={styles.pausedDot} />}
+                  <Icon name="pause" />
+                  Pause
+                </Button>
 
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleStopRecording}
-                    disabled={recordingState === 'idle'}
-                  >
-                    <Icon name="times" />
-                    Stop
-                  </Button>
-
-                  {recordedSteps.length > 0 && <Badge text={`${recordedSteps.length} steps`} color="blue" />}
-                </HorizontalGroup>
-              </div>
+                <Button variant="destructive" size="sm" onClick={handleStopRecording} disabled={recordingState === 'idle'}>
+                  <Icon name="times" />
+                  Stop
+                </Button>
+              </Stack>
 
               {recordingState === 'recording' && (
                 <div className={styles.recordModeHint}>
@@ -622,7 +371,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
               {recordedSteps.length > 0 && (
                 <>
-                  <div className={styles.buttonGroup}>
+                  <Stack direction="row" gap={1} wrap="wrap">
                     <Button
                       variant={multistepMode ? 'primary' : 'secondary'}
                       size="sm"
@@ -648,55 +397,56 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                       <Icon name={exportCopied ? 'check' : 'file-alt'} />
                       {exportCopied ? 'Copied!' : 'Export to HTML'}
                     </Button>
-                  </div>
+                  </Stack>
 
-                  <label className={styles.label}>Recorded Steps</label>
-                  <div className={styles.recordedStepsList}>
-                    {recordedSteps.map((step, index) => (
-                      <div key={`${step.selector}-${step.action}-${index}`} className={styles.recordedStep}>
-                        {multistepMode && (
-                          <input
-                            type="checkbox"
-                            checked={selectedSteps.has(index)}
-                            onChange={() => handleToggleStepSelection(index)}
-                            style={{ marginRight: '8px' }}
-                          />
-                        )}
-                        <div className={styles.stepNumber}>{index + 1}</div>
-                        <div className={styles.stepDetails}>
-                          <div className={styles.stepDescription}>
-                            {step.description}
-                            {step.isUnique === false && (
-                              <Icon
-                                name="exclamation-triangle"
-                                size="sm"
-                                className={styles.warningIcon}
-                                title={`Non-unique selector (${step.matchCount} matches)`}
-                              />
+                  <Field label="Recorded Steps">
+                    <div className={styles.recordedStepsList}>
+                      {recordedSteps.map((step, index) => (
+                        <div key={`${step.selector}-${step.action}-${index}`} className={styles.recordedStep}>
+                          {multistepMode && (
+                            <input
+                              type="checkbox"
+                              checked={selectedSteps.has(index)}
+                              onChange={() => handleToggleStepSelection(index)}
+                              style={{ marginRight: '8px' }}
+                            />
+                          )}
+                          <div className={styles.stepNumber}>{index + 1}</div>
+                          <div className={styles.stepDetails}>
+                            <div className={styles.stepDescription}>
+                              {step.description}
+                              {step.isUnique === false && (
+                                <Icon
+                                  name="exclamation-triangle"
+                                  size="sm"
+                                  className={styles.warningIcon}
+                                  title={`Non-unique selector (${step.matchCount} matches)`}
+                                />
+                              )}
+                            </div>
+                            <code className={styles.stepCode}>
+                              {step.action}|{step.selector}|{step.value || ''}
+                            </code>
+                            {(step.contextStrategy || step.isUnique === false) && (
+                              <div className={styles.stepMeta}>
+                                {step.contextStrategy && <Badge text={step.contextStrategy} color="purple" />}
+                                {step.isUnique === false && <Badge text={`${step.matchCount} matches`} color="orange" />}
+                              </div>
                             )}
                           </div>
-                          <code className={styles.stepCode}>
-                            {step.action}|{step.selector}|{step.value || ''}
-                          </code>
-                          {(step.contextStrategy || step.isUnique === false) && (
-                            <div className={styles.stepMeta}>
-                              {step.contextStrategy && <Badge text={step.contextStrategy} color="purple" />}
-                              {step.isUnique === false && <Badge text={`${step.matchCount} matches`} color="orange" />}
-                            </div>
-                          )}
+                          <Button
+                            variant="secondary"
+                            size="xs"
+                            onClick={() => handleDeleteStep(index)}
+                            icon="trash-alt"
+                            aria-label="Delete step"
+                          />
                         </div>
-                        <Button
-                          variant="secondary"
-                          size="xs"
-                          onClick={() => handleDeleteStep(index)}
-                          icon="trash-alt"
-                          aria-label="Delete step"
-                        />
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  </Field>
 
-                  <div className={styles.buttonGroup}>
+                  <Stack direction="row" gap={1} wrap="wrap">
                     <Button variant="secondary" size="sm" onClick={handleClearRecording}>
                       <Icon name="trash-alt" />
                       Clear All
@@ -711,26 +461,289 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                       {allStepsCopied ? 'Copied!' : 'Copy All'}
                     </Button>
                     <Button variant="primary" size="sm" onClick={handleLoadIntoMultiStep}>
-                      <Icon name="arrow-up" />
+                      <Icon name="arrow-down" />
                       Load into MultiStep
                     </Button>
-                  </div>
+                  </Stack>
                 </>
               )}
-            </div>
+            </Stack>
           </div>
         )}
       </div>
 
-      {/* GitHub Tutorial Tester */}
+      {/* PRIORITY SECTION 2: Tutorial Tester */}
       <div className={styles.section}>
         <div className={styles.sectionHeader} onClick={() => setGithubExpanded(!githubExpanded)}>
-          <h4 className={styles.sectionTitle}>Tutorial Tester</h4>
+          <Stack direction="row" gap={1} alignItems="center">
+            <Icon name="external-link-alt" />
+            <h4 className={styles.sectionTitle}>Tutorial Tester</h4>
+          </Stack>
           <Icon name={githubExpanded ? 'angle-up' : 'angle-down'} />
         </div>
         {githubExpanded && onOpenDocsPage && (
           <div className={styles.sectionContent}>
             <URLTester onOpenDocsPage={onOpenDocsPage} />
+          </div>
+        )}
+      </div>
+
+      {/* Watch Mode - Click to Capture Selectors */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader} onClick={() => setWatchExpanded(!watchExpanded)}>
+          <Stack direction="row" gap={1} alignItems="center">
+            <Icon name="eye" />
+            <h4 className={styles.sectionTitle}>Watch Mode - Capture Selectors</h4>
+          </Stack>
+          <Icon name={watchExpanded ? 'angle-up' : 'angle-down'} />
+        </div>
+        {watchExpanded && (
+          <div className={styles.sectionContent}>
+            <Stack direction="column" gap={2}>
+              <Button
+                variant={watchMode ? 'destructive' : 'primary'}
+                size="md"
+                onClick={handleWatchModeToggle}
+                className={watchMode ? styles.watchModeActive : ''}
+              >
+                {watchMode && <span className={styles.recordingDot} />}
+                <Icon name={watchMode ? 'eye' : 'eye-slash'} />
+                {watchMode ? 'Watch Mode: ON' : 'Watch Mode: OFF'}
+              </Button>
+
+              {watchMode && (
+                <div className={styles.watchModeHint}>
+                  <Icon name="info-circle" size="sm" />
+                  Click any element in Grafana to capture its selector
+                </div>
+              )}
+
+              {capturedSelector && (
+                <>
+                  <Field label="Captured Selector">
+                    <Input className={styles.selectorInput} value={capturedSelector} readOnly />
+                  </Field>
+
+                  {selectorInfo && (
+                    <Stack direction="row" gap={1}>
+                      <Badge text={selectorInfo.method} color="blue" />
+                      <Badge
+                        text={selectorInfo.isUnique ? 'Unique' : `${selectorInfo.matchCount} matches`}
+                        color={selectorInfo.isUnique ? 'green' : 'orange'}
+                      />
+                      {selectorInfo.contextStrategy && <Badge text={selectorInfo.contextStrategy} color="purple" />}
+                    </Stack>
+                  )}
+
+                  <Stack direction="row" gap={1}>
+                    <Button
+                      variant={selectorCopied ? 'success' : 'secondary'}
+                      size="sm"
+                      onClick={handleCopySelector}
+                      className={selectorCopied ? styles.copiedButton : ''}
+                    >
+                      <Icon name={selectorCopied ? 'check' : 'copy'} />
+                      {selectorCopied ? 'Copied!' : 'Copy'}
+                    </Button>
+                    <Button variant="primary" size="sm" onClick={handleUseInSimpleTester}>
+                      <Icon name="arrow-down" />
+                      Use in Simple Tester
+                    </Button>
+                  </Stack>
+                </>
+              )}
+            </Stack>
+          </div>
+        )}
+      </div>
+
+      {/* Simple Selector Tester */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader} onClick={() => setSimpleExpanded(!simpleExpanded)}>
+          <Stack direction="row" gap={1} alignItems="center">
+            <Icon name="crosshair" />
+            <h4 className={styles.sectionTitle}>Simple Selector Tester</h4>
+          </Stack>
+          <Icon name={simpleExpanded ? 'angle-up' : 'angle-down'} />
+        </div>
+        {simpleExpanded && (
+          <div className={styles.sectionContent}>
+            <Stack direction="column" gap={2}>
+              <Field label="CSS Selector" description="Supports :contains, :has, :nth-match">
+                <Input
+                  className={styles.selectorInput}
+                  value={simpleSelector}
+                  onChange={(e) => setSimpleSelector(e.currentTarget.value)}
+                  placeholder='button[data-testid="save-button"]'
+                  disabled={simpleTesting}
+                />
+              </Field>
+
+              {wasStepFormatExtracted && extractedSelector && (
+                <Alert title="" severity="info">
+                  <Stack direction="column" gap={1}>
+                    <Stack direction="row" gap={1} alignItems="center">
+                      <Icon name="info-circle" size="sm" />
+                      <span>
+                        Oops! You pasted a selector in step format. We&apos;ve automatically extracted the selector for
+                        you, but note that other tools might expect plain CSS selectors.
+                      </span>
+                    </Stack>
+                    <code className={styles.exampleCode}>
+                      <strong>Extracted selector:</strong> {extractedSelector}
+                    </code>
+                  </Stack>
+                </Alert>
+              )}
+
+              <Stack direction="row" gap={1}>
+                <Button variant="secondary" size="sm" onClick={handleSimpleShow} disabled={simpleTesting}>
+                  {simpleTesting ? 'Testing...' : 'Show me'}
+                </Button>
+                <Button variant="primary" size="sm" onClick={handleSimpleDo} disabled={simpleTesting}>
+                  {simpleTesting ? 'Testing...' : 'Do it'}
+                </Button>
+              </Stack>
+
+              {simpleResult && (
+                <div
+                  className={`${styles.resultBox} ${simpleResult.success ? styles.resultSuccess : styles.resultError}`}
+                >
+                  <p className={styles.resultText}>
+                    {simpleResult.success && <Icon name="check" />} {simpleResult.message}
+                  </p>
+                  {simpleResult.matchCount !== undefined && simpleResult.matchCount > 0 && (
+                    <span className={styles.matchCount}>
+                      <Icon name="crosshair" size="sm" />
+                      {simpleResult.matchCount} match{simpleResult.matchCount !== 1 ? 'es' : ''}
+                    </span>
+                  )}
+                </div>
+              )}
+            </Stack>
+          </div>
+        )}
+      </div>
+
+      {/* Guided Debug - User Performs Actions */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader} onClick={() => setGuidedExpanded(!guidedExpanded)}>
+          <Stack direction="row" gap={1} alignItems="center">
+            <Icon name="user" />
+            <h4 className={styles.sectionTitle}>Guided Debug (Manual Execution)</h4>
+          </Stack>
+          <Icon name={guidedExpanded ? 'angle-up' : 'angle-down'} />
+        </div>
+        {guidedExpanded && (
+          <div className={styles.sectionContent}>
+            <Stack direction="column" gap={2}>
+              <Field
+                label="Steps"
+                description="Highlights elements one at a time. You manually perform each action, then it moves to the next step."
+              >
+                <TextArea
+                  className={styles.textArea}
+                  value={guidedInput}
+                  onChange={(e) => setGuidedInput(e.currentTarget.value)}
+                  placeholder="highlight|button[data-testid='save']|&#10;formfill|input[name='query']|prometheus&#10;button|Save Dashboard|"
+                  disabled={guidedRunning}
+                />
+              </Field>
+
+              <p className={styles.helpText}>
+                Format: <code className={styles.exampleCode}>action|selector|value</code>
+              </p>
+
+              <Stack direction="row" gap={1}>
+                {!guidedRunning ? (
+                  <Button variant="primary" size="sm" onClick={handleGuidedStart}>
+                    <Icon name="play" />
+                    Start Guided
+                  </Button>
+                ) : (
+                  <Button variant="destructive" size="sm" onClick={handleGuidedCancel}>
+                    <Icon name="times" />
+                    Cancel
+                  </Button>
+                )}
+              </Stack>
+
+              {guidedRunning && (
+                <div className={styles.guidedProgress}>
+                  <Icon name="user" />
+                  Waiting for you to perform step {guidedCurrentStep + 1} of {guidedSteps.length}
+                  <div className={styles.guidedStepHint}>
+                    {guidedSteps[guidedCurrentStep] && (
+                      <code className={styles.exampleCode}>
+                        {guidedSteps[guidedCurrentStep].action}|{guidedSteps[guidedCurrentStep].selector}|
+                        {guidedSteps[guidedCurrentStep].value || ''}
+                      </code>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {guidedResult && (
+                <div
+                  className={`${styles.resultBox} ${guidedResult.success ? styles.resultSuccess : styles.resultError}`}
+                >
+                  <p className={styles.resultText}>
+                    {guidedResult.success && <Icon name="check" />} {guidedResult.message}
+                  </p>
+                </div>
+              )}
+            </Stack>
+          </div>
+        )}
+      </div>
+
+      {/* MultiStep Debug (Auto-Execute) */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader} onClick={() => setMultiStepExpanded(!multiStepExpanded)}>
+          <Stack direction="row" gap={1} alignItems="center">
+            <Icon name="bolt" />
+            <h4 className={styles.sectionTitle}>MultiStep Debug (Auto-Execute)</h4>
+          </Stack>
+          <Icon name={multiStepExpanded ? 'angle-up' : 'angle-down'} />
+        </div>
+        {multiStepExpanded && (
+          <div className={styles.sectionContent}>
+            <Stack direction="column" gap={2}>
+              <Field label="Steps" description="One per line: action|selector|value">
+                <TextArea
+                  className={styles.textArea}
+                  value={multiStepInput}
+                  onChange={(e) => setMultiStepInput(e.currentTarget.value)}
+                  placeholder="highlight|button[data-testid='save']|&#10;formfill|input[name='query']|prometheus&#10;button|Save Dashboard|"
+                  disabled={multiStepTesting}
+                />
+              </Field>
+
+              <p className={styles.helpText}>
+                Example: <code className={styles.exampleCode}>formfill|input[name=&quot;query&quot;]|prometheus</code>
+              </p>
+
+              <Button variant="primary" size="sm" onClick={handleMultiStepRun} disabled={multiStepTesting}>
+                {multiStepTesting ? 'Running...' : 'Run MultiStep'}
+              </Button>
+
+              {multiStepProgress && (
+                <div className={styles.progressIndicator}>
+                  <Icon name="sync" className="fa-spin" />
+                  Step {multiStepProgress.current} of {multiStepProgress.total}
+                </div>
+              )}
+
+              {multiStepResult && (
+                <div
+                  className={`${styles.resultBox} ${multiStepResult.success ? styles.resultSuccess : styles.resultError}`}
+                >
+                  <p className={styles.resultText}>
+                    {multiStepResult.success && <Icon name="check" />} {multiStepResult.message}
+                  </p>
+                </div>
+              )}
+            </Stack>
           </div>
         )}
       </div>

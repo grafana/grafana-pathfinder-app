@@ -3,7 +3,7 @@ import { Field, Input, Checkbox, Button } from '@grafana/ui';
 import { type InteractiveFormProps } from '../types';
 import { DATA_ATTRIBUTES } from '../../../constants/interactive-config';
 import { validateFormField } from '../services/validation';
-import { useSelectorCapture } from '../../../utils/devtools/selector-capture.hook';
+import { useSelectorCapture } from '../devtools/selector-capture.hook';
 import { InteractiveFormShell, CommonRequirementsButtons } from './InteractiveFormShell';
 
 export interface FormField {

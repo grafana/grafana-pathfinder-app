@@ -13,7 +13,7 @@ import {
 } from '../security';
 import { isDataProxyUrl } from './data-proxy';
 import { ALLOWED_GITHUB_REPOS } from '../constants';
-import { isDevModeEnabledGlobal } from '../utils/dev-mode';
+import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
 
 // Re-export for convenience
 export type { ParsedElement, ParsedContent };

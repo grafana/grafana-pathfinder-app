@@ -14,7 +14,7 @@ import {
 } from './url-validator';
 
 // Mock the dev-mode module
-jest.mock('../utils/dev-mode', () => ({
+jest.mock('../components/wysiwyg-editor/dev-mode', () => ({
   isDevModeEnabled: jest.fn(() => false),
   isDevModeEnabledGlobal: jest.fn(() => false),
   enableDevMode: jest.fn(),
@@ -22,7 +22,7 @@ jest.mock('../utils/dev-mode', () => ({
   toggleDevMode: jest.fn(),
 }));
 
-import { isDevModeEnabledGlobal } from '../utils/dev-mode';
+import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
 
 describe('Grafana URL validators', () => {
   describe('isGrafanaDomain', () => {

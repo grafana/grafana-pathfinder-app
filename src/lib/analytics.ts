@@ -98,7 +98,7 @@ export function reportAppInteraction(
  * Type definition for tabs compatible with scroll tracking
  */
 export interface ScrollTrackingTab {
-  type?: 'docs' | 'learning-journey';
+  type?: 'docs' | 'learning-journey' | 'devtools';
   content?: {
     url?: string;
     metadata?: {

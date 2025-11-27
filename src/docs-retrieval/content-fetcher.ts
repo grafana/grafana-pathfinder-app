@@ -23,7 +23,7 @@ import {
   sanitizeDocumentationHTML,
 } from '../security';
 import { convertGitHubRawToProxyUrl, isDataProxyUrl } from './data-proxy';
-import { isDevModeEnabledGlobal } from '../utils/dev-mode';
+import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
 import { StorageKeys } from '../lib/user-storage';
 
 // Internal error structure for detailed error handling

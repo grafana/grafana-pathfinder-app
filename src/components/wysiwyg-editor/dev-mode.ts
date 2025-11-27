@@ -24,9 +24,9 @@
  */
 
 import { config } from '@grafana/runtime';
-import { DocsPluginConfig } from '../constants';
-import { updatePluginSettings } from './utils.plugin';
-import pluginJson from '../plugin.json';
+import { DocsPluginConfig } from '../../constants';
+import { updatePluginSettings } from '../../utils/utils.plugin';
+import pluginJson from '../../plugin.json';
 
 /**
  * Check if dev mode is enabled for the current user (synchronous)

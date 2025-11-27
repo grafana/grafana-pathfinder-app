@@ -10,7 +10,7 @@ import {
 } from '@grafana/assistant';
 import { getDataSourceSrv, locationService } from '@grafana/runtime';
 import { getIsAssistantAvailable, useMockInlineAssistant } from './assistant-dev-mode';
-import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
+import { isAssistantDevModeEnabledGlobal } from '../../components/wysiwyg-editor/dev-mode';
 import { useAssistantCustomizableContext } from './AssistantCustomizableContext';
 import { reportAppInteraction, UserInteraction, buildAssistantCustomizableProperties } from '../../lib/analytics';
 

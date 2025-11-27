@@ -1,7 +1,7 @@
-import React, { memo, useEffect, Suspense, lazy } from 'react';
+import React, { memo, useEffect } from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, useStyles2, Card, Badge, Alert } from '@grafana/ui';
+import { Icon, useStyles2, Card, Badge, Alert, Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -10,26 +10,18 @@ import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
 import { locationService, config } from '@grafana/runtime';
 
-// Lazy load dev tools to keep them out of production bundles
-// This component is only loaded when dev mode is enabled
-// Webpack will create a separate chunk for this import, which is only downloaded when dev mode is active
-const SelectorDebugPanel = lazy(() =>
-  import('../SelectorDebugPanel').then((module) => ({
-    default: module.SelectorDebugPanel,
-  }))
-);
-
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getConfigWithDefaults } from '../../constants';
-import { isDevModeEnabled } from '../../utils/dev-mode';
+import { isDevModeEnabled } from '../wysiwyg-editor/dev-mode';
 import { testIds } from '../testIds';
 
 interface ContextPanelState extends SceneObjectState {
   onOpenLearningJourney?: (url: string, title: string) => void;
   onOpenDocsPage?: (url: string, title: string) => void;
+  onOpenDevTools?: () => void;
 }
 
 export class ContextPanel extends SceneObjectBase<ContextPanelState> {
@@ -41,11 +33,13 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
 
   public constructor(
     onOpenLearningJourney?: (url: string, title: string) => void,
-    onOpenDocsPage?: (url: string, title: string) => void
+    onOpenDocsPage?: (url: string, title: string) => void,
+    onOpenDevTools?: () => void
   ) {
     super({
       onOpenLearningJourney,
       onOpenDocsPage,
+      onOpenDevTools,
     });
   }
 
@@ -60,6 +54,12 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
       this.state.onOpenDocsPage(url, title);
     } else {
       console.warn('No onOpenDocsPage callback available');
+    }
+  }
+
+  public openDevTools() {
+    if (this.state.onOpenDevTools) {
+      this.state.onOpenDevTools();
     }
   }
 
@@ -697,8 +697,19 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                 'Based on your current context, here are some learning journeys and documentation that may be beneficial.'
               )}
             </p>
-            <div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <FeedbackButton variant="secondary" interactionLocation="context_panel_feedback_button" />
+              {devModeEnabled && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="bug"
+                  onClick={() => model.openDevTools()}
+                  tooltip={t('contextPanel.openDevTools', 'Open Dev Tools in a new tab')}
+                >
+                  {t('contextPanel.devTools', 'Dev Tools')}
+                </Button>
+              )}
             </div>
           </div>
 
@@ -717,15 +728,6 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             toggleOtherDocsExpansion={toggleOtherDocsExpansion}
           />
         </div>
-
-        {/* Debug Panel - only shown when dev mode is enabled (hybrid: server-side storage, per-user scoping) */}
-        {devModeEnabled && (
-          <div className={styles.debugSection}>
-            <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-              <SelectorDebugPanel onOpenDocsPage={openDocsPage} />
-            </Suspense>
-          </div>
-        )}
 
         {/* Help Footer */}
         <HelpFooter />
