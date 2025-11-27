@@ -176,7 +176,8 @@ describe('BaseInteractiveForm', () => {
       />
     );
 
-    const captureButton = screen.getByTitle('Capture selector from page');
+    // Button now uses aria-label instead of title
+    const captureButton = screen.getByRole('button', { name: 'Capture selector' });
     expect(captureButton).toBeInTheDocument();
   });
 
@@ -193,8 +194,9 @@ describe('BaseInteractiveForm', () => {
       />
     );
 
-    const captureButton = screen.getByTitle('This field expects button text, not a DOM selector');
+    // Button now uses aria-label instead of title, check it's disabled via aria-disabled
+    const captureButton = screen.getByRole('button', { name: 'Capture selector' });
     expect(captureButton).toBeInTheDocument();
-    expect(captureButton).toBeDisabled();
+    expect(captureButton).toHaveAttribute('aria-disabled', 'true');
   });
 });

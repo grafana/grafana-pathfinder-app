@@ -70,7 +70,7 @@ export interface UseActionRecorderReturn {
  * ```
  */
 // Default empty array - defined outside to prevent recreation
-const DEFAULT_EXCLUDE_SELECTORS: string[] = [];
+const DEFAULT_EXCLUDE_SELECTORS = ['[class*="debug"]', '.context-container', '[data-devtools-panel]'];
 
 export function useActionRecorder(options: UseActionRecorderOptions = {}): UseActionRecorderReturn {
   const { excludeSelectors = DEFAULT_EXCLUDE_SELECTORS, onStepRecorded, enableInspector = true } = options;
