@@ -187,6 +187,35 @@ export const ACTION_TYPES = {
 } as const;
 
 /**
+ * Action icons - Single source of truth for emoji indicators
+ * Used in both the WYSIWYG editor and ActionSelector UI
+ */
+export const ACTION_ICONS: Record<string, string> = {
+  [ACTION_TYPES.BUTTON]: '🔘',
+  [ACTION_TYPES.FORM_FILL]: '📝',
+  [ACTION_TYPES.HIGHLIGHT]: '✨',
+  [ACTION_TYPES.HOVER]: '👆',
+  [ACTION_TYPES.MULTISTEP]: '📋',
+  [ACTION_TYPES.NAVIGATE]: '🧭',
+  [ACTION_TYPES.NOOP]: '📖',
+  [ACTION_TYPES.SEQUENCE]: '📑',
+} as const;
+
+/**
+ * Default icon for unknown action types
+ */
+export const DEFAULT_ACTION_ICON = '⚡';
+
+/**
+ * Get the emoji icon for an action type
+ * @param actionType - The action type (e.g., 'button', 'highlight')
+ * @returns The corresponding emoji, or DEFAULT_ACTION_ICON for unknown types
+ */
+export function getActionIcon(actionType: string): string {
+  return ACTION_ICONS[actionType] ?? DEFAULT_ACTION_ICON;
+}
+
+/**
  * Default attribute values
  */
 export const DEFAULT_VALUES = {
@@ -218,69 +247,6 @@ export interface ActionMetadata {
   description: string;
   grafanaIcon?: string; // Grafana UI icon name mapping
 }
-
-/**
- * All action metadata (used in ActionSelector)
- * Includes emoji icons for backward compatibility and Grafana icon mappings
- */
-export const ACTION_METADATA: ActionMetadata[] = [
-  {
-    type: ACTION_TYPES.HIGHLIGHT,
-    icon: '✨',
-    name: 'Highlight',
-    description: 'Click/Highlight an element',
-    grafanaIcon: 'star',
-  },
-  {
-    type: ACTION_TYPES.FORM_FILL,
-    icon: '📝',
-    name: 'Form Fill',
-    description: 'Fill an input field',
-    grafanaIcon: 'document-info',
-  },
-  {
-    type: ACTION_TYPES.NAVIGATE,
-    icon: '🧭',
-    name: 'Navigate',
-    description: 'Go to a page',
-    grafanaIcon: 'compass',
-  },
-  {
-    type: ACTION_TYPES.BUTTON,
-    icon: '🔘',
-    name: 'Button',
-    description: 'Click a button by name',
-    grafanaIcon: 'gf-button',
-  },
-  {
-    type: ACTION_TYPES.HOVER,
-    icon: '👆',
-    name: 'Hover',
-    description: 'Reveal on hover',
-    grafanaIcon: 'mouse',
-  },
-  {
-    type: ACTION_TYPES.MULTISTEP,
-    icon: '📋',
-    name: 'Multistep',
-    description: 'Multiple actions',
-    grafanaIcon: 'clipboard-list',
-  },
-  {
-    type: ACTION_TYPES.SEQUENCE,
-    icon: '📑',
-    name: 'Sequence',
-    description: 'Section with steps',
-    grafanaIcon: 'folder-open',
-  },
-  {
-    type: ACTION_TYPES.NOOP,
-    icon: '📖',
-    name: 'No action',
-    description: 'Instructional only (no buttons)',
-    grafanaIcon: 'book',
-  },
-];
 
 // Type exports for type safety
 export type ActionType = (typeof ACTION_TYPES)[keyof typeof ACTION_TYPES];

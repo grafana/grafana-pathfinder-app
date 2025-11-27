@@ -2,7 +2,7 @@
  * Node View Factory
  *
  * Factory functions for creating node views with interactive elements.
- * All interactive nodes display a lightning bolt (⚡) indicator that users can click to edit attributes.
+ * Each interactive node displays an action-specific emoji indicator that users can click to edit attributes.
  *
  * ## Usage
  *
@@ -11,12 +11,15 @@
  * - `createSequenceSectionNodeView`: For block-level sequence sections (span with block content)
  * - `createInteractiveNodeView`: Generic factory for custom node types
  *
- * ## Lightning Bolt Behavior
+ * ## Action Indicator Behavior
  *
- * The lightning bolt is conditionally shown based on:
+ * The action indicator emoji is determined by the `data-targetaction` attribute:
  * - For list items: Only shown if the item has class="interactive"
  * - For spans and sequences: Always shown (configurable)
+ * - The emoji matches the action type (e.g., 🔘 for button, ✨ for highlight)
  */
+
+import { getActionIcon, DATA_ATTRIBUTES } from '../../../../constants/interactive-config';
 
 // SECURITY: Allowlist of safe HTML attributes to prevent event handler injection (F5)
 // Only these attributes can be set on interactive elements
@@ -40,30 +43,41 @@ export interface NodeViewConfig {
 }
 
 /**
- * Creates a lightning bolt element for interactive nodes
+ * Creates an action indicator element for interactive nodes
+ * Displays action-specific emoji based on data-targetaction attribute
  * Now keyboard accessible with proper ARIA attributes
+ *
+ * @param actionType - Optional action type (e.g., 'button', 'highlight')
  */
-export function createLightningBolt(): HTMLSpanElement {
-  const lightning = document.createElement('span');
-  lightning.className = 'interactive-lightning';
-  lightning.textContent = '⚡';
+export function createActionIndicator(actionType?: string): HTMLSpanElement {
+  const indicator = document.createElement('span');
+  indicator.className = 'interactive-lightning';
+  indicator.textContent = getActionIcon(actionType ?? '');
 
   // Make keyboard accessible
-  lightning.setAttribute('role', 'button');
-  lightning.setAttribute('tabindex', '0');
-  lightning.setAttribute('aria-label', 'Edit interactive settings');
+  indicator.setAttribute('role', 'button');
+  indicator.setAttribute('tabindex', '0');
+  indicator.setAttribute('aria-label', 'Edit interactive settings');
 
   // Add keyboard event handler for Enter and Space keys
-  lightning.addEventListener('keydown', (event: KeyboardEvent) => {
+  indicator.addEventListener('keydown', (event: KeyboardEvent) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       event.stopPropagation();
       // Trigger a click event which will be handled by the InteractiveClickHandler
-      lightning.click();
+      indicator.click();
     }
   });
 
-  return lightning;
+  return indicator;
+}
+
+/**
+ * @deprecated Use createActionIndicator instead
+ * Kept for backward compatibility
+ */
+export function createLightningBolt(): HTMLSpanElement {
+  return createActionIndicator();
 }
 
 /**
@@ -106,27 +120,29 @@ export function applyAttributes(element: HTMLElement, attributes: Record<string,
 }
 
 /**
- * Creates an interactive node view with lightning bolt indicator
+ * Creates an interactive node view with action indicator
  * @param config - Configuration for the node view
  * @param attributes - HTML attributes to apply
- * @param shouldShowLightning - Function to determine if lightning should be shown
+ * @param shouldShowIndicator - Function to determine if indicator should be shown
  */
 export function createInteractiveNodeView(
   config: NodeViewConfig,
   attributes: Record<string, any>,
-  shouldShowLightning?: (attrs: Record<string, any>) => boolean
+  shouldShowIndicator?: (attrs: Record<string, any>) => boolean
 ): { dom: HTMLElement; contentDOM: HTMLElement } {
   const { tagName, contentDisplay = 'contents' } = config;
 
   const dom = document.createElement(tagName);
   applyAttributes(dom, attributes);
 
-  // Determine if we should show the lightning bolt
-  const showLightning = shouldShowLightning ? shouldShowLightning(attributes) : config.showLightning !== false;
+  // Determine if we should show the action indicator
+  const showIndicator = shouldShowIndicator ? shouldShowIndicator(attributes) : config.showLightning !== false;
 
-  if (showLightning) {
-    const lightning = createLightningBolt();
-    dom.appendChild(lightning);
+  if (showIndicator) {
+    // Extract action type from data-targetaction attribute
+    const actionType = attributes[DATA_ATTRIBUTES.TARGET_ACTION];
+    const indicator = createActionIndicator(actionType);
+    dom.appendChild(indicator);
   }
 
   // Create content wrapper
@@ -186,8 +202,10 @@ export function createSpanNodeView(
   applyAttributes(dom, attributes);
 
   if (finalConfig.showLightning) {
-    const lightning = createLightningBolt();
-    dom.appendChild(lightning);
+    // Extract action type from data-targetaction attribute
+    const actionType = attributes[DATA_ATTRIBUTES.TARGET_ACTION];
+    const indicator = createActionIndicator(actionType);
+    dom.appendChild(indicator);
   }
 
   const contentDOM = document.createElement(finalConfig.contentTag || 'span');

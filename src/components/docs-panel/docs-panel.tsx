@@ -723,6 +723,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
   const isRecommendationsTab = activeTabId === 'recommendations';
+  // Detect WYSIWYG preview tab to show "Return to editor" banner
+  const isWysiwygPreview =
+    activeTab?.baseUrl === 'bundled:wysiwyg-preview' || activeTab?.content?.url === 'bundled:wysiwyg-preview';
   const theme = useStyles2((theme: GrafanaTheme2) => theme);
 
   // STABILITY: Memoize activeTab.content to prevent ContentRenderer from remounting
@@ -1563,6 +1566,23 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
             return (
               <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
+                {/* Return to Editor Banner - only shown for WYSIWYG preview */}
+                {isWysiwygPreview && (
+                  <div className={styles.returnToEditorBanner}>
+                    <div className={styles.returnToEditorLeft}>
+                      <Icon name="eye" size="sm" />
+                      <span>{t('docsPanel.previewMode', 'Preview Mode')}</span>
+                    </div>
+                    <button
+                      className={styles.returnToEditorButton}
+                      onClick={() => model.setActiveTab('recommendations')}
+                    >
+                      <Icon name="arrow-left" size="sm" />
+                      {t('docsPanel.returnToEditor', 'Return to editor')}
+                    </button>
+                  </div>
+                )}
+
                 {/* Content Meta for learning journey pages (when no milestone progress is shown) */}
                 {isLearningJourneyTab && !showMilestoneProgress && (
                   <div className={styles.contentMeta}>
