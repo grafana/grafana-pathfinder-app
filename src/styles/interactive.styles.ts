@@ -1231,10 +1231,8 @@ export const addGlobalInteractiveStyles = () => {
         linear-gradient(var(--hl-color) 0 0) bottom right / 0 var(--hl-thickness) no-repeat,
         linear-gradient(var(--hl-color) 0 0) bottom left / var(--hl-thickness) 0 no-repeat;
       opacity: 0.95;
-      /* Draw border animation, then breathing glow activates after draw completes */
-      animation:
-        interactive-draw-border ${drawMs}ms cubic-bezier(0.18, 0.6, 0.2, 1) forwards,
-        interactive-glow-breathe 2s ease-in-out ${drawMs}ms infinite;
+      /* Combined draw + glow animation - glow fades in during draw and stays at full brightness */
+      animation: interactive-draw-and-glow ${drawMs}ms cubic-bezier(0.18, 0.6, 0.2, 1) forwards;
     }
 
     /* Subtle variant to reuse animation cadence for blocked areas */
@@ -1270,31 +1268,39 @@ export const addGlobalInteractiveStyles = () => {
       transition: top 0.05s ease-out, left 0.05s ease-out, width 0.05s ease-out, height 0.05s ease-out;
     }
 
-    @keyframes interactive-draw-border {
+    /* Draw border AND fade in glow together - glow starts at 25% (first horizontal done) */
+    @keyframes interactive-draw-and-glow {
       0% {
         background-size: 0 var(--hl-thickness), var(--hl-thickness) 0, 0 var(--hl-thickness), var(--hl-thickness) 0;
+        box-shadow: 0 0 0 0 rgba(255, 136, 0, 0);
       }
       25% {
+        /* First horizontal done - glow starts fading in */
         background-size: 100% var(--hl-thickness), var(--hl-thickness) 0, 0 var(--hl-thickness), var(--hl-thickness) 0;
+        box-shadow: 0 0 12px 3px rgba(255, 136, 0, 0.15);
       }
       50% {
         background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 0 var(--hl-thickness), var(--hl-thickness) 0;
+        box-shadow: 0 0 20px 5px rgba(255, 136, 0, 0.35);
       }
       75% {
         background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 0;
+        box-shadow: 0 0 28px 7px rgba(255, 136, 0, 0.5);
       }
       100% {
+        /* Box done - glow at full strength */
         background-size: 100% var(--hl-thickness), var(--hl-thickness) 100%, 100% var(--hl-thickness), var(--hl-thickness) 100%;
+        box-shadow: 0 0 32px 8px rgba(255, 136, 0, 0.6);
       }
     }
 
-    /* Breathing orange glow that activates after border draw completes */
+    /* Breathing orange glow - larger and stronger, activates after draw completes */
     @keyframes interactive-glow-breathe {
       0%, 100% {
-        box-shadow: 0 0 8px 2px rgba(255, 136, 0, 0.3);
+        box-shadow: 0 0 24px 6px rgba(255, 136, 0, 0.4);
       }
       50% {
-        box-shadow: 0 0 16px 4px rgba(255, 136, 0, 0.5);
+        box-shadow: 0 0 40px 10px rgba(255, 136, 0, 0.65);
       }
     }
 
@@ -1558,7 +1564,7 @@ export const addGlobalInteractiveStyles = () => {
       transform: scale(0.98);
     }
 
-    /* Orange glow border for comment boxes with entrance animation */
+    /* Orange glow border for comment boxes with entrance animation - stays at final glow */
     .interactive-comment-glow {
       border: 1px solid rgba(255, 136, 0, 0.4) !important;
       animation: commentGlowEntrance 0.6s ease-out forwards;
@@ -1582,6 +1588,22 @@ export const addGlobalInteractiveStyles = () => {
           0 4px 20px rgba(0, 0, 0, 0.25),
           0 0 0 2px rgba(255, 136, 0, 0.25),
           0 0 15px rgba(255, 136, 0, 0.15);
+      }
+    }
+
+    /* Subtle breathing glow for tooltip - starts after entrance animation */
+    @keyframes commentGlowBreathe {
+      0%, 100% {
+        box-shadow:
+          0 4px 20px rgba(0, 0, 0, 0.25),
+          0 0 0 2px rgba(255, 136, 0, 0.25),
+          0 0 15px rgba(255, 136, 0, 0.15);
+      }
+      50% {
+        box-shadow:
+          0 4px 20px rgba(0, 0, 0, 0.25),
+          0 0 0 3px rgba(255, 136, 0, 0.35),
+          0 0 25px rgba(255, 136, 0, 0.25);
       }
     }
 
