@@ -26,5 +26,8 @@ export * from './collaboration.types';
 export * from './interactive.types';
 export * from './requirements.types';
 
+// JSON guide types
+export * from './json-guide.types';
+
 // Re-export content types from docs-retrieval for convenience
 export * from '../docs-retrieval/content.types';

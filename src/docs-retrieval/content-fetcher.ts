@@ -227,7 +227,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
     }
   }
 
-  // EXISTING CODE: Load from index.json and TypeScript files
+  // EXISTING CODE: Load from index.json and TypeScript/JSON files
   try {
     let html = '';
 
@@ -242,7 +242,38 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       };
     }
 
-    // Load the TypeScript file using the filename from index.json
+    // Check if this is a JSON format guide
+    if (interactive.format === 'json') {
+      // Load JSON guide directly
+      const filename = interactive.filename || `${contentId}.json`;
+      const jsonModule = require(`../bundled-interactives/${filename}`);
+
+      // JSON files are imported as objects by webpack, stringify for consistent handling
+      const jsonContent = typeof jsonModule === 'string' ? jsonModule : JSON.stringify(jsonModule);
+
+      if (!jsonContent || jsonContent.trim() === '' || jsonContent === '{}') {
+        return {
+          content: null,
+          error: `Bundled JSON interactive content is empty: ${contentId}`,
+        };
+      }
+
+      // For JSON guides, we store the JSON string in the html field
+      // The ContentProcessor will detect and parse it appropriately
+      const content: RawContent = {
+        html: jsonContent,
+        metadata: {
+          title: interactive.title || contentId,
+        },
+        type: 'single-doc',
+        url,
+        lastFetched: new Date().toISOString(),
+      };
+
+      return { content };
+    }
+
+    // Load the TypeScript file using the filename from index.json (existing HTML path)
     const filename = interactive.filename || `${contentId}.ts`;
     const exportName = interactive.exportName || `${contentId}Html`;
 

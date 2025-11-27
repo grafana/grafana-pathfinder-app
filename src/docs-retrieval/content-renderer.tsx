@@ -6,6 +6,7 @@ import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
 import { RawContent, ContentParseResult } from './content.types';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 import { parseHTMLToComponents, ParsedElement } from './html-parser';
+import { parseJsonGuide, isJsonGuideContent } from './json-parser';
 import {
   InteractiveSection,
   InteractiveStep,
@@ -245,8 +246,14 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
     [html]
   );
 
-  // Parse HTML with fail-fast error handling (memoized to avoid re-parsing on every render)
-  const parseResult: ContentParseResult = useMemo(() => parseHTMLToComponents(html, baseUrl), [html, baseUrl]);
+  // Parse content with fail-fast error handling (memoized to avoid re-parsing on every render)
+  // Detect JSON vs HTML content and use appropriate parser
+  const parseResult: ContentParseResult = useMemo(() => {
+    if (isJsonGuideContent(html)) {
+      return parseJsonGuide(html, baseUrl);
+    }
+    return parseHTMLToComponents(html, baseUrl);
+  }, [html, baseUrl]);
 
   // Start DOM monitoring if interactive elements are present
   useEffect(() => {

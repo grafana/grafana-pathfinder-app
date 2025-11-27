@@ -10,6 +10,15 @@
       "targetPlatform": "oss"
     },
     {
+      "id": "welcome-to-grafana-json",
+      "title": "Welcome to Grafana (JSON)",
+      "summary": "Take a guided tour of Grafana's key areas. This is the JSON-based version of the welcome guide.",
+      "filename": "welcome-to-grafana.json",
+      "format": "json",
+      "url": ["/"],
+      "targetPlatform": "oss"
+    },
+    {
       "id": "welcome-to-grafana-cloud",
       "title": "Welcome to Grafana Cloud",
       "summary": "Take a guided tour of Grafana Cloud's key areas. Perfect for getting started and understanding where everything is located.",
