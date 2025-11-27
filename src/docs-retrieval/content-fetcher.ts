@@ -25,12 +25,52 @@ import {
 import { convertGitHubRawToProxyUrl, isDataProxyUrl } from './data-proxy';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { StorageKeys } from '../lib/user-storage';
+import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 
 // Internal error structure for detailed error handling
 interface FetchError {
   message: string;
   errorType: 'not-found' | 'timeout' | 'network' | 'server-error' | 'other';
   statusCode?: number;
+}
+
+/**
+ * Generate a simple ID from a URL for use in wrapped JSON guides.
+ */
+function generateUrlId(url: string): string {
+  // Create a simple hash-like ID from the URL
+  const cleanUrl = url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '-');
+  return cleanUrl.slice(0, 50);
+}
+
+/**
+ * Wrap content as a JSON guide for unified rendering.
+ * - If content is already a valid JSON guide, return it as-is
+ * - If content is HTML, wrap it in a JSON guide with a single html block
+ */
+function wrapContentAsJsonGuide(content: string, url: string, title: string): string {
+  const trimmed = content.trim();
+
+  // Check if already a valid JSON guide
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed.id && parsed.title && Array.isArray(parsed.blocks)) {
+        return content; // Already a JSON guide
+      }
+    } catch {
+      // Not valid JSON, treat as HTML
+    }
+  }
+
+  // Wrap HTML in JSON guide structure
+  const jsonGuide = {
+    id: `external-${generateUrlId(url)}`,
+    title: title || 'External Content',
+    blocks: [{ type: 'html', content: content }],
+  };
+
+  return JSON.stringify(jsonGuide);
 }
 
 /**
@@ -141,9 +181,18 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Extract basic metadata without DOM processing
     const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType);
 
+    // Apply learning journey extras before wrapping (adds Ready to Begin button, etc.)
+    let processedHtml = fetchResult.html;
+    if (contentType === 'learning-journey' && metadata.learningJourney) {
+      processedHtml = generateJourneyContentWithExtras(processedHtml, metadata.learningJourney);
+    }
+
+    // Wrap content as JSON guide for unified rendering pipeline
+    const jsonContent = wrapContentAsJsonGuide(processedHtml, finalUrl, metadata.title);
+
     // Create unified content object
-    const content: RawContent = {
-      html: fetchResult.html,
+    const rawContent: RawContent = {
+      content: jsonContent,
       metadata,
       type: contentType,
       url: finalUrl, // Use final URL to correctly resolve relative links
@@ -151,7 +200,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       hashFragment,
     };
 
-    return { content };
+    return { content: rawContent };
   } catch (error) {
     console.error(`Failed to fetch content from ${url}:`, error);
     return {
@@ -209,15 +258,18 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       const contentType = determineContentType(url);
       const metadata = await extractMetadata(sanitized, url, contentType);
 
-      const content: RawContent = {
-        html: sanitized,
+      // Wrap content as JSON guide for unified rendering pipeline
+      const jsonContent = wrapContentAsJsonGuide(sanitized, url, metadata.title);
+
+      const rawContent: RawContent = {
+        content: jsonContent,
         metadata,
         type: contentType,
         url,
         lastFetched: new Date().toISOString(),
       };
 
-      return { content };
+      return { content: rawContent };
     } catch (error) {
       console.error('Failed to load WYSIWYG preview:', error);
       return {
@@ -258,10 +310,10 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
         };
       }
 
-      // For JSON guides, we store the JSON string in the html field
+      // For JSON guides, we store the JSON string in the content field
       // The ContentProcessor will detect and parse it appropriately
-      const content: RawContent = {
-        html: jsonContent,
+      const rawContent: RawContent = {
+        content: jsonContent,
         metadata: {
           title: interactive.title || contentId,
         },
@@ -270,7 +322,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
         lastFetched: new Date().toISOString(),
       };
 
-      return { content };
+      return { content: rawContent };
     }
 
     // Load the TypeScript file using the filename from index.json (existing HTML path)
@@ -298,8 +350,11 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
     const contentType = determineContentType(url);
     const metadata = await extractMetadata(html, url, contentType);
 
-    const content: RawContent = {
-      html,
+    // Wrap content as JSON guide for unified rendering pipeline
+    const jsonContent = wrapContentAsJsonGuide(html, url, metadata.title);
+
+    const rawContent: RawContent = {
+      content: jsonContent,
       metadata,
       type: contentType, // Use detected type (learning-journey or single-doc)
       url,
@@ -307,7 +362,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       // No hash fragment support for bundled content for now
     };
 
-    return { content };
+    return { content: rawContent };
   } catch (error) {
     console.error(`Failed to load bundled interactive ${contentId}:`, error);
     return {

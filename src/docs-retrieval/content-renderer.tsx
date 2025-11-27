@@ -4,7 +4,6 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip } from '@grafana/ui';
 
 import { RawContent, ContentParseResult } from './content.types';
-import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 import { parseHTMLToComponents, ParsedElement } from './html-parser';
 import { parseJsonGuide, isJsonGuideContent } from './json-parser';
 import {
@@ -163,15 +162,13 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   }, [content?.url]);
 
   const processedContent = React.useMemo(() => {
-    let html = content.html;
+    let guideContent = content.content;
     // Skip URL resolution for JSON guides (they don't have relative URLs and DOMParser would corrupt them)
-    if (!isJsonGuideContent(html)) {
-      html = resolveRelativeUrls(html, content.url);
-      if (content.type === 'learning-journey' && content.metadata.learningJourney) {
-        html = generateJourneyContentWithExtras(html, content.metadata.learningJourney);
-      }
+    // Note: Learning journey extras are now applied in the content fetcher before wrapping
+    if (!isJsonGuideContent(guideContent)) {
+      guideContent = resolveRelativeUrls(guideContent, content.url);
     }
-    return html;
+    return guideContent;
   }, [content]);
 
   // Handle fragment scrolling after content renders
