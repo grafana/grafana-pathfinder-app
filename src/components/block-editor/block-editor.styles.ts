@@ -57,8 +57,11 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
   // Main content area
   content: css({
     flex: 1,
-    overflow: 'auto',
+    overflowY: 'auto',
+    overflowX: 'hidden',
     padding: theme.spacing(2),
+    // Ensure drag images aren't clipped
+    contain: 'layout',
   }),
 
   // Empty state
@@ -193,17 +196,23 @@ export const getBlockListStyles = (theme: GrafanaTheme2) => ({
   }),
 
   insertZone: css({
-    padding: theme.spacing(0.5),
+    padding: theme.spacing(1),
     opacity: 0,
-    transition: 'opacity 0.2s ease',
+    transition: 'all 0.2s ease',
+    minHeight: '20px',
+    pointerEvents: 'none', // Don't block drag events when hidden
 
     '&:hover': {
       opacity: 1,
+      pointerEvents: 'auto',
     },
   }),
 
   insertZoneActive: css({
     opacity: 1,
+    padding: theme.spacing(1.5),
+    minHeight: '40px',
+    pointerEvents: 'auto', // Enable pointer events when visible
   }),
 });
 
@@ -220,6 +229,7 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     backgroundColor: theme.colors.background.primary,
     transition: 'all 0.15s ease',
+    userSelect: 'none', // Prevent text selection during drag
 
     '&:hover': {
       borderColor: theme.colors.border.medium,
@@ -238,15 +248,11 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     justifyContent: 'center',
     width: '24px',
     color: theme.colors.text.disabled,
-    cursor: 'grab',
     flexShrink: 0,
+    pointerEvents: 'none', // Visual indicator only - parent handles dragging
 
     '&:hover': {
       color: theme.colors.text.secondary,
-    },
-
-    '&:active': {
-      cursor: 'grabbing',
     },
   }),
 

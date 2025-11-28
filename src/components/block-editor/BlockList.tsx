@@ -5,7 +5,7 @@
  * Supports drag-and-drop nesting into section blocks.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { useStyles2, Badge, IconButton } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -15,6 +15,67 @@ import { BlockPalette } from './BlockPalette';
 import { BLOCK_TYPE_METADATA } from './constants';
 import type { EditorBlock, BlockType, JsonBlock } from './types';
 import { isSectionBlock as checkIsSectionBlock, type JsonSectionBlock } from '../../types/json-guide.types';
+
+// Drop indicator styles
+const getDropIndicatorStyles = (theme: GrafanaTheme2) => ({
+  container: css({
+    position: 'relative',
+    padding: theme.spacing(1.5), // Taller drop zone
+    transition: 'all 0.15s ease',
+    minHeight: '32px', // Ensure minimum height for easier targeting
+  }),
+  line: css({
+    height: '4px',
+    backgroundColor: theme.colors.primary.main,
+    borderRadius: '2px',
+    boxShadow: `0 0 12px ${theme.colors.primary.main}`,
+    transition: 'all 0.15s ease',
+  }),
+  lineInactive: css({
+    height: '2px',
+    backgroundColor: theme.colors.border.medium,
+    boxShadow: 'none',
+  }),
+  label: css({
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    transform: 'translate(-50%, -50%)',
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1.5)}`,
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    borderRadius: theme.shape.radius.pill,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    whiteSpace: 'nowrap',
+    boxShadow: theme.shadows.z2,
+    zIndex: 1,
+  }),
+  labelInactive: css({
+    backgroundColor: theme.colors.background.secondary,
+    color: theme.colors.text.secondary,
+    border: `1px dashed ${theme.colors.border.medium}`,
+    boxShadow: 'none',
+  }),
+});
+
+/**
+ * Visual drop indicator component - shows a blue line where the drop will happen
+ */
+function DropIndicator({ isActive, label }: { isActive: boolean; label: string }) {
+  const styles = useStyles2(getDropIndicatorStyles);
+  
+  return (
+    <div className={styles.container}>
+      <div className={`${styles.line} ${!isActive ? styles.lineInactive : ''}`} />
+      {isActive && (
+        <div className={styles.label}>
+          {label}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Additional styles for nested blocks
 const getNestedStyles = (theme: GrafanaTheme2) => ({
@@ -28,7 +89,8 @@ const getNestedStyles = (theme: GrafanaTheme2) => ({
     borderRadius: `0 ${theme.shape.radius.default} ${theme.shape.radius.default} 0`,
   }),
   dropZone: css({
-    padding: theme.spacing(1.5),
+    padding: theme.spacing(2),
+    minHeight: '48px',
     border: `2px dashed ${theme.colors.border.medium}`,
     borderRadius: theme.shape.radius.default,
     backgroundColor: theme.colors.background.secondary,
@@ -38,6 +100,9 @@ const getNestedStyles = (theme: GrafanaTheme2) => ({
     transition: 'all 0.2s ease',
     cursor: 'pointer',
     marginTop: theme.spacing(1),
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
 
     '&:hover': {
       borderColor: theme.colors.primary.border,
@@ -49,6 +114,9 @@ const getNestedStyles = (theme: GrafanaTheme2) => ({
     borderColor: theme.colors.primary.main,
     backgroundColor: theme.colors.primary.transparent,
     color: theme.colors.primary.text,
+    minHeight: '60px',
+    border: `3px solid ${theme.colors.primary.main}`,
+    boxShadow: `0 0 12px ${theme.colors.primary.transparent}`,
   }),
   nestedBlockItem: css({
     marginBottom: theme.spacing(1),
@@ -118,15 +186,14 @@ export interface BlockListProps {
 const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
-    alignItems: 'stretch',
+    alignItems: 'center',
     gap: theme.spacing(1),
-    padding: theme.spacing(1),
+    padding: theme.spacing(1.5),
     backgroundColor: theme.colors.background.primary,
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
-    marginBottom: theme.spacing(1),
-    cursor: 'grab',
     transition: 'all 0.15s ease',
+    minHeight: '52px',
 
     '&:hover': {
       borderColor: theme.colors.border.medium,
@@ -140,15 +207,7 @@ const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
     width: '24px',
     color: theme.colors.text.disabled,
     flexShrink: 0,
-    cursor: 'grab',
-
-    '&:hover': {
-      color: theme.colors.text.secondary,
-    },
-
-    '&:active': {
-      cursor: 'grabbing',
-    },
+    pointerEvents: 'none', // Don't block drag events - parent handles dragging
   }),
   content: css({
     flex: 1,
@@ -244,27 +303,21 @@ const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
 function NestedBlockItem({
   block,
   index,
-  sectionId,
   totalBlocks,
   onEdit,
   onDelete,
   onDuplicate,
   onMoveUp,
   onMoveDown,
-  onDragStart,
-  onDragEnd,
 }: {
   block: JsonBlock;
   index: number;
-  sectionId: string;
   totalBlocks: number;
   onEdit?: () => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
-  onDragStart?: (e: React.DragEvent) => void;
-  onDragEnd?: () => void;
 }) {
   const styles = useStyles2(getNestedBlockItemStyles);
   const meta = BLOCK_TYPE_METADATA[block.type as BlockType];
@@ -290,13 +343,8 @@ function NestedBlockItem({
   const preview = getPreview();
 
   return (
-    <div
-      className={styles.container}
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-    >
-      {/* Drag handle */}
+    <div className={styles.container}>
+      {/* Drag handle - visual indicator only */}
       <div className={styles.dragHandle} title="Drag to reorder or move out of section">
         <span style={{ fontSize: '14px' }}>⋮⋮</span>
       </div>
@@ -316,7 +364,8 @@ function NestedBlockItem({
       </div>
 
       {/* Actions - grouped like BlockItem */}
-      <div className={styles.actions}>
+      {/* draggable={false} prevents drag from starting when clicking this area */}
+      <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
         {/* Move controls */}
         <div className={styles.actionGroup}>
           <IconButton
@@ -401,6 +450,13 @@ export function BlockList({
   const [dragOverRootZone, setDragOverRootZone] = useState<number | null>(null);
   const [dragOverReorderZone, setDragOverReorderZone] = useState<number | null>(null);
   const [dragOverNestedZone, setDragOverNestedZone] = useState<{ sectionId: string; index: number } | null>(null);
+  
+  // Use refs to track drag state without causing re-renders during drag start
+  const dragStateRef = useRef<{
+    rootBlockId: string | null;
+    rootBlockIndex: number | null;
+    nestedBlock: { sectionId: string; index: number } | null;
+  }>({ rootBlockId: null, rootBlockIndex: null, nestedBlock: null });
 
   const handleBlockClick = useCallback(
     (id: string) => {
@@ -429,19 +485,34 @@ export function BlockList({
 
   // Drag start handler for root blocks
   const handleDragStart = useCallback((e: React.DragEvent, blockId: string, blockType: string, index: number) => {
+    console.log('[ROOT DRAG START]', { blockId, blockType, index, target: e.target });
     // Don't allow dragging sections
     if (blockType === 'section') {
       e.preventDefault();
       return;
     }
-    setDraggedBlockId(blockId);
-    setDraggedBlockIndex(index);
+    
+    // Set up drag data FIRST - before any state changes
     e.dataTransfer.setData('text/plain', blockId);
+    e.dataTransfer.dropEffect = 'move';
     e.dataTransfer.effectAllowed = 'move';
+    
+    // Store in ref immediately (no re-render)
+    dragStateRef.current = { rootBlockId: blockId, rootBlockIndex: index, nestedBlock: null };
+    
+    // Defer state update to next frame to avoid re-render during drag start
+    requestAnimationFrame(() => {
+      setDraggedBlockId(blockId);
+      setDraggedBlockIndex(index);
+    });
+    
+    console.log('[ROOT DRAG START] - completed setup');
   }, []);
 
   // Drag end handler
   const handleDragEnd = useCallback(() => {
+    console.log('[ROOT DRAG END]');
+    dragStateRef.current = { rootBlockId: null, rootBlockIndex: null, nestedBlock: null };
     setDraggedBlockId(null);
     setDraggedBlockIndex(null);
     setDragOverSectionId(null);
@@ -484,13 +555,28 @@ export function BlockList({
 
   // Handle nested block drag start
   const handleNestedDragStart = useCallback((e: React.DragEvent, sectionId: string, nestedIndex: number) => {
-    setDraggedNestedBlock({ sectionId, index: nestedIndex });
+    console.log('[NESTED DRAG START]', { sectionId, nestedIndex, target: e.target });
+    
+    // Set up drag data FIRST - before any state changes
     e.dataTransfer.setData('text/plain', `nested:${sectionId}:${nestedIndex}`);
+    e.dataTransfer.dropEffect = 'move';
     e.dataTransfer.effectAllowed = 'move';
+    
+    // Store in ref immediately (no re-render)
+    dragStateRef.current = { rootBlockId: null, rootBlockIndex: null, nestedBlock: { sectionId, index: nestedIndex } };
+    
+    // Defer state update to next frame to avoid re-render during drag start
+    requestAnimationFrame(() => {
+      setDraggedNestedBlock({ sectionId, index: nestedIndex });
+    });
+    
+    console.log('[NESTED DRAG START] - completed setup');
   }, []);
 
   // Handle nested block drag end
   const handleNestedDragEnd = useCallback(() => {
+    console.log('[NESTED DRAG END]');
+    dragStateRef.current = { rootBlockId: null, rootBlockIndex: null, nestedBlock: null };
     setDraggedNestedBlock(null);
     setDragOverSectionId(null);
     setDragOverRootZone(null);
@@ -579,44 +665,63 @@ export function BlockList({
     [draggedBlockId, draggedBlockIndex, onBlockMove]
   );
 
+  // Check if any drag operation is active
+  const isDragging = draggedBlockId !== null || draggedNestedBlock !== null;
+  
+  // Log state changes for debugging (only when isDragging changes)
+  React.useEffect(() => {
+    console.log('[DRAG STATE CHANGED]', { isDragging, draggedBlockId, draggedBlockIndex, draggedNestedBlock });
+  }, [isDragging, draggedBlockId, draggedBlockIndex, draggedNestedBlock]);
+  
+  // Check if a root drop zone would be redundant (same position as dragged block)
+  const isRootDropZoneRedundant = (zoneIndex: number) => {
+    if (draggedBlockIndex === null) {
+      return false;
+    }
+    // Zone at draggedBlockIndex or draggedBlockIndex + 1 would result in same position
+    return zoneIndex === draggedBlockIndex || zoneIndex === draggedBlockIndex + 1;
+  };
+
   return (
     <div className={styles.list}>
       {/* Insert zone at the top - serves as drop zone for reordering and unnesting */}
-      <div
-        className={`${styles.insertZone} ${hoveredInsertIndex === 0 ? styles.insertZoneActive : ''} ${dragOverRootZone === 0 || dragOverReorderZone === 0 ? styles.insertZoneActive : ''}`}
-        onMouseEnter={() => setHoveredInsertIndex(0)}
-        onMouseLeave={() => setHoveredInsertIndex(null)}
-        onDragOver={(e) => {
-          if (draggedNestedBlock) {
-            handleDragOverRootZone(e, 0);
-          } else if (draggedBlockId) {
-            handleDragOverReorder(e, 0);
-          }
-        }}
-        onDragLeave={() => {
-          handleDragLeaveRootZone();
-          handleDragLeaveReorder();
-        }}
-        onDrop={() => {
-          if (draggedNestedBlock) {
-            handleDropOnRootZone(0);
-          } else if (draggedBlockId) {
-            handleDropReorder(0);
-          }
-        }}
-      >
-        {draggedNestedBlock ? (
-          <div style={{ padding: '8px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-            📤 Drop here to move out of section
-          </div>
-        ) : draggedBlockId ? (
-          <div style={{ padding: '8px 16px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--background-secondary)', borderRadius: '4px' }}>
-            📍 Drop here to move block
-          </div>
-        ) : (
-          <BlockPalette onSelect={onInsertBlock} insertAtIndex={0} compact />
-        )}
-      </div>
+      {/* Hide if dragging root block from index 0 */}
+      {!(draggedBlockIndex === 0) && (
+        <div
+          className={`${styles.insertZone} ${hoveredInsertIndex === 0 || isDragging ? styles.insertZoneActive : ''}`}
+          onMouseEnter={() => setHoveredInsertIndex(0)}
+          onMouseLeave={() => setHoveredInsertIndex(null)}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (draggedNestedBlock) {
+              handleDragOverRootZone(e, 0);
+            } else if (draggedBlockId) {
+              handleDragOverReorder(e, 0);
+            }
+          }}
+          onDragLeave={() => {
+            handleDragLeaveRootZone();
+            handleDragLeaveReorder();
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (draggedNestedBlock) {
+              handleDropOnRootZone(0);
+            } else if (draggedBlockId) {
+              handleDropReorder(0);
+            }
+          }}
+        >
+          {isDragging ? (
+            <DropIndicator 
+              isActive={dragOverRootZone === 0 || dragOverReorderZone === 0}
+              label={draggedNestedBlock ? '📤 Move out of section' : '📍 Move here'}
+            />
+          ) : (
+            <BlockPalette onSelect={onInsertBlock} insertAtIndex={0} compact />
+          )}
+        </div>
+      )}
 
       {blocks.map((block, index) => {
         const isSection = checkIsSectionBlock(block.block);
@@ -626,11 +731,17 @@ export function BlockList({
           <React.Fragment key={block.id}>
             <div
               draggable={block.block.type !== 'section'}
-              onDragStart={(e) => handleDragStart(e, block.id, block.block.type, index)}
+              onMouseDown={() => console.log('[ROOT MOUSEDOWN]', { blockId: block.id, blockType: block.block.type, index })}
+              onDragStart={(e) => {
+                if (block.block.type === 'section') {
+                  e.preventDefault();
+                  return;
+                }
+                handleDragStart(e, block.id, block.block.type, index);
+              }}
               onDragEnd={handleDragEnd}
               style={{ 
                 cursor: block.block.type !== 'section' ? 'grab' : 'default',
-                opacity: draggedBlockId === block.id ? 0.5 : 1,
               }}
             >
               <BlockItem
@@ -655,83 +766,103 @@ export function BlockList({
                     Drag blocks here or click + Add Block below
                   </div>
                 ) : (
-                  sectionBlocks.map((nestedBlock: JsonBlock, nestedIndex: number) => (
-                    <React.Fragment key={`${block.id}-${nestedIndex}`}>
-                      {/* Drop zone before each nested block for reordering */}
-                      {draggedNestedBlock && draggedNestedBlock.sectionId === block.id && (
+                  sectionBlocks.map((nestedBlock: JsonBlock, nestedIndex: number) => {
+                    const isDropZoneActive = dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === nestedIndex;
+                    // Show reorder zones when dragging a nested block from THIS section
+                    const showNestedReorderZones = draggedNestedBlock && draggedNestedBlock.sectionId === block.id;
+                    // Don't show drop zone if it would result in same position (before dragged item or after it)
+                    const isRedundantDropZone = draggedNestedBlock?.sectionId === block.id && 
+                      (nestedIndex === draggedNestedBlock.index || nestedIndex === draggedNestedBlock.index + 1);
+
+                    return (
+                      <React.Fragment key={`${block.id}-${nestedIndex}`}>
+                        {/* Drop zone before each nested block for reordering - only visible during drag */}
+                        {showNestedReorderZones && !isRedundantDropZone && (
+                          <div
+                            style={{
+                              padding: '4px 0',
+                              marginBottom: '4px',
+                              pointerEvents: isDragging ? 'auto' : 'none',
+                            }}
+                            onDragOver={(e) => handleDragOverNestedReorder(e, block.id, nestedIndex)}
+                            onDragLeave={handleDragLeaveNestedReorder}
+                            onDrop={(e) => { e.preventDefault(); handleDropNestedReorder(block.id, nestedIndex); }}
+                          >
+                            <DropIndicator isActive={isDropZoneActive} label="📍 Move here" />
+                          </div>
+                        )}
                         <div
-                          style={{
-                            height: dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === nestedIndex ? '40px' : '8px',
-                            background: dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === nestedIndex ? 'var(--primary-transparent)' : 'transparent',
-                            border: dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === nestedIndex ? '2px dashed var(--primary-border)' : 'none',
-                            borderRadius: '4px',
-                            marginBottom: '4px',
-                            transition: 'all 0.15s ease',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'var(--text-secondary)',
-                            fontSize: '12px',
-                          }}
-                          onDragOver={(e) => handleDragOverNestedReorder(e, block.id, nestedIndex)}
-                          onDragLeave={handleDragLeaveNestedReorder}
-                          onDrop={() => handleDropNestedReorder(block.id, nestedIndex)}
-                        >
-                          {dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === nestedIndex && '📍 Drop here'}
-                        </div>
-                      )}
-                      <div style={{ opacity: draggedNestedBlock?.sectionId === block.id && draggedNestedBlock?.index === nestedIndex ? 0.5 : 1 }}>
-                        <NestedBlockItem
-                          block={nestedBlock}
-                          index={nestedIndex}
-                          sectionId={block.id}
-                          totalBlocks={sectionBlocks.length}
-                          onEdit={() => onNestedBlockEdit?.(block.id, nestedIndex, nestedBlock)}
-                          onDelete={() => onNestedBlockDelete?.(block.id, nestedIndex)}
-                          onDuplicate={() => onNestedBlockDuplicate?.(block.id, nestedIndex)}
-                          onMoveUp={() => onNestedBlockMove?.(block.id, nestedIndex, nestedIndex - 1)}
-                          onMoveDown={() => onNestedBlockMove?.(block.id, nestedIndex, nestedIndex + 1)}
+                          draggable
+                          onMouseDown={() => console.log('[NESTED MOUSEDOWN]', { sectionId: block.id, nestedIndex })}
                           onDragStart={(e) => handleNestedDragStart(e, block.id, nestedIndex)}
                           onDragEnd={handleNestedDragEnd}
-                        />
-                      </div>
-                    </React.Fragment>
-                  ))
+                          style={{ 
+                            cursor: 'grab',
+                            marginBottom: '8px',
+                          }}
+                        >
+                          <NestedBlockItem
+                            block={nestedBlock}
+                            index={nestedIndex}
+                            totalBlocks={sectionBlocks.length}
+                            onEdit={() => onNestedBlockEdit?.(block.id, nestedIndex, nestedBlock)}
+                            onDelete={() => onNestedBlockDelete?.(block.id, nestedIndex)}
+                            onDuplicate={() => onNestedBlockDuplicate?.(block.id, nestedIndex)}
+                            onMoveUp={() => onNestedBlockMove?.(block.id, nestedIndex, nestedIndex - 1)}
+                            onMoveDown={() => onNestedBlockMove?.(block.id, nestedIndex, nestedIndex + 1)}
+                          />
+                        </div>
+                      </React.Fragment>
+                    );
+                  })
                 )}
 
-                {/* Drop zone at the end for reordering */}
-                {draggedNestedBlock && draggedNestedBlock.sectionId === block.id && (
+                {/* Drop zone at the end for reordering - hide if dragged item is last */}
+                {draggedNestedBlock && draggedNestedBlock.sectionId === block.id && 
+                 draggedNestedBlock.index !== sectionBlocks.length - 1 && (
                   <div
                     style={{
-                      height: dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === sectionBlocks.length ? '40px' : '8px',
-                      background: dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === sectionBlocks.length ? 'var(--primary-transparent)' : 'transparent',
-                      border: dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === sectionBlocks.length ? '2px dashed var(--primary-border)' : 'none',
-                      borderRadius: '4px',
+                      padding: '4px 0',
                       marginBottom: '8px',
-                      transition: 'all 0.15s ease',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--text-secondary)',
-                      fontSize: '12px',
                     }}
                     onDragOver={(e) => handleDragOverNestedReorder(e, block.id, sectionBlocks.length)}
                     onDragLeave={handleDragLeaveNestedReorder}
-                    onDrop={() => handleDropNestedReorder(block.id, sectionBlocks.length)}
+                    onDrop={(e) => { e.preventDefault(); handleDropNestedReorder(block.id, sectionBlocks.length); }}
                   >
-                    {dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === sectionBlocks.length && '📍 Drop here'}
+                    <DropIndicator 
+                      isActive={dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === sectionBlocks.length}
+                      label="📍 Move here"
+                    />
                   </div>
                 )}
 
                 {/* Drop zone for section - accepts both root blocks and nested blocks from other sections */}
                 <div
                   className={`${nestedStyles.dropZone} ${dragOverSectionId === block.id ? nestedStyles.dropZoneActive : ''}`}
-                  onDragOver={(e) => handleDragOverSection(e, block.id)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    handleDragOverSection(e, block.id);
+                  }}
                   onDragLeave={handleDragLeaveSection}
-                  onDrop={() => handleDropOnSection(block.id)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    handleDropOnSection(block.id);
+                  }}
                 >
-                  {draggedBlockId || draggedNestedBlock ? (
-                    <span>📥 Drop here to add to section</span>
+                  {isDragging ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {dragOverSectionId === block.id ? (
+                        <>
+                          <span style={{ fontSize: '20px' }}>📥</span>
+                          <span style={{ fontWeight: 500 }}>Release to add to this section</span>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: '16px' }}>📥</span>
+                          <span>Drop here to add to section</span>
+                        </>
+                      )}
+                    </div>
                   ) : (
                     <BlockPalette
                       onSelect={(type) => handleInsertInSection(type, block.id)}
@@ -743,41 +874,43 @@ export function BlockList({
             )}
 
             {/* Insert zone after each block - serves as drop zone for reordering and unnesting */}
-            <div
-              className={`${styles.insertZone} ${hoveredInsertIndex === index + 1 ? styles.insertZoneActive : ''} ${dragOverRootZone === index + 1 || dragOverReorderZone === index + 1 ? styles.insertZoneActive : ''}`}
-              onMouseEnter={() => setHoveredInsertIndex(index + 1)}
-              onMouseLeave={() => setHoveredInsertIndex(null)}
-              onDragOver={(e) => {
-                if (draggedNestedBlock) {
-                  handleDragOverRootZone(e, index + 1);
-                } else if (draggedBlockId) {
-                  handleDragOverReorder(e, index + 1);
-                }
-              }}
-              onDragLeave={() => {
-                handleDragLeaveRootZone();
-                handleDragLeaveReorder();
-              }}
-              onDrop={() => {
-                if (draggedNestedBlock) {
-                  handleDropOnRootZone(index + 1);
-                } else if (draggedBlockId) {
-                  handleDropReorder(index + 1);
-                }
-              }}
-            >
-              {draggedNestedBlock ? (
-                <div style={{ padding: '8px 16px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                  📤 Drop here to move out of section
-                </div>
-              ) : draggedBlockId ? (
-                <div style={{ padding: '8px 16px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--background-secondary)', borderRadius: '4px' }}>
-                  📍 Drop here to move block
-                </div>
-              ) : (
-                <BlockPalette onSelect={onInsertBlock} insertAtIndex={index + 1} compact />
-              )}
-            </div>
+            {/* Hide redundant drop zones when dragging root blocks */}
+            {!isRootDropZoneRedundant(index + 1) && (
+              <div
+                className={`${styles.insertZone} ${hoveredInsertIndex === index + 1 || isDragging ? styles.insertZoneActive : ''}`}
+                onMouseEnter={() => setHoveredInsertIndex(index + 1)}
+                onMouseLeave={() => setHoveredInsertIndex(null)}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedNestedBlock) {
+                    handleDragOverRootZone(e, index + 1);
+                  } else if (draggedBlockId) {
+                    handleDragOverReorder(e, index + 1);
+                  }
+                }}
+                onDragLeave={() => {
+                  handleDragLeaveRootZone();
+                  handleDragLeaveReorder();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (draggedNestedBlock) {
+                    handleDropOnRootZone(index + 1);
+                  } else if (draggedBlockId) {
+                    handleDropReorder(index + 1);
+                  }
+                }}
+              >
+                {isDragging ? (
+                  <DropIndicator 
+                    isActive={dragOverRootZone === index + 1 || dragOverReorderZone === index + 1}
+                    label={draggedNestedBlock ? '📤 Move out of section' : '📍 Move here'}
+                  />
+                ) : (
+                  <BlockPalette onSelect={onInsertBlock} insertAtIndex={index + 1} compact />
+                )}
+              </div>
+            )}
           </React.Fragment>
         );
       })}

@@ -162,17 +162,9 @@ export function BlockItem({
     <div
       className={containerClass}
       onClick={handleClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick();
-        }
-      }}
     >
-      {/* Drag handle */}
-      <div className={styles.dragHandle} title="Drag to reorder">
+      {/* Drag handle - visual indicator */}
+      <div className={styles.dragHandle} title="Drag anywhere on this block to reorder">
         <span style={{ fontSize: '14px' }}>⋮⋮</span>
       </div>
 
@@ -194,7 +186,8 @@ export function BlockItem({
       </div>
 
       {/* Actions - grouped for clarity */}
-      <div className={styles.actions}>
+      {/* draggable={false} prevents drag from starting when clicking this area */}
+      <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
         {/* Move controls */}
         <div className={styles.actionGroup}>
           <IconButton

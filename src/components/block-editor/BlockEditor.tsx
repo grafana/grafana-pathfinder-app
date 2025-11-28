@@ -3,11 +3,13 @@
  *
  * Main component for the block-based JSON guide editor.
  * Provides a visual interface for composing guides from different block types.
+ * State persists to localStorage automatically and survives page refreshes.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button, useStyles2, Badge, ButtonGroup, ConfirmModal } from '@grafana/ui';
 import { useBlockEditor } from './hooks/useBlockEditor';
+import { useBlockPersistence } from './hooks/useBlockPersistence';
 import { getBlockEditorStyles } from './block-editor.styles';
 import { GuideMetadataForm } from './GuideMetadataForm';
 import { BlockPalette } from './BlockPalette';
@@ -33,6 +35,33 @@ export interface BlockEditorProps {
 export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const editor = useBlockEditor({ initialGuide, onChange });
+  const hasLoadedFromStorage = useRef(false);
+
+  // Persistence - auto-save and restore from localStorage
+  const persistence = useBlockPersistence({
+    guide: editor.getGuide(),
+    autoSave: true,
+    onLoad: (savedGuide) => {
+      // Only load once on initial mount
+      if (!hasLoadedFromStorage.current && !initialGuide) {
+        hasLoadedFromStorage.current = true;
+        editor.loadGuide(savedGuide);
+        editor.markSaved(); // Don't mark as dirty after loading
+      }
+    },
+  });
+
+  // Load from localStorage on mount (if no initialGuide provided)
+  useEffect(() => {
+    if (!hasLoadedFromStorage.current && !initialGuide && persistence.hasSavedGuide()) {
+      const saved = persistence.load();
+      if (saved) {
+        hasLoadedFromStorage.current = true;
+        editor.loadGuide(saved);
+        editor.markSaved();
+      }
+    }
+  }, [initialGuide, persistence, editor]);
 
   // Modal state
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
@@ -40,7 +69,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const [editingBlockType, setEditingBlockType] = useState<BlockType | null>(null);
   const [editingBlock, setEditingBlock] = useState<EditorBlock | null>(null);
   const [insertAtIndex, setInsertAtIndex] = useState<number | undefined>(undefined);
-  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isNewGuideConfirmOpen, setIsNewGuideConfirmOpen] = useState(false);
   // State for editing nested blocks
   const [editingNestedBlock, setEditingNestedBlock] = useState<{
     sectionId: string;
@@ -110,11 +139,12 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     }
   }, [editor, onDownload]);
 
-  // Handle reset
-  const handleReset = useCallback(() => {
-    editor.resetGuide();
-    setIsResetConfirmOpen(false);
-  }, [editor]);
+  // Handle new guide (reset and clear storage)
+  const handleNewGuide = useCallback(() => {
+    persistence.clear(); // Clear localStorage
+    editor.resetGuide(); // Reset editor state
+    setIsNewGuideConfirmOpen(false);
+  }, [editor, persistence]);
 
   // Handle nesting a block into a section
   const handleNestBlock = useCallback(
@@ -222,7 +252,11 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       <div className={styles.header}>
         <div className={styles.headerLeft}>
           <h3 className={styles.guideTitle}>{state.guide.title}</h3>
-          {state.isDirty && <Badge text="Unsaved" color="orange" />}
+          {state.isDirty ? (
+            <Badge text="Auto-saving..." color="orange" icon="fa fa-spinner" />
+          ) : (
+            <Badge text="Saved" color="green" icon="check" />
+          )}
           <Button
             variant="secondary"
             size="sm"
@@ -265,9 +299,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           <Button
             variant="secondary"
             size="sm"
-            icon="trash-alt"
-            onClick={() => setIsResetConfirmOpen(true)}
-            tooltip="Reset to new guide"
+            icon="file-blank"
+            onClick={() => setIsNewGuideConfirmOpen(true)}
+            tooltip="Start new guide"
           />
         </div>
       </div>
@@ -328,13 +362,13 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       )}
 
       <ConfirmModal
-        isOpen={isResetConfirmOpen}
-        title="Reset Guide"
-        body="Are you sure you want to reset? All unsaved changes will be lost."
-        confirmText="Reset"
+        isOpen={isNewGuideConfirmOpen}
+        title="Start New Guide"
+        body="Are you sure you want to start a new guide? Your current work will be deleted and cannot be recovered."
+        confirmText="Start New"
         dismissText="Cancel"
-        onConfirm={handleReset}
-        onDismiss={() => setIsResetConfirmOpen(false)}
+        onConfirm={handleNewGuide}
+        onDismiss={() => setIsNewGuideConfirmOpen(false)}
       />
     </div>
   );
