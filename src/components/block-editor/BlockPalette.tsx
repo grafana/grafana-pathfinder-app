@@ -178,14 +178,19 @@ export interface BlockPaletteProps {
   insertAtIndex?: number;
   /** Whether to use compact styling (for inline buttons) */
   compact?: boolean;
+  /** Block types to exclude from the palette */
+  excludeTypes?: BlockType[];
 }
 
 /**
  * Block palette modal for adding new blocks
  */
-export function BlockPalette({ onSelect, insertAtIndex, compact = false }: BlockPaletteProps) {
+export function BlockPalette({ onSelect, insertAtIndex, compact = false, excludeTypes = [] }: BlockPaletteProps) {
   const styles = useStyles2(getPaletteModalStyles);
   const [isOpen, setIsOpen] = useState(false);
+  
+  // Filter out excluded types
+  const availableTypes = BLOCK_TYPE_ORDER.filter(type => !excludeTypes.includes(type));
 
   // Handle escape key to close
   useEffect(() => {
@@ -254,7 +259,7 @@ export function BlockPalette({ onSelect, insertAtIndex, compact = false }: Block
               </div>
               <div className={styles.content}>
                 <div className={styles.grid}>
-                  {BLOCK_TYPE_ORDER.map((type) => {
+                  {availableTypes.map((type) => {
                     const meta = BLOCK_TYPE_METADATA[type];
                     return (
                       <button
