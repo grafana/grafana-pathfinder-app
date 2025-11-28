@@ -373,23 +373,23 @@ Knowledge assessment with single or multiple choice questions.
 }
 ```
 
-| Field            | Type           | Required | Default          | Description                                     |
-| ---------------- | -------------- | -------- | ---------------- | ----------------------------------------------- |
-| `question`       | string         | ✅       | —                | Question text (supports markdown)               |
-| `choices`        | QuizChoice[]   | ✅       | —                | Answer choices (see below)                      |
-| `multiSelect`    | boolean        | ❌       | `false`          | Allow multiple answers (checkboxes vs radio)    |
-| `completionMode` | string         | ❌       | `"correct-only"` | `"correct-only"` or `"max-attempts"`            |
-| `maxAttempts`    | number         | ❌       | `3`              | Attempts before revealing answer (max-attempts) |
-| `requirements`   | string[]       | ❌       | —                | Requirements for this quiz                      |
-| `skippable`      | boolean        | ❌       | `false`          | Allow skipping                                  |
+| Field            | Type         | Required | Default          | Description                                     |
+| ---------------- | ------------ | -------- | ---------------- | ----------------------------------------------- |
+| `question`       | string       | ✅       | —                | Question text (supports markdown)               |
+| `choices`        | QuizChoice[] | ✅       | —                | Answer choices (see below)                      |
+| `multiSelect`    | boolean      | ❌       | `false`          | Allow multiple answers (checkboxes vs radio)    |
+| `completionMode` | string       | ❌       | `"correct-only"` | `"correct-only"` or `"max-attempts"`            |
+| `maxAttempts`    | number       | ❌       | `3`              | Attempts before revealing answer (max-attempts) |
+| `requirements`   | string[]     | ❌       | —                | Requirements for this quiz                      |
+| `skippable`      | boolean      | ❌       | `false`          | Allow skipping                                  |
 
 **Choice Structure:**
 
-| Field     | Type    | Required | Description                              |
-| --------- | ------- | -------- | ---------------------------------------- |
-| `id`      | string  | ✅       | Choice identifier (e.g., "a", "b", "c")  |
-| `text`    | string  | ✅       | Choice text (supports markdown)          |
-| `correct` | boolean | ❌       | Is this a correct answer?                |
+| Field     | Type    | Required | Description                                   |
+| --------- | ------- | -------- | --------------------------------------------- |
+| `id`      | string  | ✅       | Choice identifier (e.g., "a", "b", "c")       |
+| `text`    | string  | ✅       | Choice text (supports markdown)               |
+| `correct` | boolean | ❌       | Is this a correct answer?                     |
 | `hint`    | string  | ❌       | Hint shown when this wrong choice is selected |
 
 **Completion Modes:**

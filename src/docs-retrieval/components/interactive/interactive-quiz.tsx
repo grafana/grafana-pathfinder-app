@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { css, cx, keyframes } from '@emotion/css';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -47,6 +47,7 @@ export interface InteractiveQuizProps {
 
 // ============ Component ============
 
+// Counter for generating unique quiz IDs
 let quizCounter = 0;
 
 export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
@@ -67,13 +68,12 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 }) => {
   const styles = useStyles2(getQuizStyles);
 
-  // Generate stable step ID
-  const generatedStepIdRef = useRef<string>();
-  if (!generatedStepIdRef.current) {
+  // Generate stable step ID using useState lazy initialization (runs once on mount)
+  const [generatedStepId] = useState(() => {
     quizCounter += 1;
-    generatedStepIdRef.current = `quiz-${quizCounter}`;
-  }
-  const stepId = providedStepId ?? generatedStepIdRef.current;
+    return `quiz-${quizCounter}`;
+  });
+  const stepId = providedStepId ?? generatedStepId;
 
   // State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -101,28 +101,25 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   // Compute effective completion state
   const isCompleted = parentCompleted || stepCompleted || isLocallyCompleted;
 
-  // Reset on resetTrigger change
-  useEffect(() => {
-    if (resetTrigger !== undefined) {
-      setSelectedIds(new Set());
-      setAttempts(0);
-      setIsLocallyCompleted(false);
-      setLastResult('none');
-      setShowHint(null);
-      setIsRevealed(false);
-    }
-  }, [resetTrigger]);
-
   // Get correct answer IDs
   const correctIds = useMemo(() => new Set(choices.filter((c) => c.correct).map((c) => c.id)), [choices]);
 
-  // Restore correct answers when quiz is already completed (e.g., after page refresh)
-  useEffect(() => {
+  // Compute displayed selection: show correct answers if quiz is completed but no selection made yet
+  // This handles the case where quiz was completed in a previous session (page refresh)
+  const displayedSelection = useMemo(() => {
     if (isCompleted && selectedIds.size === 0) {
-      setSelectedIds(correctIds);
-      setLastResult('correct');
+      return correctIds;
     }
-  }, [isCompleted, correctIds, selectedIds.size]);
+    return selectedIds;
+  }, [isCompleted, selectedIds, correctIds]);
+
+  // Compute displayed result for completed quizzes with no selection
+  const displayedResult = useMemo(() => {
+    if (isCompleted && selectedIds.size === 0) {
+      return 'correct' as const;
+    }
+    return lastResult;
+  }, [isCompleted, selectedIds.size, lastResult]);
 
   // Check if current selection is correct
   const checkAnswer = useCallback((): boolean => {
@@ -208,7 +205,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       if (selectedWrong?.hint) {
         setShowHint(selectedWrong.hint);
       } else {
-        setShowHint('That\'s not quite right. Try again!');
+        setShowHint("That's not quite right. Try again!");
       }
 
       // Check if max attempts reached (for max-attempts mode)
@@ -230,16 +227,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         }
       }
     }
-  }, [
-    selectedIds,
-    attempts,
-    checkAnswer,
-    stepId,
-    onStepComplete,
-    completionMode,
-    maxAttempts,
-    choices,
-  ]);
+  }, [selectedIds, attempts, checkAnswer, stepId, onStepComplete, completionMode, maxAttempts, choices]);
 
   // Handle skip
   const handleSkip = useCallback(() => {
@@ -255,24 +243,24 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   // Choice state type
   type ChoiceState = 'default' | 'selected' | 'correct' | 'incorrect' | 'revealed';
 
-  // Get choice state for styling
+  // Get choice state for styling (uses displayedSelection/displayedResult for rendering)
   const getChoiceState = useCallback(
     (choice: QuizChoice): ChoiceState => {
       if (isRevealed && choice.correct) {
         return 'revealed';
       }
-      if (isCompleted && lastResult === 'correct' && selectedIds.has(choice.id)) {
+      if (isCompleted && displayedResult === 'correct' && displayedSelection.has(choice.id)) {
         return 'correct';
       }
-      if (lastResult === 'incorrect' && selectedIds.has(choice.id) && !choice.correct) {
+      if (displayedResult === 'incorrect' && displayedSelection.has(choice.id) && !choice.correct) {
         return 'incorrect';
       }
-      if (selectedIds.has(choice.id)) {
+      if (displayedSelection.has(choice.id)) {
         return 'selected';
       }
       return 'default';
     },
-    [isRevealed, isCompleted, lastResult, selectedIds]
+    [isRevealed, isCompleted, displayedResult, displayedSelection]
   );
 
   // Map choice state to style class
@@ -293,7 +281,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
   // Determine if we should show the blocked state
   const isBlocked = !isEnabled && !isCompleted;
-  const showCheckButton = !isCompleted && !isRevealed && selectedIds.size > 0;
+  const showCheckButton = !isCompleted && !isRevealed && displayedSelection.size > 0;
   const attemptsRemaining = completionMode === 'max-attempts' ? maxAttempts - attempts : null;
 
   return (
@@ -321,13 +309,13 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       {/* Choices */}
       <div
         className={cx(styles.choices, {
-          [styles.shake]: lastResult === 'incorrect',
+          [styles.shake]: displayedResult === 'incorrect',
         })}
         key={shakeKey}
       >
         {choices.map((choice) => {
           const state = getChoiceState(choice);
-          const isSelected = selectedIds.has(choice.id);
+          const isSelected = displayedSelection.has(choice.id);
 
           return (
             <button
@@ -366,7 +354,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       )}
 
       {/* Success message */}
-      {isCompleted && lastResult === 'correct' && (
+      {isCompleted && displayedResult === 'correct' && (
         <div className={styles.success}>
           <Icon name="check-circle" size="lg" />
           <span>Correct! Well done.</span>
@@ -377,9 +365,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       {isRevealed && (
         <div className={styles.revealed}>
           <Icon name="info-circle" size="sm" />
-          <span>
-            The correct answer{correctIds.size > 1 ? 's have' : ' has'} been revealed above.
-          </span>
+          <span>The correct answer{correctIds.size > 1 ? 's have' : ' has'} been revealed above.</span>
         </div>
       )}
 
@@ -667,4 +653,3 @@ const getQuizStyles = (theme: GrafanaTheme2) => ({
 });
 
 export default InteractiveQuiz;
-
