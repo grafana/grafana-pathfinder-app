@@ -21,6 +21,9 @@ export interface RawContent {
 
   /** Hash fragment from URL for anchor scrolling */
   hashFragment?: string;
+
+  /** Whether the content was fetched as native JSON (vs HTML that was wrapped) */
+  isNativeJson?: boolean;
 }
 
 export interface ContentMetadata {
