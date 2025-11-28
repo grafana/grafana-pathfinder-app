@@ -7,6 +7,7 @@ import { useStepChecker } from '../../../requirements-manager';
 import { InteractiveStep } from './interactive-step';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
+import { InteractiveQuiz } from './interactive-quiz';
 import { reportAppInteraction, UserInteraction, getSourceDocument } from '../../../lib/analytics';
 import { interactiveStepStorage, sectionCollapseStorage } from '../../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
@@ -303,6 +304,24 @@ export function InteractiveSection({
           skippable: props.skippable,
           isMultiStep: false,
           isGuided: true, // Mark as guided step
+        });
+        stepIndex++;
+      } else if (React.isValidElement(child) && (child as any).type === InteractiveQuiz) {
+        const props = child.props as any; // InteractiveQuizProps
+        const stepId = `${sectionId}-quiz-${stepIndex + 1}`;
+
+        steps.push({
+          stepId,
+          element: child as React.ReactElement<any>,
+          index: stepIndex,
+          targetAction: undefined, // Quiz handles internally
+          refTarget: undefined,
+          targetValue: undefined,
+          requirements: props.requirements,
+          skippable: props.skippable,
+          isMultiStep: false,
+          isGuided: false,
+          isQuiz: true, // Mark as quiz step
         });
         stepIndex++;
       }
@@ -1185,6 +1204,28 @@ export function InteractiveSection({
               multiStepRefs.current.delete(stepInfo.stepId);
             }
           },
+        });
+      } else if (React.isValidElement(child) && (child as any).type === InteractiveQuiz) {
+        const stepInfo = stepComponents[stepIndex];
+        if (!stepInfo) {
+          return child;
+        }
+
+        const isEligibleForChecking = stepEligibility[stepIndex];
+        const isCompleted = completedSteps.has(stepInfo.stepId);
+
+        // Increment step index for next step child
+        stepIndex++;
+
+        return React.cloneElement(child as React.ReactElement<any>, {
+          ...(child.props as any),
+          stepId: stepInfo.stepId,
+          isEligibleForChecking,
+          isCompleted,
+          onStepComplete: handleStepComplete,
+          disabled: disabled,
+          resetTrigger,
+          key: stepInfo.stepId,
         });
       }
       return child;

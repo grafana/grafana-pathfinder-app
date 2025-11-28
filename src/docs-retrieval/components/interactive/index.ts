@@ -3,6 +3,7 @@ export { InteractiveSection, resetInteractiveCounters } from './interactive-sect
 export { InteractiveStep } from './interactive-step';
 export { InteractiveMultiStep } from './interactive-multi-step';
 export { InteractiveGuided } from './interactive-guided';
+export { InteractiveQuiz } from './interactive-quiz';
 
 // Shared types from centralized location
 export type {
