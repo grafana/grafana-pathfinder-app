@@ -18,6 +18,7 @@ import type {
   JsonGuidedBlock,
   JsonImageBlock,
   JsonVideoBlock,
+  JsonQuizBlock,
   JsonStep,
 } from '../types/json-guide.types';
 
@@ -156,6 +157,8 @@ function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: s
       return convertImageBlock(block, path, baseUrl);
     case 'video':
       return convertVideoBlock(block, path);
+    case 'quiz':
+      return convertQuizBlock(block, path);
     default:
       return {
         element: null,
@@ -761,6 +764,40 @@ function convertVideoBlock(block: JsonVideoBlock, path: string): ConversionResul
       children: [],
     },
     hasVideo: true,
+  };
+}
+
+function convertQuizBlock(block: JsonQuizBlock, path: string): ConversionResult {
+  // Parse question as markdown for the content
+  const questionElements = parseMarkdownToElements(block.question);
+
+  // Convert requirements array to comma-separated string
+  const requirements = block.requirements?.join(',') || undefined;
+
+  // Build choices with parsed markdown text
+  const choices = block.choices.map((choice) => ({
+    id: choice.id,
+    text: choice.text,
+    textElements: parseInlineMarkdown(choice.text),
+    correct: choice.correct ?? false,
+    hint: choice.hint,
+  }));
+
+  return {
+    element: {
+      type: 'quiz-block',
+      props: {
+        question: block.question,
+        choices,
+        multiSelect: block.multiSelect ?? false,
+        completionMode: block.completionMode ?? 'correct-only',
+        maxAttempts: block.maxAttempts ?? 3,
+        requirements,
+        skippable: block.skippable ?? false,
+      },
+      children: questionElements,
+    },
+    hasInteractive: true,
   };
 }
 

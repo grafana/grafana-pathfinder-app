@@ -180,6 +180,50 @@
     },
     {
       "type": "markdown",
+      "content": "## Quiz Blocks\n\nQuiz blocks test knowledge with single or multiple choice questions. When placed inside a **section**, quizzes enforce sequential completion - you must answer correctly before moving to the next quiz!"
+    },
+    {
+      "type": "section",
+      "id": "quiz-section",
+      "title": "Knowledge Check",
+      "blocks": [
+        {
+          "type": "quiz",
+          "question": "Which query language does **Prometheus** use?",
+          "completionMode": "correct-only",
+          "choices": [
+            { "id": "a", "text": "SQL", "hint": "SQL is used by traditional relational databases, not Prometheus." },
+            { "id": "b", "text": "PromQL", "correct": true },
+            { "id": "c", "text": "GraphQL", "hint": "GraphQL is an API query language, not for time-series metrics." },
+            { "id": "d", "text": "LogQL", "hint": "LogQL is used by Loki for logs, not Prometheus for metrics." }
+          ]
+        },
+        {
+          "type": "quiz",
+          "question": "Which of these are valid Grafana data sources? *(Select all that apply)*",
+          "multiSelect": true,
+          "completionMode": "max-attempts",
+          "maxAttempts": 3,
+          "choices": [
+            { "id": "a", "text": "Prometheus", "correct": true },
+            { "id": "b", "text": "Microsoft Word", "hint": "Word is a document editor, not a data source!" },
+            { "id": "c", "text": "Loki", "correct": true },
+            { "id": "d", "text": "InfluxDB", "correct": true },
+            { "id": "e", "text": "PowerPoint", "hint": "PowerPoint is for presentations, not data." }
+          ]
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/explore']",
+          "requirements": ["navmenu-open"],
+          "content": "🎉 **Congratulations!** You passed the knowledge check. Now you can explore Grafana's **Explore** feature.",
+          "tooltip": "This step was blocked until you completed the quizzes above. Sections enforce sequential completion!"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
       "content": "## Section Blocks with Requirements\n\nSections can have **requirements** that must be met before they become accessible:"
     },
     {
@@ -201,7 +245,7 @@
     },
     {
       "type": "markdown",
-      "content": "## 🎉 That's All the Block Types!\n\nYou've now seen every block type supported by JSON guides:\n\n| Block Type | Description |\n|------------|-------------|\n| `markdown` | Formatted text with headings, lists, code |\n| `html` | Raw HTML for migration/custom content |\n| `image` | Embedded images |\n| `video` | YouTube or native video embeds |\n| `section` | Container for grouped interactive steps |\n| `interactive` | Single-action step (highlight, button, formfill, hover) |\n| `multistep` | Automated sequence of actions |\n| `guided` | User-performed sequence with detection |\n\n**Pro tip:** Start with `markdown` blocks for content, use `section` blocks to group related interactive steps, and choose between `multistep` (automated) and `guided` (user-performed) based on your learning objectives."
+      "content": "## 🎉 That's All the Block Types!\n\nYou've now seen every block type supported by JSON guides:\n\n| Block Type | Description |\n|------------|-------------|\n| `markdown` | Formatted text with headings, lists, code |\n| `html` | Raw HTML for migration/custom content |\n| `image` | Embedded images |\n| `video` | YouTube or native video embeds |\n| `section` | Container for grouped interactive steps |\n| `interactive` | Single-action step (highlight, button, formfill, hover) |\n| `multistep` | Automated sequence of actions |\n| `guided` | User-performed sequence with detection |\n| `quiz` | Knowledge assessment with single/multi choice |\n\n**Pro tip:** Start with `markdown` blocks for content, use `section` blocks to group related interactive steps, add `quiz` blocks to test understanding, and choose between `multistep` (automated) and `guided` (user-performed) based on your learning objectives."
     }
   ]
 }

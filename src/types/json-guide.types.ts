@@ -45,7 +45,8 @@ export type JsonBlock =
   | JsonMultistepBlock
   | JsonGuidedBlock
   | JsonImageBlock
-  | JsonVideoBlock;
+  | JsonVideoBlock
+  | JsonQuizBlock;
 
 // ============ CONTENT BLOCKS ============
 
@@ -230,6 +231,44 @@ export interface JsonStep {
   skippable?: boolean;
 }
 
+// ============ QUIZ BLOCK ============
+
+/**
+ * Quiz block for knowledge assessment.
+ * Supports single or multiple choice questions with configurable completion modes.
+ */
+export interface JsonQuizBlock {
+  type: 'quiz';
+  /** The question text (supports markdown) */
+  question: string;
+  /** Answer choices */
+  choices: JsonQuizChoice[];
+  /** Allow multiple correct answers (checkbox style vs radio buttons) */
+  multiSelect?: boolean;
+  /** Completion mode: correct-only requires right answer, max-attempts reveals after X tries */
+  completionMode?: 'correct-only' | 'max-attempts';
+  /** Max attempts before revealing answer (only for max-attempts mode, default: 3) */
+  maxAttempts?: number;
+  /** Requirements that must be met for this quiz */
+  requirements?: string[];
+  /** Whether quiz can be skipped */
+  skippable?: boolean;
+}
+
+/**
+ * Individual choice for a quiz question.
+ */
+export interface JsonQuizChoice {
+  /** Choice identifier (e.g., "a", "b", "c") */
+  id: string;
+  /** Choice text (supports markdown) */
+  text: string;
+  /** Is this a correct answer? */
+  correct?: boolean;
+  /** Hint shown when this wrong choice is selected */
+  hint?: string;
+}
+
 // ============ TYPE GUARDS ============
 
 /**
@@ -286,4 +325,11 @@ export function isImageBlock(block: JsonBlock): block is JsonImageBlock {
  */
 export function isVideoBlock(block: JsonBlock): block is JsonVideoBlock {
   return block.type === 'video';
+}
+
+/**
+ * Type guard for JsonQuizBlock
+ */
+export function isQuizBlock(block: JsonBlock): block is JsonQuizBlock {
+  return block.type === 'quiz';
 }

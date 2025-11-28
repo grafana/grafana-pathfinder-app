@@ -355,6 +355,70 @@ Highlights elements and **waits for user** to perform actions.
 | `objectives`    | string[]   | ❌       | Objectives tracked                       |
 | `skippable`     | boolean    | ❌       | Allow skipping                           |
 
+#### Quiz Block
+
+Knowledge assessment with single or multiple choice questions.
+
+```json
+{
+  "type": "quiz",
+  "question": "Which query language does Prometheus use?",
+  "completionMode": "correct-only",
+  "choices": [
+    { "id": "a", "text": "SQL", "hint": "SQL is used by traditional databases, not Prometheus." },
+    { "id": "b", "text": "PromQL", "correct": true },
+    { "id": "c", "text": "GraphQL", "hint": "GraphQL is an API query language, not for metrics." },
+    { "id": "d", "text": "LogQL", "hint": "LogQL is for Loki logs, not Prometheus metrics." }
+  ]
+}
+```
+
+| Field            | Type           | Required | Default          | Description                                     |
+| ---------------- | -------------- | -------- | ---------------- | ----------------------------------------------- |
+| `question`       | string         | ✅       | —                | Question text (supports markdown)               |
+| `choices`        | QuizChoice[]   | ✅       | —                | Answer choices (see below)                      |
+| `multiSelect`    | boolean        | ❌       | `false`          | Allow multiple answers (checkboxes vs radio)    |
+| `completionMode` | string         | ❌       | `"correct-only"` | `"correct-only"` or `"max-attempts"`            |
+| `maxAttempts`    | number         | ❌       | `3`              | Attempts before revealing answer (max-attempts) |
+| `requirements`   | string[]       | ❌       | —                | Requirements for this quiz                      |
+| `skippable`      | boolean        | ❌       | `false`          | Allow skipping                                  |
+
+**Choice Structure:**
+
+| Field     | Type    | Required | Description                              |
+| --------- | ------- | -------- | ---------------------------------------- |
+| `id`      | string  | ✅       | Choice identifier (e.g., "a", "b", "c")  |
+| `text`    | string  | ✅       | Choice text (supports markdown)          |
+| `correct` | boolean | ❌       | Is this a correct answer?                |
+| `hint`    | string  | ❌       | Hint shown when this wrong choice is selected |
+
+**Completion Modes:**
+
+| Mode           | Behavior                                                |
+| -------------- | ------------------------------------------------------- |
+| `correct-only` | Quiz completes only when user selects correct answer(s) |
+| `max-attempts` | After `maxAttempts` wrong tries, reveals correct answer |
+
+**Multi-Select Example:**
+
+```json
+{
+  "type": "quiz",
+  "question": "Which of these are valid Grafana data sources? (Select all that apply)",
+  "multiSelect": true,
+  "choices": [
+    { "id": "a", "text": "Prometheus", "correct": true },
+    { "id": "b", "text": "Microsoft Word", "hint": "Word is not a data source!" },
+    { "id": "c", "text": "Loki", "correct": true },
+    { "id": "d", "text": "InfluxDB", "correct": true }
+  ]
+}
+```
+
+**Blocking Behavior:**
+
+When a quiz is inside a section, subsequent steps automatically show "Complete previous step" until the quiz is completed. This enforces learning progression.
+
 ---
 
 ### Step Structure

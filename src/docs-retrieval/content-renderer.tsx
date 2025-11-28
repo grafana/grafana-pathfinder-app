@@ -11,6 +11,7 @@ import {
   InteractiveStep,
   InteractiveMultiStep,
   InteractiveGuided,
+  InteractiveQuiz,
   CodeBlock,
   ExpandableTable,
   ImageRenderer,
@@ -521,6 +522,23 @@ function renderParsedElement(
             typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
           )}
         </InteractiveGuided>
+      );
+    case 'quiz-block':
+      return (
+        <InteractiveQuiz
+          key={key}
+          question={element.props.question}
+          choices={element.props.choices}
+          multiSelect={element.props.multiSelect}
+          completionMode={element.props.completionMode}
+          maxAttempts={element.props.maxAttempts}
+          requirements={element.props.requirements}
+          skippable={element.props.skippable}
+        >
+          {element.children.map((child: ParsedElement | string, childIndex: number) =>
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
+          )}
+        </InteractiveQuiz>
       );
     case 'video':
       return (
