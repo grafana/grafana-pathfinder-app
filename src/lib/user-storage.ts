@@ -771,7 +771,7 @@ export const sectionCollapseStorage = {
  * Used to persist recording state across page refreshes
  */
 export interface PersistedFullScreenState {
-  state: 'inactive' | 'active' | 'editing' | 'bundling' | 'bundling-editing';
+  state: 'inactive' | 'active' | 'editing' | 'bundling' | 'bundling-review';
   singleCapture: boolean;
   initialSectionId: string | null;
 }

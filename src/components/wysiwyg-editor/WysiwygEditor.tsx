@@ -382,6 +382,7 @@ export const WysiwygEditor: React.FC = () => {
     const { pos, type, attributes } = editState;
     let textContent = '';
     let commentText = '';
+    let sectionId: string | undefined;
     let nestedSteps: Array<{
       actionType: string;
       refTarget: string;
@@ -414,6 +415,17 @@ export const WysiwygEditor: React.FC = () => {
         }
         return true;
       });
+
+      // Detect parent section by traversing from the position
+      // Use $pos to find ancestor nodes
+      const $pos = doc.resolve(pos);
+      for (let i = $pos.depth; i > 0; i--) {
+        const ancestorNode = $pos.node(i);
+        if (ancestorNode.type.name === 'sequenceSection') {
+          sectionId = ancestorNode.attrs.id;
+          break;
+        }
+      }
     } catch (err) {
       logError('[WysiwygEditor] Failed to extract node content:', err);
     }
@@ -425,6 +437,7 @@ export const WysiwygEditor: React.FC = () => {
       textContent,
       commentText,
       nestedSteps: nestedSteps.length > 0 ? nestedSteps : undefined,
+      sectionId,
     };
   }, [editState, editor]);
 

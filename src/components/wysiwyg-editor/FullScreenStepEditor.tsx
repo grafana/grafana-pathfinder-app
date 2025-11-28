@@ -69,6 +69,8 @@ export interface EditElementData {
   commentText?: string;
   /** Nested steps (for multistep/guided blocks) */
   nestedSteps?: NestedStepData[];
+  /** ID of the section this element is in (if any) */
+  sectionId?: string;
 }
 
 /**
@@ -271,6 +273,14 @@ export interface FullScreenStepEditorProps {
   existingSections?: SectionInfo[];
   /** Initial section ID to pre-select (from cursor position) */
   initialSectionId?: string | null;
+  /** Whether this is a bundling review (after recording multistep/guided) */
+  isBundlingReview?: boolean;
+  /** Action type for bundling review (multistep or guided) */
+  bundlingActionType?: string;
+  /** Pre-recorded nested steps for bundling review */
+  bundledNestedSteps?: NestedStepData[];
+  /** Called to confirm bundling and create the element (bundling review mode) */
+  onConfirmBundling?: (data: StepEditorData, updatedSteps: NestedStepData[]) => void;
 }
 
 /**
@@ -328,6 +338,10 @@ export function FullScreenStepEditor({
   stepNumber = 1,
   existingSections = [],
   initialSectionId,
+  isBundlingReview = false,
+  bundlingActionType,
+  bundledNestedSteps,
+  onConfirmBundling,
 }: FullScreenStepEditorProps) {
   const styles = useStyles2(getStyles);
   const [description, setDescription] = useState('');
@@ -343,13 +357,13 @@ export function FullScreenStepEditor({
   const [nestedSteps, setNestedSteps] = useState<NestedStepData[]>([]);
   const descriptionInputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Determine if we're in edit mode or create mode
-  const isEditMode = !!editData && !pendingClick;
-  const isCreateMode = !!pendingClick && !editData;
+  // Determine if we're in edit mode, create mode, or bundling review mode
+  const isEditMode = !!editData && !pendingClick && !isBundlingReview;
+  const isCreateMode = !!pendingClick && !editData && !isBundlingReview;
 
   // Check if we're editing a multistep/guided block with nested steps
   const isMultistepOrGuided = selectedActionType === ACTION_TYPES.MULTISTEP || selectedActionType === 'guided';
-  const hasNestedSteps = isEditMode && isMultistepOrGuided && nestedSteps.length > 0;
+  const hasNestedSteps = (isEditMode || isBundlingReview) && isMultistepOrGuided && nestedSteps.length > 0;
 
   // Check if current action type triggers bundling mode
   const isBundlingAction =
@@ -390,7 +404,8 @@ export function FullScreenStepEditor({
         setSelectedActionType(attrs['data-targetaction'] || ACTION_TYPES.HIGHLIGHT);
         setInteractiveComment(editData.commentText || '');
         setFormFillValue(attrs['data-targetvalue'] || '');
-        setSectionMode('none');
+        // Pre-populate section if the element is inside a section
+        setSectionMode(editData.sectionId || 'none');
         setNewSectionId('');
         setNewSectionTitle('');
         // Populate nested steps if editing a multistep/guided block
@@ -398,6 +413,33 @@ export function FullScreenStepEditor({
       });
     }
   }, [editData, isEditMode]);
+
+  // Pre-fill form for bundling review mode (after recording multistep/guided)
+  useEffect(() => {
+    if (isBundlingReview && bundledNestedSteps && bundledNestedSteps.length > 0) {
+      queueMicrotask(() => {
+        // Set action type from bundling
+        setSelectedActionType(bundlingActionType || ACTION_TYPES.MULTISTEP);
+        // Default description based on first step
+        const defaultDesc =
+          bundledNestedSteps.length > 1
+            ? `Complete ${bundledNestedSteps.length} steps`
+            : bundledNestedSteps[0]?.textContent || 'Complete the action';
+        setDescription(defaultDesc);
+        setRefTarget('');
+        setTargetValue('');
+        setRequirements('');
+        setInteractiveComment('');
+        setFormFillValue('');
+        // Pre-select section from initial context if available
+        setSectionMode(initialSectionId || 'none');
+        setNewSectionId('');
+        setNewSectionTitle('');
+        // Populate the recorded steps for editing
+        setNestedSteps(bundledNestedSteps);
+      });
+    }
+  }, [isBundlingReview, bundledNestedSteps, bundlingActionType, initialSectionId]);
 
   // Memoize selected option to prevent re-renders
   const selectedOption = useMemo(
@@ -491,7 +533,12 @@ export function FullScreenStepEditor({
   }, []);
 
   const handleSave = useCallback(() => {
-    if (isEditMode && onSaveEdit) {
+    if (isBundlingReview && onConfirmBundling) {
+      // Bundling review mode - confirm and create the element
+      if (description.trim() && selectedActionType) {
+        onConfirmBundling(buildStepData(), nestedSteps);
+      }
+    } else if (isEditMode && onSaveEdit) {
       // For multistep/guided, we don't require refTarget on the parent
       const isValid = isMultistepOrGuided
         ? selectedActionType.length > 0
@@ -505,14 +552,17 @@ export function FullScreenStepEditor({
       }
     }
   }, [
+    isBundlingReview,
     isEditMode,
     isCreateMode,
     isMultistepOrGuided,
+    onConfirmBundling,
     onSaveEdit,
     onSaveAndClick,
     description,
     selectedActionType,
     refTarget,
+    nestedSteps,
     buildStepData,
     buildEditData,
   ]);
@@ -576,17 +626,19 @@ export function FullScreenStepEditor({
     return options;
   }, [existingSections]);
 
-  if (!isOpen || (!pendingClick && !editData)) {
+  // Allow bundling review even without pendingClick or editData
+  if (!isOpen || (!pendingClick && !editData && !isBundlingReview)) {
     return null;
   }
 
   const actionIcon = getActionIcon(selectedActionType || pendingClick?.action || '');
-  // For multistep/guided in edit mode, we don't require refTarget on the parent
-  const isValid = isEditMode
-    ? isMultistepOrGuided
-      ? selectedActionType.length > 0
-      : selectedActionType.length > 0 && refTarget.trim().length > 0
-    : description.trim().length > 0 && selectedActionType.length > 0;
+  // For multistep/guided and bundling review, we don't require refTarget on the parent
+  const isValid =
+    isBundlingReview || isEditMode
+      ? isMultistepOrGuided
+        ? selectedActionType.length > 0
+        : selectedActionType.length > 0 && refTarget.trim().length > 0
+      : description.trim().length > 0 && selectedActionType.length > 0;
   const hasWarnings = pendingClick?.warnings?.length ?? 0 > 0;
   const isNonUnique = pendingClick?.selectorInfo?.isUnique === false;
 
@@ -594,7 +646,12 @@ export function FullScreenStepEditor({
   const displaySelector = pendingClick?.selector || editData?.attributes['data-reftarget'] || refTarget;
 
   // Build modal title
-  const modalTitle = isEditMode ? (
+  const modalTitle = isBundlingReview ? (
+    <div className={styles.header}>
+      <span className={styles.headerIcon}>{actionIcon}</span>
+      <span>Review {nestedSteps.length} Recorded Steps</span>
+    </div>
+  ) : isEditMode ? (
     <div className={styles.header}>
       <span className={styles.headerIcon}>{actionIcon}</span>
       <span>Edit {selectedActionType || 'Step'}</span>
@@ -617,24 +674,26 @@ export function FullScreenStepEditor({
       data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.modal}
     >
       <div className={styles.content} data-fullscreen-step-editor>
-        {/* Detected/Current selector info */}
-        <div className={styles.selectorBox} data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.selectorDisplay}>
-          <span className={styles.selectorLabel}>
-            {isEditMode ? 'Target selector:' : 'Detected selector:'}
-            {pendingClick?.selectorInfo?.contextStrategy && (
-              <Badge text={pendingClick.selectorInfo.contextStrategy} color="purple" className={styles.actionBadge} />
+        {/* Detected/Current selector info - hidden in bundling review mode */}
+        {!isBundlingReview && (
+          <div className={styles.selectorBox} data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.selectorDisplay}>
+            <span className={styles.selectorLabel}>
+              {isEditMode ? 'Target selector:' : 'Detected selector:'}
+              {pendingClick?.selectorInfo?.contextStrategy && (
+                <Badge text={pendingClick.selectorInfo.contextStrategy} color="purple" className={styles.actionBadge} />
+              )}
+            </span>
+            {isEditMode ? (
+              <Input
+                value={refTarget}
+                onChange={(e) => setRefTarget(e.currentTarget.value)}
+                placeholder="CSS selector or element reference"
+              />
+            ) : (
+              <code className={styles.selectorCode}>{displaySelector}</code>
             )}
-          </span>
-          {isEditMode ? (
-            <Input
-              value={refTarget}
-              onChange={(e) => setRefTarget(e.currentTarget.value)}
-              placeholder="CSS selector or element reference"
-            />
-          ) : (
-            <code className={styles.selectorCode}>{displaySelector}</code>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Action Type Selector */}
         <Field label="Action type" description="Choose the type of interaction for this step">
@@ -860,7 +919,17 @@ export function FullScreenStepEditor({
             Cancel
           </Button>
 
-          {isEditMode ? (
+          {isBundlingReview ? (
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              disabled={!isValid}
+              tooltip="Create the multistep/guided element with these steps (Ctrl+Enter)"
+              data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.saveButton}
+            >
+              Create {bundlingActionType === 'guided' ? 'Guided' : 'Multistep'}
+            </Button>
+          ) : isEditMode ? (
             <Button
               variant="primary"
               onClick={handleSave}

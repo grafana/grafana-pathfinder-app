@@ -25,8 +25,13 @@ import { fullScreenModeStorage, type PersistedBundledStep } from '../../../lib/u
 
 /**
  * Full screen mode states
+ * - inactive: Normal editing mode
+ * - active: Full screen mode, awaiting clicks with hover highlighting
+ * - editing: Step editor dialog open (click was intercepted)
+ * - bundling: Collecting multiple clicks for multistep/guided (clicks are captured without interruption)
+ * - bundling-review: All steps collected, showing editor to add descriptions/comments
  */
-export type FullScreenModeState = 'inactive' | 'active' | 'editing' | 'bundling' | 'bundling-editing';
+export type FullScreenModeState = 'inactive' | 'active' | 'editing' | 'bundling' | 'bundling-review';
 
 /**
  * Pending click information captured when intercepting
@@ -134,12 +139,10 @@ export interface UseFullScreenModeReturn {
   skipClick: () => void;
   /** Cancel the current editing/bundling operation */
   cancelEdit: () => void;
-  /** Finish bundling mode and create multistep */
-  finishBundling: (description: string) => void;
-  /** Save bundled step data (comment/requirements) and continue bundling */
-  saveBundledStep: (data: BundledStepEditorData) => void;
-  /** Skip bundled step editing and just record the click */
-  skipBundledStepEdit: () => void;
+  /** Finish recording and enter review mode to add descriptions/comments */
+  finishBundling: () => void;
+  /** Confirm bundling after review - creates the multistep/guided element */
+  confirmBundling: (data: StepEditorData, updatedSteps: PendingClickInfo[]) => void;
   /** Clear all recorded steps */
   clearSteps: () => void;
   // Inspector data for tooltip rendering (from useElementInspector)
@@ -751,56 +754,34 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
     }
   }, [changeState]);
 
-  // Save bundled step data (comment/requirements) and continue bundling
-  const saveBundledStep = useCallback(
-    (data: BundledStepEditorData) => {
-      if (!pendingClick) {
-        return;
+  // Finish recording and enter review mode
+  // User can then add descriptions/comments for all captured steps
+  const finishBundling = useCallback(() => {
+    if (bundledSteps.length === 0) {
+      setBundlingActionType(null);
+      setBundlingSectionInfo(null);
+      // In single capture mode, exit; otherwise return to active state
+      if (singleCaptureModeRef.current) {
+        changeState('inactive');
+      } else {
+        changeState('active');
       }
-
-      // Add the step with comment/requirements to bundled steps
-      const stepWithData: PendingClickInfo = {
-        ...pendingClick,
-        interactiveComment: data.interactiveComment,
-        requirements: data.requirements,
-      };
-
-      setBundledSteps((prev) => [...prev, stepWithData]);
-
-      // Execute the click
-      executeClick(pendingClick);
-
-      // Clear pending and return to bundling state
-      setPendingClick(null);
-      changeState('bundling');
-    },
-    [pendingClick, executeClick, changeState]
-  );
-
-  // Skip bundled step editing and just record the click
-  const skipBundledStepEdit = useCallback(() => {
-    if (!pendingClick) {
       return;
     }
 
-    // Add the step without comment/requirements
-    setBundledSteps((prev) => [...prev, pendingClick]);
+    // Transition to review mode - FullScreenStepEditor will show with all steps
+    changeState('bundling-review');
+  }, [bundledSteps.length, changeState]);
 
-    // Execute the click
-    executeClick(pendingClick);
+  // Confirm bundling after review - creates the multistep/guided element
+  const confirmBundling = useCallback(
+    (data: StepEditorData, updatedSteps: PendingClickInfo[]) => {
+      const stepsToUse = updatedSteps.length > 0 ? updatedSteps : bundledSteps;
 
-    // Clear pending and return to bundling state
-    setPendingClick(null);
-    changeState('bundling');
-  }, [pendingClick, executeClick, changeState]);
-
-  // Finish bundling mode
-  const finishBundling = useCallback(
-    (description: string) => {
-      if (bundledSteps.length === 0) {
+      if (stepsToUse.length === 0) {
+        setBundledSteps([]);
         setBundlingActionType(null);
         setBundlingSectionInfo(null);
-        // In single capture mode, exit; otherwise return to active state
         if (singleCaptureModeRef.current) {
           changeState('inactive');
         } else {
@@ -809,25 +790,23 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
         return;
       }
 
-      // Determine action type from bundlingActionType or default to multistep
-      const actionType = bundlingActionType || 'multistep';
-
-      // Use saved description from startBundling if available
-      const finalDescription = bundlingSectionInfo?.description || description;
+      // Determine action type from bundlingActionType or from data
+      const actionType = data.actionType || bundlingActionType || 'multistep';
+      const finalDescription = data.description;
 
       // If only one step, just add as regular step with the original action
-      if (bundledSteps.length === 1) {
+      if (stepsToUse.length === 1) {
         const step: FullScreenStep = {
-          action: bundledSteps[0].action,
-          selector: bundledSteps[0].selector,
+          action: stepsToUse[0].action,
+          selector: stepsToUse[0].selector,
           description: finalDescription,
-          isUnique: bundledSteps[0].selectorInfo.isUnique,
-          matchCount: bundledSteps[0].selectorInfo.matchCount,
-          contextStrategy: bundledSteps[0].selectorInfo.contextStrategy,
-          sectionId: bundlingSectionInfo?.sectionId,
-          sectionTitle: bundlingSectionInfo?.sectionTitle,
-          interactiveComment: bundlingSectionInfo?.interactiveComment,
-          requirements: bundlingSectionInfo?.requirements,
+          isUnique: stepsToUse[0].selectorInfo.isUnique,
+          matchCount: stepsToUse[0].selectorInfo.matchCount,
+          contextStrategy: stepsToUse[0].selectorInfo.contextStrategy,
+          sectionId: data.sectionId,
+          sectionTitle: data.sectionTitle,
+          interactiveComment: stepsToUse[0].interactiveComment || data.interactiveComment,
+          requirements: stepsToUse[0].requirements || data.requirements,
         };
 
         setRecordedSteps((prev) => [...prev, step]);
@@ -837,17 +816,23 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
           onStepAddedRef.current(step);
         }
       } else {
-        // Create multistep/guided based on bundlingActionType - pass section info
-        addMultistepToDocument(bundledSteps, finalDescription, actionType, bundlingSectionInfo || undefined);
+        // Create multistep/guided based on action type - pass section info
+        const sectionInfo = data.sectionId
+          ? {
+              sectionId: data.sectionId,
+              sectionTitle: data.sectionTitle,
+            }
+          : undefined;
+        addMultistepToDocument(stepsToUse, finalDescription, actionType, sectionInfo);
 
         // Add to recorded steps as single entry
         const multistep: FullScreenStep = {
           action: actionType,
-          selector: `${bundledSteps.length} steps`,
+          selector: `${stepsToUse.length} steps`,
           description: finalDescription,
           isUnique: true,
-          sectionId: bundlingSectionInfo?.sectionId,
-          sectionTitle: bundlingSectionInfo?.sectionTitle,
+          sectionId: data.sectionId,
+          sectionTitle: data.sectionTitle,
         };
         setRecordedSteps((prev) => [...prev, multistep]);
 
@@ -867,7 +852,7 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
         changeState('active');
       }
     },
-    [bundledSteps, bundlingActionType, bundlingSectionInfo, addStepToDocument, addMultistepToDocument, changeState]
+    [bundledSteps, bundlingActionType, addStepToDocument, addMultistepToDocument, changeState]
   );
 
   // Clear all steps
@@ -938,9 +923,11 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
       };
 
       if (state === 'bundling') {
-        // In bundling mode, pause to show mini editor for comment/requirements
-        setPendingClick(clickInfo);
-        changeState('bundling-editing');
+        // In bundling mode, immediately capture and execute (no interruption)
+        // This allows seamless recording of dropdown/menu flows
+        setBundledSteps((prev) => [...prev, clickInfo]);
+        executeClick(clickInfo);
+        // Stay in bundling state - user will click "Done" when finished
       } else {
         // In active mode, show the full step editor
         setPendingClick(clickInfo);
@@ -955,9 +942,9 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         if (state === 'bundling') {
-          // In bundling, Escape finishes bundling with generic description
+          // In bundling, Escape finishes recording and enters review mode
           if (bundledSteps.length > 0) {
-            finishBundling('Combined steps');
+            finishBundling();
           } else {
             changeState('active');
           }
@@ -1051,8 +1038,7 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
       skipClick,
       cancelEdit,
       finishBundling,
-      saveBundledStep,
-      skipBundledStepEdit,
+      confirmBundling,
       clearSteps,
       // Inspector data
       hoveredElement,
@@ -1075,8 +1061,7 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
       skipClick,
       cancelEdit,
       finishBundling,
-      saveBundledStep,
-      skipBundledStepEdit,
+      confirmBundling,
       clearSteps,
       hoveredElement,
       domPath,
