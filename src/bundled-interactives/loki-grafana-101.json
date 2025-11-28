@@ -1,0 +1,225 @@
+{
+  "id": "loki-grafana-101",
+  "title": "Loki & Grafana 101",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "## Prerequisites\n\n1. Complete the [Prometheus + Grafana 101](bundled:prometheus-grafana-101) tutorial first.\n2. Have a local development environment with Grafana, Prometheus, Loki, and Grafana Alloy running.\n\nTo set up the required environment, refer to the [Grafana Alloy self-monitoring scenario](https://github.com/grafana/alloy-scenarios/tree/main/self-monitoring) which includes a Docker Compose setup with all necessary services including Loki.\n\n**You'll need:**\n\n- The \"Alloy Self Monitoring\" dashboard from the previous tutorial\n- Loki service running and collecting logs from Docker containers\n- Grafana Alloy forwarding logs to Loki"
+    },
+    {
+      "type": "markdown",
+      "content": "# Loki + Grafana 101\n\nThis tutorial continues from [Prometheus + Grafana 101](bundled:prometheus-grafana-101). You'll configure a Loki data source and add a Loki panel to the dashboard you created previously.\n\n- Configure a Loki data source (loki:3100)\n- Add a logs panel to the existing \"Alloy Self Monitoring\" dashboard"
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 1: Set Up Your Loki Data Source\n\nWe'll configure Loki as a data source so you can visualize logs alongside your metrics."
+    },
+    {
+      "type": "section",
+      "id": "setup-datasource",
+      "title": "Set Up Your Loki Data Source",
+      "requirements": ["navmenu-open"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/connections/add-new-connection']",
+          "requirements": ["navmenu-open", "exists-reftarget"],
+          "content": "Click **Add new connection** in the Connections menu to add data sources.",
+          "tooltip": "The **Add new connection** option is where you start adding data sources. You'll use this to add Loki alongside your existing Prometheus data source."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[type='text']",
+          "targetvalue": "Loki",
+          "requirements": ["on-page:/connections", "exists-reftarget"],
+          "content": "Search for **Loki** in the search bar.",
+          "tooltip": "Loki is Grafana's log aggregation system, designed to work alongside Prometheus for a complete observability solution."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[href='/connections/datasources/loki']",
+          "requirements": ["exists-reftarget"],
+          "content": "Click on the **Loki** option that appears."
+        },
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "Add new data source",
+          "requirements": ["exists-reftarget"],
+          "content": "Click **Add new data source** to create your Loki connection."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[id='basic-settings-name']",
+          "targetvalue": "loki-datasource",
+          "requirements": ["exists-reftarget"],
+          "content": "Name your data source **loki-datasource** so you can easily find it later."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[id='connection-url']",
+          "targetvalue": "http://loki:3100",
+          "requirements": ["exists-reftarget"],
+          "content": "Set the **URL** to **http://loki:3100** to connect to your Loki server.",
+          "tooltip": "This URL `http://loki:3100` is the default endpoint for Loki servers. Port **3100** is the standard Loki port."
+        },
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "Save & test",
+          "requirements": ["exists-reftarget"],
+          "content": "Click **Save & test** to create your data source and verify the connection is working."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## Section 2: Add Loki Panel to Existing Dashboard\n\nNext, add a logs panel to the **Alloy Self Monitoring** dashboard you created previously."
+    },
+    {
+      "type": "section",
+      "id": "create-dashboard",
+      "title": "Add Loki Panel to Existing Dashboard",
+      "requirements": ["section-completed:section-setup-datasource"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+          "requirements": ["navmenu-open", "exists-reftarget"],
+          "content": "Click **Dashboards** in the left-side menu."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[placeholder=\"Search for dashboards and folders\"]",
+          "targetvalue": "Alloy Self Monitoring",
+          "requirements": ["has-dashboard-named:Alloy Self Monitoring", "exists-reftarget"],
+          "content": "Search for the **Alloy Self Monitoring** dashboard."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[title=\"Alloy Self Monitoring\"]",
+          "requirements": ["exists-reftarget"],
+          "content": "Open the **Alloy Self Monitoring** dashboard."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button[data-testid=\"data-testid Edit dashboard button\"]",
+          "requirements": ["exists-reftarget"],
+          "content": "Click **Edit** to edit the dashboard."
+        },
+        {
+          "type": "multistep",
+          "content": "Use **Add** → **Visualization** to create a new panel.",
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "button[data-testid=\"data-testid Add button\"]",
+              "requirements": ["exists-reftarget"]
+            },
+            {
+              "action": "highlight",
+              "reftarget": "button[data-testid=\"data-testid Add new visualization menu item\"]",
+              "requirements": ["exists-reftarget"]
+            }
+          ]
+        },
+        {
+          "type": "multistep",
+          "content": "Open the data source picker and select **loki-datasource**.",
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "input#data-source-picker",
+              "requirements": ["exists-reftarget"]
+            },
+            {
+              "action": "button",
+              "reftarget": "loki-datasource",
+              "requirements": ["exists-reftarget"]
+            }
+          ]
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "div[data-testid=\"QueryEditorModeToggle\"] label[for^=\"option-code-radiogroup\"]",
+          "requirements": ["exists-reftarget"],
+          "content": "Switch to **Code** mode by clicking the raw query toggle to write LogQL directly.",
+          "tooltip": "Code mode lets you write raw **LogQL** queries directly, similar to how PromQL works for Prometheus. This gives you full control over your log queries."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "{container=\"alloy\"}",
+          "requirements": ["exists-reftarget"],
+          "content": "Enter this LogQL query:\n\n`{container=\"alloy\"}`",
+          "tooltip": "This is **LogQL** (Loki Query Language)! The query `{container=\"alloy\"}` filters logs from containers named \"alloy\". The curly braces `{}` are used for label matching in Loki."
+        },
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "Refresh",
+          "requirements": ["exists-reftarget"],
+          "content": "Click the **Refresh** button to execute the query and see your logs.",
+          "tooltip": "The **Refresh** button executes your LogQL query and displays the log results from your Loki data source."
+        },
+        {
+          "type": "multistep",
+          "content": "Change the **Visualization type** to **Logs**.",
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "button[data-testid=\"data-testid toggle-viz-picker\"]",
+              "requirements": ["exists-reftarget"],
+              "tooltip": "The **Logs** visualization is specifically designed for displaying log data with features like log level highlighting, filtering, and live tailing."
+            },
+            {
+              "action": "highlight",
+              "reftarget": "div[aria-label=\"Plugin visualization item Logs\"]",
+              "requirements": ["exists-reftarget"]
+            }
+          ]
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[data-testid=\"data-testid Panel editor option pane field input Title\"]",
+          "targetvalue": "Alloy Logs",
+          "requirements": ["exists-reftarget"],
+          "content": "In the panel options, change the **Title** to **Alloy Logs**.",
+          "tooltip": "The **Title** is the name of the panel. It helps identify what logs you're viewing in the dashboard."
+        },
+        {
+          "type": "multistep",
+          "content": "Click **Save Dashboard** to persist your changes.",
+          "steps": [
+            {
+              "action": "button",
+              "reftarget": "Save Dashboard",
+              "requirements": ["exists-reftarget"]
+            },
+            {
+              "action": "button",
+              "reftarget": "Save",
+              "requirements": ["exists-reftarget"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## Great job!\n\nYou now have Loki configured and a logs panel added to your existing dashboard. Consider exploring alerting for logs or drilling down between metrics and logs.\n\n- Configured the Loki data source (http://loki:3100)\n- Built a Logs visualization on the existing dashboard"
+    }
+  ]
+}

@@ -25,12 +25,52 @@ import {
 import { convertGitHubRawToProxyUrl, isDataProxyUrl } from './data-proxy';
 import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
 import { StorageKeys } from '../lib/user-storage';
+import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 
 // Internal error structure for detailed error handling
 interface FetchError {
   message: string;
   errorType: 'not-found' | 'timeout' | 'network' | 'server-error' | 'other';
   statusCode?: number;
+}
+
+/**
+ * Generate a simple ID from a URL for use in wrapped JSON guides.
+ */
+function generateUrlId(url: string): string {
+  // Create a simple hash-like ID from the URL
+  const cleanUrl = url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '-');
+  return cleanUrl.slice(0, 50);
+}
+
+/**
+ * Wrap content as a JSON guide for unified rendering.
+ * - If content is already a valid JSON guide, return it as-is
+ * - If content is HTML, wrap it in a JSON guide with a single html block
+ */
+function wrapContentAsJsonGuide(content: string, url: string, title: string): string {
+  const trimmed = content.trim();
+
+  // Check if already a valid JSON guide
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed.id && parsed.title && Array.isArray(parsed.blocks)) {
+        return content; // Already a JSON guide
+      }
+    } catch {
+      // Not valid JSON, treat as HTML
+    }
+  }
+
+  // Wrap HTML in JSON guide structure
+  const jsonGuide = {
+    id: `external-${generateUrlId(url)}`,
+    title: title || 'External Content',
+    blocks: [{ type: 'html', content: content }],
+  };
+
+  return JSON.stringify(jsonGuide);
 }
 
 /**
@@ -138,20 +178,55 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     // Use the final URL (after redirects) if available, otherwise use the requested URL
     const finalUrl = fetchResult.finalUrl || cleanUrl;
 
+    // Determine if this is native JSON content (content.json) that doesn't need wrapping
+    const isNativeJson = fetchResult.isNativeJson || false;
+
     // Extract basic metadata without DOM processing
+    // For native JSON, we still need to extract metadata from the content
     const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType);
 
+    let jsonContent: string;
+
+    if (isNativeJson) {
+      // Native JSON content - use directly without wrapping
+      // Validate it's a proper JSON guide structure
+      try {
+        const parsed = JSON.parse(fetchResult.html);
+        if (parsed.id && parsed.title && Array.isArray(parsed.blocks)) {
+          jsonContent = fetchResult.html; // Already valid JSON guide
+        } else {
+          // JSON but not a valid guide structure - wrap it
+          console.warn('JSON content does not match guide structure, wrapping as HTML');
+          jsonContent = wrapContentAsJsonGuide(fetchResult.html, finalUrl, metadata.title);
+        }
+      } catch {
+        // Invalid JSON - treat as HTML and wrap
+        console.warn('Failed to parse native JSON, treating as HTML');
+        jsonContent = wrapContentAsJsonGuide(fetchResult.html, finalUrl, metadata.title);
+      }
+    } else {
+      // HTML content - apply learning journey extras then wrap
+      let processedHtml = fetchResult.html;
+      if (contentType === 'learning-journey' && metadata.learningJourney) {
+        processedHtml = generateJourneyContentWithExtras(processedHtml, metadata.learningJourney);
+      }
+
+      // Wrap content as JSON guide for unified rendering pipeline
+      jsonContent = wrapContentAsJsonGuide(processedHtml, finalUrl, metadata.title);
+    }
+
     // Create unified content object
-    const content: RawContent = {
-      html: fetchResult.html,
+    const rawContent: RawContent = {
+      content: jsonContent,
       metadata,
       type: contentType,
       url: finalUrl, // Use final URL to correctly resolve relative links
       lastFetched: new Date().toISOString(),
       hashFragment,
+      isNativeJson,
     };
 
-    return { content };
+    return { content: rawContent };
   } catch (error) {
     console.error(`Failed to fetch content from ${url}:`, error);
     return {
@@ -209,15 +284,18 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       const contentType = determineContentType(url);
       const metadata = await extractMetadata(sanitized, url, contentType);
 
-      const content: RawContent = {
-        html: sanitized,
+      // Wrap content as JSON guide for unified rendering pipeline
+      const jsonContent = wrapContentAsJsonGuide(sanitized, url, metadata.title);
+
+      const rawContent: RawContent = {
+        content: jsonContent,
         metadata,
         type: contentType,
         url,
         lastFetched: new Date().toISOString(),
       };
 
-      return { content };
+      return { content: rawContent };
     } catch (error) {
       console.error('Failed to load WYSIWYG preview:', error);
       return {
@@ -227,10 +305,9 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
     }
   }
 
-  // EXISTING CODE: Load from index.json and TypeScript files
+  // Load bundled interactive from index.json
+  // JSON format is the standard - all bundled interactives should be .json files
   try {
-    let html = '';
-
     // Load the index.json to find the correct filename for this interactive
     const indexData = require('../bundled-interactives/index.json');
     const interactive = indexData?.interactives?.find((item: any) => item.id === contentId);
@@ -242,41 +319,33 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       };
     }
 
-    // Load the TypeScript file using the filename from index.json
-    const filename = interactive.filename || `${contentId}.ts`;
-    const exportName = interactive.exportName || `${contentId}Html`;
+    // Load JSON guide (standard format)
+    const filename = interactive.filename || `${contentId}.json`;
+    const jsonModule = require(`../bundled-interactives/${filename}`);
 
-    // Import the TypeScript module (webpack handles this properly)
-    const importedModule = require(`../bundled-interactives/${filename}`) as any;
+    // JSON files are imported as objects by webpack, stringify for consistent handling
+    const jsonContent = typeof jsonModule === 'string' ? jsonModule : JSON.stringify(jsonModule);
 
-    // Get the HTML content from the exported constant
-    if (importedModule && typeof importedModule[exportName] === 'string') {
-      html = importedModule[exportName];
-    } else {
-      throw new Error(`Could not find export '${exportName}' in ${filename} or it's not a string`);
-    }
-
-    if (!html || html.trim() === '') {
+    if (!jsonContent || jsonContent.trim() === '' || jsonContent === '{}') {
       return {
         content: null,
         error: `Bundled interactive content is empty: ${contentId}`,
       };
     }
 
-    // Determine content type for bundled content (don't assume single-doc)
-    const contentType = determineContentType(url);
-    const metadata = await extractMetadata(html, url, contentType);
-
-    const content: RawContent = {
-      html,
-      metadata,
-      type: contentType, // Use detected type (learning-journey or single-doc)
+    // For JSON guides, we store the JSON string in the content field
+    // The ContentProcessor will detect and parse it appropriately
+    const rawContent: RawContent = {
+      content: jsonContent,
+      metadata: {
+        title: interactive.title || contentId,
+      },
+      type: 'single-doc',
       url,
       lastFetched: new Date().toISOString(),
-      // No hash fragment support for bundled content for now
     };
 
-    return { content };
+    return { content: rawContent };
   } catch (error) {
     console.error(`Failed to load bundled interactive ${contentId}:`, error);
     return {
@@ -344,26 +413,122 @@ function removeHashFragment(url: string): string {
  * Combines logic from both existing fetchers
  * Returns structured result with HTML, final URL (after redirects), and error details
  */
-async function fetchRawHtml(
-  url: string,
-  options: ContentFetchOptions
-): Promise<{ html: string | null; finalUrl?: string; error?: FetchError }> {
+/**
+ * Internal fetch result type that includes native JSON detection
+ */
+interface FetchRawResult {
+  html: string | null;
+  finalUrl?: string;
+  error?: FetchError;
+  /** Whether the content was fetched as native JSON (content.json) vs HTML */
+  isNativeJson?: boolean;
+}
+
+/**
+ * Check if a URL points to a JSON file (content.json)
+ */
+function isJsonContentUrl(url: string): boolean {
+  // Check the URL path, ignoring query params and fragments
+  const urlPath = url.split('?')[0].split('#')[0];
+  return urlPath.endsWith('.json') || urlPath.endsWith('/content.json');
+}
+
+/**
+ * Try multiple URL variations in order, returning the first successful result.
+ * This is used for GitHub URLs where we want to try content.json first, then unstyled.html.
+ */
+async function tryUrlVariations(urls: string[], options: ContentFetchOptions): Promise<FetchRawResult> {
+  const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
+  let lastError: FetchError | undefined;
+
+  // Build fetch options - use minimal headers for GitHub raw URLs to avoid CORS preflight
+  const fetchOptions: RequestInit = {
+    method: 'GET',
+    headers: { ...headers },
+    signal: AbortSignal.timeout(timeout),
+    redirect: 'follow',
+  };
+
+  for (const urlVariation of urls) {
+    try {
+      const response = await fetch(urlVariation, fetchOptions);
+
+      if (response.ok) {
+        const content = await response.text();
+        if (content && content.trim()) {
+          // SECURITY: Validate the final URL is trusted
+          const finalUrl = response.url;
+          const isFinalUrlTrusted =
+            isAllowedContentUrl(finalUrl) ||
+            isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPOS) ||
+            isDataProxyUrl(finalUrl) ||
+            isGitHubUrl(finalUrl) ||
+            (isDevModeEnabledGlobal() && (isLocalhostUrl(finalUrl) || isGitHubRawUrl(finalUrl)));
+
+          if (!isFinalUrlTrusted) {
+            console.warn(`URL variation ${urlVariation} redirected to untrusted URL: ${finalUrl}`);
+            continue; // Try next variation
+          }
+
+          // Detect if this is native JSON content
+          const isNativeJson = isJsonContentUrl(response.url) || isJsonContentUrl(urlVariation);
+          return { html: content, finalUrl: response.url, isNativeJson };
+        }
+      }
+
+      // 404 means this variation doesn't exist - try next one
+      if (response.status === 404) {
+        continue;
+      }
+
+      // Other errors - record but try next variation
+      lastError = {
+        message: `HTTP ${response.status}: ${response.statusText}`,
+        errorType: response.status >= 500 ? 'server-error' : 'other',
+        statusCode: response.status,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('aborted');
+      const isNetwork =
+        errorMessage.includes('NetworkError') ||
+        errorMessage.includes('Failed to fetch') ||
+        errorMessage.includes('CORS');
+
+      lastError = {
+        message: errorMessage,
+        errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
+      };
+      // Continue to next variation on network errors
+    }
+  }
+
+  // All variations failed
+  if (lastError) {
+    console.error(`Failed to fetch from any URL variation. Last error: ${lastError.message}`);
+  }
+  return { html: null, error: lastError || { message: 'No content found', errorType: 'not-found' } };
+}
+
+async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<FetchRawResult> {
   const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
 
   // Handle GitHub URLs proactively to avoid CORS issues
   // Convert tree/blob URLs to raw URLs before attempting fetch
   // Use proper URL parsing to prevent domain hijacking
-  let actualUrl = url;
   const isGitHubRawUrlCheck = isGitHubRawUrl(url);
   const isGitHubUrlCheck = isGitHubUrl(url);
 
+  // For GitHub URLs, try all variations (JSON first, then HTML fallback)
   if (isGitHubUrlCheck && !isGitHubRawUrlCheck) {
     const githubVariations = generateGitHubVariations(url);
     if (githubVariations.length > 0) {
-      // Use the first (most specific) GitHub variation instead of the original URL
-      actualUrl = githubVariations[0];
+      return tryUrlVariations(githubVariations, options);
     }
   }
+
+  // For non-GitHub URLs, use the original URL
+  let actualUrl = url;
 
   // Check if this is a GitHub raw URL or data proxy URL to use minimal headers
   const isDataProxy = isDataProxyUrl(actualUrl);
@@ -439,31 +604,51 @@ async function fetchRawHtml(
           return { html: null, error: lastError };
         }
 
-        // If this is a Grafana docs/tutorial URL, we MUST get the unstyled version
+        // If this is a Grafana docs/tutorial URL, try to get content in this order:
+        // 1. content.json (new JSON format - preferred)
+        // 2. unstyled.html (legacy HTML format - fallback)
         // Use proper URL parsing to prevent domain hijacking attacks
-        const shouldFetchUnstyled = isGrafanaDocsUrl(finalUrl);
+        const shouldFetchContent = isGrafanaDocsUrl(finalUrl);
 
-        if (shouldFetchUnstyled) {
-          const finalUnstyledUrl = getUnstyledContentUrl(response.url);
-          if (finalUnstyledUrl !== response.url) {
+        if (shouldFetchContent) {
+          const { jsonUrl, htmlUrl } = getContentUrls(response.url);
+
+          // Try JSON format first (preferred)
+          if (jsonUrl !== response.url) {
             try {
-              const unstyledResponse = await fetch(finalUnstyledUrl, fetchOptions);
+              const jsonResponse = await fetch(jsonUrl, fetchOptions);
+              if (jsonResponse.ok) {
+                const jsonContent = await jsonResponse.text();
+                if (jsonContent && jsonContent.trim()) {
+                  return { html: jsonContent, finalUrl: jsonResponse.url, isNativeJson: true };
+                }
+              }
+              // JSON not found or empty - fall through to HTML
+            } catch {
+              // JSON fetch failed - fall through to HTML
+            }
+          }
+
+          // Fall back to HTML format
+          if (htmlUrl !== response.url) {
+            try {
+              const unstyledResponse = await fetch(htmlUrl, fetchOptions);
               if (unstyledResponse.ok) {
                 const unstyledHtml = await unstyledResponse.text();
                 if (unstyledHtml && unstyledHtml.trim()) {
-                  return { html: unstyledHtml, finalUrl: unstyledResponse.url };
+                  return { html: unstyledHtml, finalUrl: unstyledResponse.url, isNativeJson: false };
                 }
               }
-              // If unstyled version fails, don't fallback - fail the request
+              // If HTML version also fails, fail the request
               lastError = {
-                message: `Cannot load styled Grafana content. Unstyled version required but failed to load: ${finalUnstyledUrl}`,
+                message: `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${response.url}`,
                 errorType: unstyledResponse.status === 404 ? 'not-found' : 'other',
                 statusCode: unstyledResponse.status,
               };
               return { html: null, error: lastError };
             } catch (unstyledError) {
               lastError = {
-                message: `Cannot load styled Grafana content. Unstyled version failed: ${
+                message: `Cannot load Grafana content. Content fetch failed: ${
                   unstyledError instanceof Error ? unstyledError.message : 'Unknown error'
                 }`,
                 errorType: 'other',
@@ -474,7 +659,9 @@ async function fetchRawHtml(
         }
 
         // Content fetched successfully - use response.url to get final URL after redirects
-        return { html, finalUrl: response.url };
+        // Detect if this is native JSON content based on the URL
+        const isNativeJson = isJsonContentUrl(response.url) || isJsonContentUrl(actualUrl);
+        return { html, finalUrl: response.url, isNativeJson };
       }
     } else if (response.status >= 300 && response.status < 400) {
       // Handle manual redirect cases
@@ -523,7 +710,8 @@ async function fetchRawHtml(
                 if (redirectResponse.ok) {
                   const html = await redirectResponse.text();
                   if (html && html.trim()) {
-                    return { html, finalUrl: redirectResponse.url };
+                    const isNativeJson = isJsonContentUrl(redirectResponse.url) || isJsonContentUrl(redirectUrl.href);
+                    return { html, finalUrl: redirectResponse.url, isNativeJson };
                   }
                 }
               }
@@ -581,7 +769,8 @@ async function fetchRawHtml(
           if (githubResponse.ok) {
             const githubHtml = await githubResponse.text();
             if (githubHtml && githubHtml.trim()) {
-              return { html: githubHtml, finalUrl: githubResponse.url };
+              const isNativeJson = isJsonContentUrl(githubResponse.url) || isJsonContentUrl(githubUrl);
+              return { html: githubHtml, finalUrl: githubResponse.url, isNativeJson };
             }
           }
         } catch (githubError) {
@@ -619,6 +808,10 @@ async function fetchRawHtml(
  * Data proxy routes requests through Grafana backend, providing consistent behavior
  *
  * SECURITY: All generated URLs must pass ALLOWED_GITHUB_REPOS validation
+ *
+ * URL PRIORITY ORDER:
+ * 1. content.json (new JSON format - preferred)
+ * 2. unstyled.html (legacy HTML format - fallback)
  */
 function generateGitHubVariations(url: string): string[] {
   const variations: string[] = [];
@@ -630,22 +823,27 @@ function generateGitHubVariations(url: string): string[] {
   // Only try GitHub variations for actual GitHub URLs
   if (isGitHubDomain || isGitHubRawDomain) {
     if (isGitHubDomain) {
-      // Handle tree URLs (directories) - convert to directory/unstyled.html
+      // Handle tree URLs (directories) - try content.json first, then unstyled.html
       const treeMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
       if (treeMatch) {
         const [_fullMatch, owner, repo, branch, path] = treeMatch;
 
         // SECURITY (F3): Use URL constructor instead of template literal
-        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/unstyled.html`;
-
-        // Try data proxy URL first (avoids CORS issues)
-        const proxyUrl = convertGitHubRawToProxyUrl(rawUrl);
-        if (proxyUrl) {
-          variations.push(proxyUrl);
+        // Try JSON format first (preferred)
+        const jsonUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/content.json`;
+        const proxyJsonUrl = convertGitHubRawToProxyUrl(jsonUrl);
+        if (proxyJsonUrl) {
+          variations.push(proxyJsonUrl);
         }
+        variations.push(jsonUrl);
 
-        // Then try raw URL as fallback
-        variations.push(rawUrl);
+        // Then try HTML format as fallback
+        const htmlUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/unstyled.html`;
+        const proxyHtmlUrl = convertGitHubRawToProxyUrl(htmlUrl);
+        if (proxyHtmlUrl) {
+          variations.push(proxyHtmlUrl);
+        }
+        variations.push(htmlUrl);
       }
 
       // Handle blob URLs (specific files)
@@ -664,8 +862,17 @@ function generateGitHubVariations(url: string): string[] {
         // Then try raw URL as fallback
         variations.push(rawUrl);
 
-        // Also try unstyled version
-        if (!path.includes('/unstyled.html')) {
+        // Also try content.json and unstyled.html versions for directory-like paths
+        if (!path.endsWith('.json') && !path.endsWith('.html')) {
+          // Try JSON format first (preferred)
+          const rawJsonUrl = `${rawUrl}/content.json`;
+          const proxyJsonUrl = convertGitHubRawToProxyUrl(rawJsonUrl);
+          if (proxyJsonUrl) {
+            variations.push(proxyJsonUrl);
+          }
+          variations.push(rawJsonUrl);
+
+          // Then try HTML format as fallback
           const rawUnstyledUrl = `${rawUrl}/unstyled.html`;
           const proxyUnstyledUrl = convertGitHubRawToProxyUrl(rawUnstyledUrl);
           if (proxyUnstyledUrl) {
@@ -688,20 +895,32 @@ function generateGitHubVariations(url: string): string[] {
           variations.push(proxyUrl);
         }
 
-        // Also try unstyled version if not already included
-        if (!path.includes('/unstyled.html')) {
+        // Also try content.json and unstyled.html versions if not already a specific file
+        if (!path.endsWith('.json') && !path.endsWith('.html')) {
+          // Try JSON format first (preferred)
+          const jsonUrl = `${url}/content.json`;
+          const proxyJsonUrl = convertGitHubRawToProxyUrl(jsonUrl);
+          if (proxyJsonUrl) {
+            variations.push(proxyJsonUrl);
+          }
+          variations.push(jsonUrl);
+
+          // Then try HTML format as fallback
           const unstyledUrl = `${url}/unstyled.html`;
           const proxyUnstyledUrl = convertGitHubRawToProxyUrl(unstyledUrl);
           if (proxyUnstyledUrl) {
             variations.push(proxyUnstyledUrl);
           }
+          variations.push(unstyledUrl);
         }
       }
     }
 
-    // Generic fallback: try unstyled.html version (only if no specific conversion worked)
-    if (!url.includes('/unstyled.html') && variations.length === 0) {
-      variations.push(`${url.replace(/\/$/, '')}/unstyled.html`);
+    // Generic fallback: try content.json then unstyled.html (only if no specific conversion worked)
+    if (variations.length === 0) {
+      const baseUrl = url.replace(/\/$/, '');
+      variations.push(`${baseUrl}/content.json`);
+      variations.push(`${baseUrl}/unstyled.html`);
     }
   }
 
@@ -709,17 +928,24 @@ function generateGitHubVariations(url: string): string[] {
 }
 
 /**
- * Get unstyled content URL (from single-docs-fetcher)
+ * Get content URLs for both JSON and HTML formats
+ * Returns URLs to try in order of preference: JSON first, then HTML
  */
-function getUnstyledContentUrl(url: string): string {
+function getContentUrls(url: string): { jsonUrl: string; htmlUrl: string } {
+  const baseUrl = url.split('?')[0].split('#')[0].replace(/\/$/, '');
+
+  // If URL already points to a specific file, return it as-is for JSON detection
+  if (url.includes('/content.json')) {
+    return { jsonUrl: url, htmlUrl: baseUrl.replace('/content.json', '/unstyled.html') };
+  }
   if (url.includes('/unstyled.html')) {
-    return url;
+    return { jsonUrl: baseUrl.replace('/unstyled.html', '/content.json'), htmlUrl: url };
   }
 
-  const baseUrl = url.split('?')[0].split('#')[0];
-  const hasTrailingSlash = baseUrl.endsWith('/');
-
-  return hasTrailingSlash ? `${baseUrl}unstyled.html` : `${baseUrl}/unstyled.html`;
+  return {
+    jsonUrl: `${baseUrl}/content.json`,
+    htmlUrl: `${baseUrl}/unstyled.html`,
+  };
 }
 
 /**
