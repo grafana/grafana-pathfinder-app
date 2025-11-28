@@ -46,17 +46,17 @@
     },
     {
       "type": "markdown",
-      "content": "## Interactive Blocks\n\nInteractive blocks let users interact with the Grafana UI. Each has **Show me** and **Do it** buttons.\n\n### Show-Only Mode\n\nUse `showOnly: true` for educational steps that only highlight without requiring action:"
+      "content": "## Interactive Blocks\n\nInteractive blocks let users interact with the Grafana UI. Each has **Show me** and **Do it** buttons by default.\n\n### Button Visibility Control\n\nUse `doIt: false` for educational steps that only highlight without requiring action:"
     },
     {
       "type": "interactive",
       "action": "highlight",
       "reftarget": "button[aria-label='Open menu']",
       "requirements": ["exists-reftarget"],
-      "showOnly": true,
+      "doIt": false,
       "skippable": true,
       "content": "This is a **show-only** step - notice there's no \"Do it\" button, just \"Show me\".",
-      "tooltip": "Show-only mode is perfect for guided tours and educational content where you want to **point out** UI elements without requiring user action."
+      "tooltip": "Use `doIt: false` to hide the Do it button. Use `showMe: false` to hide the Show me button. Both default to `true`."
     },
     {
       "type": "markdown",
