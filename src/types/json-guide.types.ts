@@ -130,7 +130,8 @@ export type JsonInteractiveAction = 'highlight' | 'button' | 'formfill' | 'navig
 
 /**
  * Single-action interactive step.
- * Renders with "Show me" and "Do it" buttons (unless showOnly is true).
+ * Renders with "Show me" and "Do it" buttons by default.
+ * Use showMe/doIt to control button visibility.
  */
 export interface JsonInteractiveBlock {
   type: 'interactive';
@@ -152,8 +153,18 @@ export interface JsonInteractiveBlock {
   skippable?: boolean;
   /** Hint shown when step cannot be completed */
   hint?: string;
-  /** Show-only mode: only "Show me" button, no "Do it" - for educational highlighting */
-  showOnly?: boolean;
+
+  // ---- Button Visibility ----
+  /** Whether to show the "Show me" button (default: true) */
+  showMe?: boolean;
+  /** Whether to show the "Do it" button (default: true) */
+  doIt?: boolean;
+
+  // ---- Execution Control ----
+  /** Mark step as complete BEFORE action executes (default: false) */
+  completeEarly?: boolean;
+  /** Post-action verification requirement (e.g., "on-page:/dashboard") */
+  verify?: string;
 }
 
 /**

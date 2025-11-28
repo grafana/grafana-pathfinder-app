@@ -181,28 +181,37 @@ This works because `html` blocks support all existing interactive attributes.
 
 ### Attribute Mapping
 
-| HTML Attribute               | JSON Field             |
-| ---------------------------- | ---------------------- |
-| `data-targetaction`          | `action`               |
-| `data-reftarget`             | `reftarget`            |
-| `data-targetvalue`           | `targetvalue`          |
-| `data-requirements`          | `requirements` (array) |
-| `data-objectives`            | `objectives` (array)   |
-| `data-skippable="true"`      | `skippable: true`      |
-| `data-hint`                  | `hint`                 |
-| `data-doit="false"`          | `showOnly: true`       |
-| `<aside data-targetcomment>` | `tooltip`              |
+| HTML Attribute               | JSON Field             | Default |
+| ---------------------------- | ---------------------- | ------- |
+| `data-targetaction`          | `action`               | —       |
+| `data-reftarget`             | `reftarget`            | —       |
+| `data-targetvalue`           | `targetvalue`          | —       |
+| `data-requirements`          | `requirements` (array) | —       |
+| `data-objectives`            | `objectives` (array)   | —       |
+| `data-skippable="true"`      | `skippable: true`      | `false` |
+| `data-hint`                  | `hint`                 | —       |
+| `data-showme="false"`        | `showMe: false`        | `true`  |
+| `data-doit="false"`          | `doIt: false`          | `true`  |
+| `data-complete-early="true"` | `completeEarly: true`  | `false` |
+| `data-verify`                | `verify`               | —       |
+| `<aside data-targetcomment>` | `tooltip`              | —       |
 
 **Note:** Requirements in HTML are comma-separated strings; in JSON they're arrays:
 
 - HTML: `data-requirements="navmenu-open, is-admin"`
 - JSON: `"requirements": ["navmenu-open", "is-admin"]`
 
-### Show-Only Mode
+### Button Visibility Control
 
-Show-only steps only display the "Show me" button—no "Do it" action is required. Use for educational highlighting.
+Control which buttons appear using `showMe` and `doIt`:
 
-**HTML:**
+| Setting         | "Show me" | "Do it" | Use Case                      |
+| --------------- | --------- | ------- | ----------------------------- |
+| Default         | ✅        | ✅      | Normal interactive step       |
+| `doIt: false`   | ✅        | ❌      | Educational highlight only    |
+| `showMe: false` | ❌        | ✅      | Direct action without preview |
+
+**HTML (show-only):**
 
 ```html
 <div data-targetaction="highlight" data-reftarget="div[data-testid='dashboard-panel']" data-doit="false">
@@ -211,7 +220,7 @@ Show-only steps only display the "Show me" button—no "Do it" action is require
 </div>
 ```
 
-**JSON:**
+**JSON (show-only):**
 
 ```json
 {
@@ -220,7 +229,37 @@ Show-only steps only display the "Show me" button—no "Do it" action is require
   "reftarget": "div[data-testid='dashboard-panel']",
   "content": "Notice the **metrics panel** displaying your data.",
   "tooltip": "This panel shows real-time metrics from your Prometheus data source.",
-  "showOnly": true
+  "doIt": false
+}
+```
+
+### Execution Control
+
+Use `completeEarly` and `verify` for advanced step completion control:
+
+**HTML:**
+
+```html
+<div
+  data-targetaction="navigate"
+  data-reftarget="/d/my-dashboard"
+  data-complete-early="true"
+  data-verify="on-page:/d/my-dashboard"
+>
+  <p>Open the dashboard.</p>
+</div>
+```
+
+**JSON:**
+
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/d/my-dashboard",
+  "content": "Open the dashboard.",
+  "completeEarly": true,
+  "verify": "on-page:/d/my-dashboard"
 }
 ```
 
