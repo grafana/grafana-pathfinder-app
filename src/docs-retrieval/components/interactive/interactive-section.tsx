@@ -247,16 +247,18 @@ export function InteractiveSection({
   // Extract step information from children first (needed for completion calculation)
   const stepComponents = useMemo((): StepInfo[] => {
     const steps: StepInfo[] = [];
+    // Track step index separately from child index to handle non-step children
+    let stepIndex = 0;
 
-    React.Children.forEach(children, (child, index) => {
+    React.Children.forEach(children, (child) => {
       if (React.isValidElement(child) && (child as any).type === InteractiveStep) {
         const props = child.props as InteractiveStepProps;
-        const stepId = `${sectionId}-step-${index + 1}`;
+        const stepId = `${sectionId}-step-${stepIndex + 1}`;
 
         steps.push({
           stepId,
           element: child as React.ReactElement<InteractiveStepProps>,
-          index,
+          index: stepIndex,
           targetAction: props.targetAction,
           refTarget: props.refTarget,
           targetValue: props.targetValue,
@@ -268,14 +270,15 @@ export function InteractiveSection({
           isMultiStep: false,
           isGuided: false,
         });
+        stepIndex++;
       } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
         const props = child.props as any; // InteractiveMultiStepProps
-        const stepId = `${sectionId}-multistep-${index + 1}`;
+        const stepId = `${sectionId}-multistep-${stepIndex + 1}`;
 
         steps.push({
           stepId,
           element: child as React.ReactElement<any>,
-          index,
+          index: stepIndex,
           targetAction: undefined, // Multi-step handles internally
           refTarget: undefined,
           targetValue: undefined,
@@ -284,14 +287,15 @@ export function InteractiveSection({
           isMultiStep: true,
           isGuided: false,
         });
+        stepIndex++;
       } else if (React.isValidElement(child) && (child as any).type === InteractiveGuided) {
         const props = child.props as any; // InteractiveGuidedProps
-        const stepId = `${sectionId}-guided-${index + 1}`;
+        const stepId = `${sectionId}-guided-${stepIndex + 1}`;
 
         steps.push({
           stepId,
           element: child as React.ReactElement<any>,
-          index,
+          index: stepIndex,
           targetAction: undefined, // Guided handles internally
           refTarget: undefined,
           targetValue: undefined,
@@ -300,6 +304,7 @@ export function InteractiveSection({
           isMultiStep: false,
           isGuided: true, // Mark as guided step
         });
+        stepIndex++;
       }
     });
 
@@ -1041,22 +1046,28 @@ export function InteractiveSection({
 
   // Render enhanced children with coordination props
   const enhancedChildren = useMemo(() => {
-    return React.Children.map(children, (child, index) => {
+    // Track step index separately from child index to handle non-step children
+    let stepIndex = 0;
+
+    return React.Children.map(children, (child) => {
       if (React.isValidElement(child) && (child as any).type === InteractiveStep) {
-        const stepInfo = stepComponents[index];
+        const stepInfo = stepComponents[stepIndex];
         if (!stepInfo) {
           return child;
         }
 
-        const isEligibleForChecking = stepEligibility[index]; // Simple array lookup
+        const isEligibleForChecking = stepEligibility[stepIndex];
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
 
         // Get document-wide step position
         const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
           sectionId,
-          index
+          stepIndex
         );
+
+        // Increment step index for next step child
+        stepIndex++;
 
         // Enhanced step props with section coordination
 
@@ -1084,20 +1095,23 @@ export function InteractiveSection({
           },
         });
       } else if (React.isValidElement(child) && (child as any).type === InteractiveMultiStep) {
-        const stepInfo = stepComponents[index];
+        const stepInfo = stepComponents[stepIndex];
         if (!stepInfo) {
           return child;
         }
 
-        const isEligibleForChecking = stepEligibility[index]; // Simple array lookup
+        const isEligibleForChecking = stepEligibility[stepIndex];
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
 
         // Get document-wide step position
         const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
           sectionId,
-          index
+          stepIndex
         );
+
+        // Increment step index for next step child
+        stepIndex++;
 
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child.props as any),
@@ -1127,20 +1141,23 @@ export function InteractiveSection({
           },
         });
       } else if (React.isValidElement(child) && (child as any).type === InteractiveGuided) {
-        const stepInfo = stepComponents[index];
+        const stepInfo = stepComponents[stepIndex];
         if (!stepInfo) {
           return child;
         }
 
-        const isEligibleForChecking = stepEligibility[index]; // Simple array lookup
+        const isEligibleForChecking = stepEligibility[stepIndex];
         const isCompleted = completedSteps.has(stepInfo.stepId);
         const isCurrentlyExecuting = currentlyExecutingStep === stepInfo.stepId;
 
         // Get document-wide step position
         const { stepIndex: documentStepIndex, totalSteps: documentTotalSteps } = getDocumentStepPosition(
           sectionId,
-          index
+          stepIndex
         );
+
+        // Increment step index for next step child
+        stepIndex++;
 
         return React.cloneElement(child as React.ReactElement<any>, {
           ...(child.props as any),

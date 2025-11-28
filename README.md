@@ -66,6 +66,40 @@ Admins can configure Interactive learning from the plugin's configuration page i
 - **Auto-completion detection** – (Experimental) Enable automatic step completion when users perform actions themselves (without clicking "Do it" buttons)
 - **Timing settings** – Configure timeouts for requirement checks and guided steps to optimize the guide experience
 
+## Creating Interactive Guides
+
+Interactive learning supports creating custom interactive guides in JSON format. These guides combine content (markdown, images, video) with interactive elements that can highlight UI elements, click buttons, and fill forms.
+
+### Documentation
+
+- **[JSON Guide Format Reference](docs/developer/interactive-examples/json-guide-format.md)** - Complete reference for the JSON guide structure and all block types
+- **[HTML to JSON Migration Guide](docs/developer/interactive-examples/html-to-json-migration.md)** - How to convert existing HTML guides to JSON format
+- **[Requirements Reference](docs/developer/interactive-examples/requirements-reference.md)** - Available requirements for controlling when interactive elements are accessible
+
+### Quick Example
+
+```json
+{
+  "id": "my-guide",
+  "title": "My Interactive Guide",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# Welcome\n\nThis guide shows you how to navigate Grafana."
+    },
+    {
+      "type": "interactive",
+      "action": "highlight",
+      "reftarget": "a[href='/dashboards']",
+      "requirements": ["navmenu-open"],
+      "content": "Click **Dashboards** to see your visualizations."
+    }
+  ]
+}
+```
+
+See the [JSON Guide Demo](src/bundled-interactives/json-guide-demo.json) for a complete example of all block types.
+
 ## Contributing
 
 We welcome feedback, issues, and contributions. Visit our [GitHub repository](https://github.com/grafana/grafana-pathfinder-app) to get involved.

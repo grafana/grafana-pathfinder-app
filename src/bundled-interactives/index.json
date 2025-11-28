@@ -4,8 +4,15 @@
       "id": "welcome-to-grafana",
       "title": "Welcome to Grafana",
       "summary": "Take a guided tour of Grafana's key areas. Perfect for getting started and understanding where everything is located.",
-      "filename": "welcome-to-grafana.ts",
-      "exportName": "welcomeToGrafanaHtml",
+      "filename": "welcome-to-grafana.json",
+      "url": ["/"],
+      "targetPlatform": "oss"
+    },
+    {
+      "id": "json-guide-demo",
+      "title": "JSON Guide Demo - All Block Types",
+      "summary": "Comprehensive demo showcasing all JSON guide block types: markdown, html, images, videos, sections, interactive steps, multistep, and guided blocks.",
+      "filename": "json-guide-demo.json",
       "url": ["/"],
       "targetPlatform": "oss"
     },
@@ -13,8 +20,7 @@
       "id": "welcome-to-grafana-cloud",
       "title": "Welcome to Grafana Cloud",
       "summary": "Take a guided tour of Grafana Cloud's key areas. Perfect for getting started and understanding where everything is located.",
-      "filename": "welcome-to-grafana-cloud.ts",
-      "exportName": "welcomeToGrafanaCloudHtml",
+      "filename": "welcome-to-grafana-cloud.json",
       "url": ["/a/grafana-setupguide-app/home"],
       "targetPlatform": "cloud"
     },
@@ -22,16 +28,14 @@
       "id": "prometheus-advanced-queries",
       "title": "Advanced Prometheus Queries",
       "summary": "Master advanced PromQL patterns including aggregations, histograms, predictions, and SLO calculations. Queries can be customized with Assistant for your datasources.",
-      "filename": "prometheus-advanced-queries.ts",
-      "exportName": "prometheusAdvancedQueriesHtml",
+      "filename": "prometheus-advanced-queries.json",
       "url": ["/explore"]
     },
     {
       "id": "prometheus-grafana-101",
       "title": "Prometheus & Grafana 101",
       "summary": "Learn to use Prometheus and Grafana to monitor your infrastructure. Perfect for getting started and understanding where everything is located.",
-      "filename": "prometheus-grafana-101.ts",
-      "exportName": "prometheusGrafana101Html",
+      "filename": "prometheus-grafana-101.json",
       "url": ["/connections"],
       "targetPlatform": "oss"
     },
@@ -39,8 +43,7 @@
       "id": "loki-grafana-101",
       "title": "Loki & Grafana 101",
       "summary": "Continue from the Prometheus tutorial: configure Loki and add a logs panel to your existing dashboard.",
-      "filename": "loki-grafana-101.ts",
-      "exportName": "lokiGrafana101Html",
+      "filename": "loki-grafana-101.json",
       "url": ["/connections"],
       "targetPlatform": "oss"
     },
@@ -48,16 +51,14 @@
       "id": "first-dashboard",
       "title": "Create your first dashboard",
       "summary": "Learn to create a dashboard in Grafana. Covering features such as Explore, dashboard creation, visualizations and more",
-      "filename": "first-dashboard.ts",
-      "exportName": "firstDashboardHtml",
+      "filename": "first-dashboard.json",
       "url": ["/"]
     },
     {
       "id": "first-dashboard-cloud",
       "title": "Create your first dashboard in Grafana Cloud",
       "summary": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more",
-      "filename": "first-dashboard-cloud.ts",
-      "exportName": "firstDashboardCloudHtml",
+      "filename": "first-dashboard-cloud.json",
       "url": ["/a/grafana-setupguide-app/home"]
     }
   ]

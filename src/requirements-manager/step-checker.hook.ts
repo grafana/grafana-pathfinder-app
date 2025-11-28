@@ -645,7 +645,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   // Initial requirements check for first steps when component mounts
   useEffect(() => {
-    const isFirstStep = stepId?.includes('-step-1') || (!stepId?.includes('section-') && !stepId?.includes('step-'));
+    // Detect first step in a section: -step-1, -multistep-1, -guided-1, or standalone steps
+    const isFirstStep =
+      stepId?.includes('-step-1') ||
+      stepId?.includes('-multistep-1') ||
+      stepId?.includes('-guided-1') ||
+      (!stepId?.includes('section-') && !stepId?.includes('step-'));
     if (isFirstStep && !state.isCompleted && !state.isChecking) {
       checkStepRef.current();
     }

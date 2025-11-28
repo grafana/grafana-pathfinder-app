@@ -1,0 +1,207 @@
+{
+  "id": "json-guide-demo",
+  "title": "JSON Guide Demo - All Block Types",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# JSON Guide Demo\n\nThis guide demonstrates **all block types** supported by the JSON guide format. Use this as a reference for creating your own guides.\n\n## Markdown Blocks\n\nMarkdown blocks support:\n\n- **Bold text** and *italic text*\n- `Inline code` snippets\n- [Links](https://grafana.com) to external resources\n- Ordered and unordered lists\n\n### Code Blocks\n\nYou can include fenced code blocks with syntax highlighting:\n\n```json\n{\n  \"type\": \"markdown\",\n  \"content\": \"Your markdown content here\"\n}\n```\n\n```promql\nrate(http_requests_total[5m])\n```"
+    },
+    {
+      "type": "markdown",
+      "content": "## HTML Blocks\n\nHTML blocks allow raw HTML content, including interactive elements for migration from existing HTML guides:"
+    },
+    {
+      "type": "html",
+      "content": "<div style='padding: 16px; background: rgba(50, 100, 150, 0.1); border-radius: 8px; margin: 8px 0;'><p>This is an <strong>HTML block</strong> with custom styling. It supports:</p><ul><li>Custom HTML elements</li><li>Inline styles</li><li>Interactive elements (see below)</li></ul><p>Here's some <code>inline code</code> in HTML.</p></div>"
+    },
+    {
+      "type": "markdown",
+      "content": "## Image Blocks\n\nImages can be embedded with optional dimensions:"
+    },
+    {
+      "type": "image",
+      "src": "https://grafana.com/static/assets/img/grafana_logo.svg",
+      "alt": "Grafana Logo",
+      "width": 200
+    },
+    {
+      "type": "markdown",
+      "content": "## Video Blocks\n\n### YouTube Video\n\nEmbed YouTube videos using the `youtube` provider:"
+    },
+    {
+      "type": "video",
+      "src": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "provider": "youtube",
+      "title": "Rick Astley - Never Gonna Give You Up"
+    },
+    {
+      "type": "markdown",
+      "content": "### Native Video\n\nEmbed native HTML5 video using the `native` provider:"
+    },
+    {
+      "type": "video",
+      "src": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "provider": "native",
+      "title": "Sample Video - Big Buck Bunny"
+    },
+    {
+      "type": "markdown",
+      "content": "## Interactive Blocks\n\nInteractive blocks let users interact with the Grafana UI. Each has **Show me** and **Do it** buttons.\n\n### Show-Only Mode\n\nUse `showOnly: true` for educational steps that only highlight without requiring action:"
+    },
+    {
+      "type": "interactive",
+      "action": "highlight",
+      "reftarget": "button[aria-label='Open menu']",
+      "requirements": ["exists-reftarget"],
+      "showOnly": true,
+      "skippable": true,
+      "content": "This is a **show-only** step - notice there's no \"Do it\" button, just \"Show me\".",
+      "tooltip": "Show-only mode is perfect for guided tours and educational content where you want to **point out** UI elements without requiring user action."
+    },
+    {
+      "type": "markdown",
+      "content": "### Highlight Action\n\nHighlight an element to show the user where something is:"
+    },
+    {
+      "type": "section",
+      "id": "interactive-demo",
+      "title": "Interactive Elements Demo",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+          "requirements": ["navmenu-open"],
+          "content": "This **highlight** action shows users where the Dashboards menu item is.",
+          "tooltip": "The `highlight` action adds a visual indicator around the target element. Great for pointing out UI locations!"
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/explore']",
+          "requirements": ["navmenu-open"],
+          "skippable": true,
+          "content": "This step is **skippable** - users can skip it if the element isn't available.",
+          "tooltip": "Skippable steps are useful when elements may not always be visible or accessible.",
+          "hint": "This hint appears when the step cannot be completed"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "### Button Action\n\nThe `button` action clicks a button by its text content:"
+    },
+    {
+      "type": "section",
+      "id": "button-demo",
+      "title": "Button Action Demo",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "New",
+          "requirements": ["on-page:/dashboards", "exists-reftarget"],
+          "skippable": true,
+          "content": "The **button** action can click buttons by their text. Navigate to Dashboards first to see this in action.",
+          "tooltip": "Button actions find elements by text content and click them."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "### Formfill Action\n\nThe `formfill` action enters text into input fields:"
+    },
+    {
+      "type": "section",
+      "id": "formfill-demo",
+      "title": "Formfill Action Demo",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[placeholder*='Search']",
+          "targetvalue": "Demo search text",
+          "requirements": ["exists-reftarget"],
+          "skippable": true,
+          "content": "The **formfill** action types text into input fields. The `targetvalue` specifies what to type.",
+          "tooltip": "Formfill is perfect for demonstrating search boxes, form inputs, and text areas."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## Multistep Blocks\n\nMultistep blocks execute a sequence of actions **automatically** when the user clicks \"Do it\":"
+    },
+    {
+      "type": "multistep",
+      "content": "This **multistep** block will highlight two menu items in sequence automatically.",
+      "requirements": ["navmenu-open"],
+      "skippable": true,
+      "steps": [
+        {
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+          "requirements": ["exists-reftarget"],
+          "tooltip": "First, we highlight Dashboards..."
+        },
+        {
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/explore']",
+          "requirements": ["exists-reftarget"],
+          "tooltip": "Then, we highlight Explore!"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## Guided Blocks\n\nGuided blocks highlight elements and **wait for the user** to perform the action:"
+    },
+    {
+      "type": "guided",
+      "content": "This **guided** block will highlight menu items and wait for you to click them. Try clicking each highlighted element!",
+      "requirements": ["navmenu-open"],
+      "skippable": true,
+      "stepTimeout": 30000,
+      "completeEarly": true,
+      "steps": [
+        {
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+          "requirements": ["exists-reftarget"],
+          "tooltip": "Click on Dashboards to continue..."
+        },
+        {
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/explore']",
+          "requirements": ["exists-reftarget"],
+          "tooltip": "Now click on Explore!"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## Section Blocks with Requirements\n\nSections can have **requirements** that must be met before they become accessible:"
+    },
+    {
+      "type": "section",
+      "id": "admin-section",
+      "title": "Admin-Only Section",
+      "requirements": ["is-admin"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/admin']",
+          "requirements": ["navmenu-open", "exists-reftarget"],
+          "skippable": true,
+          "content": "This section is only accessible to **admin users**.",
+          "tooltip": "The `is-admin` requirement checks if the current user has admin privileges."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## 🎉 That's All the Block Types!\n\nYou've now seen every block type supported by JSON guides:\n\n| Block Type | Description |\n|------------|-------------|\n| `markdown` | Formatted text with headings, lists, code |\n| `html` | Raw HTML for migration/custom content |\n| `image` | Embedded images |\n| `video` | YouTube or native video embeds |\n| `section` | Container for grouped interactive steps |\n| `interactive` | Single-action step (highlight, button, formfill, hover) |\n| `multistep` | Automated sequence of actions |\n| `guided` | User-performed sequence with detection |\n\n**Pro tip:** Start with `markdown` blocks for content, use `section` blocks to group related interactive steps, and choose between `multistep` (automated) and `guided` (user-performed) based on your learning objectives."
+    }
+  ]
+}
