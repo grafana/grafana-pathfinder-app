@@ -47,8 +47,14 @@ export const StorageKeys = {
   TABS: 'grafana-pathfinder-app-tabs',
   ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
   INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: grafana-pathfinder-app-interactive-steps-{contentKey}-{sectionId}
-  WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview',
+  WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview', // HTML content for editor persistence
+  WYSIWYG_PREVIEW_JSON: 'grafana-pathfinder-app-wysiwyg-preview-json', // JSON content for test preview
   SECTION_COLLAPSE_PREFIX: 'grafana-pathfinder-app-section-collapse-', // Dynamic: grafana-pathfinder-app-section-collapse-{contentKey}-{sectionId}
+  // Full screen mode persistence (for page refreshes during recording)
+  FULLSCREEN_MODE_STATE: 'grafana-pathfinder-app-fullscreen-mode-state',
+  FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
+  FULLSCREEN_BUNDLING_ACTION: 'grafana-pathfinder-app-fullscreen-bundling-action',
+  FULLSCREEN_SECTION_INFO: 'grafana-pathfinder-app-fullscreen-section-info',
 } as const;
 
 // Timestamp suffix for conflict resolution
@@ -756,6 +762,160 @@ export const sectionCollapseStorage = {
       await storage.removeItem(key);
     } catch (error) {
       console.warn('Failed to clear section collapse state:', error);
+    }
+  },
+};
+
+/**
+ * Full screen mode state storage operations
+ * Used to persist recording state across page refreshes
+ */
+export interface PersistedFullScreenState {
+  state: 'inactive' | 'active' | 'editing' | 'bundling' | 'bundling-editing';
+  singleCapture: boolean;
+  initialSectionId: string | null;
+}
+
+export interface PersistedBundledStep {
+  selector: string;
+  action: string;
+  selectorInfo: {
+    method: string;
+    isUnique: boolean;
+    matchCount: number;
+    contextStrategy?: string;
+  };
+  interactiveComment?: string;
+  requirements?: string;
+}
+
+export interface PersistedSectionInfo {
+  sectionId?: string;
+  sectionTitle?: string;
+  description?: string;
+  interactiveComment?: string;
+  requirements?: string;
+}
+
+export const fullScreenModeStorage = {
+  /**
+   * Gets the persisted full screen mode state
+   */
+  async getState(): Promise<PersistedFullScreenState | null> {
+    try {
+      const storage = createUserStorage();
+      return await storage.getItem<PersistedFullScreenState>(StorageKeys.FULLSCREEN_MODE_STATE);
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Sets the full screen mode state
+   */
+  async setState(state: PersistedFullScreenState): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.setItem(StorageKeys.FULLSCREEN_MODE_STATE, state);
+    } catch (error) {
+      console.warn('Failed to save full screen mode state:', error);
+    }
+  },
+
+  /**
+   * Gets the bundled steps
+   */
+  async getBundledSteps(): Promise<PersistedBundledStep[]> {
+    try {
+      const storage = createUserStorage();
+      return (await storage.getItem<PersistedBundledStep[]>(StorageKeys.FULLSCREEN_BUNDLED_STEPS)) || [];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Sets the bundled steps
+   */
+  async setBundledSteps(steps: PersistedBundledStep[]): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.setItem(StorageKeys.FULLSCREEN_BUNDLED_STEPS, steps);
+    } catch (error) {
+      console.warn('Failed to save bundled steps:', error);
+    }
+  },
+
+  /**
+   * Gets the bundling action type
+   */
+  async getBundlingAction(): Promise<string | null> {
+    try {
+      const storage = createUserStorage();
+      return await storage.getItem<string>(StorageKeys.FULLSCREEN_BUNDLING_ACTION);
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Sets the bundling action type
+   */
+  async setBundlingAction(action: string | null): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      if (action === null) {
+        await storage.removeItem(StorageKeys.FULLSCREEN_BUNDLING_ACTION);
+      } else {
+        await storage.setItem(StorageKeys.FULLSCREEN_BUNDLING_ACTION, action);
+      }
+    } catch (error) {
+      console.warn('Failed to save bundling action:', error);
+    }
+  },
+
+  /**
+   * Gets the section info for bundling
+   */
+  async getSectionInfo(): Promise<PersistedSectionInfo | null> {
+    try {
+      const storage = createUserStorage();
+      return await storage.getItem<PersistedSectionInfo>(StorageKeys.FULLSCREEN_SECTION_INFO);
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Sets the section info for bundling
+   */
+  async setSectionInfo(info: PersistedSectionInfo | null): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      if (info === null) {
+        await storage.removeItem(StorageKeys.FULLSCREEN_SECTION_INFO);
+      } else {
+        await storage.setItem(StorageKeys.FULLSCREEN_SECTION_INFO, info);
+      }
+    } catch (error) {
+      console.warn('Failed to save section info:', error);
+    }
+  },
+
+  /**
+   * Clears all full screen mode state
+   */
+  async clear(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await Promise.all([
+        storage.removeItem(StorageKeys.FULLSCREEN_MODE_STATE),
+        storage.removeItem(StorageKeys.FULLSCREEN_BUNDLED_STEPS),
+        storage.removeItem(StorageKeys.FULLSCREEN_BUNDLING_ACTION),
+        storage.removeItem(StorageKeys.FULLSCREEN_SECTION_INFO),
+      ]);
+    } catch (error) {
+      console.warn('Failed to clear full screen mode state:', error);
     }
   },
 };

@@ -658,6 +658,7 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string): Convers
     refTarget: step.reftarget,
     targetValue: step.targetvalue,
     requirements: step.requirements?.join(','),
+    targetComment: step.tooltip ? markdownToHtml(step.tooltip) : undefined,
   }));
 
   // Parse content as markdown for children

@@ -56,6 +56,7 @@ export function FullScreenModeOverlay({ editor, fullScreenState }: FullScreenMod
     bundlingActionType,
     stepCount,
     existingSections,
+    initialSectionId,
     exitFullScreenMode,
     saveStepAndClick,
     startBundling,
@@ -180,6 +181,7 @@ export function FullScreenModeOverlay({ editor, fullScreenState }: FullScreenMod
         onCancel={cancelEdit}
         stepNumber={stepCount + 1}
         existingSections={existingSections}
+        initialSectionId={initialSectionId}
       />
 
       {/* Bundling Step Editor - mini editor shown when click is captured during bundling */}

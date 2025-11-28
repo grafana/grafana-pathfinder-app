@@ -7,8 +7,16 @@ import { useEditorActions } from './useEditorActions';
 import type { Editor } from '@tiptap/react';
 
 // Mock dependencies
-jest.mock('../utils/htmlFormatter', () => ({
-  formatHTML: jest.fn(async (html: string) => html),
+jest.mock('../services/editorToJson', () => ({
+  convertEditorToJson: jest.fn((_editor, metadata) => ({
+    guide: {
+      id: metadata?.id || 'test-guide',
+      title: metadata?.title || 'Test Guide',
+      blocks: [{ type: 'markdown', content: '# Test' }],
+    },
+    warnings: [],
+  })),
+  formatJsonGuide: jest.fn((guide) => JSON.stringify(guide, null, 2)),
 }));
 
 jest.mock('../../../security', () => ({
@@ -89,9 +97,14 @@ describe('useEditorActions', () => {
       return originalCreateElement(tagName);
     });
 
-    // Mock editor
+    // Mock editor with state for JSON conversion
     mockEditor = {
       getHTML: jest.fn(() => '<p>Test HTML</p>'),
+      state: {
+        doc: {
+          forEach: jest.fn(),
+        },
+      },
       commands: {
         setContent: jest.fn(),
       },
@@ -109,16 +122,96 @@ describe('useEditorActions', () => {
     document.body.removeChild = originalRemoveChild;
   });
 
-  describe('downloadHTML', () => {
-    it('should open HTML in new window', async () => {
+  describe('export dialog state', () => {
+    it('should start with dialog closed', () => {
+      const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
+
+      expect(result.current.isExportDialogOpen).toBe(false);
+    });
+
+    it('should open dialog in copy mode', () => {
+      const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
+
+      act(() => {
+        result.current.openExportDialog('copy');
+      });
+
+      expect(result.current.isExportDialogOpen).toBe(true);
+      expect(result.current.exportMode).toBe('copy');
+    });
+
+    it('should open dialog in download mode', () => {
+      const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
+
+      act(() => {
+        result.current.openExportDialog('download');
+      });
+
+      expect(result.current.isExportDialogOpen).toBe(true);
+      expect(result.current.exportMode).toBe('download');
+    });
+
+    it('should close dialog', () => {
+      const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
+
+      act(() => {
+        result.current.openExportDialog('copy');
+      });
+
+      expect(result.current.isExportDialogOpen).toBe(true);
+
+      act(() => {
+        result.current.closeExportDialog();
+      });
+
+      expect(result.current.isExportDialogOpen).toBe(false);
+    });
+  });
+
+  describe('performExport - copy mode', () => {
+    it('should copy JSON to clipboard', async () => {
+      const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
+
+      act(() => {
+        result.current.openExportDialog('copy');
+      });
+
+      await act(async () => {
+        await result.current.performExport({ id: 'test', title: 'Test' });
+      });
+
+      expect(global.navigator.clipboard.writeText).toHaveBeenCalled();
+    });
+
+    it('should not copy if editor is null', async () => {
+      const { result } = renderHook(() => useEditorActions({ editor: null }));
+
+      act(() => {
+        result.current.openExportDialog('copy');
+      });
+
+      await act(async () => {
+        await result.current.performExport({ id: 'test', title: 'Test' });
+      });
+
+      expect(global.navigator.clipboard.writeText).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('performExport - download mode', () => {
+    it('should open JSON in new tab', async () => {
       const windowOpenSpy = jest.spyOn(window, 'open').mockReturnValue({
         onload: null,
       } as Window);
 
       const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
 
+      act(() => {
+        result.current.openExportDialog('download');
+      });
+
       await act(async () => {
-        await result.current.downloadHTML();
+        await result.current.performExport({ id: 'test-guide', title: 'Test Guide' });
       });
 
       // Verify blob URL was created
@@ -137,50 +230,17 @@ describe('useEditorActions', () => {
       windowOpenSpy.mockRestore();
     });
 
-    it('should not open window if editor is null', async () => {
-      const windowOpenSpy = jest.spyOn(window, 'open').mockReturnValue({
-        onload: null,
-      } as Window);
-
-      const { result } = renderHook(() => useEditorActions({ editor: null }));
-
-      await act(async () => {
-        await result.current.downloadHTML();
-      });
-
-      expect(windowOpenSpy).not.toHaveBeenCalled();
-      expect(mockCreateObjectURL).not.toHaveBeenCalled();
-
-      windowOpenSpy.mockRestore();
-    });
-
-    it('should create blob with correct type', async () => {
-      const windowOpenSpy = jest.spyOn(window, 'open').mockReturnValue({
-        onload: null,
-      } as Window);
-
-      const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
-
-      await act(async () => {
-        await result.current.downloadHTML();
-      });
-
-      // Verify createObjectURL was called (which means Blob was created)
-      expect(mockCreateObjectURL).toHaveBeenCalled();
-      // The blob type is checked indirectly through the createObjectURL call
-      // We can't easily inspect the Blob constructor call in jsdom, but we verify
-      // that window.open is called which is the main requirement
-
-      windowOpenSpy.mockRestore();
-    });
-
     it('should revoke URL immediately if popup is blocked', async () => {
       const windowOpenSpy = jest.spyOn(window, 'open').mockReturnValue(null);
 
       const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
 
+      act(() => {
+        result.current.openExportDialog('download');
+      });
+
       await act(async () => {
-        await result.current.downloadHTML();
+        await result.current.performExport({ id: 'test-guide', title: 'Test Guide' });
       });
 
       // Verify blob URL was created
@@ -194,32 +254,31 @@ describe('useEditorActions', () => {
 
       windowOpenSpy.mockRestore();
     });
-  });
 
-  describe('copyHTML', () => {
-    it('should copy HTML to clipboard', async () => {
-      const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
+    it('should not open tab if editor is null', async () => {
+      const windowOpenSpy = jest.spyOn(window, 'open').mockReturnValue({
+        onload: null,
+      } as Window);
 
-      await act(async () => {
-        await result.current.copyHTML();
-      });
-
-      expect(global.navigator.clipboard.writeText).toHaveBeenCalled();
-    });
-
-    it('should not copy if editor is null', async () => {
       const { result } = renderHook(() => useEditorActions({ editor: null }));
 
-      await act(async () => {
-        await result.current.copyHTML();
+      act(() => {
+        result.current.openExportDialog('download');
       });
 
-      expect(global.navigator.clipboard.writeText).not.toHaveBeenCalled();
+      await act(async () => {
+        await result.current.performExport({ id: 'test', title: 'Test' });
+      });
+
+      expect(mockCreateObjectURL).not.toHaveBeenCalled();
+      expect(windowOpenSpy).not.toHaveBeenCalled();
+
+      windowOpenSpy.mockRestore();
     });
   });
 
   describe('testGuide', () => {
-    it('should save HTML to localStorage and dispatch event', () => {
+    it('should convert to JSON, save to localStorage, and dispatch event', () => {
       const dispatchEventSpy = jest.spyOn(document, 'dispatchEvent').mockImplementation(() => true);
       const { result } = renderHook(() => useEditorActions({ editor: mockEditor }));
 
@@ -227,11 +286,34 @@ describe('useEditorActions', () => {
         result.current.testGuide();
       });
 
+      // Verify JSON was saved to localStorage
       expect(localStorage.setItem).toHaveBeenCalled();
+      const savedContent = (localStorage.setItem as jest.Mock).mock.calls[0][1];
+      const parsedContent = JSON.parse(savedContent);
+      expect(parsedContent.id).toBe('wysiwyg-preview');
+      expect(parsedContent.title).toBe('Preview: WYSIWYG Guide');
+      expect(Array.isArray(parsedContent.blocks)).toBe(true);
+
+      // Verify event was dispatched
       expect(dispatchEventSpy).toHaveBeenCalled();
       const event = dispatchEventSpy.mock.calls[0][0] as CustomEvent;
       expect(event.type).toBe('pathfinder-auto-open-docs');
       expect(event.detail.url).toBe('bundled:wysiwyg-preview');
+      expect(event.detail.title).toBe('Preview: WYSIWYG Guide');
+
+      dispatchEventSpy.mockRestore();
+    });
+
+    it('should not test if editor is null', () => {
+      const dispatchEventSpy = jest.spyOn(document, 'dispatchEvent').mockImplementation(() => true);
+      const { result } = renderHook(() => useEditorActions({ editor: null }));
+
+      act(() => {
+        result.current.testGuide();
+      });
+
+      expect(localStorage.setItem).not.toHaveBeenCalled();
+      expect(dispatchEventSpy).not.toHaveBeenCalled();
 
       dispatchEventSpy.mockRestore();
     });

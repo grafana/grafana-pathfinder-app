@@ -21,6 +21,7 @@ import {
   shouldCaptureElement,
   getActionDescription,
 } from '../../../interactive-engine/auto-completion/action-detector';
+import { fullScreenModeStorage, type PersistedBundledStep } from '../../../lib/user-storage';
 
 /**
  * Full screen mode states
@@ -119,8 +120,10 @@ export interface UseFullScreenModeReturn {
   stepCount: number;
   /** Existing sections in the document */
   existingSections: SectionInfo[];
-  /** Enter full screen authoring mode */
-  enterFullScreenMode: () => void;
+  /** Initial section ID to pre-populate when capturing (from cursor position) */
+  initialSectionId: string | null;
+  /** Enter full screen authoring mode. If singleCapture is true, exits after one step. */
+  enterFullScreenMode: (options?: { singleCapture?: boolean; initialSectionId?: string }) => void;
   /** Exit full screen authoring mode */
   exitFullScreenMode: () => void;
   /** Save the current pending step and execute the click */
@@ -214,6 +217,118 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
   const onStateChangeRef = useRef(onStateChange);
   const onStepAddedRef = useRef(onStepAdded);
   const editorRef = useRef(editor);
+  // Track if we're in single capture mode (exit after one step)
+  const singleCaptureModeRef = useRef(false);
+  // Track initial section ID from cursor position (for pre-populating section dropdown)
+  const [initialSectionId, setInitialSectionId] = useState<string | null>(null);
+  // Track if state has been restored from storage (to prevent re-saving initial state)
+  const hasRestoredRef = useRef(false);
+
+  // Restore state from storage on mount (for page refresh persistence)
+  useEffect(() => {
+    const restoreState = async () => {
+      try {
+        const persistedState = await fullScreenModeStorage.getState();
+
+        // Only restore if we were in an active state (not inactive)
+        if (persistedState && persistedState.state !== 'inactive') {
+          // Restore mode state
+          setState(persistedState.state);
+          singleCaptureModeRef.current = persistedState.singleCapture;
+          setInitialSectionId(persistedState.initialSectionId);
+
+          // Restore bundled steps (note: these are serialized versions without DOM refs)
+          const bundledStepsData = await fullScreenModeStorage.getBundledSteps();
+          if (bundledStepsData.length > 0) {
+            // Convert persisted steps back to PendingClickInfo (without element/event refs)
+            const restoredSteps: PendingClickInfo[] = bundledStepsData.map((step: PersistedBundledStep) => ({
+              element: null as unknown as HTMLElement, // Can't restore DOM reference
+              event: null as unknown as MouseEvent, // Can't restore event reference
+              selector: step.selector,
+              action: step.action,
+              selectorInfo: {
+                method: step.selectorInfo.method,
+                isUnique: step.selectorInfo.isUnique,
+                matchCount: step.selectorInfo.matchCount,
+                contextStrategy: step.selectorInfo.contextStrategy,
+              },
+              description: '',
+              warnings: [],
+              interactiveComment: step.interactiveComment,
+              requirements: step.requirements,
+            }));
+            setBundledSteps(restoredSteps);
+          }
+
+          // Restore bundling action type
+          const bundlingAction = await fullScreenModeStorage.getBundlingAction();
+          if (bundlingAction) {
+            setBundlingActionType(bundlingAction);
+          }
+
+          // Restore section info
+          const sectionInfo = await fullScreenModeStorage.getSectionInfo();
+          if (sectionInfo) {
+            setBundlingSectionInfo(sectionInfo);
+          }
+
+          // Notify that state was restored
+          console.log('[FullScreenMode] Restored state from storage:', persistedState.state);
+        }
+
+        hasRestoredRef.current = true;
+      } catch (error) {
+        console.warn('[FullScreenMode] Failed to restore state from storage:', error);
+        hasRestoredRef.current = true;
+      }
+    };
+
+    restoreState();
+  }, []); // Only run on mount
+
+  // Persist state changes to storage (for page refresh persistence)
+  useEffect(() => {
+    // Don't persist until we've restored (to prevent overwriting with initial state)
+    if (!hasRestoredRef.current) {
+      return;
+    }
+
+    const persistState = async () => {
+      try {
+        // Save current state
+        await fullScreenModeStorage.setState({
+          state,
+          singleCapture: singleCaptureModeRef.current,
+          initialSectionId,
+        });
+
+        // Save bundled steps (only the serializable parts)
+        const stepsToSave: PersistedBundledStep[] = bundledSteps.map((step) => ({
+          selector: step.selector,
+          action: step.action,
+          selectorInfo: {
+            method: step.selectorInfo.method,
+            isUnique: step.selectorInfo.isUnique,
+            matchCount: step.selectorInfo.matchCount,
+            contextStrategy: step.selectorInfo.contextStrategy,
+          },
+          interactiveComment: step.interactiveComment,
+          requirements: step.requirements,
+        }));
+        await fullScreenModeStorage.setBundledSteps(stepsToSave);
+
+        // Save bundling action type
+        await fullScreenModeStorage.setBundlingAction(bundlingActionType);
+
+        // Save section info
+        await fullScreenModeStorage.setSectionInfo(bundlingSectionInfo);
+      } catch (error) {
+        console.warn('[FullScreenMode] Failed to persist state to storage:', error);
+      }
+    };
+
+    persistState();
+  }, [state, bundledSteps, bundlingActionType, bundlingSectionInfo, initialSectionId]);
 
   useEffect(() => {
     onStateChangeRef.current = onStateChange;
@@ -245,20 +360,37 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
       detail: { state: newState, isActive: newState !== 'inactive' },
     });
     window.dispatchEvent(event);
+
+    // Reset single capture mode and initial section when exiting
+    if (newState === 'inactive') {
+      singleCaptureModeRef.current = false;
+      setInitialSectionId(null);
+    }
   }, []);
 
   // Enter full screen mode
-  const enterFullScreenMode = useCallback(() => {
-    if (state === 'inactive') {
-      changeState('active');
-    }
-  }, [state, changeState]);
+  // If singleCapture is true, will exit after capturing one step
+  // If initialSectionId is provided, pre-populate the section dropdown
+  const enterFullScreenMode = useCallback(
+    (options?: { singleCapture?: boolean; initialSectionId?: string }) => {
+      if (state === 'inactive') {
+        singleCaptureModeRef.current = options?.singleCapture ?? false;
+        setInitialSectionId(options?.initialSectionId ?? null);
+        changeState('active');
+      }
+    },
+    [state, changeState]
+  );
 
   // Exit full screen mode
   const exitFullScreenMode = useCallback(() => {
     setPendingClick(null);
     setBundledSteps([]);
     changeState('inactive');
+    // Explicitly clear storage when exiting
+    fullScreenModeStorage.clear().catch((error) => {
+      console.warn('[FullScreenMode] Failed to clear storage on exit:', error);
+    });
   }, [changeState]);
 
   // Execute click programmatically on the original element
@@ -534,9 +666,15 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
       // Execute the click
       executeClick(pendingClick);
 
-      // Clear pending and return to active state
+      // Clear pending
       setPendingClick(null);
-      changeState('active');
+
+      // In single capture mode, exit after one step; otherwise return to active state
+      if (singleCaptureModeRef.current) {
+        changeState('inactive');
+      } else {
+        changeState('active');
+      }
     },
     [pendingClick, executeClick, addStepToDocument, changeState]
   );
@@ -587,9 +725,15 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
     // Execute the click without recording
     executeClick(pendingClick);
 
-    // Clear pending and return to active state
+    // Clear pending
     setPendingClick(null);
-    changeState('active');
+
+    // In single capture mode, exit after skip; otherwise return to active state
+    if (singleCaptureModeRef.current) {
+      changeState('inactive');
+    } else {
+      changeState('active');
+    }
   }, [pendingClick, executeClick, changeState]);
 
   // Cancel editing
@@ -598,7 +742,13 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
     setBundledSteps([]);
     setBundlingActionType(null);
     setBundlingSectionInfo(null);
-    changeState('active');
+
+    // In single capture mode, exit on cancel; otherwise return to active state
+    if (singleCaptureModeRef.current) {
+      changeState('inactive');
+    } else {
+      changeState('active');
+    }
   }, [changeState]);
 
   // Save bundled step data (comment/requirements) and continue bundling
@@ -650,7 +800,12 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
       if (bundledSteps.length === 0) {
         setBundlingActionType(null);
         setBundlingSectionInfo(null);
-        changeState('active');
+        // In single capture mode, exit; otherwise return to active state
+        if (singleCaptureModeRef.current) {
+          changeState('inactive');
+        } else {
+          changeState('active');
+        }
         return;
       }
 
@@ -704,7 +859,13 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
       setBundledSteps([]);
       setBundlingActionType(null);
       setBundlingSectionInfo(null);
-      changeState('active');
+
+      // In single capture mode, exit after completing bundling; otherwise return to active state
+      if (singleCaptureModeRef.current) {
+        changeState('inactive');
+      } else {
+        changeState('active');
+      }
     },
     [bundledSteps, bundlingActionType, bundlingSectionInfo, addStepToDocument, addMultistepToDocument, changeState]
   );
@@ -716,6 +877,10 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
     setBundlingActionType(null);
     setBundlingSectionInfo(null);
     setPendingClick(null);
+    // Clear storage as well
+    fullScreenModeStorage.clear().catch((error) => {
+      console.warn('[FullScreenMode] Failed to clear storage:', error);
+    });
   }, []);
 
   // Click interception effect
@@ -823,16 +988,17 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
   // Track existing sections in state - updated via effect
   const [existingSections, setExistingSections] = useState<SectionInfo[]>([]);
 
-  // Update existing sections when editor content changes or when entering full screen mode
+  // Update existing sections when editor content changes
+  // This runs always (not just when full screen is active) so sections are available for editing
   useEffect(() => {
-    const currentEditor = editorRef.current;
-    if (!currentEditor || !isActive) {
+    // Use the editor prop directly (not ref) for reliable timing
+    if (!editor) {
       return;
     }
 
     const extractSections = () => {
       const sections: SectionInfo[] = [];
-      const { state: editorState } = currentEditor;
+      const { state: editorState } = editor;
       const { doc } = editorState;
 
       doc.descendants((node) => {
@@ -859,12 +1025,12 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
       extractSections();
     };
 
-    currentEditor.on('update', handleUpdate);
+    editor.on('update', handleUpdate);
 
     return () => {
-      currentEditor.off('update', handleUpdate);
+      editor.off('update', handleUpdate);
     };
-  }, [isActive]);
+  }, [editor]); // Re-run when editor changes
 
   // Memoize return value
   return useMemo(
@@ -877,6 +1043,7 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
       recordedSteps,
       stepCount: recordedSteps.length,
       existingSections,
+      initialSectionId,
       enterFullScreenMode,
       exitFullScreenMode,
       saveStepAndClick,
@@ -900,6 +1067,7 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
       bundlingActionType,
       recordedSteps,
       existingSections,
+      initialSectionId,
       enterFullScreenMode,
       exitFullScreenMode,
       saveStepAndClick,
