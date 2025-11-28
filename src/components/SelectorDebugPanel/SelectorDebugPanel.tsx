@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { Button, Input, Badge, Icon, useStyles2, TextArea, Stack, Alert, Field } from '@grafana/ui';
+import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import { Button, Input, Badge, Icon, useStyles2, TextArea, Stack, Alert, Field, TabsBar, Tab } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive-engine';
 import { getDebugPanelStyles } from './debug-panel.styles';
 import { combineStepsIntoMultistep } from '../wysiwyg-editor/devtools/tutorial-exporter';
@@ -11,6 +11,17 @@ import { useSelectorCapture } from '../wysiwyg-editor/devtools/selector-capture.
 import { useActionRecorder } from '../wysiwyg-editor/devtools/action-recorder.hook';
 import { parseStepString } from '../wysiwyg-editor/devtools/step-parser.util';
 import { DomPathTooltip } from '../DomPathTooltip';
+import { SkeletonLoader } from '../SkeletonLoader';
+
+// Lazy load BlockEditor to keep it out of main bundle when not needed
+const BlockEditor = lazy(() =>
+  import('../block-editor').then((module) => ({
+    default: module.BlockEditor,
+  }))
+);
+
+// Editor tab types
+type EditorTab = 'html' | 'json';
 
 export interface SelectorDebugPanelProps {
   onOpenDocsPage?: (url: string, title: string) => void;
@@ -19,6 +30,9 @@ export interface SelectorDebugPanelProps {
 export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps = {}) {
   const styles = useStyles2(getDebugPanelStyles);
   const { executeInteractiveAction } = useInteractiveElements();
+
+  // Editor tab state
+  const [activeEditorTab, setActiveEditorTab] = useState<EditorTab>('html');
 
   // Section expansion state - priority sections expanded by default
   const [recordExpanded, setRecordExpanded] = useState(true); // Priority: expanded by default
@@ -309,7 +323,33 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         </Button>
       </div>
 
-      <WysiwygEditor />
+      {/* Editor Tabs */}
+      <div className={styles.editorSection}>
+        <TabsBar>
+          <Tab
+            label="HTML Editor"
+            icon="file-alt"
+            active={activeEditorTab === 'html'}
+            onChangeTab={() => setActiveEditorTab('html')}
+          />
+          <Tab
+            label="JSON Editor ✨"
+            icon="brackets-curly"
+            active={activeEditorTab === 'json'}
+            onChangeTab={() => setActiveEditorTab('json')}
+          />
+        </TabsBar>
+
+        <div className={styles.editorContent}>
+          {activeEditorTab === 'html' ? (
+            <WysiwygEditor />
+          ) : (
+            <Suspense fallback={<SkeletonLoader type="recommendations" />}>
+              <BlockEditor />
+            </Suspense>
+          )}
+        </div>
+      </div>
 
       {/* PRIORITY SECTION 1: Record Mode - Capture Multi-Step Sequences */}
       <div className={styles.section}>

@@ -1,0 +1,130 @@
+/**
+ * Video Block Form
+ *
+ * Form for creating/editing video blocks.
+ */
+
+import React, { useState, useCallback } from 'react';
+import { Button, Field, Input, Select, useStyles2 } from '@grafana/ui';
+import { SelectableValue } from '@grafana/data';
+import { getBlockFormStyles } from '../block-editor.styles';
+import { VIDEO_PROVIDERS } from '../constants';
+import type { BlockFormProps, JsonBlock } from '../types';
+import type { JsonVideoBlock } from '../../../types/json-guide.types';
+
+/**
+ * Type guard for video blocks
+ */
+function isVideoBlock(block: JsonBlock): block is JsonVideoBlock {
+  return block.type === 'video';
+}
+
+const PROVIDER_OPTIONS: Array<SelectableValue<'youtube' | 'native'>> = VIDEO_PROVIDERS.map((p) => ({
+  value: p.value,
+  label: p.label,
+}));
+
+/**
+ * Video block form component
+ */
+export function VideoBlockForm({ initialData, onSubmit, onCancel, isEditing = false }: BlockFormProps) {
+  const styles = useStyles2(getBlockFormStyles);
+
+  // Initialize from existing data or defaults
+  const initial = initialData && isVideoBlock(initialData) ? initialData : null;
+  const [src, setSrc] = useState(initial?.src ?? '');
+  const [provider, setProvider] = useState<'youtube' | 'native'>(initial?.provider ?? 'youtube');
+  const [title, setTitle] = useState(initial?.title ?? '');
+
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      const block: JsonVideoBlock = {
+        type: 'video',
+        src: src.trim(),
+        ...(provider && { provider }),
+        ...(title.trim() && { title: title.trim() }),
+      };
+      onSubmit(block);
+    },
+    [src, provider, title, onSubmit]
+  );
+
+  const handleProviderChange = useCallback((option: SelectableValue<'youtube' | 'native'>) => {
+    if (option.value) {
+      setProvider(option.value);
+    }
+  }, []);
+
+  const isValid = src.trim().length > 0;
+
+  // Get YouTube embed URL hint
+  const getUrlHint = () => {
+    if (provider === 'youtube') {
+      return 'Use the embed URL format: https://www.youtube.com/embed/VIDEO_ID';
+    }
+    return 'Direct URL to an MP4 or WebM video file';
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className={styles.form}>
+      <Field label="Video Provider" description="Select the video source type">
+        <Select
+          options={PROVIDER_OPTIONS}
+          value={PROVIDER_OPTIONS.find((o) => o.value === provider)}
+          onChange={handleProviderChange}
+        />
+      </Field>
+
+      <Field label="Video URL" description={getUrlHint()} required>
+        <Input
+          value={src}
+          onChange={(e) => setSrc(e.currentTarget.value)}
+          placeholder={
+            provider === 'youtube' ? 'https://www.youtube.com/embed/dQw4w9WgXcQ' : 'https://example.com/video.mp4'
+          }
+          autoFocus
+        />
+      </Field>
+
+      <Field label="Title" description="Video title for accessibility">
+        <Input value={title} onChange={(e) => setTitle(e.currentTarget.value)} placeholder="Video title" />
+      </Field>
+
+      {/* Preview for YouTube */}
+      {src && provider === 'youtube' && (
+        <Field label="Preview">
+          <div
+            style={{
+              aspectRatio: '16/9',
+              maxWidth: '100%',
+              borderRadius: '4px',
+              overflow: 'hidden',
+              border: '1px solid var(--border-weak)',
+            }}
+          >
+            <iframe
+              src={src}
+              title={title || 'Video preview'}
+              style={{ width: '100%', height: '100%', border: 'none' }}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        </Field>
+      )}
+
+      <div className={styles.footer}>
+        <Button variant="secondary" onClick={onCancel} type="button">
+          Cancel
+        </Button>
+        <Button variant="primary" type="submit" disabled={!isValid}>
+          {isEditing ? 'Update Block' : 'Add Block'}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// Add display name for debugging
+VideoBlockForm.displayName = 'VideoBlockForm';

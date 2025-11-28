@@ -1,0 +1,344 @@
+/**
+ * Block Editor
+ *
+ * Main component for the block-based JSON guide editor.
+ * Provides a visual interface for composing guides from different block types.
+ */
+
+import React, { useState, useCallback } from 'react';
+import { Button, useStyles2, Badge, ButtonGroup, ConfirmModal } from '@grafana/ui';
+import { useBlockEditor } from './hooks/useBlockEditor';
+import { getBlockEditorStyles } from './block-editor.styles';
+import { GuideMetadataForm } from './GuideMetadataForm';
+import { BlockPalette } from './BlockPalette';
+import { BlockList } from './BlockList';
+import { BlockPreview } from './BlockPreview';
+import { BlockFormModal } from './BlockFormModal';
+import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
+
+export interface BlockEditorProps {
+  /** Initial guide to load */
+  initialGuide?: JsonGuide;
+  /** Called when guide changes */
+  onChange?: (guide: JsonGuide) => void;
+  /** Called when copy to clipboard is requested */
+  onCopy?: (json: string) => void;
+  /** Called when download is requested */
+  onDownload?: (guide: JsonGuide) => void;
+}
+
+/**
+ * Block-based JSON guide editor
+ */
+export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
+  const styles = useStyles2(getBlockEditorStyles);
+  const editor = useBlockEditor({ initialGuide, onChange });
+
+  // Modal state
+  const [isMetadataOpen, setIsMetadataOpen] = useState(false);
+  const [isBlockFormOpen, setIsBlockFormOpen] = useState(false);
+  const [editingBlockType, setEditingBlockType] = useState<BlockType | null>(null);
+  const [editingBlock, setEditingBlock] = useState<EditorBlock | null>(null);
+  const [insertAtIndex, setInsertAtIndex] = useState<number | undefined>(undefined);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  // State for editing nested blocks
+  const [editingNestedBlock, setEditingNestedBlock] = useState<{
+    sectionId: string;
+    nestedIndex: number;
+    block: JsonBlock;
+  } | null>(null);
+
+  // Handle block type selection from palette
+  const handleBlockTypeSelect = useCallback((type: BlockType, index?: number) => {
+    setEditingBlockType(type);
+    setEditingBlock(null);
+    setInsertAtIndex(index);
+    setIsBlockFormOpen(true);
+  }, []);
+
+  // Handle block edit
+  const handleBlockEdit = useCallback((block: EditorBlock) => {
+    setEditingBlockType(block.block.type as BlockType);
+    setEditingBlock(block);
+    setInsertAtIndex(undefined);
+    setIsBlockFormOpen(true);
+  }, []);
+
+  // Handle form cancel
+  const handleBlockFormCancel = useCallback(() => {
+    setIsBlockFormOpen(false);
+    setEditingBlockType(null);
+    setEditingBlock(null);
+    setEditingNestedBlock(null);
+    setInsertAtIndex(undefined);
+    // Clear any section context
+    delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }).__blockEditorSectionContext;
+  }, []);
+
+  // Handle copy to clipboard
+  const handleCopy = useCallback(() => {
+    const guide = editor.getGuide();
+    const json = JSON.stringify(guide, null, 2);
+
+    if (onCopy) {
+      onCopy(json);
+    } else {
+      navigator.clipboard.writeText(json).then(() => {
+        // Could add a toast notification here
+        console.log('Copied to clipboard');
+      });
+    }
+  }, [editor, onCopy]);
+
+  // Handle download
+  const handleDownload = useCallback(() => {
+    const guide = editor.getGuide();
+
+    if (onDownload) {
+      onDownload(guide);
+    } else {
+      const json = JSON.stringify(guide, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${guide.id}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  }, [editor, onDownload]);
+
+  // Handle reset
+  const handleReset = useCallback(() => {
+    editor.resetGuide();
+    setIsResetConfirmOpen(false);
+  }, [editor]);
+
+  // Handle nesting a block into a section
+  const handleNestBlock = useCallback(
+    (blockId: string, sectionId: string, insertIndex?: number) => {
+      editor.nestBlockInSection(blockId, sectionId, insertIndex);
+    },
+    [editor]
+  );
+
+  // Handle unnesting a block from a section
+  const handleUnnestBlock = useCallback(
+    (nestedBlockId: string, sectionId: string) => {
+      editor.unnestBlockFromSection(nestedBlockId, sectionId);
+    },
+    [editor]
+  );
+
+  // Handle inserting a block directly into a section
+  const handleInsertBlockInSection = useCallback(
+    (type: BlockType, sectionId: string, index?: number) => {
+      // Open the form modal for this block type, but target the section
+      setEditingBlockType(type);
+      setEditingBlock(null);
+      // We'll need to handle section insertion differently
+      // For now, store the section ID and handle in submit
+      setInsertAtIndex(undefined);
+      setIsBlockFormOpen(true);
+
+      // Store section context for insertion
+      (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }).__blockEditorSectionContext = {
+        sectionId,
+        index,
+      };
+    },
+    []
+  );
+
+  // Handle editing a nested block
+  const handleNestedBlockEdit = useCallback(
+    (sectionId: string, nestedIndex: number, block: JsonBlock) => {
+      setEditingBlockType(block.type as BlockType);
+      setEditingBlock(null);
+      setEditingNestedBlock({ sectionId, nestedIndex, block });
+      setInsertAtIndex(undefined);
+      setIsBlockFormOpen(true);
+    },
+    []
+  );
+
+  // Handle deleting a nested block
+  const handleNestedBlockDelete = useCallback(
+    (sectionId: string, nestedIndex: number) => {
+      editor.deleteNestedBlock(sectionId, nestedIndex);
+    },
+    [editor]
+  );
+
+  // Handle duplicating a nested block
+  const handleNestedBlockDuplicate = useCallback(
+    (sectionId: string, nestedIndex: number) => {
+      editor.duplicateNestedBlock(sectionId, nestedIndex);
+    },
+    [editor]
+  );
+
+  // Handle moving a nested block within its section
+  const handleNestedBlockMove = useCallback(
+    (sectionId: string, fromIndex: number, toIndex: number) => {
+      editor.moveNestedBlock(sectionId, fromIndex, toIndex);
+    },
+    [editor]
+  );
+
+  // Modified form submit to handle section insertions and nested block edits
+  const handleBlockFormSubmitWithSection = useCallback(
+    (block: JsonBlock) => {
+      const sectionContext = (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }).__blockEditorSectionContext;
+
+      if (editingNestedBlock) {
+        // Editing a nested block
+        editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, block);
+        setEditingNestedBlock(null);
+      } else if (editingBlock) {
+        editor.updateBlock(editingBlock.id, block);
+      } else if (sectionContext) {
+        editor.addBlockToSection(block, sectionContext.sectionId, sectionContext.index);
+        delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }).__blockEditorSectionContext;
+      } else {
+        editor.addBlock(block, insertAtIndex);
+      }
+      setIsBlockFormOpen(false);
+      setEditingBlockType(null);
+      setEditingBlock(null);
+      setInsertAtIndex(undefined);
+    },
+    [editor, editingBlock, editingNestedBlock, insertAtIndex]
+  );
+
+  const { state } = editor;
+  const hasBlocks = state.blocks.length > 0;
+
+  return (
+    <div className={styles.container} data-testid="block-editor">
+      {/* Header */}
+      <div className={styles.header}>
+        <div className={styles.headerLeft}>
+          <h3 className={styles.guideTitle}>{state.guide.title}</h3>
+          {state.isDirty && <Badge text="Unsaved" color="orange" />}
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="cog"
+            onClick={() => setIsMetadataOpen(true)}
+            tooltip="Edit guide settings"
+          />
+        </div>
+
+        <div className={styles.headerRight}>
+          {/* View mode toggle */}
+          <ButtonGroup>
+            <Button
+              variant={!state.isPreviewMode ? 'primary' : 'secondary'}
+              size="sm"
+              icon="pen"
+              onClick={() => editor.setPreviewMode(false)}
+            >
+              Edit
+            </Button>
+            <Button
+              variant={state.isPreviewMode ? 'primary' : 'secondary'}
+              size="sm"
+              icon="eye"
+              onClick={() => editor.setPreviewMode(true)}
+            >
+              Preview
+            </Button>
+          </ButtonGroup>
+
+          {/* Export actions */}
+          <Button variant="secondary" size="sm" icon="copy" onClick={handleCopy} tooltip="Copy JSON to clipboard" />
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="download-alt"
+            onClick={handleDownload}
+            tooltip="Download JSON file"
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="trash-alt"
+            onClick={() => setIsResetConfirmOpen(true)}
+            tooltip="Reset to new guide"
+          />
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className={styles.content}>
+        {state.isPreviewMode ? (
+          <BlockPreview guide={editor.getGuide()} />
+        ) : hasBlocks ? (
+          <BlockList
+            blocks={state.blocks}
+            selectedBlockId={state.selectedBlockId}
+            onBlockSelect={editor.selectBlock}
+            onBlockEdit={handleBlockEdit}
+            onBlockDelete={editor.removeBlock}
+            onBlockMove={editor.moveBlock}
+            onBlockDuplicate={editor.duplicateBlock}
+            onInsertBlock={handleBlockTypeSelect}
+            onNestBlock={handleNestBlock}
+            onUnnestBlock={handleUnnestBlock}
+            onInsertBlockInSection={handleInsertBlockInSection}
+            onNestedBlockEdit={handleNestedBlockEdit}
+            onNestedBlockDelete={handleNestedBlockDelete}
+            onNestedBlockDuplicate={handleNestedBlockDuplicate}
+            onNestedBlockMove={handleNestedBlockMove}
+          />
+        ) : (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyStateIcon}>📄</div>
+            <p className={styles.emptyStateText}>Your guide is empty. Add your first block to get started.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Footer with add block button (only in edit mode) */}
+      {!state.isPreviewMode && (
+        <div className={styles.footer}>
+          <BlockPalette onSelect={handleBlockTypeSelect} />
+        </div>
+      )}
+
+      {/* Modals */}
+      <GuideMetadataForm
+        isOpen={isMetadataOpen}
+        guide={state.guide}
+        onUpdate={editor.updateGuideMetadata}
+        onClose={() => setIsMetadataOpen(false)}
+      />
+
+      {isBlockFormOpen && editingBlockType && (
+        <BlockFormModal
+          blockType={editingBlockType}
+          initialData={editingNestedBlock?.block ?? editingBlock?.block}
+          onSubmit={handleBlockFormSubmitWithSection}
+          onCancel={handleBlockFormCancel}
+          isEditing={!!editingBlock || !!editingNestedBlock}
+        />
+      )}
+
+      <ConfirmModal
+        isOpen={isResetConfirmOpen}
+        title="Reset Guide"
+        body="Are you sure you want to reset? All unsaved changes will be lost."
+        confirmText="Reset"
+        dismissText="Cancel"
+        onConfirm={handleReset}
+        onDismiss={() => setIsResetConfirmOpen(false)}
+      />
+    </div>
+  );
+}
+
+// Add display name for debugging
+BlockEditor.displayName = 'BlockEditor';
