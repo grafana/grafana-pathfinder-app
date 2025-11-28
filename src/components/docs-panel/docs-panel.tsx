@@ -1626,14 +1626,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
                 {/* Return to Editor Banner - only shown for WYSIWYG preview */}
                 {isWysiwygPreview && (
-                  <div className={styles.returnToEditorBanner}>
-                    <div className={styles.returnToEditorLeft}>
+                  <div className={styles.returnToEditorBanner} data-testid={testIds.wysiwygPreview.banner}>
+                    <div className={styles.returnToEditorLeft} data-testid={testIds.wysiwygPreview.modeIndicator}>
                       <Icon name="eye" size="sm" />
                       <span>{t('docsPanel.previewMode', 'Preview Mode')}</span>
                     </div>
                     <button
                       className={styles.returnToEditorButton}
-                      onClick={() => model.setActiveTab('recommendations')}
+                      onClick={() => model.setActiveTab('devtools')}
+                      data-testid={testIds.wysiwygPreview.returnToEditorButton}
                     >
                       <Icon name="arrow-left" size="sm" />
                       {t('docsPanel.returnToEditor', 'Return to editor')}

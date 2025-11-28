@@ -3,6 +3,7 @@ import { Button, Stack, Alert, HorizontalGroup, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { testIds } from '../../testIds';
 
 interface InteractiveFormShellProps {
   title: string;
@@ -71,15 +72,24 @@ export const InteractiveFormShell: React.FC<InteractiveFormShellProps> = ({
       )}
 
       <HorizontalGroup justify="flex-end" spacing="sm" className={styles.actions}>
-        <Button variant="secondary" onClick={onCancel}>
+        <Button variant="secondary" onClick={onCancel} data-testid={testIds.wysiwygEditor.formPanel.cancelButton}>
           Cancel
         </Button>
         {initialValues && onSwitchType && (
-          <Button variant="secondary" onClick={onSwitchType}>
+          <Button
+            variant="secondary"
+            onClick={onSwitchType}
+            data-testid={testIds.wysiwygEditor.formPanel.switchTypeButton}
+          >
             Switch Type
           </Button>
         )}
-        <Button variant="primary" onClick={onApply} disabled={!isValid}>
+        <Button
+          variant="primary"
+          onClick={onApply}
+          disabled={!isValid}
+          data-testid={testIds.wysiwygEditor.formPanel.applyButton}
+        >
           Apply
         </Button>
       </HorizontalGroup>

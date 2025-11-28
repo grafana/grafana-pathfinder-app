@@ -3,6 +3,7 @@ import { Modal, Button, TextArea, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { Editor } from '@tiptap/react';
+import { testIds } from '../testIds';
 
 interface CommentDialogProps {
   isOpen: boolean;
@@ -101,7 +102,13 @@ export const CommentDialog: React.FC<CommentDialogProps> = ({
   const buttonText = mode === 'edit' ? 'Update' : 'Insert';
 
   return (
-    <Modal title={modalTitle} isOpen={isOpen} onDismiss={handleCancel} className={styles.modal}>
+    <Modal
+      title={modalTitle}
+      isOpen={isOpen}
+      onDismiss={handleCancel}
+      className={styles.modal}
+      data-testid={testIds.wysiwygEditor.commentDialog.modal}
+    >
       <div className={styles.modalContent}>
         <div className={styles.form}>
           <TextArea
@@ -111,12 +118,22 @@ export const CommentDialog: React.FC<CommentDialogProps> = ({
             placeholder="Enter comment text..."
             rows={4}
             autoFocus
+            data-testid={testIds.wysiwygEditor.commentDialog.textArea}
           />
           <div className={styles.buttonGroup}>
-            <Button variant="secondary" onClick={handleCancel}>
+            <Button
+              variant="secondary"
+              onClick={handleCancel}
+              data-testid={testIds.wysiwygEditor.commentDialog.cancelButton}
+            >
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleInsert} disabled={!isValid}>
+            <Button
+              variant="primary"
+              onClick={handleInsert}
+              disabled={!isValid}
+              data-testid={testIds.wysiwygEditor.commentDialog.insertButton}
+            >
               {buttonText}
             </Button>
           </div>

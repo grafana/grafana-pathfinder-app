@@ -8,6 +8,7 @@ import { validateFormField } from '../services/validation';
 import { useSelectorCapture } from '../devtools/selector-capture.hook';
 import { InteractiveFormShell, CommonRequirementsButtons } from './InteractiveFormShell';
 import { DomPathTooltip } from '../../DomPathTooltip';
+import { testIds } from '../../testIds';
 
 const getSelectorCaptureStyles = (theme: GrafanaTheme2) => ({
   selectorRow: css({
@@ -237,6 +238,7 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
                 }
                 className={`${captureStyles.captureButton} ${isActive ? captureStyles.captureButtonActive : ''}`}
                 aria-label="Capture selector"
+                data-testid={testIds.wysiwygEditor.formPanel.selectorCaptureButton}
               >
                 <Icon name="crosshair" />
               </Button>
@@ -246,6 +248,7 @@ const BaseInteractiveForm = ({ config, onApply, onCancel, initialValues, onSwitc
                   onChange={(e) => handleChange(field.id, e.currentTarget.value)}
                   placeholder={field.placeholder}
                   autoFocus={field.autoFocus}
+                  data-testid={testIds.wysiwygEditor.formPanel.selectorInput}
                 />
                 {isActive && (
                   <div className={captureStyles.captureIndicator}>

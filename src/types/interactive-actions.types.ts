@@ -12,6 +12,7 @@ export interface InternalAction {
   refTarget?: string;
   targetValue?: string;
   requirements?: string;
+  targetComment?: string; // Optional comment to display during this step
 }
 
 /**

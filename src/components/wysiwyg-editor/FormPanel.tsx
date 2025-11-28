@@ -7,6 +7,7 @@ import { Editor } from '@tiptap/react';
 import { EditState, InteractiveAttributesOutput } from './types';
 import { InteractiveFormContent } from './forms/InteractiveFormContent';
 import { getSharedPanelStyles } from './editor.styles';
+import { testIds } from '../testIds';
 
 interface FormPanelProps {
   onClose: () => void;
@@ -82,9 +83,11 @@ export const FormPanel: React.FC<FormPanelProps> = ({
   };
 
   return (
-    <div className={sharedStyles.wrapper}>
+    <div className={sharedStyles.wrapper} data-testid={testIds.wysiwygEditor.formPanel.container}>
       <div className={`${sharedStyles.content} ${styles.panelContent}`}>
-        <h3 className={styles.panelTitle}>{getTitle()}</h3>
+        <h3 className={styles.panelTitle} data-testid={testIds.wysiwygEditor.formPanel.title}>
+          {getTitle()}
+        </h3>
         <InteractiveFormContent
           editor={editor}
           editState={editState}

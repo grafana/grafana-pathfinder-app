@@ -3,6 +3,7 @@ import { Button, IconButton, useStyles2, Menu, Dropdown } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { Editor } from '@tiptap/react';
+import { testIds } from '../testIds';
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -13,6 +14,10 @@ interface ToolbarProps {
   onDownload: () => Promise<void>;
   onTest: () => void;
   onReset: () => void;
+  /** Toggle full screen authoring mode */
+  onToggleFullScreen?: () => void;
+  /** Whether full screen mode is currently active */
+  isFullScreenActive?: boolean;
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -78,6 +83,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onDownload,
   onTest,
   onReset,
+  onToggleFullScreen,
+  isFullScreenActive = false,
 }) => {
   const styles = useStyles2(getStyles);
 
@@ -128,7 +135,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   );
 
   return (
-    <div className={styles.toolbar}>
+    <div className={styles.toolbar} data-testid={testIds.wysiwygEditor.toolbar.container}>
       {/* Undo/Redo */}
       <div className={styles.buttonGroup}>
         <IconButton
@@ -138,6 +145,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           disabled={!editor.can().undo()}
           size="md"
           aria-label="Undo"
+          data-testid={testIds.wysiwygEditor.toolbar.undoButton}
         />
         <IconButton
           name="repeat"
@@ -146,6 +154,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           disabled={!editor.can().redo()}
           size="md"
           aria-label="Redo"
+          data-testid={testIds.wysiwygEditor.toolbar.redoButton}
         />
       </div>
 
@@ -153,7 +162,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Heading Style Dropdown - using Grafana Dropdown with Menu */}
       <Dropdown overlay={renderStyleMenu} placement="bottom-start">
-        <Button variant="secondary" size="sm" icon="angle-down">
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="angle-down"
+          data-testid={testIds.wysiwygEditor.toolbar.styleDropdown}
+        >
           {currentStyle}
         </Button>
       </Dropdown>
@@ -169,6 +183,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           variant={editor.isActive('bold') ? 'primary' : 'secondary'}
           size="md"
           aria-label="Bold"
+          data-testid={testIds.wysiwygEditor.toolbar.boldButton}
         />
         <IconButton
           name="brackets-curly"
@@ -177,6 +192,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           variant={editor.isActive('code') ? 'primary' : 'secondary'}
           size="md"
           aria-label="Code"
+          data-testid={testIds.wysiwygEditor.toolbar.codeButton}
         />
       </div>
 
@@ -191,6 +207,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           variant={editor.isActive('bulletList') ? 'primary' : 'secondary'}
           size="md"
           aria-label="Bullet List"
+          data-testid={testIds.wysiwygEditor.toolbar.bulletListButton}
         />
         <IconButton
           name="list-ol"
@@ -199,6 +216,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           variant={editor.isActive('orderedList') ? 'primary' : 'secondary'}
           size="md"
           aria-label="Ordered List"
+          data-testid={testIds.wysiwygEditor.toolbar.orderedListButton}
         />
       </div>
 
@@ -206,18 +224,56 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Interactive Elements */}
       <div className={styles.buttonGroup}>
-        <Button icon="bolt" variant="secondary" size="sm" onClick={onAddInteractive} tooltip="Add Interactive Action">
+        <Button
+          icon="bolt"
+          variant="secondary"
+          size="sm"
+          onClick={onAddInteractive}
+          tooltip="Add Interactive Action"
+          data-testid={testIds.wysiwygEditor.toolbar.addActionButton}
+        >
           Action
         </Button>
-        <Button icon="layers-alt" variant="secondary" size="sm" onClick={onAddSequence} tooltip="Add Sequence Section">
+        <Button
+          icon="layers-alt"
+          variant="secondary"
+          size="sm"
+          onClick={onAddSequence}
+          tooltip="Add Sequence Section"
+          data-testid={testIds.wysiwygEditor.toolbar.addSectionButton}
+        >
           Section
         </Button>
-        <Button icon="comment-alt" variant="secondary" size="sm" onClick={onAddComment} tooltip="Add Comment">
+        <Button
+          icon="comment-alt"
+          variant="secondary"
+          size="sm"
+          onClick={onAddComment}
+          tooltip="Add Comment"
+          data-testid={testIds.wysiwygEditor.toolbar.addCommentButton}
+        >
           Comment
         </Button>
       </div>
 
       <div className={styles.divider} />
+
+      {/* Full Screen Authoring Mode */}
+      {onToggleFullScreen && (
+        <>
+          <Button
+            icon={isFullScreenActive ? 'times' : 'monitor'}
+            variant={isFullScreenActive ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={onToggleFullScreen}
+            tooltip={isFullScreenActive ? 'Exit full screen mode (Esc)' : 'Enter full screen authoring mode'}
+            data-testid={testIds.wysiwygEditor.toolbar.fullScreenButton}
+          >
+            {isFullScreenActive ? 'Exit Full Screen' : 'Full Screen'}
+          </Button>
+          <div className={styles.divider} />
+        </>
+      )}
 
       {/* Action Buttons (Clear Formatting + Copy/Download/Test) */}
       <div className={styles.buttonGroup}>
@@ -227,15 +283,45 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
           size="md"
           aria-label="Clear Formatting"
+          data-testid={testIds.wysiwygEditor.toolbar.clearFormattingButton}
         />
-        <IconButton name="copy" tooltip="Copy HTML" onClick={onCopy} size="md" aria-label="Copy" />
-        <IconButton name="download-alt" tooltip="Download" onClick={onDownload} size="md" aria-label="Download" />
-        <IconButton name="play" tooltip="Test Guide" onClick={onTest} variant="primary" size="md" aria-label="Test" />
+        <IconButton
+          name="copy"
+          tooltip="Copy HTML"
+          onClick={onCopy}
+          size="md"
+          aria-label="Copy"
+          data-testid={testIds.wysiwygEditor.toolbar.copyButton}
+        />
+        <IconButton
+          name="download-alt"
+          tooltip="Download"
+          onClick={onDownload}
+          size="md"
+          aria-label="Download"
+          data-testid={testIds.wysiwygEditor.toolbar.downloadButton}
+        />
+        <IconButton
+          name="play"
+          tooltip="Test Guide"
+          onClick={onTest}
+          variant="primary"
+          size="md"
+          aria-label="Test"
+          data-testid={testIds.wysiwygEditor.toolbar.testButton}
+        />
       </div>
 
       {/* Reset button - right-aligned with spacing */}
       <div className={styles.resetButtonWrapper}>
-        <IconButton name="times" tooltip="Reset Editor" onClick={onReset} size="md" aria-label="Reset" />
+        <IconButton
+          name="times"
+          tooltip="Reset Editor"
+          onClick={onReset}
+          size="md"
+          aria-label="Reset"
+          data-testid={testIds.wysiwygEditor.toolbar.resetButton}
+        />
       </div>
     </div>
   );

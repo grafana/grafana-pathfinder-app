@@ -3,6 +3,7 @@ import { Button, useStyles2, Icon, IconName } from '@grafana/ui';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { getSelectableActions, ActionDefinition } from './actionRegistry';
+import { testIds } from '../../testIds';
 
 interface ActionSelectorProps {
   onSelect: (actionType: string) => void;
@@ -135,7 +136,7 @@ const ActionSelector = ({ onSelect, onCancel }: ActionSelectorProps) => {
   const selectableActions = getSelectableActions();
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} data-testid={testIds.wysiwygEditor.formPanel.actionSelector}>
       <p className={styles.description}>Choose the type of interaction for this element</p>
 
       <div className={styles.grid}>
@@ -149,6 +150,7 @@ const ActionSelector = ({ onSelect, onCancel }: ActionSelectorProps) => {
               onClick={() => onSelect(action.type)}
               type="button"
               aria-label={`Select ${action.ui.name} action`}
+              data-testid={testIds.wysiwygEditor.formPanel.actionCard(action.type)}
             >
               <div className={styles.actionCardHeader}>
                 <div className={styles.actionIconWrapper}>
@@ -167,7 +169,7 @@ const ActionSelector = ({ onSelect, onCancel }: ActionSelectorProps) => {
       </div>
 
       <div className={styles.footer}>
-        <Button variant="secondary" onClick={onCancel}>
+        <Button variant="secondary" onClick={onCancel} data-testid={testIds.wysiwygEditor.formPanel.cancelButton}>
           Cancel
         </Button>
       </div>
