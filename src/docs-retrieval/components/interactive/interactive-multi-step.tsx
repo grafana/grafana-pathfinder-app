@@ -328,8 +328,14 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
           // Execute the action (show first, then do)
           try {
-            // Show mode (highlight what will be acted upon)
-            await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'show');
+            // Show mode (highlight what will be acted upon, with comment if available)
+            await executeInteractiveAction(
+              action.targetAction,
+              action.refTarget || '',
+              action.targetValue,
+              'show',
+              action.targetComment
+            );
 
             // Delay between show and do with cancellation check
             for (let j = 0; j < INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations; j++) {
@@ -343,7 +349,13 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             } // Skip to cancellation check at loop start
 
             // Do mode (actually perform the action)
-            await executeInteractiveAction(action.targetAction, action.refTarget || '', action.targetValue, 'do');
+            await executeInteractiveAction(
+              action.targetAction,
+              action.refTarget || '',
+              action.targetValue,
+              'do',
+              action.targetComment
+            );
 
             // Wait for DOM to settle after action
             await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));

@@ -698,6 +698,7 @@ export function parseHTMLToComponents(
             targetAction: string;
             refTarget: string;
             targetValue?: string;
+            targetComment?: string;
           }> = [];
 
           internalSpans.forEach((span, index) => {
@@ -717,11 +718,22 @@ export function parseHTMLToComponents(
                 return;
               }
 
+              // Extract interactive-comment spans as metadata (same as guided steps)
+              let interactiveComment: string | null = null;
+              const commentSpans = span.querySelectorAll('span.interactive-comment');
+
+              if (commentSpans.length > 0) {
+                // Use the first comment span found and capture its full HTML content
+                interactiveComment = commentSpans[0].innerHTML;
+                // Note: Spans are hidden via CSS rule instead of DOM removal
+              }
+
               internalActions.push({
                 requirements: span.getAttribute('data-requirements') || undefined,
                 targetAction,
                 refTarget,
                 targetValue: span.getAttribute('data-targetvalue') || undefined,
+                targetComment: interactiveComment || undefined,
               });
 
               // Remove the internal span since it's just metadata

@@ -61,6 +61,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // Track when step became enabled to prevent immediate rechecks
   const enabledTimestampRef = useRef<number>(0);
 
+  // CRITICAL: Track the LATEST eligibility value via ref to avoid stale closures in async checkStep
+  // The async checkStep function can be mid-execution when eligibility changes, causing it to
+  // use a stale captured value. This ref always has the current value.
+  const isEligibleRef = useRef(isEligibleForChecking);
+  isEligibleRef.current = isEligibleForChecking;
+
   const timeoutManager = useTimeoutManager();
 
   // Requirements checking is now handled by the pure requirements utility
@@ -310,7 +316,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       }
 
       // STEP 2: Check eligibility (sequential dependencies)
-      if (!isEligibleForChecking) {
+      // CRITICAL: Use ref to get the LATEST eligibility value, not the stale closure value
+      // This fixes the race condition where eligibility changes while checkStep is running async
+      const currentEligibility = isEligibleRef.current;
+      if (!currentEligibility) {
         // Step is not eligible for checking
 
         // Check if this step is part of a section (section controls its own eligibility)

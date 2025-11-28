@@ -3,6 +3,7 @@ import { Editor } from '@tiptap/react';
 import { IconButton, useStyles2, Portal, Modal, Button, Input, Field } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
+import { testIds } from '../testIds';
 
 interface BubbleMenuBarProps {
   editor: Editor | null;
@@ -116,6 +117,7 @@ const LinkDialog: React.FC<LinkDialogProps> = ({
       isOpen={isOpen}
       onDismiss={onClose}
       className={styles.linkModal}
+      data-testid={testIds.wysiwygEditor.linkDialog.modal}
     >
       <div className={styles.linkModalContent}>
         <Field label="URL" description="Enter a URL (https:// will be added automatically if needed)">
@@ -125,18 +127,28 @@ const LinkDialog: React.FC<LinkDialogProps> = ({
             onKeyDown={handleKeyDown}
             placeholder="example.com or https://example.com"
             autoFocus
+            data-testid={testIds.wysiwygEditor.linkDialog.urlInput}
           />
         </Field>
         <div className={styles.linkButtonGroup}>
           {hasExistingLink && (
-            <Button variant="destructive" onClick={handleRemove}>
+            <Button
+              variant="destructive"
+              onClick={handleRemove}
+              data-testid={testIds.wysiwygEditor.linkDialog.removeButton}
+            >
               Remove Link
             </Button>
           )}
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} data-testid={testIds.wysiwygEditor.linkDialog.cancelButton}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={handleApply} disabled={!isValid}>
+          <Button
+            variant="primary"
+            onClick={handleApply}
+            disabled={!isValid}
+            data-testid={testIds.wysiwygEditor.linkDialog.applyButton}
+          >
             {hasExistingLink ? 'Update' : 'Add'}
           </Button>
         </div>
@@ -274,6 +286,7 @@ export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
               // Prevent menu click from blurring editor
               e.preventDefault();
             }}
+            data-testid={testIds.wysiwygEditor.bubbleMenu.container}
           >
             <IconButton
               name="font"
@@ -282,6 +295,7 @@ export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
               variant={editor.isActive('bold') ? 'primary' : 'secondary'}
               size="sm"
               aria-label="Bold"
+              data-testid={testIds.wysiwygEditor.bubbleMenu.boldButton}
             />
             <IconButton
               name="brackets-curly"
@@ -290,6 +304,7 @@ export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
               variant={editor.isActive('code') ? 'primary' : 'secondary'}
               size="sm"
               aria-label="Code"
+              data-testid={testIds.wysiwygEditor.bubbleMenu.codeButton}
             />
 
             <div className={styles.divider} />
@@ -301,6 +316,7 @@ export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
               variant={editor.isActive('link') ? 'primary' : 'secondary'}
               size="sm"
               aria-label="Link"
+              data-testid={testIds.wysiwygEditor.bubbleMenu.linkButton}
             />
 
             <div className={styles.divider} />
@@ -311,6 +327,7 @@ export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
               onClick={() => handleFormat(() => editor.chain().focus().unsetAllMarks().run())}
               size="sm"
               aria-label="Clear Formatting"
+              data-testid={testIds.wysiwygEditor.bubbleMenu.clearButton}
             />
           </div>
         </Portal>
