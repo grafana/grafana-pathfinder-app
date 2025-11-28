@@ -192,26 +192,42 @@ export const getBlockListStyles = (theme: GrafanaTheme2) => ({
   list: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(1),
+    gap: theme.spacing(0.5), // Tighter gap between blocks
   }),
 
   insertZone: css({
-    padding: theme.spacing(1),
-    opacity: 0,
-    transition: 'all 0.2s ease',
-    minHeight: '20px',
-    pointerEvents: 'none', // Don't block drag events when hidden
+    height: '12px', // Small clickable area
+    transition: 'all 0.15s ease',
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    
+    // The actual content is hidden until hover
+    '& > *': {
+      opacity: 0,
+      transition: 'opacity 0.15s ease',
+    },
 
     '&:hover': {
-      opacity: 1,
-      pointerEvents: 'auto',
+      height: 'auto',
+      minHeight: '44px',
+      padding: theme.spacing(0.5),
+      
+      '& > *': {
+        opacity: 1,
+      },
     },
   }),
 
   insertZoneActive: css({
-    opacity: 1,
-    padding: theme.spacing(1.5),
-    minHeight: '40px',
+    height: 'auto !important',
+    minHeight: '44px',
+    padding: theme.spacing(0.5),
+    
+    '& > *': {
+      opacity: '1 !important',
+    },
     pointerEvents: 'auto', // Enable pointer events when visible
   }),
 });
@@ -360,8 +376,7 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
 
   // Section-specific styles
   sectionContainer: css({
-    borderColor: theme.colors.primary.border,
-    backgroundColor: theme.isDark ? 'rgba(74, 144, 226, 0.05)' : 'rgba(74, 144, 226, 0.03)',
+    // Sections look the same as other blocks - no special styling
   }),
 
   sectionChildren: css({

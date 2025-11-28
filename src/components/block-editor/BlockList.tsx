@@ -20,15 +20,14 @@ import { isSectionBlock as checkIsSectionBlock, type JsonSectionBlock } from '..
 const getDropIndicatorStyles = (theme: GrafanaTheme2) => ({
   container: css({
     position: 'relative',
-    padding: theme.spacing(1.5), // Taller drop zone
+    padding: theme.spacing(0.5),
     transition: 'all 0.15s ease',
-    minHeight: '32px', // Ensure minimum height for easier targeting
   }),
   line: css({
     height: '4px',
     backgroundColor: theme.colors.primary.main,
     borderRadius: '2px',
-    boxShadow: `0 0 12px ${theme.colors.primary.main}`,
+    boxShadow: `0 0 8px ${theme.colors.primary.main}`,
     transition: 'all 0.15s ease',
   }),
   lineInactive: css({
@@ -50,12 +49,6 @@ const getDropIndicatorStyles = (theme: GrafanaTheme2) => ({
     whiteSpace: 'nowrap',
     boxShadow: theme.shadows.z2,
     zIndex: 1,
-  }),
-  labelInactive: css({
-    backgroundColor: theme.colors.background.secondary,
-    color: theme.colors.text.secondary,
-    border: `1px dashed ${theme.colors.border.medium}`,
-    boxShadow: 'none',
   }),
 });
 
@@ -672,43 +665,47 @@ export function BlockList({
 
   return (
     <div className={styles.list}>
-      {/* Insert zone at the top - serves as drop zone for reordering and unnesting */}
-      {/* Hide if dragging root block from index 0 */}
+      {/* Insert zone at the top */}
+      {/* When dragging: show drop indicator. When not dragging: show add block on hover */}
       {!(draggedBlockIndex === 0) && (
-        <div
-          className={`${styles.insertZone} ${hoveredInsertIndex === 0 || isDragging ? styles.insertZoneActive : ''}`}
-          onMouseEnter={() => setHoveredInsertIndex(0)}
-          onMouseLeave={() => setHoveredInsertIndex(null)}
-          onDragOver={(e) => {
-            e.preventDefault();
-            if (draggedNestedBlock) {
-              handleDragOverRootZone(e, 0);
-            } else if (draggedBlockId) {
-              handleDragOverReorder(e, 0);
-            }
-          }}
-          onDragLeave={() => {
-            handleDragLeaveRootZone();
-            handleDragLeaveReorder();
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            if (draggedNestedBlock) {
-              handleDropOnRootZone(0);
-            } else if (draggedBlockId) {
-              handleDropReorder(0);
-            }
-          }}
-        >
-          {isDragging ? (
+        isDragging ? (
+          <div
+            style={{ padding: '4px 0' }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (draggedNestedBlock) {
+                handleDragOverRootZone(e, 0);
+              } else if (draggedBlockId) {
+                handleDragOverReorder(e, 0);
+              }
+            }}
+            onDragLeave={() => {
+              handleDragLeaveRootZone();
+              handleDragLeaveReorder();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (draggedNestedBlock) {
+                handleDropOnRootZone(0);
+              } else if (draggedBlockId) {
+                handleDropReorder(0);
+              }
+            }}
+          >
             <DropIndicator 
               isActive={dragOverRootZone === 0 || dragOverReorderZone === 0}
               label={draggedNestedBlock ? '📤 Move out of section' : '📍 Move here'}
             />
-          ) : (
+          </div>
+        ) : (
+          <div
+            className={`${styles.insertZone} ${hoveredInsertIndex === 0 ? styles.insertZoneActive : ''}`}
+            onMouseEnter={() => setHoveredInsertIndex(0)}
+            onMouseLeave={() => setHoveredInsertIndex(null)}
+          >
             <BlockPalette onSelect={onInsertBlock} insertAtIndex={0} compact />
-          )}
-        </div>
+          </div>
+        )
       )}
 
       {blocks.map((block, index) => {
@@ -875,43 +872,47 @@ export function BlockList({
               </div>
             )}
 
-            {/* Insert zone after each block - serves as drop zone for reordering and unnesting */}
-            {/* Hide redundant drop zones when dragging root blocks */}
+            {/* Insert zone after each block */}
+            {/* When dragging: show drop indicator. When not dragging: show add block on hover */}
             {!isRootDropZoneRedundant(index + 1) && (
-              <div
-                className={`${styles.insertZone} ${hoveredInsertIndex === index + 1 || isDragging ? styles.insertZoneActive : ''}`}
-                onMouseEnter={() => setHoveredInsertIndex(index + 1)}
-                onMouseLeave={() => setHoveredInsertIndex(null)}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  if (draggedNestedBlock) {
-                    handleDragOverRootZone(e, index + 1);
-                  } else if (draggedBlockId) {
-                    handleDragOverReorder(e, index + 1);
-                  }
-                }}
-                onDragLeave={() => {
-                  handleDragLeaveRootZone();
-                  handleDragLeaveReorder();
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (draggedNestedBlock) {
-                    handleDropOnRootZone(index + 1);
-                  } else if (draggedBlockId) {
-                    handleDropReorder(index + 1);
-                  }
-                }}
-              >
-                {isDragging ? (
+              isDragging ? (
+                <div
+                  style={{ padding: '4px 0' }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (draggedNestedBlock) {
+                      handleDragOverRootZone(e, index + 1);
+                    } else if (draggedBlockId) {
+                      handleDragOverReorder(e, index + 1);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    handleDragLeaveRootZone();
+                    handleDragLeaveReorder();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (draggedNestedBlock) {
+                      handleDropOnRootZone(index + 1);
+                    } else if (draggedBlockId) {
+                      handleDropReorder(index + 1);
+                    }
+                  }}
+                >
                   <DropIndicator 
                     isActive={dragOverRootZone === index + 1 || dragOverReorderZone === index + 1}
                     label={draggedNestedBlock ? '📤 Move out of section' : '📍 Move here'}
                   />
-                ) : (
+                </div>
+              ) : (
+                <div
+                  className={`${styles.insertZone} ${hoveredInsertIndex === index + 1 ? styles.insertZoneActive : ''}`}
+                  onMouseEnter={() => setHoveredInsertIndex(index + 1)}
+                  onMouseLeave={() => setHoveredInsertIndex(null)}
+                >
                   <BlockPalette onSelect={onInsertBlock} insertAtIndex={index + 1} compact />
-                )}
-              </div>
+                </div>
+              )
             )}
           </React.Fragment>
         );
