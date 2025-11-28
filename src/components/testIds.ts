@@ -123,6 +123,15 @@ export const testIds = {
       cancelButton: 'wysiwyg-comment-cancel',
     },
 
+    // Export dialog
+    exportDialog: {
+      modal: 'wysiwyg-export-dialog',
+      titleInput: 'wysiwyg-export-title',
+      idInput: 'wysiwyg-export-id',
+      exportButton: 'wysiwyg-export-confirm',
+      cancelButton: 'wysiwyg-export-cancel',
+    },
+
     // Form panel (action editor)
     formPanel: {
       container: 'wysiwyg-form-panel',

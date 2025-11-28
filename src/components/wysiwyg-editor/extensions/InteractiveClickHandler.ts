@@ -41,10 +41,11 @@ export const InteractiveClickHandler = Extension.create<InteractiveClickHandlerO
               try {
                 const target = event.target as HTMLElement;
 
-                // Walk up the DOM tree to find the lightning bolt or info icon
+                // Walk up the DOM tree to find the action badge (new) or legacy indicators
+                const actionBadge = target.closest('.action-badge');
                 const lightningBolt = target.closest('.interactive-lightning');
                 const infoIcon = target.closest('.interactive-info-icon');
-                const clickableIcon = lightningBolt || infoIcon;
+                const clickableIcon = actionBadge || lightningBolt || infoIcon;
 
                 if (!clickableIcon) {
                   return false;

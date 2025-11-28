@@ -172,6 +172,21 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       ];
 
       parsedData.forEach((data) => {
+        // Handle devtools tab specially - it has no URLs to validate
+        if (data.type === 'devtools') {
+          tabs.push({
+            id: 'devtools',
+            title: 'Dev Tools',
+            baseUrl: '',
+            currentUrl: '',
+            content: null,
+            isLoading: false,
+            error: null,
+            type: 'devtools',
+          });
+          return;
+        }
+
         // SECURITY: Validate URLs before restoring from storage
         // This prevents XSS attacks via storage injection
         const validateUrl = (url: string): boolean => {
@@ -244,14 +259,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   private async saveTabsToStorage(): Promise<void> {
     try {
       const tabsToSave: PersistedTabData[] = this.state.tabs
-        .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'devtools')
+        .filter((tab) => tab.id !== 'recommendations')
         .map((tab) => ({
           id: tab.id,
           title: tab.title,
           baseUrl: tab.baseUrl,
           currentUrl: tab.currentUrl,
-          // Cast type since we've filtered out 'devtools' tabs above
-          type: tab.type as 'learning-journey' | 'docs' | undefined,
+          type: tab.type,
         }));
 
       // Save both tabs and active tab
@@ -467,7 +481,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
   /**
    * Open the Dev Tools tab (or switch to it if already open)
-   * This tab is not persisted to storage since it's tied to dev mode state
+   * The devtools tab is now persisted to storage to survive page refreshes.
    */
   public openDevToolsTab(): void {
     // Check if devtools tab already exists
@@ -475,6 +489,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     if (existingTab) {
       // Just switch to it
       this.setState({ activeTabId: 'devtools' });
+      // Still save to storage to persist the active tab change
+      this.saveTabsToStorage();
       return;
     }
 
@@ -495,7 +511,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       activeTabId: 'devtools',
     });
 
-    // Note: We don't save to storage since devtools tab is not persisted
+    // Save tabs to storage so devtools tab persists across page refreshes
+    this.saveTabsToStorage();
   }
 
   public async openDocsPage(url: string, title?: string): Promise<string> {
@@ -1633,7 +1650,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     </div>
                     <button
                       className={styles.returnToEditorButton}
-                      onClick={() => model.setActiveTab('devtools')}
+                      onClick={() => model.openDevToolsTab()}
                       data-testid={testIds.wysiwygPreview.returnToEditorButton}
                     >
                       <Icon name="arrow-left" size="sm" />
