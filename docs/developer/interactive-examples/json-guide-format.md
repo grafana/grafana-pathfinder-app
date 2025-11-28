@@ -173,18 +173,21 @@ A single interactive step with "Show me" and "Do it" buttons.
 }
 ```
 
-| Field          | Type     | Required | Description                                       |
-| -------------- | -------- | -------- | ------------------------------------------------- |
-| `action`       | string   | ✅       | Action type (see below)                           |
-| `reftarget`    | string   | ✅       | CSS selector or button text                       |
-| `content`      | string   | ✅       | Markdown description shown to user                |
-| `targetvalue`  | string   | ❌       | Value for `formfill` actions                      |
-| `tooltip`      | string   | ❌       | Tooltip shown on highlight (supports markdown)    |
-| `requirements` | string[] | ❌       | Conditions that must be met                       |
-| `objectives`   | string[] | ❌       | Objectives marked complete after this step        |
-| `skippable`    | boolean  | ❌       | Allow skipping if requirements fail               |
-| `hint`         | string   | ❌       | Hint shown when step cannot be completed          |
-| `showOnly`     | boolean  | ❌       | Show-only mode: only "Show me" button, no "Do it" |
+| Field           | Type     | Required | Default | Description                                        |
+| --------------- | -------- | -------- | ------- | -------------------------------------------------- |
+| `action`        | string   | ✅       | —       | Action type (see below)                            |
+| `reftarget`     | string   | ✅       | —       | CSS selector or button text                        |
+| `content`       | string   | ✅       | —       | Markdown description shown to user                 |
+| `targetvalue`   | string   | ❌       | —       | Value for `formfill` actions                       |
+| `tooltip`       | string   | ❌       | —       | Tooltip shown on highlight (supports markdown)     |
+| `requirements`  | string[] | ❌       | —       | Conditions that must be met                        |
+| `objectives`    | string[] | ❌       | —       | Objectives marked complete after this step         |
+| `skippable`     | boolean  | ❌       | `false` | Allow skipping if requirements fail                |
+| `hint`          | string   | ❌       | —       | Hint shown when step cannot be completed           |
+| `showMe`        | boolean  | ❌       | `true`  | Show the "Show me" button                          |
+| `doIt`          | boolean  | ❌       | `true`  | Show the "Do it" button                            |
+| `completeEarly` | boolean  | ❌       | `false` | Mark step complete BEFORE action executes          |
+| `verify`        | string   | ❌       | —       | Post-action verification (e.g., `"on-page:/path"`) |
 
 **Action Types:**
 
@@ -196,9 +199,20 @@ A single interactive step with "Show me" and "Do it" buttons.
 | `navigate`  | Navigate to URL      | URL path                | —             |
 | `hover`     | Hover over element   | CSS selector            | —             |
 
-**Show-Only Mode:**
+**Button Visibility Control:**
 
-Use `showOnly: true` to create educational steps that only highlight elements without requiring user action. Perfect for guided tours and explanations.
+Control which buttons appear for each step:
+
+| Setting               | "Show me" Button | "Do it" Button | Use Case                      |
+| --------------------- | ---------------- | -------------- | ----------------------------- |
+| Default (both `true`) | ✅               | ✅             | Normal interactive step       |
+| `doIt: false`         | ✅               | ❌             | Educational highlight only    |
+| `showMe: false`       | ❌               | ✅             | Direct action without preview |
+| Both `false`          | ❌               | ❌             | Auto-complete step (rare)     |
+
+**Show-Only Example:**
+
+Use `doIt: false` to create educational steps that only highlight elements without requiring user action. Perfect for guided tours and explanations.
 
 ```json
 {
@@ -207,16 +221,34 @@ Use `showOnly: true` to create educational steps that only highlight elements wi
   "reftarget": "div[data-testid='dashboard-panel']",
   "content": "Notice the **metrics panel** displaying your data.",
   "tooltip": "This panel shows real-time metrics from your Prometheus data source.",
-  "showOnly": true
+  "doIt": false
 }
 ```
 
-When `showOnly` is true:
+When `doIt` is false:
 
 - Only the "Show me" button appears (no "Do it" button)
 - Step completes automatically after showing the element
 - No state changes occur in the application
 - Focus is on education rather than interaction
+
+**Execution Control:**
+
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/d/my-dashboard",
+  "content": "Open the dashboard.",
+  "completeEarly": true,
+  "verify": "on-page:/d/my-dashboard"
+}
+```
+
+| Field           | Description                                                                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `completeEarly` | Marks step as complete immediately when action starts (before completion). Useful for navigation where you want to continue the flow without waiting. |
+| `verify`        | Post-action verification requirement. The step is only marked complete when this condition is met. Common: `"on-page:/path"`                          |
 
 #### Section Block
 
