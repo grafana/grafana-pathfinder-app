@@ -167,15 +167,15 @@ describe('Nested Steps Update Logic', () => {
     });
 
     it('should identify guided action type', () => {
-      const actionType = 'guided';
-      const isMultistepOrGuided = actionType === ACTION_TYPES.MULTISTEP || actionType === 'guided';
+      const actionType: string = ACTION_TYPES.GUIDED;
+      const isMultistepOrGuided = actionType === ACTION_TYPES.MULTISTEP || actionType === ACTION_TYPES.GUIDED;
 
       expect(isMultistepOrGuided).toBe(true);
     });
 
     it('should not identify regular actions as multistep/guided', () => {
       const actionType: string = ACTION_TYPES.HIGHLIGHT;
-      const isMultistepOrGuided = actionType === ACTION_TYPES.MULTISTEP || actionType === 'guided';
+      const isMultistepOrGuided = actionType === ACTION_TYPES.MULTISTEP || actionType === ACTION_TYPES.GUIDED;
 
       expect(isMultistepOrGuided).toBe(false);
     });
