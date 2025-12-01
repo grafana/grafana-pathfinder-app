@@ -10,11 +10,18 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { flushSync } from 'react-dom';
-import { getRequirementExplanation } from './requirements-explanations';
+// getRequirementExplanation is used in check-phases.ts
+import {
+  createObjectivesCompletedState,
+  createBlockedState,
+  createRequirementsState,
+  createEnabledState,
+  createErrorState,
+} from './check-phases';
 import { SequentialRequirementsManager } from './requirements-checker.hook';
+import { useRequirementsManager } from './requirements-context';
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
-import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { checkRequirements } from './requirements-checker.utils';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
@@ -55,6 +62,22 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     isRetrying: false,
   });
 
+  // REACT: Track mounted state to prevent state updates after unmount (R4)
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Safe setState wrapper that checks if component is still mounted
+  const safeSetState = useCallback((updater: typeof state | ((prev: typeof state) => typeof state)) => {
+    if (isMountedRef.current) {
+      setState(updater as any);
+    }
+  }, []);
+
   // Track previous isEnabled state to detect actual transitions
   const prevIsEnabledRef = useRef(state.isEnabled);
 
@@ -88,6 +111,11 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       const maxRetries = INTERACTIVE_CONFIG.delays.requirements.maxRetries;
 
       const attemptCheck = async (retryCount: number): Promise<any> => {
+        // REACT: Check mounted before state updates to prevent updates after unmount (R4)
+        if (!isMountedRef.current) {
+          return { requirements: requirements || '', pass: false, error: [] };
+        }
+
         // Update state with current retry info
         onStateUpdate(retryCount, maxRetries, retryCount > 0);
 
@@ -101,6 +129,11 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
             maxRetries: 0,
           });
 
+          // REACT: Check mounted before continuing recursive calls (R4)
+          if (!isMountedRef.current) {
+            return result;
+          }
+
           // If successful, return result
           if (result.pass) {
             return result;
@@ -109,15 +142,28 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           // If failed and we have retries left, wait and retry
           if (retryCount < maxRetries) {
             await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.requirements.retryDelay));
+            // Check mounted again after delay
+            if (!isMountedRef.current) {
+              return result;
+            }
             return attemptCheck(retryCount + 1);
           }
 
           // No more retries, return failure
           return result;
         } catch (error) {
+          // REACT: Check mounted before retry (R4)
+          if (!isMountedRef.current) {
+            return { requirements: requirements || '', pass: false, error: [] };
+          }
+
           // On error, retry if we have attempts left
           if (retryCount < maxRetries) {
             await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.requirements.retryDelay));
+            // Check mounted again after delay
+            if (!isMountedRef.current) {
+              return { requirements: requirements || '', pass: false, error: [] };
+            }
             return attemptCheck(retryCount + 1);
           }
 
@@ -142,12 +188,9 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   );
 
   // Manager integration for state propagation
-  const managerRef = useRef<SequentialRequirementsManager | null>(null);
-
-  // Initialize manager reference
-  if (!managerRef.current) {
-    managerRef.current = SequentialRequirementsManager.getInstance();
-  }
+  // Use context-based hook with fallback to singleton for backward compatibility
+  const { manager } = useRequirementsManager();
+  const managerRef = useRef<SequentialRequirementsManager>(manager);
 
   // Ensure manager has the latest stepIndex
   useEffect(() => {
@@ -273,6 +316,11 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       return;
     }
 
+    // REACT: Check mounted before starting async operation (R4)
+    if (!isMountedRef.current) {
+      return;
+    }
+
     // Prevent checking too soon after becoming enabled (let DOM settle)
     const timeSinceEnabled = Date.now() - enabledTimestampRef.current;
     if (state.isEnabled && timeSinceEnabled < 200) {
@@ -280,98 +328,37 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       return;
     }
 
-    setState((prev) => ({ ...prev, isChecking: true, error: undefined, retryCount: 0, isRetrying: false }));
+    safeSetState((prev) => ({ ...prev, isChecking: true, error: undefined, retryCount: 0, isRetrying: false }));
 
     try {
-      // STEP 1: Check objectives first (they always win)
+      // PHASE 1: Check objectives first (they always win)
       if (objectives && objectives.trim() !== '') {
         const objectivesResult = await checkConditions(objectives, 'objectives');
         if (objectivesResult.pass) {
-          const finalState = {
-            isEnabled: true,
-            isCompleted: true,
-            isChecking: false,
-            isSkipped: false,
-            completionReason: 'objectives' as const,
-            explanation: 'Already done!',
-            error: undefined,
-            canFixRequirement: false,
-            canSkip: skippable,
-            fixType: undefined,
-            targetHref: undefined,
-            retryCount: 0,
-            maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
-            isRetrying: false,
-          };
-
-          // Use flushSync for objectives to ensure immediate UI update
-          flushSync(() => {
+          const finalState = createObjectivesCompletedState(skippable);
+          // REACT: Check mounted before state update (R4)
+          if (isMountedRef.current) {
             setState(finalState);
-          });
-          prevIsEnabledRef.current = true;
-          enabledTimestampRef.current = Date.now(); // Track when enabled
-          updateManager(finalState);
+            prevIsEnabledRef.current = true;
+            enabledTimestampRef.current = Date.now();
+            updateManager(finalState);
+          }
           return;
         }
       }
 
-      // STEP 2: Check eligibility (sequential dependencies)
+      // PHASE 2: Check eligibility (sequential dependencies)
       // CRITICAL: Use ref to get the LATEST eligibility value, not the stale closure value
-      // This fixes the race condition where eligibility changes while checkStep is running async
       const currentEligibility = isEligibleRef.current;
       if (!currentEligibility) {
-        // Step is not eligible for checking
-
-        // Check if this step is part of a section (section controls its own eligibility)
-        const isPartOfSection = stepId.includes('section-') && stepId.includes('-step-');
-
-        if (isPartOfSection) {
-          // Section step not eligible - set blocked state with sequential dependency message
-          const sectionBlockedState = {
-            isEnabled: false,
-            isCompleted: false,
-            isChecking: false,
-            isSkipped: false,
-            completionReason: 'none' as const,
-            explanation: 'Complete previous step',
-            error: 'Sequential dependency not met',
-            canFixRequirement: false,
-            canSkip: false, // Never allow skipping for sequential dependencies
-            fixType: undefined,
-            targetHref: undefined,
-            retryCount: 0,
-            maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
-            isRetrying: false,
-          };
-          setState(sectionBlockedState);
-          updateManager(sectionBlockedState);
-          return;
-        } else {
-          const blockedState = {
-            isEnabled: false,
-            isCompleted: false,
-            isChecking: false,
-            isSkipped: false,
-            completionReason: 'none' as const,
-            explanation: 'Complete previous step',
-            error: 'Sequential dependency not met',
-            canFixRequirement: false,
-            canSkip: false, // Never allow skipping for sequential dependencies
-            fixType: undefined,
-            targetHref: undefined,
-            retryCount: 0,
-            maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
-            isRetrying: false,
-          };
-          setState(blockedState);
-          updateManager(blockedState);
-          return;
-        }
+        const blockedState = createBlockedState(stepId);
+        safeSetState(blockedState);
+        updateManager(blockedState);
+        return;
       }
 
-      // STEP 3: Check requirements (only if objectives not met and eligible)
+      // PHASE 3: Check requirements (only if objectives not met and eligible)
       if (requirements && requirements.trim() !== '') {
-        // Use requirements checker with state updates for retry feedback
         const requirementsResult = await checkRequirementsWithStateUpdates(
           {
             requirements,
@@ -380,7 +367,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
             stepId,
           },
           (retryCount, maxRetries, isRetrying) => {
-            setState((prev) => ({
+            safeSetState((prev) => ({
               ...prev,
               retryCount,
               maxRetries,
@@ -390,114 +377,54 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           }
         );
 
-        const explanation = requirementsResult.pass
-          ? undefined
-          : getRequirementExplanation(
-              requirements,
-              hints,
-              requirementsResult.error?.map((e: any) => e.error).join(', '),
-              skippable
-            );
+        const requirementsState = createRequirementsState(requirementsResult, requirements, hints, skippable);
 
-        // Check for fixable errors and extract fix information
-        const fixableError = requirementsResult.error?.find((e: any) => e.canFix);
-        const fixType = fixableError?.fixType || (requirements.includes('navmenu-open') ? 'navigation' : undefined);
-        const targetHref = fixableError?.targetHref;
-        const canFixRequirement = !!fixableError || requirements.includes('navmenu-open');
+        // REACT: Check mounted before state update (R4)
+        if (!isMountedRef.current) {
+          return;
+        }
 
-        const requirementsState = {
-          isEnabled: requirementsResult.pass,
-          isCompleted: false, // Requirements enable, don't auto-complete
-          isChecking: false,
-          isSkipped: false,
-          completionReason: 'none' as const,
-          explanation,
-          error: requirementsResult.pass ? undefined : requirementsResult.error?.map((e: any) => e.error).join(', '),
-          canFixRequirement,
-          canSkip: skippable,
-          fixType,
-          targetHref,
-          retryCount: 0, // Reset retry count after completion
-          maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries as number,
-          isRetrying: false,
-        };
-
-        // Use flushSync ONLY when transitioning from disabled to enabled
-        // This prevents the step from appearing locked when Grafana main UI is rendering heavily
         const isTransitioningToEnabled = !prevIsEnabledRef.current && requirementsResult.pass;
-
         if (isTransitioningToEnabled) {
-          flushSync(() => {
-            setState(requirementsState);
-          });
+          setState(requirementsState);
           prevIsEnabledRef.current = true;
-          enabledTimestampRef.current = Date.now(); // Track when enabled
+          enabledTimestampRef.current = Date.now();
           updateManager(requirementsState);
         } else {
-          // For other state changes, normal batching is fine
-          setState(requirementsState);
+          safeSetState(requirementsState);
           prevIsEnabledRef.current = requirementsResult.pass;
           if (requirementsResult.pass) {
             enabledTimestampRef.current = Date.now();
           }
           updateManager(requirementsState);
         }
-
         return;
       }
 
-      // STEP 4: No conditions - always enabled
-      const enabledState = {
-        isEnabled: true,
-        isCompleted: false,
-        isChecking: false,
-        isSkipped: false,
-        completionReason: 'none' as const,
-        explanation: undefined,
-        error: undefined,
-        canFixRequirement: false,
-        canSkip: skippable,
-        fixType: undefined,
-        targetHref: undefined,
-        retryCount: 0,
-        maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
-        isRetrying: false,
-      };
+      // PHASE 4: No conditions - always enabled
+      const enabledState = createEnabledState(skippable);
 
-      // Use flushSync when step becomes enabled
+      // REACT: Check mounted before state update (R4)
+      if (!isMountedRef.current) {
+        return;
+      }
+
       const wasDisabled = !prevIsEnabledRef.current;
       if (wasDisabled) {
-        flushSync(() => {
-          setState(enabledState);
-        });
-        prevIsEnabledRef.current = true;
-        enabledTimestampRef.current = Date.now(); // Track when enabled
-      } else {
         setState(enabledState);
+        prevIsEnabledRef.current = true;
+        enabledTimestampRef.current = Date.now();
+      } else {
+        safeSetState(enabledState);
       }
       updateManager(enabledState);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to check step conditions';
-      const errorState = {
-        isEnabled: false,
-        isCompleted: false,
-        isChecking: false,
-        isSkipped: false,
-        completionReason: 'none' as const,
-        explanation: getRequirementExplanation(requirements || objectives, hints, errorMessage, skippable),
-        error: errorMessage,
-        canFixRequirement: false,
-        canSkip: skippable,
-        fixType: undefined,
-        targetHref: undefined,
-        retryCount: 0,
-        maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
-        isRetrying: false,
-      };
-      setState(errorState);
+      const errorState = createErrorState(errorMessage, requirements, objectives, hints, skippable);
+      safeSetState(errorState);
       updateManager(errorState);
     }
-  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [objectives, requirements, hints, stepId, isEligibleForChecking, skippable, updateManager, safeSetState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Attempt to automatically fix failed requirements
@@ -507,8 +434,13 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       return;
     }
 
+    // REACT: Check mounted before starting async operation (R4)
+    if (!isMountedRef.current) {
+      return;
+    }
+
     try {
-      setState((prev) => ({ ...prev, isChecking: true }));
+      safeSetState((prev) => ({ ...prev, isChecking: true }));
 
       if (state.fixType === 'expand-parent-navigation' && state.targetHref && navigationManagerRef.current) {
         // Attempt to expand parent navigation section
@@ -516,7 +448,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
         if (!success) {
           console.error('Failed to expand parent navigation section');
-          setState((prev) => ({
+          safeSetState((prev) => ({
             ...prev,
             isChecking: false,
             error: 'Failed to expand parent navigation section',
@@ -534,11 +466,16 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         await fixNavigationRequirements();
       } else {
         console.warn('Unknown fix type:', state.fixType);
-        setState((prev) => ({
+        safeSetState((prev) => ({
           ...prev,
           isChecking: false,
           error: 'Unable to automatically fix this requirement',
         }));
+        return;
+      }
+
+      // REACT: Check mounted before continuing after async operations (R4)
+      if (!isMountedRef.current) {
         return;
       }
 
@@ -553,7 +490,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       await checkStep();
     } catch (error) {
       console.error('Failed to fix requirements:', error);
-      setState((prev) => ({
+      safeSetState((prev) => ({
         ...prev,
         isChecking: false,
         error: 'Failed to fix requirements',
@@ -568,6 +505,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     checkStep,
     stepId,
     timeoutManager,
+    safeSetState,
   ]);
 
   /**
@@ -654,13 +592,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   // Initial requirements check for first steps when component mounts
   useEffect(() => {
-    // Detect first step in a section: -step-1, -multistep-1, -guided-1, or standalone steps
-    const isFirstStep =
-      stepId?.includes('-step-1') ||
-      stepId?.includes('-multistep-1') ||
-      stepId?.includes('-guided-1') ||
-      (!stepId?.includes('section-') && !stepId?.includes('step-'));
-    if (isFirstStep && !state.isCompleted && !state.isChecking) {
+    // Use helper function to detect first step in a section or standalone step
+    if (isFirstStep(stepId) && !state.isCompleted && !state.isChecking) {
       checkStepRef.current();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- Intentionally empty - only run on mount

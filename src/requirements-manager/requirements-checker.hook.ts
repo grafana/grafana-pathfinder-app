@@ -134,7 +134,10 @@ export class SequentialRequirementsManager {
    * Useful when a section completes and the next step needs to become available
    */
   watchNextStep(durationMs: number): void {
-    // Clear any existing watch
+    const timeoutManager = TimeoutManager.getInstance();
+
+    // Clear any existing watch using TimeoutManager for consistency
+    timeoutManager.clear('watch-next-step-interval');
     if (this.watchInterval) {
       clearInterval(this.watchInterval);
       this.watchInterval = undefined;
@@ -159,32 +162,32 @@ export class SequentialRequirementsManager {
 
     // Start polling this specific step
     const startTime = Date.now();
+    const stepIdToWatch = nextStepId; // Capture for closure
 
     // Initial immediate check
-    this.triggerStepCheck(nextStepId);
+    this.triggerStepCheck(stepIdToWatch);
 
-    this.watchInterval = setInterval(() => {
+    // Use recursive setTimeout via TimeoutManager for safer interval handling
+    const scheduleNextCheck = () => {
       // Check if we've exceeded duration
       if (Date.now() - startTime >= durationMs) {
-        if (this.watchInterval) {
-          clearInterval(this.watchInterval);
-          this.watchInterval = undefined;
-        }
         return;
       }
 
       // Stop watching if step completes or becomes enabled
-      const currentState = this.steps.get(nextStepId!);
+      const currentState = this.steps.get(stepIdToWatch);
       if (currentState?.isCompleted || currentState?.isEnabled) {
-        if (this.watchInterval) {
-          clearInterval(this.watchInterval);
-          this.watchInterval = undefined;
-        }
         return;
       }
 
-      this.triggerStepCheck(nextStepId!);
-    }, 500); // Check every 500ms
+      this.triggerStepCheck(stepIdToWatch);
+
+      // Schedule next check
+      timeoutManager.setTimeout('watch-next-step-interval', scheduleNextCheck, 500);
+    };
+
+    // Schedule first interval check
+    timeoutManager.setTimeout('watch-next-step-interval', scheduleNextCheck, 500);
   }
 
   // Trigger reactive checking of all steps (e.g., after completing a step or DOM changes)
@@ -340,6 +343,9 @@ export class SequentialRequirementsManager {
     );
   }
 
+  // Flag to track if monitoring was cancelled during async import
+  private contextMonitoringCancelled = false;
+
   /**
    * Start listening to context changes from ContextService
    */
@@ -348,15 +354,25 @@ export class SequentialRequirementsManager {
       return; // Already monitoring
     }
 
+    // Reset cancellation flag when starting
+    this.contextMonitoringCancelled = false;
+
     // Import dynamically to avoid circular deps
     import('../context-engine')
       .then(({ ContextService }) => {
+        // Check if monitoring was cancelled during the async import
+        if (this.contextMonitoringCancelled) {
+          return; // Don't subscribe if stop was called during import
+        }
         this.contextChangeUnsubscribe = ContextService.onContextChange(() => {
           this.recheckNextSteps();
         });
       })
       .catch((error) => {
-        console.error('Failed to start context monitoring:', error);
+        // Only log if not cancelled
+        if (!this.contextMonitoringCancelled) {
+          console.error('Failed to start context monitoring:', error);
+        }
       });
   }
 
@@ -364,6 +380,9 @@ export class SequentialRequirementsManager {
    * Stop listening to context changes
    */
   stopContextMonitoring(): void {
+    // Set cancellation flag to prevent subscription if import is still pending
+    this.contextMonitoringCancelled = true;
+
     if (this.contextChangeUnsubscribe) {
       this.contextChangeUnsubscribe();
       this.contextChangeUnsubscribe = undefined;
@@ -472,10 +491,17 @@ export class SequentialRequirementsManager {
       this.navigationUnlisten = undefined;
     }
 
+    // Clear legacy interval if present
+    if (this.watchInterval) {
+      clearInterval(this.watchInterval);
+      this.watchInterval = undefined;
+    }
+
     // Clear any pending timeouts from the timeout manager
     const timeoutManager = TimeoutManager.getInstance();
     timeoutManager.clear('dom-check-throttle');
     timeoutManager.clear('url-check-throttle');
     timeoutManager.clear('context-recheck');
+    timeoutManager.clear('watch-next-step-interval');
   }
 }
