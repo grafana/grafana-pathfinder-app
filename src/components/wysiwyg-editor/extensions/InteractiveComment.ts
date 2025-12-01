@@ -1,6 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { createClassAttribute } from './shared/attributes';
-import { createInfoIcon, applyAttributes } from './shared/nodeViewFactory';
+import { createNoteBadge, applyAttributes } from './shared/nodeViewFactory';
 import {
   createToggleInlineNodeCommand,
   createUnsetInlineNodeCommand,
@@ -59,9 +59,9 @@ export const InteractiveComment = Node.create<InteractiveCommentOptions>({
       const dom = document.createElement('span');
       applyAttributes(dom, HTMLAttributes);
 
-      // Add info icon instead of lightning bolt
-      const infoIcon = createInfoIcon();
-      dom.appendChild(infoIcon);
+      // Add note badge instead of info icon
+      const badge = createNoteBadge();
+      dom.appendChild(badge);
 
       // Create content wrapper but hide text (keep for editing)
       const contentDOM = document.createElement('span');

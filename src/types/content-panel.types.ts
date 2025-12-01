@@ -32,7 +32,7 @@ export interface PersistedTabData {
   title: string;
   baseUrl: string;
   currentUrl?: string; // The specific milestone/page URL user was viewing (optional for backward compatibility)
-  type?: 'learning-journey' | 'docs'; // Note: 'devtools' is not persisted
+  type?: 'learning-journey' | 'docs' | 'devtools';
 }
 
 /**

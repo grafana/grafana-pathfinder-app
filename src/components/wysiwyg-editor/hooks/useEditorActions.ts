@@ -1,8 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 
 // Utils
-import { formatHTML } from '../utils/htmlFormatter';
 import { debug, error as logError } from '../utils/logger';
 
 // Security
@@ -14,102 +13,136 @@ import { EDITOR_DEFAULTS } from '../../../constants/editor-config';
 // Storage
 import { StorageKeys } from '../../../lib/user-storage';
 
+// JSON Converter
+import { convertEditorToJson, formatJsonGuide, type GuideMetadata } from '../services/editorToJson';
+
+export type ExportMode = 'copy' | 'download';
+
 export interface UseEditorActionsOptions {
   editor: Editor | null;
 }
 
 export interface UseEditorActionsReturn {
-  copyHTML: () => Promise<void>;
-  downloadHTML: () => Promise<void>;
+  // Export dialog state
+  isExportDialogOpen: boolean;
+  exportMode: ExportMode;
+  openExportDialog: (mode: ExportMode) => void;
+  closeExportDialog: () => void;
+
+  // Export actions (called after dialog provides metadata)
+  performExport: (metadata: GuideMetadata) => Promise<void>;
+
+  // Other actions
   testGuide: () => void;
   resetGuide: () => void;
 }
 
 /**
- * Hook for managing editor actions: copy, download, test, and reset
+ * Hook for managing editor actions: export (copy/download JSON), test, and reset
  */
 export function useEditorActions({ editor }: UseEditorActionsOptions): UseEditorActionsReturn {
-  // Copy HTML to clipboard
-  const copyHTML = useCallback(async () => {
-    if (!editor) {
-      return;
-    }
+  // Export dialog state
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<ExportMode>('copy');
 
-    try {
-      const html = editor.getHTML();
-      // SECURITY: sanitized HTML before export to prevent XSS (F1, F4)
-      const sanitized = sanitizeDocumentationHTML(html);
-      const formatted = await formatHTML(sanitized);
-      await navigator.clipboard.writeText(formatted);
-      debug('[useEditorActions] HTML copied to clipboard');
-      // TODO: Show success toast
-    } catch (error) {
-      logError('[useEditorActions] Failed to copy HTML:', error);
-      // TODO: Show error toast
-    }
-  }, [editor]);
+  // Open export dialog with specified mode
+  const openExportDialog = useCallback((mode: ExportMode) => {
+    setExportMode(mode);
+    setIsExportDialogOpen(true);
+  }, []);
 
-  // Download HTML as file - opens in new window for user to save
-  const downloadHTML = useCallback(async () => {
-    if (!editor) {
-      return;
-    }
+  // Close export dialog
+  const closeExportDialog = useCallback(() => {
+    setIsExportDialogOpen(false);
+  }, []);
 
-    try {
-      const html = editor.getHTML();
-      // SECURITY: sanitized HTML before export to prevent XSS (F1, F4)
-      const sanitized = sanitizeDocumentationHTML(html);
-      const formatted = await formatHTML(sanitized);
-
-      // Open HTML in a new window - user can save with Cmd+S / Ctrl+S
-      const blob = new Blob([formatted], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-
-      // Open in new window
-      const newWindow = window.open(url, '_blank');
-
-      // Revoke URL after window loads to free memory
-      if (newWindow) {
-        newWindow.onload = () => {
-          URL.revokeObjectURL(url);
-        };
-      } else {
-        // If popup was blocked, revoke immediately
-        URL.revokeObjectURL(url);
+  // Perform export (copy or download) with the provided metadata
+  const performExport = useCallback(
+    async (metadata: GuideMetadata) => {
+      if (!editor) {
+        return;
       }
 
-      debug('[useEditorActions] HTML opened in new window');
-    } catch (error) {
-      logError('[useEditorActions] Failed to open HTML:', error);
-    }
-  }, [editor]);
+      try {
+        // Convert editor content to JSON
+        const { guide, warnings } = convertEditorToJson(editor, metadata);
 
-  // Test Guide in Pathfinder
+        // Log any conversion warnings
+        if (warnings.length > 0) {
+          debug('[useEditorActions] Conversion warnings:', warnings);
+        }
+
+        // Format as pretty-printed JSON
+        const jsonString = formatJsonGuide(guide);
+
+        if (exportMode === 'copy') {
+          // Copy JSON to clipboard
+          await navigator.clipboard.writeText(jsonString);
+          debug('[useEditorActions] JSON copied to clipboard', { guideId: guide.id });
+        } else {
+          // Open JSON in new tab - user can save with Cmd+S / Ctrl+S
+          const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+
+          // Open in new window/tab
+          const newWindow = window.open(url, '_blank');
+
+          // Revoke URL after window loads to free memory
+          if (newWindow) {
+            newWindow.onload = () => {
+              URL.revokeObjectURL(url);
+            };
+          } else {
+            // If popup was blocked, revoke immediately
+            URL.revokeObjectURL(url);
+          }
+
+          debug('[useEditorActions] JSON opened in new tab', { guideId: guide.id });
+        }
+      } catch (error) {
+        logError('[useEditorActions] Failed to export:', error);
+      }
+    },
+    [editor, exportMode]
+  );
+
+  // Test Guide in Pathfinder - converts to JSON format for preview
   const testGuide = useCallback(() => {
     if (!editor) {
       return;
     }
 
     try {
-      const html = editor.getHTML();
+      // Convert editor content to JSON guide format
+      const { guide, warnings } = convertEditorToJson(editor, {
+        id: 'wysiwyg-preview',
+        title: 'Preview: WYSIWYG Guide',
+      });
 
-      // SECURITY: sanitize HTML before preview to prevent XSS (F1, F4)
-      const sanitized = sanitizeDocumentationHTML(html);
+      // Log any conversion warnings for debugging
+      if (warnings.length > 0) {
+        debug('[useEditorActions] Test guide conversion warnings:', warnings);
+      }
 
-      // Save to localStorage (overwrites auto-saved version with sanitized)
-      localStorage.setItem(StorageKeys.WYSIWYG_PREVIEW, sanitized);
+      // Format as JSON string
+      const jsonString = formatJsonGuide(guide);
+
+      // Save JSON to separate localStorage key for preview (not the editor's HTML key)
+      localStorage.setItem(StorageKeys.WYSIWYG_PREVIEW_JSON, jsonString);
 
       // Dispatch custom event to open in Pathfinder
       const event = new CustomEvent('pathfinder-auto-open-docs', {
         detail: {
           url: 'bundled:wysiwyg-preview',
-          title: 'Preview: WYSIWYG Guide',
+          title: guide.title,
           origin: 'wysiwyg-editor',
         },
       });
       document.dispatchEvent(event);
 
-      debug('[useEditorActions] Dispatched test guide event');
+      debug('[useEditorActions] Dispatched test guide event with JSON content', {
+        blockCount: guide.blocks.length,
+      });
     } catch (error) {
       logError('[useEditorActions] Failed to test guide:', error);
     }
@@ -138,8 +171,16 @@ export function useEditorActions({ editor }: UseEditorActionsOptions): UseEditor
   }, [editor]);
 
   return {
-    copyHTML,
-    downloadHTML,
+    // Export dialog state
+    isExportDialogOpen,
+    exportMode,
+    openExportDialog,
+    closeExportDialog,
+
+    // Export action
+    performExport,
+
+    // Other actions
     testGuide,
     resetGuide,
   };

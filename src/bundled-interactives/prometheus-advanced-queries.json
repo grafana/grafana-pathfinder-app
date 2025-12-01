@@ -25,8 +25,8 @@
           "requirements": ["exists-reftarget"]
         },
         {
-          "action": "button",
-          "reftarget": "prometheus",
+          "action": "highlight",
+          "reftarget": "button:contains(\"Prometheus\"):nth-match(1)",
           "requirements": ["exists-reftarget"],
           "tooltip": "This tutorial uses Prometheus as the data source. If you completed the Prometheus + Grafana 101 tutorial, you should already have a Prometheus datasource configured. If not, you can select any available Prometheus datasource in your instance."
         }

@@ -20,7 +20,6 @@ import {
   isGitHubRawUrl,
   isAllowedGitHubRawUrl,
   isLocalhostUrl,
-  sanitizeDocumentationHTML,
 } from '../security';
 import { convertGitHubRawToProxyUrl, isDataProxyUrl } from './data-proxy';
 import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
@@ -268,28 +267,35 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
   // SPECIAL CASE: Handle WYSIWYG preview from localStorage
   if (contentId === 'wysiwyg-preview') {
     try {
-      const previewContent = localStorage.getItem(StorageKeys.WYSIWYG_PREVIEW);
+      // Load JSON content from the dedicated preview key
+      const previewContent = localStorage.getItem(StorageKeys.WYSIWYG_PREVIEW_JSON);
 
       if (!previewContent || previewContent.trim() === '') {
         return {
           content: null,
-          error: 'No preview content available. Create content in the WYSIWYG editor first.',
+          error: 'No preview content available. Create content in the WYSIWYG editor and click Test first.',
         };
       }
 
-      // SECURITY: sanitize on load (defense in depth, F1, F4)
-      const sanitized = sanitizeDocumentationHTML(previewContent);
+      // Content is already JSON - parse to extract title for metadata
+      let title = 'Preview: WYSIWYG Guide';
+      try {
+        const parsed = JSON.parse(previewContent);
+        if (parsed.title) {
+          title = parsed.title;
+        }
+      } catch {
+        // If parsing fails, use default title
+      }
 
       // Determine content type for preview
       const contentType = determineContentType(url);
-      const metadata = await extractMetadata(sanitized, url, contentType);
-
-      // Wrap content as JSON guide for unified rendering pipeline
-      const jsonContent = wrapContentAsJsonGuide(sanitized, url, metadata.title);
 
       const rawContent: RawContent = {
-        content: jsonContent,
-        metadata,
+        content: previewContent, // Already valid JSON guide format
+        metadata: {
+          title,
+        },
         type: contentType,
         url,
         lastFetched: new Date().toISOString(),
