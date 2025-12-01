@@ -196,6 +196,9 @@ export const testIds = {
     requirementSkipButton: (stepId: string) => `interactive-requirement-skip-${stepId}`,
     stepCompleted: (stepId: string) => `interactive-step-completed-${stepId}`,
     errorMessage: (stepId: string) => `interactive-error-${stepId}`,
+    quiz: (quizId: string) => `interactive-quiz-${quizId}`,
+    quizChoice: (quizId: string, choiceId: string) => `interactive-quiz-${quizId}-choice-${choiceId}`,
+    quizCheckButton: (quizId: string) => `interactive-quiz-check-${quizId}`,
   },
 
   // App Configuration

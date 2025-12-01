@@ -87,6 +87,7 @@ export interface StepInfo {
   showMe?: boolean; // Whether to show the "Show me" button and phase
   isMultiStep: boolean; // Flag to identify component type
   isGuided: boolean; // Flag to identify guided (user-performed) steps
+  isQuiz?: boolean; // Flag to identify quiz steps
 }
 
 // ============================================================================
