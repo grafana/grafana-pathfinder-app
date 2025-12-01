@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.78 (2025-12-01)
+
+### Changed
+
+- Added improvements to interaction engine
+
+### Fixed
+
+- Fixed EnableRecommenderBanner not showing when recommendations are disabled (variable name bug)
+
+## 1.1.77 (2025-12-01)
+
+### Fixed
+
+- Fixed regression in WYSIWYG editor caused by recent updates
+- Improved requirements system
+
+### Chore
+
+- Updated actions/setup-go digest to 4dc6199
+- Updated actions/checkout action to v5.0.1
+
+## 1.1.76 (2025-12-01)
+
+### Fixed
+
+- Fixed issues with RudderStack analytics
+
 ## 1.1.75 (2025-12-01)
 
 ### Fixed
