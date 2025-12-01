@@ -103,6 +103,13 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         color: theme.colors.text.primary,
       },
 
+      // Remove extra padding for lists that directly contain multistep/guided/quiz items
+      // These block types have their own visual styling and don't need list indentation
+      '& ul:has(> li.interactive[data-targetaction="multistep"]), & ul:has(> li.interactive[data-targetaction="guided"]), & ul:has(> li.interactive[data-targetaction="quiz"])':
+        {
+          paddingLeft: 0,
+        },
+
       '& li': {
         margin: `${theme.spacing(0.25)} 0`,
         color: theme.colors.text.primary,
@@ -251,6 +258,30 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         background: colors.interactive.background,
       },
 
+      // All interactive list items - hide default bullet markers
+      // Interactive elements use badges instead of bullets for visual indication
+      '& li.interactive': {
+        listStyleType: 'none',
+      },
+
+      // Nested interactive spans inside list items should not have their own border
+      // The list item provides the visual container; nested spans are just content
+      '& li.interactive span.interactive': {
+        border: 'none',
+        padding: 0,
+        background: 'transparent',
+        display: 'inline',
+      },
+
+      // Atomic interactive comments inside list items - show badge but no border
+      '& li.interactive .interactive-comment': {
+        display: 'inline !important',
+        background: 'transparent',
+        border: 'none',
+        borderBottom: 'none',
+        padding: 0,
+      },
+
       // Sequence sections - Simple left border indicator
       // Target spans with data-targetaction="sequence" OR class="sequence-section"
       '& span[data-targetaction="sequence"], & .sequence-section': {
@@ -275,7 +306,10 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
       },
 
       // Multistep list items - Purple (dashed border)
+      // Nested steps are HIDDEN - only editable via modal
+      // Hide bullet marker - multistep has its own badge
       '& li.interactive[data-targetaction="multistep"]': {
+        listStyleType: 'none',
         border: `1px dashed ${colors.multistep.border}`,
         padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
         borderRadius: theme.shape.radius.default,
@@ -291,23 +325,21 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         '& > .action-badge': {
           display: 'inline-flex !important',
         },
-        // Remove styling from nested interactive spans (they're steps, not standalone)
+        // HIDE nested interactive spans completely - they are only edited via modal
         '& span.interactive': {
-          border: 'none',
-          padding: 0,
-          background: 'transparent',
-          display: 'inline',
+          display: 'none !important',
         },
-        // Keep comments visible but inline
+        // HIDE nested comments - they belong to steps, edited via modal
         '& .interactive-comment': {
-          display: 'inline !important',
-          background: 'transparent',
-          borderBottom: 'none',
+          display: 'none !important',
         },
       },
 
       // Guided list items - Teal (dashed border)
+      // Nested steps are HIDDEN - only editable via modal
+      // Hide bullet marker - guided has its own badge
       '& li.interactive[data-targetaction="guided"]': {
+        listStyleType: 'none',
         border: `1px dashed ${colors.guided.border}`,
         padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
         borderRadius: theme.shape.radius.default,
@@ -323,71 +355,73 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         '& > .action-badge': {
           display: 'inline-flex !important',
         },
-        // Remove styling from nested interactive spans (they're steps, not standalone)
+        // HIDE nested interactive spans completely - they are only edited via modal
         '& span.interactive': {
-          border: 'none',
-          padding: 0,
-          background: 'transparent',
-          display: 'inline',
+          display: 'none !important',
         },
-        // Keep comments visible but inline
+        // HIDE nested comments - they belong to steps, edited via modal
         '& .interactive-comment': {
-          display: 'inline !important',
-          background: 'transparent',
+          display: 'none !important',
           borderBottom: 'none',
         },
       },
 
       // Span-based multistep (inline context) - Purple
+      // Nested steps are HIDDEN - only editable via modal
       '& span.interactive[data-targetaction="multistep"]': {
         border: `1px dashed ${colors.multistep.border}`,
         padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
         borderRadius: theme.shape.radius.default,
         background: colors.multistep.background,
 
-        // Hide nested badges
+        // Hide nested badges except first
         '& .action-badge:not(:first-child)': {
           display: 'none !important',
         },
-        '& span.interactive .action-badge': {
+        // HIDE nested interactive spans completely - edited via modal only
+        '& span.interactive': {
           display: 'none !important',
         },
-        '& span.interactive': {
-          border: 'none',
-          padding: 0,
-          background: 'transparent',
-        },
+        // HIDE nested comments - edited via modal only
         '& .interactive-comment': {
-          display: 'inline !important',
-          background: 'transparent',
-          borderBottom: 'none',
+          display: 'none !important',
         },
       },
 
       // Span-based guided (inline context) - Teal
+      // Nested steps are HIDDEN - only editable via modal
       '& span.interactive[data-targetaction="guided"]': {
         border: `1px dashed ${colors.guided.border}`,
         padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
         borderRadius: theme.shape.radius.default,
         background: colors.guided.background,
 
-        // Hide nested badges
+        // Hide nested badges except first
         '& .action-badge:not(:first-child)': {
           display: 'none !important',
         },
-        '& span.interactive .action-badge': {
+        // HIDE nested interactive spans completely - edited via modal only
+        '& span.interactive': {
           display: 'none !important',
         },
-        '& span.interactive': {
-          border: 'none',
-          padding: 0,
-          background: 'transparent',
-        },
+        // HIDE nested comments - edited via modal only
         '& .interactive-comment': {
-          display: 'inline !important',
-          background: 'transparent',
-          borderBottom: 'none',
+          display: 'none !important',
         },
+      },
+
+      // Quiz list items - Blue (solid border)
+      // Quiz has its own distinct styling - knowledge check element
+      '& li.interactive[data-targetaction="quiz"]': {
+        listStyleType: 'none',
+        border: `2px solid ${theme.colors.primary.border}`,
+        padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
+        borderRadius: theme.shape.radius.default,
+        background: theme.colors.primary.transparent,
+        marginTop: theme.spacing(0.5),
+        marginBottom: theme.spacing(0.5),
+        whiteSpace: 'pre-wrap', // Preserve line breaks in quiz content
+        fontFamily: theme.typography.fontFamily,
       },
     }),
   };

@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Editor } from '@tiptap/react';
-import { IconButton, useStyles2, Portal, Modal, Button, Input, Field } from '@grafana/ui';
+import { IconButton, useStyles2, Modal, Button, Input, Field } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../testIds';
 
 interface BubbleMenuBarProps {
   editor: Editor | null;
+  /** Optional container element to constrain the menu within */
+  containerRef?: React.RefObject<HTMLElement>;
 }
 
 interface MenuPosition {
@@ -15,8 +17,16 @@ interface MenuPosition {
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
+  // Wrapper positioned relative to the editor for absolute positioning of menu
+  wrapper: css({
+    position: 'relative',
+    // Ensures the wrapper doesn't affect layout
+    width: 0,
+    height: 0,
+    overflow: 'visible',
+  }),
   bubbleMenu: css({
-    position: 'fixed',
+    position: 'absolute',
     display: 'flex',
     gap: theme.spacing(0.5),
     padding: theme.spacing(0.5),
@@ -28,6 +38,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
     zIndex: theme.zIndex.tooltip,
     // Center horizontally and position so bottom of menu is at the top coordinate
     transform: 'translateX(-50%) translateY(-100%)',
+    // Prevent text selection in the menu
+    userSelect: 'none',
   }),
   divider: css({
     width: '1px',
@@ -164,13 +176,14 @@ const LinkDialog: React.FC<LinkDialogProps> = ({
  * Provides quick access to formatting options without leaving the content area.
  * Uses Grafana UI components for consistent styling.
  *
- * Custom implementation that positions based on selection without external dependencies.
+ * Custom implementation that positions based on selection relative to the editor container.
  */
 export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
   const styles = useStyles2(getStyles);
   const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState<MenuPosition>({ top: 0, left: 0 });
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Use ref to track dialog state for blur handler (avoids stale closure)
   const isLinkDialogOpenRef = useRef(false);
@@ -181,7 +194,7 @@ export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
   }, [isLinkDialogOpen]);
 
   const updateMenuPosition = useCallback(() => {
-    if (!editor) {
+    if (!editor || !wrapperRef.current) {
       return;
     }
 
@@ -200,16 +213,18 @@ export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
       return;
     }
 
-    // Get selection coordinates using the view
+    // Get selection coordinates using the view (viewport coordinates)
     const { view } = editor;
     const start = view.coordsAtPos(from);
     const end = view.coordsAtPos(to);
 
+    // Get the wrapper's position to calculate relative coordinates
+    const wrapperRect = wrapperRef.current.getBoundingClientRect();
+
     // Position menu above the selection, centered
-    // translateY(-100%) moves the menu up by its own height
-    // We subtract 8px to add a gap between menu and text
-    const left = (start.left + end.right) / 2;
-    const top = start.top - 8;
+    // Calculate position relative to the wrapper element
+    const left = (start.left + end.right) / 2 - wrapperRect.left;
+    const top = start.top - 8 - wrapperRect.top;
 
     setPosition({ top, left });
     setIsVisible(true);
@@ -272,9 +287,10 @@ export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
 
   return (
     <>
-      {/* Bubble menu - only shown when visible */}
-      {isVisible && (
-        <Portal>
+      {/* Wrapper for relative positioning - always rendered to maintain ref */}
+      <div ref={wrapperRef} className={styles.wrapper}>
+        {/* Bubble menu - only shown when visible */}
+        {isVisible && (
           <div
             data-bubble-menu
             className={styles.bubbleMenu}
@@ -330,8 +346,8 @@ export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
               data-testid={testIds.wysiwygEditor.bubbleMenu.clearButton}
             />
           </div>
-        </Portal>
-      )}
+        )}
+      </div>
 
       {/* Link dialog - rendered independently of bubble menu visibility */}
       {/* Key forces re-mount when dialog opens, ensuring fresh state */}

@@ -11,6 +11,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import type { BundledStepEditorData, PendingClickInfo } from './hooks/useFullScreenMode';
 import { testIds } from '../testIds';
+import { ACTION_TYPES } from '../../constants/interactive-config';
 
 interface BundlingStepEditorProps {
   /** The captured click information */
@@ -110,7 +111,7 @@ export const BundlingStepEditor: React.FC<BundlingStepEditorProps> = ({
   }, [handleSave, onSkip]);
 
   const stepNumber = stepCount + 1;
-  const actionLabel = actionType === 'guided' ? 'Guided' : 'Multistep';
+  const actionLabel = actionType === ACTION_TYPES.GUIDED ? 'Guided' : 'Multistep';
 
   return (
     <Modal
