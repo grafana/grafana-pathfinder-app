@@ -98,6 +98,8 @@ export interface UseFullScreenModeOptions {
 export interface StepEditorData {
   description: string;
   actionType: string;
+  /** Optional override for the detected selector (allows user to change target) */
+  selector?: string;
   requirements?: string;
   interactiveComment?: string;
   formFillValue?: string;
@@ -641,9 +643,12 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
         return;
       }
 
+      // Use user-edited selector if provided, otherwise use detected selector
+      const finalSelector = data.selector?.trim() || pendingClick.selector;
+
       const step: FullScreenStep = {
         action: data.actionType, // Use the user-selected action type, not the detected one
-        selector: pendingClick.selector,
+        selector: finalSelector,
         description: data.description,
         requirements: data.requirements,
         value: data.formFillValue, // For formfill action
@@ -689,9 +694,13 @@ export function useFullScreenMode(options: UseFullScreenModeOptions): UseFullScr
         return;
       }
 
+      // Use user-edited selector if provided, otherwise use detected selector
+      const finalSelector = data.selector?.trim() || pendingClick.selector;
+
       // Store the first step with ALL its data (description, comment, requirements)
       const firstStep: PendingClickInfo = {
         ...pendingClick,
+        selector: finalSelector,
         description: data.description,
         interactiveComment: data.interactiveComment, // Include comment in first step
         requirements: data.requirements, // Include requirements in first step

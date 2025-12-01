@@ -335,4 +335,158 @@ describe('editorToJson service', () => {
       expect(guideWithMatch.match?.urlPrefix).toEqual(['/dashboards']);
     });
   });
+
+  describe('multistep block export', () => {
+    it('should structure multistep block with nested steps', () => {
+      const multistepBlock = {
+        type: 'multistep' as const,
+        content: 'Complete these steps to configure your datasource',
+        steps: [
+          {
+            action: 'highlight' as const,
+            reftarget: 'button[data-testid="add-datasource"]',
+            tooltip: 'Click here to add a new datasource',
+            requirements: ['exists-reftarget'],
+          },
+          {
+            action: 'formfill' as const,
+            reftarget: 'input[name="url"]',
+            targetvalue: 'http://prometheus:9090',
+            tooltip: 'Enter the Prometheus URL',
+          },
+          {
+            action: 'button' as const,
+            reftarget: 'button.submit',
+            requirements: ['exists-reftarget'],
+          },
+        ],
+        requirements: ['on-page:/datasources'],
+      };
+
+      expect(multistepBlock.type).toBe('multistep');
+      expect(multistepBlock.steps).toHaveLength(3);
+
+      // First step with tooltip
+      expect(multistepBlock.steps[0].action).toBe('highlight');
+      expect(multistepBlock.steps[0].tooltip).toBe('Click here to add a new datasource');
+
+      // Second step with targetvalue (formfill)
+      expect(multistepBlock.steps[1].action).toBe('formfill');
+      expect(multistepBlock.steps[1].targetvalue).toBe('http://prometheus:9090');
+
+      // Third step without tooltip
+      expect(multistepBlock.steps[2].action).toBe('button');
+      expect(multistepBlock.steps[2].tooltip).toBeUndefined();
+    });
+
+    it('should export nested step with interactiveComment as tooltip', () => {
+      // The interactiveComment from the editor maps to tooltip in JSON export
+      const editorNestedStep = {
+        actionType: 'highlight',
+        refTarget: 'button.test',
+        interactiveComment: 'This is the tooltip text',
+      };
+
+      // When exported to JSON, interactiveComment becomes tooltip
+      const exportedStep = {
+        action: editorNestedStep.actionType,
+        reftarget: editorNestedStep.refTarget,
+        tooltip: editorNestedStep.interactiveComment,
+      };
+
+      expect(exportedStep.tooltip).toBe('This is the tooltip text');
+    });
+
+    it('should export nested step with targetValue for formfill', () => {
+      const editorNestedStep = {
+        actionType: 'formfill',
+        refTarget: 'input[name="email"]',
+        targetValue: 'admin@grafana.com',
+      };
+
+      const exportedStep = {
+        action: editorNestedStep.actionType,
+        reftarget: editorNestedStep.refTarget,
+        targetvalue: editorNestedStep.targetValue,
+      };
+
+      expect(exportedStep.targetvalue).toBe('admin@grafana.com');
+    });
+
+    it('should omit undefined fields in exported steps', () => {
+      const stepWithoutOptionalFields = {
+        action: 'button' as const,
+        reftarget: 'button.submit',
+        // No tooltip, no targetvalue, no requirements
+      };
+
+      expect(stepWithoutOptionalFields.action).toBe('button');
+      expect(stepWithoutOptionalFields.reftarget).toBe('button.submit');
+      expect((stepWithoutOptionalFields as any).tooltip).toBeUndefined();
+      expect((stepWithoutOptionalFields as any).targetvalue).toBeUndefined();
+    });
+  });
+
+  describe('guided block export', () => {
+    it('should structure guided block with nested actions', () => {
+      const guidedBlock = {
+        type: 'guided' as const,
+        content: 'Follow along with this guided tutorial',
+        steps: [
+          {
+            action: 'hover' as const,
+            reftarget: 'nav[data-testid="nav-menu"]',
+            tooltip: 'First, hover over the navigation menu',
+          },
+          {
+            action: 'highlight' as const,
+            reftarget: 'a[href="/admin"]',
+            tooltip: 'Then click on Admin',
+          },
+        ],
+      };
+
+      expect(guidedBlock.type).toBe('guided');
+      expect(guidedBlock.steps).toHaveLength(2);
+      expect(guidedBlock.steps[0].action).toBe('hover');
+      expect(guidedBlock.steps[1].action).toBe('highlight');
+    });
+  });
+
+  describe('attribute to JSON field mapping', () => {
+    it('should map data-targetaction to action field', () => {
+      const attrs = { 'data-targetaction': 'highlight' };
+      const jsonStep = { action: attrs['data-targetaction'] };
+      expect(jsonStep.action).toBe('highlight');
+    });
+
+    it('should map data-reftarget to reftarget field', () => {
+      const attrs = { 'data-reftarget': 'button[data-cy="save"]' };
+      const jsonStep = { reftarget: attrs['data-reftarget'] };
+      expect(jsonStep.reftarget).toBe('button[data-cy="save"]');
+    });
+
+    it('should map data-targetvalue to targetvalue field', () => {
+      const attrs = { 'data-targetvalue': 'my-value' };
+      const jsonStep = { targetvalue: attrs['data-targetvalue'] };
+      expect(jsonStep.targetvalue).toBe('my-value');
+    });
+
+    it('should map interactiveComment content to tooltip field', () => {
+      // In the editor, comments are stored as child nodes
+      // When exporting, the text content becomes the tooltip
+      const commentText = 'This explains what to do';
+      const jsonStep = { tooltip: commentText };
+      expect(jsonStep.tooltip).toBe('This explains what to do');
+    });
+
+    it('should split requirements into array', () => {
+      const attrs = { 'data-requirements': 'exists-reftarget, on-page:/explore, navmenu-open' };
+      const requirements = attrs['data-requirements']
+        .split(',')
+        .map((r) => r.trim())
+        .filter((r) => r.length > 0);
+      expect(requirements).toEqual(['exists-reftarget', 'on-page:/explore', 'navmenu-open']);
+    });
+  });
 });

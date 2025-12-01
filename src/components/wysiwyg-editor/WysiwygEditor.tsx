@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, useMemo, useState } from 'react';
-import { EditorContent, Editor } from '@tiptap/react';
+import { EditorContent } from '@tiptap/react';
 import { useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -11,7 +11,12 @@ import CommentDialog from './CommentDialog';
 import ExportDialog from './ExportDialog';
 import BubbleMenuBar from './BubbleMenuBar';
 import { FullScreenModeOverlay } from './FullScreenModeOverlay';
-import { FullScreenStepEditor, type EditElementData, type EditSaveData } from './FullScreenStepEditor';
+import {
+  FullScreenStepEditor,
+  type EditElementData,
+  type EditSaveData,
+  type NestedStepData,
+} from './FullScreenStepEditor';
 
 // Hooks
 import { useEditState } from './hooks/useEditState';
@@ -22,11 +27,13 @@ import { useEditorModals } from './hooks/useEditorModals';
 import { useFullScreenMode } from './hooks/useFullScreenMode';
 
 // Constants
-import { CSS_CLASSES } from '../../constants/editor-config';
 import { ACTION_TYPES } from '../../constants/interactive-config';
 
 // Utils
 import { debug, error as logError } from './utils/logger';
+
+// Services
+import { applyJsonUpdate, type SpanUpdateData, type ListItemUpdateData } from './services/jsonNodeUpdater';
 
 // Styles
 import { getSharedPanelStyles } from './editor.styles';
@@ -60,9 +67,16 @@ const getStyles = (theme: GrafanaTheme2) => ({
 });
 
 /**
- * Extract text content from a ProseMirror node, excluding comments
+ * Extract text content from a ProseMirror node, excluding comments and interactive spans.
+ * For atomic interactiveSpan nodes, reads from the 'text' attribute.
+ * For container nodes (like listItem), only extracts direct text, not nested interactive content.
  */
-function extractTextContent(node: any): string {
+function extractTextContent(node: any, excludeInteractiveSpans = false): string {
+  // For atomic nodes (interactiveSpan), text is stored in the text attribute
+  if (node.type?.name === 'interactiveSpan' && node.attrs?.text) {
+    return node.attrs.text;
+  }
+
   let text = '';
   if (node.content) {
     node.content.forEach((child: any) => {
@@ -70,10 +84,14 @@ function extractTextContent(node: any): string {
       if (child.type?.name === 'interactiveComment') {
         return;
       }
+      // Skip interactiveSpan nodes when extracting container description
+      if (excludeInteractiveSpans && child.type?.name === 'interactiveSpan') {
+        return;
+      }
       if (child.type?.name === 'text' || child.isText) {
         text += child.text || '';
       } else if (child.content) {
-        text += extractTextContent(child);
+        text += extractTextContent(child, excludeInteractiveSpans);
       }
     });
   }
@@ -81,15 +99,26 @@ function extractTextContent(node: any): string {
 }
 
 /**
- * Extract interactive comment text from a ProseMirror node's children
+ * Extract interactive comment/tooltip text from a ProseMirror node.
+ * For atomic interactiveSpan nodes, reads from the 'tooltip' attribute.
+ * For legacy nodes, reads from nested interactiveComment children.
  */
 function extractCommentText(node: any): string {
+  // First, check if this node has a tooltip attribute (atomic interactiveSpan)
+  if (node.attrs?.tooltip) {
+    return node.attrs.tooltip.trim();
+  }
+
+  // Fall back to extracting from nested interactiveComment children
   let commentText = '';
   if (node.content) {
     node.content.forEach((child: any) => {
       if (child.type?.name === 'interactiveComment') {
-        // Extract text from the comment node
-        if (child.content) {
+        // For atomic comments, text is stored in the text attribute
+        if (child.attrs?.text) {
+          commentText += child.attrs.text;
+        } else if (child.content) {
+          // Fall back to extracting from content for non-atomic comments
           child.content.forEach((textNode: any) => {
             if (textNode.type?.name === 'text' || textNode.isText) {
               commentText += textNode.text || '';
@@ -103,7 +132,8 @@ function extractCommentText(node: any): string {
 }
 
 /**
- * Extract nested steps from a multistep or guided block
+ * Extract nested steps from a multistep or guided block.
+ * For atomic nodes, reads text from the 'text' attribute.
  */
 function extractNestedSteps(node: any): Array<{
   actionType: string;
@@ -127,14 +157,17 @@ function extractNestedSteps(node: any): Array<{
   }
 
   // For list items (multistep/guided), look for nested interactive spans
-  node.content.forEach((child: any) => {
-    // Check if this is an interactive span
+  // Track comment siblings that follow spans
+  let lastSpanIndex = -1;
+
+  node.content.forEach((child: any, index: number) => {
+    // Check if this is an interactive span (atomic node)
     if (child.type?.name === 'interactiveSpan' && child.attrs) {
       const actionType = child.attrs['data-targetaction'];
       const refTarget = child.attrs['data-reftarget'];
 
       // Skip if it's another multistep/guided container
-      if (actionType === 'multistep' || actionType === 'guided') {
+      if (actionType === ACTION_TYPES.MULTISTEP || actionType === ACTION_TYPES.GUIDED) {
         return;
       }
 
@@ -144,19 +177,34 @@ function extractNestedSteps(node: any): Array<{
           refTarget,
           targetValue: child.attrs['data-targetvalue'] || undefined,
           requirements: child.attrs['data-requirements'] || undefined,
-          interactiveComment: extractCommentText(child) || undefined,
-          textContent: extractTextContent(child) || undefined,
+          // For atomic spans, tooltip is in the tooltip attribute
+          interactiveComment: child.attrs.tooltip || undefined,
+          // For atomic nodes, text is in the text attribute
+          textContent: child.attrs.text || extractTextContent(child) || undefined,
         });
+        lastSpanIndex = steps.length - 1;
       }
+    }
+    // Check for comment siblings (legacy - for backward compatibility)
+    else if (child.type?.name === 'interactiveComment' && lastSpanIndex >= 0) {
+      // Only fill if not already set from tooltip attribute
+      if (!steps[lastSpanIndex].interactiveComment) {
+        const commentText = child.attrs?.text || extractCommentText({ content: [child] });
+        if (commentText && steps[lastSpanIndex]) {
+          steps[lastSpanIndex].interactiveComment = commentText;
+        }
+      }
+      lastSpanIndex = -1; // Reset after associating
     }
     // Also check paragraphs and other containers
     else if (child.content) {
+      let lastNestedSpanIndex = -1;
       child.content.forEach((grandChild: any) => {
         if (grandChild.type?.name === 'interactiveSpan' && grandChild.attrs) {
           const actionType = grandChild.attrs['data-targetaction'];
           const refTarget = grandChild.attrs['data-reftarget'];
 
-          if (actionType === 'multistep' || actionType === 'guided') {
+          if (actionType === ACTION_TYPES.MULTISTEP || actionType === ACTION_TYPES.GUIDED) {
             return;
           }
 
@@ -166,47 +214,30 @@ function extractNestedSteps(node: any): Array<{
               refTarget,
               targetValue: grandChild.attrs['data-targetvalue'] || undefined,
               requirements: grandChild.attrs['data-requirements'] || undefined,
-              interactiveComment: extractCommentText(grandChild) || undefined,
-              textContent: extractTextContent(grandChild) || undefined,
+              // For atomic spans, tooltip is in the tooltip attribute
+              interactiveComment: grandChild.attrs.tooltip || undefined,
+              // For atomic nodes, text is in the text attribute
+              textContent: grandChild.attrs.text || extractTextContent(grandChild) || undefined,
             });
+            lastNestedSpanIndex = steps.length - 1;
           }
+        }
+        // Check for comment siblings in nested content (legacy)
+        else if (grandChild.type?.name === 'interactiveComment' && lastNestedSpanIndex >= 0) {
+          // Only fill if not already set from tooltip attribute
+          if (!steps[lastNestedSpanIndex].interactiveComment) {
+            const commentText = grandChild.attrs?.text || extractCommentText({ content: [grandChild] });
+            if (commentText && steps[lastNestedSpanIndex]) {
+              steps[lastNestedSpanIndex].interactiveComment = commentText;
+            }
+          }
+          lastNestedSpanIndex = -1;
         }
       });
     }
   });
 
   return steps;
-}
-
-/**
- * Get the current section ID from the editor's cursor position
- * Returns the section ID if cursor is inside a sequenceSection, null otherwise
- */
-function getCurrentSectionId(editor: Editor | null): string | null {
-  if (!editor) {
-    return null;
-  }
-
-  const { state } = editor;
-  const { selection, doc } = state;
-  const pos = selection.from;
-
-  // Walk up the document tree from cursor position to find a sequenceSection
-  let sectionId: string | null = null;
-
-  // Use resolvedPos to find the path from cursor to root
-  const $pos = doc.resolve(pos);
-
-  // Check each ancestor node
-  for (let depth = $pos.depth; depth >= 0; depth--) {
-    const node = $pos.node(depth);
-    if (node.type.name === 'sequenceSection') {
-      sectionId = node.attrs.id || null;
-      break;
-    }
-  }
-
-  return sectionId;
 }
 
 /**
@@ -222,6 +253,14 @@ export const WysiwygEditor: React.FC = () => {
 
   // State for section creation form
   const [isSectionFormOpen, setIsSectionFormOpen] = useState(false);
+
+  // State for action creation form (shows action selector first)
+  const [isActionFormOpen, setIsActionFormOpen] = useState(false);
+
+  // State for re-recording nested steps
+  // Stores the original editState while re-recording, and the new steps after bundling
+  const [reRecordingEditState, setReRecordingEditState] = useState<typeof editState | null>(null);
+  const [reRecordedSteps, setReRecordedSteps] = useState<NestedStepData[] | null>(null);
 
   // Use ref to store openModal callback to break circular dependency
   const openModalRef = useRef<() => void>(() => {});
@@ -242,6 +281,7 @@ export const WysiwygEditor: React.FC = () => {
     closeCommentDialog,
     handleAddComment,
     handleInsertComment,
+    handleDeleteComment,
     commentDialogMode,
     commentDialogInitialText,
   } = useEditorModals({
@@ -283,7 +323,7 @@ export const WysiwygEditor: React.FC = () => {
   // Pause interception when any modal/form is open
   const fullScreenMode = useFullScreenMode({
     editor,
-    pauseInterception: isModalOpen || isSectionFormOpen,
+    pauseInterception: isModalOpen || isSectionFormOpen || isActionFormOpen,
   });
 
   // Toggle full screen mode
@@ -295,13 +335,78 @@ export const WysiwygEditor: React.FC = () => {
     }
   }, [fullScreenMode]);
 
-  // Handle "Action" button - enter single capture mode (exit after one step)
-  // Also detects current section context from cursor position
+  // Handle re-recording completion: when bundling-review is reached while re-recording,
+  // convert the bundled steps and re-open the edit modal
+  useEffect(() => {
+    if (fullScreenMode.state === 'bundling-review' && reRecordingEditState) {
+      debug('[WysiwygEditor] Re-recording finished, converting steps', {
+        bundledStepsCount: fullScreenMode.bundledSteps.length,
+      });
+
+      // Convert bundledSteps (PendingClickInfo[]) to NestedStepData[]
+      const newSteps: NestedStepData[] = fullScreenMode.bundledSteps.map((step) => ({
+        actionType: step.action || ACTION_TYPES.HIGHLIGHT,
+        refTarget: step.selector,
+        requirements: step.requirements,
+        interactiveComment: step.interactiveComment,
+        textContent: step.selector, // Use selector as display text
+      }));
+
+      // Store the new steps
+      setReRecordedSteps(newSteps);
+
+      // Clear bundled steps and exit full screen mode
+      fullScreenMode.clearSteps();
+      fullScreenMode.exitFullScreenMode();
+
+      // Restore the original editState to re-open the modal
+      // The editElementData will use reRecordedSteps
+      startEditing(
+        reRecordingEditState.type,
+        reRecordingEditState.attributes,
+        reRecordingEditState.pos,
+        reRecordingEditState.commentText
+      );
+
+      // Clear the re-recording state
+      setReRecordingEditState(null);
+
+      // Open the modal
+      openModal();
+    }
+  }, [
+    fullScreenMode.state,
+    fullScreenMode.bundledSteps,
+    reRecordingEditState,
+    fullScreenMode,
+    startEditing,
+    openModal,
+  ]);
+
+  // Handle "Action" button - open action creation form
+  // Shows action type selector first, then form with selector capture option
   const handleAddInteractive = useCallback(() => {
-    const sectionId = getCurrentSectionId(editor);
-    debug('[WysiwygEditor] Add interactive action clicked - entering single capture mode', { sectionId });
-    fullScreenMode.enterFullScreenMode({ singleCapture: true, initialSectionId: sectionId || undefined });
-  }, [fullScreenMode, editor]);
+    debug('[WysiwygEditor] Add interactive action clicked - opening action form');
+    stopEditing();
+    setIsActionFormOpen(true);
+  }, [stopEditing]);
+
+  // Close action form
+  const closeActionForm = useCallback(() => {
+    setIsActionFormOpen(false);
+    stopEditing();
+  }, [stopEditing]);
+
+  // Handle action form submission
+  const handleActionFormSubmit = useCallback(
+    (attributes: any) => {
+      debug('[WysiwygEditor] Action form submitted', { attributes });
+      // Form handles insertion via insertNewInteractiveElement
+      // Just close the form
+      closeActionForm();
+    },
+    [closeActionForm]
+  );
 
   // Handle "Section" button - open FormPanel for section creation
   const handleAddSequence = useCallback(() => {
@@ -400,15 +505,25 @@ export const WysiwygEditor: React.FC = () => {
       // Determine node type name based on element type
       const nodeTypeName = type === 'listItem' ? 'listItem' : 'interactiveSpan';
 
+      // Check if this is a multistep/guided block (need to exclude nested spans from description)
+      const actionType = attributes['data-targetaction'];
+      const isMultistepOrGuided =
+        type === 'listItem' && (actionType === ACTION_TYPES.MULTISTEP || actionType === ACTION_TYPES.GUIDED);
+
       doc.nodesBetween(pos, pos + 1, (node, nodePos) => {
         if (node.type.name === nodeTypeName) {
-          textContent = extractTextContent(node);
+          // For multistep/guided, exclude nested interactiveSpan content from description
+          textContent = extractTextContent(node, isMultistepOrGuided);
           commentText = extractCommentText(node);
 
           // Extract nested steps for multistep/guided blocks
-          const actionType = attributes['data-targetaction'];
-          if (type === 'listItem' && (actionType === 'multistep' || actionType === 'guided')) {
-            nestedSteps = extractNestedSteps(node);
+          // Use reRecordedSteps if available (from re-recording flow)
+          if (isMultistepOrGuided) {
+            if (reRecordedSteps && reRecordedSteps.length > 0) {
+              nestedSteps = reRecordedSteps;
+            } else {
+              nestedSteps = extractNestedSteps(node);
+            }
           }
 
           return false; // Stop iteration
@@ -439,214 +554,62 @@ export const WysiwygEditor: React.FC = () => {
       nestedSteps: nestedSteps.length > 0 ? nestedSteps : undefined,
       sectionId,
     };
-  }, [editState, editor]);
+  }, [editState, editor, reRecordedSteps]);
 
   // Handle save from FullScreenStepEditor (edit mode)
+  // Uses JSON-based approach: get document as JSON, update node, replace content
   const handleSaveEdit = useCallback(
     (data: EditSaveData) => {
       if (!editor || !editState) {
         return;
       }
 
-      debug('[WysiwygEditor] Saving edit', { data, editState });
+      debug('[WysiwygEditor] Saving edit (JSON approach)', { data, editState });
 
       const { pos, type } = editState;
 
       try {
-        // First, update the attributes
-        const attributes: Record<string, string | null> = {
-          'data-targetaction': data.actionType || null,
-          'data-reftarget': data.refTarget || null,
-          'data-targetvalue': data.targetValue || null,
-          'data-requirements': data.requirements || null,
-        };
-
-        // Remove null/undefined values
-        const cleanAttributes = Object.fromEntries(
-          Object.entries(attributes).filter(([_, v]) => v !== null && v !== undefined)
-        ) as Record<string, string>;
-
-        switch (type) {
-          case 'listItem':
-            editor.commands.updateAttributes('listItem', cleanAttributes);
-            break;
-          case 'span':
-            editor.commands.updateAttributes('interactiveSpan', cleanAttributes);
-            break;
-        }
-
-        debug('[WysiwygEditor] Attributes updated successfully');
-
-        // Now handle the interactive comment
-        // We need to find the node and update its content
+        // Use the JSON-based approach for cleaner updates
         if (type === 'span') {
-          const { state } = editor;
-          const { doc } = state;
+          // Build update data for span
+          const spanUpdate: SpanUpdateData = {
+            actionType: data.actionType,
+            refTarget: data.refTarget,
+            targetValue: data.targetValue,
+            requirements: data.requirements,
+            text: data.description?.trim() || '',
+            tooltip: data.interactiveComment?.trim() || '',
+          };
 
-          let targetNode: any = null;
-          let targetPos = pos;
-
-          doc.nodesBetween(pos, pos + 1, (node, nodePos) => {
-            if (node.type.name === 'interactiveSpan') {
-              targetNode = node;
-              targetPos = nodePos;
-              return false;
-            }
-            return true;
-          });
-
-          if (targetNode) {
-            // Check if there's an existing comment
-            let hasExistingComment = false;
-            let existingCommentPos = -1;
-            let existingCommentSize = 0;
-
-            targetNode.content.forEach((child: any, offset: number) => {
-              if (child.type.name === 'interactiveComment') {
-                hasExistingComment = true;
-                // Calculate the absolute position of the comment
-                existingCommentPos = targetPos + 1 + offset;
-                existingCommentSize = child.nodeSize;
-              }
-            });
-
-            if (data.interactiveComment && data.interactiveComment.trim()) {
-              // We want to add or update a comment
-              if (hasExistingComment && existingCommentPos !== -1) {
-                // Update existing comment - replace it
-                editor
-                  .chain()
-                  .focus()
-                  .setTextSelection({ from: existingCommentPos, to: existingCommentPos + existingCommentSize })
-                  .deleteSelection()
-                  .insertContent({
-                    type: 'interactiveComment',
-                    attrs: { class: CSS_CLASSES.INTERACTIVE_COMMENT },
-                    content: [{ type: 'text', text: data.interactiveComment.trim() }],
-                  })
-                  .run();
-                debug('[WysiwygEditor] Comment updated');
-              } else {
-                // Insert new comment at the end of the span content
-                const insertPos = targetPos + targetNode.nodeSize - 1; // Before closing tag
-                editor
-                  .chain()
-                  .focus()
-                  .setTextSelection(insertPos)
-                  .insertContent({
-                    type: 'interactiveComment',
-                    attrs: { class: CSS_CLASSES.INTERACTIVE_COMMENT },
-                    content: [{ type: 'text', text: data.interactiveComment.trim() }],
-                  })
-                  .run();
-                debug('[WysiwygEditor] Comment inserted');
-              }
-            } else if (hasExistingComment && existingCommentPos !== -1) {
-              // No comment provided but one exists - remove it
-              editor
-                .chain()
-                .focus()
-                .setTextSelection({ from: existingCommentPos, to: existingCommentPos + existingCommentSize })
-                .deleteSelection()
-                .run();
-              debug('[WysiwygEditor] Comment removed');
-            }
+          const success = applyJsonUpdate(editor, 'span', pos, spanUpdate);
+          if (success) {
+            debug('[WysiwygEditor] Span updated successfully via JSON');
+          } else {
+            logError('[WysiwygEditor] Failed to update span via JSON');
           }
-        }
+        } else if (type === 'listItem') {
+          // Build update data for list item
+          const listItemUpdate: ListItemUpdateData = {
+            actionType: data.actionType,
+            refTarget: data.refTarget,
+            targetValue: data.targetValue,
+            requirements: data.requirements,
+            description: data.description?.trim(),
+            nestedSteps: data.nestedSteps?.map((step) => ({
+              actionType: step.actionType,
+              refTarget: step.refTarget,
+              targetValue: step.targetValue,
+              requirements: step.requirements,
+              text: step.textContent || step.refTarget,
+              tooltip: step.interactiveComment,
+            })),
+          };
 
-        // Handle nested steps for multistep/guided blocks
-        if (type === 'listItem' && data.nestedSteps && data.nestedSteps.length > 0) {
-          const actionType = editState.attributes['data-targetaction'];
-          if (actionType === 'multistep' || actionType === 'guided') {
-            debug('[WysiwygEditor] Updating nested steps', { count: data.nestedSteps.length });
-
-            // Find the list item node
-            const { state } = editor;
-            const { doc } = state;
-
-            let listItemNode: any = null;
-            let listItemPos = pos;
-
-            doc.nodesBetween(pos, pos + 1, (node, nodePos) => {
-              if (node.type.name === 'listItem') {
-                listItemNode = node;
-                listItemPos = nodePos;
-                return false;
-              }
-              return true;
-            });
-
-            if (listItemNode) {
-              // Find all nested interactive spans and update them
-              let stepIndex = 0;
-              const updates: Array<{ pos: number; attrs: Record<string, string> }> = [];
-
-              // Traverse the list item content to find interactive spans
-              let offset = 1; // Start after the list item opening
-              listItemNode.content.forEach((child: any) => {
-                if (child.type.name === 'interactiveSpan') {
-                  const childActionType = child.attrs?.['data-targetaction'];
-                  if (childActionType !== 'multistep' && childActionType !== 'guided') {
-                    const nestedStep = data.nestedSteps![stepIndex];
-                    if (nestedStep) {
-                      updates.push({
-                        pos: listItemPos + offset,
-                        attrs: {
-                          'data-targetaction': nestedStep.actionType,
-                          'data-reftarget': nestedStep.refTarget,
-                          'data-requirements': nestedStep.requirements || '',
-                        },
-                      });
-                      stepIndex++;
-                    }
-                  }
-                } else if (child.content) {
-                  // Check nested content (e.g., paragraphs)
-                  let nestedOffset = 1;
-                  child.content.forEach((grandChild: any) => {
-                    if (grandChild.type.name === 'interactiveSpan') {
-                      const grandChildActionType = grandChild.attrs?.['data-targetaction'];
-                      if (grandChildActionType !== 'multistep' && grandChildActionType !== 'guided') {
-                        const nestedStep = data.nestedSteps![stepIndex];
-                        if (nestedStep) {
-                          updates.push({
-                            pos: listItemPos + offset + nestedOffset,
-                            attrs: {
-                              'data-targetaction': nestedStep.actionType,
-                              'data-reftarget': nestedStep.refTarget,
-                              'data-requirements': nestedStep.requirements || '',
-                            },
-                          });
-                          stepIndex++;
-                        }
-                      }
-                    }
-                    nestedOffset += grandChild.nodeSize;
-                  });
-                }
-                offset += child.nodeSize;
-              });
-
-              // Apply updates in reverse order to avoid position shifts
-              updates.reverse().forEach(({ pos: updatePos, attrs }) => {
-                // Find the node at this position and update it
-                doc.nodesBetween(updatePos, updatePos + 1, (node, nodePos) => {
-                  if (node.type.name === 'interactiveSpan' && nodePos === updatePos) {
-                    editor.commands.command(({ tr }) => {
-                      tr.setNodeMarkup(nodePos, undefined, {
-                        ...node.attrs,
-                        ...attrs,
-                      });
-                      return true;
-                    });
-                    return false;
-                  }
-                  return true;
-                });
-              });
-
-              debug('[WysiwygEditor] Nested steps updated', { updatedCount: updates.length });
-            }
+          const success = applyJsonUpdate(editor, 'listItem', pos, listItemUpdate);
+          if (success) {
+            debug('[WysiwygEditor] ListItem updated successfully via JSON');
+          } else {
+            logError('[WysiwygEditor] Failed to update listItem via JSON');
           }
         }
 
@@ -766,6 +729,8 @@ export const WysiwygEditor: React.FC = () => {
         logError('[WysiwygEditor] Failed to update element:', error);
       }
 
+      // Clear re-recorded steps and close modal
+      setReRecordedSteps(null);
       closeModal();
     },
     [editor, editState, closeModal]
@@ -820,18 +785,54 @@ export const WysiwygEditor: React.FC = () => {
       logError('[WysiwygEditor] Failed to delete element:', error);
     }
 
+    // Clear re-recorded steps and close modal
+    setReRecordedSteps(null);
     closeModal();
   }, [editor, editState, closeModal]);
 
-  // Determine if we should show the editor or the section form
+  // Handle re-recording for multistep/guided elements
+  // Stores the current editState, closes the modal, and enters bundling mode
+  // When bundling finishes, the new steps will replace the old ones in the modal
+  const handleStartReRecording = useCallback(() => {
+    if (!editState || !editElementData) {
+      return;
+    }
+
+    const actionType = editElementData.attributes?.['data-targetaction'];
+    debug('[WysiwygEditor] Starting re-recording for element', { editState, actionType });
+
+    // Store the current editState so we can come back to it
+    setReRecordingEditState(editState);
+    setReRecordedSteps(null);
+
+    // Close the modal
+    closeModal();
+
+    // Clear any previous bundled steps and enter bundling mode
+    fullScreenMode.clearSteps();
+
+    // We need to start bundling mode directly - this requires a "fake" first click
+    // For re-recording, we enter full screen mode and user will select multistep/guided again
+    fullScreenMode.enterFullScreenMode();
+  }, [editState, editElementData, closeModal, fullScreenMode]);
+
+  // Handle closing the modal - also clears re-recorded steps
+  const handleCloseModal = useCallback(() => {
+    setReRecordedSteps(null);
+    closeModal();
+  }, [closeModal]);
+
+  // Determine if we should show the editor or a form panel
   // Show when creating new section OR editing an existing section
   const isEditingSection = editState?.type === 'sequence';
   const showSectionForm = isSectionFormOpen || isEditingSection;
+  // Show action form when creating a new action (not editing)
+  const showActionForm = isActionFormOpen && !editState;
 
   return (
     <div className={`${styles.container} wysiwyg-editor-container`} data-testid={testIds.wysiwygEditor.container}>
-      {/* Editor wrapper - hidden when section form is open */}
-      <div className={`${sharedStyles.wrapper} ${showSectionForm ? styles.editorWrapperHidden : ''}`}>
+      {/* Editor wrapper - hidden when section or action form is open */}
+      <div className={`${sharedStyles.wrapper} ${showSectionForm || showActionForm ? styles.editorWrapperHidden : ''}`}>
         <Toolbar
           editor={editor}
           onAddInteractive={handleAddInteractive}
@@ -868,14 +869,31 @@ export const WysiwygEditor: React.FC = () => {
         />
       )}
 
+      {/* Action Form Panel - shown when creating a new action */}
+      {showActionForm && (
+        <FormPanel
+          onClose={closeActionForm}
+          editor={editor}
+          editState={null}
+          onFormSubmit={handleActionFormSubmit}
+          initialSelectedActionType={null}
+        />
+      )}
+
       {/* Step Editor Modal - for editing existing interactive elements */}
       <FullScreenStepEditor
         isOpen={isModalOpen && editState?.type !== 'comment' && editState?.type !== 'sequence'}
         editData={editElementData}
         onSaveEdit={handleSaveEdit}
         onDelete={handleDeleteElement}
-        onCancel={closeModal}
+        onCancel={handleCloseModal}
         existingSections={fullScreenMode.existingSections}
+        onStartReRecording={
+          editElementData?.attributes?.['data-targetaction'] === ACTION_TYPES.MULTISTEP ||
+          editElementData?.attributes?.['data-targetaction'] === ACTION_TYPES.GUIDED
+            ? handleStartReRecording
+            : undefined
+        }
       />
 
       <CommentDialog
@@ -883,6 +901,7 @@ export const WysiwygEditor: React.FC = () => {
         onClose={closeCommentDialog}
         editor={editor}
         onInsert={handleInsertComment}
+        onDelete={handleDeleteComment}
         initialText={commentDialogInitialText}
         mode={commentDialogMode}
       />

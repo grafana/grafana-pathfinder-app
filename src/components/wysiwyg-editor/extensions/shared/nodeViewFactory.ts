@@ -34,6 +34,8 @@ const ALLOWED_ATTRIBUTES = [
   'data-targetvalue',
   'data-requirements',
   'data-doit',
+  'data-text',
+  'data-tooltip',
   'role',
   'tabindex',
   'aria-label',
@@ -259,4 +261,68 @@ export function createSequenceSectionNodeView(attributes: Record<string, any>): 
     contentTag: 'div',
     contentDisplay: 'contents',
   });
+}
+
+/**
+ * Creates an atomic node view for interactive spans
+ * Atomic nodes cannot be edited directly - they render text from attributes.
+ * No contentDOM is returned since content cannot be edited.
+ *
+ * @param attributes - HTML attributes to apply to the DOM element
+ * @param text - The display text for the atomic node
+ * @param tooltip - Optional tooltip/comment text - shows Note badge if present
+ */
+export function createAtomicSpanNodeView(
+  attributes: Record<string, any>,
+  text = '',
+  tooltip = ''
+): { dom: HTMLElement } {
+  const dom = document.createElement('span');
+  applyAttributes(dom, attributes);
+
+  // Make the node non-editable to prevent cursor from entering
+  dom.setAttribute('contenteditable', 'false');
+
+  // Add action badge
+  const actionType = attributes[DATA_ATTRIBUTES.TARGET_ACTION];
+  const badge = createActionBadge(actionType);
+  dom.appendChild(badge);
+
+  // Add text span (read-only, from attribute)
+  const textSpan = document.createElement('span');
+  textSpan.className = 'interactive-text';
+  // SECURITY: Use textContent for safe text insertion (F3)
+  textSpan.textContent = text;
+  dom.appendChild(textSpan);
+
+  // Add Note badge if tooltip is present (comment is part of the step)
+  if (tooltip && tooltip.trim()) {
+    const noteBadge = createNoteBadge();
+    dom.appendChild(noteBadge);
+  }
+
+  // No contentDOM - atomic node cannot have editable content
+  return { dom };
+}
+
+/**
+ * Creates an atomic node view for interactive comments
+ * Comments display only a badge (Note) with no visible text.
+ * The text is stored in attributes and shown in the edit modal.
+ *
+ * @param attributes - HTML attributes to apply to the DOM element
+ */
+export function createAtomicCommentNodeView(attributes: Record<string, any>): { dom: HTMLElement } {
+  const dom = document.createElement('span');
+  applyAttributes(dom, attributes);
+
+  // Make the node non-editable to prevent cursor from entering
+  dom.setAttribute('contenteditable', 'false');
+
+  // Add note badge
+  const badge = createNoteBadge();
+  dom.appendChild(badge);
+
+  // No contentDOM - atomic node, no visible text (shown in modal only)
+  return { dom };
 }

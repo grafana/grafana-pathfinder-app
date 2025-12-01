@@ -22,6 +22,7 @@ import {
   HorizontalGroup,
   useStyles2,
   Select,
+  Icon,
 } from '@grafana/ui';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -29,6 +30,8 @@ import type { PendingClickInfo, SectionInfo, StepEditorData } from './hooks/useF
 import type { InteractiveElementType } from './types';
 import { COMMON_REQUIREMENTS, getActionIcon, ACTION_TYPES } from '../../constants/interactive-config';
 import { testIds } from '../testIds';
+import { useSelectorCapture } from './devtools/selector-capture.hook';
+import { DomPathTooltip } from '../DomPathTooltip/DomPathTooltip';
 
 // Re-export types for consumers
 export type { StepEditorData, SectionInfo };
@@ -225,6 +228,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
   nestedStepAction: css({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
+    flex: 1, // Take remaining space to push delete button to the right
+  }),
+  nestedStepDeleteButton: css({
+    marginLeft: 'auto',
+    flexShrink: 0,
   }),
   nestedStepFields: css({
     display: 'flex',
@@ -245,6 +253,27 @@ const getStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     wordBreak: 'break-all',
     marginBottom: theme.spacing(0.5),
+  }),
+  // Selector capture styles
+  selectorRow: css({
+    display: 'flex',
+    gap: theme.spacing(1),
+    alignItems: 'flex-start',
+  }),
+  captureButton: css({
+    flexShrink: 0,
+    minWidth: '40px',
+    height: '32px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(0.5),
+  }),
+  inputWrapper: css({
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
   }),
 });
 
@@ -281,6 +310,8 @@ export interface FullScreenStepEditorProps {
   bundledNestedSteps?: NestedStepData[];
   /** Called to confirm bundling and create the element (bundling review mode) */
   onConfirmBundling?: (data: StepEditorData, updatedSteps: NestedStepData[]) => void;
+  /** Called to start re-recording steps (edit mode for multistep/guided) */
+  onStartReRecording?: () => void;
 }
 
 /**
@@ -314,7 +345,16 @@ const ACTION_TYPE_OPTIONS: Array<SelectableValue<string>> = [
     value: ACTION_TYPES.MULTISTEP,
     description: 'Multiple actions combined (dropdown, modal)',
   },
-  { label: `🎯 Guided`, value: 'guided', description: 'Guided sequence with hover/highlight/action' },
+  {
+    label: `${getActionIcon(ACTION_TYPES.GUIDED)} Guided`,
+    value: ACTION_TYPES.GUIDED,
+    description: 'Guided sequence with hover/highlight/action',
+  },
+  {
+    label: `${getActionIcon(ACTION_TYPES.QUIZ)} Quiz`,
+    value: ACTION_TYPES.QUIZ,
+    description: 'Knowledge check question',
+  },
   {
     label: `${getActionIcon(ACTION_TYPES.NOOP)} Info Only`,
     value: ACTION_TYPES.NOOP,
@@ -323,7 +363,7 @@ const ACTION_TYPE_OPTIONS: Array<SelectableValue<string>> = [
 ];
 
 // Action types that trigger bundling mode
-const BUNDLING_ACTION_TYPES = [ACTION_TYPES.MULTISTEP, 'guided'] as const;
+const BUNDLING_ACTION_TYPES = [ACTION_TYPES.MULTISTEP, ACTION_TYPES.GUIDED] as const;
 
 export function FullScreenStepEditor({
   isOpen,
@@ -342,6 +382,7 @@ export function FullScreenStepEditor({
   bundlingActionType,
   bundledNestedSteps,
   onConfirmBundling,
+  onStartReRecording,
 }: FullScreenStepEditorProps) {
   const styles = useStyles2(getStyles);
   const [description, setDescription] = useState('');
@@ -357,12 +398,62 @@ export function FullScreenStepEditor({
   const [nestedSteps, setNestedSteps] = useState<NestedStepData[]>([]);
   const descriptionInputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Track if we're in "capture mode" where modal is hidden
+  const [isCaptureModeActive, setIsCaptureModeActive] = useState(false);
+
+  // Selector capture hook for edit mode - exclude pathfinder content, modals, and dev tools
+  const {
+    isActive: isSelectorCaptureActive,
+    startCapture: startSelectorCapture,
+    stopCapture: stopSelectorCapture,
+    domPath,
+    cursorPosition,
+  } = useSelectorCapture({
+    excludeSelectors: [
+      '[data-pathfinder-content]',
+      '[data-wysiwyg-form]',
+      '[data-devtools-panel]',
+      '[data-fullscreen-step-editor]',
+    ],
+    autoDisable: true,
+    onCapture: (selector: string) => {
+      setRefTarget(selector);
+      // Return to modal after capture
+      setIsCaptureModeActive(false);
+    },
+  });
+
+  // Handle starting capture - hide modal so user can click elements
+  const handleStartCapture = useCallback(() => {
+    setIsCaptureModeActive(true);
+    startSelectorCapture();
+  }, [startSelectorCapture]);
+
+  // Handle canceling capture (Escape key)
+  useEffect(() => {
+    if (!isCaptureModeActive) {
+      return;
+    }
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        stopSelectorCapture();
+        setIsCaptureModeActive(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isCaptureModeActive, stopSelectorCapture]);
+
   // Determine if we're in edit mode, create mode, or bundling review mode
   const isEditMode = !!editData && !pendingClick && !isBundlingReview;
   const isCreateMode = !!pendingClick && !editData && !isBundlingReview;
 
   // Check if we're editing a multistep/guided block with nested steps
-  const isMultistepOrGuided = selectedActionType === ACTION_TYPES.MULTISTEP || selectedActionType === 'guided';
+  const isMultistepOrGuided =
+    selectedActionType === ACTION_TYPES.MULTISTEP || selectedActionType === ACTION_TYPES.GUIDED;
   const hasNestedSteps = (isEditMode || isBundlingReview) && isMultistepOrGuided && nestedSteps.length > 0;
 
   // Check if current action type triggers bundling mode
@@ -464,6 +555,7 @@ export function FullScreenStepEditor({
     const data: StepEditorData = {
       description: description.trim(),
       actionType: selectedActionType,
+      selector: refTarget.trim() || undefined, // Include edited selector
       requirements: requirements.trim() || undefined,
       interactiveComment: interactiveComment.trim() || undefined,
     };
@@ -483,6 +575,7 @@ export function FullScreenStepEditor({
   }, [
     description,
     selectedActionType,
+    refTarget,
     requirements,
     interactiveComment,
     formFillValue,
@@ -530,6 +623,11 @@ export function FullScreenStepEditor({
   // Handler to update a specific nested step
   const updateNestedStep = useCallback((index: number, field: keyof NestedStepData, value: string) => {
     setNestedSteps((prev) => prev.map((step, i) => (i === index ? { ...step, [field]: value || undefined } : step)));
+  }, []);
+
+  // Handler to delete a specific nested step
+  const deleteNestedStep = useCallback((index: number) => {
+    setNestedSteps((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
   const handleSave = useCallback(() => {
@@ -631,6 +729,57 @@ export function FullScreenStepEditor({
     return null;
   }
 
+  // When capture mode is active, show only the capture UI (hide the modal)
+  if (isCaptureModeActive) {
+    return (
+      <>
+        {/* Capture mode indicator */}
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '12px 24px',
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            color: 'white',
+            borderRadius: '8px',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+          }}
+        >
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#3871dc',
+              animation: 'pulse-dot 1s ease-in-out infinite',
+            }}
+          />
+          <span>Click an element to capture its selector (Esc to cancel)</span>
+        </div>
+
+        {/* DOM Path Tooltip for selector capture mode */}
+        {isSelectorCaptureActive && domPath && cursorPosition && (
+          <DomPathTooltip domPath={domPath} position={cursorPosition} visible={true} />
+        )}
+
+        <style>
+          {`
+            @keyframes pulse-dot {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0.4; }
+            }
+          `}
+        </style>
+      </>
+    );
+  }
+
   const actionIcon = getActionIcon(selectedActionType || pendingClick?.action || '');
   // For multistep/guided and bundling review, we don't require refTarget on the parent
   const isValid =
@@ -641,9 +790,6 @@ export function FullScreenStepEditor({
       : description.trim().length > 0 && selectedActionType.length > 0;
   const hasWarnings = pendingClick?.warnings?.length ?? 0 > 0;
   const isNonUnique = pendingClick?.selectorInfo?.isUnique === false;
-
-  // Determine selector to display
-  const displaySelector = pendingClick?.selector || editData?.attributes['data-reftarget'] || refTarget;
 
   // Build modal title
   const modalTitle = isBundlingReview ? (
@@ -674,8 +820,8 @@ export function FullScreenStepEditor({
       data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.modal}
     >
       <div className={styles.content} data-fullscreen-step-editor>
-        {/* Detected/Current selector info - hidden in bundling review mode */}
-        {!isBundlingReview && (
+        {/* Detected/Current selector info - hidden in bundling review mode and for multistep/guided containers */}
+        {!isBundlingReview && !(isEditMode && isMultistepOrGuided) && (
           <div className={styles.selectorBox} data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.selectorDisplay}>
             <span className={styles.selectorLabel}>
               {isEditMode ? 'Target selector:' : 'Detected selector:'}
@@ -683,15 +829,25 @@ export function FullScreenStepEditor({
                 <Badge text={pendingClick.selectorInfo.contextStrategy} color="purple" className={styles.actionBadge} />
               )}
             </span>
-            {isEditMode ? (
-              <Input
-                value={refTarget}
-                onChange={(e) => setRefTarget(e.currentTarget.value)}
-                placeholder="CSS selector or element reference"
-              />
-            ) : (
-              <code className={styles.selectorCode}>{displaySelector}</code>
-            )}
+            <div className={styles.selectorRow}>
+              <Button
+                variant="secondary"
+                onClick={handleStartCapture}
+                tooltip="Click to select a different element from the page"
+                className={styles.captureButton}
+                aria-label="Capture selector"
+                data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.selectorCaptureButton}
+              >
+                <Icon name="crosshair" />
+              </Button>
+              <div className={styles.inputWrapper}>
+                <Input
+                  value={refTarget}
+                  onChange={(e) => setRefTarget(e.currentTarget.value)}
+                  placeholder="CSS selector or element reference"
+                />
+              </div>
+            </div>
           </div>
         )}
 
@@ -833,6 +989,17 @@ export function FullScreenStepEditor({
           <div className={styles.nestedStepsSection}>
             <div className={styles.nestedStepsHeader}>
               <h4 className={styles.nestedStepsTitle}>Steps ({nestedSteps.length})</h4>
+              {onStartReRecording && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="circle"
+                  onClick={onStartReRecording}
+                  tooltip="Clear existing steps and re-record from scratch"
+                >
+                  Re-record
+                </Button>
+              )}
             </div>
             <div className={styles.nestedStepsList}>
               {nestedSteps.map((step, index) => (
@@ -842,6 +1009,14 @@ export function FullScreenStepEditor({
                     <span className={styles.nestedStepAction}>
                       {getActionIcon(step.actionType)} {step.actionType}
                     </span>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      icon="trash-alt"
+                      onClick={() => deleteNestedStep(index)}
+                      tooltip="Delete this step"
+                      className={styles.nestedStepDeleteButton}
+                    />
                   </div>
                   <div className={styles.nestedStepSelector}>{step.refTarget}</div>
                   <div className={styles.nestedStepFields}>
@@ -856,7 +1031,7 @@ export function FullScreenStepEditor({
                       <Field label="Action" style={{ margin: 0 }}>
                         <Select
                           options={ACTION_TYPE_OPTIONS.filter(
-                            (opt) => opt.value !== ACTION_TYPES.MULTISTEP && opt.value !== 'guided'
+                            (opt) => opt.value !== ACTION_TYPES.MULTISTEP && opt.value !== ACTION_TYPES.GUIDED
                           )}
                           value={ACTION_TYPE_OPTIONS.find((opt) => opt.value === step.actionType) || null}
                           onChange={(opt) => updateNestedStep(index, 'actionType', opt?.value || '')}
@@ -927,7 +1102,7 @@ export function FullScreenStepEditor({
               tooltip="Create the multistep/guided element with these steps (Ctrl+Enter)"
               data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.saveButton}
             >
-              Create {bundlingActionType === 'guided' ? 'Guided' : 'Multistep'}
+              Create {bundlingActionType === ACTION_TYPES.GUIDED ? 'Guided' : 'Multistep'}
             </Button>
           ) : isEditMode ? (
             <Button

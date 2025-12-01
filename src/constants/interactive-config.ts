@@ -182,6 +182,8 @@ export const ACTION_TYPES = {
   NAVIGATE: 'navigate',
   HOVER: 'hover',
   MULTISTEP: 'multistep',
+  GUIDED: 'guided',
+  QUIZ: 'quiz',
   SEQUENCE: 'sequence',
   NOOP: 'noop',
 } as const;
@@ -197,6 +199,8 @@ export const ACTION_ICONS: Record<string, string> = {
   [ACTION_TYPES.HIGHLIGHT]: '✨',
   [ACTION_TYPES.HOVER]: '👆',
   [ACTION_TYPES.MULTISTEP]: '📋',
+  [ACTION_TYPES.GUIDED]: '🎯',
+  [ACTION_TYPES.QUIZ]: '❓',
   [ACTION_TYPES.NAVIGATE]: '🧭',
   [ACTION_TYPES.NOOP]: '📖',
   [ACTION_TYPES.SEQUENCE]: '📑',
@@ -212,10 +216,11 @@ export const ACTION_BADGES: Record<string, string> = {
   [ACTION_TYPES.HIGHLIGHT]: 'Show',
   [ACTION_TYPES.HOVER]: 'Hover',
   [ACTION_TYPES.MULTISTEP]: 'Multi',
+  [ACTION_TYPES.GUIDED]: 'Guide',
+  [ACTION_TYPES.QUIZ]: 'Quiz',
   [ACTION_TYPES.NAVIGATE]: 'Go',
   [ACTION_TYPES.NOOP]: 'Info',
   [ACTION_TYPES.SEQUENCE]: 'Section',
-  guided: 'Guide', // Not in ACTION_TYPES but used in editor
 } as const;
 
 /**

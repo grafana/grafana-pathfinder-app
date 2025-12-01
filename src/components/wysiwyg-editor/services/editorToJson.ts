@@ -217,6 +217,7 @@ function extractInteractiveFromParagraph(node: ProseMirrorNode, warnings: string
 
 /**
  * Convert an interactiveSpan node to JsonInteractiveBlock
+ * Handles both atomic nodes (text in attribute) and legacy non-atomic nodes (text in content)
  */
 function convertInteractiveSpan(node: ProseMirrorNode, warnings: string[]): JsonInteractiveBlock | null {
   const attrs = node.attrs;
@@ -249,10 +250,12 @@ function convertInteractiveSpan(node: ProseMirrorNode, warnings: string[]): Json
   // Cast to JsonInteractiveAction after checking for multistep/guided
   const action = actionAttr as JsonInteractiveAction;
 
-  const content = serializeInlineContent(node);
+  // For atomic nodes, read text from the 'text' attribute
+  // Fall back to serializing content for non-atomic nodes
+  const content = attrs.text || serializeInlineContent(node);
   const requirements = parseRequirements(attrs['data-requirements']);
 
-  // Extract tooltip from interactiveComment children
+  // Extract tooltip from interactiveComment children or from nested comment's text attribute
   const tooltip = extractTooltipFromNode(node);
 
   const block: JsonInteractiveBlock = {
@@ -714,8 +717,9 @@ function serializeListItemContent(node: ProseMirrorNode): string {
 }
 
 /**
- * Get plain text content from a node, excluding interactive comments.
+ * Get plain text content from a node, excluding interactive comments and interactive spans.
  * Interactive comments should become tooltips, not part of the content.
+ * Interactive spans contain step data (selectors), not description text.
  */
 function getTextContent(node: ProseMirrorNode): string {
   let text = '';
@@ -725,8 +729,15 @@ function getTextContent(node: ProseMirrorNode): string {
     if (parent && parent.type.name === 'interactiveComment') {
       return false; // Don't descend into comment content
     }
+    // Skip text inside interactiveSpan nodes (they contain step selectors, not descriptions)
+    if (parent && parent.type.name === 'interactiveSpan') {
+      return false; // Don't descend into interactive span content
+    }
     if (child.type.name === 'interactiveComment') {
       return false; // Skip the comment node entirely
+    }
+    if (child.type.name === 'interactiveSpan') {
+      return false; // Skip the interactive span node entirely
     }
     if (child.isText) {
       text += child.text;
@@ -740,15 +751,33 @@ function getTextContent(node: ProseMirrorNode): string {
 }
 
 /**
- * Extract tooltip text from interactiveComment children.
+ * Extract tooltip text from a node.
+ * Priority:
+ * 1. For atomic interactiveSpan nodes, check the 'tooltip' attribute first
+ * 2. Fall back to extracting from nested interactiveComment children
+ * Handles both atomic comments (text in attribute) and legacy comments (text in content).
  * If multiple comments exist, they are concatenated with newlines.
  */
 function extractTooltipFromNode(node: ProseMirrorNode): string | undefined {
+  // First check if this node has a tooltip attribute (atomic interactiveSpan)
+  if (node.attrs.tooltip && node.attrs.tooltip.trim()) {
+    return node.attrs.tooltip.trim();
+  }
+
+  // Fall back to looking for nested interactiveComment children
   const tooltips: string[] = [];
 
   node.descendants((child) => {
     if (child.type.name === 'interactiveComment') {
-      // Get raw text content from the comment (not using getTextContent which excludes comments)
+      // For atomic nodes, check the text attribute first
+      if (child.attrs.text) {
+        if (child.attrs.text.trim()) {
+          tooltips.push(child.attrs.text.trim());
+        }
+        return false; // Don't descend further
+      }
+
+      // Fall back to extracting from content for non-atomic nodes
       let commentText = '';
       child.descendants((textNode) => {
         if (textNode.isText) {

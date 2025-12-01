@@ -111,6 +111,8 @@ const getGrafanaIcon = (action: ActionDefinition): IconName | null => {
     mouse: 'draggabledots',
     'clipboard-list': 'list-ul',
     'folder-open': 'folder-open',
+    crosshair: 'crosshair',
+    'question-circle': 'question-circle',
   };
 
   const grafanaIconName = action.ui.grafanaIcon;

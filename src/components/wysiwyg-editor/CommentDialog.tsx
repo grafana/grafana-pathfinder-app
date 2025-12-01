@@ -10,6 +10,7 @@ interface CommentDialogProps {
   onClose: () => void;
   editor: Editor | null;
   onInsert: (commentText: string) => void;
+  onDelete?: () => void;
   initialText?: string;
   mode?: 'insert' | 'edit';
 }
@@ -32,6 +33,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1),
     justifyContent: 'flex-end',
   }),
+  deleteButton: css({
+    marginRight: 'auto',
+  }),
 });
 
 /**
@@ -45,6 +49,7 @@ export const CommentDialog: React.FC<CommentDialogProps> = ({
   onClose,
   editor,
   onInsert,
+  onDelete,
   initialText = '',
   mode = 'insert',
 }) => {
@@ -121,6 +126,16 @@ export const CommentDialog: React.FC<CommentDialogProps> = ({
             data-testid={testIds.wysiwygEditor.commentDialog.textArea}
           />
           <div className={styles.buttonGroup}>
+            {mode === 'edit' && onDelete && (
+              <Button
+                variant="destructive"
+                onClick={onDelete}
+                className={styles.deleteButton}
+                data-testid={testIds.wysiwygEditor.commentDialog.deleteButton}
+              >
+                Delete
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={handleCancel}

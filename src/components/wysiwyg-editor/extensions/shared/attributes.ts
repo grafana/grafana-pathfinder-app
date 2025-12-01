@@ -114,3 +114,70 @@ export function createDoItAttribute() {
     },
   };
 }
+
+/**
+ * Creates the 'text' attribute configuration for atomic nodes.
+ * Stores the display text as an attribute since atomic nodes cannot have content.
+ * Falls back to extracting text from element content when parsing HTML.
+ */
+export function createTextAttribute() {
+  return {
+    default: '',
+    parseHTML: (element: HTMLElement) => {
+      // First try data-text attribute, then fall back to text content
+      const dataText = element.getAttribute('data-text');
+      if (dataText) {
+        return dataText;
+      }
+      // Extract text content, excluding badge elements and comments
+      const clone = element.cloneNode(true) as HTMLElement;
+      const badges = clone.querySelectorAll('.action-badge');
+      badges.forEach((badge) => badge.remove());
+      const comments = clone.querySelectorAll('.interactive-comment');
+      comments.forEach((comment) => comment.remove());
+      return clone.textContent?.trim() || '';
+    },
+    renderHTML: (attributes: Record<string, any>) => {
+      // Store text in data-text attribute for persistence
+      if (!attributes.text) {
+        return {};
+      }
+      return { 'data-text': attributes.text };
+    },
+  };
+}
+
+/**
+ * Creates the 'tooltip' attribute configuration for atomic interactive nodes.
+ * Stores the tooltip/comment text as an attribute, keeping it part of the step.
+ * Falls back to extracting from nested interactive-comment elements when parsing HTML.
+ */
+export function createTooltipAttribute() {
+  return {
+    default: '',
+    parseHTML: (element: HTMLElement) => {
+      // First try data-tooltip attribute
+      const dataTooltip = element.getAttribute('data-tooltip');
+      if (dataTooltip) {
+        return dataTooltip;
+      }
+      // Fall back to extracting from nested interactive-comment elements
+      const commentEl = element.querySelector('.interactive-comment');
+      if (commentEl) {
+        // Clone and remove badges
+        const clone = commentEl.cloneNode(true) as HTMLElement;
+        const badges = clone.querySelectorAll('.action-badge');
+        badges.forEach((badge) => badge.remove());
+        return clone.textContent?.trim() || '';
+      }
+      return '';
+    },
+    renderHTML: (attributes: Record<string, any>) => {
+      // Store tooltip in data-tooltip attribute for persistence
+      if (!attributes.tooltip) {
+        return {};
+      }
+      return { 'data-tooltip': attributes.tooltip };
+    },
+  };
+}

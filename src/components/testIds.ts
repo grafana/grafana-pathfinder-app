@@ -121,6 +121,7 @@ export const testIds = {
       textArea: 'wysiwyg-comment-textarea',
       insertButton: 'wysiwyg-comment-insert',
       cancelButton: 'wysiwyg-comment-cancel',
+      deleteButton: 'wysiwyg-comment-delete',
     },
 
     // Export dialog
@@ -154,6 +155,7 @@ export const testIds = {
       stepEditor: {
         modal: 'wysiwyg-step-editor',
         selectorDisplay: 'wysiwyg-step-selector',
+        selectorCaptureButton: 'wysiwyg-step-selector-capture',
         actionTypeSelect: 'wysiwyg-step-action-type',
         descriptionInput: 'wysiwyg-step-description',
         requirementsInput: 'wysiwyg-step-requirements',

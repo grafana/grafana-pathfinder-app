@@ -4,9 +4,6 @@ import type { Editor } from '@tiptap/react';
 // Utils
 import { debug, error as logError } from '../utils/logger';
 
-// Security
-import { sanitizeDocumentationHTML } from '../../../security';
-
 // Constants
 import { EDITOR_TIMING } from '../../../constants/editor-config';
 
@@ -22,7 +19,8 @@ export interface UseEditorPersistenceReturn {
 }
 
 /**
- * Hook for managing editor auto-save functionality with debouncing
+ * Hook for managing editor auto-save functionality with debouncing.
+ * Saves editor content as TipTap's native JSON format for reliable round-trip persistence.
  */
 export function useEditorPersistence({ editor }: UseEditorPersistenceOptions): UseEditorPersistenceReturn {
   const [isSaving, setIsSaving] = useState(false);
@@ -43,18 +41,17 @@ export function useEditorPersistence({ editor }: UseEditorPersistenceOptions): U
       // Set new timeout (debounce)
       saveTimeoutRef.current = setTimeout(() => {
         try {
-          const html = editor.getHTML();
-
-          // SECURITY: sanitize before save (F1, F4)
-          const sanitized = sanitizeDocumentationHTML(html);
-          localStorage.setItem(StorageKeys.WYSIWYG_PREVIEW, sanitized);
+          // Use TipTap's native JSON format for reliable save/load
+          // This preserves atomic node attributes (like text) correctly
+          const json = editor.getJSON();
+          localStorage.setItem(StorageKeys.WYSIWYG_PREVIEW, JSON.stringify(json));
 
           setIsSaving(true);
 
           // Clear saving indicator after duration
           setTimeout(() => setIsSaving(false), EDITOR_TIMING.SAVING_INDICATOR_DURATION_MS);
 
-          debug('[useEditorPersistence] Auto-saved to localStorage');
+          debug('[useEditorPersistence] Auto-saved to localStorage (JSON format)');
         } catch (error) {
           logError('[useEditorPersistence] Failed to auto-save:', error);
         }
