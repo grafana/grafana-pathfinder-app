@@ -8,6 +8,7 @@ import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
+import { isGrafanaDocsUrl, isGitHubUrl } from './security';
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
@@ -56,9 +57,14 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const docsParam = urlParams.get('doc');
   const docsPage = docsParam ? findDocPage(docsParam) : null;
 
-  // Always warn if docsParam is present but no docsPage is found
+  // Warn if docsParam is present but no docsPage is found
+  // This can happen for malformed params or unsupported URL formats
   if (docsParam && !docsPage) {
-    console.error('No matching documentation found for param:', docsParam);
+    console.warn(
+      'Could not parse doc param:',
+      docsParam,
+      '- Supported formats: bundled:<id>, github.com/..., /docs/..., https://grafana.com/docs/...'
+    );
   }
 
   if (docsPage) {
@@ -73,6 +79,9 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       },
       { once: true }
     );
+
+    // Set source for analytics before opening
+    sidebarState.setPendingOpenSource('url_param');
 
     // open the sidebar
     attemptAutoOpen(200);
@@ -117,6 +126,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     // Auto-open immediately if not on onboarding flow
     if (!hasAutoOpened && !isOnboardingFlow) {
       sessionStorage.setItem(sessionKey, 'true');
+      sidebarState.setPendingOpenSource('auto_open');
       attemptAutoOpen(200);
     }
 
@@ -132,6 +142,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         // If we've left onboarding and haven't auto-opened yet, do it now
         if (!stillOnOnboarding && !alreadyOpened) {
           sessionStorage.setItem(sessionKey, 'true');
+          sidebarState.setPendingOpenSource('auto_open_after_onboarding');
           attemptAutoOpen(500); // Slightly longer delay after navigation
         }
       };
@@ -180,6 +191,15 @@ plugin.addComponent({
     useEffect(() => {
       sidebarState.setIsSidebarMounted(true);
 
+      // Track sidebar open via component mount
+      // consumePendingOpenSource() returns the source set before opening, or 'sidebar_toggle' as default
+      const openSource = sidebarState.consumePendingOpenSource();
+      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+        action: 'open',
+        source: openSource,
+        timestamp: Date.now(),
+      });
+
       // Fire custom event when sidebar component mounts
       const mountEvent = new CustomEvent('pathfinder-sidebar-mounted', {
         detail: {
@@ -190,6 +210,13 @@ plugin.addComponent({
 
       return () => {
         sidebarState.setIsSidebarMounted(false);
+
+        // Track sidebar close via component unmount
+        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+          action: 'close',
+          source: 'sidebar_toggle',
+          timestamp: Date.now(),
+        });
       };
     }, []);
 
@@ -206,12 +233,7 @@ plugin.addLink({
   description: 'Open Interactive learning',
   targets: [PluginExtensionPoints.CommandPalette],
   onClick: () => {
-    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-      action: 'open',
-      source: 'command_palette',
-      timestamp: Date.now(),
-    });
-
+    sidebarState.setPendingOpenSource('command_palette');
     sidebarState.openSidebar('Interactive learning', {
       origin: 'command_palette',
       timestamp: Date.now(),
@@ -224,12 +246,7 @@ plugin.addLink({
   description: 'Get help with Grafana',
   targets: [PluginExtensionPoints.CommandPalette],
   onClick: () => {
-    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-      action: 'open',
-      source: 'command_palette_help',
-      timestamp: Date.now(),
-    });
-
+    sidebarState.setPendingOpenSource('command_palette_help');
     sidebarState.openSidebar('Interactive learning', {
       origin: 'command_palette_help',
       timestamp: Date.now(),
@@ -242,12 +259,7 @@ plugin.addLink({
   description: 'Learn how to use Grafana',
   targets: [PluginExtensionPoints.CommandPalette],
   onClick: () => {
-    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-      action: 'open',
-      source: 'command_palette_learn',
-      timestamp: Date.now(),
-    });
-
+    sidebarState.setPendingOpenSource('command_palette_learn');
     sidebarState.openSidebar('Interactive learning', {
       origin: 'command_palette_learn',
       timestamp: Date.now(),
@@ -310,36 +322,29 @@ const findDocPage = function (param: string): DocPage | null {
       url = 'https://' + url;
     }
 
-    // Security check: must be a valid GitHub URL
-    // We import isAnyGitHubUrl dynamically to avoid circular dependencies if needed
-    // or just use basic validation here and let content-fetcher do the strict check
-    try {
-      const urlObj = new URL(url);
-      if (urlObj.hostname !== 'github.com') {
-        return null;
-      }
-
-      // Basic title extraction from last path segment
-      const parts = url.split('/');
-      const title = parts[parts.length - 1] || 'Interactive Tutorial';
-
-      return {
-        type: 'docs-page',
-        url: url,
-        title: title,
-      };
-    } catch (e) {
+    // SECURITY: Use validated GitHub URL check (prevents subdomain hijacking like github.com.evil.com)
+    if (!isGitHubUrl(url)) {
+      console.warn('Security: Rejected non-GitHub URL:', url);
       return null;
     }
+
+    // Basic title extraction from last path segment
+    const parts = url.split('/');
+    const title = parts[parts.length - 1] || 'Interactive Tutorial';
+
+    return {
+      type: 'docs-page',
+      url: url,
+      title: title,
+    };
   }
 
-  // Case 3: Existing Static Links logic (Grafana.com docs)
+  // Case 3: Check Static Links for curated content (Grafana.com docs)
   // Dynamically load all JSON files from static-links directory
   try {
     const staticLinksContext = (require as any).context('./bundled-interactives/static-links', false, /\.json$/);
     const allFilePaths = staticLinksContext.keys();
 
-    let foundPage: DocPage | null = null;
     for (const filePath of allFilePaths) {
       const staticData = staticLinksContext(filePath);
       if (staticData && staticData.rules && Array.isArray(staticData.rules)) {
@@ -349,16 +354,65 @@ const findDocPage = function (param: string): DocPage | null {
             (r.type === 'docs-page' || r.type === 'learning-journey') && r.url === `https://grafana.com${param}`
         );
         if (rule) {
-          foundPage = rule;
-          break;
+          return rule;
         }
       }
     }
-    return foundPage;
   } catch (error) {
     console.error('Failed to load static links:', error);
-    return null;
   }
+
+  // Case 4: Any Grafana docs URL (fallback for non-curated content)
+  // Supports paths like /docs/grafana/latest/... or full URLs like https://grafana.com/docs/...
+  // Also supports /tutorials/ and /learning-journeys/ paths
+  const isPathOnly =
+    param.startsWith('/docs/') || param.startsWith('/tutorials/') || param.includes('/learning-journeys/');
+  const isFullGrafanaUrl = param.startsWith('https://grafana.com/') || param.startsWith('https://docs.grafana.com/');
+
+  if (isPathOnly || isFullGrafanaUrl) {
+    // Construct full URL for validation
+    const fullUrl = param.startsWith('https://') ? param : `https://grafana.com${param}`;
+
+    // SECURITY: Validate using isGrafanaDocsUrl which checks:
+    // 1. Hostname is in ALLOWED_GRAFANA_DOCS_HOSTNAMES (prevents subdomain hijacking)
+    // 2. Protocol is https (prevents protocol injection)
+    // 3. Path contains valid docs paths (prevents arbitrary URL injection)
+    if (!isGrafanaDocsUrl(fullUrl)) {
+      console.warn('Security: Rejected non-Grafana docs URL:', fullUrl);
+      return null;
+    }
+
+    // Extract a human-readable title from the URL path
+    // e.g., /docs/loki/latest/configure/storage/ -> "Storage - Loki"
+    const pathSegments = param
+      .replace(/^https:\/\/[^/]+/, '')
+      .split('/')
+      .filter(Boolean);
+    const titleSegments = pathSegments.slice(1); // Remove 'docs'/'tutorials' prefix
+
+    // Find the product name (usually second segment after 'docs')
+    const product = titleSegments[0] || 'Grafana';
+
+    // Get the last meaningful segment as the page title
+    // Filter out version segments like 'latest', 'next', 'v10.0', etc.
+    const meaningfulSegments = titleSegments.filter(
+      (seg) => !['latest', 'next'].includes(seg) && !/^v?\d+(\.\d+)*$/.test(seg)
+    );
+    const pageTitle = meaningfulSegments[meaningfulSegments.length - 1] || 'Documentation';
+
+    // Format title: capitalize and replace hyphens with spaces
+    const formatTitle = (str: string): string => str.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+    const title = `${formatTitle(pageTitle)} - ${formatTitle(product)} Docs`;
+
+    return {
+      type: 'docs-page',
+      url: fullUrl,
+      title: title,
+    };
+  }
+
+  return null;
 };
 
 /**

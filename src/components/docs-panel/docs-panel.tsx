@@ -1407,7 +1407,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           getTranslatedTitle(tab.title)
                         )}
                       </span>
-                      {tab.id !== 'recommendations' && tab.id !== 'devtools' && (
+                      {tab.id !== 'recommendations' && (
                         <IconButton
                           name="times"
                           size="sm"
@@ -1520,7 +1520,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             getTranslatedTitle(tab.title)
                           )}
                         </span>
-                        {tab.id !== 'recommendations' && tab.id !== 'devtools' && (
+                        {tab.id !== 'recommendations' && (
                           <IconButton
                             name="times"
                             size="sm"
