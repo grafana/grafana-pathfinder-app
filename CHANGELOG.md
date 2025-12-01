@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.75 (2025-12-01)
+
+### Fixed
+
+- fixed issue with bundled getting started guide step
+
 ## 1.1.74 (2025-12-01)
 
 > ⚠️ **BREAKING CHANGE FOR CONTENT CREATORS**
