@@ -50,6 +50,8 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
       scrollFallbackTimeout: 500, // Fallback timeout for scroll operations
       commentExitAnimation: 200, // Comment box exit animation duration
       domSettlingDelay: 300, // Delay after scroll before highlight positioning for DOM stability
+      expansionAnimationMs: 300, // Single navigation section expansion animation duration
+      allExpansionAnimationMs: 500, // All navigation sections expansion animation duration
     },
     // Form filling timing (for typing simulation)
     formFill: {
@@ -102,6 +104,18 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
   positionTracking: {
     driftThreshold: 5, // Pixels of center drift before triggering position correction
     checkIntervalMs: 100, // Throttle interval for RAF-based drift checks
+    debounceMs: 150, // Debounce for position updates in NavigationManager
+  },
+  // Guided step interaction timing
+  guided: {
+    hoverDwell: 500, // Duration user must hover for completion (ms)
+    retryInterval: 2000, // Retry interval when element not found (ms)
+    connectivityCheckInterval: 100, // Interval to check element is still connected (ms)
+    stepTimeout: 30000, // Default timeout for guided step completion (ms)
+  },
+  // Modal detection configuration
+  modal: {
+    pollingIntervalMs: 500, // Fallback polling interval for modal detection
   },
 } as const;
 

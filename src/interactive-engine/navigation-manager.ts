@@ -227,7 +227,7 @@ export class NavigationManager {
           commentBox.style.setProperty('--comment-offset-x', `${offsetX}px`);
           commentBox.style.setProperty('--comment-offset-y', `${offsetY}px`);
         }
-      }, 150); // 150ms debounce for smooth updates
+      }, INTERACTIVE_CONFIG.positionTracking.debounceMs);
     };
 
     // 1. ResizeObserver - efficient browser-native API for element size changes
@@ -452,13 +452,13 @@ export class NavigationManager {
       scrollContainer.addEventListener('scrollend', scrollendHandler, { once: true });
       document.addEventListener('scrollend', docScrollendHandler, { once: true });
 
-      // Safety timeout: If no scroll detected after 200ms, assume no scroll needed
+      // Safety timeout: If no scroll detected, assume no scroll needed
       // This handles edge cases where scrollIntoView is a no-op
       timeoutId = setTimeout(() => {
         if (!scrollDetected && !resolved) {
           handleScrollEnd();
         }
-      }, 200);
+      }, INTERACTIVE_CONFIG.delays.navigation.scrollTimeout);
     });
   }
 
@@ -852,7 +852,7 @@ export class NavigationManager {
     const { locationService } = await import('@grafana/runtime');
     locationService.push(targetPath);
     // Wait for navigation to complete and React to update
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.navigation));
   }
 
   /**
@@ -890,7 +890,7 @@ export class NavigationManager {
       parentExpandButton.click();
 
       // Wait for expansion animation to complete
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.expansionAnimationMs));
 
       return true;
     } catch (error) {
@@ -1017,7 +1017,9 @@ export class NavigationManager {
 
       if (expandedAny) {
         // Wait for all expansion animations to complete
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) =>
+          setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.allExpansionAnimationMs)
+        );
       }
 
       return true;

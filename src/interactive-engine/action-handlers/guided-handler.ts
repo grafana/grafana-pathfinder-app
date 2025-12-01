@@ -4,6 +4,7 @@ import { InteractiveElementData } from '../../types/interactive.types';
 import { querySelectorAllEnhanced, findButtonByText, isElementVisible, resolveSelector } from '../../lib/dom';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { GuidedAction } from '../../types/interactive-actions.types';
+import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 
 type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped';
 
@@ -12,8 +13,18 @@ type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped';
  * System highlights elements and waits for user to complete actions naturally
  * Useful for hover-dependent UIs and teaching users actual interaction patterns
  */
+/**
+ * Represents an active event listener that needs cleanup
+ */
+interface ActiveListener {
+  target: EventTarget; // EventTarget instead of HTMLElement to support document listeners
+  type: string;
+  handler: EventListener;
+  options?: AddEventListenerOptions;
+}
+
 export class GuidedHandler {
-  private activeListeners: Array<{ element: HTMLElement; type: string; handler: EventListener }> = [];
+  private activeListeners: ActiveListener[] = [];
   private currentAbortController: AbortController | null = null;
   private completedSteps: number[] = []; // Track completed steps for progress display
 
@@ -61,7 +72,7 @@ export class GuidedHandler {
     action: GuidedAction,
     stepIndex: number,
     totalSteps: number,
-    timeout = 30000
+    timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout
   ): Promise<CompletionResult> {
     try {
       // Find target element using action-specific logic with retry
@@ -69,7 +80,7 @@ export class GuidedHandler {
         action.refTarget,
         action.targetAction,
         timeout,
-        2000 // Retry every 2 seconds
+        INTERACTIVE_CONFIG.guided.retryInterval
       );
 
       // Prepare element (scroll into view, open navigation if needed)
@@ -116,6 +127,8 @@ export class GuidedHandler {
       return result;
     } catch (error) {
       console.error(`Guided step ${stepIndex + 1} failed:`, error);
+      // Clean up abort controller and listeners on error to prevent resource leaks
+      this.cancel();
       return 'cancelled';
     }
   }
@@ -400,19 +413,30 @@ export class GuidedHandler {
     return new Promise<CompletionResult>((resolve) => {
       let hoverTimeout: NodeJS.Timeout | null = null;
       let isResolved = false; // Prevent double resolution
-      const dwellTime = 500; // User must hover for 500ms
+      const dwellTime = INTERACTIVE_CONFIG.guided.hoverDwell;
+
+      // Centralized cleanup function to clear timer and resolve
+      const cleanup = (result: CompletionResult) => {
+        if (isResolved) {
+          return;
+        }
+        isResolved = true;
+        if (hoverTimeout) {
+          clearTimeout(hoverTimeout);
+          hoverTimeout = null;
+        }
+        resolve(result);
+      };
 
       const startDwellTimer = () => {
         // Clear any existing timer first
         if (hoverTimeout) {
           clearTimeout(hoverTimeout);
+          hoverTimeout = null;
         }
         // Start dwell timer
         hoverTimeout = setTimeout(() => {
-          if (!isResolved) {
-            isResolved = true;
-            resolve('completed');
-          }
+          cleanup('completed');
         }, dwellTime);
       };
 
@@ -436,8 +460,8 @@ export class GuidedHandler {
 
       // Store for cleanup
       this.activeListeners.push(
-        { element, type: 'mouseenter', handler: handleMouseEnter },
-        { element, type: 'mouseleave', handler: handleMouseLeave }
+        { target: element, type: 'mouseenter', handler: handleMouseEnter },
+        { target: element, type: 'mouseleave', handler: handleMouseLeave }
       );
 
       // CRITICAL FIX: Check if mouse is already hovering over the element
@@ -446,15 +470,9 @@ export class GuidedHandler {
         startDwellTimer();
       }
 
-      // Handle cancellation
+      // Handle cancellation - uses centralized cleanup to ensure timer is cleared
       signal.addEventListener('abort', () => {
-        if (hoverTimeout) {
-          clearTimeout(hoverTimeout);
-        }
-        if (!isResolved) {
-          isResolved = true;
-          resolve('cancelled');
-        }
+        cleanup('cancelled');
       });
     });
   }
@@ -468,6 +486,7 @@ export class GuidedHandler {
    * - Capture phase listening to catch events before they can be stopped
    * - Better SVG/nested element handling
    * - Fixed listener cleanup bug (was attaching to document but cleaning up from document.body)
+   * - Centralized cleanup to prevent resource leaks
    */
   private async waitForClick(
     element: HTMLElement,
@@ -476,17 +495,27 @@ export class GuidedHandler {
   ): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
       let isResolved = false; // Prevent double resolution
+      let rectUpdateInterval: NodeJS.Timeout | null = null;
+
+      // Centralized cleanup function to clear interval and resolve
+      const cleanup = (result: CompletionResult) => {
+        if (isResolved) {
+          return;
+        }
+        isResolved = true;
+        if (rectUpdateInterval) {
+          clearInterval(rectUpdateInterval);
+          rectUpdateInterval = null;
+        }
+        resolve(result);
+      };
 
       // Periodically verify element is still connected
-      const rectUpdateInterval = setInterval(() => {
+      rectUpdateInterval = setInterval(() => {
         if (!element.isConnected) {
-          clearInterval(rectUpdateInterval);
-          if (!isResolved) {
-            isResolved = true;
-            resolve('cancelled');
-          }
+          cleanup('cancelled');
         }
-      }, 100);
+      }, INTERACTIVE_CONFIG.guided.connectivityCheckInterval);
 
       const handleClick = (event: Event) => {
         // Prevent double resolution
@@ -505,9 +534,7 @@ export class GuidedHandler {
         const isTargetOrChild = element === clickedElement || element.contains(clickedElement);
 
         if (isTargetOrChild) {
-          clearInterval(rectUpdateInterval);
-          isResolved = true;
-          resolve('completed');
+          cleanup('completed');
           return;
         }
 
@@ -525,15 +552,13 @@ export class GuidedHandler {
           clickY <= elementRect.bottom + padding;
 
         if (isWithinBounds) {
-          clearInterval(rectUpdateInterval);
           // Click is within bounds - programmatically trigger click on target element
           // This helps when an overlay or SVG is blocking the actual element
           // SAFETY: Only click if element is still connected to DOM (avoid "form not connected" errors)
           if (element.isConnected) {
             element.click();
           }
-          isResolved = true;
-          resolve('completed');
+          cleanup('completed');
         }
       };
 
@@ -542,20 +567,17 @@ export class GuidedHandler {
       // We still let the event continue (don't preventDefault) so the actual click happens
       document.addEventListener('click', handleClick, { capture: true });
 
-      // FIXED: Store document (not document.body) for proper cleanup
+      // Store for cleanup - using EventTarget type so no cast needed
       this.activeListeners.push({
-        element: document as any as HTMLElement, // Cast needed for type compatibility
+        target: document,
         type: 'click',
         handler: handleClick,
+        options: { capture: true },
       });
 
-      // Handle cancellation
+      // Handle cancellation - uses centralized cleanup to ensure interval is cleared
       signal.addEventListener('abort', () => {
-        clearInterval(rectUpdateInterval);
-        if (!isResolved) {
-          isResolved = true;
-          resolve('cancelled');
-        }
+        cleanup('cancelled');
       });
     });
   }
@@ -564,12 +586,12 @@ export class GuidedHandler {
    * Clean up all active event listeners
    */
   private cleanupListeners(): void {
-    this.activeListeners.forEach(({ element, type, handler }) => {
-      // Remove with capture: true for click events to match how they were added
-      if (type === 'click') {
-        element.removeEventListener(type, handler as EventListener, { capture: true });
+    this.activeListeners.forEach(({ target, type, handler, options }) => {
+      // Use stored options if available, otherwise no options
+      if (options) {
+        target.removeEventListener(type, handler, options);
       } else {
-        element.removeEventListener(type, handler as EventListener);
+        target.removeEventListener(type, handler);
       }
     });
     this.activeListeners = [];
