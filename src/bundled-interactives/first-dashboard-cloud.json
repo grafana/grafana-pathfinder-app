@@ -36,8 +36,8 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "a[href=\"/connections/datasources/grafana-testdata-datasource\"]",
-          "requirements": ["exists-reftarget"],
+          "reftarget": "a[href=\"/connections/datasources/grafana-testdata-datasource/\"]",
+          "requirements": [],
           "content": "Click on **TestData** to open the data source configuration.",
           "tooltip": "This will take you to the TestData data source page where you can add a new instance."
         },
