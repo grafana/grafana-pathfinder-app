@@ -258,6 +258,33 @@ export const DEFAULT_VALUES = {
 } as const;
 
 /**
+ * Step ID patterns for identifying step types
+ * Used to detect first steps in sections and step dependencies
+ */
+export const STEP_PATTERNS = {
+  FIRST_STEP_SUFFIXES: ['-step-1', '-multistep-1', '-guided-1'],
+  SECTION_PREFIX: 'section-',
+  STEP_INFIX: '-step-',
+} as const;
+
+/**
+ * Helper function to check if a stepId represents a first step
+ */
+export function isFirstStep(stepId: string | undefined): boolean {
+  if (!stepId) {
+    return false;
+  }
+
+  // Check for any first step suffix pattern
+  const matchesFirstStepPattern = STEP_PATTERNS.FIRST_STEP_SUFFIXES.some((suffix) => stepId.includes(suffix));
+
+  // Or it's a standalone step (not in a section and not numbered)
+  const isStandaloneStep = !stepId.includes(STEP_PATTERNS.SECTION_PREFIX) && !stepId.includes(STEP_PATTERNS.STEP_INFIX);
+
+  return matchesFirstStepPattern || isStandaloneStep;
+}
+
+/**
  * Common requirement options available across interactive elements
  */
 export const COMMON_REQUIREMENTS = [
