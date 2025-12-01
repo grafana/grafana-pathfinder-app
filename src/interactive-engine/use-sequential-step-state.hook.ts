@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { SequentialRequirementsManager, RequirementsState } from '../requirements-manager';
+import { RequirementsState, useRequirementsManager } from '../requirements-manager';
 
 /**
  * React 18 hook for subscribing to SequentialRequirementsManager state
@@ -12,7 +12,8 @@ import { SequentialRequirementsManager, RequirementsState } from '../requirement
  * @returns The current state of the step, or undefined if not registered
  */
 export function useSequentialStepState(stepId: string): RequirementsState | undefined {
-  const manager = SequentialRequirementsManager.getInstance();
+  // Use context-based hook instead of singleton for better testability
+  const { manager } = useRequirementsManager();
 
   return useSyncExternalStore(
     // Subscribe function - React will call this to set up the subscription
