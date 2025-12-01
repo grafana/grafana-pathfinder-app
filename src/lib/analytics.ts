@@ -6,6 +6,7 @@
  */
 
 import { reportInteraction } from '@grafana/runtime';
+import pluginJson from '../plugin.json';
 
 // ============================================================================
 // USER INTERACTION TYPES
@@ -15,12 +16,10 @@ export enum UserInteraction {
   // Core Panel Interactions
   DocsPanelInteraction = 'docs_panel_interaction',
   PanelScroll = 'panel_scroll',
-  DismissDocsPanel = 'dismiss_docs_panel',
 
   // Navigation & Tab Management
   CloseTabClick = 'close_tab_click',
   OpenExtraResource = 'open_extra_resource',
-  OpenExtraResourceTab = 'open_extra_resource_tab',
 
   // Content Interactions
   SummaryClick = 'summary_click',
@@ -28,10 +27,6 @@ export enum UserInteraction {
   StartLearningJourneyClick = 'start_learning_journey_click',
   OpenResourceClick = 'open_resource_click',
   MilestoneArrowInteractionClick = 'milestone_arrow_interaction_click',
-  OpenDocumentationButton = 'open_documentation_button',
-
-  // Recommendations
-  ClickSidepathRecommendation = 'click_sidepath_recommendation',
 
   // Media Interactions
   VideoPlayClick = 'video_play_click',
@@ -39,12 +34,10 @@ export enum UserInteraction {
 
   // Feedback Systems
   GeneralPluginFeedbackButton = 'general_plugin_feedback_button',
-  SpecificLearningJourneyFeedbackButton = 'specific_learning_journey_feedback_button',
   EnableRecommendationsBanner = 'enable_recommendations_banner',
 
-  // Interactive Elements (Future Features)
+  // Interactive Elements
   ShowMeButtonClick = 'show_me_button_click',
-  ClickedHighlightedContentButton = 'clicked_highlighted_content_button',
   DoItButtonClick = 'do_it_button_click',
   DoSectionButtonClick = 'do_section_button_click',
   StepAutoCompleted = 'step_auto_completed',
@@ -75,6 +68,9 @@ const createInteractionName = (type: UserInteraction): string => {
 /**
  * Reports a user interaction event to Grafana analytics (Rudder Stack)
  *
+ * All events automatically include:
+ * - plugin_version: The current plugin version from plugin.json
+ *
  * @param type - The type of interaction from UserInteraction enum
  * @param properties - Additional properties to attach to the event
  */
@@ -84,7 +80,14 @@ export function reportAppInteraction(
 ): void {
   try {
     const interactionName = createInteractionName(type);
-    reportInteraction(interactionName, properties);
+
+    // Add global attributes to all events
+    const enrichedProperties = {
+      plugin_version: pluginJson.info.version,
+      ...properties,
+    };
+
+    reportInteraction(interactionName, enrichedProperties);
   } catch (error) {
     console.warn('Analytics reporting failed:', error);
   }

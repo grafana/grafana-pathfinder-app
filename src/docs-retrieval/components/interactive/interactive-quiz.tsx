@@ -169,6 +169,41 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     [isCompleted, isRevealed, isEnabled, multiSelect]
   );
 
+  // Build analytics properties for quiz interactions
+  const buildQuizAnalyticsProps = useCallback(
+    (isCorrect: boolean, attemptCount: number, revealed = false) => {
+      // Get selected answer texts (truncate if too long)
+      const selectedAnswers = choices
+        .filter((c) => selectedIds.has(c.id))
+        .map((c) => c.text)
+        .join(', ');
+      const truncatedSelected = selectedAnswers.length > 200 ? selectedAnswers.slice(0, 200) + '...' : selectedAnswers;
+
+      // Get correct answer texts (truncate if too long)
+      const correctAnswers = choices
+        .filter((c) => c.correct)
+        .map((c) => c.text)
+        .join(', ');
+      const truncatedCorrect = correctAnswers.length > 200 ? correctAnswers.slice(0, 200) + '...' : correctAnswers;
+
+      // Truncate question if too long
+      const truncatedQuestion = question.length > 200 ? question.slice(0, 200) + '...' : question;
+
+      return {
+        step_id: stepId,
+        quiz_question: truncatedQuestion,
+        quiz_selected_answer: truncatedSelected,
+        quiz_correct_answer: truncatedCorrect,
+        quiz_is_correct: isCorrect,
+        quiz_attempts: attemptCount,
+        quiz_multi_select: multiSelect,
+        quiz_revealed: revealed,
+        quiz_total_choices: choices.length,
+      };
+    },
+    [choices, selectedIds, question, stepId, multiSelect]
+  );
+
   // Handle check answer
   const handleCheckAnswer = useCallback(() => {
     if (selectedIds.size === 0) {
@@ -185,12 +220,8 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       setIsLocallyCompleted(true);
       setShowHint(null);
 
-      // Report analytics
-      reportAppInteraction(UserInteraction.StepAutoCompleted, {
-        stepId,
-        quizAttempts: newAttempts,
-        correct: true,
-      });
+      // Report analytics with detailed quiz data
+      reportAppInteraction(UserInteraction.StepAutoCompleted, buildQuizAnalyticsProps(true, newAttempts));
 
       // Notify parent
       if (onStepComplete && stepId) {
@@ -213,13 +244,8 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         setIsRevealed(true);
         setIsLocallyCompleted(true);
 
-        // Report analytics
-        reportAppInteraction(UserInteraction.StepAutoCompleted, {
-          stepId,
-          quizAttempts: newAttempts,
-          correct: false,
-          revealed: true,
-        });
+        // Report analytics with detailed quiz data (revealed = true)
+        reportAppInteraction(UserInteraction.StepAutoCompleted, buildQuizAnalyticsProps(false, newAttempts, true));
 
         // Notify parent
         if (onStepComplete && stepId) {
@@ -227,7 +253,17 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         }
       }
     }
-  }, [selectedIds, attempts, checkAnswer, stepId, onStepComplete, completionMode, maxAttempts, choices]);
+  }, [
+    selectedIds,
+    attempts,
+    checkAnswer,
+    stepId,
+    onStepComplete,
+    completionMode,
+    maxAttempts,
+    choices,
+    buildQuizAnalyticsProps,
+  ]);
 
   // Handle skip
   const handleSkip = useCallback(() => {
