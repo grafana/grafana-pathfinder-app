@@ -25,38 +25,35 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   banner: css({
     position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
+    top: theme.spacing(1),
+    left: '50%',
+    transform: 'translateX(-50%)',
     zIndex: 99999,
-    padding: theme.spacing(1.5),
+    padding: `${theme.spacing(0.75)} ${theme.spacing(2)}`,
     backgroundColor: theme.colors.primary.main,
     color: theme.colors.primary.contrastText,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: theme.spacing(2),
+    gap: theme.spacing(1.5),
     boxShadow: theme.shadows.z3,
+    borderRadius: theme.shape.radius.default,
   }),
   bannerText: css({
-    fontSize: theme.typography.body.fontSize,
+    fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
   }),
   bannerIcon: css({
-    fontSize: '20px',
-    animation: 'pulse 1.5s ease-in-out infinite',
-    '@keyframes pulse': {
-      '0%, 100%': { opacity: 1, transform: 'scale(1)' },
-      '50%': { opacity: 0.7, transform: 'scale(1.1)' },
-    },
+    fontSize: '14px',
   }),
   stopButton: css({
-    padding: `${theme.spacing(0.5)} ${theme.spacing(2)}`,
+    padding: `${theme.spacing(0.25)} ${theme.spacing(1.5)}`,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     border: '1px solid rgba(255, 255, 255, 0.4)',
     borderRadius: theme.shape.radius.default,
     color: theme.colors.primary.contrastText,
     cursor: 'pointer',
+    fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     transition: 'all 0.15s ease',
 
@@ -208,6 +205,15 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
   // Handle click to select element
   const handleClick = useCallback(
     (event: MouseEvent) => {
+      const clickedElement = event.target as HTMLElement;
+      
+      // If clicking on picker banner or button, let the event through normally
+      // (but NOT the overlay - that should trigger a pick)
+      const pickerAttr = clickedElement.closest('[data-element-picker]')?.getAttribute('data-element-picker');
+      if (pickerAttr && pickerAttr !== 'overlay') {
+        return;
+      }
+
       const { clientX, clientY } = event;
 
       // Prevent ALL default behavior
