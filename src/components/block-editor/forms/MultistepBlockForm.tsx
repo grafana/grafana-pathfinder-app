@@ -113,15 +113,18 @@ export function MultistepBlockForm({
         />
       </Field>
       <div className={styles.requirementsContainer}>
-        {COMMON_REQUIREMENTS.slice(0, 6).map((req) => (
-          <Badge
-            key={req}
-            text={req}
-            color="blue"
-            className={styles.requirementChip}
-            onClick={() => handleRequirementClick(req)}
-          />
-        ))}
+        <span className={styles.requirementsLabel}>Quick add:</span>
+        <div className={styles.requirementsChips}>
+          {COMMON_REQUIREMENTS.slice(0, 6).map((req) => (
+            <Badge
+              key={req}
+              text={req}
+              color="blue"
+              className={styles.requirementChip}
+              onClick={() => handleRequirementClick(req)}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Objectives */}

@@ -172,8 +172,10 @@ export function BlockItem({
       <div className={styles.content}>
         <div className={styles.header}>
           <span className={styles.typeIcon}>{meta.icon}</span>
-          <Badge text={meta.name} color="blue" className={styles.typeBadge} />
-          {isInteractiveBlock(block.block) && <Badge text={block.block.action} color="purple" />}
+          <Badge text={meta.name} color="blue" />
+          {isInteractiveBlock(block.block) && (
+            <Badge text={block.block.action.charAt(0).toUpperCase() + block.block.action.slice(1)} color="purple" />
+          )}
           {isSectionBlock(block.block) && block.block.title && (
             <span style={{ marginLeft: '8px', fontWeight: 500 }}>{block.block.title}</span>
           )}

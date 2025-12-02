@@ -347,7 +347,12 @@ function NestedBlockItem({
         <div className={styles.header}>
           <span className={styles.icon}>{meta?.icon}</span>
           <Badge text={meta?.name ?? block.type} color="blue" />
-          {'action' in block && <Badge text={String(block.action)} color="purple" />}
+          {'action' in block && (
+            <Badge 
+              text={String(block.action).charAt(0).toUpperCase() + String(block.action).slice(1)} 
+              color="purple" 
+            />
+          )}
         </div>
         {preview && (
           <div className={styles.preview} title={preview}>

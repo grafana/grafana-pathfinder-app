@@ -283,10 +283,7 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
   }),
 
   typeBadge: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    color: theme.colors.text.secondary,
-    textTransform: 'capitalize',
+    // No color override - let Badge component control colors for vibrancy
   }),
 
   preview: css({
@@ -454,20 +451,44 @@ export const getBlockFormStyles = (theme: GrafanaTheme2) => ({
     marginTop: theme.spacing(0.5),
   }),
 
-  // Requirements chips
+  // Requirements quick-add chips
   requirementsContainer: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+    marginTop: theme.spacing(-0.5), // Pull up closer to the field above
+    marginBottom: theme.spacing(1),
+    padding: theme.spacing(1),
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: `0 0 ${theme.shape.radius.default} ${theme.shape.radius.default}`,
+    borderTop: 'none',
+  }),
+
+  requirementsLabel: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
+
+  requirementsChips: css({
     display: 'flex',
     flexWrap: 'wrap',
     gap: theme.spacing(0.5),
-    marginTop: theme.spacing(0.5),
   }),
 
   requirementChip: css({
     cursor: 'pointer',
     transition: 'all 0.15s ease',
+    opacity: 0.85,
 
     '&:hover': {
+      opacity: 1,
       transform: 'scale(1.05)',
+    },
+
+    '&::before': {
+      content: '"+"',
+      marginRight: '2px',
+      fontWeight: 600,
     },
   }),
 });
