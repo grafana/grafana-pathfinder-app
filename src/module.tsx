@@ -12,7 +12,12 @@ import { sidebarState } from 'global-state/sidebar';
 import { isGrafanaDocsUrl, isGitHubUrl } from './security';
 
 // Initialize Faro metrics (before translations to capture early errors)
-await initializeFaroMetrics();
+// Wrapped in try-catch to prevent plugin load failure if Faro has issues
+try {
+  await initializeFaroMetrics();
+} catch (e) {
+  console.error('[Faro] Error initializing frontend metrics:', e);
+}
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
