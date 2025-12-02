@@ -6,7 +6,8 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Portal, useStyles2 } from '@grafana/ui';
+import { createPortal } from 'react-dom';
+import { useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { generateSelectorFromEvent } from '../wysiwyg-editor/devtools/selector-generator.util';
@@ -282,8 +283,9 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
     };
   };
 
-  return (
-    <Portal>
+  // Render directly to document.body to bypass any modal overlays
+  return createPortal(
+    <>
       {/* Invisible overlay to capture all interactions */}
       <div className={styles.overlay} data-element-picker="overlay" />
 
@@ -317,7 +319,8 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
           <div className={styles.tooltipHint}>Click to select this element</div>
         </div>
       )}
-    </Portal>
+    </>,
+    document.body
   );
 }
 

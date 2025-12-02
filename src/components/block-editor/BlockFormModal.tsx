@@ -13,15 +13,26 @@ import { BLOCK_TYPE_METADATA } from './constants';
 import { ElementPicker } from './ElementPicker';
 import type { BlockType, JsonBlock, BlockFormProps } from './types';
 
-// Global style to hide ALL modal overlays when picker is active
+// Global style to hide modal and its overlay when picker is active
 const PICKER_ACTIVE_STYLE_ID = 'block-editor-picker-active-style';
 const PICKER_ACTIVE_CSS = `
-  .modal-backdrop, 
+  /* Make ALL modal overlays transparent - use every possible selector */
+  .modal-backdrop,
   [class*="modal-backdrop"],
   .ReactModal__Overlay,
-  [class*="ReactModal__Overlay"] {
-    visibility: hidden !important;
-    pointer-events: none !important;
+  [class*="ReactModal__Overlay"],
+  [class*="Overlay"],
+  [class*="overlay"],
+  div[style*="position: fixed"][style*="inset: 0"],
+  div[style*="position: fixed"][style*="z-index"] {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
+  
+  /* Also target Grafana's portal container children that look like overlays */
+  #grafana-portal-container > div {
+    background: transparent !important;
+    background-color: transparent !important;
   }
 `;
 
@@ -92,10 +103,12 @@ export function BlockFormModal({ blockType, initialData, onSubmit, onCancel, isE
   // Store a callback to receive the selected element
   const pickerCallbackRef = useRef<((selector: string) => void) | null>(null);
 
-  // Inject/remove global style to hide modal overlays when picker is active
+  // Hide modal overlays when picker is active using both CSS and direct DOM manipulation
   useEffect(() => {
+    const originalStyles: Array<{ el: HTMLElement; bg: string }> = [];
+
     if (isPickerActive) {
-      // Add style to hide modal overlays
+      // Add CSS as fallback
       let styleEl = document.getElementById(PICKER_ACTIVE_STYLE_ID);
       if (!styleEl) {
         styleEl = document.createElement('style');
@@ -103,20 +116,37 @@ export function BlockFormModal({ blockType, initialData, onSubmit, onCancel, isE
         styleEl.textContent = PICKER_ACTIVE_CSS;
         document.head.appendChild(styleEl);
       }
+
+      // Also directly modify any overlay elements we can find
+      // Look for fixed position elements with grey/dark backgrounds
+      const portalContainer = document.getElementById('grafana-portal-container');
+      if (portalContainer) {
+        portalContainer.querySelectorAll('div').forEach((el) => {
+          const style = window.getComputedStyle(el);
+          if (style.position === 'fixed' && style.backgroundColor !== 'transparent' && style.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+            originalStyles.push({ el, bg: el.style.backgroundColor });
+            el.style.backgroundColor = 'transparent';
+          }
+        });
+      }
     } else {
-      // Remove the style
+      // Remove the CSS style
       const styleEl = document.getElementById(PICKER_ACTIVE_STYLE_ID);
       if (styleEl) {
         styleEl.remove();
       }
     }
 
-    // Cleanup on unmount
+    // Cleanup
     return () => {
       const styleEl = document.getElementById(PICKER_ACTIVE_STYLE_ID);
       if (styleEl) {
         styleEl.remove();
       }
+      // Restore original backgrounds
+      originalStyles.forEach(({ el, bg }) => {
+        el.style.backgroundColor = bg;
+      });
     };
   }, [isPickerActive]);
 
