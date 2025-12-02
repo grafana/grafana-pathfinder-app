@@ -88,14 +88,12 @@ export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
         return;
       }
 
-      const tutorialName = extractTitleFromUrl(cleanedUrl);
+      const tutorialName = extractTitleFromUrl(url);
 
-      // Open in new tab with tutorial name as title
-      onOpenDocsPage(cleanedUrl, tutorialName);
+      onOpenDocsPage(url, tutorialName);
       setTestSuccess(true);
       setTestError(null);
 
-      // Reset success state after 2 seconds
       setTimeout(() => setTestSuccess(false), 2000);
     },
     [testUrl, onOpenDocsPage]
@@ -109,7 +107,7 @@ export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
       <Input
         className={styles.selectorInput}
         value={testUrl}
-        id="urlTesterInput"
+        id="url"
         onChange={(e) => {
           setTestUrl(e.currentTarget.value);
           setTestError(null);
@@ -137,7 +135,8 @@ export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
       {testSuccess && (
         <div className={`${styles.resultBox} ${styles.resultSuccess}`}>
           <p className={styles.resultText}>
-            <Icon name="check" /> Tutorial opened in new tab!
+            <Icon name="check" />
+            Opened in new tab
           </p>
         </div>
       )}
