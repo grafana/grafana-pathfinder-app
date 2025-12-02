@@ -11,6 +11,8 @@ import { useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { generateSelectorFromEvent } from '../wysiwyg-editor/devtools/selector-generator.util';
+import { generateFullDomPath } from '../wysiwyg-editor/devtools/element-inspector.hook';
+import { DomPathTooltip } from '../DomPathTooltip';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   overlay: css({
@@ -61,28 +63,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
       backgroundColor: 'rgba(255, 255, 255, 0.3)',
     },
   }),
-  tooltip: css({
-    position: 'fixed',
-    zIndex: 100000,
-    padding: theme.spacing(1),
-    backgroundColor: theme.colors.background.primary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: theme.shape.radius.default,
-    boxShadow: theme.shadows.z2,
-    maxWidth: '400px',
-    pointerEvents: 'none',
-  }),
-  tooltipPath: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontFamily: theme.typography.fontFamilyMonospace,
-    color: theme.colors.text.primary,
-    wordBreak: 'break-all',
-  }),
-  tooltipHint: css({
-    fontSize: '11px',
-    color: theme.colors.text.secondary,
-    marginTop: theme.spacing(0.5),
-  }),
   highlight: css({
     position: 'fixed',
     zIndex: 99997,
@@ -98,36 +78,6 @@ export interface ElementPickerProps {
   onSelect: (selector: string) => void;
   /** Called when picker is cancelled */
   onCancel: () => void;
-}
-
-/**
- * Generate a readable DOM path for display
- */
-function generateDomPath(element: HTMLElement): string {
-  const parts: string[] = [];
-  let current: HTMLElement | null = element;
-
-  while (current && current !== document.body && parts.length < 6) {
-    let part = current.tagName.toLowerCase();
-
-    if (current.id) {
-      part += `#${current.id}`;
-    } else if (current.className && typeof current.className === 'string') {
-      const classes = current.className.split(' ').filter((c) => c && !c.includes('css-')).slice(0, 2);
-      if (classes.length > 0) {
-        part += `.${classes.join('.')}`;
-      }
-    }
-
-    parts.unshift(part);
-    current = current.parentElement;
-  }
-
-  if (current && current !== document.body) {
-    parts.unshift('...');
-  }
-
-  return parts.join(' > ');
 }
 
 /**
@@ -272,22 +222,8 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
     };
   }, [handleClick, handleMouseMove, handleKeyDown]);
 
-  const domPath = hoveredElement ? generateDomPath(hoveredElement) : null;
-
-  // Calculate tooltip position (avoid going off-screen)
-  const getTooltipStyle = (): React.CSSProperties => {
-    if (!cursorPosition) {
-      return { display: 'none' };
-    }
-
-    const x = cursorPosition.x + 15;
-    const y = cursorPosition.y + 15;
-
-    return {
-      left: Math.min(x, window.innerWidth - 420),
-      top: Math.min(y, window.innerHeight - 80),
-    };
-  };
+  // Generate full DOM path with data-testid highlighting
+  const domPath = hoveredElement ? generateFullDomPath(hoveredElement) : '';
 
   // Render directly to document.body to bypass any modal overlays
   return createPortal(
@@ -318,12 +254,13 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
         </button>
       </div>
 
-      {/* DOM path tooltip */}
-      {domPath && cursorPosition && (
-        <div className={styles.tooltip} data-element-picker="tooltip" style={getTooltipStyle()}>
-          <div className={styles.tooltipPath}>{domPath}</div>
-          <div className={styles.tooltipHint}>Click to select this element</div>
-        </div>
+      {/* DOM path tooltip - uses existing component with testid highlighting */}
+      {cursorPosition && (
+        <DomPathTooltip
+          domPath={domPath}
+          position={cursorPosition}
+          visible={!!domPath}
+        />
       )}
     </>,
     document.body
