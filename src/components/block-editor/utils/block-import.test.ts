@@ -2,11 +2,7 @@
  * Tests for block import utilities
  */
 
-import {
-  validateFile,
-  parseAndValidateGuide,
-  MAX_FILE_SIZE,
-} from './block-import';
+import { validateFile, parseAndValidateGuide, MAX_FILE_SIZE } from './block-import';
 
 describe('validateFile', () => {
   const createMockFile = (name: string, size: number, type = 'application/json'): File => {
@@ -617,4 +613,3 @@ describe('parseAndValidateGuide', () => {
     });
   });
 });
-

@@ -174,7 +174,11 @@ function validateBlock(block: JsonBlock, index: number): string[] {
       } else {
         // Recursively validate nested blocks
         block.blocks.forEach((nestedBlock, nestedIndex) => {
-          errors.push(...validateBlock(nestedBlock, nestedIndex).map((e) => e.replace(`Block ${nestedIndex + 1}`, `${prefix} > Block ${nestedIndex + 1}`)));
+          errors.push(
+            ...validateBlock(nestedBlock, nestedIndex).map((e) =>
+              e.replace(`Block ${nestedIndex + 1}`, `${prefix} > Block ${nestedIndex + 1}`)
+            )
+          );
         });
       }
       break;
@@ -355,4 +359,3 @@ export async function importGuideFromFile(file: File): Promise<ImportValidationR
   // Parse and validate JSON
   return parseAndValidateGuide(content);
 }
-

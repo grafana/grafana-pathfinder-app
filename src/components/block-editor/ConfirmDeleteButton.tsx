@@ -133,4 +133,3 @@ export function ConfirmDeleteButton({
 
 // Add display name for debugging
 ConfirmDeleteButton.displayName = 'ConfirmDeleteButton';
-
