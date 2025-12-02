@@ -132,15 +132,21 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       onDownload(guide);
     } else {
       const json = JSON.stringify(guide, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
+      const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${guide.id}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+
+      // Open in new window/tab
+      const newWindow = window.open(url, '_blank');
+
+      // Revoke URL after window loads to free memory
+      if (newWindow) {
+        newWindow.onload = () => {
+          URL.revokeObjectURL(url);
+        };
+      } else {
+        // If popup was blocked, revoke immediately
+        URL.revokeObjectURL(url);
+      }
     }
   }, [editor, onDownload]);
 
