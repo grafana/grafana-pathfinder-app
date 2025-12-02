@@ -49,6 +49,10 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         editor.markSaved(); // Don't mark as dirty after loading
       }
     },
+    onSave: () => {
+      // Mark editor as saved after successful auto-save
+      editor.markSaved();
+    },
   });
 
   // Load from localStorage on mount (if no initialGuide provided)

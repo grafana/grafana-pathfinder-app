@@ -21,6 +21,8 @@ export interface UseBlockPersistenceOptions {
   guide: JsonGuide;
   /** Called when guide should be loaded from storage */
   onLoad?: (guide: JsonGuide) => void;
+  /** Called after a successful save */
+  onSave?: () => void;
   /** Whether auto-save is enabled */
   autoSave?: boolean;
   /** Custom storage key */
@@ -60,6 +62,7 @@ const STORAGE_VERSION = 1;
 export function useBlockPersistence({
   guide,
   onLoad,
+  onSave,
   autoSave = true,
   storageKey = BLOCK_EDITOR_STORAGE_KEY,
 }: UseBlockPersistenceOptions): UseBlockPersistenceReturn {
@@ -76,10 +79,12 @@ export function useBlockPersistence({
       };
       localStorage.setItem(storageKey, JSON.stringify(stored));
       lastGuideRef.current = JSON.stringify(guide);
+      // Notify that save was successful
+      onSave?.();
     } catch (e) {
       console.error('Failed to save guide to localStorage:', e);
     }
-  }, [guide, storageKey]);
+  }, [guide, storageKey, onSave]);
 
   // Load guide from localStorage
   const load = useCallback((): JsonGuide | null => {

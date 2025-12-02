@@ -666,7 +666,7 @@ export function BlockList({
   return (
     <div className={styles.list}>
       {/* Insert zone at the top */}
-      {/* When dragging: show drop indicator. When not dragging: show add block on hover */}
+      {/* When dragging: show drop indicator. When not dragging: show add block on hover (as overlay) */}
       {!(draggedBlockIndex === 0) && (
         isDragging ? (
           <div
@@ -699,11 +699,13 @@ export function BlockList({
           </div>
         ) : (
           <div
-            className={`${styles.insertZone} ${hoveredInsertIndex === 0 ? styles.insertZoneActive : ''}`}
+            className={styles.insertZone}
             onMouseEnter={() => setHoveredInsertIndex(0)}
             onMouseLeave={() => setHoveredInsertIndex(null)}
           >
-            <BlockPalette onSelect={onInsertBlock} insertAtIndex={0} compact />
+            <div className={`${styles.insertZoneButton} ${hoveredInsertIndex === 0 ? styles.insertZoneButtonVisible : ''}`}>
+              <BlockPalette onSelect={onInsertBlock} insertAtIndex={0} compact />
+            </div>
           </div>
         )
       )}
@@ -873,7 +875,7 @@ export function BlockList({
             )}
 
             {/* Insert zone after each block */}
-            {/* When dragging: show drop indicator. When not dragging: show add block on hover */}
+            {/* When dragging: show drop indicator. When not dragging: show add block on hover (as overlay) */}
             {!isRootDropZoneRedundant(index + 1) && (
               isDragging ? (
                 <div
@@ -906,11 +908,13 @@ export function BlockList({
                 </div>
               ) : (
                 <div
-                  className={`${styles.insertZone} ${hoveredInsertIndex === index + 1 ? styles.insertZoneActive : ''}`}
+                  className={styles.insertZone}
                   onMouseEnter={() => setHoveredInsertIndex(index + 1)}
                   onMouseLeave={() => setHoveredInsertIndex(null)}
                 >
-                  <BlockPalette onSelect={onInsertBlock} insertAtIndex={index + 1} compact />
+                  <div className={`${styles.insertZoneButton} ${hoveredInsertIndex === index + 1 ? styles.insertZoneButtonVisible : ''}`}>
+                    <BlockPalette onSelect={onInsertBlock} insertAtIndex={index + 1} compact />
+                  </div>
                 </div>
               )
             )}

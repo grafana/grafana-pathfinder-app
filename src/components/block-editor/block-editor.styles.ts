@@ -196,39 +196,30 @@ export const getBlockListStyles = (theme: GrafanaTheme2) => ({
   }),
 
   insertZone: css({
-    height: '12px', // Small clickable area
-    transition: 'all 0.15s ease',
+    height: '8px', // Fixed small height - never changes
     position: 'relative',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    
-    // The actual content is hidden until hover
-    '& > *': {
-      opacity: 0,
-      transition: 'opacity 0.15s ease',
-    },
-
-    '&:hover': {
-      height: 'auto',
-      minHeight: '44px',
-      padding: theme.spacing(0.5),
-      
-      '& > *': {
-        opacity: 1,
-      },
-    },
+    // No padding or size changes on hover - prevents jitter
   }),
 
+  insertZoneButton: css({
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    opacity: 0,
+    transition: 'opacity 0.15s ease',
+    zIndex: 10,
+    pointerEvents: 'none',
+  }),
+
+  insertZoneButtonVisible: css({
+    opacity: 1,
+    pointerEvents: 'auto',
+  }),
+
+  // Active state during drag operations
   insertZoneActive: css({
-    height: 'auto !important',
-    minHeight: '44px',
-    padding: theme.spacing(0.5),
-    
-    '& > *': {
-      opacity: '1 !important',
-    },
-    pointerEvents: 'auto', // Enable pointer events when visible
+    // Keep height fixed even during drag
   }),
 });
 
