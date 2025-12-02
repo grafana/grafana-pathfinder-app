@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useEditor, type Editor } from '@tiptap/react';
+import { useEditor, type Editor, type JSONContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import { useStyles2 } from '@grafana/ui';
@@ -31,6 +31,36 @@ import { getEditorStyles } from '../editor.styles';
 
 // Types
 import type { InteractiveElementType } from '../types';
+
+/**
+ * Parse stored content, detecting JSON vs HTML format.
+ * Supports migration from old HTML format to new TipTap JSON format.
+ * @param stored - Raw string from localStorage
+ * @returns TipTap JSONContent or sanitized HTML string
+ */
+function parseStoredContent(stored: string): JSONContent | string {
+  const trimmed = stored.trim();
+
+  // Detect JSON format (TipTap native)
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      // Verify it looks like TipTap JSON (has type: 'doc')
+      if (parsed.type === 'doc' && Array.isArray(parsed.content)) {
+        debug('[useEditorInitialization] Detected TipTap JSON format');
+        return parsed as JSONContent;
+      }
+    } catch {
+      // Fall through to HTML handling
+      debug('[useEditorInitialization] JSON parse failed, treating as HTML');
+    }
+  }
+
+  // HTML format (legacy) - sanitize and let TipTap parse it
+  // Next save will automatically convert to JSON format
+  debug('[useEditorInitialization] Detected HTML format (legacy), will migrate on next save');
+  return sanitizeDocumentationHTML(stored);
+}
 
 export interface UseEditorInitializationOptions {
   startEditing: (
@@ -111,6 +141,7 @@ export function useEditorInitialization({
   });
 
   // Load saved content from localStorage on mount (or use default if empty)
+  // Supports both TipTap JSON (new) and HTML (legacy) formats for migration
   useEffect(() => {
     if (!editor) {
       return;
@@ -120,10 +151,10 @@ export function useEditorInitialization({
       const savedContent = localStorage.getItem(StorageKeys.WYSIWYG_PREVIEW);
 
       if (savedContent && savedContent.trim() !== '') {
-        // SECURITY: sanitize on load (defense in depth, F1, F4)
-        const sanitized = sanitizeDocumentationHTML(savedContent);
+        // Parse content - handles both JSON and HTML formats
+        const content = parseStoredContent(savedContent);
         debug('[useEditorInitialization] Loading saved content from localStorage');
-        editor.commands.setContent(sanitized);
+        editor.commands.setContent(content);
       } else {
         // No saved content, use default
         debug('[useEditorInitialization] No saved content, using defaults');

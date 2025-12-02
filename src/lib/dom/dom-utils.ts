@@ -290,3 +290,121 @@ export async function navmenuOpenCheck(): Promise<{
     fixType: 'navigation',
   };
 }
+
+/**
+ * Section completion checking - verifies that a previous tutorial section was completed
+ *
+ * Use cases:
+ * - Sequential tutorials: ensure users complete steps in order
+ * - Prerequisites: verify setup steps before advanced features
+ * - Learning paths: enforce completion of foundational concepts
+ *
+ * How it works:
+ * - Looks for DOM element with specified ID
+ * - Checks if element has 'completed' CSS class
+ * - Used to enforce step dependencies in multi-part tutorials
+ */
+export async function sectionCompletedCheck(check: string): Promise<{
+  requirement: string;
+  pass: boolean;
+  error?: string;
+  context?: Record<string, unknown> | null;
+}> {
+  try {
+    const sectionId = check.replace('section-completed:', '');
+
+    // Check if the section exists in DOM and has completed class
+    const sectionElement = document.getElementById(sectionId);
+    const isCompleted = sectionElement?.classList.contains('completed') || false;
+
+    return {
+      requirement: check,
+      pass: isCompleted,
+      error: isCompleted ? undefined : `Section '${sectionId}' must be completed first`,
+      context: { sectionId, found: !!sectionElement, hasCompletedClass: isCompleted },
+    };
+  } catch (error) {
+    console.error('Section completion check error:', error);
+    return {
+      requirement: check,
+      pass: false,
+      error: `Section completion check failed: ${error}`,
+      context: { error },
+    };
+  }
+}
+
+/**
+ * Form validation checking - verifies that all forms on the page are in a valid state
+ *
+ * Use cases:
+ * - Before submitting a form: ensure all required fields are filled and valid
+ * - Multi-step forms: verify current step is complete before proceeding
+ * - Data source configuration: check connection form is properly filled
+ * - Dashboard settings: ensure all form inputs are valid before saving
+ *
+ * What it checks:
+ * - No forms have .error, .invalid, [aria-invalid="true"], .has-error, or .field-error classes
+ * - No required fields are empty or invalid
+ * - At least one form exists on the page
+ */
+export async function formValidCheck(check: string): Promise<{
+  requirement: string;
+  pass: boolean;
+  error?: string;
+  context?: Record<string, unknown> | null;
+}> {
+  try {
+    // Look for common form validation indicators in the DOM
+    const forms = document.querySelectorAll('form');
+
+    if (forms.length === 0) {
+      return {
+        requirement: check,
+        pass: false,
+        error: 'No forms found on the page',
+        context: { formCount: 0 },
+      };
+    }
+
+    let hasValidForms = true;
+    const validationErrors: string[] = [];
+
+    // Check each form for validation state
+    forms.forEach((form, index) => {
+      // Look for common validation error indicators
+      const errorElements = form.querySelectorAll('.error, .invalid, [aria-invalid="true"], .has-error, .field-error');
+      const requiredEmptyFields = form.querySelectorAll(
+        'input[required]:invalid, select[required]:invalid, textarea[required]:invalid'
+      );
+
+      if (errorElements.length > 0) {
+        hasValidForms = false;
+        validationErrors.push(`Form ${index + 1}: Has ${errorElements.length} validation errors`);
+      }
+
+      if (requiredEmptyFields.length > 0) {
+        hasValidForms = false;
+        validationErrors.push(`Form ${index + 1}: Has ${requiredEmptyFields.length} required empty fields`);
+      }
+    });
+
+    return {
+      requirement: check,
+      pass: hasValidForms,
+      error: hasValidForms ? undefined : `Form validation failed: ${validationErrors.join(', ')}`,
+      context: {
+        formCount: forms.length,
+        validationErrors,
+        hasValidForms,
+      },
+    };
+  } catch (error) {
+    return {
+      requirement: check,
+      pass: false,
+      error: `Form validation check failed: ${error}`,
+      context: { error },
+    };
+  }
+}

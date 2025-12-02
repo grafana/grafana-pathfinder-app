@@ -11,6 +11,7 @@ import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 export class TimeoutManager {
   private static instance: TimeoutManager;
   private timeouts = new Map<string, NodeJS.Timeout>();
+  private intervals = new Map<string, NodeJS.Timeout>();
 
   static getInstance(): TimeoutManager {
     if (!TimeoutManager.instance) {
@@ -103,6 +104,53 @@ export class TimeoutManager {
   clearAll(): void {
     this.timeouts.forEach((timeoutId) => clearTimeout(timeoutId));
     this.timeouts.clear();
+    this.intervals.forEach((intervalId) => clearInterval(intervalId));
+    this.intervals.clear();
+  }
+
+  /**
+   * Set a managed interval
+   *
+   * REPLACES: If called with the same key, clears the previous interval
+   * and starts a new one. Prevents interval stacking.
+   *
+   * @param key - Unique identifier for this interval
+   * @param callback - Function to execute on each interval
+   * @param delay - Interval delay in milliseconds
+   */
+  setInterval(key: string, callback: () => void | Promise<void>, delay: number): void {
+    // Clear any existing interval with this key to prevent stacking
+    this.clearInterval(key);
+
+    const intervalId = setInterval(async () => {
+      try {
+        await callback();
+      } catch (error) {
+        console.error(`Interval callback error for key '${key}':`, error);
+      }
+    }, delay);
+
+    this.intervals.set(key, intervalId);
+  }
+
+  /**
+   * Clear a specific interval
+   * @param key - Interval identifier to clear
+   */
+  clearInterval(key: string): void {
+    const intervalId = this.intervals.get(key);
+    if (intervalId) {
+      clearInterval(intervalId);
+      this.intervals.delete(key);
+    }
+  }
+
+  /**
+   * Check if an interval is active
+   * @param key - Interval identifier to check
+   */
+  isIntervalActive(key: string): boolean {
+    return this.intervals.has(key);
   }
 
   /**

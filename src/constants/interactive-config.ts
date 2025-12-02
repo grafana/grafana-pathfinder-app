@@ -50,6 +50,8 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
       scrollFallbackTimeout: 500, // Fallback timeout for scroll operations
       commentExitAnimation: 200, // Comment box exit animation duration
       domSettlingDelay: 300, // Delay after scroll before highlight positioning for DOM stability
+      expansionAnimationMs: 300, // Single navigation section expansion animation duration
+      allExpansionAnimationMs: 500, // All navigation sections expansion animation duration
     },
     // Form filling timing (for typing simulation)
     formFill: {
@@ -102,6 +104,18 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
   positionTracking: {
     driftThreshold: 5, // Pixels of center drift before triggering position correction
     checkIntervalMs: 100, // Throttle interval for RAF-based drift checks
+    debounceMs: 150, // Debounce for position updates in NavigationManager
+  },
+  // Guided step interaction timing
+  guided: {
+    hoverDwell: 500, // Duration user must hover for completion (ms)
+    retryInterval: 2000, // Retry interval when element not found (ms)
+    connectivityCheckInterval: 100, // Interval to check element is still connected (ms)
+    stepTimeout: 30000, // Default timeout for guided step completion (ms)
+  },
+  // Modal detection configuration
+  modal: {
+    pollingIntervalMs: 500, // Fallback polling interval for modal detection
   },
 } as const;
 
@@ -182,13 +196,16 @@ export const ACTION_TYPES = {
   NAVIGATE: 'navigate',
   HOVER: 'hover',
   MULTISTEP: 'multistep',
+  GUIDED: 'guided',
+  QUIZ: 'quiz',
   SEQUENCE: 'sequence',
   NOOP: 'noop',
 } as const;
 
 /**
  * Action icons - Single source of truth for emoji indicators
- * Used in both the WYSIWYG editor and ActionSelector UI
+ * @deprecated Use ACTION_BADGES for the WYSIWYG editor UI
+ * Kept for backward compatibility in other parts of the codebase
  */
 export const ACTION_ICONS: Record<string, string> = {
   [ACTION_TYPES.BUTTON]: '🔘',
@@ -196,23 +213,58 @@ export const ACTION_ICONS: Record<string, string> = {
   [ACTION_TYPES.HIGHLIGHT]: '✨',
   [ACTION_TYPES.HOVER]: '👆',
   [ACTION_TYPES.MULTISTEP]: '📋',
+  [ACTION_TYPES.GUIDED]: '🎯',
+  [ACTION_TYPES.QUIZ]: '❓',
   [ACTION_TYPES.NAVIGATE]: '🧭',
   [ACTION_TYPES.NOOP]: '📖',
   [ACTION_TYPES.SEQUENCE]: '📑',
 } as const;
 
 /**
+ * Action badges - Text labels for WYSIWYG editor display
+ * Short, clear labels that fit in small pill badges
+ */
+export const ACTION_BADGES: Record<string, string> = {
+  [ACTION_TYPES.BUTTON]: 'Click',
+  [ACTION_TYPES.FORM_FILL]: 'Fill',
+  [ACTION_TYPES.HIGHLIGHT]: 'Show',
+  [ACTION_TYPES.HOVER]: 'Hover',
+  [ACTION_TYPES.MULTISTEP]: 'Multi',
+  [ACTION_TYPES.GUIDED]: 'Guide',
+  [ACTION_TYPES.QUIZ]: 'Quiz',
+  [ACTION_TYPES.NAVIGATE]: 'Go',
+  [ACTION_TYPES.NOOP]: 'Info',
+  [ACTION_TYPES.SEQUENCE]: 'Section',
+} as const;
+
+/**
  * Default icon for unknown action types
+ * @deprecated Use DEFAULT_ACTION_BADGE instead
  */
 export const DEFAULT_ACTION_ICON = '⚡';
 
 /**
+ * Default badge label for unknown action types
+ */
+export const DEFAULT_ACTION_BADGE = 'Step';
+
+/**
  * Get the emoji icon for an action type
+ * @deprecated Use getActionBadge for WYSIWYG editor UI
  * @param actionType - The action type (e.g., 'button', 'highlight')
  * @returns The corresponding emoji, or DEFAULT_ACTION_ICON for unknown types
  */
 export function getActionIcon(actionType: string): string {
   return ACTION_ICONS[actionType] ?? DEFAULT_ACTION_ICON;
+}
+
+/**
+ * Get the text badge label for an action type
+ * @param actionType - The action type (e.g., 'button', 'highlight')
+ * @returns The corresponding label, or DEFAULT_ACTION_BADGE for unknown types
+ */
+export function getActionBadge(actionType: string): string {
+  return ACTION_BADGES[actionType] ?? DEFAULT_ACTION_BADGE;
 }
 
 /**
@@ -223,6 +275,33 @@ export const DEFAULT_VALUES = {
   REQUIREMENT: 'exists-reftarget',
   DO_IT_FALSE: 'false',
 } as const;
+
+/**
+ * Step ID patterns for identifying step types
+ * Used to detect first steps in sections and step dependencies
+ */
+export const STEP_PATTERNS = {
+  FIRST_STEP_SUFFIXES: ['-step-1', '-multistep-1', '-guided-1'],
+  SECTION_PREFIX: 'section-',
+  STEP_INFIX: '-step-',
+} as const;
+
+/**
+ * Helper function to check if a stepId represents a first step
+ */
+export function isFirstStep(stepId: string | undefined): boolean {
+  if (!stepId) {
+    return false;
+  }
+
+  // Check for any first step suffix pattern
+  const matchesFirstStepPattern = STEP_PATTERNS.FIRST_STEP_SUFFIXES.some((suffix) => stepId.includes(suffix));
+
+  // Or it's a standalone step (not in a section and not numbered)
+  const isStandaloneStep = !stepId.includes(STEP_PATTERNS.SECTION_PREFIX) && !stepId.includes(STEP_PATTERNS.STEP_INFIX);
+
+  return matchesFirstStepPattern || isStandaloneStep;
+}
 
 /**
  * Common requirement options available across interactive elements

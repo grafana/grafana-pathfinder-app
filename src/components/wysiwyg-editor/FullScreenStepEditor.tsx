@@ -1,9 +1,12 @@
 /**
  * Full Screen Step Editor
  *
- * A modal dialog that appears when a click is intercepted in full screen mode.
- * Pre-filled with the detected selector and action type, allows the author
- * to add a description and requirements before the click is executed.
+ * A modal dialog for editing interactive steps. Supports two modes:
+ * 1. Create mode: When a click is intercepted in full screen mode
+ * 2. Edit mode: When editing an existing interactive element
+ *
+ * Pre-filled with the detected/existing attributes, allows the author
+ * to modify description, action type, requirements, and comments.
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
@@ -19,15 +22,79 @@ import {
   HorizontalGroup,
   useStyles2,
   Select,
+  Icon,
 } from '@grafana/ui';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css } from '@emotion/css';
 import type { PendingClickInfo, SectionInfo, StepEditorData } from './hooks/useFullScreenMode';
+import type { InteractiveElementType } from './types';
 import { COMMON_REQUIREMENTS, getActionIcon, ACTION_TYPES } from '../../constants/interactive-config';
 import { testIds } from '../testIds';
+import { useSelectorCapture } from './devtools/selector-capture.hook';
+import { DomPathTooltip } from '../DomPathTooltip/DomPathTooltip';
 
 // Re-export types for consumers
 export type { StepEditorData, SectionInfo };
+
+/**
+ * Data for a nested step within a multistep/guided block
+ */
+export interface NestedStepData {
+  /** Action type for this step */
+  actionType: string;
+  /** CSS selector or element reference */
+  refTarget: string;
+  /** Target value (for formfill) */
+  targetValue?: string;
+  /** Requirements for this step */
+  requirements?: string;
+  /** Interactive comment/tooltip for this step */
+  interactiveComment?: string;
+  /** Display text/description */
+  textContent?: string;
+  /** Position in document (for editing) */
+  pos?: number;
+}
+
+/**
+ * Data for editing an existing interactive element
+ */
+export interface EditElementData {
+  /** Type of element being edited */
+  type: InteractiveElementType;
+  /** Current attributes */
+  attributes: Record<string, string>;
+  /** Position in document */
+  pos: number;
+  /** Text content (for description) */
+  textContent?: string;
+  /** Comment text (for interactive comments) */
+  commentText?: string;
+  /** Nested steps (for multistep/guided blocks) */
+  nestedSteps?: NestedStepData[];
+  /** ID of the section this element is in (if any) */
+  sectionId?: string;
+}
+
+/**
+ * Data returned when saving an edit
+ */
+export interface EditSaveData {
+  actionType: string;
+  refTarget: string;
+  targetValue?: string;
+  requirements?: string;
+  interactiveComment?: string;
+  description?: string;
+  /** Updated nested steps (for multistep/guided blocks) */
+  nestedSteps?: NestedStepData[];
+  /** Section to move this element into (for edit mode) */
+  sectionId?: string;
+  /** Title for new section (if sectionId is 'new') */
+  newSectionTitle?: string;
+  /** ID for new section (if sectionId is 'new') */
+  newSectionId?: string;
+}
 
 const getStyles = (theme: GrafanaTheme2) => ({
   modal: css({
@@ -76,6 +143,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
   skipButton: css({
     marginRight: 'auto',
   }),
+  deleteButton: css({
+    marginRight: 'auto',
+  }),
   header: css({
     display: 'flex',
     alignItems: 'center',
@@ -105,41 +175,147 @@ const getStyles = (theme: GrafanaTheme2) => ({
   collapsibleSection: css({
     marginTop: theme.spacing(1),
   }),
+  // Nested steps styles
+  nestedStepsSection: css({
+    marginTop: theme.spacing(2),
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  }),
+  nestedStepsHeader: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing(1.5),
+  }),
+  nestedStepsTitle: css({
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    margin: 0,
+  }),
+  nestedStepsList: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1.5),
+  }),
+  nestedStepItem: css({
+    padding: theme.spacing(1.5),
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  }),
+  nestedStepHeader: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+  }),
+  nestedStepNumber: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    flexShrink: 0,
+  }),
+  nestedStepAction: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    flex: 1, // Take remaining space to push delete button to the right
+  }),
+  nestedStepDeleteButton: css({
+    marginLeft: 'auto',
+    flexShrink: 0,
+  }),
+  nestedStepFields: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+  }),
+  nestedStepRow: css({
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: theme.spacing(1),
+  }),
+  nestedStepSelector: css({
+    fontFamily: theme.typography.fontFamilyMonospace,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    backgroundColor: theme.colors.background.secondary,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    borderRadius: theme.shape.radius.default,
+    wordBreak: 'break-all',
+    marginBottom: theme.spacing(0.5),
+  }),
+  // Selector capture styles
+  selectorRow: css({
+    display: 'flex',
+    gap: theme.spacing(1),
+    alignItems: 'flex-start',
+  }),
+  captureButton: css({
+    flexShrink: 0,
+    minWidth: '40px',
+    height: '32px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(0.5),
+  }),
+  inputWrapper: css({
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+  }),
 });
 
 export interface FullScreenStepEditorProps {
   /** Whether the editor is open */
   isOpen: boolean;
-  /** Pending click information */
-  pendingClick: PendingClickInfo | null;
-  /** Called when the step is saved and click should execute */
-  onSaveAndClick: (data: StepEditorData) => void;
-  /** Called when multistep/guided is selected - saves first step and starts bundling mode */
-  onSaveAndStartBundling: (data: StepEditorData) => void;
-  /** Called to skip this click without recording */
-  onSkip: () => void;
-  /** Called to cancel editing (returns to active mode without executing) */
+  /** Pending click information (create mode) */
+  pendingClick?: PendingClickInfo | null;
+  /** Existing element data (edit mode) */
+  editData?: EditElementData | null;
+  /** Called when the step is saved and click should execute (create mode) */
+  onSaveAndClick?: (data: StepEditorData) => void;
+  /** Called when multistep/guided is selected - saves first step and starts bundling mode (create mode) */
+  onSaveAndStartBundling?: (data: StepEditorData) => void;
+  /** Called to skip this click without recording (create mode) */
+  onSkip?: () => void;
+  /** Called to save edits (edit mode) */
+  onSaveEdit?: (data: EditSaveData) => void;
+  /** Called to delete the element (edit mode) */
+  onDelete?: () => void;
+  /** Called to cancel editing */
   onCancel: () => void;
-  /** Current step number (for display) */
+  /** Current step number (for display in create mode) */
   stepNumber?: number;
   /** Existing sections in the document */
   existingSections?: SectionInfo[];
+  /** Initial section ID to pre-select (from cursor position) */
+  initialSectionId?: string | null;
+  /** Whether this is a bundling review (after recording multistep/guided) */
+  isBundlingReview?: boolean;
+  /** Action type for bundling review (multistep or guided) */
+  bundlingActionType?: string;
+  /** Pre-recorded nested steps for bundling review */
+  bundledNestedSteps?: NestedStepData[];
+  /** Called to confirm bundling and create the element (bundling review mode) */
+  onConfirmBundling?: (data: StepEditorData, updatedSteps: NestedStepData[]) => void;
+  /** Called to start re-recording steps (edit mode for multistep/guided) */
+  onStartReRecording?: () => void;
 }
 
 /**
- * Step editor modal for full screen authoring mode
- *
- * @example
- * ```tsx
- * <FullScreenStepEditor
- *   isOpen={state === 'editing'}
- *   pendingClick={pendingClick}
- *   onSaveAndClick={(desc, reqs) => saveStepAndClick(desc, reqs)}
- *   onSkip={skipClick}
- *   onCancel={cancelEdit}
- *   stepNumber={recordedSteps.length + 1}
- * />
- * ```
+ * Step editor modal for full screen authoring mode and element editing
  */
 // Available action types for the selector
 const ACTION_TYPE_OPTIONS: Array<SelectableValue<string>> = [
@@ -169,7 +345,16 @@ const ACTION_TYPE_OPTIONS: Array<SelectableValue<string>> = [
     value: ACTION_TYPES.MULTISTEP,
     description: 'Multiple actions combined (dropdown, modal)',
   },
-  { label: `🎯 Guided`, value: 'guided', description: 'Guided sequence with hover/highlight/action' },
+  {
+    label: `${getActionIcon(ACTION_TYPES.GUIDED)} Guided`,
+    value: ACTION_TYPES.GUIDED,
+    description: 'Guided sequence with hover/highlight/action',
+  },
+  {
+    label: `${getActionIcon(ACTION_TYPES.QUIZ)} Quiz`,
+    value: ACTION_TYPES.QUIZ,
+    description: 'Knowledge check question',
+  },
   {
     label: `${getActionIcon(ACTION_TYPES.NOOP)} Info Only`,
     value: ACTION_TYPES.NOOP,
@@ -178,20 +363,31 @@ const ACTION_TYPE_OPTIONS: Array<SelectableValue<string>> = [
 ];
 
 // Action types that trigger bundling mode
-const BUNDLING_ACTION_TYPES = [ACTION_TYPES.MULTISTEP, 'guided'] as const;
+const BUNDLING_ACTION_TYPES = [ACTION_TYPES.MULTISTEP, ACTION_TYPES.GUIDED] as const;
 
 export function FullScreenStepEditor({
   isOpen,
   pendingClick,
+  editData,
   onSaveAndClick,
   onSaveAndStartBundling,
   onSkip,
+  onSaveEdit,
+  onDelete,
   onCancel,
   stepNumber = 1,
   existingSections = [],
+  initialSectionId,
+  isBundlingReview = false,
+  bundlingActionType,
+  bundledNestedSteps,
+  onConfirmBundling,
+  onStartReRecording,
 }: FullScreenStepEditorProps) {
   const styles = useStyles2(getStyles);
   const [description, setDescription] = useState('');
+  const [refTarget, setRefTarget] = useState('');
+  const [targetValue, setTargetValue] = useState('');
   const [requirements, setRequirements] = useState('');
   const [selectedActionType, setSelectedActionType] = useState<string>('');
   const [interactiveComment, setInteractiveComment] = useState('');
@@ -199,32 +395,142 @@ export function FullScreenStepEditor({
   const [sectionMode, setSectionMode] = useState<'none' | 'new' | string>('none');
   const [newSectionId, setNewSectionId] = useState('');
   const [newSectionTitle, setNewSectionTitle] = useState('');
+  const [nestedSteps, setNestedSteps] = useState<NestedStepData[]>([]);
   const descriptionInputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Track if we're in "capture mode" where modal is hidden
+  const [isCaptureModeActive, setIsCaptureModeActive] = useState(false);
+
+  // Selector capture hook for edit mode - exclude pathfinder content, modals, and dev tools
+  const {
+    isActive: isSelectorCaptureActive,
+    startCapture: startSelectorCapture,
+    stopCapture: stopSelectorCapture,
+    domPath,
+    cursorPosition,
+  } = useSelectorCapture({
+    excludeSelectors: [
+      '[data-pathfinder-content]',
+      '[data-wysiwyg-form]',
+      '[data-devtools-panel]',
+      '[data-fullscreen-step-editor]',
+    ],
+    autoDisable: true,
+    onCapture: (selector: string) => {
+      setRefTarget(selector);
+      // Return to modal after capture
+      setIsCaptureModeActive(false);
+    },
+  });
+
+  // Handle starting capture - hide modal so user can click elements
+  const handleStartCapture = useCallback(() => {
+    setIsCaptureModeActive(true);
+    startSelectorCapture();
+  }, [startSelectorCapture]);
+
+  // Handle canceling capture (Escape key)
+  useEffect(() => {
+    if (!isCaptureModeActive) {
+      return;
+    }
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        stopSelectorCapture();
+        setIsCaptureModeActive(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isCaptureModeActive, stopSelectorCapture]);
+
+  // Determine if we're in edit mode, create mode, or bundling review mode
+  const isEditMode = !!editData && !pendingClick && !isBundlingReview;
+  const isCreateMode = !!pendingClick && !editData && !isBundlingReview;
+
+  // Check if we're editing a multistep/guided block with nested steps
+  const isMultistepOrGuided =
+    selectedActionType === ACTION_TYPES.MULTISTEP || selectedActionType === ACTION_TYPES.GUIDED;
+  const hasNestedSteps = (isEditMode || isBundlingReview) && isMultistepOrGuided && nestedSteps.length > 0;
+
   // Check if current action type triggers bundling mode
-  const isBundlingAction = BUNDLING_ACTION_TYPES.includes(selectedActionType as (typeof BUNDLING_ACTION_TYPES)[number]);
+  const isBundlingAction =
+    isCreateMode && BUNDLING_ACTION_TYPES.includes(selectedActionType as (typeof BUNDLING_ACTION_TYPES)[number]);
 
   // Check if current action type is formfill (to show value field)
   const isFormFillAction = selectedActionType === ACTION_TYPES.FORM_FILL;
 
-  // Pre-fill form when pendingClick changes
-  // This is an intentional pattern to sync local form state from props when the modal opens
+  // Pre-fill form when pendingClick changes (create mode)
+  // Also pre-populate section from initialSectionId (cursor position)
   useEffect(() => {
-    if (pendingClick) {
-      // Batch state updates to minimize re-renders
-      // This pattern is necessary to reset form state when a new click is intercepted
+    if (pendingClick && isCreateMode) {
       queueMicrotask(() => {
         setDescription(pendingClick.description);
+        setRefTarget(pendingClick.selector);
+        setTargetValue('');
         setRequirements('');
         setSelectedActionType(pendingClick.action);
         setInteractiveComment('');
         setFormFillValue('');
-        setSectionMode('none');
+        // Pre-select section from cursor position if available
+        setSectionMode(initialSectionId || 'none');
         setNewSectionId('');
         setNewSectionTitle('');
       });
     }
-  }, [pendingClick]);
+  }, [pendingClick, isCreateMode, initialSectionId]);
+
+  // Pre-fill form when editData changes (edit mode)
+  useEffect(() => {
+    if (editData && isEditMode) {
+      queueMicrotask(() => {
+        const attrs = editData.attributes;
+        setDescription(editData.textContent || '');
+        setRefTarget(attrs['data-reftarget'] || '');
+        setTargetValue(attrs['data-targetvalue'] || '');
+        setRequirements(attrs['data-requirements'] || '');
+        setSelectedActionType(attrs['data-targetaction'] || ACTION_TYPES.HIGHLIGHT);
+        setInteractiveComment(editData.commentText || '');
+        setFormFillValue(attrs['data-targetvalue'] || '');
+        // Pre-populate section if the element is inside a section
+        setSectionMode(editData.sectionId || 'none');
+        setNewSectionId('');
+        setNewSectionTitle('');
+        // Populate nested steps if editing a multistep/guided block
+        setNestedSteps(editData.nestedSteps || []);
+      });
+    }
+  }, [editData, isEditMode]);
+
+  // Pre-fill form for bundling review mode (after recording multistep/guided)
+  useEffect(() => {
+    if (isBundlingReview && bundledNestedSteps && bundledNestedSteps.length > 0) {
+      queueMicrotask(() => {
+        // Set action type from bundling
+        setSelectedActionType(bundlingActionType || ACTION_TYPES.MULTISTEP);
+        // Default description based on first step
+        const defaultDesc =
+          bundledNestedSteps.length > 1
+            ? `Complete ${bundledNestedSteps.length} steps`
+            : bundledNestedSteps[0]?.textContent || 'Complete the action';
+        setDescription(defaultDesc);
+        setRefTarget('');
+        setTargetValue('');
+        setRequirements('');
+        setInteractiveComment('');
+        setFormFillValue('');
+        // Pre-select section from initial context if available
+        setSectionMode(initialSectionId || 'none');
+        setNewSectionId('');
+        setNewSectionTitle('');
+        // Populate the recorded steps for editing
+        setNestedSteps(bundledNestedSteps);
+      });
+    }
+  }, [isBundlingReview, bundledNestedSteps, bundlingActionType, initialSectionId]);
 
   // Memoize selected option to prevent re-renders
   const selectedOption = useMemo(
@@ -235,7 +541,6 @@ export function FullScreenStepEditor({
   // Focus description input when modal opens
   useEffect(() => {
     if (isOpen && descriptionInputRef.current) {
-      // Small delay to ensure modal is rendered
       const timer = setTimeout(() => {
         descriptionInputRef.current?.focus();
         descriptionInputRef.current?.select();
@@ -245,26 +550,24 @@ export function FullScreenStepEditor({
     return undefined;
   }, [isOpen]);
 
-  // Build step editor data from form state
+  // Build step editor data from form state (create mode)
   const buildStepData = useCallback((): StepEditorData => {
     const data: StepEditorData = {
       description: description.trim(),
       actionType: selectedActionType,
+      selector: refTarget.trim() || undefined, // Include edited selector
       requirements: requirements.trim() || undefined,
       interactiveComment: interactiveComment.trim() || undefined,
     };
 
-    // Include form fill value for formfill action
     if (selectedActionType === ACTION_TYPES.FORM_FILL && formFillValue.trim()) {
       data.formFillValue = formFillValue.trim();
     }
 
-    // Include section data
     if (sectionMode === 'new' && newSectionId.trim()) {
       data.sectionId = newSectionId.trim();
       data.sectionTitle = newSectionTitle.trim() || undefined;
     } else if (sectionMode !== 'none' && sectionMode !== 'new') {
-      // Existing section selected
       data.sectionId = sectionMode;
     }
 
@@ -272,6 +575,7 @@ export function FullScreenStepEditor({
   }, [
     description,
     selectedActionType,
+    refTarget,
     requirements,
     interactiveComment,
     formFillValue,
@@ -280,21 +584,95 @@ export function FullScreenStepEditor({
     newSectionTitle,
   ]);
 
-  const handleSave = useCallback(() => {
-    if (description.trim() && selectedActionType) {
-      onSaveAndClick(buildStepData());
+  // Build edit save data from form state (edit mode)
+  const buildEditData = useCallback((): EditSaveData => {
+    const data: EditSaveData = {
+      actionType: selectedActionType,
+      refTarget: refTarget.trim(),
+      targetValue: targetValue.trim() || undefined,
+      requirements: requirements.trim() || undefined,
+      interactiveComment: interactiveComment.trim() || undefined,
+      description: description.trim() || undefined,
+      // Include nested steps for multistep/guided
+      nestedSteps: nestedSteps.length > 0 ? nestedSteps : undefined,
+    };
+
+    // Include section info if moving to a section
+    if (sectionMode === 'new' && newSectionId.trim()) {
+      data.sectionId = 'new';
+      data.newSectionId = newSectionId.trim();
+      data.newSectionTitle = newSectionTitle.trim() || undefined;
+    } else if (sectionMode !== 'none') {
+      data.sectionId = sectionMode;
     }
-  }, [description, selectedActionType, onSaveAndClick, buildStepData]);
+
+    return data;
+  }, [
+    selectedActionType,
+    refTarget,
+    targetValue,
+    requirements,
+    interactiveComment,
+    description,
+    nestedSteps,
+    sectionMode,
+    newSectionId,
+    newSectionTitle,
+  ]);
+
+  // Handler to update a specific nested step
+  const updateNestedStep = useCallback((index: number, field: keyof NestedStepData, value: string) => {
+    setNestedSteps((prev) => prev.map((step, i) => (i === index ? { ...step, [field]: value || undefined } : step)));
+  }, []);
+
+  // Handler to delete a specific nested step
+  const deleteNestedStep = useCallback((index: number) => {
+    setNestedSteps((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleSave = useCallback(() => {
+    if (isBundlingReview && onConfirmBundling) {
+      // Bundling review mode - confirm and create the element
+      if (description.trim() && selectedActionType) {
+        onConfirmBundling(buildStepData(), nestedSteps);
+      }
+    } else if (isEditMode && onSaveEdit) {
+      // For multistep/guided, we don't require refTarget on the parent
+      const isValid = isMultistepOrGuided
+        ? selectedActionType.length > 0
+        : selectedActionType.length > 0 && refTarget.trim().length > 0;
+      if (isValid) {
+        onSaveEdit(buildEditData());
+      }
+    } else if (isCreateMode && onSaveAndClick) {
+      if (description.trim() && selectedActionType) {
+        onSaveAndClick(buildStepData());
+      }
+    }
+  }, [
+    isBundlingReview,
+    isEditMode,
+    isCreateMode,
+    isMultistepOrGuided,
+    onConfirmBundling,
+    onSaveEdit,
+    onSaveAndClick,
+    description,
+    selectedActionType,
+    refTarget,
+    nestedSteps,
+    buildStepData,
+    buildEditData,
+  ]);
 
   const handleSaveAndStartBundling = useCallback(() => {
-    if (description.trim() && selectedActionType) {
+    if (description.trim() && selectedActionType && onSaveAndStartBundling) {
       onSaveAndStartBundling(buildStepData());
     }
   }, [description, selectedActionType, onSaveAndStartBundling, buildStepData]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      // Ctrl/Cmd + Enter to save
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         if (isBundlingAction) {
@@ -316,10 +694,8 @@ export function FullScreenStepEditor({
     });
   }, []);
 
-  // Auto-generate section ID from title
   const handleSectionTitleChange = useCallback((title: string) => {
     setNewSectionTitle(title);
-    // Generate ID from title (kebab-case)
     const generatedId = title
       .toLowerCase()
       .replace(/[^a-z0-9\s-]/g, '')
@@ -331,7 +707,6 @@ export function FullScreenStepEditor({
     }
   }, []);
 
-  // Build section dropdown options
   const sectionOptions: Array<SelectableValue<string>> = useMemo(() => {
     const options: Array<SelectableValue<string>> = [
       { label: 'None (standalone step)', value: 'none' },
@@ -349,41 +724,132 @@ export function FullScreenStepEditor({
     return options;
   }, [existingSections]);
 
-  if (!isOpen || !pendingClick) {
+  // Allow bundling review even without pendingClick or editData
+  if (!isOpen || (!pendingClick && !editData && !isBundlingReview)) {
     return null;
   }
 
-  const actionIcon = getActionIcon(selectedActionType || pendingClick.action);
-  const isValid = description.trim().length > 0 && selectedActionType.length > 0;
-  const hasWarnings = pendingClick.warnings.length > 0;
-  const isNonUnique = pendingClick.selectorInfo.isUnique === false;
+  // When capture mode is active, show only the capture UI (hide the modal)
+  if (isCaptureModeActive) {
+    return (
+      <>
+        {/* Capture mode indicator */}
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '12px 24px',
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            color: 'white',
+            borderRadius: '8px',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+          }}
+        >
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#3871dc',
+              animation: 'pulse-dot 1s ease-in-out infinite',
+            }}
+          />
+          <span>Click an element to capture its selector (Esc to cancel)</span>
+        </div>
+
+        {/* DOM Path Tooltip for selector capture mode */}
+        {isSelectorCaptureActive && domPath && cursorPosition && (
+          <DomPathTooltip domPath={domPath} position={cursorPosition} visible={true} />
+        )}
+
+        <style>
+          {`
+            @keyframes pulse-dot {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0.4; }
+            }
+          `}
+        </style>
+      </>
+    );
+  }
+
+  const actionIcon = getActionIcon(selectedActionType || pendingClick?.action || '');
+  // For multistep/guided and bundling review, we don't require refTarget on the parent
+  const isValid =
+    isBundlingReview || isEditMode
+      ? isMultistepOrGuided
+        ? selectedActionType.length > 0
+        : selectedActionType.length > 0 && refTarget.trim().length > 0
+      : description.trim().length > 0 && selectedActionType.length > 0;
+  const hasWarnings = pendingClick?.warnings?.length ?? 0 > 0;
+  const isNonUnique = pendingClick?.selectorInfo?.isUnique === false;
+
+  // Build modal title
+  const modalTitle = isBundlingReview ? (
+    <div className={styles.header}>
+      <span className={styles.headerIcon}>{actionIcon}</span>
+      <span>Review {nestedSteps.length} Recorded Steps</span>
+    </div>
+  ) : isEditMode ? (
+    <div className={styles.header}>
+      <span className={styles.headerIcon}>{actionIcon}</span>
+      <span>Edit {selectedActionType || 'Step'}</span>
+    </div>
+  ) : (
+    <div className={styles.header}>
+      <span className={styles.headerIcon}>{actionIcon}</span>
+      <span>
+        Step {stepNumber}: {selectedActionType || pendingClick?.action}
+      </span>
+    </div>
+  );
 
   return (
     <Modal
-      title={
-        <div className={styles.header}>
-          <span className={styles.headerIcon}>{actionIcon}</span>
-          <span>
-            Step {stepNumber}: {selectedActionType || pendingClick.action}
-          </span>
-        </div>
-      }
+      title={modalTitle}
       isOpen={isOpen}
       onDismiss={onCancel}
       className={styles.modal}
       data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.modal}
     >
       <div className={styles.content} data-fullscreen-step-editor>
-        {/* Detected selector info */}
-        <div className={styles.selectorBox} data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.selectorDisplay}>
-          <span className={styles.selectorLabel}>
-            Detected selector:
-            {pendingClick.selectorInfo.contextStrategy && (
-              <Badge text={pendingClick.selectorInfo.contextStrategy} color="purple" className={styles.actionBadge} />
-            )}
-          </span>
-          <code className={styles.selectorCode}>{pendingClick.selector}</code>
-        </div>
+        {/* Detected/Current selector info - hidden in bundling review mode and for multistep/guided containers */}
+        {!isBundlingReview && !(isEditMode && isMultistepOrGuided) && (
+          <div className={styles.selectorBox} data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.selectorDisplay}>
+            <span className={styles.selectorLabel}>
+              {isEditMode ? 'Target selector:' : 'Detected selector:'}
+              {pendingClick?.selectorInfo?.contextStrategy && (
+                <Badge text={pendingClick.selectorInfo.contextStrategy} color="purple" className={styles.actionBadge} />
+              )}
+            </span>
+            <div className={styles.selectorRow}>
+              <Button
+                variant="secondary"
+                onClick={handleStartCapture}
+                tooltip="Click to select a different element from the page"
+                className={styles.captureButton}
+                aria-label="Capture selector"
+                data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.selectorCaptureButton}
+              >
+                <Icon name="crosshair" />
+              </Button>
+              <div className={styles.inputWrapper}>
+                <Input
+                  value={refTarget}
+                  onChange={(e) => setRefTarget(e.currentTarget.value)}
+                  placeholder="CSS selector or element reference"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Action Type Selector */}
         <Field label="Action type" description="Choose the type of interaction for this step">
@@ -397,13 +863,13 @@ export function FullScreenStepEditor({
           />
         </Field>
 
-        {/* Warnings */}
-        {(hasWarnings || isNonUnique) && (
+        {/* Warnings (create mode only) */}
+        {isCreateMode && (hasWarnings || isNonUnique) && (
           <div className={styles.warningBox}>
             {hasWarnings && (
               <Alert title="Selector warnings" severity="warning">
                 <ul>
-                  {pendingClick.warnings.map((warning, idx) => (
+                  {pendingClick?.warnings?.map((warning, idx) => (
                     <li key={idx}>{warning}</li>
                   ))}
                 </ul>
@@ -411,7 +877,7 @@ export function FullScreenStepEditor({
             )}
             {isNonUnique && (
               <Alert title="Non-unique selector" severity="warning">
-                This selector matches {pendingClick.selectorInfo.matchCount} elements. Consider adding more specific
+                This selector matches {pendingClick?.selectorInfo?.matchCount} elements. Consider adding more specific
                 attributes to the target element.
               </Alert>
             )}
@@ -422,7 +888,7 @@ export function FullScreenStepEditor({
         <Field
           label="Step description"
           description="Describe what this step does (shown to users in the guide)"
-          required
+          required={isCreateMode}
         >
           <TextArea
             ref={descriptionInputRef}
@@ -434,6 +900,19 @@ export function FullScreenStepEditor({
             data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.descriptionInput}
           />
         </Field>
+
+        {/* Target Value field - for formfill or when editing */}
+        {(isFormFillAction || (isEditMode && targetValue)) && (
+          <Field label="Target value" description="The value to enter or match">
+            <Input
+              value={isFormFillAction ? formFillValue : targetValue}
+              onChange={(e) =>
+                isFormFillAction ? setFormFillValue(e.currentTarget.value) : setTargetValue(e.currentTarget.value)
+              }
+              placeholder="e.g., my-dashboard-name"
+            />
+          </Field>
+        )}
 
         {/* Requirements field */}
         <Field label="Requirements (optional)" description="Conditions that must be met before this step can execute">
@@ -456,7 +935,7 @@ export function FullScreenStepEditor({
           </Stack>
         </Field>
 
-        {/* Interactive Comment field (optional) */}
+        {/* Interactive Comment field */}
         <Field
           label="Interactive Comment (optional)"
           description="Educational context shown before the step action (explains WHY)"
@@ -470,19 +949,11 @@ export function FullScreenStepEditor({
           />
         </Field>
 
-        {/* Form Fill Value field - only shown for formfill action */}
-        {isFormFillAction && (
-          <Field label="Value to fill" description="The value to enter into the form field" required>
-            <Input
-              value={formFillValue}
-              onChange={(e) => setFormFillValue(e.currentTarget.value)}
-              placeholder="e.g., my-dashboard-name"
-            />
-          </Field>
-        )}
-
-        {/* Section management */}
-        <Field label="Section (optional)" description="Group this step into a section/sequence">
+        {/* Section management (available in both create and edit mode) */}
+        <Field
+          label="Section (optional)"
+          description={isEditMode ? 'Move this step into a section' : 'Group this step into a section/sequence'}
+        >
           <Stack direction="column" gap={1}>
             <Select
               options={sectionOptions}
@@ -492,7 +963,6 @@ export function FullScreenStepEditor({
               data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.sectionSelect}
             />
 
-            {/* New section fields */}
             {sectionMode === 'new' && (
               <div className={styles.sectionFields}>
                 <Field label="Section Title" description="Heading displayed above the section">
@@ -514,17 +984,108 @@ export function FullScreenStepEditor({
           </Stack>
         </Field>
 
+        {/* Nested steps for multistep/guided blocks (edit mode only) */}
+        {hasNestedSteps && (
+          <div className={styles.nestedStepsSection}>
+            <div className={styles.nestedStepsHeader}>
+              <h4 className={styles.nestedStepsTitle}>Steps ({nestedSteps.length})</h4>
+              {onStartReRecording && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="circle"
+                  onClick={onStartReRecording}
+                  tooltip="Clear existing steps and re-record from scratch"
+                >
+                  Re-record
+                </Button>
+              )}
+            </div>
+            <div className={styles.nestedStepsList}>
+              {nestedSteps.map((step, index) => (
+                <div key={index} className={styles.nestedStepItem}>
+                  <div className={styles.nestedStepHeader}>
+                    <span className={styles.nestedStepNumber}>{index + 1}</span>
+                    <span className={styles.nestedStepAction}>
+                      {getActionIcon(step.actionType)} {step.actionType}
+                    </span>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      icon="trash-alt"
+                      onClick={() => deleteNestedStep(index)}
+                      tooltip="Delete this step"
+                      className={styles.nestedStepDeleteButton}
+                    />
+                  </div>
+                  <div className={styles.nestedStepSelector}>{step.refTarget}</div>
+                  <div className={styles.nestedStepFields}>
+                    <div className={styles.nestedStepRow}>
+                      <Field label="Selector" style={{ margin: 0 }}>
+                        <Input
+                          value={step.refTarget || ''}
+                          onChange={(e) => updateNestedStep(index, 'refTarget', e.currentTarget.value)}
+                          placeholder="CSS selector"
+                        />
+                      </Field>
+                      <Field label="Action" style={{ margin: 0 }}>
+                        <Select
+                          options={ACTION_TYPE_OPTIONS.filter(
+                            (opt) => opt.value !== ACTION_TYPES.MULTISTEP && opt.value !== ACTION_TYPES.GUIDED
+                          )}
+                          value={ACTION_TYPE_OPTIONS.find((opt) => opt.value === step.actionType) || null}
+                          onChange={(opt) => updateNestedStep(index, 'actionType', opt?.value || '')}
+                          menuPlacement="auto"
+                        />
+                      </Field>
+                    </div>
+                    <Field label="Requirements" style={{ margin: 0 }}>
+                      <Input
+                        value={step.requirements || ''}
+                        onChange={(e) => updateNestedStep(index, 'requirements', e.currentTarget.value)}
+                        placeholder="e.g., exists-reftarget"
+                      />
+                    </Field>
+                    <Field label="Tooltip/Comment" style={{ margin: 0 }}>
+                      <Input
+                        value={step.interactiveComment || ''}
+                        onChange={(e) => updateNestedStep(index, 'interactiveComment', e.currentTarget.value)}
+                        placeholder="Educational context for this step"
+                      />
+                    </Field>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Action buttons */}
         <div className={styles.buttonGroup}>
-          <Button
-            variant="secondary"
-            onClick={onSkip}
-            className={styles.skipButton}
-            tooltip="Execute click without recording this step"
-            data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.skipButton}
-          >
-            Skip
-          </Button>
+          {/* Left-aligned buttons */}
+          {isEditMode && onDelete && (
+            <Button
+              variant="destructive"
+              onClick={onDelete}
+              className={styles.deleteButton}
+              tooltip="Delete this interactive element"
+            >
+              Delete
+            </Button>
+          )}
+          {isCreateMode && onSkip && (
+            <Button
+              variant="secondary"
+              onClick={onSkip}
+              className={styles.skipButton}
+              tooltip="Execute click without recording this step"
+              data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.skipButton}
+            >
+              Skip
+            </Button>
+          )}
+
+          {/* Right-aligned buttons */}
           <Button
             variant="secondary"
             onClick={onCancel}
@@ -532,7 +1093,28 @@ export function FullScreenStepEditor({
           >
             Cancel
           </Button>
-          {isBundlingAction ? (
+
+          {isBundlingReview ? (
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              disabled={!isValid}
+              tooltip="Create the multistep/guided element with these steps (Ctrl+Enter)"
+              data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.saveButton}
+            >
+              Create {bundlingActionType === ACTION_TYPES.GUIDED ? 'Guided' : 'Multistep'}
+            </Button>
+          ) : isEditMode ? (
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              disabled={!isValid}
+              tooltip="Save changes (Ctrl+Enter)"
+              data-testid={testIds.wysiwygEditor.fullScreen.stepEditor.saveButton}
+            >
+              Save
+            </Button>
+          ) : isBundlingAction ? (
             <Button
               variant="primary"
               onClick={handleSaveAndStartBundling}

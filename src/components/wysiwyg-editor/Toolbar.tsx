@@ -10,8 +10,10 @@ interface ToolbarProps {
   onAddInteractive: () => void;
   onAddSequence: () => void;
   onAddComment: () => void;
-  onCopy: () => Promise<void>;
-  onDownload: () => Promise<void>;
+  /** Opens export dialog for copying JSON */
+  onCopy: () => void;
+  /** Opens export dialog for downloading JSON */
+  onDownload: () => void;
   onTest: () => void;
   onReset: () => void;
   /** Toggle full screen authoring mode */
@@ -287,18 +289,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         />
         <IconButton
           name="copy"
-          tooltip="Copy HTML"
+          tooltip="Copy JSON"
           onClick={onCopy}
           size="md"
-          aria-label="Copy"
+          aria-label="Copy JSON"
           data-testid={testIds.wysiwygEditor.toolbar.copyButton}
         />
         <IconButton
           name="download-alt"
-          tooltip="Download"
+          tooltip="Download JSON"
           onClick={onDownload}
           size="md"
-          aria-label="Download"
+          aria-label="Download JSON"
           data-testid={testIds.wysiwygEditor.toolbar.downloadButton}
         />
         <IconButton

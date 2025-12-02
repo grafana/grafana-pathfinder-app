@@ -13,16 +13,28 @@ import { InteractiveFormShell } from './InteractiveFormShell';
 import { getMultistepFormStyles } from '../editor.styles';
 import { DomPathTooltip } from '../../DomPathTooltip';
 
+interface MultistepActionFormProps extends InteractiveFormProps {
+  /** Action type to use (defaults to MULTISTEP, can also be GUIDED) */
+  actionType?: typeof ACTION_TYPES.MULTISTEP | typeof ACTION_TYPES.GUIDED;
+}
+
 /**
- * Custom form component for multistep actions with integrated recorder
+ * Custom form component for multistep/guided actions with integrated recorder
  * Replaces the generic BaseInteractiveForm wrapper with a purpose-built UI
+ * Works for both MULTISTEP and GUIDED action types (same recording flow)
  */
-const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }: InteractiveFormProps) => {
+const MultistepActionForm = ({
+  onApply,
+  onCancel,
+  initialValues,
+  onSwitchType,
+  actionType = ACTION_TYPES.MULTISTEP,
+}: MultistepActionFormProps) => {
   const styles = useStyles2(getMultistepFormStyles);
-  const config = getActionConfig(ACTION_TYPES.MULTISTEP);
+  const config = getActionConfig(actionType);
 
   if (!config) {
-    throw new Error(`Action config not found for ${ACTION_TYPES.MULTISTEP}`);
+    throw new Error(`Action config not found for ${actionType}`);
   }
 
   // Requirements state
@@ -101,7 +113,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
 
     // Build attributes with recorded steps attached as internal property (only if we have steps)
     const attributes: any = {
-      [DATA_ATTRIBUTES.TARGET_ACTION]: ACTION_TYPES.MULTISTEP,
+      [DATA_ATTRIBUTES.TARGET_ACTION]: actionType,
       [DATA_ATTRIBUTES.REQUIREMENTS]: requirements || undefined,
       class: DEFAULT_VALUES.CLASS,
     };
@@ -193,7 +205,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
 
             {isEditMode && recordedSteps.length === 0 && recordingState === 'idle' && (
               <div className={styles.emptyState}>
-                Editing existing multistep. Record new actions to replace existing internal spans.
+                Editing existing {actionType}. Record new actions to replace existing internal spans.
               </div>
             )}
           </div>
@@ -254,7 +266,7 @@ const MultistepActionForm = ({ onApply, onCancel, initialValues, onSwitchType }:
           {/* Requirements field */}
           <Field
             label="Requirements:"
-            description="Requirements are usually set on child interactive spans. Note: 'exists-reftarget' is not supported for multistep containers."
+            description={`Requirements are usually set on child interactive spans. Note: 'exists-reftarget' is not supported for ${actionType} containers.`}
           >
             <>
               <Input

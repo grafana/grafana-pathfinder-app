@@ -2,10 +2,54 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
 /**
+ * Color scheme for interactive element types
+ * Each type has distinct colors for easy visual differentiation
+ */
+const getColorScheme = (theme: GrafanaTheme2) => ({
+  // Section - Blue
+  section: {
+    background: theme.isDark ? 'rgba(74, 144, 226, 0.12)' : 'rgba(74, 144, 226, 0.08)',
+    border: theme.colors.primary.border,
+    badge: theme.colors.primary.main,
+    badgeText: theme.colors.primary.contrastText,
+  },
+  // Multistep - Purple
+  multistep: {
+    background: theme.isDark ? 'rgba(138, 43, 226, 0.12)' : 'rgba(138, 43, 226, 0.08)',
+    border: theme.isDark ? '#9370DB' : '#8B5CF6',
+    badge: theme.isDark ? '#9370DB' : '#8B5CF6',
+    badgeText: '#FFFFFF',
+  },
+  // Guided - Teal
+  guided: {
+    background: theme.isDark ? 'rgba(20, 184, 166, 0.12)' : 'rgba(20, 184, 166, 0.08)',
+    border: theme.isDark ? '#2DD4BF' : '#14B8A6',
+    badge: theme.isDark ? '#2DD4BF' : '#14B8A6',
+    badgeText: '#FFFFFF',
+  },
+  // Interactive step - Amber
+  interactive: {
+    background: theme.isDark ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.08)',
+    border: theme.isDark ? '#FBBF24' : '#F59E0B',
+    badge: theme.isDark ? '#FBBF24' : '#F59E0B',
+    badgeText: '#1F2937',
+  },
+  // Note/Comment - Orange
+  note: {
+    background: theme.isDark ? 'rgba(249, 115, 22, 0.15)' : 'rgba(249, 115, 22, 0.12)',
+    border: theme.isDark ? '#FB923C' : '#F97316',
+    badge: theme.isDark ? '#FB923C' : '#F97316',
+    badgeText: '#FFFFFF',
+  },
+});
+
+/**
  * Theme-aware styles for the WYSIWYG editor
  * Replaces hardcoded CSS with Grafana's theming system
  */
 export const getEditorStyles = (theme: GrafanaTheme2) => {
+  const colors = getColorScheme(theme);
+
   return {
     // Main ProseMirror editor area
     proseMirror: css({
@@ -59,6 +103,13 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         color: theme.colors.text.primary,
       },
 
+      // Remove extra padding for lists that directly contain multistep/guided/quiz items
+      // These block types have their own visual styling and don't need list indentation
+      '& ul:has(> li.interactive[data-targetaction="multistep"]), & ul:has(> li.interactive[data-targetaction="guided"]), & ul:has(> li.interactive[data-targetaction="quiz"])':
+        {
+          paddingLeft: 0,
+        },
+
       '& li': {
         margin: `${theme.spacing(0.25)} 0`,
         color: theme.colors.text.primary,
@@ -99,10 +150,77 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         },
       },
 
-      // Lightning bolt indicator for interactive elements
+      // ==========================================
+      // ACTION BADGE STYLES
+      // Base badge styling + color variants
+      // ==========================================
+
+      '& .action-badge': {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: `${theme.spacing(0.25)} ${theme.spacing(0.75)}`,
+        borderRadius: '9999px', // Pill shape
+        fontSize: '10px',
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        cursor: 'pointer',
+        userSelect: 'none',
+        marginRight: theme.spacing(0.5),
+        transition: 'transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out',
+        lineHeight: 1,
+        verticalAlign: 'middle',
+
+        '&:hover': {
+          transform: 'scale(1.05)',
+          boxShadow: theme.shadows.z1,
+        },
+
+        '&:focus': {
+          outline: `2px solid ${theme.colors.primary.main}`,
+          outlineOffset: '1px',
+        },
+      },
+
+      // Section badge - Blue
+      '& .action-badge--sequence': {
+        backgroundColor: colors.section.badge,
+        color: colors.section.badgeText,
+      },
+
+      // Multistep badge - Purple
+      '& .action-badge--multistep': {
+        backgroundColor: colors.multistep.badge,
+        color: colors.multistep.badgeText,
+      },
+
+      // Guided badge - Teal
+      '& .action-badge--guided': {
+        backgroundColor: colors.guided.badge,
+        color: colors.guided.badgeText,
+      },
+
+      // Interactive step badges - Amber variants
+      '& .action-badge--button, & .action-badge--highlight, & .action-badge--formfill, & .action-badge--hover, & .action-badge--navigate, & .action-badge--noop, & .action-badge--default':
+        {
+          backgroundColor: colors.interactive.badge,
+          color: colors.interactive.badgeText,
+        },
+
+      // Note badge - Orange
+      '& .action-badge--note': {
+        backgroundColor: colors.note.badge,
+        color: colors.note.badgeText,
+      },
+
+      // ==========================================
+      // LEGACY INDICATOR STYLES (backwards compatibility)
+      // ==========================================
+
       '& .interactive-lightning': {
         cursor: 'pointer',
-        color: '#FFD700', // Gold color for lightning - keeping as accent
+        color: colors.interactive.badge,
         marginRight: theme.spacing(0.5),
         userSelect: 'none',
         display: 'inline-block',
@@ -113,10 +231,9 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         },
       },
 
-      // Info icon indicator for comment elements
       '& .interactive-info-icon': {
         cursor: 'pointer',
-        color: theme.colors.info.text, // Blue color for info
+        color: colors.note.badge,
         marginRight: theme.spacing(0.5),
         userSelect: 'none',
         display: 'inline-block',
@@ -128,45 +245,183 @@ export const getEditorStyles = (theme: GrafanaTheme2) => {
         },
       },
 
-      // Interactive elements visual feedback
+      // ==========================================
+      // ELEMENT TYPE STYLES
+      // Color-coded backgrounds and borders
+      // ==========================================
+
+      // Interactive elements (default) - Amber
       '& .interactive': {
-        border: `1px dashed ${theme.colors.border.medium}`,
+        border: `1px dashed ${colors.interactive.border}`,
         padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
         borderRadius: theme.shape.radius.default,
-        background: theme.isDark ? 'rgba(255, 215, 0, 0.08)' : 'rgba(255, 215, 0, 0.05)',
+        background: colors.interactive.background,
       },
 
-      // Sequence sections
-      '& .sequence-section': {
-        border: `2px solid ${theme.colors.primary.border}`,
-        borderRadius: theme.shape.radius.default,
-        padding: theme.spacing(1.5),
+      // All interactive list items - hide default bullet markers
+      // Interactive elements use badges instead of bullets for visual indication
+      '& li.interactive': {
+        listStyleType: 'none',
+      },
+
+      // Nested interactive spans inside list items should not have their own border
+      // The list item provides the visual container; nested spans are just content
+      '& li.interactive span.interactive': {
+        border: 'none',
+        padding: 0,
+        background: 'transparent',
+        display: 'inline',
+      },
+
+      // Atomic interactive comments inside list items - show badge but no border
+      '& li.interactive .interactive-comment': {
+        display: 'inline !important',
+        background: 'transparent',
+        border: 'none',
+        borderBottom: 'none',
+        padding: 0,
+      },
+
+      // Sequence sections - Simple left border indicator
+      // Target spans with data-targetaction="sequence" OR class="sequence-section"
+      '& span[data-targetaction="sequence"], & .sequence-section': {
+        display: 'block',
+        // Override default interactive border with just a left border
+        border: 'none',
+        borderLeft: `3px solid ${colors.section.border}`,
+        paddingLeft: theme.spacing(1.5),
+        paddingTop: theme.spacing(0.5),
+        paddingBottom: theme.spacing(0.5),
         margin: `${theme.spacing(1)} 0`,
-        background: theme.isDark ? 'rgba(74, 144, 226, 0.08)' : 'rgba(74, 144, 226, 0.05)',
+        background: 'transparent',
+        borderRadius: 0,
       },
 
-      // Interactive comments - override global hide rule
+      // Interactive comments / notes - Orange
       '& .interactive-comment': {
-        display: 'inline !important', // Override global hide rule
-        background: theme.isDark ? 'rgba(255, 165, 0, 0.2)' : 'rgba(255, 165, 0, 0.15)',
-        borderBottom: `2px dotted ${theme.colors.border.medium}`,
+        display: 'inline !important',
+        background: colors.note.background,
+        borderBottom: `2px dotted ${colors.note.border}`,
         padding: `0 ${theme.spacing(0.25)}`,
       },
 
-      // Multistep: Hide nested lightning bolts and their containers
-      // Only show the outer lightning bolt on the multistep container itself
+      // Multistep list items - Purple (dashed border)
+      // Nested steps are HIDDEN - only editable via modal
+      // Hide bullet marker - multistep has its own badge
       '& li.interactive[data-targetaction="multistep"]': {
-        // Hide lightning bolts inside nested interactive spans
-        '& span.interactive .interactive-lightning': {
+        listStyleType: 'none',
+        border: `1px dashed ${colors.multistep.border}`,
+        padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
+        borderRadius: theme.shape.radius.default,
+        background: colors.multistep.background,
+        marginTop: theme.spacing(0.5),
+        marginBottom: theme.spacing(0.5),
+
+        // Hide ALL badges inside nested elements (show only parent badge)
+        '& .action-badge': {
           display: 'none !important',
         },
-        // Hide border and background of nested interactive spans
-        // Info icons remain visible because they have their own display rules
-        '& span.interactive': {
-          border: 'none',
-          padding: 0,
-          background: 'transparent',
+        // But show the FIRST badge (the parent multistep badge)
+        '& > .action-badge': {
+          display: 'inline-flex !important',
         },
+        // HIDE nested interactive spans completely - they are only edited via modal
+        '& span.interactive': {
+          display: 'none !important',
+        },
+        // HIDE nested comments - they belong to steps, edited via modal
+        '& .interactive-comment': {
+          display: 'none !important',
+        },
+      },
+
+      // Guided list items - Teal (dashed border)
+      // Nested steps are HIDDEN - only editable via modal
+      // Hide bullet marker - guided has its own badge
+      '& li.interactive[data-targetaction="guided"]': {
+        listStyleType: 'none',
+        border: `1px dashed ${colors.guided.border}`,
+        padding: `${theme.spacing(0.5)} ${theme.spacing(0.75)}`,
+        borderRadius: theme.shape.radius.default,
+        background: colors.guided.background,
+        marginTop: theme.spacing(0.5),
+        marginBottom: theme.spacing(0.5),
+
+        // Hide ALL badges inside nested elements (show only parent badge)
+        '& .action-badge': {
+          display: 'none !important',
+        },
+        // But show the FIRST badge (the parent guided badge)
+        '& > .action-badge': {
+          display: 'inline-flex !important',
+        },
+        // HIDE nested interactive spans completely - they are only edited via modal
+        '& span.interactive': {
+          display: 'none !important',
+        },
+        // HIDE nested comments - they belong to steps, edited via modal
+        '& .interactive-comment': {
+          display: 'none !important',
+          borderBottom: 'none',
+        },
+      },
+
+      // Span-based multistep (inline context) - Purple
+      // Nested steps are HIDDEN - only editable via modal
+      '& span.interactive[data-targetaction="multistep"]': {
+        border: `1px dashed ${colors.multistep.border}`,
+        padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
+        borderRadius: theme.shape.radius.default,
+        background: colors.multistep.background,
+
+        // Hide nested badges except first
+        '& .action-badge:not(:first-child)': {
+          display: 'none !important',
+        },
+        // HIDE nested interactive spans completely - edited via modal only
+        '& span.interactive': {
+          display: 'none !important',
+        },
+        // HIDE nested comments - edited via modal only
+        '& .interactive-comment': {
+          display: 'none !important',
+        },
+      },
+
+      // Span-based guided (inline context) - Teal
+      // Nested steps are HIDDEN - only editable via modal
+      '& span.interactive[data-targetaction="guided"]': {
+        border: `1px dashed ${colors.guided.border}`,
+        padding: `${theme.spacing(0.25)} ${theme.spacing(0.5)}`,
+        borderRadius: theme.shape.radius.default,
+        background: colors.guided.background,
+
+        // Hide nested badges except first
+        '& .action-badge:not(:first-child)': {
+          display: 'none !important',
+        },
+        // HIDE nested interactive spans completely - edited via modal only
+        '& span.interactive': {
+          display: 'none !important',
+        },
+        // HIDE nested comments - edited via modal only
+        '& .interactive-comment': {
+          display: 'none !important',
+        },
+      },
+
+      // Quiz list items - Blue (solid border)
+      // Quiz has its own distinct styling - knowledge check element
+      '& li.interactive[data-targetaction="quiz"]': {
+        listStyleType: 'none',
+        border: `2px solid ${theme.colors.primary.border}`,
+        padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
+        borderRadius: theme.shape.radius.default,
+        background: theme.colors.primary.transparent,
+        marginTop: theme.spacing(0.5),
+        marginBottom: theme.spacing(0.5),
+        whiteSpace: 'pre-wrap', // Preserve line breaks in quiz content
+        fontFamily: theme.typography.fontFamily,
       },
     }),
   };

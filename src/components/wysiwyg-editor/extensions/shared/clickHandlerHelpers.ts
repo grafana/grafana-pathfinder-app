@@ -134,9 +134,16 @@ export function handleInteractiveSpanClick(
 
 /**
  * Extract text content from a TipTap node
- * Recursively extracts all text nodes from the node's content
+ * For atomic nodes, reads from the 'text' attribute.
+ * For non-atomic nodes, recursively extracts all text nodes from the node's content.
  */
 export function extractTextFromNode(node: any): string {
+  // For atomic nodes, text is stored in the 'text' attribute
+  if (node.attrs?.text) {
+    return node.attrs.text;
+  }
+
+  // For non-atomic nodes, extract from content
   let text = '';
 
   if (node.content) {

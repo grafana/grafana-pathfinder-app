@@ -1,5 +1,6 @@
 import {
   checkRequirements,
+  checkPostconditions,
   RequirementsCheckOptions,
   validateInteractiveRequirements,
 } from './requirements-checker.utils';
@@ -7,10 +8,17 @@ import { locationService, config, hasPermission, getDataSourceSrv, getBackendSrv
 import { ContextService } from '../context-engine';
 
 // Mock dom-utils functions with default return values
-jest.mock('../lib/dom', () => ({
-  reftargetExistsCheck: jest.fn().mockResolvedValue({ requirement: 'exists-reftarget', pass: true }),
-  navmenuOpenCheck: jest.fn().mockResolvedValue({ requirement: 'navmenu-open', pass: true }),
-}));
+// Note: sectionCompletedCheck and formValidCheck are NOT mocked - they use actual DOM
+jest.mock('../lib/dom', () => {
+  const actual = jest.requireActual('../lib/dom');
+  return {
+    ...actual,
+    // Only mock these two functions that don't work well in test environment without DOM setup
+    reftargetExistsCheck: jest.fn().mockResolvedValue({ requirement: 'exists-reftarget', pass: true }),
+    navmenuOpenCheck: jest.fn().mockResolvedValue({ requirement: 'navmenu-open', pass: true }),
+    // sectionCompletedCheck and formValidCheck use actual implementation for DOM-based tests
+  };
+});
 
 // Mock Grafana runtime dependencies
 jest.mock('@grafana/runtime', () => ({
@@ -696,6 +704,103 @@ describe('requirements-checker.utils', () => {
       );
 
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('checkPostconditions', () => {
+    it('should pass when no postconditions are specified', async () => {
+      const options: RequirementsCheckOptions = {
+        requirements: '',
+      };
+
+      const result = await checkPostconditions(options);
+      expect(result.pass).toBe(true);
+      expect(result.error).toEqual([]);
+    });
+
+    it('should check postconditions using the same logic as requirements', async () => {
+      // Configure mock for this test
+      (config as any).bootData = {
+        user: { isGrafanaAdmin: true, orgRole: 'Admin', isSignedIn: true, id: 1 },
+      };
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'is-admin,is-logged-in',
+      };
+
+      const result = await checkPostconditions(options);
+      expect(result.pass).toBe(true);
+      expect(result.error).toHaveLength(2);
+    });
+
+    it('should fail postconditions when requirements not met', async () => {
+      (config as any).bootData = {
+        user: { isGrafanaAdmin: false, orgRole: 'Viewer', isSignedIn: true, id: 1 },
+      };
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'is-admin',
+      };
+
+      const result = await checkPostconditions(options);
+      expect(result.pass).toBe(false);
+      expect(result.error[0].pass).toBe(false);
+    });
+
+    it('should handle multiple postconditions with one failing', async () => {
+      (config as any).bootData = {
+        user: { isGrafanaAdmin: false, orgRole: 'Editor', isSignedIn: true, id: 1 },
+      };
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'is-editor,is-admin', // is-editor passes, is-admin fails
+      };
+
+      const result = await checkPostconditions(options);
+      expect(result.pass).toBe(false); // Overall should fail
+
+      const editorCheck = result.error.find((e) => e.requirement === 'is-editor');
+      const adminCheck = result.error.find((e) => e.requirement === 'is-admin');
+
+      expect(editorCheck?.pass).toBe(true);
+      expect(adminCheck?.pass).toBe(false);
+    });
+
+    it('should support plugin checks as postconditions', async () => {
+      (ContextService.fetchPlugins as jest.Mock).mockResolvedValue([
+        { id: 'grafana-clock-panel', name: 'Clock Panel', enabled: true },
+      ]);
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'has-plugin:grafana-clock-panel',
+      };
+
+      const result = await checkPostconditions(options);
+      expect(result.pass).toBe(true);
+    });
+
+    it('should support dashboard checks as postconditions', async () => {
+      (ContextService.fetchDashboardsByName as jest.Mock).mockResolvedValue([{ title: 'New Dashboard' }]);
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'has-dashboard-named:New Dashboard',
+      };
+
+      const result = await checkPostconditions(options);
+      expect(result.pass).toBe(true);
+    });
+
+    it('should support page location checks as postconditions', async () => {
+      (locationService.getLocation as jest.Mock).mockReturnValue({
+        pathname: '/d/abc123/my-dashboard',
+      });
+
+      const options: RequirementsCheckOptions = {
+        requirements: 'on-page:/d/',
+      };
+
+      const result = await checkPostconditions(options);
+      expect(result.pass).toBe(true);
     });
   });
 

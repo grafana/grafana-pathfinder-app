@@ -8,12 +8,66 @@
     },
     {
       "type": "markdown",
+      "content": "## Configure the TestData data source\n\nBefore we begin exploring data, we need to ensure the TestData data source is configured in your Grafana Cloud instance. TestData is a built-in data source that generates sample data for learning and testing purposes.\n\n**Already have TestData configured?** This section will automatically complete if you have an existing TestData data source."
+    },
+    {
+      "type": "section",
+      "id": "datasource-setup",
+      "title": "Configure TestData data source",
+      "objectives": ["has-datasource:testdata"],
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid=\"data-testid Nav menu item\"][href=\"/connections/add-new-connection\"]",
+          "requirements": ["navmenu-open", "exists-reftarget"],
+          "content": "Navigate to **Add new connection** in the Connections menu.",
+          "tooltip": "The Connections menu is where you manage all your data sources. In Grafana Cloud, you add new data sources through the 'Add new connection' page."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[data-testid=\"search-input-input\"]",
+          "targetvalue": "TestData",
+          "requirements": ["on-page:/connections/add-new-connection", "exists-reftarget"],
+          "content": "Search for **TestData** in the connections search box.",
+          "tooltip": "TestData is a built-in data source that generates sample data for learning and testing. It's perfect for this tutorial since it doesn't require any external systems or configuration."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[href=\"/connections/datasources/grafana-testdata-datasource/\"]",
+          "requirements": [],
+          "content": "Click on **TestData** to open the data source configuration.",
+          "tooltip": "This will take you to the TestData data source page where you can add a new instance."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button:contains(\"Add new data source\")",
+          "requirements": ["on-page:/connections/datasources/grafana-testdata-datasource", "exists-reftarget"],
+          "content": "Click **Add new data source** to create a new TestData instance.",
+          "tooltip": "This creates a new instance of the TestData data source in your Grafana Cloud environment."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button[data-testid=\"data-testid Data source settings page Save and Test button\"]",
+          "requirements": ["exists-reftarget"],
+          "content": "Click **Save & test** to confirm the data source is working.",
+          "tooltip": "The Save & test button validates the connection to ensure everything is configured correctly. For TestData, this should always succeed since it's a built-in data source that doesn't require any external connections."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
       "content": "## Explore your data\n\nBefore building a dashboard, it's a good practice to explore your data first. Think of Explore as your data playground - it's where you can experiment with queries, understand what your data looks like, and test different approaches without committing to a dashboard.\n\nLet's start by tracking Jack and Jill's hiking altitude using sample data from Grafana's built-in TestData source."
     },
     {
       "type": "section",
       "id": "explore-tutorial",
       "title": "Explore your data",
+      "requirements": ["section-completed:section-datasource-setup"],
       "blocks": [
         {
           "type": "interactive",

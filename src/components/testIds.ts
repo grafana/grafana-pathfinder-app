@@ -121,6 +121,16 @@ export const testIds = {
       textArea: 'wysiwyg-comment-textarea',
       insertButton: 'wysiwyg-comment-insert',
       cancelButton: 'wysiwyg-comment-cancel',
+      deleteButton: 'wysiwyg-comment-delete',
+    },
+
+    // Export dialog
+    exportDialog: {
+      modal: 'wysiwyg-export-dialog',
+      titleInput: 'wysiwyg-export-title',
+      idInput: 'wysiwyg-export-id',
+      exportButton: 'wysiwyg-export-confirm',
+      cancelButton: 'wysiwyg-export-cancel',
     },
 
     // Form panel (action editor)
@@ -145,6 +155,7 @@ export const testIds = {
       stepEditor: {
         modal: 'wysiwyg-step-editor',
         selectorDisplay: 'wysiwyg-step-selector',
+        selectorCaptureButton: 'wysiwyg-step-selector-capture',
         actionTypeSelect: 'wysiwyg-step-action-type',
         descriptionInput: 'wysiwyg-step-description',
         requirementsInput: 'wysiwyg-step-requirements',
@@ -187,6 +198,9 @@ export const testIds = {
     requirementSkipButton: (stepId: string) => `interactive-requirement-skip-${stepId}`,
     stepCompleted: (stepId: string) => `interactive-step-completed-${stepId}`,
     errorMessage: (stepId: string) => `interactive-error-${stepId}`,
+    quiz: (quizId: string) => `interactive-quiz-${quizId}`,
+    quizChoice: (quizId: string, choiceId: string) => `interactive-quiz-${quizId}-choice-${choiceId}`,
+    quizCheckButton: (quizId: string) => `interactive-quiz-check-${quizId}`,
   },
 
   // App Configuration

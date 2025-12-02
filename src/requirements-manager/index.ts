@@ -8,6 +8,14 @@ export { waitForReactUpdates, SequentialRequirementsManager } from './requiremen
 
 export type { RequirementsState } from './requirements-checker.hook';
 
+// React Context for requirements manager (replaces singleton pattern)
+export {
+  RequirementsContext,
+  RequirementsProvider,
+  useRequirementsManager,
+  useIsInsideRequirementsProvider,
+} from './requirements-context';
+
 // Step checker hook (unified requirements + objectives)
 export { useStepChecker } from './step-checker.hook';
 
@@ -24,3 +32,17 @@ export {
   getRequirementExplanation,
   getPostVerifyExplanation,
 } from './requirements-explanations';
+
+// Step state machine (optional: for components that want explicit state management)
+export {
+  stepReducer,
+  createInitialState,
+  deriveIsEnabled,
+  deriveIsCompleted,
+  deriveIsChecking,
+  deriveIsSkipped,
+  deriveIsRetrying,
+  toLegacyState,
+} from './step-state';
+
+export type { StepStatus, CompletionReason, StepState, StepAction } from './step-state';

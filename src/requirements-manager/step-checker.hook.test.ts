@@ -1,37 +1,49 @@
 import { renderHook, act } from '@testing-library/react';
 import { useStepChecker } from './index';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { checkRequirements } from './requirements-checker.utils';
 
-// Mock requirements checker utility to simulate nav toggle passing then failing
+// Mock requirements checker utility
 jest.mock('./requirements-checker.utils', () => ({
-  checkRequirements: jest.fn().mockImplementation(({ requirements }) => {
-    // Toggle behavior: first call passes, second call fails for nav fragile case
-    if (requirements?.includes('navmenu-open')) {
-      const calls = (global as any).__navCalls || 0;
-      (global as any).__navCalls = calls + 1;
-      if (calls === 0) {
-        return Promise.resolve({ pass: true, requirements, error: [] });
-      }
-      return Promise.resolve({
-        pass: false,
-        requirements,
-        error: [{ requirement: 'navmenu-open', pass: false, error: 'Navigation menu not detected' }],
-      });
-    }
-    return Promise.resolve({ pass: true, requirements, error: [] });
-  }),
+  checkRequirements: jest.fn(),
 }));
 
+// Type-safe mock reference
+const mockCheckRequirements = checkRequirements as jest.MockedFunction<typeof checkRequirements>;
+
 describe('useStepChecker heartbeat', () => {
+  let callCount: number;
+
   beforeEach(() => {
-    (global as any).__navCalls = 0;
+    jest.clearAllMocks();
+    callCount = 0;
+
+    // Configure mock to track calls and toggle behavior
+    mockCheckRequirements.mockImplementation(({ requirements }) => {
+      // Toggle behavior: first call passes, second call fails for nav fragile case
+      if (requirements?.includes('navmenu-open')) {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
+        }
+        return Promise.resolve({
+          pass: false,
+          requirements: requirements || '',
+          error: [{ requirement: 'navmenu-open', pass: false, error: 'Navigation menu not detected' }],
+        });
+      }
+      return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
+    });
+
     // Ensure heartbeat is enabled and short timings for test speed
     (INTERACTIVE_CONFIG as any).requirements.heartbeat.enabled = true;
     (INTERACTIVE_CONFIG as any).requirements.heartbeat.intervalMs = 50;
     (INTERACTIVE_CONFIG as any).requirements.heartbeat.watchWindowMs = 200;
   });
 
-  afterEach(() => {});
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
 
   it('reverts enabled step to disabled if fragile requirement becomes false', async () => {
     const { result } = renderHook(() =>

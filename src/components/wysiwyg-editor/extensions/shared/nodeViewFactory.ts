@@ -2,7 +2,7 @@
  * Node View Factory
  *
  * Factory functions for creating node views with interactive elements.
- * Each interactive node displays an action-specific emoji indicator that users can click to edit attributes.
+ * Each interactive node displays a text badge indicator that users can click to edit attributes.
  *
  * ## Usage
  *
@@ -11,15 +11,18 @@
  * - `createSequenceSectionNodeView`: For block-level sequence sections (span with block content)
  * - `createInteractiveNodeView`: Generic factory for custom node types
  *
- * ## Action Indicator Behavior
+ * ## Action Badge Behavior
  *
- * The action indicator emoji is determined by the `data-targetaction` attribute:
+ * The badge text and color is determined by the `data-targetaction` attribute:
  * - For list items: Only shown if the item has class="interactive"
  * - For spans and sequences: Always shown (configurable)
- * - The emoji matches the action type (e.g., 🔘 for button, ✨ for highlight)
+ * - Color-coded by type: blue for sections, purple for multistep, teal for guided, amber for steps
  */
 
-import { getActionIcon, DATA_ATTRIBUTES } from '../../../../constants/interactive-config';
+import { DATA_ATTRIBUTES, getActionBadge } from '../../../../constants/interactive-config';
+
+// Re-export for convenience
+export { getActionBadge };
 
 // SECURITY: Allowlist of safe HTML attributes to prevent event handler injection (F5)
 // Only these attributes can be set on interactive elements
@@ -31,6 +34,8 @@ const ALLOWED_ATTRIBUTES = [
   'data-targetvalue',
   'data-requirements',
   'data-doit',
+  'data-text',
+  'data-tooltip',
   'role',
   'tabindex',
   'aria-label',
@@ -38,72 +43,94 @@ const ALLOWED_ATTRIBUTES = [
 
 export interface NodeViewConfig {
   tagName: keyof HTMLElementTagNameMap;
+  showBadge?: boolean;
+  /** @deprecated Use showBadge instead */
   showLightning?: boolean;
   contentDisplay?: 'contents' | 'inline' | 'block';
 }
 
 /**
- * Creates an action indicator element for interactive nodes
- * Displays action-specific emoji based on data-targetaction attribute
- * Now keyboard accessible with proper ARIA attributes
+ * Creates an action badge element for interactive nodes
+ * Displays a color-coded text badge based on data-targetaction attribute
+ * Keyboard accessible with proper ARIA attributes
  *
  * @param actionType - Optional action type (e.g., 'button', 'highlight')
  */
-export function createActionIndicator(actionType?: string): HTMLSpanElement {
-  const indicator = document.createElement('span');
-  indicator.className = 'interactive-lightning';
-  indicator.textContent = getActionIcon(actionType ?? '');
+export function createActionBadge(actionType?: string): HTMLSpanElement {
+  const badge = document.createElement('span');
+  const type = actionType || '';
+  const label = getActionBadge(type);
+
+  // Base class + type-specific modifier class
+  badge.className = `action-badge action-badge--${type || 'default'}`;
+  badge.textContent = label;
 
   // Make keyboard accessible
-  indicator.setAttribute('role', 'button');
-  indicator.setAttribute('tabindex', '0');
-  indicator.setAttribute('aria-label', 'Edit interactive settings');
+  badge.setAttribute('role', 'button');
+  badge.setAttribute('tabindex', '0');
+  badge.setAttribute('aria-label', `Edit ${label.toLowerCase()} settings`);
 
   // Add keyboard event handler for Enter and Space keys
-  indicator.addEventListener('keydown', (event: KeyboardEvent) => {
+  badge.addEventListener('keydown', (event: KeyboardEvent) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       event.stopPropagation();
       // Trigger a click event which will be handled by the InteractiveClickHandler
-      indicator.click();
+      badge.click();
     }
   });
 
-  return indicator;
+  return badge;
 }
 
 /**
- * @deprecated Use createActionIndicator instead
+ * Creates an action indicator element for interactive nodes
+ * @deprecated Use createActionBadge instead - kept for backward compatibility
+ */
+export function createActionIndicator(actionType?: string): HTMLSpanElement {
+  return createActionBadge(actionType);
+}
+
+/**
+ * @deprecated Use createActionBadge instead
  * Kept for backward compatibility
  */
 export function createLightningBolt(): HTMLSpanElement {
-  return createActionIndicator();
+  return createActionBadge();
+}
+
+/**
+ * Creates a note badge element for comment nodes
+ * Color-coded orange badge to distinguish from action badges
+ */
+export function createNoteBadge(): HTMLSpanElement {
+  const badge = document.createElement('span');
+  badge.className = 'action-badge action-badge--note';
+  badge.textContent = 'Note';
+
+  // Make keyboard accessible (same pattern as action badge)
+  badge.setAttribute('role', 'button');
+  badge.setAttribute('tabindex', '0');
+  badge.setAttribute('aria-label', 'Edit note');
+
+  // Add keyboard event handler
+  badge.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      event.stopPropagation();
+      badge.click();
+    }
+  });
+
+  return badge;
 }
 
 /**
  * Creates an info icon element for comment nodes
- * Similar to lightning bolt but uses blue info icon
+ * @deprecated Use createNoteBadge instead - kept for backward compatibility
  */
 export function createInfoIcon(): HTMLSpanElement {
-  const infoIcon = document.createElement('span');
-  infoIcon.className = 'interactive-info-icon';
-  infoIcon.textContent = 'ℹ️'; // Blue info emoji
-
-  // Make keyboard accessible (same pattern as lightning bolt)
-  infoIcon.setAttribute('role', 'button');
-  infoIcon.setAttribute('tabindex', '0');
-  infoIcon.setAttribute('aria-label', 'Edit comment');
-
-  // Add keyboard event handler
-  infoIcon.addEventListener('keydown', (event: KeyboardEvent) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      event.stopPropagation();
-      infoIcon.click();
-    }
-  });
-
-  return infoIcon;
+  return createNoteBadge();
 }
 
 /**
@@ -120,29 +147,31 @@ export function applyAttributes(element: HTMLElement, attributes: Record<string,
 }
 
 /**
- * Creates an interactive node view with action indicator
+ * Creates an interactive node view with action badge
  * @param config - Configuration for the node view
  * @param attributes - HTML attributes to apply
- * @param shouldShowIndicator - Function to determine if indicator should be shown
+ * @param shouldShowBadge - Function to determine if badge should be shown
  */
 export function createInteractiveNodeView(
   config: NodeViewConfig,
   attributes: Record<string, any>,
-  shouldShowIndicator?: (attrs: Record<string, any>) => boolean
+  shouldShowBadge?: (attrs: Record<string, any>) => boolean
 ): { dom: HTMLElement; contentDOM: HTMLElement } {
   const { tagName, contentDisplay = 'contents' } = config;
 
   const dom = document.createElement(tagName);
   applyAttributes(dom, attributes);
 
-  // Determine if we should show the action indicator
-  const showIndicator = shouldShowIndicator ? shouldShowIndicator(attributes) : config.showLightning !== false;
+  // Determine if we should show the action badge (support both showBadge and legacy showLightning)
+  const showBadge = shouldShowBadge
+    ? shouldShowBadge(attributes)
+    : config.showBadge !== false && config.showLightning !== false;
 
-  if (showIndicator) {
+  if (showBadge) {
     // Extract action type from data-targetaction attribute
     const actionType = attributes[DATA_ATTRIBUTES.TARGET_ACTION];
-    const indicator = createActionIndicator(actionType);
-    dom.appendChild(indicator);
+    const badge = createActionBadge(actionType);
+    dom.appendChild(badge);
   }
 
   // Create content wrapper
@@ -172,6 +201,8 @@ export function createListItemNodeView(attributes: Record<string, any>): { dom: 
  * Configuration for span-based node views
  */
 export interface SpanNodeViewConfig {
+  showBadge?: boolean;
+  /** @deprecated Use showBadge instead */
   showLightning?: boolean;
   contentTag?: 'span' | 'div';
   contentDisplay?: 'inline' | 'contents';
@@ -188,12 +219,12 @@ export function createSpanNodeView(
   attributes: Record<string, any>,
   config: SpanNodeViewConfig | boolean = {}
 ): { dom: HTMLElement; contentDOM: HTMLElement } {
-  // Handle legacy boolean parameter (showLightning)
+  // Handle legacy boolean parameter (showLightning/showBadge)
   const finalConfig: SpanNodeViewConfig =
     typeof config === 'boolean'
-      ? { showLightning: config, contentTag: 'span', contentDisplay: 'inline' }
+      ? { showBadge: config, contentTag: 'span', contentDisplay: 'inline' }
       : {
-          showLightning: config.showLightning !== false,
+          showBadge: config.showBadge !== false && config.showLightning !== false,
           contentTag: config.contentTag || 'span',
           contentDisplay: config.contentDisplay || 'inline',
         };
@@ -201,11 +232,11 @@ export function createSpanNodeView(
   const dom = document.createElement('span');
   applyAttributes(dom, attributes);
 
-  if (finalConfig.showLightning) {
+  if (finalConfig.showBadge) {
     // Extract action type from data-targetaction attribute
     const actionType = attributes[DATA_ATTRIBUTES.TARGET_ACTION];
-    const indicator = createActionIndicator(actionType);
-    dom.appendChild(indicator);
+    const badge = createActionBadge(actionType);
+    dom.appendChild(badge);
   }
 
   const contentDOM = document.createElement(finalConfig.contentTag || 'span');
@@ -226,8 +257,72 @@ export function createSequenceSectionNodeView(attributes: Record<string, any>): 
   contentDOM: HTMLElement;
 } {
   return createSpanNodeView(attributes, {
-    showLightning: true,
+    showBadge: true,
     contentTag: 'div',
     contentDisplay: 'contents',
   });
+}
+
+/**
+ * Creates an atomic node view for interactive spans
+ * Atomic nodes cannot be edited directly - they render text from attributes.
+ * No contentDOM is returned since content cannot be edited.
+ *
+ * @param attributes - HTML attributes to apply to the DOM element
+ * @param text - The display text for the atomic node
+ * @param tooltip - Optional tooltip/comment text - shows Note badge if present
+ */
+export function createAtomicSpanNodeView(
+  attributes: Record<string, any>,
+  text = '',
+  tooltip = ''
+): { dom: HTMLElement } {
+  const dom = document.createElement('span');
+  applyAttributes(dom, attributes);
+
+  // Make the node non-editable to prevent cursor from entering
+  dom.setAttribute('contenteditable', 'false');
+
+  // Add action badge
+  const actionType = attributes[DATA_ATTRIBUTES.TARGET_ACTION];
+  const badge = createActionBadge(actionType);
+  dom.appendChild(badge);
+
+  // Add text span (read-only, from attribute)
+  const textSpan = document.createElement('span');
+  textSpan.className = 'interactive-text';
+  // SECURITY: Use textContent for safe text insertion (F3)
+  textSpan.textContent = text;
+  dom.appendChild(textSpan);
+
+  // Add Note badge if tooltip is present (comment is part of the step)
+  if (tooltip && tooltip.trim()) {
+    const noteBadge = createNoteBadge();
+    dom.appendChild(noteBadge);
+  }
+
+  // No contentDOM - atomic node cannot have editable content
+  return { dom };
+}
+
+/**
+ * Creates an atomic node view for interactive comments
+ * Comments display only a badge (Note) with no visible text.
+ * The text is stored in attributes and shown in the edit modal.
+ *
+ * @param attributes - HTML attributes to apply to the DOM element
+ */
+export function createAtomicCommentNodeView(attributes: Record<string, any>): { dom: HTMLElement } {
+  const dom = document.createElement('span');
+  applyAttributes(dom, attributes);
+
+  // Make the node non-editable to prevent cursor from entering
+  dom.setAttribute('contenteditable', 'false');
+
+  // Add note badge
+  const badge = createNoteBadge();
+  dom.appendChild(badge);
+
+  // No contentDOM - atomic node, no visible text (shown in modal only)
+  return { dom };
 }

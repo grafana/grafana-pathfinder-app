@@ -1,6 +1,7 @@
 import ListItem from '@tiptap/extension-list-item';
 import {
   createClassAttribute,
+  createIdAttribute,
   createTargetActionAttribute,
   createRefTargetAttribute,
   createTargetValueAttribute,
@@ -33,6 +34,7 @@ export const InteractiveListItem = ListItem.extend<InteractiveListItemOptions>({
   addAttributes() {
     return {
       ...this.parent?.(),
+      id: createIdAttribute(),
       class: createClassAttribute(null),
       'data-targetaction': createTargetActionAttribute(),
       'data-reftarget': createRefTargetAttribute(),

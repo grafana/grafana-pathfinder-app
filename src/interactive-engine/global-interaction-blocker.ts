@@ -1,6 +1,7 @@
 import { InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { INTERACTIVE_Z_INDEX } from '../constants/interactive-z-index';
+import { TimeoutManager } from '../utils/timeout-manager';
 
 /**
  * Global interaction blocking state (singleton pattern)
@@ -17,7 +18,7 @@ class GlobalInteractionBlocker {
   private windowScrollHandler: (() => void) | null = null;
   private modalObserver: MutationObserver | null = null;
   private modalStateDebounceTimer: number | null = null;
-  private modalPollingInterval: number | null = null;
+  // Note: modalPollingInterval is now managed by TimeoutManager to prevent stacking
   private lastKnownModalState = false;
   private headerOverlay: HTMLElement | null = null;
   private fullScreenOverlay: HTMLElement | null = null;
@@ -469,10 +470,9 @@ class GlobalInteractionBlocker {
       window.clearTimeout(this.modalStateDebounceTimer);
       this.modalStateDebounceTimer = null;
     }
-    if (this.modalPollingInterval) {
-      window.clearInterval(this.modalPollingInterval);
-      this.modalPollingInterval = null;
-    }
+    // Clear modal polling interval via TimeoutManager to prevent leaks
+    const timeoutManager = TimeoutManager.getInstance();
+    timeoutManager.clearInterval('modal-polling-interval');
 
     // Reset state tracking
     this.lastKnownModalState = false;
@@ -539,6 +539,8 @@ class GlobalInteractionBlocker {
    * Setup comprehensive modal observation
    */
   private setupModalObserver(): void {
+    const timeoutManager = TimeoutManager.getInstance();
+
     // Debounced update function to prevent rapid-fire calls
     const debouncedUpdate = () => {
       if (this.modalStateDebounceTimer) {
@@ -561,12 +563,17 @@ class GlobalInteractionBlocker {
     });
 
     // Also set up a polling fallback to catch any edge cases
-    this.modalPollingInterval = window.setInterval(() => {
-      const currentModalState = this.isModalActive();
-      if (currentModalState !== this.lastKnownModalState) {
-        this.updateOverlayModalState();
-      }
-    }, 500); // Check every 500ms as fallback
+    // Using TimeoutManager to prevent interval stacking if setupModalObserver is called multiple times
+    timeoutManager.setInterval(
+      'modal-polling-interval',
+      () => {
+        const currentModalState = this.isModalActive();
+        if (currentModalState !== this.lastKnownModalState) {
+          this.updateOverlayModalState();
+        }
+      },
+      INTERACTIVE_CONFIG.modal.pollingIntervalMs
+    );
   }
 
   /**

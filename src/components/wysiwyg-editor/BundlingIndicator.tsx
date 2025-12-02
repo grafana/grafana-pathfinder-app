@@ -12,6 +12,7 @@ import { Portal, Button, Badge, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 import { testIds } from '../testIds';
+import { ACTION_TYPES } from '../../constants/interactive-config';
 
 const pulseAnimation = keyframes`
   0%, 100% { opacity: 1; }
@@ -120,7 +121,7 @@ export function BundlingIndicator({ stepCount, actionType, onFinish, onCancel }:
     [onCancel]
   );
 
-  const actionLabel = actionType === 'guided' ? 'Guided' : 'Multistep';
+  const actionLabel = actionType === ACTION_TYPES.GUIDED ? 'Guided' : 'Multistep';
 
   return (
     <Portal>

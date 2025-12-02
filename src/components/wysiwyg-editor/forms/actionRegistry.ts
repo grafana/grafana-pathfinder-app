@@ -17,6 +17,8 @@ import NavigateActionForm from './NavigateActionForm';
 import HoverActionForm from './HoverActionForm';
 import SequenceActionForm from './SequenceActionForm';
 import NoopActionForm from './NoopActionForm';
+import GuidedActionForm from './GuidedActionForm';
+import QuizActionForm from './QuizActionForm';
 
 /**
  * UI metadata for action selector display
@@ -206,6 +208,8 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
           hint: 'The URL path to navigate to',
           required: true,
           autoFocus: true,
+          disableSelectorCapture: true,
+          selectorCaptureDisabledTooltip: 'Navigate expects a URL path, not a DOM selector',
         },
         {
           id: DATA_ATTRIBUTES.REQUIREMENTS,
@@ -304,6 +308,66 @@ export const ACTION_REGISTRY: Record<string, ActionDefinition> = {
       }),
     },
     formComponent: MultistepActionForm,
+  },
+
+  [ACTION_TYPES.GUIDED]: {
+    type: ACTION_TYPES.GUIDED,
+    ui: {
+      icon: getActionIcon(ACTION_TYPES.GUIDED),
+      name: 'Guided',
+      description: 'Step-by-step guided tour',
+      grafanaIcon: 'crosshair',
+    },
+    formConfig: {
+      title: ACTION_TYPES.GUIDED,
+      description: 'Guided interaction that waits for user to complete each step',
+      actionType: ACTION_TYPES.GUIDED,
+      fields: [
+        {
+          id: DATA_ATTRIBUTES.REQUIREMENTS,
+          label: 'Requirements:',
+          type: 'text',
+          placeholder: `e.g., ${DEFAULT_VALUES.REQUIREMENT} (optional)`,
+          hint: 'Requirements are usually set on child interactive spans',
+          autoFocus: true,
+          showCommonOptions: true,
+        },
+      ],
+      infoBox:
+        'Guided actions walk users through steps one at a time, waiting for them to complete each action. ' +
+        'Add nested interactive spans inside this element to define the individual steps.',
+      buildAttributes: (values) => ({
+        [DATA_ATTRIBUTES.TARGET_ACTION]: ACTION_TYPES.GUIDED,
+        [DATA_ATTRIBUTES.REQUIREMENTS]: values[DATA_ATTRIBUTES.REQUIREMENTS],
+        class: DEFAULT_VALUES.CLASS,
+      }),
+    },
+    formComponent: GuidedActionForm,
+  },
+
+  [ACTION_TYPES.QUIZ]: {
+    type: ACTION_TYPES.QUIZ,
+    ui: {
+      icon: getActionIcon(ACTION_TYPES.QUIZ),
+      name: 'Quiz',
+      description: 'Knowledge check question',
+      grafanaIcon: 'question-circle',
+    },
+    formConfig: {
+      title: ACTION_TYPES.QUIZ,
+      description: 'Create a multiple-choice quiz question',
+      actionType: ACTION_TYPES.QUIZ,
+      // QuizActionForm handles all fields itself - no generic fields needed
+      fields: [],
+      buildAttributes: (values) => ({
+        [DATA_ATTRIBUTES.TARGET_ACTION]: ACTION_TYPES.QUIZ,
+        [DATA_ATTRIBUTES.REQUIREMENTS]: values[DATA_ATTRIBUTES.REQUIREMENTS],
+        class: DEFAULT_VALUES.CLASS,
+        // Quiz-specific data passed through from form
+        ...values,
+      }),
+    },
+    formComponent: QuizActionForm,
   },
 
   [ACTION_TYPES.SEQUENCE]: {

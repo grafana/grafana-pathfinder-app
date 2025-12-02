@@ -1,5 +1,78 @@
 # Changelog
 
+## 1.1.78 (2025-12-01)
+
+### Changed
+
+- Added improvements to interaction engine
+
+### Fixed
+
+- Fixed EnableRecommenderBanner not showing when recommendations are disabled (variable name bug)
+
+## 1.1.77 (2025-12-01)
+
+### Fixed
+
+- Fixed regression in WYSIWYG editor caused by recent updates
+- Improved requirements system
+
+### Chore
+
+- Updated actions/setup-go digest to 4dc6199
+- Updated actions/checkout action to v5.0.1
+
+## 1.1.76 (2025-12-01)
+
+### Fixed
+
+- Fixed issues with RudderStack analytics
+
+## 1.1.75 (2025-12-01)
+
+### Fixed
+
+- fixed issue with bundled getting started guide step
+
+## 1.1.74 (2025-12-01)
+
+> ⚠️ **BREAKING CHANGE FOR CONTENT CREATORS**
+>
+> The content format for interactive guides has migrated from HTML/TypeScript to **JSON**.
+> Existing HTML-based guides will continue to work but are deprecated.
+> All new content should use the JSON format. See the migration guide at
+> `docs/developer/interactive-examples/html-to-json-migration.md` and the format documentation
+> at `docs/developer/interactive-examples/json-guide-format.md`.
+
+### Added
+
+- Added JSON-based interactive guide format with full migration of bundled interactives
+- Added quiz block for interactive knowledge checks
+- Added JSON export support in dev mode
+- Added fullscreen mode for WYSIWYG editor
+- Added bubble toolbar for WYSIWYG editor
+- Added `verify` property for interactive step validation
+- Added `completeEarly` support at interactive block level
+- Added `noop` interactive action type
+- Added auto-extract selector from step format in Simple Selector Tester
+
+### Changed
+
+- **BREAKING**: Content format migrated from HTML/TypeScript to JSON
+- Moved dev tools to dedicated tab for better organization
+- Updated interactive UI styling
+- Improved edit experience in dev mode
+
+### Fixed
+
+- Fixed `showMe`/`doIt` property handling in interactive steps
+- Fixed step sequencing issues
+- Fixed URL generation strategy for both new `content.json` and legacy `unstyled.html`
+
+### Chore
+
+- Updated grafana/plugin-ci-workflows/ci-cd-workflows action to v4.1.0
+
 ## 1.1.73 (2025-11-25)
 
 ### Added

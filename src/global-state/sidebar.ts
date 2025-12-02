@@ -19,6 +19,7 @@ export class OpenExtensionSidebarEvent extends BusEventWithPayload<OpenExtension
  */
 class GlobalSidebarState {
   private _isSidebarMounted = false;
+  private _pendingOpenSource: string | null = null;
 
   public getIsSidebarMounted(): boolean {
     return this._isSidebarMounted;
@@ -26,6 +27,24 @@ class GlobalSidebarState {
 
   public setIsSidebarMounted(isSidebarMounted: boolean): void {
     this._isSidebarMounted = isSidebarMounted;
+  }
+
+  /**
+   * Sets the source for the next sidebar open event.
+   * This is consumed by the sidebar mount analytics and cleared after use.
+   */
+  public setPendingOpenSource(source: string): void {
+    this._pendingOpenSource = source;
+  }
+
+  /**
+   * Gets and clears the pending open source.
+   * Returns the source if set, otherwise returns 'sidebar_toggle' as default.
+   */
+  public consumePendingOpenSource(): string {
+    const source = this._pendingOpenSource || 'sidebar_toggle';
+    this._pendingOpenSource = null;
+    return source;
   }
 
   // Sidebar management
@@ -40,11 +59,8 @@ class GlobalSidebarState {
       })
     );
 
-    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-      action: 'open',
-      source: 'sidebar_mount',
-      timestamp: Date.now(),
-    });
+    // Note: Analytics are now fired in the ContextSidebar mount effect
+    // to properly track the source via consumePendingOpenSource()
   }
 
   public closeSidebar(): void {

@@ -1,5 +1,6 @@
 import { getDocsLinkFromEvent } from 'global-state/utils.link-interception';
 import { sidebarState } from 'global-state/sidebar';
+import { reportAppInteraction, UserInteraction } from 'lib/analytics';
 
 export interface QueuedDocsLink {
   url: string;
@@ -25,6 +26,14 @@ class GlobalLinkInterceptionState {
 
     event.preventDefault();
 
+    // Track the intercepted link
+    reportAppInteraction(UserInteraction.GlobalDocsLinkIntercepted, {
+      intercepted_url: docsLink.url,
+      link_title: docsLink.title,
+      sidebar_was_open: sidebarState.getIsSidebarMounted(),
+      timestamp: Date.now(),
+    });
+
     // if sidebar is mounted, auto-open the link
     if (sidebarState.getIsSidebarMounted()) {
       document.dispatchEvent(
@@ -33,6 +42,7 @@ class GlobalLinkInterceptionState {
         })
       );
     } else {
+      sidebarState.setPendingOpenSource('link_interception');
       sidebarState.openSidebar('Interactive learning', {
         url: docsLink.url,
         title: docsLink.title,

@@ -10,6 +10,7 @@ import { buildInteractiveAttributes, getNodeTypeName } from './attributeBuilder'
 import { ACTION_TYPES } from '../../../constants/interactive-config';
 import { CSS_CLASSES } from '../../../constants/editor-config';
 import { debug, error as logError } from '../utils/logger';
+import { generateStepId } from './jsonNodeUpdater';
 
 /**
  * Attributes that can be applied to interactive elements
@@ -296,26 +297,8 @@ function insertSequenceSectionElement(
 }
 
 /**
- * Extract inline content from selected or existing nodes
- */
-function extractInlineContent(content: any): any[] {
-  const inlineContent: any[] = [];
-
-  if (Array.isArray(content)) {
-    content.forEach((node: any) => {
-      if (node.content && Array.isArray(node.content)) {
-        inlineContent.push(...node.content);
-      } else if (node.type === 'text') {
-        inlineContent.push(node);
-      }
-    });
-  }
-
-  return inlineContent;
-}
-
-/**
- * Build paragraph content for multistep actions from internal actions and selection
+ * Build paragraph content for multistep actions from internal actions and selection.
+ * InteractiveSpan nodes are atomic - text is stored in the 'text' attribute.
  */
 function buildMultistepParagraphContent(
   editor: Editor,
@@ -328,15 +311,21 @@ function buildMultistepParagraphContent(
   const paragraphContent: any[] = [];
 
   // Add interactive spans for each recorded action
+  // Each atomic span has its text stored in the 'text' attribute
   if (internalActions && Array.isArray(internalActions) && internalActions.length > 0) {
     internalActions.forEach((action: any) => {
-      const spanAttrs = buildInteractiveAttributes('span', {
-        class: CSS_CLASSES.INTERACTIVE,
-        'data-targetaction': action.targetAction,
-        'data-reftarget': action.refTarget,
-        ...(action.targetValue && { 'data-targetvalue': action.targetValue }),
-        ...(action.requirements && { 'data-requirements': action.requirements }),
-      });
+      const spanAttrs = {
+        id: generateStepId(),
+        ...buildInteractiveAttributes('span', {
+          class: CSS_CLASSES.INTERACTIVE,
+          'data-targetaction': action.targetAction,
+          'data-reftarget': action.refTarget,
+          ...(action.targetValue && { 'data-targetvalue': action.targetValue }),
+          ...(action.requirements && { 'data-requirements': action.requirements }),
+        }),
+        // Atomic node text attribute - use refTarget as display text
+        text: action.refTarget || 'Step',
+      };
 
       paragraphContent.push({
         type: 'interactiveSpan',
@@ -345,25 +334,31 @@ function buildMultistepParagraphContent(
     });
   }
 
-  // Extract text content from selection or existing listItem
+  // For multistep, we don't need to extract selection content into spans
+  // The selection text is used as the list item description, not span content
+  // Add description text if present
+  let descriptionText = '';
   if (hasSelection) {
-    const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
-    paragraphContent.push(...extractInlineContent(selectedContent));
+    descriptionText = editor.state.doc.textBetween(from, to, ' ').trim();
   } else if (currentListItem) {
-    const existingContent = currentListItem.node.content;
-    if (existingContent && existingContent.size > 0) {
-      existingContent.forEach((node: any) => {
-        if (node.content && node.content.size > 0) {
-          node.content.forEach((inlineNode: any) => {
-            paragraphContent.push(inlineNode.toJSON());
-          });
-        }
-      });
-    }
+    // Extract text from existing list item, excluding interactive spans
+    currentListItem.node.content?.forEach((node: any) => {
+      if (node.content && node.content.size > 0) {
+        node.content.forEach((inlineNode: any) => {
+          if (inlineNode.isText) {
+            descriptionText += inlineNode.text || '';
+          }
+        });
+      }
+    });
+    descriptionText = descriptionText.trim();
   }
 
-  // Default text if no content
-  if (paragraphContent.length === 0) {
+  // Add description text after the atomic spans
+  if (descriptionText) {
+    paragraphContent.push({ type: 'text', text: descriptionText });
+  } else if (paragraphContent.length === 0) {
+    // Default text if no content at all
     paragraphContent.push({ type: 'text', text: 'Action description' });
   }
 
@@ -384,7 +379,10 @@ function insertMultistepActionElement(
   const finalAttributes = { ...attributes };
   delete (finalAttributes as any).__internalActions;
 
-  const normalizedAttrs = buildInteractiveAttributes('listItem', finalAttributes as InteractiveAttributesOutput);
+  const normalizedAttrs = {
+    id: generateStepId(),
+    ...buildInteractiveAttributes('listItem', finalAttributes as InteractiveAttributesOutput),
+  };
   const currentListItem = getCurrentNode(editor, 'listItem');
 
   // If inside a listItem, replace it in place
@@ -460,6 +458,7 @@ function insertMultistepActionElement(
 
 /**
  * Insert an inline span element (or convert to list item if inside sequence section)
+ * InteractiveSpan is an atomic node - text is stored in the 'text' attribute, not content.
  */
 function insertInlineSpanElement(
   editor: Editor,
@@ -472,10 +471,13 @@ function insertInlineSpanElement(
   if (isInsideSequenceSectionListItem(editor)) {
     debug('[editorOperations] Converting interactive span to list item (inside sequence section)');
 
-    const normalizedAttrs = buildInteractiveAttributes('listItem', {
-      ...attributes,
-      class: attributes.class || CSS_CLASSES.INTERACTIVE,
-    } as InteractiveAttributesOutput);
+    const normalizedAttrs = {
+      id: generateStepId(),
+      ...buildInteractiveAttributes('listItem', {
+        ...attributes,
+        class: attributes.class || CSS_CLASSES.INTERACTIVE,
+      } as InteractiveAttributesOutput),
+    };
 
     const success = editor.chain().focus().updateAttributes('listItem', normalizedAttrs).run();
 
@@ -488,17 +490,31 @@ function insertInlineSpanElement(
     return;
   }
 
-  // Normal inline span behavior
-  const normalizedAttrs = buildInteractiveAttributes('span', attributes as InteractiveAttributesOutput);
-  const displayText = attributes['data-reftarget'] || 'Interactive action';
+  // For atomic interactiveSpan, extract text for the text attribute
+  let displayText = attributes['data-reftarget'] || 'Interactive action';
+
+  // If there's a selection, extract the text content for the text attribute
+  if (hasSelection) {
+    const selectedText = editor.state.doc.textBetween(from, to, ' ');
+    if (selectedText.trim()) {
+      displayText = selectedText.trim();
+    }
+  }
+
+  // Build attributes including text for the atomic node
+  const normalizedAttrs = {
+    id: generateStepId(),
+    ...buildInteractiveAttributes('span', attributes as InteractiveAttributesOutput),
+    text: displayText,
+  };
 
   if (!editor.can().insertContent({ type: 'interactiveSpan' })) {
     logError('[editorOperations] Cannot insert interactive span at current position');
     throw new Error('Cannot insert interactive action at current cursor position');
   }
 
+  // Atomic nodes have no content - text is stored in attrs.text
   if (hasSelection) {
-    const selectedContent = editor.state.doc.slice(from, to).content.toJSON();
     editor
       .chain()
       .focus()
@@ -507,7 +523,6 @@ function insertInlineSpanElement(
         {
           type: 'interactiveSpan',
           attrs: normalizedAttrs,
-          content: selectedContent,
         }
       )
       .run();
@@ -518,7 +533,6 @@ function insertInlineSpanElement(
       .insertContent({
         type: 'interactiveSpan',
         attrs: normalizedAttrs,
-        content: [{ type: 'text', text: displayText }],
       })
       .run();
   }
@@ -532,6 +546,72 @@ function insertInlineSpanElement(
  * @param attributes - Attributes to apply to the new element
  * @throws Error if insertion fails
  */
+/**
+ * Insert a quiz element
+ */
+function insertQuizElement(editor: Editor, attributes: ElementAttributes): void {
+  // Extract quiz-specific data
+  const question = (attributes as any).__quizQuestion || 'Quiz question';
+  const choices = (attributes as any).__quizChoices || [];
+  const multiSelect = (attributes as any).__quizMultiSelect || false;
+  const completionMode = (attributes as any).__quizCompletionMode || 'correct-only';
+  const maxAttempts = (attributes as any).__quizMaxAttempts || 3;
+  const skippable = (attributes as any).__quizSkippable || false;
+  const requirements = attributes['data-requirements'];
+
+  // Build a visual representation for the editor
+  // The actual quiz will be rendered differently when exported/executed
+  const choiceTexts = choices
+    .map((c: { text: string; correct: boolean }, i: number) => `${i + 1}. ${c.text}${c.correct ? ' ✓' : ''}`)
+    .join('\n');
+
+  const quizSummary = `📝 Quiz: ${question}\n${choiceTexts}`;
+
+  // Insert as a styled paragraph block (quiz blocks are block-level)
+  const content = {
+    type: 'paragraph',
+    content: [
+      {
+        type: 'text',
+        text: quizSummary,
+      },
+    ],
+  };
+
+  // Build base attributes
+  const baseAttrs = buildInteractiveAttributes('listItem', {
+    'data-targetaction': ACTION_TYPES.QUIZ,
+    'data-requirements': requirements || '',
+    class: CSS_CLASSES.INTERACTIVE,
+  });
+
+  // Add quiz-specific attributes (these are stored as data attributes for serialization)
+  const normalizedAttrs = {
+    id: generateStepId(),
+    ...baseAttrs,
+    'data-quiz-question': question,
+    'data-quiz-multi-select': String(multiSelect),
+    'data-quiz-completion-mode': completionMode,
+    'data-quiz-max-attempts': String(maxAttempts),
+    'data-quiz-skippable': String(skippable),
+    // Store choices as JSON in an attribute
+    'data-quiz-choices': JSON.stringify(choices),
+  };
+
+  const listItemContent = {
+    type: 'bulletList',
+    content: [
+      {
+        type: 'listItem',
+        attrs: normalizedAttrs,
+        content: [content],
+      },
+    ],
+  };
+
+  editor.chain().focus().insertContent(listItemContent).run();
+}
+
 export function insertNewInteractiveElement(editor: Editor, attributes: ElementAttributes): void {
   const actionType = attributes['data-targetaction'];
   const { from, to } = editor.state.selection;
@@ -547,8 +627,10 @@ export function insertNewInteractiveElement(editor: Editor, attributes: ElementA
   try {
     if (actionType === ACTION_TYPES.SEQUENCE) {
       insertSequenceSectionElement(editor, attributes, hasSelection, from);
-    } else if (actionType === ACTION_TYPES.MULTISTEP) {
+    } else if (actionType === ACTION_TYPES.MULTISTEP || actionType === ACTION_TYPES.GUIDED) {
       insertMultistepActionElement(editor, attributes, hasSelection, from, to);
+    } else if (actionType === ACTION_TYPES.QUIZ) {
+      insertQuizElement(editor, attributes);
     } else {
       insertInlineSpanElement(editor, attributes, hasSelection, from, to);
     }

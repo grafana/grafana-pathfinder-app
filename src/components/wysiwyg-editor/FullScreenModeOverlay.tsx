@@ -9,14 +9,13 @@
  * This component is rendered via Portal to overlay the entire Grafana UI.
  */
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import type { Editor } from '@tiptap/react';
 import { DomPathTooltip } from '../DomPathTooltip';
-import { FullScreenStepEditor, type StepEditorData } from './FullScreenStepEditor';
-import { BundlingStepEditor } from './BundlingStepEditor';
+import { FullScreenStepEditor, type StepEditorData, type NestedStepData } from './FullScreenStepEditor';
 import { BundlingIndicator } from './BundlingIndicator';
 import { MinimizedSidebarIcon } from '../docs-panel/MinimizedSidebarIcon';
-import { useFullScreenMode, type UseFullScreenModeReturn, type BundledStepEditorData } from './hooks/useFullScreenMode';
+import { useFullScreenMode, type UseFullScreenModeReturn, type PendingClickInfo } from './hooks/useFullScreenMode';
 import { useMultistepDetector } from './hooks/useMultistepDetector';
 
 /**
@@ -56,14 +55,14 @@ export function FullScreenModeOverlay({ editor, fullScreenState }: FullScreenMod
     bundlingActionType,
     stepCount,
     existingSections,
+    initialSectionId,
     exitFullScreenMode,
     saveStepAndClick,
     startBundling,
     skipClick,
     cancelEdit,
     finishBundling,
-    saveBundledStep,
-    skipBundledStepEdit,
+    confirmBundling,
     domPath,
     cursorPosition,
   } = fullScreenState;
@@ -110,31 +109,38 @@ export function FullScreenModeOverlay({ editor, fullScreenState }: FullScreenMod
     triggerDetection();
   }, [skipClick, triggerDetection]);
 
-  // Handle finish bundling - prompts for description
+  // Handle finish bundling - transitions to review mode
   const handleFinishBundling = useCallback(() => {
-    // Use a simple description based on step count
-    // In a more advanced implementation, could show a modal for custom description
-    const description =
-      bundledSteps.length > 1
-        ? `Complete the ${bundlingActionType || 'multistep'} action (${bundledSteps.length} steps)`
-        : bundledSteps[0]?.description || 'Complete the action';
-    finishBundling(description);
-  }, [bundledSteps, bundlingActionType, finishBundling]);
+    finishBundling();
+  }, [finishBundling]);
 
-  // Handle save bundled step
-  const handleSaveBundledStep = useCallback(
-    (data: BundledStepEditorData) => {
-      saveBundledStep(data);
-      triggerDetection();
+  // Convert bundled steps to nested step format for the review editor
+  const bundledStepsAsNested: NestedStepData[] = useMemo(() => {
+    return bundledSteps.map((step) => ({
+      actionType: step.action,
+      refTarget: step.selector,
+      requirements: step.requirements,
+      interactiveComment: step.interactiveComment,
+      textContent: step.description,
+    }));
+  }, [bundledSteps]);
+
+  // Handle confirm bundling from review - creates the element
+  const handleConfirmBundling = useCallback(
+    (data: StepEditorData, updatedNestedSteps: NestedStepData[]) => {
+      // Convert nested steps back to PendingClickInfo format
+      const updatedSteps: PendingClickInfo[] = bundledSteps.map((original, index) => {
+        const updated = updatedNestedSteps[index];
+        return {
+          ...original,
+          interactiveComment: updated?.interactiveComment,
+          requirements: updated?.requirements,
+        };
+      });
+      confirmBundling(data, updatedSteps);
     },
-    [saveBundledStep, triggerDetection]
+    [bundledSteps, confirmBundling]
   );
-
-  // Handle skip bundled step
-  const handleSkipBundledStep = useCallback(() => {
-    skipBundledStepEdit();
-    triggerDetection();
-  }, [skipBundledStepEdit, triggerDetection]);
 
   // Listen for request to exit full screen mode (from minimized sidebar)
   useEffect(() => {
@@ -153,24 +159,24 @@ export function FullScreenModeOverlay({ editor, fullScreenState }: FullScreenMod
   // Show when in active or bundling state and hovering over an element
   const showTooltip = (state === 'active' || state === 'bundling') && domPath && cursorPosition;
 
-  // Determine if step editor should be open
+  // Determine if step editor should be open (for single step capture)
   const showStepEditor = state === 'editing' && pendingClick !== null;
 
-  // Determine if bundling step editor should be shown (mini editor during bundling)
-  const showBundlingStepEditor = state === 'bundling-editing' && pendingClick !== null;
+  // Determine if bundling review editor should be shown (after recording, to add descriptions)
+  const showBundlingReview = state === 'bundling-review' && bundledSteps.length > 0;
 
-  // Determine if bundling indicator should be shown
+  // Determine if bundling indicator should be shown (during recording)
   const showBundlingIndicator = state === 'bundling';
 
   // Determine recording state for minimized icon
-  const isRecording = state === 'active' || state === 'bundling' || state === 'bundling-editing';
+  const isRecording = state === 'active' || state === 'bundling';
 
   return (
     <>
       {/* DOM Path Tooltip - follows cursor when hovering */}
       {showTooltip && <DomPathTooltip domPath={domPath} position={cursorPosition} visible={true} />}
 
-      {/* Step Editor Modal - shown when click is intercepted */}
+      {/* Step Editor Modal - shown when click is intercepted (single step capture) */}
       <FullScreenStepEditor
         isOpen={showStepEditor}
         pendingClick={pendingClick}
@@ -180,21 +186,22 @@ export function FullScreenModeOverlay({ editor, fullScreenState }: FullScreenMod
         onCancel={cancelEdit}
         stepNumber={stepCount + 1}
         existingSections={existingSections}
+        initialSectionId={initialSectionId}
       />
 
-      {/* Bundling Step Editor - mini editor shown when click is captured during bundling */}
-      {showBundlingStepEditor && pendingClick && (
-        <BundlingStepEditor
-          pendingClick={pendingClick}
-          stepCount={bundledSteps.length}
-          actionType={bundlingActionType || 'multistep'}
-          onSave={handleSaveBundledStep}
-          onSkip={handleSkipBundledStep}
-          onCancel={cancelEdit}
-        />
-      )}
+      {/* Bundling Review Editor - shown after recording to add descriptions/comments */}
+      <FullScreenStepEditor
+        isOpen={showBundlingReview}
+        isBundlingReview={true}
+        bundlingActionType={bundlingActionType || 'multistep'}
+        bundledNestedSteps={bundledStepsAsNested}
+        onConfirmBundling={handleConfirmBundling}
+        onCancel={cancelEdit}
+        existingSections={existingSections}
+        initialSectionId={initialSectionId}
+      />
 
-      {/* Bundling Indicator - shown when collecting multistep actions */}
+      {/* Bundling Indicator - shown during recording to show step count */}
       {showBundlingIndicator && (
         <BundlingIndicator
           stepCount={bundledSteps.length}

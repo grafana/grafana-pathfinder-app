@@ -37,6 +37,7 @@ export interface UseEditorModalsReturn {
   handleAddSequence: () => void;
   handleAddComment: () => void;
   handleInsertComment: (commentText: string) => void;
+  handleDeleteComment: () => void;
   handleFormSubmit: (attributes: InteractiveAttributesOutput) => void;
   commentDialogMode: 'insert' | 'edit';
   commentDialogInitialText: string;
@@ -139,6 +140,7 @@ export function useEditorModals({
   }, [editor, stopEditing, openCommentDialog]);
 
   // Handle inserting/updating comment from dialog
+  // Comments are now atomic nodes - text is stored in the 'text' attribute
   const handleInsertComment = useCallback(
     (commentText: string) => {
       if (!editor || !commentText.trim()) {
@@ -148,7 +150,7 @@ export function useEditorModals({
       try {
         // Check if we're editing an existing comment
         if (editState?.type === 'comment' && editState.pos !== undefined) {
-          debug('[useEditorModals] Updating comment', { commentText, pos: editState.pos });
+          debug('[useEditorModals] Updating atomic comment', { commentText, pos: editState.pos });
 
           // Find the comment node at the position
           const { pos } = editState;
@@ -169,7 +171,7 @@ export function useEditorModals({
           });
 
           if (commentNode) {
-            // Replace the comment node with updated content
+            // For atomic nodes, replace with new node that has updated text attribute
             editor
               .chain()
               .focus()
@@ -179,20 +181,20 @@ export function useEditorModals({
                 type: 'interactiveComment',
                 attrs: {
                   class: CSS_CLASSES.INTERACTIVE_COMMENT,
+                  text: commentText, // Store text in attribute for atomic node
                 },
-                content: [{ type: 'text', text: commentText }],
               })
               .run();
 
-            debug('[useEditorModals] Comment updated successfully');
+            debug('[useEditorModals] Atomic comment updated successfully');
             stopEditing();
           } else {
             logError('[useEditorModals] Could not find comment node at position:', pos);
           }
         } else {
-          debug('[useEditorModals] Inserting comment', { commentText });
+          debug('[useEditorModals] Inserting atomic comment', { commentText });
 
-          // Insert comment at cursor position
+          // Insert atomic comment node with text in attribute
           editor
             .chain()
             .focus()
@@ -200,12 +202,12 @@ export function useEditorModals({
               type: 'interactiveComment',
               attrs: {
                 class: CSS_CLASSES.INTERACTIVE_COMMENT,
+                text: commentText, // Store text in attribute for atomic node
               },
-              content: [{ type: 'text', text: commentText }],
             })
             .run();
 
-          debug('[useEditorModals] Comment inserted successfully');
+          debug('[useEditorModals] Atomic comment inserted successfully');
         }
       } catch (error) {
         logError('[useEditorModals] Failed to handle comment:', error);
@@ -213,6 +215,53 @@ export function useEditorModals({
     },
     [editor, editState, stopEditing]
   );
+
+  // Handle deleting comment from dialog
+  const handleDeleteComment = useCallback(() => {
+    if (!editor || editState?.type !== 'comment' || editState.pos === undefined) {
+      return;
+    }
+
+    debug('[useEditorModals] Deleting comment', { pos: editState.pos });
+
+    try {
+      const { pos } = editState;
+      const { state } = editor;
+      const { doc } = state;
+
+      // Find the comment node at the position
+      let commentNode: any = null;
+      let commentPos = pos;
+
+      doc.nodesBetween(pos, pos + 1, (node, nodePos) => {
+        if (node.type.name === 'interactiveComment') {
+          commentNode = node;
+          commentPos = nodePos;
+          return false; // stop iteration
+        }
+        return true;
+      });
+
+      if (commentNode) {
+        // Delete the comment node
+        editor
+          .chain()
+          .focus()
+          .setTextSelection({ from: commentPos, to: commentPos + commentNode.nodeSize })
+          .deleteSelection()
+          .run();
+
+        debug('[useEditorModals] Comment deleted successfully');
+      } else {
+        logError('[useEditorModals] Could not find comment node at position:', pos);
+      }
+    } catch (error) {
+      logError('[useEditorModals] Failed to delete comment:', error);
+    }
+
+    closeCommentDialog();
+    stopEditing();
+  }, [editor, editState, closeCommentDialog, stopEditing]);
 
   return {
     isModalOpen,
@@ -225,6 +274,7 @@ export function useEditorModals({
     handleAddSequence,
     handleAddComment,
     handleInsertComment,
+    handleDeleteComment,
     handleFormSubmit,
     commentDialogMode,
     commentDialogInitialText,
