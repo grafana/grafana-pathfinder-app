@@ -114,11 +114,15 @@ export function isFirstMilestone(content: RawContent): boolean {
  * Content enhancement helpers
  * These prepare content for rendering but don't manipulate DOM
  */
-export function generateJourneyContentWithExtras(baseContent: string, metadata: LearningJourneyMetadata): string {
+export function generateJourneyContentWithExtras(
+  baseContent: string,
+  metadata: LearningJourneyMetadata,
+  skipReadyToBegin = false
+): string {
   let enhancedContent = baseContent;
 
-  // Add "Ready to Begin" button for cover pages (milestone 0)
-  if (metadata.currentMilestone === 0 && metadata.totalMilestones > 0) {
+  // Add "Ready to Begin" button for cover pages (milestone 0), unless skipped
+  if (!skipReadyToBegin && metadata.currentMilestone === 0 && metadata.totalMilestones > 0) {
     enhancedContent = addReadyToBeginButton(enhancedContent, metadata);
   }
 
