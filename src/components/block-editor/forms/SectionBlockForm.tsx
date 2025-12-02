@@ -20,6 +20,14 @@ function isSectionBlock(block: JsonBlock): block is JsonSectionBlock {
 }
 
 /**
+ * Generate a default unique section ID
+ */
+function generateDefaultSectionId(): string {
+  const randomNum = Math.floor(10000 + Math.random() * 90000);
+  return `guide-section-${randomNum}`;
+}
+
+/**
  * Generate a section ID from a title
  */
 function generateIdFromTitle(title: string): string {
@@ -40,7 +48,7 @@ export function SectionBlockForm({ initialData, onSubmit, onCancel, isEditing = 
 
   // Initialize from existing data or defaults
   const initial = initialData && isSectionBlock(initialData) ? initialData : null;
-  const [sectionId, setSectionId] = useState(initial?.id ?? '');
+  const [sectionId, setSectionId] = useState(initial?.id ?? generateDefaultSectionId());
   const [title, setTitle] = useState(initial?.title ?? '');
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [objectives, setObjectives] = useState(initial?.objectives?.join(', ') ?? '');
