@@ -3,12 +3,16 @@ import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents, locationService } from '@grafana/runtime';
 import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
+import { initializeFaroMetrics } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { isGrafanaDocsUrl, isGitHubUrl } from './security';
+
+// Initialize Faro metrics (before translations to capture early errors)
+await initializeFaroMetrics();
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
