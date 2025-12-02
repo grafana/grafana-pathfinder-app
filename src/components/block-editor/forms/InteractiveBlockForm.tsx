@@ -130,7 +130,6 @@ export function InteractiveBlockForm({
     });
   }, []);
 
-
   const isValid = reftarget.trim().length > 0 && content.trim().length > 0;
   const showTargetValue = action === 'formfill';
 

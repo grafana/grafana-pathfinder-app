@@ -57,15 +57,11 @@ const getDropIndicatorStyles = (theme: GrafanaTheme2) => ({
  */
 function DropIndicator({ isActive, label }: { isActive: boolean; label: string }) {
   const styles = useStyles2(getDropIndicatorStyles);
-  
+
   return (
     <div className={styles.container}>
       <div className={`${styles.line} ${!isActive ? styles.lineInactive : ''}`} />
-      {isActive && (
-        <div className={styles.label}>
-          {label}
-        </div>
-      )}
+      {isActive && <div className={styles.label}>{label}</div>}
     </div>
   );
 }
@@ -348,10 +344,7 @@ function NestedBlockItem({
           <span className={styles.icon}>{meta?.icon}</span>
           <Badge text={meta?.name ?? block.type} color="blue" />
           {'action' in block && (
-            <Badge 
-              text={String(block.action).charAt(0).toUpperCase() + String(block.action).slice(1)} 
-              color="purple" 
-            />
+            <Badge text={String(block.action).charAt(0).toUpperCase() + String(block.action).slice(1)} color="purple" />
           )}
         </div>
         {preview && (
@@ -448,7 +441,7 @@ export function BlockList({
   const [dragOverRootZone, setDragOverRootZone] = useState<number | null>(null);
   const [dragOverReorderZone, setDragOverReorderZone] = useState<number | null>(null);
   const [dragOverNestedZone, setDragOverNestedZone] = useState<{ sectionId: string; index: number } | null>(null);
-  
+
   // Use refs to track drag state without causing re-renders during drag start
   const dragStateRef = useRef<{
     rootBlockId: string | null;
@@ -487,10 +480,10 @@ export function BlockList({
     e.dataTransfer.setData('text/plain', `${blockType}:${blockId}`);
     e.dataTransfer.dropEffect = 'move';
     e.dataTransfer.effectAllowed = 'move';
-    
+
     // Store in ref immediately (no re-render)
     dragStateRef.current = { rootBlockId: blockId, rootBlockIndex: index, nestedBlock: null };
-    
+
     // Defer state update to next frame to avoid re-render during drag start
     requestAnimationFrame(() => {
       setDraggedBlockId(blockId);
@@ -511,13 +504,13 @@ export function BlockList({
   const handleDropOnSection = useCallback(
     (sectionId: string) => {
       // Check if the dragged block is a section (can't nest sections)
-      const draggedBlock = blocks.find(b => b.id === draggedBlockId);
+      const draggedBlock = blocks.find((b) => b.id === draggedBlockId);
       if (draggedBlock?.block.type === 'section') {
         setDraggedBlockId(null);
         setDragOverSectionId(null);
         return;
       }
-      
+
       if (draggedBlockId && onNestBlock) {
         onNestBlock(draggedBlockId, sectionId);
       }
@@ -555,10 +548,10 @@ export function BlockList({
     e.dataTransfer.setData('text/plain', `nested:${sectionId}:${nestedIndex}`);
     e.dataTransfer.dropEffect = 'move';
     e.dataTransfer.effectAllowed = 'move';
-    
+
     // Store in ref immediately (no re-render)
     dragStateRef.current = { rootBlockId: null, rootBlockIndex: null, nestedBlock: { sectionId, index: nestedIndex } };
-    
+
     // Defer state update to next frame to avoid re-render during drag start
     requestAnimationFrame(() => {
       setDraggedNestedBlock({ sectionId, index: nestedIndex });
@@ -658,7 +651,7 @@ export function BlockList({
 
   // Check if any drag operation is active
   const isDragging = draggedBlockId !== null || draggedNestedBlock !== null;
-  
+
   // Check if a root drop zone would be redundant (same position as dragged block)
   const isRootDropZoneRedundant = (zoneIndex: number) => {
     if (draggedBlockIndex === null) {
@@ -672,8 +665,8 @@ export function BlockList({
     <div className={styles.list}>
       {/* Insert zone at the top */}
       {/* When dragging: show drop indicator. When not dragging: show add block on hover (as overlay) */}
-      {!(draggedBlockIndex === 0) && (
-        isDragging ? (
+      {!(draggedBlockIndex === 0) &&
+        (isDragging ? (
           <div
             style={{ padding: '4px 0' }}
             onDragOver={(e) => {
@@ -697,7 +690,7 @@ export function BlockList({
               }
             }}
           >
-            <DropIndicator 
+            <DropIndicator
               isActive={dragOverRootZone === 0 || dragOverReorderZone === 0}
               label={draggedNestedBlock ? '📤 Move out of section' : '📍 Move here'}
             />
@@ -708,12 +701,13 @@ export function BlockList({
             onMouseEnter={() => setHoveredInsertIndex(0)}
             onMouseLeave={() => setHoveredInsertIndex(null)}
           >
-            <div className={`${styles.insertZoneButton} ${hoveredInsertIndex === 0 ? styles.insertZoneButtonVisible : ''}`}>
+            <div
+              className={`${styles.insertZoneButton} ${hoveredInsertIndex === 0 ? styles.insertZoneButtonVisible : ''}`}
+            >
               <BlockPalette onSelect={onInsertBlock} insertAtIndex={0} compact />
             </div>
           </div>
-        )
-      )}
+        ))}
 
       {blocks.map((block, index) => {
         const isSection = checkIsSectionBlock(block.block);
@@ -745,14 +739,14 @@ export function BlockList({
             {isSection && (
               <div className={nestedStyles.nestedContainer}>
                 {sectionBlocks.length === 0 ? (
-                  <div className={nestedStyles.emptySection}>
-                    Drag blocks here or click + Add Block below
-                  </div>
+                  <div className={nestedStyles.emptySection}>Drag blocks here or click + Add Block below</div>
                 ) : (
                   sectionBlocks.map((nestedBlock: JsonBlock, nestedIndex: number) => {
-                    const isDropZoneActive = dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === nestedIndex;
+                    const isDropZoneActive =
+                      dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === nestedIndex;
                     // Don't show drop zone if it would result in same position (before dragged item or after it)
-                    const isRedundantDropZone = draggedNestedBlock?.sectionId === block.id && 
+                    const isRedundantDropZone =
+                      draggedNestedBlock?.sectionId === block.id &&
                       (nestedIndex === draggedNestedBlock.index || nestedIndex === draggedNestedBlock.index + 1);
 
                     return (
@@ -770,7 +764,7 @@ export function BlockList({
                                 handleDragOverNestedReorder(e, block.id, nestedIndex);
                               } else if (draggedBlockId) {
                                 // Check if dragged block is a section - don't allow nesting
-                                const draggedBlock = blocks.find(b => b.id === draggedBlockId);
+                                const draggedBlock = blocks.find((b) => b.id === draggedBlockId);
                                 if (draggedBlock?.block.type !== 'section') {
                                   setDragOverNestedZone({ sectionId: block.id, index: nestedIndex });
                                 }
@@ -786,7 +780,7 @@ export function BlockList({
                                 handleDropNestedReorder(block.id, nestedIndex);
                               } else if (draggedBlockId && onNestBlock) {
                                 // Check if dragged block is a section - don't allow nesting
-                                const draggedBlock = blocks.find(b => b.id === draggedBlockId);
+                                const draggedBlock = blocks.find((b) => b.id === draggedBlockId);
                                 if (draggedBlock?.block.type === 'section') {
                                   return;
                                 }
@@ -823,23 +817,30 @@ export function BlockList({
                 )}
 
                 {/* Drop zone at the end for reordering - hide if dragged item is last */}
-                {draggedNestedBlock && draggedNestedBlock.sectionId === block.id && 
-                 draggedNestedBlock.index !== sectionBlocks.length - 1 && (
-                  <div
-                    style={{
-                      padding: '4px 0',
-                      marginBottom: '8px',
-                    }}
-                    onDragOver={(e) => handleDragOverNestedReorder(e, block.id, sectionBlocks.length)}
-                    onDragLeave={handleDragLeaveNestedReorder}
-                    onDrop={(e) => { e.preventDefault(); handleDropNestedReorder(block.id, sectionBlocks.length); }}
-                  >
-                    <DropIndicator 
-                      isActive={dragOverNestedZone?.sectionId === block.id && dragOverNestedZone?.index === sectionBlocks.length}
-                      label="📍 Move here"
-                    />
-                  </div>
-                )}
+                {draggedNestedBlock &&
+                  draggedNestedBlock.sectionId === block.id &&
+                  draggedNestedBlock.index !== sectionBlocks.length - 1 && (
+                    <div
+                      style={{
+                        padding: '4px 0',
+                        marginBottom: '8px',
+                      }}
+                      onDragOver={(e) => handleDragOverNestedReorder(e, block.id, sectionBlocks.length)}
+                      onDragLeave={handleDragLeaveNestedReorder}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleDropNestedReorder(block.id, sectionBlocks.length);
+                      }}
+                    >
+                      <DropIndicator
+                        isActive={
+                          dragOverNestedZone?.sectionId === block.id &&
+                          dragOverNestedZone?.index === sectionBlocks.length
+                        }
+                        label="📍 Move here"
+                      />
+                    </div>
+                  )}
 
                 {/* Drop zone for section - accepts both root blocks and nested blocks from other sections */}
                 <div
@@ -881,8 +882,8 @@ export function BlockList({
 
             {/* Insert zone after each block */}
             {/* When dragging: show drop indicator. When not dragging: show add block on hover (as overlay) */}
-            {!isRootDropZoneRedundant(index + 1) && (
-              isDragging ? (
+            {!isRootDropZoneRedundant(index + 1) &&
+              (isDragging ? (
                 <div
                   style={{ padding: '4px 0' }}
                   onDragOver={(e) => {
@@ -906,7 +907,7 @@ export function BlockList({
                     }
                   }}
                 >
-                  <DropIndicator 
+                  <DropIndicator
                     isActive={dragOverRootZone === index + 1 || dragOverReorderZone === index + 1}
                     label={draggedNestedBlock ? '📤 Move out of section' : '📍 Move here'}
                   />
@@ -917,16 +918,16 @@ export function BlockList({
                   onMouseEnter={() => setHoveredInsertIndex(index + 1)}
                   onMouseLeave={() => setHoveredInsertIndex(null)}
                 >
-                  <div className={`${styles.insertZoneButton} ${hoveredInsertIndex === index + 1 ? styles.insertZoneButtonVisible : ''}`}>
+                  <div
+                    className={`${styles.insertZoneButton} ${hoveredInsertIndex === index + 1 ? styles.insertZoneButtonVisible : ''}`}
+                  >
                     <BlockPalette onSelect={onInsertBlock} insertAtIndex={index + 1} compact />
                   </div>
                 </div>
-              )
-            )}
+              ))}
           </React.Fragment>
         );
       })}
-
     </div>
   );
 }

@@ -188,9 +188,9 @@ export interface BlockPaletteProps {
 export function BlockPalette({ onSelect, insertAtIndex, compact = false, excludeTypes = [] }: BlockPaletteProps) {
   const styles = useStyles2(getPaletteModalStyles);
   const [isOpen, setIsOpen] = useState(false);
-  
+
   // Filter out excluded types
-  const availableTypes = BLOCK_TYPE_ORDER.filter(type => !excludeTypes.includes(type));
+  const availableTypes = BLOCK_TYPE_ORDER.filter((type) => !excludeTypes.includes(type));
 
   // Handle escape key to close
   useEffect(() => {
@@ -262,12 +262,7 @@ export function BlockPalette({ onSelect, insertAtIndex, compact = false, exclude
                   {availableTypes.map((type) => {
                     const meta = BLOCK_TYPE_METADATA[type];
                     return (
-                      <button
-                        key={type}
-                        className={styles.item}
-                        onClick={() => handleSelect(type)}
-                        type="button"
-                      >
+                      <button key={type} className={styles.item} onClick={() => handleSelect(type)} type="button">
                         <span className={styles.itemIcon}>{meta.icon}</span>
                         <div className={styles.itemContent}>
                           <div className={styles.itemName}>{meta.name}</div>

@@ -159,10 +159,7 @@ export function BlockItem({
     .join(' ');
 
   return (
-    <div
-      className={containerClass}
-      onClick={handleClick}
-    >
+    <div className={containerClass} onClick={handleClick}>
       {/* Drag handle - visual indicator */}
       <div className={styles.dragHandle} title="Drag anywhere on this block to reorder">
         <span style={{ fontSize: '14px' }}>⋮⋮</span>

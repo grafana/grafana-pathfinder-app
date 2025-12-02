@@ -46,10 +46,7 @@ function markdownToHtml(markdown: string): string {
   html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_match, lang, code) => {
     // Trim the code content to remove leading/trailing whitespace
     const trimmedCode = code.trim();
-    const escaped = trimmedCode
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    const escaped = trimmedCode.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const langAttr = lang ? ` class="language-${lang}"` : '';
     codeBlocks.push(`<pre><code${langAttr}>${escaped}</code></pre>`);
     return `%%CODEBLOCK_${codeBlocks.length - 1}%%`;
@@ -57,19 +54,13 @@ function markdownToHtml(markdown: string): string {
 
   // Extract and protect inline code
   html = html.replace(/`([^`\n]+)`/g, (_match, code) => {
-    const escaped = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     inlineCodes.push(`<code>${escaped}</code>`);
     return `%%INLINECODE_${inlineCodes.length - 1}%%`;
   });
 
   // Now escape remaining HTML
-  html = html
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   // Headers (in order of precedence)
   html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
@@ -99,7 +90,7 @@ function markdownToHtml(markdown: string): string {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    
+
     // Skip empty lines but close any open lists
     if (!trimmed) {
       if (inUl) {
@@ -199,26 +190,21 @@ function htmlToMarkdown(html: string): string {
 
   // First, handle code blocks - TipTap wraps them in <pre><code>
   // The code content may have HTML entities that need decoding
-  md = md.replace(/<pre><code(?:\s+class="language-(\w+)")?>([\s\S]*?)<\/code><\/pre>/gi, 
-    (_match, lang, code) => {
-      // Decode HTML entities in code
-      const decoded = code
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&')
-        .replace(/&nbsp;/g, ' ')
-        .trim(); // Remove leading/trailing whitespace from code content
-      const langTag = lang || '';
-      return `\`\`\`${langTag}\n${decoded}\n\`\`\``;
-    }
-  );
-
-  // Handle inline code - must be after code blocks
-  md = md.replace(/<code>([^<]*)<\/code>/gi, (_match, code) => {
+  md = md.replace(/<pre><code(?:\s+class="language-(\w+)")?>([\s\S]*?)<\/code><\/pre>/gi, (_match, lang, code) => {
+    // Decode HTML entities in code
     const decoded = code
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&');
+      .replace(/&amp;/g, '&')
+      .replace(/&nbsp;/g, ' ')
+      .trim(); // Remove leading/trailing whitespace from code content
+    const langTag = lang || '';
+    return `\`\`\`${langTag}\n${decoded}\n\`\`\``;
+  });
+
+  // Handle inline code - must be after code blocks
+  md = md.replace(/<code>([^<]*)<\/code>/gi, (_match, code) => {
+    const decoded = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
     return `\`${decoded}\``;
   });
 
@@ -249,18 +235,26 @@ function htmlToMarkdown(html: string): string {
   // Lists - handle TipTap's structure with nested p tags
   md = md.replace(/<ul>([\s\S]*?)<\/ul>/gi, (_match, content: string) => {
     const items = content.match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [];
-    return items.map(item => {
-      const text = stripTags(item.replace(/<\/?li[^>]*>/gi, '')).trim();
-      return `- ${text}`;
-    }).join('\n') + '\n\n';
+    return (
+      items
+        .map((item) => {
+          const text = stripTags(item.replace(/<\/?li[^>]*>/gi, '')).trim();
+          return `- ${text}`;
+        })
+        .join('\n') + '\n\n'
+    );
   });
 
   md = md.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_match, content: string) => {
     const items = content.match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [];
-    return items.map((item, i) => {
-      const text = stripTags(item.replace(/<\/?li[^>]*>/gi, '')).trim();
-      return `${i + 1}. ${text}`;
-    }).join('\n') + '\n\n';
+    return (
+      items
+        .map((item, i) => {
+          const text = stripTags(item.replace(/<\/?li[^>]*>/gi, '')).trim();
+          return `${i + 1}. ${text}`;
+        })
+        .join('\n') + '\n\n'
+    );
   });
 
   // Paragraphs

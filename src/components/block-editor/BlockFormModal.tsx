@@ -123,7 +123,11 @@ export function BlockFormModal({ blockType, initialData, onSubmit, onCancel, isE
       if (portalContainer) {
         portalContainer.querySelectorAll('div').forEach((el) => {
           const style = window.getComputedStyle(el);
-          if (style.position === 'fixed' && style.backgroundColor !== 'transparent' && style.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+          if (
+            style.position === 'fixed' &&
+            style.backgroundColor !== 'transparent' &&
+            style.backgroundColor !== 'rgba(0, 0, 0, 0)'
+          ) {
             originalStyles.push({ el, bg: el.style.backgroundColor });
             el.style.backgroundColor = 'transparent';
           }

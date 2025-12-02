@@ -44,7 +44,7 @@ export function SectionBlockForm({ initialData, onSubmit, onCancel, isEditing = 
   const [title, setTitle] = useState(initial?.title ?? '');
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [objectives, setObjectives] = useState(initial?.objectives?.join(', ') ?? '');
-  
+
   // Preserve nested blocks when editing (but don't display them in the form)
   const nestedBlocks = useRef<JsonBlock[]>(initial?.blocks ?? []);
 

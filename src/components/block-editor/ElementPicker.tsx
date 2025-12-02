@@ -137,26 +137,29 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
   }, []);
 
   // Handle mouse move to track hovered element
-  const handleMouseMove = useCallback((event: MouseEvent) => {
-    const { clientX, clientY } = event;
-    const target = getElementUnderCursor(clientX, clientY);
+  const handleMouseMove = useCallback(
+    (event: MouseEvent) => {
+      const { clientX, clientY } = event;
+      const target = getElementUnderCursor(clientX, clientY);
 
-    if (!target) {
-      setHoveredElement(null);
-      setHighlightRect(null);
-      return;
-    }
+      if (!target) {
+        setHoveredElement(null);
+        setHighlightRect(null);
+        return;
+      }
 
-    setHoveredElement(target);
-    setCursorPosition({ x: clientX, y: clientY });
-    setHighlightRect(target.getBoundingClientRect());
-  }, [getElementUnderCursor]);
+      setHoveredElement(target);
+      setCursorPosition({ x: clientX, y: clientY });
+      setHighlightRect(target.getBoundingClientRect());
+    },
+    [getElementUnderCursor]
+  );
 
   // Handle click to select element
   const handleClick = useCallback(
     (event: MouseEvent) => {
       const clickedElement = event.target as HTMLElement;
-      
+
       // If clicking on picker banner or button, let the event through normally
       // (but NOT the overlay - that should trigger a pick)
       const pickerAttr = clickedElement.closest('[data-element-picker]')?.getAttribute('data-element-picker');
@@ -255,17 +258,10 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
       </div>
 
       {/* DOM path tooltip - uses existing component with testid highlighting */}
-      {cursorPosition && (
-        <DomPathTooltip
-          domPath={domPath}
-          position={cursorPosition}
-          visible={!!domPath}
-        />
-      )}
+      {cursorPosition && <DomPathTooltip domPath={domPath} position={cursorPosition} visible={!!domPath} />}
     </>,
     document.body
   );
 }
 
 ElementPicker.displayName = 'ElementPicker';
-

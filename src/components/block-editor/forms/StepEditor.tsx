@@ -239,7 +239,6 @@ export function StepEditor({ steps, onChange, showRecordMode = true, onPickerMod
     }
   }, [isRecording, startRecording, stopRecording, clearRecording]);
 
-
   const getActionEmoji = (action: JsonInteractiveAction) => {
     const found = INTERACTIVE_ACTIONS.find((a) => {
       return a.value === action;
@@ -332,12 +331,7 @@ export function StepEditor({ steps, onChange, showRecordMode = true, onPickerMod
                 placeholder="Click Pick or enter selector"
               />
             </Field>
-            <Button
-              variant="secondary"
-              onClick={startPicker}
-              icon="crosshair"
-              style={{ marginTop: '22px' }}
-            >
+            <Button variant="secondary" onClick={startPicker} icon="crosshair" style={{ marginTop: '22px' }}>
               Pick
             </Button>
           </div>

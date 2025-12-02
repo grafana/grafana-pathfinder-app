@@ -105,7 +105,8 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     setEditingNestedBlock(null);
     setInsertAtIndex(undefined);
     // Clear any section context
-    delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }).__blockEditorSectionContext;
+    delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } })
+      .__blockEditorSectionContext;
   }, []);
 
   // Handle copy to clipboard
@@ -167,36 +168,32 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   );
 
   // Handle inserting a block directly into a section
-  const handleInsertBlockInSection = useCallback(
-    (type: BlockType, sectionId: string, index?: number) => {
-      // Open the form modal for this block type, but target the section
-      setEditingBlockType(type);
-      setEditingBlock(null);
-      // We'll need to handle section insertion differently
-      // For now, store the section ID and handle in submit
-      setInsertAtIndex(undefined);
-      setIsBlockFormOpen(true);
+  const handleInsertBlockInSection = useCallback((type: BlockType, sectionId: string, index?: number) => {
+    // Open the form modal for this block type, but target the section
+    setEditingBlockType(type);
+    setEditingBlock(null);
+    // We'll need to handle section insertion differently
+    // For now, store the section ID and handle in submit
+    setInsertAtIndex(undefined);
+    setIsBlockFormOpen(true);
 
-      // Store section context for insertion
-      (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }).__blockEditorSectionContext = {
-        sectionId,
-        index,
-      };
-    },
-    []
-  );
+    // Store section context for insertion
+    (
+      window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }
+    ).__blockEditorSectionContext = {
+      sectionId,
+      index,
+    };
+  }, []);
 
   // Handle editing a nested block
-  const handleNestedBlockEdit = useCallback(
-    (sectionId: string, nestedIndex: number, block: JsonBlock) => {
-      setEditingBlockType(block.type as BlockType);
-      setEditingBlock(null);
-      setEditingNestedBlock({ sectionId, nestedIndex, block });
-      setInsertAtIndex(undefined);
-      setIsBlockFormOpen(true);
-    },
-    []
-  );
+  const handleNestedBlockEdit = useCallback((sectionId: string, nestedIndex: number, block: JsonBlock) => {
+    setEditingBlockType(block.type as BlockType);
+    setEditingBlock(null);
+    setEditingNestedBlock({ sectionId, nestedIndex, block });
+    setInsertAtIndex(undefined);
+    setIsBlockFormOpen(true);
+  }, []);
 
   // Handle deleting a nested block
   const handleNestedBlockDelete = useCallback(
@@ -225,7 +222,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   // Modified form submit to handle section insertions and nested block edits
   const handleBlockFormSubmitWithSection = useCallback(
     (block: JsonBlock) => {
-      const sectionContext = (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }).__blockEditorSectionContext;
+      const sectionContext = (
+        window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }
+      ).__blockEditorSectionContext;
 
       if (editingNestedBlock) {
         // Editing a nested block
@@ -235,7 +234,8 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         editor.updateBlock(editingBlock.id, block);
       } else if (sectionContext) {
         editor.addBlockToSection(block, sectionContext.sectionId, sectionContext.index);
-        delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }).__blockEditorSectionContext;
+        delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } })
+          .__blockEditorSectionContext;
       } else {
         editor.addBlock(block, insertAtIndex);
       }

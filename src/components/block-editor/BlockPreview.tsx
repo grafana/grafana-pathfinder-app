@@ -125,10 +125,7 @@ export function BlockPreview({ guide }: BlockPreviewProps) {
       )}
 
       {/* Render the content using existing pipeline with proper styling */}
-      <ContentRenderer
-        content={content}
-        className={`${journeyStyles} ${interactiveStyles} ${prismStyles}`}
-      />
+      <ContentRenderer content={content} className={`${journeyStyles} ${interactiveStyles} ${prismStyles}`} />
     </div>
   );
 }
