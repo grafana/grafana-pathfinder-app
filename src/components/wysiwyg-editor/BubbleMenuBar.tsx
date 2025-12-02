@@ -125,7 +125,7 @@ const LinkDialog: React.FC<LinkDialogProps> = ({
 
   return (
     <Modal
-      title={hasExistingLink ? 'Edit Link' : 'Add Link'}
+      title={hasExistingLink ? 'Edit link' : 'Add link'}
       isOpen={isOpen}
       onDismiss={onClose}
       className={styles.linkModal}
@@ -327,7 +327,7 @@ export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
 
             <IconButton
               name="external-link-alt"
-              tooltip="Add Link"
+              tooltip="Add link"
               onClick={() => setIsLinkDialogOpen(true)}
               variant={editor.isActive('link') ? 'primary' : 'secondary'}
               size="sm"
@@ -339,10 +339,10 @@ export const BubbleMenuBar: React.FC<BubbleMenuBarProps> = ({ editor }) => {
 
             <IconButton
               name="times-circle"
-              tooltip="Clear Formatting"
+              tooltip="Clear formatting"
               onClick={() => handleFormat(() => editor.chain().focus().unsetAllMarks().run())}
               size="sm"
-              aria-label="Clear Formatting"
+              aria-label="Clear formatting"
               data-testid={testIds.wysiwygEditor.bubbleMenu.clearButton}
             />
           </div>

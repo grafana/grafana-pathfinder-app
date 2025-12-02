@@ -252,7 +252,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       includeHints: true,
       wrapInSection: true,
       sectionId: 'tutorial-section',
-      sectionTitle: 'Tutorial Section',
+      sectionTitle: 'Tutorial section',
     });
 
     try {
@@ -305,7 +305,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
           <Badge text="Dev Mode" color="orange" className={styles.badge} />
         </Stack>
         <Button variant="secondary" size="sm" onClick={handleLeaveDevMode} icon="times" fill="outline">
-          Leave Dev Mode
+          Leave dev mode
         </Button>
       </div>
 
@@ -316,7 +316,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         <div className={styles.sectionHeader} onClick={() => setRecordExpanded(!recordExpanded)}>
           <Stack direction="row" gap={1} alignItems="center">
             <Icon name="circle" />
-            <h4 className={styles.sectionTitle}>Record Mode - Capture Sequences</h4>
+            <h4 className={styles.sectionTitle}>Record mode - capture sequences</h4>
             {recordedSteps.length > 0 && <Badge text={`${recordedSteps.length} steps`} color="blue" />}
           </Stack>
           <Icon name={recordExpanded ? 'angle-up' : 'angle-down'} />
@@ -334,7 +334,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                 >
                   {recordingState === 'recording' && <span className={styles.recordingDot} />}
                   <Icon name={isPaused ? 'play' : 'circle'} />
-                  {isPaused ? 'Resume Recording' : 'Start Recording'}
+                  {isPaused ? 'Resume recording' : 'Start recording'}
                 </Button>
 
                 <Button
@@ -370,7 +370,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
               {isPaused && (
                 <div className={styles.recordModeHint} style={{ color: 'var(--grafana-colors-warning-text)' }}>
                   <Icon name="pause" size="sm" />
-                  Paused. Click &quot;Resume Recording&quot; to continue capturing actions.
+                  Paused. Click &quot;Resume recording&quot; to continue capturing actions.
                 </div>
               )}
 
@@ -383,13 +383,13 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                       onClick={handleToggleMultistepMode}
                     >
                       <Icon name="link" />
-                      {multistepMode ? 'Cancel Selection' : 'Combine Steps'}
+                      {multistepMode ? 'Cancel selection' : 'Combine steps'}
                     </Button>
 
                     {multistepMode && selectedSteps.size > 1 && (
                       <Button variant="primary" size="sm" onClick={handleCombineSteps}>
                         <Icon name="save" />
-                        Create Multistep ({selectedSteps.size})
+                        Create multistep ({selectedSteps.size})
                       </Button>
                     )}
 
@@ -404,7 +404,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                     </Button>
                   </Stack>
 
-                  <Field label="Recorded Steps">
+                  <Field label="Recorded steps">
                     <div className={styles.recordedStepsList}>
                       {recordedSteps.map((step, index) => (
                         <div key={`${step.selector}-${step.action}-${index}`} className={styles.recordedStep}>
@@ -456,7 +456,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                   <Stack direction="row" gap={1} wrap="wrap">
                     <Button variant="secondary" size="sm" onClick={handleClearRecording}>
                       <Icon name="trash-alt" />
-                      Clear All
+                      Clear all
                     </Button>
                     <Button
                       variant={allStepsCopied ? 'success' : 'secondary'}
@@ -465,11 +465,11 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                       className={allStepsCopied ? styles.copiedButton : ''}
                     >
                       <Icon name={allStepsCopied ? 'check' : 'copy'} />
-                      {allStepsCopied ? 'Copied!' : 'Copy All'}
+                      {allStepsCopied ? 'Copied!' : 'Copy all'}
                     </Button>
                     <Button variant="primary" size="sm" onClick={handleLoadIntoMultiStep}>
                       <Icon name="arrow-down" />
-                      Load into MultiStep
+                      Load into multistep
                     </Button>
                   </Stack>
                 </>
@@ -484,7 +484,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         <div className={styles.sectionHeader} onClick={() => setGithubExpanded(!githubExpanded)}>
           <Stack direction="row" gap={1} alignItems="center">
             <Icon name="external-link-alt" />
-            <h4 className={styles.sectionTitle}>Tutorial Tester</h4>
+            <h4 className={styles.sectionTitle}>Tutorial tester</h4>
           </Stack>
           <Icon name={githubExpanded ? 'angle-up' : 'angle-down'} />
         </div>
@@ -500,7 +500,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         <div className={styles.sectionHeader} onClick={() => setWatchExpanded(!watchExpanded)}>
           <Stack direction="row" gap={1} alignItems="center">
             <Icon name="eye" />
-            <h4 className={styles.sectionTitle}>Watch Mode - Capture Selectors</h4>
+            <h4 className={styles.sectionTitle}>Watch mode - capture selectors</h4>
           </Stack>
           <Icon name={watchExpanded ? 'angle-up' : 'angle-down'} />
         </div>
@@ -515,7 +515,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
               >
                 {watchMode && <span className={styles.recordingDot} />}
                 <Icon name={watchMode ? 'eye' : 'eye-slash'} />
-                {watchMode ? 'Watch Mode: ON' : 'Watch Mode: OFF'}
+                {watchMode ? 'Watch mode: ON' : 'Watch mode: OFF'}
               </Button>
 
               {watchMode && (
@@ -527,7 +527,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
               {capturedSelector && (
                 <>
-                  <Field label="Captured Selector">
+                  <Field label="Captured selector">
                     <Input className={styles.selectorInput} value={capturedSelector} readOnly />
                   </Field>
 
@@ -554,7 +554,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                     </Button>
                     <Button variant="primary" size="sm" onClick={handleUseInSimpleTester}>
                       <Icon name="arrow-down" />
-                      Use in Simple Tester
+                      Use in simple tester
                     </Button>
                   </Stack>
                 </>
@@ -569,14 +569,14 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         <div className={styles.sectionHeader} onClick={() => setSimpleExpanded(!simpleExpanded)}>
           <Stack direction="row" gap={1} alignItems="center">
             <Icon name="crosshair" />
-            <h4 className={styles.sectionTitle}>Simple Selector Tester</h4>
+            <h4 className={styles.sectionTitle}>Simple selector tester</h4>
           </Stack>
           <Icon name={simpleExpanded ? 'angle-up' : 'angle-down'} />
         </div>
         {simpleExpanded && (
           <div className={styles.sectionContent}>
             <Stack direction="column" gap={2}>
-              <Field label="CSS Selector" description="Supports :contains, :has, :nth-match">
+              <Field label="CSS selector" description="Supports :contains, :has, :nth-match">
                 <Input
                   className={styles.selectorInput}
                   value={simpleSelector}
@@ -637,7 +637,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         <div className={styles.sectionHeader} onClick={() => setGuidedExpanded(!guidedExpanded)}>
           <Stack direction="row" gap={1} alignItems="center">
             <Icon name="user" />
-            <h4 className={styles.sectionTitle}>Guided Debug (Manual Execution)</h4>
+            <h4 className={styles.sectionTitle}>Guided debug (manual execution)</h4>
           </Stack>
           <Icon name={guidedExpanded ? 'angle-up' : 'angle-down'} />
         </div>
@@ -665,7 +665,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                 {!guidedRunning ? (
                   <Button variant="primary" size="sm" onClick={handleGuidedStart}>
                     <Icon name="play" />
-                    Start Guided
+                    Start guided
                   </Button>
                 ) : (
                   <Button variant="destructive" size="sm" onClick={handleGuidedCancel}>
@@ -709,7 +709,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         <div className={styles.sectionHeader} onClick={() => setMultiStepExpanded(!multiStepExpanded)}>
           <Stack direction="row" gap={1} alignItems="center">
             <Icon name="bolt" />
-            <h4 className={styles.sectionTitle}>MultiStep Debug (Auto-Execute)</h4>
+            <h4 className={styles.sectionTitle}>Multistep debug (auto-execute)</h4>
           </Stack>
           <Icon name={multiStepExpanded ? 'angle-up' : 'angle-down'} />
         </div>
@@ -731,7 +731,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
               </p>
 
               <Button variant="primary" size="sm" onClick={handleMultiStepRun} disabled={multiStepTesting}>
-                {multiStepTesting ? 'Running...' : 'Run MultiStep'}
+                {multiStepTesting ? 'Running...' : 'Run multistep'}
               </Button>
 
               {multiStepProgress && (

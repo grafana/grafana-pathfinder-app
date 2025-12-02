@@ -171,7 +171,7 @@ const MultistepActionForm = ({
                   disabled={recordingState === 'recording'}
                   icon={isPaused ? 'play' : 'circle'}
                 >
-                  {isPaused ? 'Resume' : 'Start Recording'}
+                  {isPaused ? 'Resume' : 'Start recording'}
                 </Button>
 
                 <Button

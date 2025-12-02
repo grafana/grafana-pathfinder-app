@@ -658,7 +658,7 @@ export function InteractiveSection({
         targetaction: 'section',
         reftarget: `section-${sectionId}`,
         targetvalue: undefined,
-        textContent: title || 'Interactive Section',
+        textContent: title || 'Interactive section',
         tagName: 'section',
       };
 
@@ -722,7 +722,7 @@ export function InteractiveSection({
       targetvalue: undefined,
       requirements: undefined,
       tagName: 'section',
-      textContent: title || 'Interactive Section',
+      textContent: title || 'Interactive section',
       timestamp: Date.now(),
       isPartOfSection: true,
     };
@@ -1362,7 +1362,7 @@ export function InteractiveSection({
                 return 'Already done!';
               }
               if (stepsCompleted && !isCompletedByObjectives) {
-                return 'Reset Section';
+                return 'Reset section';
               }
               if (resumeInfo.isResume) {
                 return `▶ Resume (${resumeInfo.remainingSteps} steps)`;

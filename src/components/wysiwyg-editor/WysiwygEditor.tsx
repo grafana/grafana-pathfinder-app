@@ -447,7 +447,7 @@ export const WysiwygEditor: React.FC = () => {
               {
                 type: 'heading',
                 attrs: { level: 3 },
-                content: [{ type: 'text', text: attributes.id || 'New Section' }],
+                content: [{ type: 'text', text: attributes.id || 'New section' }],
               },
               {
                 type: 'bulletList',

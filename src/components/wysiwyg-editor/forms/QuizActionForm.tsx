@@ -109,8 +109,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
 });
 
 const COMPLETION_MODE_OPTIONS: Array<SelectableValue<string>> = [
-  { label: 'Correct Only', value: 'correct-only', description: 'User must answer correctly' },
-  { label: 'Max Attempts', value: 'max-attempts', description: 'Reveal after max attempts' },
+  { label: 'Correct only', value: 'correct-only', description: 'User must answer correctly' },
+  { label: 'Max attempts', value: 'max-attempts', description: 'Reveal after max attempts' },
 ];
 
 /**

@@ -103,7 +103,7 @@ export const CommentDialog: React.FC<CommentDialogProps> = ({
 
   const isValid = commentText.trim().length > 0;
 
-  const modalTitle = mode === 'edit' ? 'Edit Comment' : 'Add Comment';
+  const modalTitle = mode === 'edit' ? 'Edit comment' : 'Add comment';
   const buttonText = mode === 'edit' ? 'Update' : 'Insert';
 
   return (

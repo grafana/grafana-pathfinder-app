@@ -95,7 +95,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
     return (
       <div className={styles.container}>
         <div className={styles.header}>
-          <h3>Live Session Active</h3>
+          <h3>Live session active</h3>
           <div className={styles.liveIndicator}>
             <span className={styles.liveDot} />
             LIVE
@@ -197,7 +197,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h3>Start Live Session</h3>
+        <h3>Start live session</h3>
       </div>
 
       <div className={styles.form}>
@@ -238,7 +238,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
           onClick={handleCreateSession}
           disabled={isCreating || !sessionName.trim() || !tutorialUrl}
         >
-          {isCreating ? 'Creating Session...' : 'Create Session'}
+          {isCreating ? 'Creating session...' : 'Create session'}
         </Button>
       </div>
     </div>

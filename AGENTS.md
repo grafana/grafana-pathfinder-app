@@ -4,7 +4,7 @@
 
 **Grafana Pathfinder** is a Grafana App Plugin that provides contextual, interactive documentation directly within the Grafana UI. It appears as a right-hand sidebar panel that displays personalized learning content, tutorials, and recommendations to help users learn Grafana products and configurations.
 
-### Key Features
+### Key features
 
 - **Context-Aware Recommendations**: Automatically detects what you're doing in Grafana and suggests relevant documentation
 - **Interactive Tutorials**: Step-by-step guides with "Show me" and "Do it" buttons that can automate actions in the Grafana UI
@@ -12,11 +12,11 @@
 - **Intelligent Content Delivery**: Multi-strategy content fetching with bundled fallbacks
 - **Progressive Learning**: Tracks completion state and adapts to user experience level
 
-### Target Audience
+### Target audience
 
 Beginners and intermediate users who need to quickly learn Grafana products. Not intended for deep experts who primarily need reference documentation.
 
-## Project Architecture
+## Project architecture
 
 This is a **React + TypeScript + Grafana Scenes** application built as a Grafana extension plugin. The architecture follows these key patterns:
 
@@ -25,9 +25,9 @@ This is a **React + TypeScript + Grafana Scenes** application built as a Grafana
 - **Interactive Tutorial System**: Sophisticated requirement checking and automated action execution
 - **Functional-First Code Style**: Pragmatic functional programming approach with immutable data and pure functions
 
-## Getting Started for AI Agents
+## Getting started for AI agents
 
-### Essential Reading (in order)
+### Essential reading (in order)
 
 Before working on this codebase, you MUST read these files in `.cursor/rules/`:
 
@@ -35,7 +35,7 @@ Before working on this codebase, you MUST read these files in `.cursor/rules/`:
 2. **`.cursor/rules/techContext.mdc`** - Technologies, dependencies, and development setup
 3. **`.cursor/rules/systemPatterns.mdc`** - Architecture, design patterns, and critical implementation paths
 
-### Specialized Documentation
+### Specialized documentation
 
 For specific work areas, consult these:
 
@@ -44,13 +44,13 @@ For specific work areas, consult these:
 - **`.cursor/rules/frontend-security.mdc`** - Security rules for frontend code (ALWAYS apply)
 - **`.cursor/rules/instructions.mdc`** - Agent behavior, commands, and workflow patterns
 
-### Security First
+### Security first
 
 Always follow the security rules in `.cursor/rules/frontend-security.mdc`
 
-## Local Development Commands
+## Local development commands
 
-### Initial Setup
+### Initial setup
 
 ```bash
 # Install dependencies (requires Node.js 22+)
@@ -60,7 +60,7 @@ npm install
 npm run typecheck
 ```
 
-### Development Workflow
+### Development workflow
 
 ```bash
 # Start development server with watch mode
@@ -79,7 +79,7 @@ npm run test:ci
 npm run test:coverage
 ```
 
-### Code Quality
+### Code quality
 
 ```bash
 # Lint code
@@ -108,14 +108,14 @@ npm run e2e
 npm run sign
 ```
 
-### Development Server
+### Development server
 
 The development server runs Grafana OSS in Docker with the plugin mounted. After running `npm run server`, access:
 
 - **Grafana UI**: http://localhost:3000
 - **Default credentials**: admin/admin
 
-## Code Organization
+## Code organization
 
 ```
 src/
@@ -128,11 +128,11 @@ src/
 └── types/             # TypeScript type definitions
 ```
 
-## File Creation Policy
+## File creation policy
 
 Do NOT create summary `.md` files unless explicitly requested. This saves tokens and keeps the repository clean.
 
-## Getting Help
+## Getting help
 
 When uncertain about:
 
