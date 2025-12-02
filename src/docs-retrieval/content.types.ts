@@ -116,6 +116,9 @@ export interface ContentFetchOptions {
 
   /** Whether to follow redirects */
   followRedirects?: boolean;
+
+  /** Skip the "Ready to begin?" button on learning journey cover pages */
+  skipReadyToBegin?: boolean;
 }
 
 export interface ContentFetchResult {

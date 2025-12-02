@@ -515,7 +515,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.saveTabsToStorage();
   }
 
-  public async openDocsPage(url: string, title?: string): Promise<string> {
+  public async openDocsPage(url: string, title?: string, skipReadyToBegin?: boolean): Promise<string> {
     const finalTitle = title || 'Documentation';
     const tabId = this.generateTabId();
 
@@ -539,12 +539,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.saveTabsToStorage();
 
     // Load docs content for the tab
-    this.loadDocsTabContent(tabId, url);
+    this.loadDocsTabContent(tabId, url, skipReadyToBegin);
 
     return tabId;
   }
 
-  public async loadDocsTabContent(tabId: string, url: string) {
+  public async loadDocsTabContent(tabId: string, url: string, skipReadyToBegin?: boolean) {
     // Update tab to loading state
     const updatedTabs = this.state.tabs.map((t) =>
       t.id === tabId
@@ -558,7 +558,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      const result = await fetchContent(url);
+      const result = await fetchContent(url, { skipReadyToBegin });
 
       // Check if fetch succeeded or failed
       if (result.content) {
@@ -1568,7 +1568,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             return (
               <div className={styles.devToolsContent} data-testid="devtools-tab-content">
                 <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-                  <SelectorDebugPanel onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title)} />
+                  <SelectorDebugPanel
+                    onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title, true)}
+                  />
                 </Suspense>
               </div>
             );
