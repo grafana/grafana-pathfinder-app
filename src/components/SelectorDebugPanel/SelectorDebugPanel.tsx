@@ -11,6 +11,7 @@ import { useSelectorCapture } from '../wysiwyg-editor/devtools/selector-capture.
 import { useActionRecorder } from '../wysiwyg-editor/devtools/action-recorder.hook';
 import { parseStepString } from '../wysiwyg-editor/devtools/step-parser.util';
 import { DomPathTooltip } from '../DomPathTooltip';
+import { useWebsiteExport } from '../../utils/use-website-export.hook';
 
 export interface SelectorDebugPanelProps {
   onOpenDocsPage?: (url: string, title: string) => void;
@@ -150,6 +151,9 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   // Export State
   const [exportCopied, setExportCopied] = useState(false);
 
+  // Website Export
+  const { copyForWebsite, copySingleForWebsite, copied: websiteCopied } = useWebsiteExport();
+
   // Multistep Selection State
   const [selectedSteps, setSelectedSteps] = useState<Set<number>>(new Set());
   const [multistepMode, setMultistepMode] = useState(false);
@@ -162,6 +166,10 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   const handleSimpleDo = useCallback(async () => {
     await testSelector(simpleSelector, 'do');
   }, [simpleSelector, testSelector]);
+
+  const handleCopySimpleForWebsite = useCallback(async () => {
+    await copySingleForWebsite('highlight', simpleSelector, undefined, 'Perform action on element');
+  }, [simpleSelector, copySingleForWebsite]);
 
   // MultiStep Debug Handlers
   const handleMultiStepRun = useCallback(async () => {
@@ -263,6 +271,15 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       console.error('Failed to copy HTML:', error);
     }
   }, [exportStepsFromRecorder]);
+
+  const handleExportForWebsite = useCallback(async () => {
+    await copyForWebsite(recordedSteps, {
+      includeComments: true,
+      includeHints: false,
+      wrapInSequence: true,
+      sequenceId: 'tutorial-section',
+    });
+  }, [recordedSteps, copyForWebsite]);
 
   const handleToggleStepSelection = useCallback((index: number) => {
     setSelectedSteps((prev) => {
@@ -401,6 +418,15 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                     >
                       <Icon name={exportCopied ? 'check' : 'file-alt'} />
                       {exportCopied ? 'Copied!' : 'Export to HTML'}
+                    </Button>
+                    <Button
+                      variant={websiteCopied ? 'success' : 'secondary'}
+                      size="sm"
+                      onClick={handleExportForWebsite}
+                      className={websiteCopied ? styles.copiedButton : ''}
+                    >
+                      <Icon name={websiteCopied ? 'check' : 'file-alt'} />
+                      {websiteCopied ? 'Copied!' : 'Export for Website'}
                     </Button>
                   </Stack>
 
@@ -609,6 +635,16 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                 </Button>
                 <Button variant="primary" size="sm" onClick={handleSimpleDo} disabled={simpleTesting}>
                   {simpleTesting ? 'Testing...' : 'Do it'}
+                </Button>
+                <Button
+                  variant={websiteCopied ? 'success' : 'secondary'}
+                  size="sm"
+                  onClick={handleCopySimpleForWebsite}
+                  disabled={!simpleSelector || simpleTesting}
+                  className={websiteCopied ? styles.copiedButton : ''}
+                >
+                  <Icon name={websiteCopied ? 'check' : 'copy'} />
+                  {websiteCopied ? 'Copied!' : 'Copy for Website'}
                 </Button>
               </Stack>
 
