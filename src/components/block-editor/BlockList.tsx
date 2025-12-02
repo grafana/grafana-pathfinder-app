@@ -7,6 +7,7 @@
 
 import React, { useCallback, useState, useRef } from 'react';
 import { useStyles2, Badge, IconButton } from '@grafana/ui';
+import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { getBlockListStyles } from './block-editor.styles';
@@ -397,13 +398,11 @@ function NestedBlockItem({
             className={styles.actionButton}
             tooltip="Duplicate block"
           />
-          <IconButton
-            name="trash-alt"
-            size="md"
-            aria-label="Delete"
-            onClick={onDelete}
+          <ConfirmDeleteButton
+            onConfirm={onDelete ?? (() => {})}
             className={styles.deleteButton}
             tooltip="Delete block"
+            ariaLabel="Delete"
           />
         </div>
       </div>
