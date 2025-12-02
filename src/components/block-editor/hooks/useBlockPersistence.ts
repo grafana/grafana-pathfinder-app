@@ -150,8 +150,10 @@ export function useBlockPersistence({
 
     const currentGuideStr = JSON.stringify(guide);
 
-    // Skip if guide hasn't changed
+    // If guide hasn't changed, still notify save complete (clears isDirty flag)
+    // This handles cases where updateBlock is called with identical data
     if (currentGuideStr === lastGuideRef.current) {
+      onSave?.();
       return;
     }
 
@@ -170,7 +172,7 @@ export function useBlockPersistence({
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [guide, autoSave, save]);
+  }, [guide, autoSave, save, onSave]);
 
   // Load on mount if onLoad provided
   useEffect(() => {

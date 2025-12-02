@@ -234,7 +234,7 @@ export function InteractiveBlockForm({
       {/* Advanced Options */}
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Advanced Options</div>
-        <Stack direction="column" gap={1}>
+        <Stack direction="column" gap={1} alignItems="flex-start">
           <Checkbox
             label="Skippable (can be skipped if requirements fail)"
             checked={skippable}
