@@ -16,6 +16,7 @@ import { BlockPalette } from './BlockPalette';
 import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
 import { BlockFormModal } from './BlockFormModal';
+import { ImportGuideModal } from './ImportGuideModal';
 import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
 
 export interface BlockEditorProps {
@@ -74,6 +75,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const [editingBlock, setEditingBlock] = useState<EditorBlock | null>(null);
   const [insertAtIndex, setInsertAtIndex] = useState<number | undefined>(undefined);
   const [isNewGuideConfirmOpen, setIsNewGuideConfirmOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   // State for editing nested blocks
   const [editingNestedBlock, setEditingNestedBlock] = useState<{
     sectionId: string;
@@ -156,6 +158,15 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     editor.resetGuide(); // Reset editor state
     setIsNewGuideConfirmOpen(false);
   }, [editor, persistence]);
+
+  // Handle import guide
+  const handleImportGuide = useCallback(
+    (guide: JsonGuide) => {
+      editor.loadGuide(guide);
+      setIsImportModalOpen(false);
+    },
+    [editor]
+  );
 
   // Handle nesting a block into a section
   const handleNestBlock = useCallback(
@@ -297,6 +308,15 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             </Button>
           </ButtonGroup>
 
+          {/* Import button */}
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="upload"
+            onClick={() => setIsImportModalOpen(true)}
+            tooltip="Import JSON guide"
+          />
+
           {/* Export actions */}
           <Button variant="secondary" size="sm" icon="copy" onClick={handleCopy} tooltip="Copy JSON to clipboard" />
           <Button
@@ -379,6 +399,13 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         dismissText="Cancel"
         onConfirm={handleNewGuide}
         onDismiss={() => setIsNewGuideConfirmOpen(false)}
+      />
+
+      <ImportGuideModal
+        isOpen={isImportModalOpen}
+        onImport={handleImportGuide}
+        onClose={() => setIsImportModalOpen(false)}
+        hasUnsavedChanges={state.isDirty || state.blocks.length > 0}
       />
     </div>
   );
