@@ -693,7 +693,12 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string): ConversionRes
     refTarget: step.reftarget,
     targetValue: step.targetvalue,
     requirements: step.requirements?.join(','),
-    targetComment: step.tooltip ? markdownToHtml(step.tooltip) : undefined,
+    // For guided blocks, prefer description (shown in steps panel), fall back to tooltip for backward compatibility
+    targetComment: step.description
+      ? markdownToHtml(step.description)
+      : step.tooltip
+        ? markdownToHtml(step.tooltip)
+        : undefined,
     isSkippable: step.skippable ?? false,
   }));
 

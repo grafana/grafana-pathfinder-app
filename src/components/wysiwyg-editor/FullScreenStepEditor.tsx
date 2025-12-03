@@ -365,6 +365,14 @@ const ACTION_TYPE_OPTIONS: Array<SelectableValue<string>> = [
 // Action types that trigger bundling mode
 const BUNDLING_ACTION_TYPES = [ACTION_TYPES.MULTISTEP, ACTION_TYPES.GUIDED] as const;
 
+/**
+ * Generate a default unique section ID
+ */
+function generateDefaultSectionId(): string {
+  const randomNum = Math.floor(10000 + Math.random() * 90000);
+  return `guide-section-${randomNum}`;
+}
+
 export function FullScreenStepEditor({
   isOpen,
   pendingClick,
@@ -393,7 +401,7 @@ export function FullScreenStepEditor({
   const [interactiveComment, setInteractiveComment] = useState('');
   const [formFillValue, setFormFillValue] = useState('');
   const [sectionMode, setSectionMode] = useState<'none' | 'new' | string>('none');
-  const [newSectionId, setNewSectionId] = useState('');
+  const [newSectionId, setNewSectionId] = useState(generateDefaultSectionId());
   const [newSectionTitle, setNewSectionTitle] = useState('');
   const [nestedSteps, setNestedSteps] = useState<NestedStepData[]>([]);
   const descriptionInputRef = useRef<HTMLTextAreaElement>(null);

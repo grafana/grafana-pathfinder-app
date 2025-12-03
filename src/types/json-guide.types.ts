@@ -225,8 +225,10 @@ export interface JsonStep {
   targetvalue?: string;
   /** Requirements for this specific step */
   requirements?: string[];
-  /** Tooltip shown during this step */
+  /** Tooltip shown during this step (multistep) */
   tooltip?: string;
+  /** Description shown in the steps panel (guided) */
+  description?: string;
   /** Whether this step can be skipped (guided only) */
   skippable?: boolean;
 }

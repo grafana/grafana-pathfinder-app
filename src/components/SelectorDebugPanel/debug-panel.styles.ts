@@ -299,4 +299,19 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
     marginTop: theme.spacing(0.5),
     flexWrap: 'wrap',
   }),
+
+  // Editor section with tabs
+  editorSection: css({
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: theme.shape.radius.default,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  }),
+
+  editorContent: css({
+    minHeight: '400px',
+    backgroundColor: theme.colors.background.primary,
+    overflow: 'auto',
+  }),
 });
