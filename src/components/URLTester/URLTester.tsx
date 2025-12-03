@@ -20,10 +20,6 @@ export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
       const githubValidation = validateGitHubUrl(url);
 
       if (!githubValidation.isValid) {
-        if (!url.endsWith('/unstyled.html')) {
-          url = url.endsWith('/') ? `${url}unstyled.html` : `${url}/unstyled.html`;
-        }
-
         const tutorialValidation = validateTutorialUrl(url);
 
         if (!tutorialValidation.isValid) {

@@ -618,7 +618,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         // 1. content.json (new JSON format - preferred)
         // 2. unstyled.html (legacy HTML format - fallback)
         // Use proper URL parsing to prevent domain hijacking attacks
-        const shouldFetchContent = isGrafanaDocsUrl(finalUrl);
+        const shouldFetchContent = isGrafanaDocsUrl(finalUrl) || (isDevModeEnabledGlobal() && isLocalhostUrl(finalUrl));
 
         if (shouldFetchContent) {
           const { jsonUrl, htmlUrl } = getContentUrls(response.url);
