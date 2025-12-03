@@ -323,17 +323,6 @@ export function validateTutorialUrl(url: string): URLValidation {
     };
   }
 
-  // Check if it's a valid URL
-  let urlObj: URL;
-  try {
-    urlObj = new URL(url);
-  } catch {
-    return {
-      isValid: false,
-      errorMessage: 'Invalid URL format. Please provide a valid URL.',
-    };
-  }
-
   // In dev mode, allow localhost URLs for testing
   if (isDevModeEnabledGlobal() && isLocalhostUrl(url)) {
     return {
