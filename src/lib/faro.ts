@@ -14,7 +14,7 @@
  * filtering to only capture events originating from this plugin.
  */
 
-import type { APIEvent, ExceptionEvent, TransportItem } from '@grafana/faro-react';
+import type { APIEvent, ExceptionEvent, TransportItem, Faro } from '@grafana/faro-react';
 import { config } from '@grafana/runtime';
 import { matchRoutes } from 'react-router-dom';
 import pluginJson from '../plugin.json';
@@ -23,6 +23,15 @@ const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/col
 const VERSION = pluginJson.info.version ?? '0.0.0';
 // Unique global object key to isolate this Faro instance from Grafana's main instance
 const FARO_GLOBAL_OBJECT_KEY = 'grafanaPathfinderApp';
+
+// ============================================================================
+// FARO INSTANCE REFERENCE
+// ============================================================================
+// Store a reference to the initialized Faro instance to avoid repeated dynamic imports
+// which could potentially load different module chunks
+let faroInstance: Faro | null = null;
+// Store LogLevel enum for use in pushFaroLog
+let FaroLogLevel: typeof import('@grafana/faro-react').LogLevel | null = null;
 
 // ============================================================================
 // LOCAL TESTING FLAG
@@ -66,10 +75,12 @@ export const initializeFaroMetrics = async (): Promise<void> => {
     console.log(`[Faro] skipping frontend metrics initialization (${reason})`);
 
     // Dynamically import Faro modules
-    const { initializeFaro, ReactIntegration } = await import('@grafana/faro-react');
+    const { initializeFaro, ReactIntegration, LogLevel } = await import('@grafana/faro-react');
+    const { TracingInstrumentation } = await import('@grafana/faro-web-tracing');
 
     // Initialize minimal Faro to prevent crashes in error boundaries
-    initializeFaro({
+    // IMPORTANT: Use returned instance, not the `faro` export (which is global, not isolated)
+    const isolatedFaro = initializeFaro({
       url: 'http://localhost:12345', // dummy URL that won't be used
       globalObjectKey: FARO_GLOBAL_OBJECT_KEY,
       app: {
@@ -79,18 +90,23 @@ export const initializeFaroMetrics = async (): Promise<void> => {
       },
       isolate: true,
       instrumentations: [
-        // Minimal setup - just React integration for error boundary compatibility
+        // React integration for error boundary compatibility
         new ReactIntegration(),
+        // TracingInstrumentation required for withFaroProfiler HOC to work without warnings
+        new TracingInstrumentation(),
       ],
       beforeSend: () => null, // Don't send any events
     });
+
+    // Store references to the initialized instance (use returned instance, not export)
+    faroInstance = isolatedFaro;
+    FaroLogLevel = LogLevel;
     return;
   }
 
   // Production Grafana Cloud environment - full instrumentation
-  const { initializeFaro, getWebInstrumentations, ReactIntegration, createReactRouterV6DataOptions } = await import(
-    '@grafana/faro-react'
-  );
+  const { initializeFaro, getWebInstrumentations, ReactIntegration, createReactRouterV6DataOptions, LogLevel } =
+    await import('@grafana/faro-react');
   const { TracingInstrumentation, getDefaultOTELInstrumentations } = await import('@grafana/faro-web-tracing');
 
   // URLs to completely ignore from fetch instrumentation.
@@ -107,7 +123,8 @@ export const initializeFaroMetrics = async (): Promise<void> => {
     /api\/plugin-proxy\/grafana-pathfinder-app\/github-raw/,
   ];
 
-  initializeFaro({
+  // IMPORTANT: Use returned instance, not the `faro` export (which is global, not isolated)
+  const isolatedFaro = initializeFaro({
     url: COLLECTOR_URL,
     globalObjectKey: FARO_GLOBAL_OBJECT_KEY,
     app: {
@@ -145,6 +162,10 @@ export const initializeFaroMetrics = async (): Promise<void> => {
     },
   });
 
+  // Store references to the initialized instance (use returned instance, not export)
+  faroInstance = isolatedFaro;
+  FaroLogLevel = LogLevel;
+
   // Set initial session attributes for enhanced context
   setInitialSessionAttributes();
 
@@ -168,9 +189,16 @@ function isExceptionEvent(event: TransportItem<APIEvent>): event is TransportIte
  */
 export type UserActionImportanceLevel = 'normal' | 'critical';
 
+// Track if a user action is currently running to prevent overlapping actions
+let isUserActionRunning = false;
+let userActionResetTimeout: ReturnType<typeof setTimeout> | null = null;
+
 /**
  * Starts a Faro user action for tracking end-to-end user journeys.
  * User actions link with HTTP requests, errors, and performance metrics.
+ *
+ * Note: Faro only allows one user action at a time. This function skips
+ * starting a new action if one is already running to prevent warnings.
  *
  * @param name - The name of the user action (e.g., 'sidebar-open', 'tutorial-start')
  * @param attributes - Additional attributes to attach to the action
@@ -183,16 +211,28 @@ export function startFaroUserAction(
   attributes?: Record<string, string>,
   options?: { importance?: UserActionImportanceLevel }
 ): void {
-  try {
-    // Dynamic import to avoid issues if Faro isn't initialized
-    import('@grafana/faro-react').then(({ faro }) => {
-      // UserActionImportance values are 'normal' | 'critical' (strings)
-      const importance = options?.importance ?? 'normal';
+  // Skip if Faro not initialized or a user action is already running
+  if (!faroInstance?.api || isUserActionRunning) {
+    return;
+  }
 
-      faro.api?.startUserAction(name, attributes, {
-        importance,
-      });
+  try {
+    // UserActionImportance values are 'normal' | 'critical' (strings)
+    const importance = options?.importance ?? 'normal';
+
+    faroInstance.api.startUserAction(name, attributes, {
+      importance,
     });
+
+    // Mark as running and auto-reset after timeout
+    // User actions typically complete within a few seconds
+    isUserActionRunning = true;
+    if (userActionResetTimeout) {
+      clearTimeout(userActionResetTimeout);
+    }
+    userActionResetTimeout = setTimeout(() => {
+      isUserActionRunning = false;
+    }, 3000); // Reset after 3 seconds
   } catch {
     // Faro may not be initialized, ignore silently
   }
@@ -216,13 +256,15 @@ export function startFaroUserAction(
  * ```
  */
 export function pushFaroMeasurement(name: string, value: number, attributes?: Record<string, string>): void {
+  if (!faroInstance?.api) {
+    return;
+  }
+
   try {
-    import('@grafana/faro-react').then(({ faro }) => {
-      faro.api?.pushMeasurement({
-        type: name,
-        values: { value },
-        context: attributes,
-      });
+    faroInstance.api.pushMeasurement({
+      type: name,
+      values: { value },
+      context: attributes,
     });
   } catch {
     // Faro may not be initialized, ignore silently
@@ -254,20 +296,22 @@ export type FaroLogLevel = 'trace' | 'debug' | 'info' | 'log' | 'warn' | 'error'
  * ```
  */
 export function pushFaroLog(level: FaroLogLevel, message: string, context?: Record<string, string>): void {
-  try {
-    import('@grafana/faro-react').then(({ faro, LogLevel }) => {
-      // Map string level to LogLevel enum
-      const logLevelMap: Record<FaroLogLevel, (typeof LogLevel)[keyof typeof LogLevel]> = {
-        trace: LogLevel.TRACE,
-        debug: LogLevel.DEBUG,
-        info: LogLevel.INFO,
-        log: LogLevel.LOG,
-        warn: LogLevel.WARN,
-        error: LogLevel.ERROR,
-      };
+  if (!faroInstance?.api || !FaroLogLevel) {
+    return;
+  }
 
-      faro.api?.pushLog([message], { level: logLevelMap[level], context });
-    });
+  try {
+    // Map string level to LogLevel enum
+    const logLevelMap: Record<FaroLogLevel, (typeof FaroLogLevel)[keyof typeof FaroLogLevel]> = {
+      trace: FaroLogLevel.TRACE,
+      debug: FaroLogLevel.DEBUG,
+      info: FaroLogLevel.INFO,
+      log: FaroLogLevel.LOG,
+      warn: FaroLogLevel.WARN,
+      error: FaroLogLevel.ERROR,
+    };
+
+    faroInstance.api.pushLog([message], { level: logLevelMap[level], context });
   } catch {
     // Faro may not be initialized, ignore silently
   }
@@ -293,11 +337,13 @@ export function pushFaroLog(level: FaroLogLevel, message: string, context?: Reco
  * ```
  */
 export function setFaroSessionAttributes(attributes: Record<string, string>): void {
+  if (!faroInstance?.api) {
+    return;
+  }
+
   try {
-    import('@grafana/faro-react').then(({ faro }) => {
-      faro.api?.setSession({
-        attributes,
-      });
+    faroInstance.api.setSession({
+      attributes,
     });
   } catch {
     // Faro may not be initialized, ignore silently
@@ -311,12 +357,14 @@ export function setFaroSessionAttributes(attributes: Record<string, string>): vo
  * @param attributes - Additional user attributes
  */
 export function setFaroUserAttributes(userId?: string, attributes?: Record<string, string>): void {
+  if (!faroInstance?.api) {
+    return;
+  }
+
   try {
-    import('@grafana/faro-react').then(({ faro }) => {
-      faro.api?.setUser({
-        id: userId,
-        attributes,
-      });
+    faroInstance.api.setUser({
+      id: userId,
+      attributes,
     });
   } catch {
     // Faro may not be initialized, ignore silently
@@ -354,16 +402,18 @@ function setInitialSessionAttributes(): void {
  * @param attributes - Additional context (url, milestone, etc.) - logged separately
  */
 export function setFaroView(viewName: string, attributes?: Record<string, string>): void {
-  try {
-    import('@grafana/faro-react').then(({ faro }) => {
-      // Set the view for navigation tracking
-      faro.api?.setView({ name: viewName });
+  if (!faroInstance?.api) {
+    return;
+  }
 
-      // Log additional context attributes if provided
-      if (attributes && Object.keys(attributes).length > 0) {
-        pushFaroLog('info', `View: ${viewName}`, attributes);
-      }
-    });
+  try {
+    // Set the view for navigation tracking
+    faroInstance.api.setView({ name: viewName });
+
+    // Log additional context attributes if provided
+    if (attributes && Object.keys(attributes).length > 0) {
+      pushFaroLog('info', `View: ${viewName}`, attributes);
+    }
   } catch {
     // Faro may not be initialized
   }
