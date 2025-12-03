@@ -7,7 +7,8 @@
  */
 
 import { reportInteraction } from '@grafana/runtime';
-import pluginJson from '../plugin.json';
+// Use package.json for version - plugin.json uses %VERSION% placeholder only replaced at build time
+import packageJson from '../../package.json';
 import { startFaroUserAction, type UserActionImportanceLevel } from './faro';
 
 // ============================================================================
@@ -198,7 +199,7 @@ export function reportAppInteraction(
 
     // Add global attributes to all events
     const enrichedProperties = {
-      plugin_version: pluginJson.info.version,
+      plugin_version: packageJson.version,
       ...properties,
     };
 

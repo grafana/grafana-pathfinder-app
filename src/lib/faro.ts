@@ -17,10 +17,11 @@
 import type { APIEvent, ExceptionEvent, TransportItem, Faro } from '@grafana/faro-react';
 import { config } from '@grafana/runtime';
 import { matchRoutes } from 'react-router-dom';
-import pluginJson from '../plugin.json';
+// Use package.json for version - plugin.json uses %VERSION% placeholder only replaced at build time
+import packageJson from '../../package.json';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/1ac4cba0a01deb04ef25e9758fb177b1';
-const VERSION = pluginJson.info.version ?? '0.0.0';
+const VERSION = packageJson.version ?? '0.0.0';
 // Unique global object key to isolate this Faro instance from Grafana's main instance
 const FARO_GLOBAL_OBJECT_KEY = 'grafanaPathfinderApp';
 
@@ -38,7 +39,7 @@ let LogLevelEnum: typeof import('@grafana/faro-react').LogLevel | null = null;
 // ============================================================================
 // Set to true to enable full Faro instrumentation locally for testing.
 // Remember to set back to false before committing!
-const ENABLE_FARO_LOCALLY = false;
+const ENABLE_FARO_LOCALLY = true;
 
 /**
  * Check if running in Grafana Cloud
@@ -76,12 +77,29 @@ export const initializeFaroMetrics = async (): Promise<void> => {
 
     // Dynamically import Faro modules
     const { initializeFaro, ReactIntegration, LogLevel } = await import('@grafana/faro-react');
-    const { TracingInstrumentation } = await import('@grafana/faro-web-tracing');
+    const { TracingInstrumentation, getDefaultOTELInstrumentations } = await import('@grafana/faro-web-tracing');
 
-    // Initialize minimal Faro to prevent crashes in error boundaries
+    // URLs to ignore from fetch instrumentation (same as production)
+    // Must ignore these to preserve response.url for redirect handling
+    const docsUrlsToIgnore: RegExp[] = [
+      /grafana\.com\/docs/,
+      /grafana\.com\/tutorials/,
+      /grafana\.com\/learning-journeys/,
+      /raw\.githubusercontent\.com/,
+      /api\/plugin-proxy\/grafana-pathfinder-app\/github-raw/,
+    ];
+
+    // =========================================================================
+    // PRIVACY/LEGAL: OSS users must NOT send telemetry data
+    // =========================================================================
+    // Initialize minimal Faro for React integration compatibility only.
+    // NO DATA IS SENT - multiple safeguards ensure this:
+    // 1. beforeSend: () => null - blocks ALL events from being transmitted
+    // 2. paused: true - transport is paused as additional safety
+    // 3. url points to localhost - even if above fail, no external endpoint
     // IMPORTANT: Use returned instance, not the `faro` export (which is global, not isolated)
     const isolatedFaro = initializeFaro({
-      url: 'http://localhost:12345', // dummy URL that won't be used
+      url: 'http://localhost:12345', // Dummy URL - never used due to beforeSend
       globalObjectKey: FARO_GLOBAL_OBJECT_KEY,
       app: {
         name: 'grafana-pathfinder-dev',
@@ -89,13 +107,20 @@ export const initializeFaroMetrics = async (): Promise<void> => {
         environment: isDevelopment ? 'development' : 'oss',
       },
       isolate: true,
+      paused: true, // PRIVACY: Transport paused - no data sent
       instrumentations: [
         // React integration for error boundary compatibility
         new ReactIntegration(),
         // TracingInstrumentation required for withFaroProfiler HOC to work without warnings
-        new TracingInstrumentation(),
+        // IMPORTANT: Must pass ignoreUrls to prevent fetch wrapper from breaking response.url
+        new TracingInstrumentation({
+          instrumentations: getDefaultOTELInstrumentations({
+            ignoreUrls: docsUrlsToIgnore,
+            propagateTraceHeaderCorsUrls: [],
+          }),
+        }),
       ],
-      beforeSend: () => null, // Don't send any events
+      beforeSend: () => null, // PRIVACY: Block ALL events - returns null to reject
     });
 
     // Store references to the initialized instance (use returned instance, not export)
@@ -189,16 +214,12 @@ function isExceptionEvent(event: TransportItem<APIEvent>): event is TransportIte
  */
 export type UserActionImportanceLevel = 'normal' | 'critical';
 
-// Track if a user action is currently running to prevent overlapping actions
-let isUserActionRunning = false;
-let userActionResetTimeout: ReturnType<typeof setTimeout> | null = null;
-
 /**
  * Starts a Faro user action for tracking end-to-end user journeys.
  * User actions link with HTTP requests, errors, and performance metrics.
  *
- * Note: Faro only allows one user action at a time. This function skips
- * starting a new action if one is already running to prevent warnings.
+ * Note: Faro only allows one user action at a time. This function checks
+ * Faro's internal state via getActiveUserAction() to prevent overlap warnings.
  *
  * @param name - The name of the user action (e.g., 'sidebar-open', 'tutorial-start')
  * @param attributes - Additional attributes to attach to the action
@@ -211,30 +232,28 @@ export function startFaroUserAction(
   attributes?: Record<string, string>,
   options?: { importance?: UserActionImportanceLevel }
 ): void {
-  // Skip if Faro not initialized or a user action is already running
-  if (!faroInstance?.api || isUserActionRunning) {
+  // Skip if Faro not initialized
+  if (!faroInstance?.api) {
     return;
   }
 
   try {
+    // Check Faro's internal state for active user action
+    // This is more reliable than tracking our own state
+    const activeAction = faroInstance.api.getActiveUserAction?.();
+    if (activeAction) {
+      // An action is already running, skip silently
+      return;
+    }
+
     // UserActionImportance values are 'normal' | 'critical' (strings)
     const importance = options?.importance ?? 'normal';
 
     faroInstance.api.startUserAction(name, attributes, {
       importance,
     });
-
-    // Mark as running and auto-reset after timeout
-    // User actions typically complete within a few seconds
-    isUserActionRunning = true;
-    if (userActionResetTimeout) {
-      clearTimeout(userActionResetTimeout);
-    }
-    userActionResetTimeout = setTimeout(() => {
-      isUserActionRunning = false;
-    }, 3000); // Reset after 3 seconds
   } catch {
-    // Faro may not be initialized, ignore silently
+    // Faro may not be initialized or API may vary, ignore silently
   }
 }
 
