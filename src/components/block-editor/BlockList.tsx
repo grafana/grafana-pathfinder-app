@@ -403,6 +403,7 @@ function NestedBlockItem({
             className={styles.deleteButton}
             tooltip="Delete block"
             ariaLabel="Delete"
+            blockType={meta.name.toLowerCase()}
           />
         </div>
       </div>

@@ -225,6 +225,7 @@ export function BlockItem({
             className={styles.deleteButton}
             tooltip="Delete block"
             ariaLabel="Delete"
+            blockType={meta.name.toLowerCase()}
           />
         </div>
       </div>
