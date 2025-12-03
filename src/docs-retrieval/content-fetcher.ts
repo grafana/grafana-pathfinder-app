@@ -610,52 +610,60 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           return { html: null, error: lastError };
         }
 
-        // If this is a Grafana docs/tutorial URL, try to get content in this order:
-        // 1. content.json (new JSON format - preferred)
-        // 2. unstyled.html (legacy HTML format - fallback)
+        // If this is a Grafana docs/tutorial URL, try to get content
         // Use proper URL parsing to prevent domain hijacking attacks
         const shouldFetchContent = isGrafanaDocsUrl(finalUrl);
 
         if (shouldFetchContent) {
           const { jsonUrl, htmlUrl } = getContentUrls(response.url);
 
-          // Try JSON format first (preferred)
-          if (jsonUrl !== response.url) {
+          // Determine fetch order based on domain:
+          // - grafana.com/docs and grafana.com/tutorials: HTML first (JSON not yet available)
+          // - Other sources (e.g., learning journeys): JSON first (preferred format)
+          // TODO: Once grafana.com/docs supports content.json, remove this check and use JSON first for all sources
+          const preferHtmlFirst = isGrafanaComDocsOrTutorials(finalUrl);
+
+          const primaryUrl = preferHtmlFirst ? htmlUrl : jsonUrl;
+          const fallbackUrl = preferHtmlFirst ? jsonUrl : htmlUrl;
+          const primaryIsJson = !preferHtmlFirst;
+
+          // Try primary format first
+          if (primaryUrl !== response.url) {
             try {
-              const jsonResponse = await fetch(jsonUrl, fetchOptions);
-              if (jsonResponse.ok) {
-                const jsonContent = await jsonResponse.text();
-                if (jsonContent && jsonContent.trim()) {
-                  return { html: jsonContent, finalUrl: jsonResponse.url, isNativeJson: true };
+              const primaryResponse = await fetch(primaryUrl, fetchOptions);
+              if (primaryResponse.ok) {
+                const primaryContent = await primaryResponse.text();
+                if (primaryContent && primaryContent.trim()) {
+                  return { html: primaryContent, finalUrl: primaryResponse.url, isNativeJson: primaryIsJson };
                 }
               }
-              // JSON not found or empty - fall through to HTML
+              // Primary format not found or empty - fall through to fallback
             } catch {
-              // JSON fetch failed - fall through to HTML
+              // Primary fetch failed - fall through to fallback
             }
           }
 
-          // Fall back to HTML format
-          if (htmlUrl !== response.url) {
+          // Fall back to secondary format
+          if (fallbackUrl !== response.url) {
             try {
-              const unstyledResponse = await fetch(htmlUrl, fetchOptions);
-              if (unstyledResponse.ok) {
-                const unstyledHtml = await unstyledResponse.text();
-                if (unstyledHtml && unstyledHtml.trim()) {
-                  return { html: unstyledHtml, finalUrl: unstyledResponse.url, isNativeJson: false };
+              const fallbackResponse = await fetch(fallbackUrl, fetchOptions);
+              if (fallbackResponse.ok) {
+                const fallbackContent = await fallbackResponse.text();
+                if (fallbackContent && fallbackContent.trim()) {
+                  return { html: fallbackContent, finalUrl: fallbackResponse.url, isNativeJson: !primaryIsJson };
                 }
               }
-              // If HTML version also fails, fail the request
+              // If fallback also fails, fail the request
               lastError = {
                 message: `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${response.url}`,
-                errorType: unstyledResponse.status === 404 ? 'not-found' : 'other',
-                statusCode: unstyledResponse.status,
+                errorType: fallbackResponse.status === 404 ? 'not-found' : 'other',
+                statusCode: fallbackResponse.status,
               };
               return { html: null, error: lastError };
-            } catch (unstyledError) {
+            } catch (fallbackError) {
               lastError = {
                 message: `Cannot load Grafana content. Content fetch failed: ${
-                  unstyledError instanceof Error ? unstyledError.message : 'Unknown error'
+                  fallbackError instanceof Error ? fallbackError.message : 'Unknown error'
                 }`,
                 errorType: 'other',
               };
@@ -931,6 +939,23 @@ function generateGitHubVariations(url: string): string[] {
   }
 
   return variations;
+}
+
+/**
+ * Check if a URL is specifically grafana.com/docs/* or grafana.com/tutorials/*
+ * These domains don't have content.json available yet, so we prefer unstyled.html
+ * Other sources (like learning journeys from GitHub) should still try JSON first.
+ */
+function isGrafanaComDocsOrTutorials(urlString: string): boolean {
+  try {
+    const url = new URL(urlString);
+    // Only match grafana.com (no subdomains) with /docs/ or /tutorials/ paths
+    return (
+      url.hostname === 'grafana.com' && (url.pathname.startsWith('/docs/') || url.pathname.startsWith('/tutorials/'))
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
