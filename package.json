@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "1.1.79",
+  "version": "1.1.81",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
     "dev": "webpack -w -c ./.config/webpack/webpack.config.ts --env development",
@@ -23,6 +23,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@grafana/eslint-config": "^9.0.0",
+    "@grafana/faro-webpack-plugin": "^0.8.1",
     "@grafana/plugin-e2e": "^3.0.1",
     "@grafana/tsconfig": "^2.0.1",
     "@jest/test-sequencer": "^30.2.0",

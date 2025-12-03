@@ -3,7 +3,8 @@ import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents, locationService } from '@grafana/runtime';
 import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
-import { initializeFaroMetrics } from './lib/faro';
+// TODO: Re-enable Faro once collector CORS is configured correctly
+// import { initializeFaroMetrics } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
@@ -11,8 +12,14 @@ import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { isGrafanaDocsUrl, isGitHubUrl } from './security';
 
+// TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
-await initializeFaroMetrics();
+// Wrapped in try-catch to prevent plugin load failure if Faro has issues
+// try {
+//   await initializeFaroMetrics();
+// } catch (e) {
+//   console.error('[Faro] Error initializing frontend metrics:', e);
+// }
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
