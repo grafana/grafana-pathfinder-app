@@ -177,7 +177,10 @@ export function BlockFormModal({ blockType, initialData, onSubmit, onCancel, isE
             computed.backgroundColor !== 'transparent' &&
             computed.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
             (computed.inset === '0px' ||
-              (computed.top === '0px' && computed.left === '0px' && computed.right === '0px' && computed.bottom === '0px'));
+              (computed.top === '0px' &&
+                computed.left === '0px' &&
+                computed.right === '0px' &&
+                computed.bottom === '0px'));
 
           if (isOverlay && !hiddenElementsRef.current.has(el)) {
             // Save original styles and hide
@@ -205,13 +208,15 @@ export function BlockFormModal({ blockType, initialData, onSubmit, onCancel, isE
 
   // Cleanup on unmount
   useEffect(() => {
+    // REACT: capture ref value for cleanup (R1)
+    const hiddenElements = hiddenElementsRef.current;
     return () => {
-      hiddenElementsRef.current.forEach((styles, el) => {
+      hiddenElements.forEach((styles, el) => {
         el.style.backgroundColor = styles.bg;
         el.style.pointerEvents = styles.pe;
         el.style.visibility = styles.vis;
       });
-      hiddenElementsRef.current.clear();
+      hiddenElements.clear();
     };
   }, []);
 

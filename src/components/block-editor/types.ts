@@ -76,10 +76,7 @@ export interface BlockFormProps<T extends JsonBlock = JsonBlock> {
    * When starting (isActive=true), provides callbacks so parent can control the overlay.
    * The modal will show the RecordModeOverlay when active.
    */
-  onRecordModeChange?: (
-    isActive: boolean,
-    options?: { onStop: () => void; getStepCount: () => number }
-  ) => void;
+  onRecordModeChange?: (isActive: boolean, options?: { onStop: () => void; getStepCount: () => number }) => void;
 }
 
 /**

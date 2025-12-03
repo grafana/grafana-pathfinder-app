@@ -5,7 +5,7 @@
  * Includes record mode integration for capturing steps automatically.
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Button, Field, Input, Select, Badge, IconButton, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -132,10 +132,7 @@ export interface StepEditorProps {
    * When starting (isActive=true), provides onStop callback and getStepCount function.
    * The parent should render RecordModeOverlay and call onStop when user clicks stop.
    */
-  onRecordModeChange?: (
-    isActive: boolean,
-    options?: { onStop: () => void; getStepCount: () => number }
-  ) => void;
+  onRecordModeChange?: (isActive: boolean, options?: { onStop: () => void; getStepCount: () => number }) => void;
 }
 
 /**
@@ -169,7 +166,10 @@ export function StepEditor({
 
   // Keep a ref to current steps length so getStepCount always returns fresh value
   const stepsLengthRef = useRef(steps.length);
-  stepsLengthRef.current = steps.length;
+  // REACT: update ref in effect, not during render (R2)
+  useEffect(() => {
+    stepsLengthRef.current = steps.length;
+  }, [steps.length]);
 
   // Start element picker for new step - pass callback to receive selected element
   const startPicker = useCallback(() => {
@@ -186,22 +186,25 @@ export function StepEditor({
   }, [onPickerModeChange]);
 
   // Start editing a step
-  const handleStartEdit = useCallback((index: number) => {
-    const step = steps[index];
-    setEditingStepIndex(index);
-    setEditAction(step.action);
-    setEditReftarget(step.reftarget);
-    setEditTargetvalue(step.targetvalue ?? '');
-    if (isGuided) {
-      setEditDescription(step.description ?? '');
-      setEditTooltip('');
-    } else {
-      setEditTooltip(step.tooltip ?? '');
-      setEditDescription('');
-    }
-    // Close add form if open
-    setShowAddForm(false);
-  }, [steps, isGuided]);
+  const handleStartEdit = useCallback(
+    (index: number) => {
+      const step = steps[index];
+      setEditingStepIndex(index);
+      setEditAction(step.action);
+      setEditReftarget(step.reftarget);
+      setEditTargetvalue(step.targetvalue ?? '');
+      if (isGuided) {
+        setEditDescription(step.description ?? '');
+        setEditTooltip('');
+      } else {
+        setEditTooltip(step.tooltip ?? '');
+        setEditDescription('');
+      }
+      // Close add form if open
+      setShowAddForm(false);
+    },
+    [steps, isGuided]
+  );
 
   // Save edited step
   const handleSaveEdit = useCallback(() => {
@@ -223,7 +226,17 @@ export function StepEditor({
     onChange(newSteps);
 
     setEditingStepIndex(null);
-  }, [editingStepIndex, editAction, editReftarget, editTargetvalue, editTooltip, editDescription, isGuided, steps, onChange]);
+  }, [
+    editingStepIndex,
+    editAction,
+    editReftarget,
+    editTargetvalue,
+    editTooltip,
+    editDescription,
+    isGuided,
+    steps,
+    onChange,
+  ]);
 
   // Cancel editing
   const handleCancelEdit = useCallback(() => {
@@ -351,7 +364,12 @@ export function StepEditor({
                         placeholder="Click Pick or enter selector"
                       />
                     </Field>
-                    <Button variant="secondary" onClick={startEditPicker} icon="crosshair" style={{ marginTop: '22px' }}>
+                    <Button
+                      variant="secondary"
+                      onClick={startEditPicker}
+                      icon="crosshair"
+                      style={{ marginTop: '22px' }}
+                    >
                       Pick
                     </Button>
                   </div>
@@ -406,15 +424,13 @@ export function StepEditor({
                     <div className={styles.stepSelector} title={step.reftarget}>
                       {step.reftarget}
                     </div>
-                    {isGuided ? (
-                      step.description && (
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>📝 {step.description}</div>
-                      )
-                    ) : (
-                      step.tooltip && (
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>💬 {step.tooltip}</div>
-                      )
-                    )}
+                    {isGuided
+                      ? step.description && (
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>📝 {step.description}</div>
+                        )
+                      : step.tooltip && (
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>💬 {step.tooltip}</div>
+                        )}
                   </div>
                   <div className={styles.stepActions}>
                     <IconButton

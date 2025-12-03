@@ -212,7 +212,9 @@ export function RecordModeOverlay({ onStop, stepCount }: RecordModeOverlayProps)
       <div className={styles.banner} data-record-overlay="banner">
         <div className={styles.recordingDot} />
         <span className={styles.bannerText}>Recording... Click elements to capture steps</span>
-        <span className={styles.stepCount}>{stepCount} step{stepCount !== 1 ? 's' : ''}</span>
+        <span className={styles.stepCount}>
+          {stepCount} step{stepCount !== 1 ? 's' : ''}
+        </span>
         <button className={styles.stopButton} onClick={handleStopClick} type="button">
           Stop (Esc)
         </button>
@@ -226,4 +228,3 @@ export function RecordModeOverlay({ onStop, stepCount }: RecordModeOverlayProps)
 }
 
 RecordModeOverlay.displayName = 'RecordModeOverlay';
-
