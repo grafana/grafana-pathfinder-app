@@ -1,7 +1,9 @@
 import { Button, Icon, Input, useStyles2 } from '@grafana/ui';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { getURLTesterStyles } from './url-tester.styles';
 import { validateGitHubUrl, validateTutorialUrl } from '../../security';
+
+const STORAGE_KEY = 'pathfinder-url-tester-url';
 
 export interface URLTesterProps {
   onOpenDocsPage: (url: string, title: string) => void;
@@ -9,9 +11,21 @@ export interface URLTesterProps {
 
 export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
   const styles = useStyles2(getURLTesterStyles);
-  const [testUrl, setTestUrl] = useState('');
+  const [testUrl, setTestUrl] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
   const [testError, setTestError] = useState<string | null>(null);
   const [testSuccess, setTestSuccess] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, testUrl);
+    } catch {}
+  }, [testUrl]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
