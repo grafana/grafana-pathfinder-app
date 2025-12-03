@@ -207,7 +207,11 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       // HTML content - apply learning journey extras then wrap
       let processedHtml = fetchResult.html;
       if (contentType === 'learning-journey' && metadata.learningJourney) {
-        processedHtml = generateJourneyContentWithExtras(processedHtml, metadata.learningJourney);
+        processedHtml = generateJourneyContentWithExtras(
+          processedHtml,
+          metadata.learningJourney,
+          options.skipReadyToBegin
+        );
       }
 
       // Wrap content as JSON guide for unified rendering pipeline
@@ -612,7 +616,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
 
         // If this is a Grafana docs/tutorial URL, try to get content
         // Use proper URL parsing to prevent domain hijacking attacks
-        const shouldFetchContent = isGrafanaDocsUrl(finalUrl);
+        const shouldFetchContent = isGrafanaDocsUrl(finalUrl) || (isDevModeEnabledGlobal() && isLocalhostUrl(finalUrl));
 
         if (shouldFetchContent) {
           const { jsonUrl, htmlUrl } = getContentUrls(response.url);

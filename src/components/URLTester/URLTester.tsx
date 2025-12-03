@@ -1,7 +1,9 @@
-import { Box, Button, Icon, Input, Tab, TabContent, TabsBar, useStyles2 } from '@grafana/ui';
-import React, { PropsWithChildren, useCallback, useState } from 'react';
+import { Button, Icon, Input, useStyles2 } from '@grafana/ui';
+import React, { useCallback, useEffect, useState } from 'react';
 import { getURLTesterStyles } from './url-tester.styles';
 import { validateGitHubUrl, validateTutorialUrl } from '../../security';
+
+const STORAGE_KEY = 'pathfinder-url-tester-url';
 
 export interface URLTesterProps {
   onOpenDocsPage: (url: string, title: string) => void;
@@ -9,69 +11,36 @@ export interface URLTesterProps {
 
 export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
   const styles = useStyles2(getURLTesterStyles);
-  const [activeTab, setActiveTab] = useState('github');
-
-  return (
-    <div>
-      <TabsBar>
-        <Tab label="GitHub" value="github" active={activeTab === 'github'} onChangeTab={() => setActiveTab('github')} />
-        <Tab label="Other" value="other" active={activeTab === 'other'} onChangeTab={() => setActiveTab('other')} />
-      </TabsBar>
-      <TabContent>
-        <Box paddingY={2}>
-          {activeTab === 'github' && (
-            <URLTesterContent
-              onOpenDocsPage={onOpenDocsPage}
-              placeholder="https://github.com/grafana/interactive-tutorials/tree/main/explore-drilldowns-101"
-              validator={validateGitHubUrl}
-            >
-              <p className={styles.helpText}>
-                Provide a GitHub tree URL pointing to a tutorial directory.
-                <br />
-                The URL should be in format: github.com/{'{owner}'}/{'{repo}'}/tree/{'{branch}'}/{'{path}'}
-              </p>
-            </URLTesterContent>
-          )}
-          {activeTab === 'other' && (
-            <URLTesterContent
-              onOpenDocsPage={onOpenDocsPage}
-              placeholder="http://127.0.0.1:5500/interactive-tutorials/tree/main/explore-drilldowns-101/unstyled.html"
-              validator={validateTutorialUrl}
-            >
-              <p className={styles.helpText}>
-                Provide a URL pointing to a tutorial page. Make sure to include the /unstyled.html suffix.
-              </p>
-            </URLTesterContent>
-          )}
-        </Box>
-      </TabContent>
-    </div>
-  );
-};
-
-interface URLTesterContentProps extends PropsWithChildren {
-  onOpenDocsPage: (url: string, title: string) => void;
-  placeholder?: string;
-  validator?: (url: string) => { isValid: boolean; errorMessage?: string };
-}
-
-const URLTesterContent = ({ children, onOpenDocsPage, placeholder, validator }: URLTesterContentProps) => {
-  const styles = useStyles2(getURLTesterStyles);
-  const [testUrl, setTestUrl] = useState('');
+  const [testUrl, setTestUrl] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
   const [testError, setTestError] = useState<string | null>(null);
   const [testSuccess, setTestSuccess] = useState(false);
 
-  // GitHub Tutorial Tester Handler
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, testUrl);
+    } catch {}
+  }, [testUrl]);
+
   const handleSubmit = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
-      const cleanedUrl = testUrl.trim();
-      const validation = validator?.(cleanedUrl);
+      let url = testUrl.trim();
+      const githubValidation = validateGitHubUrl(url);
 
-      if (validation && !validation?.isValid) {
-        setTestError(validation?.errorMessage || 'Invalid URL format');
-        setTestSuccess(false);
-        return;
+      if (!githubValidation.isValid) {
+        const tutorialValidation = validateTutorialUrl(url);
+
+        if (!tutorialValidation.isValid) {
+          setTestError(`Invalid URL format. Must be the GitHub URL of an interactive guide or a documentation page.`);
+          setTestSuccess(false);
+          return;
+        }
       }
 
       if (!onOpenDocsPage) {
@@ -79,36 +48,40 @@ const URLTesterContent = ({ children, onOpenDocsPage, placeholder, validator }: 
         return;
       }
 
-      const tutorialName = extractTitleFromUrl(cleanedUrl);
+      const tutorialName = extractTitleFromUrl(url);
 
-      // Open in new tab with tutorial name as title
-      onOpenDocsPage(cleanedUrl, tutorialName);
+      onOpenDocsPage(url, tutorialName);
       setTestSuccess(true);
       setTestError(null);
 
-      // Reset success state after 2 seconds
       setTimeout(() => setTestSuccess(false), 2000);
     },
-    [testUrl, onOpenDocsPage, validator]
+    [testUrl, onOpenDocsPage]
   );
 
   return (
     <form className={styles.formGroup} onSubmit={handleSubmit}>
-      <label className={styles.label} htmlFor="urlTesterInput">
-        URL to Test
+      <label className={styles.label} htmlFor="url">
+        URL
       </label>
       <Input
         className={styles.selectorInput}
         value={testUrl}
-        id="urlTesterInput"
+        id="url"
         onChange={(e) => {
           setTestUrl(e.currentTarget.value);
           setTestError(null);
           setTestSuccess(false);
         }}
-        placeholder={placeholder}
+        placeholder="https://github.com/grafana/interactive-tutorials/tree/main/explore-drilldowns-101"
       />
-      {children}
+      <p className={styles.helpText}>
+        Provide a GitHub interactive guide or documentation page.
+        <br />
+        GitHub format: https://github.com/{'{owner}'}/{'{repo}'}/tree/{'{branch}'}/{'{path}'}
+        <br />
+        Documentation page format: http://localhost:3002/{'{path}'}
+      </p>
       <Button
         variant="primary"
         size="sm"
@@ -116,7 +89,7 @@ const URLTesterContent = ({ children, onOpenDocsPage, placeholder, validator }: 
         disabled={!testUrl.trim() || !onOpenDocsPage}
         icon="external-link-alt"
       >
-        Test Tutorial in New Tab
+        Test
       </Button>
 
       {testError && (
@@ -130,7 +103,8 @@ const URLTesterContent = ({ children, onOpenDocsPage, placeholder, validator }: 
       {testSuccess && (
         <div className={`${styles.resultBox} ${styles.resultSuccess}`}>
           <p className={styles.resultText}>
-            <Icon name="check" /> Tutorial opened in new tab!
+            <Icon name="check" />
+            Opened in new tab
           </p>
         </div>
       )}

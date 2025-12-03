@@ -519,12 +519,12 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         )}
       </div>
 
-      {/* PRIORITY SECTION 2: Tutorial Tester */}
+      {/* PRIORITY SECTION 2: URL tester */}
       <div className={styles.section}>
         <div className={styles.sectionHeader} onClick={() => setGithubExpanded(!githubExpanded)}>
           <Stack direction="row" gap={1} alignItems="center">
             <Icon name="external-link-alt" />
-            <h4 className={styles.sectionTitle}>Tutorial Tester</h4>
+            <h4 className={styles.sectionTitle}>URL tester</h4>
           </Stack>
           <Icon name={githubExpanded ? 'angle-up' : 'angle-down'} />
         </div>
