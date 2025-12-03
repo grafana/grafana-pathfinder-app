@@ -39,7 +39,7 @@ let LogLevelEnum: typeof import('@grafana/faro-react').LogLevel | null = null;
 // ============================================================================
 // Set to true to enable full Faro instrumentation locally for testing.
 // Remember to set back to false before committing!
-const ENABLE_FARO_LOCALLY = true;
+const ENABLE_FARO_LOCALLY = false;
 
 /**
  * Check if running in Grafana Cloud
