@@ -27,7 +27,7 @@ describe('Selector Generator', () => {
       document.body.appendChild(button);
 
       const selector = generateBestSelector(button);
-      expect(selector).toBe('button[data-testid="save-button"]');
+      expect(selector).toBe("button[data-testid='save-button']");
     });
 
     it('should use non-auto-generated id when testid not present', () => {
@@ -49,7 +49,7 @@ describe('Selector Generator', () => {
       document.body.appendChild(div);
 
       const selector = generateBestSelector(div);
-      expect(selector).toContain('aria-label="Save Document"');
+      expect(selector).toContain("aria-label='Save Document'");
     });
 
     it('should use name attribute for form inputs', () => {
@@ -59,7 +59,7 @@ describe('Selector Generator', () => {
       document.body.appendChild(input);
 
       const selector = generateBestSelector(input);
-      expect(selector).toContain('[name="username"]');
+      expect(selector).toContain("[name='username']");
     });
 
     it('should use href attribute for links', () => {
@@ -69,7 +69,7 @@ describe('Selector Generator', () => {
       document.body.appendChild(link);
 
       const selector = generateBestSelector(link);
-      expect(selector).toContain('[href="/dashboard"]');
+      expect(selector).toContain("[href='/dashboard']");
     });
 
     it('should use button text when unique and not generic', () => {
@@ -104,7 +104,7 @@ describe('Selector Generator', () => {
       document.body.appendChild(button);
 
       const selector = generateBestSelector(span);
-      expect(selector).toBe('button[data-testid="save"]');
+      expect(selector).toBe("button[data-testid='save']");
     });
 
     it('should find interactive element when clicking wrapper div', () => {
@@ -118,7 +118,7 @@ describe('Selector Generator', () => {
       // Clicking the button directly should work
       const selector = generateBestSelector(button);
       expect(selector).toContain('button');
-      expect(selector).toContain('data-testid="submit"');
+      expect(selector).toContain("data-testid='submit'");
 
       // Clicking wrapper may not always find button (depends on implementation)
       // This test verifies the button itself generates correct selector
@@ -138,7 +138,7 @@ describe('Selector Generator', () => {
 
       const selector = generateBestSelector(target);
       // Should find the container with testid
-      expect(selector).toContain('data-testid="form-container"');
+      expect(selector).toContain("data-testid='form-container'");
     });
 
     it('should prefer interactive element over wrapper div', () => {
@@ -152,7 +152,7 @@ describe('Selector Generator', () => {
       // Clicking the button directly should work
       const selector = generateBestSelector(button);
       expect(selector).toContain('button');
-      expect(selector).toContain('data-testid="action-button"');
+      expect(selector).toContain("data-testid='action-button'");
 
       // This test verifies the button itself generates correct selector
       // Hierarchy walking from wrapper may vary by implementation
@@ -238,7 +238,7 @@ describe('Selector Generator', () => {
 
       const selector = generateBestSelector(button1);
       // Should include parent context
-      expect(selector).toContain('data-testid="user-form"');
+      expect(selector).toContain("data-testid='user-form'");
     });
 
     it('should use :contains() for text-based disambiguation', () => {
@@ -254,7 +254,7 @@ describe('Selector Generator', () => {
 
       const selector = generateBestSelector(button1);
       // Should use :contains() with text
-      expect(selector).toContain(':contains("Save Draft")');
+      expect(selector).toContain(":contains('Save Draft')");
     });
 
     it('should use :nth-match() as fallback when needed', () => {
@@ -280,7 +280,7 @@ describe('Selector Generator', () => {
 
       const selector = generateBestSelector(button);
       // Should be simple, no parent context needed
-      expect(selector).toBe('button[data-testid="unique-button"]');
+      expect(selector).toBe("button[data-testid='unique-button']");
     });
   });
 
@@ -325,7 +325,7 @@ describe('Selector Generator', () => {
       const selector = generateBestSelector(link);
       // Test ID is unique, so should just return simple selector
       // Our logic now keeps testid unique if available
-      expect(selector).toBe('a[data-testid="nav-link"]');
+      expect(selector).toBe("a[data-testid='nav-link']");
     });
 
     it('should handle multiple buttons with same text using context', () => {
@@ -346,7 +346,7 @@ describe('Selector Generator', () => {
 
       const selector = generateBestSelector(button1);
       // Should include parent context to disambiguate
-      expect(selector).toContain('data-testid="form-1"');
+      expect(selector).toContain("data-testid='form-1'");
     });
 
     it('should handle nested form controls (SVG icon next to input)', () => {
@@ -381,7 +381,7 @@ describe('Selector Generator', () => {
 
       const selector = generateBestSelector(link);
       // Since testid is unique, we just use the simple testid selector
-      expect(selector).toBe('a[data-testid="nav-item"]');
+      expect(selector).toBe("a[data-testid='nav-item']");
     });
 
     it('should handle generic button text with parent context', () => {
@@ -394,8 +394,8 @@ describe('Selector Generator', () => {
 
       const selector = generateBestSelector(button);
       // Generic words should use :contains() with parent context
-      expect(selector).toContain('data-testid="user-form"');
-      expect(selector).toContain(':contains("Save")');
+      expect(selector).toContain("data-testid='user-form'");
+      expect(selector).toContain(":contains('Save')");
     });
   });
 
@@ -407,7 +407,7 @@ describe('Selector Generator', () => {
 
       const info = getSelectorInfo(button);
       expect(info.method).toBe('data-testid');
-      expect(info.selector).toContain('data-testid="test-button"');
+      expect(info.selector).toContain("data-testid='test-button'");
     });
 
     it('should detect id method', () => {
@@ -437,7 +437,7 @@ describe('Selector Generator', () => {
 
       const info = getSelectorInfo(input);
       expect(info.method).toBe('name');
-      expect(info.selector).toContain('[name="username"]');
+      expect(info.selector).toContain("[name='username']");
     });
 
     it('should detect href method for links', () => {
@@ -447,7 +447,7 @@ describe('Selector Generator', () => {
 
       const info = getSelectorInfo(link);
       expect(info.method).toBe('href');
-      expect(info.selector).toContain('[href="/dashboard"]');
+      expect(info.selector).toContain("[href='/dashboard']");
     });
 
     it('should detect button-text method', () => {
