@@ -696,7 +696,7 @@ export function parseHTMLToComponents(
           const internalActions: Array<{
             requirements?: string;
             targetAction: string;
-            refTarget: string;
+            refTarget?: string; // Optional for noop actions
             targetValue?: string;
             targetComment?: string;
           }> = [];
@@ -706,7 +706,7 @@ export function parseHTMLToComponents(
               const targetAction = span.getAttribute('data-targetaction');
               const refTarget = span.getAttribute('data-reftarget');
 
-              if (!targetAction || !refTarget) {
+              if (!targetAction || (!refTarget && targetAction !== 'noop')) {
                 errorCollector.addError(
                   'element_creation',
                   `Multi-step internal action ${
@@ -731,7 +731,7 @@ export function parseHTMLToComponents(
               internalActions.push({
                 requirements: span.getAttribute('data-requirements') || undefined,
                 targetAction,
-                refTarget,
+                refTarget: refTarget || undefined, // Optional for noop actions
                 targetValue: span.getAttribute('data-targetvalue') || undefined,
                 targetComment: interactiveComment || undefined,
               });
@@ -815,7 +815,7 @@ export function parseHTMLToComponents(
           const internalActions: Array<{
             requirements?: string;
             targetAction: string;
-            refTarget: string;
+            refTarget?: string; // Optional for noop actions
             targetValue?: string;
             targetComment?: string;
             isSkippable?: boolean;
@@ -826,18 +826,19 @@ export function parseHTMLToComponents(
               const targetAction = span.getAttribute('data-targetaction');
               const refTarget = span.getAttribute('data-reftarget');
 
-              // Validate action type for guided (only hover, button, highlight supported)
-              if (targetAction && !['hover', 'button', 'highlight'].includes(targetAction)) {
+              // Validate action type for guided (hover, button, highlight, and noop supported)
+              if (targetAction && !['hover', 'button', 'highlight', 'noop'].includes(targetAction)) {
                 errorCollector.addError(
                   'element_creation',
-                  `Guided internal action ${index + 1} has unsupported action type: ${targetAction}. Only 'hover', 'button', and 'highlight' are supported.`,
+                  `Guided internal action ${index + 1} has unsupported action type: ${targetAction}. Only 'hover', 'button', 'highlight', and 'noop' are supported.`,
                   span.outerHTML,
                   `${currentPath}.guided.action[${index}]`
                 );
                 return;
               }
 
-              if (!targetAction || !refTarget) {
+              // noop actions don't require refTarget (they're informational steps)
+              if (!targetAction || (!refTarget && targetAction !== 'noop')) {
                 errorCollector.addError(
                   'element_creation',
                   `Guided internal action ${
@@ -864,7 +865,7 @@ export function parseHTMLToComponents(
               internalActions.push({
                 requirements: span.getAttribute('data-requirements') || undefined,
                 targetAction,
-                refTarget,
+                refTarget: refTarget || undefined, // Optional for noop actions
                 targetValue: span.getAttribute('data-targetvalue') || undefined,
                 targetComment: interactiveComment || undefined,
                 isSkippable,

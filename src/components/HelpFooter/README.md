@@ -5,6 +5,7 @@ A modular footer component that provides quick access to Grafana help resources 
 ## Features
 
 - **Help Buttons Grid**: 2-column grid layout with 6 help buttons
+
   - Documentation (links to Grafana documentation)
   - Support (links to Grafana support page)
   - Community (links to Grafana community forum)

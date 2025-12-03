@@ -375,12 +375,22 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           return;
         }
 
+        // Skip auto-detection for noop actions - they don't have a target element
+        if (currentAction.targetAction === 'noop') {
+          return;
+        }
+
+        // Non-noop actions require refTarget
+        const selector = currentAction.refTarget;
+        if (!selector) {
+          return;
+        }
+
         // Try to find target element for coordinate-based matching
         // Using synchronous resolution to avoid timing issues with dynamic menus/dropdowns
         let targetElement: HTMLElement | null = null;
         try {
           const actionType = currentAction.targetAction;
-          const selector = currentAction.refTarget;
 
           if (actionType === 'button') {
             // Use button-specific finder for text matching
@@ -400,8 +410,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         const matches = matchesStepAction(
           detectedAction,
           {
-            targetAction: currentAction.targetAction as any,
-            refTarget: currentAction.refTarget,
+            targetAction: currentAction.targetAction as 'button' | 'highlight' | 'hover',
+            refTarget: selector,
             targetValue: currentAction.targetValue,
           },
           targetElement
