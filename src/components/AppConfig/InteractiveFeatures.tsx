@@ -128,7 +128,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
 
   return (
     <form onSubmit={onSubmit}>
-      <FieldSet label="interactive guide Features" className={styles.fieldSet}>
+      <FieldSet label="Interactive guide features" className={styles.fieldSet}>
         <Alert
           title="Experimental feature"
           severity={state.enableAutoDetection ? 'info' : 'warning'}
@@ -141,7 +141,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
 
         <div className={styles.section}>
           <Text variant="h4" weight="medium">
-            Auto-Completion Detection
+            Auto-completion detection
           </Text>
           <div className={styles.toggleSection}>
             <Switch
@@ -175,7 +175,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
 
         <div className={styles.section}>
           <Text variant="h4" weight="medium">
-            Advanced Settings
+            Advanced settings
           </Text>
           <div className={styles.sectionDescription}>
             <Text variant="body" color="secondary">

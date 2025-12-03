@@ -204,20 +204,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div className={styles.buttonGroup}>
         <IconButton
           name="list-ul"
-          tooltip="Bullet List"
+          tooltip="Bullet list"
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           variant={editor.isActive('bulletList') ? 'primary' : 'secondary'}
           size="md"
-          aria-label="Bullet List"
+          aria-label="Bullet list"
           data-testid={testIds.wysiwygEditor.toolbar.bulletListButton}
         />
         <IconButton
           name="list-ol"
-          tooltip="Ordered List"
+          tooltip="Ordered list"
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
           variant={editor.isActive('orderedList') ? 'primary' : 'secondary'}
           size="md"
-          aria-label="Ordered List"
+          aria-label="Ordered list"
           data-testid={testIds.wysiwygEditor.toolbar.orderedListButton}
         />
       </div>
@@ -251,7 +251,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           variant="secondary"
           size="sm"
           onClick={onAddComment}
-          tooltip="Add Comment"
+          tooltip="Add comment"
           data-testid={testIds.wysiwygEditor.toolbar.addCommentButton}
         >
           Comment
@@ -271,7 +271,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             tooltip={isFullScreenActive ? 'Exit full screen mode (Esc)' : 'Enter full screen authoring mode'}
             data-testid={testIds.wysiwygEditor.toolbar.fullScreenButton}
           >
-            {isFullScreenActive ? 'Exit Full Screen' : 'Full Screen'}
+            {isFullScreenActive ? 'Exit full screen' : 'Full screen'}
           </Button>
           <div className={styles.divider} />
         </>
@@ -281,10 +281,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div className={styles.buttonGroup}>
         <IconButton
           name="trash-alt"
-          tooltip="Clear Formatting"
+          tooltip="Clear formatting"
           onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
           size="md"
-          aria-label="Clear Formatting"
+          aria-label="Clear formatting"
           data-testid={testIds.wysiwygEditor.toolbar.clearFormattingButton}
         />
         <IconButton
@@ -305,7 +305,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         />
         <IconButton
           name="play"
-          tooltip="Test Guide"
+          tooltip="Test guide"
           onClick={onTest}
           variant="primary"
           size="md"
@@ -318,7 +318,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div className={styles.resetButtonWrapper}>
         <IconButton
           name="times"
-          tooltip="Reset Editor"
+          tooltip="Reset editor"
           onClick={onReset}
           size="md"
           aria-label="Reset"

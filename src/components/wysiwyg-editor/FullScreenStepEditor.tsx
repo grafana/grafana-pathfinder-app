@@ -973,7 +973,7 @@ export function FullScreenStepEditor({
 
             {sectionMode === 'new' && (
               <div className={styles.sectionFields}>
-                <Field label="Section Title" description="Heading displayed above the section">
+                <Field label="Section title" description="Heading displayed above the section">
                   <Input
                     value={newSectionTitle}
                     onChange={(e) => handleSectionTitleChange(e.currentTarget.value)}
