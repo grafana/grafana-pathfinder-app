@@ -396,6 +396,21 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             await interactiveSequence(elementData, isShowMode);
             break;
 
+          case 'noop':
+            // Noop actions are informational - no element interaction needed
+            // In show mode, briefly display the comment if provided
+            // In do mode, just mark as completed (nothing to execute)
+            if (isShowMode && targetComment) {
+              // Show a brief notification with the comment
+              // Use navigationManager to show a floating comment briefly
+              navigationManager.showNoopComment(targetComment);
+              // Auto-dismiss after a delay
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+              navigationManager.clearAllHighlights();
+            }
+            // Do mode: nothing to do - noop steps complete immediately
+            break;
+
           default:
             console.warn(`Unknown interactive action: ${targetAction}`);
         }

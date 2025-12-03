@@ -44,6 +44,52 @@ export class NavigationManager {
   }
 
   /**
+   * Show a centered comment for noop actions (informational steps without element interaction)
+   * Used by multi-step sequences to display step instructions
+   */
+  showNoopComment(comment: string): void {
+    // Clear any existing highlights first
+    this.clearAllHighlights();
+
+    // Create a centered comment box
+    const commentBox = document.createElement('div');
+    commentBox.className = 'interactive-comment-box';
+    commentBox.setAttribute('data-position', 'center');
+    commentBox.setAttribute('data-ready', 'true');
+    commentBox.setAttribute('data-noop', 'true');
+
+    // Build comment box content
+    const content = document.createElement('div');
+    content.className = 'interactive-comment-content interactive-comment-glow';
+
+    // Logo
+    const logoContainer = document.createElement('div');
+    logoContainer.className = 'interactive-comment-logo';
+    const logo = document.createElement('img');
+    logo.src = logoSvg;
+    logo.alt = 'Pathfinder';
+    logoContainer.appendChild(logo);
+
+    // Text content - sanitize the HTML
+    const textContainer = document.createElement('div');
+    textContainer.className = 'interactive-comment-text';
+    textContainer.innerHTML = sanitizeDocumentationHTML(comment);
+
+    // Content wrapper
+    const contentWrapper = document.createElement('div');
+    contentWrapper.className = 'interactive-comment-wrapper';
+    contentWrapper.appendChild(logoContainer);
+    contentWrapper.appendChild(textContainer);
+
+    // Assemble the comment box
+    content.appendChild(contentWrapper);
+    commentBox.appendChild(content);
+
+    // Add to document body (centered via CSS)
+    document.body.appendChild(commentBox);
+  }
+
+  /**
    * Clean up all active auto-cleanup handlers
    * Disconnects IntersectionObservers and removes click listeners
    */
