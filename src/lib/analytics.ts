@@ -2,11 +2,13 @@
  * Analytics tracking utilities for the Grafana Docs Plugin
  *
  * This module handles all user interaction tracking and analytics reporting.
- * It provides structured event reporting to Rudder Stack via Grafana's runtime.
+ * It provides structured event reporting to Rudder Stack via Grafana's runtime,
+ * and optionally starts Faro user actions for end-to-end journey tracking.
  */
 
 import { reportInteraction } from '@grafana/runtime';
 import pluginJson from '../plugin.json';
+import { startFaroUserAction, type UserActionImportanceLevel } from './faro';
 
 // ============================================================================
 // USER INTERACTION TYPES
@@ -55,6 +57,107 @@ export enum UserInteraction {
 }
 
 // ============================================================================
+// FARO USER ACTION CONFIGURATION
+// ============================================================================
+
+/**
+ * Configuration for which interactions should trigger Faro user actions
+ * User actions link HTTP requests, errors, and performance metrics for end-to-end visibility
+ */
+interface FaroUserActionConfig {
+  /** Name of the user action in Faro (human-readable) */
+  actionName: string;
+  /** Importance level - critical actions are used for key journeys and alerting */
+  importance: UserActionImportanceLevel;
+}
+
+/**
+ * Map of UserInteraction types to their Faro user action configuration
+ * Only interactions that are meaningful for user journey tracking are included
+ */
+const FARO_USER_ACTION_MAP: Partial<Record<UserInteraction, FaroUserActionConfig>> = {
+  // Critical interactions - key user journeys
+  [UserInteraction.DocsPanelInteraction]: {
+    actionName: 'sidebar-interaction',
+    importance: 'critical',
+  },
+  [UserInteraction.StartLearningJourneyClick]: {
+    actionName: 'tutorial-start',
+    importance: 'critical',
+  },
+  [UserInteraction.StepAutoCompleted]: {
+    actionName: 'step-completed',
+    importance: 'critical',
+  },
+  [UserInteraction.AssistantCustomizeClick]: {
+    actionName: 'assistant-customize',
+    importance: 'critical',
+  },
+  [UserInteraction.AssistantAskButtonClick]: {
+    actionName: 'assistant-ask',
+    importance: 'critical',
+  },
+
+  // Normal interactions - user actions we want to trace
+  [UserInteraction.ShowMeButtonClick]: {
+    actionName: 'show-me-click',
+    importance: 'normal',
+  },
+  [UserInteraction.DoItButtonClick]: {
+    actionName: 'do-it-click',
+    importance: 'normal',
+  },
+  [UserInteraction.DoSectionButtonClick]: {
+    actionName: 'do-section-click',
+    importance: 'normal',
+  },
+  [UserInteraction.OpenExtraResource]: {
+    actionName: 'open-resource',
+    importance: 'normal',
+  },
+  [UserInteraction.JumpIntoMilestoneClick]: {
+    actionName: 'jump-to-milestone',
+    importance: 'normal',
+  },
+  [UserInteraction.GeneralPluginFeedbackButton]: {
+    actionName: 'feedback-submit',
+    importance: 'normal',
+  },
+  [UserInteraction.VideoPlayClick]: {
+    actionName: 'video-play',
+    importance: 'normal',
+  },
+  [UserInteraction.VideoViewLength]: {
+    actionName: 'video-complete',
+    importance: 'normal',
+  },
+  [UserInteraction.CloseTabClick]: {
+    actionName: 'tab-close',
+    importance: 'normal',
+  },
+  [UserInteraction.GlobalDocsLinkIntercepted]: {
+    actionName: 'docs-link-click',
+    importance: 'normal',
+  },
+  [UserInteraction.SummaryClick]: {
+    actionName: 'summary-click',
+    importance: 'normal',
+  },
+  [UserInteraction.OpenResourceClick]: {
+    actionName: 'resource-click',
+    importance: 'normal',
+  },
+  [UserInteraction.MilestoneArrowInteractionClick]: {
+    actionName: 'milestone-navigate',
+    importance: 'normal',
+  },
+  [UserInteraction.EnableRecommendationsBanner]: {
+    actionName: 'recommendations-enable',
+    importance: 'normal',
+  },
+};
+
+// ============================================================================
 // CORE ANALYTICS FUNCTIONS
 // ============================================================================
 
@@ -66,10 +169,22 @@ const createInteractionName = (type: UserInteraction): string => {
 };
 
 /**
+ * Converts properties to string values for Faro user action attributes
+ * Faro user actions only accept Record<string, string>
+ */
+function toFaroAttributes(properties: Record<string, string | number | boolean>): Record<string, string> {
+  return Object.fromEntries(Object.entries(properties).map(([key, value]) => [key, String(value)]));
+}
+
+/**
  * Reports a user interaction event to Grafana analytics (Rudder Stack)
+ * and optionally starts a Faro user action for end-to-end journey tracking.
  *
  * All events automatically include:
  * - plugin_version: The current plugin version from plugin.json
+ *
+ * If the interaction type is configured in FARO_USER_ACTION_MAP, a Faro user
+ * action will also be started to link HTTP requests and performance metrics.
  *
  * @param type - The type of interaction from UserInteraction enum
  * @param properties - Additional properties to attach to the event
@@ -87,7 +202,16 @@ export function reportAppInteraction(
       ...properties,
     };
 
+    // Report to Rudder Stack
     reportInteraction(interactionName, enrichedProperties);
+
+    // Start Faro user action if configured for this interaction type
+    const faroConfig = FARO_USER_ACTION_MAP[type];
+    if (faroConfig) {
+      startFaroUserAction(faroConfig.actionName, toFaroAttributes(enrichedProperties), {
+        importance: faroConfig.importance,
+      });
+    }
   } catch (error) {
     console.warn('Analytics reporting failed:', error);
   }

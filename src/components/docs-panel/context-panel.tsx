@@ -4,6 +4,7 @@ import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana
 import { Icon, useStyles2, Card, Badge, Alert, Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
+import { withFaroProfiler } from '@grafana/faro-react';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
@@ -735,5 +736,12 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     </div>
   );
 }
+
+// Wrap with Faro profiler to track render performance
+const ProfiledContextPanelRenderer = withFaroProfiler(ContextPanelRenderer);
+
+// Update ContextPanel to use the profiled renderer
+// Type assertion needed because withFaroProfiler returns FC<Props> while Scenes expects specific return type
+ContextPanel.Component = ProfiledContextPanelRenderer as typeof ContextPanelRenderer;
 
 // Styles now imported from context-panel.styles.ts

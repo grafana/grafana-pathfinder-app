@@ -36,9 +36,11 @@ import {
 import { isDataProxyUrl } from '../../docs-retrieval/data-proxy';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { setFaroView } from '../../lib/faro';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
+import { withFaroProfiler } from '@grafana/faro-react';
 
 // Import new unified content system
 import {
@@ -344,6 +346,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         );
         this.setState({ tabs: finalUpdatedTabs });
 
+        // Track learning journey view in Faro with milestone info
+        setFaroView('learning-journey', {
+          url: url,
+          ...(result.content?.metadata?.learningJourney && {
+            current_milestone: String(result.content.metadata.learningJourney.currentMilestone ?? 0),
+            total_milestones: String(result.content.metadata.learningJourney.totalMilestones ?? 0),
+          }),
+        });
+
         // Save tabs to storage after content is loaded
         this.saveTabsToStorage();
 
@@ -431,11 +442,18 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   public setActiveTab(tabId: string) {
     this.setState({ activeTabId: tabId });
 
+    // Track view change in Faro
+    const tab = this.state.tabs.find((t) => t.id === tabId);
+    if (tab) {
+      setFaroView(tab.type || 'recommendations', {
+        ...(tab.currentUrl && { url: tab.currentUrl }),
+      });
+    }
+
     // Save active tab to storage
     this.saveTabsToStorage();
 
     // If switching to a tab that hasn't loaded content yet, load it
-    const tab = this.state.tabs.find((t) => t.id === tabId);
     if (tab && tabId !== 'recommendations' && !tab.isLoading && !tab.error) {
       if (tab.type === 'docs' && !tab.content) {
         this.loadDocsTabContent(tabId, tab.currentUrl || tab.baseUrl);
@@ -575,6 +593,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
             : t
         );
         this.setState({ tabs: finalUpdatedTabs });
+
+        // Track docs view in Faro
+        setFaroView('docs', {
+          url: url,
+        });
 
         // Save tabs to storage after content is loaded
         this.saveTabsToStorage();
@@ -2015,11 +2038,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   );
 }
 
+// Wrap with Faro profiler to track render performance
+const ProfiledCombinedPanelRendererInner = withFaroProfiler(CombinedPanelRendererInner);
+
 // Wrap the renderer with SessionProvider so it has access to session context
 function CombinedPanelRenderer(props: SceneComponentProps<CombinedLearningJourneyPanel>) {
   return (
     <SessionProvider>
-      <CombinedPanelRendererInner {...props} />
+      <ProfiledCombinedPanelRendererInner {...props} />
     </SessionProvider>
   );
 }

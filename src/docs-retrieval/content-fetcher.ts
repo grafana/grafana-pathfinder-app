@@ -25,6 +25,7 @@ import { convertGitHubRawToProxyUrl, isDataProxyUrl } from './data-proxy';
 import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
 import { StorageKeys } from '../lib/user-storage';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
+import { pushFaroMeasurement } from '../lib/faro';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -108,6 +109,8 @@ function enforceHttps(url: string): boolean {
  * Determines content type and fetches accordingly
  */
 export async function fetchContent(url: string, options: ContentFetchOptions = {}): Promise<ContentFetchResult> {
+  const startTime = performance.now();
+
   try {
     // Validate URL
     if (!url || typeof url !== 'string' || url.trim() === '') {
@@ -225,8 +228,24 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       isNativeJson,
     };
 
+    // Track content load time for performance monitoring
+    const loadTimeMs = Math.round(performance.now() - startTime);
+    pushFaroMeasurement('content_load_time', loadTimeMs, {
+      url: finalUrl,
+      content_type: contentType,
+      is_native_json: String(isNativeJson),
+    });
+
     return { content: rawContent };
   } catch (error) {
+    // Track failed content loads
+    const loadTimeMs = Math.round(performance.now() - startTime);
+    pushFaroMeasurement('content_load_error', loadTimeMs, {
+      url,
+      error_type: 'exception',
+      error_message: error instanceof Error ? error.message : 'Unknown error',
+    });
+
     console.error(`Failed to fetch content from ${url}:`, error);
     return {
       content: null,
