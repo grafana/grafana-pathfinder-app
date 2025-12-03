@@ -5,13 +5,21 @@
  * Includes record mode integration for capturing steps automatically.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Button, Field, Input, Select, Badge, IconButton, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css } from '@emotion/css';
 import { INTERACTIVE_ACTIONS } from '../constants';
 import { useActionRecorder } from '../../wysiwyg-editor/devtools/action-recorder.hook';
 import type { JsonStep, JsonInteractiveAction } from '../types';
+
+// Exclude our overlay UI from being recorded as steps
+const RECORD_EXCLUDE_SELECTORS = [
+  '[class*="debug"]',
+  '.context-container',
+  '[data-devtools-panel]',
+  '[data-record-overlay]', // Our recording overlay banner/buttons
+];
 
 const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
@@ -82,31 +90,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     padding: theme.spacing(3),
     color: theme.colors.text.secondary,
   }),
-  recordingBanner: css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1.5),
-    backgroundColor: theme.colors.error.transparent,
-    border: `2px solid ${theme.colors.error.border}`,
-    borderRadius: theme.shape.radius.default,
-    animation: 'recording-pulse 2s ease-in-out infinite',
-    '@keyframes recording-pulse': {
-      '0%, 100%': { borderColor: theme.colors.error.border },
-      '50%': { borderColor: theme.colors.error.main },
-    },
-  }),
-  recordingDot: css({
-    width: '12px',
-    height: '12px',
-    borderRadius: '50%',
-    backgroundColor: theme.colors.error.main,
-    animation: 'blink-dot 1s ease-in-out infinite',
-    '@keyframes blink-dot': {
-      '0%, 100%': { opacity: 1 },
-      '50%': { opacity: 0.4 },
-    },
-  }),
   addStepForm: css({
     display: 'flex',
     flexDirection: 'column',
@@ -142,12 +125,27 @@ export interface StepEditorProps {
   showRecordMode?: boolean;
   /** Called to start/stop the element picker with a callback for receiving the selector */
   onPickerModeChange?: (isActive: boolean, onSelect?: (selector: string) => void) => void;
+  /**
+   * Called when record mode starts/stops.
+   * When starting (isActive=true), provides onStop callback and getStepCount function.
+   * The parent should render RecordModeOverlay and call onStop when user clicks stop.
+   */
+  onRecordModeChange?: (
+    isActive: boolean,
+    options?: { onStop: () => void; getStepCount: () => number }
+  ) => void;
 }
 
 /**
  * Step editor component
  */
-export function StepEditor({ steps, onChange, showRecordMode = true, onPickerModeChange }: StepEditorProps) {
+export function StepEditor({
+  steps,
+  onChange,
+  showRecordMode = true,
+  onPickerModeChange,
+  onRecordModeChange,
+}: StepEditorProps) {
   const styles = useStyles2(getStyles);
 
   // Add step form state
@@ -157,6 +155,10 @@ export function StepEditor({ steps, onChange, showRecordMode = true, onPickerMod
   const [newTargetvalue, setNewTargetvalue] = useState('');
   const [newTooltip, setNewTooltip] = useState('');
 
+  // Keep a ref to current steps length so getStepCount always returns fresh value
+  const stepsLengthRef = useRef(steps.length);
+  stepsLengthRef.current = steps.length;
+
   // Start element picker - pass callback to receive selected element
   const startPicker = useCallback(() => {
     onPickerModeChange?.(true, (selector: string) => {
@@ -164,8 +166,9 @@ export function StepEditor({ steps, onChange, showRecordMode = true, onPickerMod
     });
   }, [onPickerModeChange]);
 
-  // Action recorder for record mode
+  // Action recorder for record mode - exclude our overlay UI
   const { isRecording, startRecording, stopRecording, clearRecording } = useActionRecorder({
+    excludeSelectors: RECORD_EXCLUDE_SELECTORS,
     onStepRecorded: (step) => {
       // Convert recorded step to JsonStep and add to steps
       const jsonStep: JsonStep = {
@@ -229,15 +232,23 @@ export function StepEditor({ steps, onChange, showRecordMode = true, onPickerMod
     [steps, onChange]
   );
 
-  // Toggle record mode
-  const handleToggleRecord = useCallback(() => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      clearRecording();
-      startRecording();
-    }
-  }, [isRecording, startRecording, stopRecording, clearRecording]);
+  // Get current step count (for overlay display) - uses ref so it always returns fresh value
+  const getStepCount = useCallback(() => stepsLengthRef.current, []);
+
+  // Stop record mode - notify parent to hide overlay
+  const handleStopRecord = useCallback(() => {
+    stopRecording();
+    onRecordModeChange?.(false);
+  }, [stopRecording, onRecordModeChange]);
+
+  // Start record mode - notify parent to show overlay with stop callback
+  const handleStartRecord = useCallback(() => {
+    clearRecording();
+    startRecording();
+    // Pass callbacks so parent can control the overlay
+    // getStepCount uses a ref so it always returns fresh value
+    onRecordModeChange?.(true, { onStop: handleStopRecord, getStepCount });
+  }, [clearRecording, startRecording, onRecordModeChange, handleStopRecord, getStepCount]);
 
   const getActionEmoji = (action: JsonInteractiveAction) => {
     const found = INTERACTIVE_ACTIONS.find((a) => {
@@ -248,17 +259,6 @@ export function StepEditor({ steps, onChange, showRecordMode = true, onPickerMod
 
   return (
     <div className={styles.container}>
-      {/* Recording banner */}
-      {isRecording && (
-        <div className={styles.recordingBanner}>
-          <div className={styles.recordingDot} />
-          <span style={{ flex: 1 }}>Recording steps... Click elements to capture</span>
-          <Button variant="destructive" size="sm" onClick={stopRecording}>
-            Stop Recording
-          </Button>
-        </div>
-      )}
-
       {/* Steps list */}
       {steps.length > 0 ? (
         <div className={styles.stepsList}>
@@ -372,7 +372,7 @@ export function StepEditor({ steps, onChange, showRecordMode = true, onPickerMod
             Add Step Manually
           </Button>
           {showRecordMode && (
-            <Button variant="secondary" icon="circle" onClick={handleToggleRecord}>
+            <Button variant="secondary" icon="circle" onClick={handleStartRecord}>
               Start Record Mode
             </Button>
           )}

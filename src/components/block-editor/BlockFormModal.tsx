@@ -11,30 +11,11 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { BLOCK_TYPE_METADATA } from './constants';
 import { ElementPicker } from './ElementPicker';
+import { RecordModeOverlay } from './RecordModeOverlay';
 import type { BlockType, JsonBlock, BlockFormProps } from './types';
 
-// Global style to hide modal and its overlay when picker is active
-const PICKER_ACTIVE_STYLE_ID = 'block-editor-picker-active-style';
-const PICKER_ACTIVE_CSS = `
-  /* Make ALL modal overlays transparent - use every possible selector */
-  .modal-backdrop,
-  [class*="modal-backdrop"],
-  .ReactModal__Overlay,
-  [class*="ReactModal__Overlay"],
-  [class*="Overlay"],
-  [class*="overlay"],
-  div[style*="position: fixed"][style*="inset: 0"],
-  div[style*="position: fixed"][style*="z-index"] {
-    background: transparent !important;
-    background-color: transparent !important;
-  }
-  
-  /* Also target Grafana's portal container children that look like overlays */
-  #grafana-portal-container > div {
-    background: transparent !important;
-    background-color: transparent !important;
-  }
-`;
+// Unique identifier for our modal - used to find and manipulate only our modal's overlay
+const BLOCK_EDITOR_MODAL_ATTR = 'data-block-editor-modal';
 
 // Import form components
 import { MarkdownBlockForm } from './forms/MarkdownBlockForm';
@@ -99,60 +80,140 @@ export function BlockFormModal({ blockType, initialData, onSubmit, onCancel, isE
   const meta = BLOCK_TYPE_METADATA[blockType];
   const FormComponent = FORM_COMPONENTS[blockType];
   const [isPickerActive, setIsPickerActive] = useState(false);
+  const [isRecordModeActive, setIsRecordModeActive] = useState(false);
+  const [recordStepCount, setRecordStepCount] = useState(0);
 
   // Store a callback to receive the selected element
   const pickerCallbackRef = useRef<((selector: string) => void) | null>(null);
 
-  // Hide modal overlays when picker is active using both CSS and direct DOM manipulation
+  // Store callbacks for record mode
+  const recordStopCallbackRef = useRef<(() => void) | null>(null);
+  const recordGetStepCountRef = useRef<(() => number) | null>(null);
+
+  // Update step count periodically while recording
   useEffect(() => {
-    const originalStyles: Array<{ el: HTMLElement; bg: string }> = [];
-
-    if (isPickerActive) {
-      // Add CSS as fallback
-      let styleEl = document.getElementById(PICKER_ACTIVE_STYLE_ID);
-      if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = PICKER_ACTIVE_STYLE_ID;
-        styleEl.textContent = PICKER_ACTIVE_CSS;
-        document.head.appendChild(styleEl);
-      }
-
-      // Also directly modify any overlay elements we can find
-      // Look for fixed position elements with grey/dark backgrounds
-      const portalContainer = document.getElementById('grafana-portal-container');
-      if (portalContainer) {
-        portalContainer.querySelectorAll('div').forEach((el) => {
-          const style = window.getComputedStyle(el);
-          if (
-            style.position === 'fixed' &&
-            style.backgroundColor !== 'transparent' &&
-            style.backgroundColor !== 'rgba(0, 0, 0, 0)'
-          ) {
-            originalStyles.push({ el, bg: el.style.backgroundColor });
-            el.style.backgroundColor = 'transparent';
-          }
-        });
-      }
-    } else {
-      // Remove the CSS style
-      const styleEl = document.getElementById(PICKER_ACTIVE_STYLE_ID);
-      if (styleEl) {
-        styleEl.remove();
-      }
+    if (!isRecordModeActive || !recordGetStepCountRef.current) {
+      return;
     }
 
-    // Cleanup
-    return () => {
-      const styleEl = document.getElementById(PICKER_ACTIVE_STYLE_ID);
-      if (styleEl) {
-        styleEl.remove();
+    // Update step count immediately
+    setRecordStepCount(recordGetStepCountRef.current());
+
+    // Update periodically while recording
+    const interval = setInterval(() => {
+      if (recordGetStepCountRef.current) {
+        setRecordStepCount(recordGetStepCountRef.current());
       }
-      // Restore original backgrounds
-      originalStyles.forEach(({ el, bg }) => {
-        el.style.backgroundColor = bg;
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isRecordModeActive]);
+
+  // Whether either overlay mode is active
+  const isOverlayActive = isPickerActive || isRecordModeActive;
+
+  // Ref to track elements we've hidden and their original styles
+  const hiddenElementsRef = useRef<Map<HTMLElement, { bg: string; pe: string; vis: string }>>(new Map());
+
+  // Hide modal overlays when picker or record mode is active
+  useEffect(() => {
+    if (!isOverlayActive) {
+      // Restore all hidden elements
+      hiddenElementsRef.current.forEach((styles, el) => {
+        el.style.backgroundColor = styles.bg;
+        el.style.pointerEvents = styles.pe;
+        el.style.visibility = styles.vis;
       });
+      hiddenElementsRef.current.clear();
+      return;
+    }
+
+    // When overlay mode is active, find and hide modal overlay elements
+    const hideOverlays = () => {
+      // Find our modal marker element
+      const modalMarker = document.querySelector(`[${BLOCK_EDITOR_MODAL_ATTR}]`);
+      if (!modalMarker) {
+        return;
+      }
+
+      // Find the portal entry that contains our modal
+      // Grafana renders modals in #grafana-portal-container
+      const portalContainer = document.getElementById('grafana-portal-container');
+      if (!portalContainer) {
+        return;
+      }
+
+      // Find which portal entry contains our modal
+      for (const child of Array.from(portalContainer.children)) {
+        if (!(child instanceof HTMLElement)) {
+          continue;
+        }
+        if (!child.contains(modalMarker)) {
+          continue;
+        }
+
+        // Found the portal entry containing our modal
+        // Now hide all overlay-like elements within this entry
+        const elementsToCheck = [child, ...Array.from(child.querySelectorAll('*'))];
+
+        for (const el of elementsToCheck) {
+          if (!(el instanceof HTMLElement)) {
+            continue;
+          }
+          // Skip our own picker/recorder overlays
+          if (el.hasAttribute('data-element-picker') || el.hasAttribute('data-record-overlay')) {
+            continue;
+          }
+          // Skip the modal content itself (let the CSS handle hiding that)
+          if (el.hasAttribute(BLOCK_EDITOR_MODAL_ATTR)) {
+            continue;
+          }
+
+          const computed = window.getComputedStyle(el);
+
+          // Check if this looks like a modal overlay/backdrop
+          const isOverlay =
+            (computed.position === 'fixed' || computed.position === 'absolute') &&
+            computed.backgroundColor !== 'transparent' &&
+            computed.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
+            (computed.inset === '0px' ||
+              (computed.top === '0px' && computed.left === '0px' && computed.right === '0px' && computed.bottom === '0px'));
+
+          if (isOverlay && !hiddenElementsRef.current.has(el)) {
+            // Save original styles and hide
+            hiddenElementsRef.current.set(el, {
+              bg: el.style.backgroundColor,
+              pe: el.style.pointerEvents,
+              vis: el.style.visibility,
+            });
+            el.style.backgroundColor = 'transparent';
+            el.style.pointerEvents = 'none';
+          }
+        }
+        break; // Only process the portal entry containing our modal
+      }
     };
-  }, [isPickerActive]);
+
+    // Run immediately and also after a short delay (in case modal renders async)
+    hideOverlays();
+    const timeoutId = setTimeout(hideOverlays, 50);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [isOverlayActive]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      hiddenElementsRef.current.forEach((styles, el) => {
+        el.style.backgroundColor = styles.bg;
+        el.style.pointerEvents = styles.pe;
+        el.style.visibility = styles.vis;
+      });
+      hiddenElementsRef.current.clear();
+    };
+  }, []);
 
   // Called by forms when they want to start the picker
   const handlePickerModeChange = useCallback((isActive: boolean, onSelect?: (selector: string) => void) => {
@@ -179,6 +240,33 @@ export function BlockFormModal({ blockType, initialData, onSubmit, onCancel, isE
     pickerCallbackRef.current = null;
   }, []);
 
+  // Called by forms when they want to start/stop record mode
+  const handleRecordModeChange = useCallback(
+    (isActive: boolean, options?: { onStop: () => void; getStepCount: () => number }) => {
+      setIsRecordModeActive(isActive);
+      if (isActive && options) {
+        recordStopCallbackRef.current = options.onStop;
+        recordGetStepCountRef.current = options.getStepCount;
+        setRecordStepCount(options.getStepCount());
+      } else if (!isActive) {
+        recordStopCallbackRef.current = null;
+        recordGetStepCountRef.current = null;
+        setRecordStepCount(0);
+      }
+    },
+    []
+  );
+
+  // Called when user stops recording via overlay
+  const handleRecordStop = useCallback(() => {
+    if (recordStopCallbackRef.current) {
+      recordStopCallbackRef.current();
+    }
+    setIsRecordModeActive(false);
+    recordStopCallbackRef.current = null;
+    recordGetStepCountRef.current = null;
+  }, []);
+
   if (!FormComponent) {
     return null;
   }
@@ -192,24 +280,31 @@ export function BlockFormModal({ blockType, initialData, onSubmit, onCancel, isE
 
   return (
     <>
-      {/* Modal - always mounted, but visually hidden when picker is active to preserve form state */}
+      {/* Modal - always mounted, but visually hidden when picker or record mode is active to preserve form state */}
       <Modal
         title={title}
         isOpen={true}
         onDismiss={onCancel}
-        className={`${styles.modal} ${isPickerActive ? styles.modalHidden : ''}`}
+        className={`${styles.modal} ${isOverlayActive ? styles.modalHidden : ''}`}
       >
-        <FormComponent
-          initialData={initialData}
-          onSubmit={onSubmit}
-          onCancel={onCancel}
-          isEditing={isEditing}
-          onPickerModeChange={handlePickerModeChange}
-        />
+        {/* Wrapper with unique identifier so CSS :has() selector can target only our modal's overlay */}
+        <div {...{ [BLOCK_EDITOR_MODAL_ATTR]: 'true' }}>
+          <FormComponent
+            initialData={initialData}
+            onSubmit={onSubmit}
+            onCancel={onCancel}
+            isEditing={isEditing}
+            onPickerModeChange={handlePickerModeChange}
+            onRecordModeChange={handleRecordModeChange}
+          />
+        </div>
       </Modal>
 
       {/* Element picker - rendered outside the modal so it stays mounted */}
       {isPickerActive && <ElementPicker onSelect={handleElementSelect} onCancel={handlePickerCancel} />}
+
+      {/* Record mode overlay - rendered outside the modal so clicks propagate to the page */}
+      {isRecordModeActive && <RecordModeOverlay onStop={handleRecordStop} stepCount={recordStepCount} />}
     </>
   );
 }

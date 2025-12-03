@@ -28,6 +28,7 @@ export function MultistepBlockForm({
   onCancel,
   isEditing = false,
   onPickerModeChange,
+  onRecordModeChange,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -101,7 +102,13 @@ export function MultistepBlockForm({
 
       {/* Steps */}
       <Field label={`Steps (${steps.length})`} description="Actions executed automatically in sequence" required>
-        <StepEditor steps={steps} onChange={setSteps} showRecordMode={true} onPickerModeChange={onPickerModeChange} />
+        <StepEditor
+          steps={steps}
+          onChange={setSteps}
+          showRecordMode={true}
+          onPickerModeChange={onPickerModeChange}
+          onRecordModeChange={onRecordModeChange}
+        />
       </Field>
 
       {/* Requirements */}

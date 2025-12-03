@@ -71,6 +71,15 @@ export interface BlockFormProps<T extends JsonBlock = JsonBlock> {
    * The modal will render the picker and call the callback with the selector.
    */
   onPickerModeChange?: (isActive: boolean, onSelect?: (selector: string) => void) => void;
+  /**
+   * Called to start/stop record mode.
+   * When starting (isActive=true), provides callbacks so parent can control the overlay.
+   * The modal will show the RecordModeOverlay when active.
+   */
+  onRecordModeChange?: (
+    isActive: boolean,
+    options?: { onStop: () => void; getStepCount: () => number }
+  ) => void;
 }
 
 /**

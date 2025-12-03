@@ -28,6 +28,7 @@ export function GuidedBlockForm({
   onCancel,
   isEditing = false,
   onPickerModeChange,
+  onRecordModeChange,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -109,7 +110,13 @@ export function GuidedBlockForm({
         description="Elements the user will interact with (highlighted in sequence)"
         required
       >
-        <StepEditor steps={steps} onChange={setSteps} showRecordMode={true} onPickerModeChange={onPickerModeChange} />
+        <StepEditor
+          steps={steps}
+          onChange={setSteps}
+          showRecordMode={true}
+          onPickerModeChange={onPickerModeChange}
+          onRecordModeChange={onRecordModeChange}
+        />
       </Field>
 
       {/* Step Timeout */}
