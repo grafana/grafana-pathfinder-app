@@ -114,6 +114,7 @@ export function GuidedBlockForm({
           steps={steps}
           onChange={setSteps}
           showRecordMode={true}
+          isGuided={true}
           onPickerModeChange={onPickerModeChange}
           onRecordModeChange={onRecordModeChange}
         />

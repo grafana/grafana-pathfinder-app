@@ -123,6 +123,8 @@ export interface StepEditorProps {
   onChange: (steps: JsonStep[]) => void;
   /** Whether to show record mode button */
   showRecordMode?: boolean;
+  /** Whether this is for a guided block (uses description instead of tooltip) */
+  isGuided?: boolean;
   /** Called to start/stop the element picker with a callback for receiving the selector */
   onPickerModeChange?: (isActive: boolean, onSelect?: (selector: string) => void) => void;
   /**
@@ -143,6 +145,7 @@ export function StepEditor({
   steps,
   onChange,
   showRecordMode = true,
+  isGuided = false,
   onPickerModeChange,
   onRecordModeChange,
 }: StepEditorProps) {
@@ -154,17 +157,78 @@ export function StepEditor({
   const [newReftarget, setNewReftarget] = useState('');
   const [newTargetvalue, setNewTargetvalue] = useState('');
   const [newTooltip, setNewTooltip] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+
+  // Edit step form state
+  const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
+  const [editAction, setEditAction] = useState<JsonInteractiveAction>('highlight');
+  const [editReftarget, setEditReftarget] = useState('');
+  const [editTargetvalue, setEditTargetvalue] = useState('');
+  const [editTooltip, setEditTooltip] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   // Keep a ref to current steps length so getStepCount always returns fresh value
   const stepsLengthRef = useRef(steps.length);
   stepsLengthRef.current = steps.length;
 
-  // Start element picker - pass callback to receive selected element
+  // Start element picker for new step - pass callback to receive selected element
   const startPicker = useCallback(() => {
     onPickerModeChange?.(true, (selector: string) => {
       setNewReftarget(selector);
     });
   }, [onPickerModeChange]);
+
+  // Start element picker for editing step
+  const startEditPicker = useCallback(() => {
+    onPickerModeChange?.(true, (selector: string) => {
+      setEditReftarget(selector);
+    });
+  }, [onPickerModeChange]);
+
+  // Start editing a step
+  const handleStartEdit = useCallback((index: number) => {
+    const step = steps[index];
+    setEditingStepIndex(index);
+    setEditAction(step.action);
+    setEditReftarget(step.reftarget);
+    setEditTargetvalue(step.targetvalue ?? '');
+    if (isGuided) {
+      setEditDescription(step.description ?? '');
+      setEditTooltip('');
+    } else {
+      setEditTooltip(step.tooltip ?? '');
+      setEditDescription('');
+    }
+    // Close add form if open
+    setShowAddForm(false);
+  }, [steps, isGuided]);
+
+  // Save edited step
+  const handleSaveEdit = useCallback(() => {
+    if (editingStepIndex === null || !editReftarget.trim()) {
+      return;
+    }
+
+    const updatedStep: JsonStep = {
+      action: editAction,
+      reftarget: editReftarget.trim(),
+      ...(editAction === 'formfill' && editTargetvalue.trim() && { targetvalue: editTargetvalue.trim() }),
+      ...(isGuided
+        ? editDescription.trim() && { description: editDescription.trim() }
+        : editTooltip.trim() && { tooltip: editTooltip.trim() }),
+    };
+
+    const newSteps = [...steps];
+    newSteps[editingStepIndex] = updatedStep;
+    onChange(newSteps);
+
+    setEditingStepIndex(null);
+  }, [editingStepIndex, editAction, editReftarget, editTargetvalue, editTooltip, editDescription, isGuided, steps, onChange]);
+
+  // Cancel editing
+  const handleCancelEdit = useCallback(() => {
+    setEditingStepIndex(null);
+  }, []);
 
   // Action recorder for record mode - exclude our overlay UI
   const { isRecording, startRecording, stopRecording, clearRecording } = useActionRecorder({
@@ -190,15 +254,18 @@ export function StepEditor({
       action: newAction,
       reftarget: newReftarget.trim(),
       ...(newAction === 'formfill' && newTargetvalue.trim() && { targetvalue: newTargetvalue.trim() }),
-      ...(newTooltip.trim() && { tooltip: newTooltip.trim() }),
+      ...(isGuided
+        ? newDescription.trim() && { description: newDescription.trim() }
+        : newTooltip.trim() && { tooltip: newTooltip.trim() }),
     };
 
     onChange([...steps, step]);
     setNewReftarget('');
     setNewTargetvalue('');
     setNewTooltip('');
+    setNewDescription('');
     setShowAddForm(false);
-  }, [newAction, newReftarget, newTargetvalue, newTooltip, steps, onChange]);
+  }, [newAction, newReftarget, newTargetvalue, newTooltip, newDescription, isGuided, steps, onChange]);
 
   // Handle removing a step
   const handleRemoveStep = useCallback(
@@ -263,46 +330,126 @@ export function StepEditor({
       {steps.length > 0 ? (
         <div className={styles.stepsList}>
           {steps.map((step, index) => (
-            <div key={index} className={styles.stepItem}>
-              <div className={styles.stepNumber}>{index + 1}</div>
-              <div className={styles.stepContent}>
-                <div className={styles.stepHeader}>
-                  <span>{getActionEmoji(step.action)}</span>
-                  <Badge text={step.action} color="blue" />
-                  {step.targetvalue && <Badge text={`= "${step.targetvalue}"`} color="purple" />}
+            <div key={index}>
+              {editingStepIndex === index ? (
+                /* Edit form for this step */
+                <div className={styles.addStepForm}>
+                  <div style={{ fontWeight: 500, marginBottom: '8px' }}>Edit Step {index + 1}</div>
+                  <div className={styles.addStepRow}>
+                    <Field label="Action" style={{ marginBottom: 0, flex: '0 0 150px' }}>
+                      <Select
+                        options={ACTION_OPTIONS}
+                        value={ACTION_OPTIONS.find((o) => o.value === editAction)}
+                        onChange={(opt) => opt.value && setEditAction(opt.value)}
+                        menuPlacement="top"
+                      />
+                    </Field>
+                    <Field label="Selector" style={{ marginBottom: 0, flex: 1 }}>
+                      <Input
+                        value={editReftarget}
+                        onChange={(e) => setEditReftarget(e.currentTarget.value)}
+                        placeholder="Click Pick or enter selector"
+                      />
+                    </Field>
+                    <Button variant="secondary" onClick={startEditPicker} icon="crosshair" style={{ marginTop: '22px' }}>
+                      Pick
+                    </Button>
+                  </div>
+
+                  {editAction === 'formfill' && (
+                    <Field label="Value" style={{ marginBottom: 0 }}>
+                      <Input
+                        value={editTargetvalue}
+                        onChange={(e) => setEditTargetvalue(e.currentTarget.value)}
+                        placeholder="Value to fill"
+                      />
+                    </Field>
+                  )}
+
+                  {isGuided ? (
+                    <Field label="Description (optional)" style={{ marginBottom: 0 }}>
+                      <Input
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.currentTarget.value)}
+                        placeholder="Description shown in the steps panel"
+                      />
+                    </Field>
+                  ) : (
+                    <Field label="Tooltip (optional)" style={{ marginBottom: 0 }}>
+                      <Input
+                        value={editTooltip}
+                        onChange={(e) => setEditTooltip(e.currentTarget.value)}
+                        placeholder="Tooltip shown during this step"
+                      />
+                    </Field>
+                  )}
+
+                  <div className={styles.addStepRow}>
+                    <Button variant="secondary" onClick={handleCancelEdit}>
+                      Cancel
+                    </Button>
+                    <Button variant="primary" onClick={handleSaveEdit} disabled={!editReftarget.trim()}>
+                      Save Changes
+                    </Button>
+                  </div>
                 </div>
-                <div className={styles.stepSelector} title={step.reftarget}>
-                  {step.reftarget}
+              ) : (
+                /* Display view for this step */
+                <div className={styles.stepItem}>
+                  <div className={styles.stepNumber}>{index + 1}</div>
+                  <div className={styles.stepContent}>
+                    <div className={styles.stepHeader}>
+                      <span>{getActionEmoji(step.action)}</span>
+                      <Badge text={step.action} color="blue" />
+                      {step.targetvalue && <Badge text={`= "${step.targetvalue}"`} color="purple" />}
+                    </div>
+                    <div className={styles.stepSelector} title={step.reftarget}>
+                      {step.reftarget}
+                    </div>
+                    {isGuided ? (
+                      step.description && (
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>📝 {step.description}</div>
+                      )
+                    ) : (
+                      step.tooltip && (
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>💬 {step.tooltip}</div>
+                      )
+                    )}
+                  </div>
+                  <div className={styles.stepActions}>
+                    <IconButton
+                      name="pen"
+                      size="sm"
+                      aria-label="Edit"
+                      onClick={() => handleStartEdit(index)}
+                      tooltip="Edit step"
+                    />
+                    <IconButton
+                      name="angle-up"
+                      size="sm"
+                      aria-label="Move up"
+                      onClick={() => handleMoveUp(index)}
+                      disabled={index === 0}
+                      tooltip="Move up"
+                    />
+                    <IconButton
+                      name="angle-down"
+                      size="sm"
+                      aria-label="Move down"
+                      onClick={() => handleMoveDown(index)}
+                      disabled={index === steps.length - 1}
+                      tooltip="Move down"
+                    />
+                    <IconButton
+                      name="trash-alt"
+                      size="sm"
+                      aria-label="Remove"
+                      onClick={() => handleRemoveStep(index)}
+                      tooltip="Remove step"
+                    />
+                  </div>
                 </div>
-                {step.tooltip && (
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>💬 {step.tooltip}</div>
-                )}
-              </div>
-              <div className={styles.stepActions}>
-                <IconButton
-                  name="angle-up"
-                  size="sm"
-                  aria-label="Move up"
-                  onClick={() => handleMoveUp(index)}
-                  disabled={index === 0}
-                  tooltip="Move up"
-                />
-                <IconButton
-                  name="angle-down"
-                  size="sm"
-                  aria-label="Move down"
-                  onClick={() => handleMoveDown(index)}
-                  disabled={index === steps.length - 1}
-                  tooltip="Move down"
-                />
-                <IconButton
-                  name="trash-alt"
-                  size="sm"
-                  aria-label="Remove"
-                  onClick={() => handleRemoveStep(index)}
-                  tooltip="Remove step"
-                />
-              </div>
+              )}
             </div>
           ))}
         </div>
@@ -346,13 +493,23 @@ export function StepEditor({
             </Field>
           )}
 
-          <Field label="Tooltip (optional)" style={{ marginBottom: 0 }}>
-            <Input
-              value={newTooltip}
-              onChange={(e) => setNewTooltip(e.currentTarget.value)}
-              placeholder="Tooltip shown during this step"
-            />
-          </Field>
+          {isGuided ? (
+            <Field label="Description (optional)" style={{ marginBottom: 0 }}>
+              <Input
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.currentTarget.value)}
+                placeholder="Description shown in the steps panel"
+              />
+            </Field>
+          ) : (
+            <Field label="Tooltip (optional)" style={{ marginBottom: 0 }}>
+              <Input
+                value={newTooltip}
+                onChange={(e) => setNewTooltip(e.currentTarget.value)}
+                placeholder="Tooltip shown during this step"
+              />
+            </Field>
+          )}
 
           <div className={styles.addStepRow}>
             <Button variant="secondary" onClick={() => setShowAddForm(false)}>
@@ -366,7 +523,7 @@ export function StepEditor({
       )}
 
       {/* Control buttons */}
-      {!showAddForm && !isRecording && (
+      {!showAddForm && !isRecording && editingStepIndex === null && (
         <div className={styles.controlButtons}>
           <Button variant="secondary" icon="plus" onClick={() => setShowAddForm(true)}>
             Add Step Manually
