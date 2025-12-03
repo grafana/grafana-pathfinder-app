@@ -286,7 +286,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async openLearningJourney(url: string, title?: string): Promise<string> {
-    const finalTitle = title || 'Learning Journey';
+    const finalTitle = title || 'Learning journey';
     const tabId = this.generateTabId();
 
     const newTab: LearningJourneyTab = {
@@ -691,7 +691,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         getAppEvents().publish({
           type: 'alert-warning',
           payload: [
-            'Live Sessions Disabled',
+            'Live sessions disabled',
             'Live sessions are disabled on this Grafana instance. Ask your administrator to enable them in the Pathfinder plugin configuration.',
           ],
         });
@@ -754,7 +754,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           console.log('[DocsPanel] Showing toast for hand raise:', event.attendeeName);
           getAppEvents().publish({
             type: 'alert-success',
-            payload: ['Live Session', `${event.attendeeName} has raised their hand`],
+            payload: ['Live session', `${event.attendeeName} has raised their hand`],
           });
         }
       }
@@ -1079,7 +1079,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         // Show notification to attendee
         getAppEvents().publish({
           type: 'alert-warning',
-          payload: ['Session Ended', 'The presenter has ended the live session.'],
+          payload: ['Session ended', 'The presenter has ended the live session.'],
         });
 
         return;
@@ -1271,7 +1271,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 onClick={() => setShowPresenterControls(true)}
                 tooltip="Start a live session to broadcast your actions to attendees"
               >
-                Start Live Session
+                Start live session
               </Button>
               <Button
                 size="sm"
@@ -1280,14 +1280,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 onClick={() => setShowAttendeeJoin(true)}
                 tooltip="Join an existing live session"
               >
-                Join Live Session
+                Join live session
               </Button>
             </>
           )}
           {isSessionActive && sessionRole === 'presenter' && (
             <>
               <Button size="sm" variant="primary" icon="circle" onClick={() => setShowPresenterControls(true)}>
-                Session Active
+                Session active
               </Button>
               <div ref={handRaiseIndicatorRef}>
                 <HandRaiseIndicator count={handRaises.length} onClick={() => setShowHandRaiseQueue(true)} />
@@ -1299,7 +1299,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Icon name="check-circle" />
-                  <span style={{ fontWeight: 500 }}>Connected to: {sessionInfo?.config.name || 'Live Session'}</span>
+                  <span style={{ fontWeight: 500 }}>Connected to: {sessionInfo?.config.name || 'Live session'}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '12px', color: 'rgba(204, 204, 220, 0.85)' }}>Mode:</span>
@@ -1391,8 +1391,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   if (title === 'Recommendations') {
                     return t('docsPanel.recommendations', 'Recommendations');
                   }
-                  if (title === 'Learning Journey') {
-                    return t('docsPanel.learningJourney', 'Learning Journey');
+                  if (title === 'Learning journey') {
+                    return t('docsPanel.learningJourney', 'Learning journey');
                   }
                   if (title === 'Documentation') {
                     return t('docsPanel.documentation', 'Documentation');
@@ -1669,7 +1669,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   <div className={styles.returnToEditorBanner} data-testid={testIds.wysiwygPreview.banner}>
                     <div className={styles.returnToEditorLeft} data-testid={testIds.wysiwygPreview.modeIndicator}>
                       <Icon name="eye" size="sm" />
-                      <span>{t('docsPanel.previewMode', 'Preview Mode')}</span>
+                      <span>{t('docsPanel.previewMode', 'Preview mode')}</span>
                     </div>
                     <button
                       className={styles.returnToEditorButton}
@@ -1686,7 +1686,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 {isLearningJourneyTab && !showMilestoneProgress && (
                   <div className={styles.contentMeta}>
                     <div className={styles.metaInfo}>
-                      <span>{t('docsPanel.learningJourney', 'Learning Journey')}</span>
+                      <span>{t('docsPanel.learningJourney', 'Learning journey')}</span>
                     </div>
                     <small>
                       {(activeTab.content?.metadata.learningJourney?.totalMilestones || 0) > 0

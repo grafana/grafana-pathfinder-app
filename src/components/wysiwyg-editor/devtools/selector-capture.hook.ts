@@ -12,6 +12,8 @@ export interface UseSelectorCaptureOptions {
   onCapture?: (selector: string, info: SelectorInfo) => void;
   autoDisable?: boolean;
   enableInspector?: boolean;
+  /** Whether to prevent default click behavior (default: false) */
+  preventDefault?: boolean;
 }
 
 export interface UseSelectorCaptureReturn {
@@ -56,6 +58,7 @@ export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): Use
     onCapture,
     autoDisable = true,
     enableInspector = true,
+    preventDefault = false,
   } = options;
 
   const [isActive, setIsActive] = useState(false);
@@ -95,13 +98,13 @@ export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): Use
         return;
       }
 
-      // DON'T preventDefault - let the click proceed normally!
-      // Just capture the selector and let navigation/actions happen
-      //
-      // ⚠️ LIMITATION: Clicking navigation links or submit buttons during capture
-      // will cause page navigation. The captured selector is stored in React state
-      // only and will be lost on navigation. Users should copy/use the selector
-      // immediately after capture, or avoid navigating while capturing.
+      // Optionally prevent default to stop navigation/form submission
+      // This is useful for block editor element picking where we don't want
+      // the clicked element to actually activate
+      if (preventDefault) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
 
       // Generate selector using shared utility
       const result = generateSelectorFromEvent(target, event);
@@ -127,12 +130,12 @@ export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): Use
       }
     };
 
-    // Use capture phase but don't prevent default
+    // Use capture phase to intercept clicks before they reach targets
     document.addEventListener('click', handleClick, true);
     return () => {
       document.removeEventListener('click', handleClick, true);
     };
-  }, [isActive, excludeSelectors, onCapture, autoDisable]);
+  }, [isActive, excludeSelectors, onCapture, autoDisable, preventDefault]);
 
   return {
     isActive,

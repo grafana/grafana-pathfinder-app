@@ -40,9 +40,9 @@ export const EDITOR_UI_LABELS = {
   ITALIC: 'Italic',
   UNDO: 'Undo',
   REDO: 'Redo',
-  INTERACTIVE: 'Add Interactive Action',
-  SEQUENCE: 'Add Sequence Section',
-  COMMENT: 'Interactive Comment',
+  INTERACTIVE: 'Add interactive action',
+  SEQUENCE: 'Add sequence section',
+  COMMENT: 'Interactive comment',
 
   // Heading levels
   HEADING_NORMAL: 'Normal',
@@ -54,11 +54,11 @@ export const EDITOR_UI_LABELS = {
   // Format options
   FORMAT_CODE: 'Code',
   FORMAT_BLOCKQUOTE: 'Blockquote',
-  FORMAT_HR: 'Horizontal Rule',
+  FORMAT_HR: 'Horizontal rule',
 
   // List types
-  LIST_BULLET: 'Bullet List',
-  LIST_ORDERED: 'Numbered List',
+  LIST_BULLET: 'Bullet list',
+  LIST_ORDERED: 'Numbered list',
 
   // Export buttons
   COPY_HTML: 'Copy HTML',
@@ -76,11 +76,11 @@ export const EDITOR_UI_LABELS = {
  */
 export const EDITOR_DEFAULTS = {
   INITIAL_CONTENT: `
-    <h2>Guide Example</h2>
+    <h2>Guide example</h2>
     <p>In this guide, you'll learn (things)</p>
 
     <span id="guide-section-1" class="interactive" data-targetaction="sequence" data-reftarget="span#guide-section-1">
-      <h3>Section 1: Getting Started</h3>
+      <h3>Section 1: Getting started</h3>
       <ul>
         <li>Do the first step</li>
       </ul>
@@ -90,7 +90,7 @@ export const EDITOR_DEFAULTS = {
   PLACEHOLDER_TEXT: 'Start typing your tutorial content here...',
 
   DEFAULT_SECTION_ID: 'section-1',
-  DEFAULT_SECTION_TITLE: 'Section Title',
+  DEFAULT_SECTION_TITLE: 'Section title',
 
   DOWNLOAD_FILENAME: 'unstyled.html',
 } as const;

@@ -49,7 +49,7 @@ const plugin = new AppPlugin<{}>()
     id: 'recommendations-config',
   })
   .addConfigPage({
-    title: 'Interactive Features',
+    title: 'Interactive features',
     body: LazyInteractiveFeatures,
     id: 'interactive-features',
   });
@@ -341,7 +341,7 @@ const findDocPage = function (param: string): DocPage | null {
 
     // Basic title extraction from last path segment
     const parts = url.split('/');
-    const title = parts[parts.length - 1] || 'Interactive Tutorial';
+    const title = parts[parts.length - 1] || 'Interactive tutorial';
 
     return {
       type: 'docs-page',

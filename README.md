@@ -16,14 +16,14 @@ Interactive learning is your in-app learning companion. It provides:
 - **Milestone tracking** – See your progress through learning journeys with clear milestones
 - **Always available** – Access help without switching windows or searching documentation sites
 
-## How to Access Interactive learning
+## How to access Interactive learning
 
 1. Look for the **Help** button (?) in the top navigation bar of Grafana
 2. Click the Help button to open the Interactive learning panel
 3. Browse recommended documentation based on your current context
 4. Click **View** to read a doc or **Start** to begin an interactive guides
 
-## Getting Started
+## Getting started
 
 Once you open Interactive learning:
 
@@ -33,12 +33,12 @@ Once you open Interactive learning:
 4. **Try interactive features** – Click "Show Me" to see where things are, or "Do It" to have Interactive learning guide you through actions
 5. **Manage your tabs** – Close tabs you're done with, or keep them open for reference
 
-## Keyboard Shortcuts
+## Keyboard shortcuts
 
 - `Alt + Left Arrow` – Previous milestone
 - `Alt + Right Arrow` – Next milestone
 
-## For Administrators
+## For administrators
 
 ### Discovering Interactive learning
 
@@ -47,11 +47,11 @@ Users can find Interactive learning in multiple ways:
 - **Help button** – Click the Help (?) button in the top navigation
 - **Command palette** – Search for "Interactive learning", "Need help?", or "Learn Grafana" in the command palette (`Cmd+K` or `Ctrl+K`)
 
-### Configuration Options
+### Configuration options
 
 Admins can configure Interactive learning from the plugin's configuration page in Grafana. The configuration includes three sections:
 
-#### 1. Configuration (Basic Settings)
+#### 1. Configuration (basic settings)
 
 - **Auto-launch guide URL** – Set a specific learning journey or documentation page to automatically open when Grafana starts (useful for demos and onboarding)
 - **Global link interception** – (Experimental) When enabled, clicking documentation links anywhere in Grafana will open them in Interactive learning instead of a new tab
@@ -61,12 +61,12 @@ Admins can configure Interactive learning from the plugin's configuration page i
 - **Context-aware recommendations** – Enable/disable recommendation service that provides personalized documentation based on your current actions in Grafana
 - **Data usage controls** – Review what data is collected and toggle the feature on or off
 
-#### 3. Interactive Features
+#### 3. Interactive features
 
 - **Auto-completion detection** – (Experimental) Enable automatic step completion when users perform actions themselves (without clicking "Do it" buttons)
 - **Timing settings** – Configure timeouts for requirement checks and guided steps to optimize the guide experience
 
-## Creating Interactive Guides
+## Creating interactive guides
 
 Interactive learning supports creating custom interactive guides in JSON format. These guides combine content (markdown, images, video) with interactive elements that can highlight UI elements, click buttons, and fill forms.
 
@@ -76,7 +76,7 @@ Interactive learning supports creating custom interactive guides in JSON format.
 - **[HTML to JSON Migration Guide](docs/developer/interactive-examples/html-to-json-migration.md)** - How to convert existing HTML guides to JSON format
 - **[Requirements Reference](docs/developer/interactive-examples/requirements-reference.md)** - Available requirements for controlling when interactive elements are accessible
 
-### Quick Example
+### Quick example
 
 ```json
 {

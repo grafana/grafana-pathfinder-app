@@ -451,7 +451,7 @@ function renderParsedElement(
       return (
         <InteractiveSection
           key={key}
-          title={element.props.title || 'Interactive Section'}
+          title={element.props.title || 'Interactive section'}
           isSequence={element.props.isSequence}
           skippable={element.props.skippable}
           requirements={element.props.requirements}
