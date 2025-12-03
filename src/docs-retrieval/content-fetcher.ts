@@ -567,8 +567,11 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           return { html: null, error: lastError };
         }
 
-        // If this is a Grafana docs/tutorial URL, try to get content
-        const shouldFetchContent = isGrafanaDocsUrl(finalUrl);
+        // If this is a Grafana docs/tutorial URL, try to get content in this order:
+        // 1. content.json (new JSON format - preferred)
+        // 2. unstyled.html (legacy HTML format - fallback)
+        // Use proper URL parsing to prevent domain hijacking attacks
+        const shouldFetchContent = isGrafanaDocsUrl(finalUrl) || (isDevModeEnabledGlobal() && isLocalhostUrl(finalUrl));
 
         if (shouldFetchContent) {
           const { jsonUrl, htmlUrl } = getContentUrls(response.url);

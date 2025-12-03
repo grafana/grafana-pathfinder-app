@@ -334,17 +334,8 @@ export function validateTutorialUrl(url: string): URLValidation {
     };
   }
 
-  const pathParts = urlObj.pathname.split('/').filter(Boolean);
-
   // In dev mode, allow localhost URLs for testing
   if (isDevModeEnabledGlobal() && isLocalhostUrl(url)) {
-    // Require /unstyled.html suffix for localhost tutorials
-    if (pathParts[pathParts.length - 1] !== 'unstyled.html') {
-      return {
-        isValid: false,
-        errorMessage: 'Localhost tutorial URL must include the /unstyled.html suffix',
-      };
-    }
     return {
       isValid: true,
     };
