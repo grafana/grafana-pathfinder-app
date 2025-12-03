@@ -31,7 +31,7 @@ const FARO_GLOBAL_OBJECT_KEY = 'grafanaPathfinderApp';
 // which could potentially load different module chunks
 let faroInstance: Faro | null = null;
 // Store LogLevel enum for use in pushFaroLog
-let FaroLogLevel: typeof import('@grafana/faro-react').LogLevel | null = null;
+let LogLevelEnum: typeof import('@grafana/faro-react').LogLevel | null = null;
 
 // ============================================================================
 // LOCAL TESTING FLAG
@@ -100,7 +100,7 @@ export const initializeFaroMetrics = async (): Promise<void> => {
 
     // Store references to the initialized instance (use returned instance, not export)
     faroInstance = isolatedFaro;
-    FaroLogLevel = LogLevel;
+    LogLevelEnum = LogLevel;
     return;
   }
 
@@ -164,7 +164,7 @@ export const initializeFaroMetrics = async (): Promise<void> => {
 
   // Store references to the initialized instance (use returned instance, not export)
   faroInstance = isolatedFaro;
-  FaroLogLevel = LogLevel;
+  LogLevelEnum = LogLevel;
 
   // Set initial session attributes for enhanced context
   setInitialSessionAttributes();
@@ -296,19 +296,19 @@ export type FaroLogLevel = 'trace' | 'debug' | 'info' | 'log' | 'warn' | 'error'
  * ```
  */
 export function pushFaroLog(level: FaroLogLevel, message: string, context?: Record<string, string>): void {
-  if (!faroInstance?.api || !FaroLogLevel) {
+  if (!faroInstance?.api || !LogLevelEnum) {
     return;
   }
 
   try {
     // Map string level to LogLevel enum
-    const logLevelMap: Record<FaroLogLevel, (typeof FaroLogLevel)[keyof typeof FaroLogLevel]> = {
-      trace: FaroLogLevel.TRACE,
-      debug: FaroLogLevel.DEBUG,
-      info: FaroLogLevel.INFO,
-      log: FaroLogLevel.LOG,
-      warn: FaroLogLevel.WARN,
-      error: FaroLogLevel.ERROR,
+    const logLevelMap: Record<FaroLogLevel, (typeof LogLevelEnum)[keyof typeof LogLevelEnum]> = {
+      trace: LogLevelEnum.TRACE,
+      debug: LogLevelEnum.DEBUG,
+      info: LogLevelEnum.INFO,
+      log: LogLevelEnum.LOG,
+      warn: LogLevelEnum.WARN,
+      error: LogLevelEnum.ERROR,
     };
 
     faroInstance.api.pushLog([message], { level: logLevelMap[level], context });
