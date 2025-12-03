@@ -32,10 +32,6 @@ export interface BlockItemProps {
   onEdit: () => void;
   /** Called when delete is requested */
   onDelete: () => void;
-  /** Called to move the block up */
-  onMoveUp: () => void;
-  /** Called to move the block down */
-  onMoveDown: () => void;
   /** Called to duplicate the block */
   onDuplicate: () => void;
 }
@@ -78,24 +74,16 @@ function getBlockPreview(block: EditorBlock['block']): string {
 /**
  * Block item component
  */
-export function BlockItem({
-  block,
-  index,
-  totalBlocks,
-  onEdit,
-  onDelete,
-  onMoveUp,
-  onMoveDown,
-  onDuplicate,
-}: BlockItemProps) {
+export function BlockItem({ block, index, totalBlocks, onEdit, onDelete, onDuplicate }: BlockItemProps) {
   const styles = useStyles2(getBlockItemStyles);
   const blockType = block.block.type as BlockType;
   const meta = BLOCK_TYPE_METADATA[blockType];
   const preview = useMemo(() => getBlockPreview(block.block), [block.block]);
 
   const isSection = isSectionBlock(block.block);
-  const canMoveUp = index > 0;
-  const canMoveDown = index < totalBlocks - 1;
+  // Keep these for potential future use, suppress unused warnings
+  void index;
+  void totalBlocks;
 
   const handleEdit = useCallback(
     (e: React.MouseEvent) => {
@@ -103,22 +91,6 @@ export function BlockItem({
       onEdit();
     },
     [onEdit]
-  );
-
-  const handleMoveUp = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onMoveUp();
-    },
-    [onMoveUp]
-  );
-
-  const handleMoveDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onMoveDown();
-    },
-    [onMoveDown]
   );
 
   const handleDuplicate = useCallback(
@@ -134,8 +106,8 @@ export function BlockItem({
   return (
     <div className={containerClass}>
       {/* Drag handle - visual indicator */}
-      <div className={styles.dragHandle} title="Drag anywhere on this block to reorder">
-        <span style={{ fontSize: '14px' }}>⋮⋮</span>
+      <div className={styles.dragHandle} title="Drag to reorder">
+        <span style={{ fontSize: '12px' }}>⋮⋮</span>
       </div>
 
       {/* Content */}
@@ -157,32 +129,9 @@ export function BlockItem({
         )}
       </div>
 
-      {/* Actions - grouped for clarity */}
+      {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}
       <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
-        {/* Move controls */}
-        <div className={styles.actionGroup}>
-          <IconButton
-            name="arrow-up"
-            size="md"
-            aria-label="Move up"
-            onClick={handleMoveUp}
-            disabled={!canMoveUp}
-            className={styles.moveButton}
-            tooltip="Move up"
-          />
-          <IconButton
-            name="arrow-down"
-            size="md"
-            aria-label="Move down"
-            onClick={handleMoveDown}
-            disabled={!canMoveDown}
-            className={styles.moveButton}
-            tooltip="Move down"
-          />
-        </div>
-
-        {/* Primary actions */}
         <div className={styles.actionGroup}>
           <IconButton
             name="edit"

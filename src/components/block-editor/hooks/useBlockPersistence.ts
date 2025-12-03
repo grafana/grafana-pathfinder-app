@@ -25,6 +25,8 @@ export interface UseBlockPersistenceOptions {
   onSave?: () => void;
   /** Whether auto-save is enabled */
   autoSave?: boolean;
+  /** Whether auto-save is paused (e.g., while editing in a modal) */
+  autoSavePaused?: boolean;
   /** Custom storage key */
   storageKey?: string;
 }
@@ -64,6 +66,7 @@ export function useBlockPersistence({
   onLoad,
   onSave,
   autoSave = true,
+  autoSavePaused = false,
   storageKey = BLOCK_EDITOR_STORAGE_KEY,
 }: UseBlockPersistenceOptions): UseBlockPersistenceReturn {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,8 +146,9 @@ export function useBlockPersistence({
   }, [storageKey]);
 
   // Auto-save on guide changes (debounced)
+  // Pauses when editing in a modal - saves will happen when modal closes
   useEffect(() => {
-    if (!autoSave) {
+    if (!autoSave || autoSavePaused) {
       return;
     }
 
@@ -172,7 +176,7 @@ export function useBlockPersistence({
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [guide, autoSave, save, onSave]);
+  }, [guide, autoSave, autoSavePaused, save, onSave]);
 
   // Load on mount if onLoad provided
   useEffect(() => {

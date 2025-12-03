@@ -79,14 +79,11 @@ const getNestedStyles = (theme: GrafanaTheme2) => ({
     borderRadius: `0 ${theme.shape.radius.default} ${theme.shape.radius.default} 0`,
   }),
   dropZone: css({
-    padding: theme.spacing(2),
-    minHeight: '48px',
+    minHeight: '56px',
     border: `2px dashed ${theme.colors.border.medium}`,
     borderRadius: theme.shape.radius.default,
     backgroundColor: theme.colors.background.secondary,
-    textAlign: 'center',
     color: theme.colors.text.secondary,
-    fontSize: theme.typography.bodySmall.fontSize,
     transition: 'all 0.2s ease',
     cursor: 'pointer',
     marginTop: theme.spacing(1),
@@ -247,18 +244,6 @@ const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
       backgroundColor: theme.colors.action.hover,
     },
   }),
-  moveButton: css({
-    opacity: 0.6,
-    transition: 'all 0.15s ease',
-
-    '&:hover': {
-      opacity: 1,
-    },
-
-    '&:disabled': {
-      opacity: 0.3,
-    },
-  }),
   editButton: css({
     color: theme.colors.primary.text,
     backgroundColor: theme.colors.primary.transparent,
@@ -288,28 +273,17 @@ const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
  */
 function NestedBlockItem({
   block,
-  index,
-  totalBlocks,
   onEdit,
   onDelete,
   onDuplicate,
-  onMoveUp,
-  onMoveDown,
 }: {
   block: JsonBlock;
-  index: number;
-  totalBlocks: number;
   onEdit?: () => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
 }) {
   const styles = useStyles2(getNestedBlockItemStyles);
   const meta = BLOCK_TYPE_METADATA[block.type as BlockType];
-
-  const canMoveUp = index > 0;
-  const canMoveDown = index < totalBlocks - 1;
 
   // Get preview content - same logic as BlockItem
   const getPreview = (): string => {
@@ -332,7 +306,7 @@ function NestedBlockItem({
     <div className={styles.container}>
       {/* Drag handle - visual indicator only */}
       <div className={styles.dragHandle} title="Drag to reorder or move out of section">
-        <span style={{ fontSize: '14px' }}>⋮⋮</span>
+        <span style={{ fontSize: '12px' }}>⋮⋮</span>
       </div>
 
       {/* Content - matches BlockItem layout */}
@@ -351,32 +325,9 @@ function NestedBlockItem({
         )}
       </div>
 
-      {/* Actions - grouped like BlockItem */}
+      {/* Actions */}
       {/* draggable={false} prevents drag from starting when clicking this area */}
       <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
-        {/* Move controls */}
-        <div className={styles.actionGroup}>
-          <IconButton
-            name="arrow-up"
-            size="md"
-            aria-label="Move up"
-            onClick={onMoveUp}
-            disabled={!canMoveUp}
-            className={styles.moveButton}
-            tooltip="Move up"
-          />
-          <IconButton
-            name="arrow-down"
-            size="md"
-            aria-label="Move down"
-            onClick={onMoveDown}
-            disabled={!canMoveDown}
-            className={styles.moveButton}
-            tooltip="Move down"
-          />
-        </div>
-
-        {/* Primary actions */}
         <div className={styles.actionGroup}>
           <IconButton
             name="edit"
@@ -442,24 +393,6 @@ export function BlockList({
     rootBlockIndex: number | null;
     nestedBlock: { sectionId: string; index: number } | null;
   }>({ rootBlockId: null, rootBlockIndex: null, nestedBlock: null });
-
-  const handleMoveUp = useCallback(
-    (index: number) => {
-      if (index > 0) {
-        onBlockMove(index, index - 1);
-      }
-    },
-    [onBlockMove]
-  );
-
-  const handleMoveDown = useCallback(
-    (index: number) => {
-      if (index < blocks.length - 1) {
-        onBlockMove(index, index + 1);
-      }
-    },
-    [onBlockMove, blocks.length]
-  );
 
   // Drag start handler for root blocks (including sections)
   const handleDragStart = useCallback((e: React.DragEvent, blockId: string, blockType: string, index: number) => {
@@ -714,8 +647,6 @@ export function BlockList({
                 totalBlocks={blocks.length}
                 onEdit={() => onBlockEdit(block)}
                 onDelete={() => onBlockDelete(block.id)}
-                onMoveUp={() => handleMoveUp(index)}
-                onMoveDown={() => handleMoveDown(index)}
                 onDuplicate={() => onBlockDuplicate(block.id)}
               />
             </div>
@@ -787,13 +718,9 @@ export function BlockList({
                         >
                           <NestedBlockItem
                             block={nestedBlock}
-                            index={nestedIndex}
-                            totalBlocks={sectionBlocks.length}
                             onEdit={() => onNestedBlockEdit?.(block.id, nestedIndex, nestedBlock)}
                             onDelete={() => onNestedBlockDelete?.(block.id, nestedIndex)}
                             onDuplicate={() => onNestedBlockDuplicate?.(block.id, nestedIndex)}
-                            onMoveUp={() => onNestedBlockMove?.(block.id, nestedIndex, nestedIndex - 1)}
-                            onMoveDown={() => onNestedBlockMove?.(block.id, nestedIndex, nestedIndex + 1)}
                           />
                         </div>
                       </React.Fragment>
@@ -841,7 +768,7 @@ export function BlockList({
                   }}
                 >
                   {isDragging ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px' }}>
                       {dragOverSectionId === block.id ? (
                         <>
                           <span style={{ fontSize: '20px' }}>📥</span>
@@ -857,8 +784,8 @@ export function BlockList({
                   ) : (
                     <BlockPalette
                       onSelect={(type) => handleInsertInSection(type, block.id)}
-                      compact
                       excludeTypes={['section']}
+                      embedded
                     />
                   )}
                 </div>

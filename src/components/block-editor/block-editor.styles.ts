@@ -87,14 +87,25 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     maxWidth: '300px',
   }),
 
-  // Footer with add block button
+  // Footer with add block button - entire area is clickable
   footer: css({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: theme.spacing(2),
-    borderTop: `1px solid ${theme.colors.border.weak}`,
-    backgroundColor: theme.colors.background.canvas,
+    margin: theme.spacing(2),
+    minHeight: '56px',
+    border: `2px dashed ${theme.colors.border.medium}`,
+    borderRadius: theme.shape.radius.default,
+    backgroundColor: theme.colors.background.secondary,
+    color: theme.colors.text.secondary,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+
+    '&:hover': {
+      borderColor: theme.colors.primary.border,
+      backgroundColor: theme.colors.action.hover,
+      color: theme.colors.text.primary,
+    },
   }),
 });
 
@@ -318,19 +329,6 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     '&:hover': {
       opacity: 1,
       backgroundColor: theme.colors.action.hover,
-    },
-  }),
-
-  moveButton: css({
-    opacity: 0.6,
-    transition: 'all 0.15s ease',
-
-    '&:hover': {
-      opacity: 1,
-    },
-
-    '&:disabled': {
-      opacity: 0.3,
     },
   }),
 

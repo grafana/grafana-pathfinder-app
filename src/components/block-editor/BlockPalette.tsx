@@ -56,6 +56,24 @@ const getPaletteModalStyles = (theme: GrafanaTheme2) => ({
       color: theme.colors.text.primary,
     },
   }),
+  // Embedded mode: fills parent container, no border (parent handles visual styling)
+  triggerEmbedded: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(1),
+    width: '100%',
+    height: '100%',
+    padding: theme.spacing(1.5),
+    border: 'none',
+    borderRadius: 'inherit',
+    backgroundColor: 'transparent',
+    color: 'inherit',
+    cursor: 'pointer',
+    transition: 'color 0.2s ease',
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+  }),
   overlay: css({
     position: 'fixed',
     top: 0,
@@ -180,14 +198,30 @@ export interface BlockPaletteProps {
   compact?: boolean;
   /** Block types to exclude from the palette */
   excludeTypes?: BlockType[];
+  /** Whether to render as an embedded trigger (fills parent, no border - parent handles styling) */
+  embedded?: boolean;
 }
 
 /**
  * Block palette modal for adding new blocks
  */
-export function BlockPalette({ onSelect, insertAtIndex, compact = false, excludeTypes = [] }: BlockPaletteProps) {
+export function BlockPalette({
+  onSelect,
+  insertAtIndex,
+  compact = false,
+  excludeTypes = [],
+  embedded = false,
+}: BlockPaletteProps) {
   const styles = useStyles2(getPaletteModalStyles);
   const [isOpen, setIsOpen] = useState(false);
+
+  // Determine which trigger style to use
+  const getTriggerClassName = () => {
+    if (embedded) {
+      return styles.triggerEmbedded;
+    }
+    return compact ? styles.triggerCompact : styles.trigger;
+  };
 
   // Filter out excluded types
   const availableTypes = BLOCK_TYPE_ORDER.filter((type) => !excludeTypes.includes(type));
@@ -232,7 +266,7 @@ export function BlockPalette({ onSelect, insertAtIndex, compact = false, exclude
   return (
     <>
       <button
-        className={compact ? styles.triggerCompact : styles.trigger}
+        className={getTriggerClassName()}
         onClick={handleTriggerClick}
         type="button"
         aria-haspopup="dialog"
