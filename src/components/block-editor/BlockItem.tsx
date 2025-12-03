@@ -28,10 +28,6 @@ export interface BlockItemProps {
   index: number;
   /** Total number of blocks */
   totalBlocks: number;
-  /** Whether this block is selected */
-  isSelected: boolean;
-  /** Called when block is clicked */
-  onClick: () => void;
   /** Called when edit is requested */
   onEdit: () => void;
   /** Called when delete is requested */
@@ -86,8 +82,6 @@ export function BlockItem({
   block,
   index,
   totalBlocks,
-  isSelected,
-  onClick,
   onEdit,
   onDelete,
   onMoveUp,
@@ -102,14 +96,6 @@ export function BlockItem({
   const isSection = isSectionBlock(block.block);
   const canMoveUp = index > 0;
   const canMoveDown = index < totalBlocks - 1;
-
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onClick();
-    },
-    [onClick]
-  );
 
   const handleEdit = useCallback(
     (e: React.MouseEvent) => {
@@ -143,16 +129,10 @@ export function BlockItem({
     [onDuplicate]
   );
 
-  const containerClass = [
-    styles.container,
-    isSelected && styles.containerSelected,
-    isSection && styles.sectionContainer,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const containerClass = [styles.container, isSection && styles.sectionContainer].filter(Boolean).join(' ');
 
   return (
-    <div className={containerClass} onClick={handleClick}>
+    <div className={containerClass}>
       {/* Drag handle - visual indicator */}
       <div className={styles.dragHandle} title="Drag anywhere on this block to reorder">
         <span style={{ fontSize: '14px' }}>⋮⋮</span>

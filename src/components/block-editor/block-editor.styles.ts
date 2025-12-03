@@ -244,11 +244,6 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     },
   }),
 
-  containerSelected: css({
-    borderColor: theme.colors.primary.border,
-    boxShadow: `0 0 0 1px ${theme.colors.primary.border}`,
-  }),
-
   dragHandle: css({
     display: 'flex',
     alignItems: 'center',

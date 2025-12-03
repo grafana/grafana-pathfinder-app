@@ -73,12 +73,6 @@ export interface UseBlockEditorReturn {
   /** Move a nested block within its section */
   moveNestedBlock: (sectionId: string, fromIndex: number, toIndex: number) => void;
 
-  // Selection
-  /** Select a block for editing */
-  selectBlock: (id: string | null) => void;
-  /** Get the currently selected block */
-  getSelectedBlock: () => EditorBlock | null;
-
   // View mode
   /** Toggle between edit and preview modes */
   togglePreviewMode: () => void;
@@ -120,7 +114,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       match: initialGuide?.match ?? DEFAULT_GUIDE_METADATA.match,
     },
     blocks: initialBlocks,
-    selectedBlockId: null,
     isPreviewMode: false,
     isDirty: false,
   });
@@ -174,7 +167,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         const newState = {
           ...prev,
           blocks: newBlocks,
-          selectedBlockId: id,
           isDirty: true,
         };
         notifyChange(newState);
@@ -209,12 +201,10 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     (id: string) => {
       setState((prev) => {
         const newBlocks = prev.blocks.filter((b) => b.id !== id);
-        const newSelectedId = prev.selectedBlockId === id ? null : prev.selectedBlockId;
 
         const newState = {
           ...prev,
           blocks: newBlocks,
-          selectedBlockId: newSelectedId,
           isDirty: true,
         };
         notifyChange(newState);
@@ -275,7 +265,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         const newState = {
           ...prev,
           blocks: newBlocks,
-          selectedBlockId: newId,
           isDirty: true,
         };
         notifyChange(newState);
@@ -604,22 +593,11 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     [notifyChange]
   );
 
-  // Select a block
-  const selectBlock = useCallback((id: string | null) => {
-    setState((prev) => ({ ...prev, selectedBlockId: id }));
-  }, []);
-
-  // Get selected block
-  const getSelectedBlock = useCallback((): EditorBlock | null => {
-    return state.blocks.find((b) => b.id === state.selectedBlockId) ?? null;
-  }, [state.blocks, state.selectedBlockId]);
-
   // Toggle preview mode
   const togglePreviewMode = useCallback(() => {
     setState((prev) => ({
       ...prev,
       isPreviewMode: !prev.isPreviewMode,
-      selectedBlockId: null, // Deselect when switching modes
     }));
   }, []);
 
@@ -628,7 +606,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     setState((prev) => ({
       ...prev,
       isPreviewMode: isPreview,
-      selectedBlockId: isPreview ? null : prev.selectedBlockId,
     }));
   }, []);
 
@@ -658,7 +635,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
         match: guide.match,
       },
       blocks: newBlocks,
-      selectedBlockId: null,
       isPreviewMode: false,
       isDirty: false,
     });
@@ -669,7 +645,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     setState({
       guide: { ...DEFAULT_GUIDE_METADATA },
       blocks: [],
-      selectedBlockId: null,
       isPreviewMode: false,
       isDirty: false,
     });
@@ -697,8 +672,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       deleteNestedBlock,
       duplicateNestedBlock,
       moveNestedBlock,
-      selectBlock,
-      getSelectedBlock,
       togglePreviewMode,
       setPreviewMode,
       getGuide,
@@ -722,8 +695,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       deleteNestedBlock,
       duplicateNestedBlock,
       moveNestedBlock,
-      selectBlock,
-      getSelectedBlock,
       togglePreviewMode,
       setPreviewMode,
       getGuide,

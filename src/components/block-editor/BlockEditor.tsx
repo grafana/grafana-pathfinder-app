@@ -343,8 +343,6 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         ) : hasBlocks ? (
           <BlockList
             blocks={state.blocks}
-            selectedBlockId={state.selectedBlockId}
-            onBlockSelect={editor.selectBlock}
             onBlockEdit={handleBlockEdit}
             onBlockDelete={editor.removeBlock}
             onBlockMove={editor.moveBlock}

@@ -47,8 +47,6 @@ export interface BlockEditorState {
   };
   /** Blocks in the guide */
   blocks: EditorBlock[];
-  /** Currently selected block ID (for editing) */
-  selectedBlockId: string | null;
   /** Whether the editor is in preview mode */
   isPreviewMode: boolean;
   /** Whether there are unsaved changes */

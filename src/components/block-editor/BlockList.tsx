@@ -142,10 +142,6 @@ const getNestedStyles = (theme: GrafanaTheme2) => ({
 export interface BlockListProps {
   /** List of blocks to render */
   blocks: EditorBlock[];
-  /** Currently selected block ID */
-  selectedBlockId: string | null;
-  /** Called when a block is selected */
-  onBlockSelect: (id: string | null) => void;
   /** Called when a block edit is requested */
   onBlockEdit: (block: EditorBlock) => void;
   /** Called when a block delete is requested */
@@ -416,8 +412,6 @@ function NestedBlockItem({
  */
 export function BlockList({
   blocks,
-  selectedBlockId,
-  onBlockSelect,
   onBlockEdit,
   onBlockDelete,
   onBlockMove,
@@ -448,13 +442,6 @@ export function BlockList({
     rootBlockIndex: number | null;
     nestedBlock: { sectionId: string; index: number } | null;
   }>({ rootBlockId: null, rootBlockIndex: null, nestedBlock: null });
-
-  const handleBlockClick = useCallback(
-    (id: string) => {
-      onBlockSelect(id === selectedBlockId ? null : id);
-    },
-    [onBlockSelect, selectedBlockId]
-  );
 
   const handleMoveUp = useCallback(
     (index: number) => {
@@ -725,8 +712,6 @@ export function BlockList({
                 block={block}
                 index={index}
                 totalBlocks={blocks.length}
-                isSelected={block.id === selectedBlockId}
-                onClick={() => handleBlockClick(block.id)}
                 onEdit={() => onBlockEdit(block)}
                 onDelete={() => onBlockDelete(block.id)}
                 onMoveUp={() => handleMoveUp(index)}
