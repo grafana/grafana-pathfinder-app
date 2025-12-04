@@ -20,7 +20,7 @@ import { ImportGuideModal } from './ImportGuideModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import { useActionRecorder } from '../wysiwyg-editor/devtools/action-recorder.hook';
 import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
-import type { JsonInteractiveBlock } from '../../types/json-guide.types';
+import type { JsonInteractiveBlock, JsonMultistepBlock, JsonStep } from '../../types/json-guide.types';
 
 export interface BlockEditorProps {
   /** Initial guide to load */
@@ -74,6 +74,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       '[data-testid="block-editor"]',
       '[data-record-overlay]', // Stop recording button and overlay elements
     ],
+    enableModalDetection: true,
   });
 
   // Persistence - auto-save and restore from localStorage
@@ -265,20 +266,76 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const handleSectionRecord = useCallback(
     (sectionId: string) => {
       if (recordingIntoSection === sectionId) {
-        // Stop recording - convert recorded steps to Interactive blocks and add to section
+        // Stop recording - convert recorded steps to blocks and add to section
         actionRecorder.stopRecording();
         const steps = actionRecorder.recordedSteps;
 
-        // Convert each recorded step to an Interactive block
+        // Group consecutive steps with the same groupId into multisteps
+        const processedSteps: Array<{ type: 'single'; step: typeof steps[0] } | { type: 'group'; steps: typeof steps }> =
+          [];
+
+        let currentGroup: typeof steps = [];
+        let currentGroupId: string | undefined;
+
         steps.forEach((step) => {
-          const interactiveBlock: JsonInteractiveBlock = {
-            type: 'interactive',
-            action: step.action as JsonInteractiveBlock['action'],
-            reftarget: step.selector,
-            content: step.description || `${step.action} on element`,
-            ...(step.value && { targetvalue: step.value }),
-          };
-          editor.addBlockToSection(interactiveBlock, sectionId);
+          if (step.groupId) {
+            if (step.groupId === currentGroupId) {
+              // Continue current group
+              currentGroup.push(step);
+            } else {
+              // End previous group if exists
+              if (currentGroup.length > 0) {
+                processedSteps.push({ type: 'group', steps: currentGroup });
+              }
+              // Start new group
+              currentGroupId = step.groupId;
+              currentGroup = [step];
+            }
+          } else {
+            // End current group if exists
+            if (currentGroup.length > 0) {
+              processedSteps.push({ type: 'group', steps: currentGroup });
+              currentGroup = [];
+              currentGroupId = undefined;
+            }
+            // Add single step
+            processedSteps.push({ type: 'single', step });
+          }
+        });
+
+        // Don't forget the last group
+        if (currentGroup.length > 0) {
+          processedSteps.push({ type: 'group', steps: currentGroup });
+        }
+
+        // Convert to blocks and add to section
+        processedSteps.forEach((item) => {
+          if (item.type === 'single') {
+            // Single interactive block
+            const interactiveBlock: JsonInteractiveBlock = {
+              type: 'interactive',
+              action: item.step.action as JsonInteractiveBlock['action'],
+              reftarget: item.step.selector,
+              content: item.step.description || `${item.step.action} on element`,
+              ...(item.step.value && { targetvalue: item.step.value }),
+            };
+            editor.addBlockToSection(interactiveBlock, sectionId);
+          } else {
+            // Group of steps - create multistep block
+            const multistepSteps: JsonStep[] = item.steps.map((step) => ({
+              action: step.action as JsonStep['action'],
+              reftarget: step.selector,
+              ...(step.value && { targetvalue: step.value }),
+              tooltip: step.description || `${step.action} on element`,
+            }));
+
+            const multistepBlock: JsonMultistepBlock = {
+              type: 'multistep',
+              content: item.steps[0].description || 'Complete the following steps',
+              steps: multistepSteps,
+            };
+            editor.addBlockToSection(multistepBlock, sectionId);
+          }
         });
 
         actionRecorder.clearRecording();
