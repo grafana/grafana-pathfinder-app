@@ -645,6 +645,17 @@ export class ContextService {
     return Promise.all(
       recommendations.map(async (rec) => {
         if (rec.type === 'learning-journey' || !rec.type) {
+          // Skip fetching if URL is empty
+          if (!rec.url || rec.url.trim() === '') {
+            return {
+              ...rec,
+              totalSteps: 0,
+              milestones: [],
+              summary: rec.summary || '',
+              completionPercentage: 0,
+            };
+          }
+
           try {
             const result = await fetchContent(rec.url);
             const completionPercentage = getJourneyCompletionPercentage(rec.url);
