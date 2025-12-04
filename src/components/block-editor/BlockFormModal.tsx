@@ -317,8 +317,8 @@ export function BlockFormModal({
             isEditing={isEditing}
             onPickerModeChange={handlePickerModeChange}
             onRecordModeChange={handleRecordModeChange}
-            onSplitToBlocks={(blockType === 'multistep' || blockType === 'guided') ? onSplitToBlocks : undefined}
-            onConvertType={(blockType === 'multistep' || blockType === 'guided') ? onConvertType : undefined}
+            onSplitToBlocks={blockType === 'multistep' || blockType === 'guided' ? onSplitToBlocks : undefined}
+            onConvertType={blockType === 'multistep' || blockType === 'guided' ? onConvertType : undefined}
           />
         </div>
       </Modal>

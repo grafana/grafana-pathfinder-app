@@ -362,12 +362,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           if (isModalElement(target)) {
             const style = window.getComputedStyle(target);
             const rect = target.getBoundingClientRect();
-            if (
-              rect.width > 0 &&
-              rect.height > 0 &&
-              style.visibility !== 'hidden' &&
-              style.display !== 'none'
-            ) {
+            if (rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none') {
               setActiveModal(target);
               pendingModalCheckRef.current = false;
             }

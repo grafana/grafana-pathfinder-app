@@ -376,8 +376,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         const steps = actionRecorder.recordedSteps;
 
         // Group consecutive steps with the same groupId into multisteps
-        const processedSteps: Array<{ type: 'single'; step: typeof steps[0] } | { type: 'group'; steps: typeof steps }> =
-          [];
+        const processedSteps: Array<
+          { type: 'single'; step: (typeof steps)[0] } | { type: 'group'; steps: typeof steps }
+        > = [];
 
         let currentGroup: typeof steps = [];
         let currentGroupId: string | undefined;
