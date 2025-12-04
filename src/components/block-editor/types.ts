@@ -82,6 +82,16 @@ export interface BlockFormProps<T extends JsonBlock = JsonBlock> {
    * Creates the block and immediately enters record mode targeting it.
    */
   onSubmitAndRecord?: (block: T) => void;
+  /**
+   * Called when user wants to split a multistep/guided block into individual blocks.
+   * Only shown when editing existing multistep/guided blocks.
+   */
+  onSplitToBlocks?: () => void;
+  /**
+   * Called when user wants to convert between multistep and guided.
+   * Only shown when editing existing multistep/guided blocks.
+   */
+  onConvertType?: (newType: 'multistep' | 'guided') => void;
 }
 
 /**

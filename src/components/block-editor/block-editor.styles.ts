@@ -485,6 +485,12 @@ export const getBlockFormStyles = (theme: GrafanaTheme2) => ({
     borderTop: `1px solid ${theme.colors.border.weak}`,
   }),
 
+  footerLeft: css({
+    display: 'flex',
+    gap: theme.spacing(1),
+    marginRight: 'auto',
+  }),
+
   // DOM picker button
   selectorField: css({
     display: 'flex',

@@ -29,6 +29,8 @@ export function GuidedBlockForm({
   isEditing = false,
   onPickerModeChange,
   onRecordModeChange,
+  onSplitToBlocks,
+  onConvertType,
 }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
@@ -183,11 +185,38 @@ export function GuidedBlockForm({
       </div>
 
       <div className={styles.footer}>
+        {/* Conversion options - only when editing */}
+        {isEditing && (onSplitToBlocks || onConvertType) && (
+          <div className={styles.footerLeft}>
+            {onSplitToBlocks && steps.length > 0 && (
+              <Button
+                variant="secondary"
+                onClick={onSplitToBlocks}
+                type="button"
+                icon="layers-alt"
+                tooltip="Split this guided block into individual interactive blocks"
+              >
+                Split into blocks
+              </Button>
+            )}
+            {onConvertType && (
+              <Button
+                variant="secondary"
+                onClick={() => onConvertType('multistep')}
+                type="button"
+                icon="exchange-alt"
+                tooltip="Convert to multistep block (automated execution)"
+              >
+                Convert to multistep
+              </Button>
+            )}
+          </div>
+        )}
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
         <Button variant="primary" type="submit" disabled={!isValid}>
-          {isEditing ? 'Update Block' : 'Add Block'}
+          {isEditing ? 'Update block' : 'Add block'}
         </Button>
       </div>
     </form>
