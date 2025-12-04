@@ -43,7 +43,13 @@ function generateIdFromTitle(title: string): string {
 /**
  * Section block form component
  */
-export function SectionBlockForm({ initialData, onSubmit, onCancel, isEditing = false }: BlockFormProps) {
+export function SectionBlockForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isEditing = false,
+  onSubmitAndRecord,
+}: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
 
   // Initialize from existing data or defaults
@@ -56,32 +62,41 @@ export function SectionBlockForm({ initialData, onSubmit, onCancel, isEditing = 
   // Preserve nested blocks when editing (but don't display them in the form)
   const nestedBlocks = useRef<JsonBlock[]>(initial?.blocks ?? []);
 
+  // Build the section block from current form state
+  const buildBlock = useCallback((): JsonSectionBlock => {
+    // Parse requirements and objectives
+    const reqArray = requirements
+      .split(',')
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0);
+    const objArray = objectives
+      .split(',')
+      .map((o) => o.trim())
+      .filter((o) => o.length > 0);
+
+    return {
+      type: 'section',
+      blocks: nestedBlocks.current,
+      ...(sectionId.trim() && { id: sectionId.trim() }),
+      ...(title.trim() && { title: title.trim() }),
+      ...(reqArray.length > 0 && { requirements: reqArray }),
+      ...(objArray.length > 0 && { objectives: objArray }),
+    };
+  }, [sectionId, title, requirements, objectives]);
+
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-
-      // Parse requirements and objectives
-      const reqArray = requirements
-        .split(',')
-        .map((r) => r.trim())
-        .filter((r) => r.length > 0);
-      const objArray = objectives
-        .split(',')
-        .map((o) => o.trim())
-        .filter((o) => o.length > 0);
-
-      const block: JsonSectionBlock = {
-        type: 'section',
-        blocks: nestedBlocks.current,
-        ...(sectionId.trim() && { id: sectionId.trim() }),
-        ...(title.trim() && { title: title.trim() }),
-        ...(reqArray.length > 0 && { requirements: reqArray }),
-        ...(objArray.length > 0 && { objectives: objArray }),
-      };
-      onSubmit(block);
+      onSubmit(buildBlock());
     },
-    [sectionId, title, requirements, objectives, onSubmit]
+    [buildBlock, onSubmit]
   );
+
+  const handleSubmitAndRecord = useCallback(() => {
+    if (onSubmitAndRecord) {
+      onSubmitAndRecord(buildBlock());
+    }
+  }, [buildBlock, onSubmitAndRecord]);
 
   const handleRequirementClick = useCallback((req: string) => {
     setRequirements((prev) => {
@@ -179,8 +194,13 @@ export function SectionBlockForm({ initialData, onSubmit, onCancel, isEditing = 
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>
+        {!isEditing && onSubmitAndRecord && (
+          <Button variant="primary" type="button" disabled={!isValid} icon="circle" onClick={handleSubmitAndRecord}>
+            Add and start recording
+          </Button>
+        )}
         <Button variant="primary" type="submit" disabled={!isValid}>
-          {isEditing ? 'Update Block' : 'Add Block'}
+          {isEditing ? 'Update block' : 'Add block'}
         </Button>
       </div>
     </form>

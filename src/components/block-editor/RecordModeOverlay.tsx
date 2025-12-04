@@ -82,12 +82,16 @@ export interface RecordModeOverlayProps {
   onStop: () => void;
   /** Number of steps recorded so far */
   stepCount: number;
+  /** Whether recording is currently active */
+  isRecording?: boolean;
+  /** Name of section being recorded into (for section recording) */
+  sectionName?: string;
 }
 
 /**
  * Record Mode Overlay - shows recording UI without blocking clicks
  */
-export function RecordModeOverlay({ onStop, stepCount }: RecordModeOverlayProps) {
+export function RecordModeOverlay({ onStop, stepCount, isRecording = true, sectionName }: RecordModeOverlayProps) {
   const styles = useStyles2(getStyles);
   const [hoveredElement, setHoveredElement] = useState<HTMLElement | null>(null);
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
@@ -211,9 +215,14 @@ export function RecordModeOverlay({ onStop, stepCount }: RecordModeOverlayProps)
       {/* Top banner - red with recording indicator */}
       <div className={styles.banner} data-record-overlay="banner">
         <div className={styles.recordingDot} />
-        <span className={styles.bannerText}>Recording... Click elements to capture steps</span>
+        <span className={styles.bannerText}>
+          {sectionName
+            ? `Recording into "${sectionName}"... Click elements to capture blocks`
+            : 'Recording... Click elements to capture steps'}
+        </span>
         <span className={styles.stepCount}>
-          {stepCount} step{stepCount !== 1 ? 's' : ''}
+          {stepCount} {sectionName ? 'block' : 'step'}
+          {stepCount !== 1 ? 's' : ''}
         </span>
         <button className={styles.stopButton} onClick={handleStopClick} type="button">
           Stop (Esc)

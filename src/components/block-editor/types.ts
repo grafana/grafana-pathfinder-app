@@ -77,6 +77,11 @@ export interface BlockFormProps<T extends JsonBlock = JsonBlock> {
    * The modal will show the RecordModeOverlay when active.
    */
   onRecordModeChange?: (isActive: boolean, options?: { onStop: () => void; getStepCount: () => number }) => void;
+  /**
+   * Called when form is submitted AND recording should start (for section blocks).
+   * Creates the block and immediately enters record mode targeting it.
+   */
+  onSubmitAndRecord?: (block: T) => void;
 }
 
 /**

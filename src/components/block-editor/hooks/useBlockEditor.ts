@@ -7,7 +7,13 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import type { EditorBlock, BlockEditorState, JsonBlock, JsonGuide } from '../types';
-import type { JsonSectionBlock } from '../../../types/json-guide.types';
+import type {
+  JsonSectionBlock,
+  JsonInteractiveBlock,
+  JsonMultistepBlock,
+  JsonGuidedBlock,
+  JsonStep,
+} from '../../../types/json-guide.types';
 import { DEFAULT_GUIDE_METADATA } from '../constants';
 
 /**
@@ -15,6 +21,13 @@ import { DEFAULT_GUIDE_METADATA } from '../constants';
  */
 const isSectionBlock = (block: JsonBlock): block is JsonSectionBlock => {
   return block.type === 'section';
+};
+
+/**
+ * Type guard for interactive blocks
+ */
+const isInteractiveBlock = (block: JsonBlock): block is JsonInteractiveBlock => {
+  return block.type === 'interactive';
 };
 
 /**
@@ -92,6 +105,12 @@ export interface UseBlockEditorReturn {
   isDirty: boolean;
   /** Mark the current state as saved */
   markSaved: () => void;
+
+  // Block merging operations
+  /** Merge selected interactive blocks into a Multistep block */
+  mergeBlocksToMultistep: (blockIds: string[]) => void;
+  /** Merge selected interactive blocks into a Guided block */
+  mergeBlocksToGuided: (blockIds: string[]) => void;
 }
 
 /**
@@ -655,6 +674,249 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     setState((prev) => ({ ...prev, isDirty: false }));
   }, []);
 
+  /**
+   * Parse a block ID to determine if it's a nested block
+   * Nested block IDs have format: `${sectionId}-nested-${nestedIndex}`
+   */
+  const parseBlockId = (
+    id: string,
+    blocks: EditorBlock[]
+  ): { isNested: boolean; sectionId?: string; nestedIndex?: number; block?: JsonBlock } => {
+    // Check if it's a nested block ID
+    const nestedMatch = id.match(/^(.+)-nested-(\d+)$/);
+    if (nestedMatch) {
+      const sectionId = nestedMatch[1];
+      const nestedIndex = parseInt(nestedMatch[2], 10);
+      const section = blocks.find((b) => b.id === sectionId);
+      if (section && isSectionBlock(section.block)) {
+        const nestedBlock = section.block.blocks[nestedIndex];
+        if (nestedBlock) {
+          return { isNested: true, sectionId, nestedIndex, block: nestedBlock };
+        }
+      }
+      return { isNested: true };
+    }
+
+    // It's a root-level block
+    const editorBlock = blocks.find((b) => b.id === id);
+    if (editorBlock) {
+      return { isNested: false, block: editorBlock.block };
+    }
+    return { isNested: false };
+  };
+
+  // Merge interactive blocks into a Multistep block
+  const mergeBlocksToMultistep = useCallback(
+    (blockIds: string[]) => {
+      setState((prev) => {
+        // Parse all block IDs and collect interactive blocks
+        const parsedBlocks = blockIds
+          .map((id) => ({ id, ...parseBlockId(id, prev.blocks) }))
+          .filter((p) => p.block && isInteractiveBlock(p.block));
+
+        if (parsedBlocks.length < 2) {
+          return prev;
+        }
+
+        // Convert interactive blocks to multistep steps
+        const steps: JsonStep[] = parsedBlocks.map((p) => {
+          const interactive = p.block as JsonInteractiveBlock;
+          return {
+            action: interactive.action,
+            reftarget: interactive.reftarget,
+            ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
+            // Use tooltip if available, otherwise use content
+            ...(interactive.tooltip && { tooltip: interactive.tooltip }),
+            ...(!interactive.tooltip && interactive.content && { tooltip: interactive.content }),
+          };
+        });
+
+        // Create the multistep block
+        const multistepBlock: JsonMultistepBlock = {
+          type: 'multistep',
+          content: 'Complete the following steps:',
+          steps,
+        };
+
+        // Determine where to insert based on first selected block
+        const firstParsed = parsedBlocks[0];
+        const insertIntoSection = firstParsed.isNested && firstParsed.sectionId;
+
+        // Remove root-level blocks that were merged
+        const rootIdsToRemove = new Set(parsedBlocks.filter((p) => !p.isNested).map((p) => p.id));
+
+        // Group nested blocks by section for removal
+        const nestedToRemove = new Map<string, number[]>();
+        parsedBlocks
+          .filter((p) => p.isNested && p.sectionId !== undefined && p.nestedIndex !== undefined)
+          .forEach((p) => {
+            const existing = nestedToRemove.get(p.sectionId!) || [];
+            existing.push(p.nestedIndex!);
+            nestedToRemove.set(p.sectionId!, existing);
+          });
+
+        // Build new blocks array
+        let newBlocks = prev.blocks
+          .filter((b) => !rootIdsToRemove.has(b.id))
+          .map((b) => {
+            // If this is a section with nested blocks to remove/insert, update it
+            if (
+              isSectionBlock(b.block) &&
+              (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))
+            ) {
+              const indicesToRemove = new Set(nestedToRemove.get(b.id) || []);
+              let newSectionBlocks = b.block.blocks.filter((_, i) => !indicesToRemove.has(i));
+
+              // If inserting into this section, add at the position of the first removed block
+              if (insertIntoSection && b.id === firstParsed.sectionId) {
+                const insertIdx = firstParsed.nestedIndex!;
+                // Count how many blocks before insertIdx were removed
+                const removedBefore = Array.from(indicesToRemove).filter((i) => i < insertIdx).length;
+                const adjustedIdx = insertIdx - removedBefore;
+                newSectionBlocks.splice(adjustedIdx, 0, multistepBlock);
+              }
+
+              return {
+                ...b,
+                block: { ...b.block, blocks: newSectionBlocks },
+              };
+            }
+            return b;
+          });
+
+        // If not inserting into a section, insert at root level
+        if (!insertIntoSection) {
+          const newEditorBlock: EditorBlock = {
+            id: generateBlockId(),
+            block: multistepBlock,
+          };
+
+          // Find where to insert at root level
+          let insertIndex = prev.blocks.findIndex((b) => b.id === firstParsed.id);
+          // Adjust for removed blocks before this index
+          const removedBeforeInsert = prev.blocks.filter((b, i) => i < insertIndex && rootIdsToRemove.has(b.id)).length;
+          insertIndex -= removedBeforeInsert;
+
+          newBlocks.splice(insertIndex, 0, newEditorBlock);
+        }
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange]
+  );
+
+  // Merge interactive blocks into a Guided block
+  const mergeBlocksToGuided = useCallback(
+    (blockIds: string[]) => {
+      setState((prev) => {
+        // Parse all block IDs and collect interactive blocks
+        const parsedBlocks = blockIds
+          .map((id) => ({ id, ...parseBlockId(id, prev.blocks) }))
+          .filter((p) => p.block && isInteractiveBlock(p.block));
+
+        if (parsedBlocks.length < 2) {
+          return prev;
+        }
+
+        // Convert interactive blocks to guided steps
+        const steps: JsonStep[] = parsedBlocks.map((p) => {
+          const interactive = p.block as JsonInteractiveBlock;
+          return {
+            action: interactive.action,
+            reftarget: interactive.reftarget,
+            ...(interactive.targetvalue && { targetvalue: interactive.targetvalue }),
+            ...(interactive.content && { description: interactive.content }),
+          };
+        });
+
+        // Create the guided block
+        const guidedBlock: JsonGuidedBlock = {
+          type: 'guided',
+          content: 'Follow the steps below:',
+          steps,
+        };
+
+        // Determine where to insert based on first selected block
+        const firstParsed = parsedBlocks[0];
+        const insertIntoSection = firstParsed.isNested && firstParsed.sectionId;
+
+        // Remove root-level blocks that were merged
+        const rootIdsToRemove = new Set(parsedBlocks.filter((p) => !p.isNested).map((p) => p.id));
+
+        // Group nested blocks by section for removal
+        const nestedToRemove = new Map<string, number[]>();
+        parsedBlocks
+          .filter((p) => p.isNested && p.sectionId !== undefined && p.nestedIndex !== undefined)
+          .forEach((p) => {
+            const existing = nestedToRemove.get(p.sectionId!) || [];
+            existing.push(p.nestedIndex!);
+            nestedToRemove.set(p.sectionId!, existing);
+          });
+
+        // Build new blocks array
+        let newBlocks = prev.blocks
+          .filter((b) => !rootIdsToRemove.has(b.id))
+          .map((b) => {
+            // If this is a section with nested blocks to remove/insert, update it
+            if (
+              isSectionBlock(b.block) &&
+              (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))
+            ) {
+              const indicesToRemove = new Set(nestedToRemove.get(b.id) || []);
+              let newSectionBlocks = b.block.blocks.filter((_, i) => !indicesToRemove.has(i));
+
+              // If inserting into this section, add at the position of the first removed block
+              if (insertIntoSection && b.id === firstParsed.sectionId) {
+                const insertIdx = firstParsed.nestedIndex!;
+                // Count how many blocks before insertIdx were removed
+                const removedBefore = Array.from(indicesToRemove).filter((i) => i < insertIdx).length;
+                const adjustedIdx = insertIdx - removedBefore;
+                newSectionBlocks.splice(adjustedIdx, 0, guidedBlock);
+              }
+
+              return {
+                ...b,
+                block: { ...b.block, blocks: newSectionBlocks },
+              };
+            }
+            return b;
+          });
+
+        // If not inserting into a section, insert at root level
+        if (!insertIntoSection) {
+          const newEditorBlock: EditorBlock = {
+            id: generateBlockId(),
+            block: guidedBlock,
+          };
+
+          // Find where to insert at root level
+          let insertIndex = prev.blocks.findIndex((b) => b.id === firstParsed.id);
+          // Adjust for removed blocks before this index
+          const removedBeforeInsert = prev.blocks.filter((b, i) => i < insertIndex && rootIdsToRemove.has(b.id)).length;
+          insertIndex -= removedBeforeInsert;
+
+          newBlocks.splice(insertIndex, 0, newEditorBlock);
+        }
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange]
+  );
+
   // Memoize return value
   return useMemo(
     () => ({
@@ -679,6 +941,8 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       resetGuide,
       isDirty: state.isDirty,
       markSaved,
+      mergeBlocksToMultistep,
+      mergeBlocksToGuided,
     }),
     [
       state,
@@ -701,6 +965,8 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       loadGuide,
       resetGuide,
       markSaved,
+      mergeBlocksToMultistep,
+      mergeBlocksToGuided,
     ]
   );
 }

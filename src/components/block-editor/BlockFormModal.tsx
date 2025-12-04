@@ -54,6 +54,8 @@ export interface BlockFormModalProps {
   initialData?: JsonBlock;
   /** Called when form is submitted */
   onSubmit: (block: JsonBlock) => void;
+  /** Called when form is submitted AND recording should start (for section blocks) */
+  onSubmitAndRecord?: (block: JsonBlock) => void;
   /** Called when form is cancelled */
   onCancel: () => void;
   /** Whether editing an existing block */
@@ -75,7 +77,14 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = 
 /**
  * Block form modal component
  */
-export function BlockFormModal({ blockType, initialData, onSubmit, onCancel, isEditing = false }: BlockFormModalProps) {
+export function BlockFormModal({
+  blockType,
+  initialData,
+  onSubmit,
+  onSubmitAndRecord,
+  onCancel,
+  isEditing = false,
+}: BlockFormModalProps) {
   const styles = useStyles2(getStyles);
   const meta = BLOCK_TYPE_METADATA[blockType];
   const FormComponent = FORM_COMPONENTS[blockType];
@@ -297,6 +306,7 @@ export function BlockFormModal({ blockType, initialData, onSubmit, onCancel, isE
           <FormComponent
             initialData={initialData}
             onSubmit={onSubmit}
+            onSubmitAndRecord={onSubmitAndRecord}
             onCancel={onCancel}
             isEditing={isEditing}
             onPickerModeChange={handlePickerModeChange}

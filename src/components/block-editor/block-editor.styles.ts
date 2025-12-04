@@ -107,6 +107,28 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
       color: theme.colors.text.primary,
     },
   }),
+
+  // Selection action bar - shown at top of content when blocks are selected
+  selectionActionBar: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1.5),
+    marginBottom: theme.spacing(2),
+    backgroundColor: theme.colors.primary.transparent,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.primary.border}`,
+  }),
+
+  selectionCount: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    paddingRight: theme.spacing(1),
+    borderRight: `1px solid ${theme.colors.border.weak}`,
+    marginRight: theme.spacing(0.5),
+  }),
 });
 
 /**
@@ -355,6 +377,38 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     },
   }),
 
+  recordButton: css({
+    color: theme.colors.error.text,
+    opacity: 0.7,
+    transition: 'all 0.15s ease',
+
+    '&:hover': {
+      opacity: 1,
+      backgroundColor: theme.colors.error.transparent,
+    },
+  }),
+
+  recordingButton: css({
+    color: theme.colors.error.text,
+    backgroundColor: theme.colors.error.transparent,
+    animation: 'pulse 1.5s ease-in-out infinite',
+    transition: 'all 0.15s ease',
+
+    '@keyframes pulse': {
+      '0%, 100%': {
+        opacity: 1,
+      },
+      '50%': {
+        opacity: 0.5,
+      },
+    },
+
+    '&:hover': {
+      backgroundColor: theme.colors.error.shade,
+      color: theme.colors.error.contrastText,
+    },
+  }),
+
   // Section-specific styles
   sectionContainer: css({
     // Sections look the same as other blocks - no special styling
@@ -365,6 +419,22 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     marginTop: theme.spacing(1),
     paddingLeft: theme.spacing(2),
     borderLeft: `2px solid ${theme.colors.border.medium}`,
+  }),
+
+  // Selection mode styles
+  selectionCheckbox: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '24px',
+    flexShrink: 0,
+    cursor: 'pointer',
+  }),
+
+  selectedContainer: css({
+    borderColor: theme.colors.primary.border,
+    backgroundColor: theme.colors.primary.transparent,
+    boxShadow: `0 0 0 1px ${theme.colors.primary.border}`,
   }),
 });
 
