@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useMemo } from 'react';
-import { IconButton, useStyles2, Badge } from '@grafana/ui';
+import { IconButton, useStyles2, Badge, Checkbox } from '@grafana/ui';
 import { getBlockItemStyles } from './block-editor.styles';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import { BLOCK_TYPE_METADATA } from './constants';
@@ -38,6 +38,12 @@ export interface BlockItemProps {
   onRecord?: () => void;
   /** Whether recording is active for this section */
   isRecording?: boolean;
+  /** Whether selection mode is active */
+  isSelectionMode?: boolean;
+  /** Whether this block is selected */
+  isSelected?: boolean;
+  /** Called to toggle selection */
+  onToggleSelect?: () => void;
 }
 
 /**
@@ -87,6 +93,9 @@ export function BlockItem({
   onDuplicate,
   onRecord,
   isRecording = false,
+  isSelectionMode = false,
+  isSelected = false,
+  onToggleSelect,
 }: BlockItemProps) {
   const styles = useStyles2(getBlockItemStyles);
   const blockType = block.block.type as BlockType;
@@ -122,14 +131,48 @@ export function BlockItem({
     [onRecord]
   );
 
-  const containerClass = [styles.container, isSection && styles.sectionContainer].filter(Boolean).join(' ');
+  const handleToggleSelect = useCallback(() => {
+    onToggleSelect?.();
+  }, [onToggleSelect]);
+
+  const handleCheckboxClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      handleToggleSelect();
+    },
+    [handleToggleSelect]
+  );
+
+  // Only allow selection of interactive blocks
+  const isSelectable = isSelectionMode && isInteractiveBlock(block.block);
+
+  const containerClass = [
+    styles.container,
+    isSection && styles.sectionContainer,
+    isSelected && styles.selectedContainer,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <div className={containerClass}>
-      {/* Drag handle - visual indicator */}
-      <div className={styles.dragHandle} title="Drag to reorder">
-        <span style={{ fontSize: '12px' }}>⋮⋮</span>
-      </div>
+      {/* Selection checkbox (only for interactive blocks in selection mode) */}
+      {isSelectionMode && (
+        <div
+          className={styles.selectionCheckbox}
+          onClick={handleCheckboxClick}
+          title={isSelectable ? (isSelected ? 'Deselect' : 'Select') : 'Only interactive blocks can be selected'}
+        >
+          <Checkbox value={isSelected} disabled={!isSelectable} onChange={handleToggleSelect} />
+        </div>
+      )}
+
+      {/* Drag handle - visual indicator (hidden in selection mode) */}
+      {!isSelectionMode && (
+        <div className={styles.dragHandle} title="Drag to reorder">
+          <span style={{ fontSize: '12px' }}>⋮⋮</span>
+        </div>
+      )}
 
       {/* Content */}
       <div className={styles.content}>

@@ -6,7 +6,7 @@
  */
 
 import React, { useCallback, useState, useRef } from 'react';
-import { useStyles2, Badge, IconButton } from '@grafana/ui';
+import { useStyles2, Badge, IconButton, Checkbox } from '@grafana/ui';
 import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -167,6 +167,12 @@ export interface BlockListProps {
   onSectionRecord?: (sectionId: string) => void;
   /** ID of section currently being recorded into (if any) */
   recordingIntoSection?: string | null;
+  /** Whether selection mode is active */
+  isSelectionMode?: boolean;
+  /** IDs of currently selected blocks */
+  selectedBlockIds?: Set<string>;
+  /** Called to toggle selection of a block */
+  onToggleBlockSelection?: (blockId: string) => void;
 }
 
 // Styles for nested block items - match root BlockItem styling
@@ -186,6 +192,19 @@ const getNestedBlockItemStyles = (theme: GrafanaTheme2) => ({
       borderColor: theme.colors.border.medium,
       boxShadow: theme.shadows.z1,
     },
+  }),
+  selectedContainer: css({
+    borderColor: theme.colors.primary.border,
+    backgroundColor: theme.colors.primary.transparent,
+    boxShadow: `0 0 0 1px ${theme.colors.primary.border}`,
+  }),
+  selectionCheckbox: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '24px',
+    flexShrink: 0,
+    cursor: 'pointer',
   }),
   dragHandle: css({
     display: 'flex',
@@ -280,14 +299,23 @@ function NestedBlockItem({
   onEdit,
   onDelete,
   onDuplicate,
+  isSelectionMode = false,
+  isSelected = false,
+  onToggleSelect,
 }: {
   block: JsonBlock;
   onEdit?: () => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const styles = useStyles2(getNestedBlockItemStyles);
   const meta = BLOCK_TYPE_METADATA[block.type as BlockType];
+
+  // Only interactive blocks can be selected for merging
+  const isSelectable = isSelectionMode && block.type === 'interactive';
 
   // Get preview content - same logic as BlockItem
   const getPreview = (): string => {
@@ -306,12 +334,35 @@ function NestedBlockItem({
 
   const preview = getPreview();
 
+  const handleCheckboxClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onToggleSelect?.();
+    },
+    [onToggleSelect]
+  );
+
+  const containerClass = [styles.container, isSelected && styles.selectedContainer].filter(Boolean).join(' ');
+
   return (
-    <div className={styles.container}>
-      {/* Drag handle - visual indicator only */}
-      <div className={styles.dragHandle} title="Drag to reorder or move out of section">
-        <span style={{ fontSize: '12px' }}>⋮⋮</span>
-      </div>
+    <div className={containerClass}>
+      {/* Selection checkbox (only for interactive blocks in selection mode) */}
+      {isSelectionMode && (
+        <div
+          className={styles.selectionCheckbox}
+          onClick={handleCheckboxClick}
+          title={isSelectable ? (isSelected ? 'Deselect' : 'Select') : 'Only interactive blocks can be selected'}
+        >
+          <Checkbox value={isSelected} disabled={!isSelectable} onChange={onToggleSelect} />
+        </div>
+      )}
+
+      {/* Drag handle - visual indicator only (hidden in selection mode) */}
+      {!isSelectionMode && (
+        <div className={styles.dragHandle} title="Drag to reorder or move out of section">
+          <span style={{ fontSize: '12px' }}>⋮⋮</span>
+        </div>
+      )}
 
       {/* Content - matches BlockItem layout */}
       <div className={styles.content}>
@@ -381,6 +432,9 @@ export function BlockList({
   onNestedBlockMove,
   onSectionRecord,
   recordingIntoSection,
+  isSelectionMode = false,
+  selectedBlockIds = new Set(),
+  onToggleBlockSelection,
 }: BlockListProps) {
   const styles = useStyles2(getBlockListStyles);
   const nestedStyles = useStyles2(getNestedStyles);
@@ -656,6 +710,9 @@ export function BlockList({
                 onDuplicate={() => onBlockDuplicate(block.id)}
                 onRecord={isSection && onSectionRecord ? () => onSectionRecord(block.id) : undefined}
                 isRecording={isSection && recordingIntoSection === block.id}
+                isSelectionMode={isSelectionMode}
+                isSelected={selectedBlockIds.has(block.id)}
+                onToggleSelect={onToggleBlockSelection ? () => onToggleBlockSelection(block.id) : undefined}
               />
             </div>
 
@@ -729,6 +786,13 @@ export function BlockList({
                             onEdit={() => onNestedBlockEdit?.(block.id, nestedIndex, nestedBlock)}
                             onDelete={() => onNestedBlockDelete?.(block.id, nestedIndex)}
                             onDuplicate={() => onNestedBlockDuplicate?.(block.id, nestedIndex)}
+                            isSelectionMode={isSelectionMode}
+                            isSelected={selectedBlockIds.has(`${block.id}-nested-${nestedIndex}`)}
+                            onToggleSelect={
+                              onToggleBlockSelection
+                                ? () => onToggleBlockSelection(`${block.id}-nested-${nestedIndex}`)
+                                : undefined
+                            }
                           />
                         </div>
                       </React.Fragment>

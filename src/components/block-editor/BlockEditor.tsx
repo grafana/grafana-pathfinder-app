@@ -60,6 +60,10 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const [recordingIntoSection, setRecordingIntoSection] = useState<string | null>(null);
   const pendingSectionIdRef = useRef<string | null>(null);
 
+  // Block selection mode state (for merging blocks)
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(new Set());
+
   // Action recorder for section recording
   const actionRecorder = useActionRecorder({
     excludeSelectors: [
@@ -68,6 +72,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       '[data-devtools-panel]',
       '[data-block-editor]',
       '[data-testid="block-editor"]',
+      '[data-record-overlay]', // Stop recording button and overlay elements
     ],
   });
 
@@ -319,6 +324,52 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     [editor, insertAtIndex, actionRecorder]
   );
 
+  // Selection mode handlers
+  const handleToggleSelectionMode = useCallback(() => {
+    setIsSelectionMode((prev) => {
+      if (prev) {
+        // Exiting selection mode - clear selection
+        setSelectedBlockIds(new Set());
+      }
+      return !prev;
+    });
+  }, []);
+
+  const handleToggleBlockSelection = useCallback((blockId: string) => {
+    setSelectedBlockIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(blockId)) {
+        next.delete(blockId);
+      } else {
+        next.add(blockId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedBlockIds(new Set());
+    setIsSelectionMode(false);
+  }, []);
+
+  const handleMergeToMultistep = useCallback(() => {
+    if (selectedBlockIds.size < 2) {
+      return;
+    }
+    editor.mergeBlocksToMultistep(Array.from(selectedBlockIds));
+    setSelectedBlockIds(new Set());
+    setIsSelectionMode(false);
+  }, [selectedBlockIds, editor]);
+
+  const handleMergeToGuided = useCallback(() => {
+    if (selectedBlockIds.size < 2) {
+      return;
+    }
+    editor.mergeBlocksToGuided(Array.from(selectedBlockIds));
+    setSelectedBlockIds(new Set());
+    setIsSelectionMode(false);
+  }, [selectedBlockIds, editor]);
+
   // Modified form submit to handle section insertions and nested block edits
   const handleBlockFormSubmitWithSection = useCallback(
     (block: JsonBlock) => {
@@ -391,6 +442,17 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             </Button>
           </ButtonGroup>
 
+          {/* Selection mode toggle - only in edit mode */}
+          {!state.isPreviewMode && (
+            <Button
+              variant={isSelectionMode ? 'primary' : 'secondary'}
+              size="sm"
+              icon="check-square"
+              onClick={handleToggleSelectionMode}
+              tooltip={isSelectionMode ? 'Done selecting (click to exit)' : 'Select blocks to merge into multistep/guided'}
+            />
+          )}
+
           {/* Import button */}
           <Button
             variant="secondary"
@@ -421,6 +483,22 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
 
       {/* Content */}
       <div className={styles.content}>
+        {/* Selection action bar - shown at top when blocks are selected */}
+        {isSelectionMode && selectedBlockIds.size >= 2 && (
+          <div className={styles.selectionActionBar}>
+            <span className={styles.selectionCount}>{selectedBlockIds.size} blocks selected</span>
+            <Button variant="primary" size="sm" onClick={handleMergeToMultistep}>
+              Create multistep
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleMergeToGuided}>
+              Create guided
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleClearSelection}>
+              Cancel
+            </Button>
+          </div>
+        )}
+
         {state.isPreviewMode ? (
           <BlockPreview guide={editor.getGuide()} />
         ) : hasBlocks ? (
@@ -440,6 +518,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             onNestedBlockMove={handleNestedBlockMove}
             onSectionRecord={handleSectionRecord}
             recordingIntoSection={recordingIntoSection}
+            isSelectionMode={isSelectionMode}
+            selectedBlockIds={selectedBlockIds}
+            onToggleBlockSelection={handleToggleBlockSelection}
           />
         ) : (
           <div className={styles.emptyState}>
