@@ -33,14 +33,24 @@ const MODAL_SELECTORS = [
   '[role="menu"]',
   '[role="listbox"]',
   '[role="alertdialog"]',
+  '[role="tooltip"]',
   '.modal',
   '.ReactModal__Content',
+  '.ReactModal__Overlay',
   '[data-popper-placement]',
   '.dropdown-menu',
   '[data-radix-popper-content-wrapper]',
   '[data-floating-ui-portal]',
   '.grafana-portal', // Grafana-specific portals
+  '[class*="dropdown"]', // Catch various dropdown implementations
+  '[class*="popover"]', // Catch popovers
+  '[class*="Overlay"]', // Modal overlays
+  '.rc-cascader-menus', // Cascader menus
+  '[data-testid="data-testid Modal"]', // Grafana test ID modals
 ];
+
+// Time to wait for modal to appear after a click (ms)
+const MODAL_DETECTION_TIMEOUT = 250;
 
 /**
  * Check if an element is a modal/dropdown/popover
@@ -63,6 +73,36 @@ function findModalInNodes(nodes: NodeList): Element | null {
       if (modalChild) {
         return modalChild;
       }
+    }
+  }
+  return null;
+}
+
+/**
+ * Scan the entire DOM for any visible modal elements
+ * Used as a backup when MutationObserver might have missed the modal
+ */
+function findAnyVisibleModal(excludeElement?: Element | null): Element | null {
+  const selector = MODAL_SELECTORS.join(',');
+  const modals = document.querySelectorAll(selector);
+
+  for (const modal of modals) {
+    // Skip the element we're already tracking
+    if (excludeElement && (modal === excludeElement || modal.contains(excludeElement))) {
+      continue;
+    }
+
+    // Check if it's visible (has dimensions and is not hidden)
+    const rect = modal.getBoundingClientRect();
+    const style = window.getComputedStyle(modal);
+    if (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      style.visibility !== 'hidden' &&
+      style.display !== 'none' &&
+      style.opacity !== '0'
+    ) {
+      return modal;
     }
   }
   return null;
@@ -315,12 +355,43 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
             }
           }
         }
+
+        // Also check for modal appearing via attribute changes (e.g., display: none → block)
+        if (mutation.type === 'attributes' && pendingModalCheckRef.current && !activeModal) {
+          const target = mutation.target as Element;
+          if (isModalElement(target)) {
+            const style = window.getComputedStyle(target);
+            const rect = target.getBoundingClientRect();
+            if (
+              rect.width > 0 &&
+              rect.height > 0 &&
+              style.visibility !== 'hidden' &&
+              style.display !== 'none'
+            ) {
+              setActiveModal(target);
+              pendingModalCheckRef.current = false;
+            }
+          }
+        }
+
+        // Check for modal hiding via attribute changes
+        if (mutation.type === 'attributes' && activeModal) {
+          const target = mutation.target as Element;
+          if (target === activeModal || target.contains(activeModal)) {
+            const style = window.getComputedStyle(activeModal);
+            if (style.display === 'none' || style.visibility === 'hidden') {
+              finalizeActionGroup();
+            }
+          }
+        }
       }
     });
 
     observer.observe(document.body, {
       childList: true,
       subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class', 'hidden', 'aria-hidden'],
     });
 
     modalObserverRef.current = observer;
@@ -423,10 +494,21 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
         // Use requestAnimationFrame to check for modal after DOM updates
         requestAnimationFrame(() => {
-          // Give the DOM a moment to update
+          // Give the DOM time to update - modals may have animations
           setTimeout(() => {
-            // If no modal appeared and we still have a pending trigger, record it normally
+            // If no modal appeared and we still have a pending trigger, do a final check
             if (pendingModalCheckRef.current && triggerStepRef.current === newStep && !activeModal) {
+              // Backup: scan the DOM for any modal that might have appeared
+              // This catches cases where MutationObserver missed the modal
+              const foundModal = findAnyVisibleModal();
+              if (foundModal) {
+                // Modal found! Start grouping
+                setActiveModal(foundModal);
+                pendingModalCheckRef.current = false;
+                return;
+              }
+
+              // No modal found - record the step normally
               pendingModalCheckRef.current = false;
               triggerStepRef.current = null;
               setRecordedSteps((prev) => {
@@ -441,7 +523,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
                 onStepRecorded(newStep);
               }
             }
-          }, 100); // Small delay to allow modals to appear
+          }, MODAL_DETECTION_TIMEOUT);
         });
         return;
       }
