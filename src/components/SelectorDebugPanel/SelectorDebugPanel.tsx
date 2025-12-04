@@ -32,7 +32,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   const { executeInteractiveAction } = useInteractiveElements();
 
   // Editor tab state
-  const [activeEditorTab, setActiveEditorTab] = useState<EditorTab>('html');
+  const [activeEditorTab, setActiveEditorTab] = useState<EditorTab>('json');
 
   // Section expansion state - priority sections expanded by default
   const [recordExpanded, setRecordExpanded] = useState(true); // Priority: expanded by default
@@ -327,16 +327,16 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       <div className={styles.editorSection}>
         <TabsBar>
           <Tab
-            label="HTML Editor"
-            icon="file-alt"
-            active={activeEditorTab === 'html'}
-            onChangeTab={() => setActiveEditorTab('html')}
-          />
-          <Tab
             label="JSON Editor ✨"
             icon="brackets-curly"
             active={activeEditorTab === 'json'}
             onChangeTab={() => setActiveEditorTab('json')}
+          />
+          <Tab
+            label="HTML Editor"
+            icon="file-alt"
+            active={activeEditorTab === 'html'}
+            onChangeTab={() => setActiveEditorTab('html')}
           />
         </TabsBar>
 

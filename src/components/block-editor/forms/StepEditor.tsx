@@ -30,7 +30,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
   stepsList: css({
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(1),
+    gap: theme.spacing(1), // Match BlockList spacing (gap + insertZone height)
     maxHeight: '300px',
     overflowY: 'auto',
     padding: theme.spacing(1),
@@ -40,25 +40,66 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   stepItem: css({
     display: 'flex',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: theme.spacing(1),
     padding: theme.spacing(1),
     backgroundColor: theme.colors.background.primary,
     borderRadius: theme.shape.radius.default,
     border: `1px solid ${theme.colors.border.weak}`,
+    cursor: 'grab',
+    transition: 'all 0.15s ease',
+    userSelect: 'none',
+
+    '&:hover': {
+      borderColor: theme.colors.border.medium,
+      boxShadow: theme.shadows.z1,
+    },
   }),
-  stepNumber: css({
-    width: '24px',
-    height: '24px',
-    borderRadius: '50%',
-    backgroundColor: theme.colors.primary.main,
-    color: theme.colors.primary.contrastText,
+  stepItemDragging: css({
+    opacity: 0.5,
+    cursor: 'grabbing',
+  }),
+  // Drag handle - matches BlockItem
+  dragHandle: css({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    width: '20px',
+    color: theme.colors.text.disabled,
+    flexShrink: 0,
+    pointerEvents: 'none',
+  }),
+  // Drop zone styles - matches BlockList drop indicator pattern
+  dropZone: css({
+    position: 'relative',
+    padding: theme.spacing(0.5),
+    transition: 'all 0.15s ease',
+  }),
+  dropZoneLine: css({
+    height: '2px',
+    backgroundColor: theme.colors.border.medium,
+    borderRadius: '2px',
+    transition: 'all 0.15s ease',
+  }),
+  dropZoneLineActive: css({
+    height: '4px',
+    backgroundColor: theme.colors.primary.main,
+    boxShadow: `0 0 8px ${theme.colors.primary.main}`,
+  }),
+  dropZoneLabel: css({
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    transform: 'translate(-50%, -50%)',
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1.5)}`,
+    backgroundColor: theme.colors.primary.main,
+    color: theme.colors.primary.contrastText,
+    borderRadius: theme.shape.radius.pill,
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
-    flexShrink: 0,
+    whiteSpace: 'nowrap',
+    boxShadow: theme.shadows.z2,
+    zIndex: 1,
   }),
   stepContent: css({
     flex: 1,
@@ -82,8 +123,43 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   stepActions: css({
     display: 'flex',
-    gap: theme.spacing(0.25),
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
     flexShrink: 0,
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  }),
+  editButton: css({
+    color: theme.colors.primary.text,
+    backgroundColor: theme.colors.primary.transparent,
+    borderRadius: theme.shape.radius.default,
+    transition: 'all 0.15s ease',
+
+    '&:hover': {
+      backgroundColor: theme.colors.primary.shade,
+      color: theme.colors.primary.contrastText,
+    },
+  }),
+  actionButton: css({
+    opacity: 0.7,
+    transition: 'all 0.15s ease',
+
+    '&:hover': {
+      opacity: 1,
+      backgroundColor: theme.colors.action.hover,
+    },
+  }),
+  deleteButton: css({
+    opacity: 0.7,
+    color: theme.colors.error.text,
+    transition: 'all 0.15s ease',
+
+    '&:hover': {
+      opacity: 1,
+      backgroundColor: theme.colors.error.transparent,
+    },
   }),
   emptyState: css({
     textAlign: 'center',
@@ -163,6 +239,12 @@ export function StepEditor({
   const [editTargetvalue, setEditTargetvalue] = useState('');
   const [editTooltip, setEditTooltip] = useState('');
   const [editDescription, setEditDescription] = useState('');
+
+  // Drag/drop state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
+  // Ref to track drag state without causing re-renders during drag start
+  const dragStateRef = useRef<number | null>(null);
 
   // Keep a ref to current steps length so getStepCount always returns fresh value
   const stepsLengthRef = useRef(steps.length);
@@ -288,29 +370,58 @@ export function StepEditor({
     [steps, onChange]
   );
 
-  // Handle moving a step up
-  const handleMoveUp = useCallback(
+  // Handle duplicating a step
+  const handleDuplicateStep = useCallback(
     (index: number) => {
-      if (index > 0) {
-        const newSteps = [...steps];
-        [newSteps[index - 1], newSteps[index]] = [newSteps[index], newSteps[index - 1]];
-        onChange(newSteps);
-      }
+      const stepToDuplicate = steps[index];
+      const duplicatedStep = JSON.parse(JSON.stringify(stepToDuplicate));
+      const newSteps = [...steps];
+      newSteps.splice(index + 1, 0, duplicatedStep);
+      onChange(newSteps);
     },
     [steps, onChange]
   );
 
-  // Handle moving a step down
-  const handleMoveDown = useCallback(
-    (index: number) => {
-      if (index < steps.length - 1) {
-        const newSteps = [...steps];
-        [newSteps[index], newSteps[index + 1]] = [newSteps[index + 1], newSteps[index]];
-        onChange(newSteps);
-      }
-    },
-    [steps, onChange]
-  );
+  // Drag/drop handlers for reordering steps
+  // Uses deferred state update to avoid re-render during drag start (which can cancel the drag)
+  const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
+    // Set up drag data FIRST - before any state changes
+    e.dataTransfer.setData('text/plain', `step:${index}`);
+    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.effectAllowed = 'move';
+
+    // Store in ref immediately (no re-render)
+    dragStateRef.current = index;
+
+    // Defer state update to next frame to avoid re-render during drag start
+    requestAnimationFrame(() => {
+      setDraggedIndex(index);
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    const draggedIdx = dragStateRef.current;
+    if (draggedIdx !== null && dropTargetIndex !== null && draggedIdx !== dropTargetIndex) {
+      const newSteps = [...steps];
+      const [removed] = newSteps.splice(draggedIdx, 1);
+      // Adjust target index if dropping after the dragged item
+      const adjustedTarget = dropTargetIndex > draggedIdx ? dropTargetIndex - 1 : dropTargetIndex;
+      newSteps.splice(adjustedTarget, 0, removed);
+      onChange(newSteps);
+    }
+    dragStateRef.current = null;
+    setDraggedIndex(null);
+    setDropTargetIndex(null);
+  }, [dropTargetIndex, steps, onChange]);
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDropTargetIndex(index);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDropTargetIndex(null);
+  }, []);
 
   // Get current step count (for overlay display) - uses ref so it always returns fresh value
   const getStepCount = useCallback(() => stepsLengthRef.current, []);
@@ -337,13 +448,35 @@ export function StepEditor({
     return found?.label.split(' ')[0] ?? '⚡';
   };
 
+  // Check if a drop zone would be redundant (same position or position right after dragged item)
+  const isDropZoneRedundant = (zoneIndex: number) => {
+    if (draggedIndex === null) {
+      return false;
+    }
+    // Zone at draggedIndex or draggedIndex + 1 would result in same position
+    return zoneIndex === draggedIndex || zoneIndex === draggedIndex + 1;
+  };
+
   return (
     <div className={styles.container}>
       {/* Steps list */}
       {steps.length > 0 ? (
         <div className={styles.stepsList}>
           {steps.map((step, index) => (
-            <div key={index}>
+            <React.Fragment key={index}>
+              {/* Drop zone before this item - only show when dragging and not redundant */}
+              {draggedIndex !== null && !isDropZoneRedundant(index) && (
+                <div
+                  className={styles.dropZone}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDragLeave={handleDragLeave}
+                >
+                  <div
+                    className={`${styles.dropZoneLine} ${dropTargetIndex === index ? styles.dropZoneLineActive : ''}`}
+                  />
+                  {dropTargetIndex === index && <div className={styles.dropZoneLabel}>📍 Move here</div>}
+                </div>
+              )}
               {editingStepIndex === index ? (
                 /* Edit form for this step */
                 <div className={styles.addStepForm}>
@@ -412,62 +545,75 @@ export function StepEditor({
                   </div>
                 </div>
               ) : (
-                /* Display view for this step */
-                <div className={styles.stepItem}>
-                  <div className={styles.stepNumber}>{index + 1}</div>
+                /* Display view for this step - draggable */
+                <div
+                  className={`${styles.stepItem} ${draggedIndex === index ? styles.stepItemDragging : ''}`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragEnd={handleDragEnd}
+                >
+                  {/* Drag handle */}
+                  <div className={styles.dragHandle} title="Drag to reorder">
+                    <span style={{ fontSize: '12px' }}>⋮⋮</span>
+                  </div>
+
+                  {/* Content */}
                   <div className={styles.stepContent}>
                     <div className={styles.stepHeader}>
                       <span>{getActionEmoji(step.action)}</span>
                       <Badge text={step.action} color="blue" />
                       {step.targetvalue && <Badge text={`= "${step.targetvalue}"`} color="purple" />}
                     </div>
+                    {/* Show description/tooltip if available, otherwise show selector */}
                     <div className={styles.stepSelector} title={step.reftarget}>
-                      {step.reftarget}
+                      {isGuided ? step.description || step.reftarget : step.tooltip || step.reftarget}
                     </div>
-                    {isGuided
-                      ? step.description && (
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>📝 {step.description}</div>
-                        )
-                      : step.tooltip && (
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>💬 {step.tooltip}</div>
-                        )}
                   </div>
-                  <div className={styles.stepActions}>
+
+                  {/* Actions */}
+                  <div className={styles.stepActions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
                     <IconButton
-                      name="pen"
-                      size="sm"
+                      name="edit"
+                      size="md"
                       aria-label="Edit"
                       onClick={() => handleStartEdit(index)}
+                      className={styles.editButton}
                       tooltip="Edit step"
                     />
                     <IconButton
-                      name="angle-up"
-                      size="sm"
-                      aria-label="Move up"
-                      onClick={() => handleMoveUp(index)}
-                      disabled={index === 0}
-                      tooltip="Move up"
-                    />
-                    <IconButton
-                      name="angle-down"
-                      size="sm"
-                      aria-label="Move down"
-                      onClick={() => handleMoveDown(index)}
-                      disabled={index === steps.length - 1}
-                      tooltip="Move down"
+                      name="copy"
+                      size="md"
+                      aria-label="Duplicate"
+                      onClick={() => handleDuplicateStep(index)}
+                      className={styles.actionButton}
+                      tooltip="Duplicate step"
                     />
                     <IconButton
                       name="trash-alt"
-                      size="sm"
+                      size="md"
                       aria-label="Remove"
                       onClick={() => handleRemoveStep(index)}
+                      className={styles.deleteButton}
                       tooltip="Remove step"
                     />
                   </div>
                 </div>
               )}
-            </div>
+            </React.Fragment>
           ))}
+          {/* Drop zone at end of list - only show when dragging and not redundant */}
+          {draggedIndex !== null && !isDropZoneRedundant(steps.length) && (
+            <div
+              className={styles.dropZone}
+              onDragOver={(e) => handleDragOver(e, steps.length)}
+              onDragLeave={handleDragLeave}
+            >
+              <div
+                className={`${styles.dropZoneLine} ${dropTargetIndex === steps.length ? styles.dropZoneLineActive : ''}`}
+              />
+              {dropTargetIndex === steps.length && <div className={styles.dropZoneLabel}>📍 Move here</div>}
+            </div>
+          )}
         </div>
       ) : (
         <div className={styles.emptyState}>

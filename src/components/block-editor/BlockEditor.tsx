@@ -38,10 +38,27 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const editor = useBlockEditor({ initialGuide, onChange });
   const hasLoadedFromStorage = useRef(false);
 
+  // Modal state - declared early so persistence can check if modal is open
+  const [isMetadataOpen, setIsMetadataOpen] = useState(false);
+  const [isBlockFormOpen, setIsBlockFormOpen] = useState(false);
+  const [editingBlockType, setEditingBlockType] = useState<BlockType | null>(null);
+  const [editingBlock, setEditingBlock] = useState<EditorBlock | null>(null);
+  const [insertAtIndex, setInsertAtIndex] = useState<number | undefined>(undefined);
+  const [isNewGuideConfirmOpen, setIsNewGuideConfirmOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  // State for editing nested blocks
+  const [editingNestedBlock, setEditingNestedBlock] = useState<{
+    sectionId: string;
+    nestedIndex: number;
+    block: JsonBlock;
+  } | null>(null);
+
   // Persistence - auto-save and restore from localStorage
+  // Auto-save is paused while block form modal is open to avoid saving on every keystroke
   const persistence = useBlockPersistence({
     guide: editor.getGuide(),
     autoSave: true,
+    autoSavePaused: isBlockFormOpen,
     onLoad: (savedGuide) => {
       // Only load once on initial mount
       if (!hasLoadedFromStorage.current && !initialGuide) {
@@ -67,21 +84,6 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       }
     }
   }, [initialGuide, persistence, editor]);
-
-  // Modal state
-  const [isMetadataOpen, setIsMetadataOpen] = useState(false);
-  const [isBlockFormOpen, setIsBlockFormOpen] = useState(false);
-  const [editingBlockType, setEditingBlockType] = useState<BlockType | null>(null);
-  const [editingBlock, setEditingBlock] = useState<EditorBlock | null>(null);
-  const [insertAtIndex, setInsertAtIndex] = useState<number | undefined>(undefined);
-  const [isNewGuideConfirmOpen, setIsNewGuideConfirmOpen] = useState(false);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  // State for editing nested blocks
-  const [editingNestedBlock, setEditingNestedBlock] = useState<{
-    sectionId: string;
-    nestedIndex: number;
-    block: JsonBlock;
-  } | null>(null);
 
   // Handle block type selection from palette
   const handleBlockTypeSelect = useCallback((type: BlockType, index?: number) => {
@@ -367,7 +369,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       {/* Footer with add block button (only in edit mode) */}
       {!state.isPreviewMode && (
         <div className={styles.footer}>
-          <BlockPalette onSelect={handleBlockTypeSelect} />
+          <BlockPalette onSelect={handleBlockTypeSelect} embedded />
         </div>
       )}
 
