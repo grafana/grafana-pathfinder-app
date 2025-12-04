@@ -326,7 +326,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       {/* Editor Tabs */}
       <div className={styles.editorSection}>
         <TabsBar>
-        <Tab
+          <Tab
             label="JSON Editor ✨"
             icon="brackets-curly"
             active={activeEditorTab === 'json'}
@@ -338,7 +338,6 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
             active={activeEditorTab === 'html'}
             onChangeTab={() => setActiveEditorTab('html')}
           />
-
         </TabsBar>
 
         <div className={styles.editorContent}>
