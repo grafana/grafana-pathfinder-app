@@ -449,7 +449,9 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
               size="sm"
               icon="check-square"
               onClick={handleToggleSelectionMode}
-              tooltip={isSelectionMode ? 'Done selecting (click to exit)' : 'Select blocks to merge into multistep/guided'}
+              tooltip={
+                isSelectionMode ? 'Done selecting (click to exit)' : 'Select blocks to merge into multistep/guided'
+              }
             />
           )}
 
@@ -580,9 +582,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           stepCount={actionRecorder.recordedSteps.length}
           onStop={handleStopRecording}
           sectionName={
-            state.blocks
-              .find((b) => b.id === recordingIntoSection)
-              ?.block.type === 'section'
+            state.blocks.find((b) => b.id === recordingIntoSection)?.block.type === 'section'
               ? ((state.blocks.find((b) => b.id === recordingIntoSection)?.block as { title?: string }).title ??
                 'Section')
               : 'Section'

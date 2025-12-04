@@ -195,13 +195,7 @@ export function SectionBlockForm({
           Cancel
         </Button>
         {!isEditing && onSubmitAndRecord && (
-          <Button
-            variant="primary"
-            type="button"
-            disabled={!isValid}
-            icon="circle"
-            onClick={handleSubmitAndRecord}
-          >
+          <Button variant="primary" type="button" disabled={!isValid} icon="circle" onClick={handleSubmitAndRecord}>
             Add and start recording
           </Button>
         )}

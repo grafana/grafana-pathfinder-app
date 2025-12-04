@@ -760,7 +760,10 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           .filter((b) => !rootIdsToRemove.has(b.id))
           .map((b) => {
             // If this is a section with nested blocks to remove/insert, update it
-            if (isSectionBlock(b.block) && (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))) {
+            if (
+              isSectionBlock(b.block) &&
+              (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))
+            ) {
               const indicesToRemove = new Set(nestedToRemove.get(b.id) || []);
               let newSectionBlocks = b.block.blocks.filter((_, i) => !indicesToRemove.has(i));
 
@@ -862,7 +865,10 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
           .filter((b) => !rootIdsToRemove.has(b.id))
           .map((b) => {
             // If this is a section with nested blocks to remove/insert, update it
-            if (isSectionBlock(b.block) && (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))) {
+            if (
+              isSectionBlock(b.block) &&
+              (nestedToRemove.has(b.id) || (insertIntoSection && b.id === firstParsed.sectionId))
+            ) {
               const indicesToRemove = new Set(nestedToRemove.get(b.id) || []);
               let newSectionBlocks = b.block.blocks.filter((_, i) => !indicesToRemove.has(i));
 
