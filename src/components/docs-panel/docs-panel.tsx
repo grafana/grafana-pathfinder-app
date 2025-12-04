@@ -313,6 +313,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async loadTabContent(tabId: string, url: string) {
+    // Skip loading if URL is empty
+    if (!url || url.trim() === '') {
+      return;
+    }
+
     // Update tab to loading state
     const updatedTabs = this.state.tabs.map((t) =>
       t.id === tabId
@@ -545,6 +550,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async loadDocsTabContent(tabId: string, url: string) {
+    // Skip loading if URL is empty
+    if (!url || url.trim() === '') {
+      return;
+    }
+
     // Update tab to loading state
     const updatedTabs = this.state.tabs.map((t) =>
       t.id === tabId

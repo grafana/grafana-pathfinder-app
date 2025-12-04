@@ -800,10 +800,11 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
     if (isGitHubUrl(url) && lastError.message.includes('NetworkError')) {
       console.error(
         `Failed to fetch content from ${url}. Last error: ${lastError.message}\n` +
-          `GitHub content loading failed. System automatically tries:\n` +
-          `1. Grafana data proxy (routes through backend, avoids CORS)\n` +
-          `2. raw.githubusercontent.com (direct access as fallback)\n` +
-          `3. Unstyled HTML variations\n` +
+          `GitHub content loading failed. System tries via Grafana data proxy (routes through backend).\n` +
+          `If the proxy returns errors, check:\n` +
+          `1. Plugin routes are configured correctly in plugin.json\n` +
+          `2. The repository and branch are in ALLOWED_GITHUB_REPOS\n` +
+          `3. The content exists at the expected path\n` +
           `Consider using bundled content (bundled: URLs) for guaranteed availability.`
       );
     } else {
@@ -835,6 +836,8 @@ function generateGitHubVariations(url: string): string[] {
   const isGitHubRawDomain = isGitHubRawUrl(url);
 
   // Only try GitHub variations for actual GitHub URLs
+  // IMPORTANT: Only use proxy URLs to avoid CORS errors - direct raw.githubusercontent.com
+  // requests will be blocked by browsers
   if (isGitHubDomain || isGitHubRawDomain) {
     if (isGitHubDomain) {
       // Handle tree URLs (directories) - try content.json first, then unstyled.html
@@ -842,22 +845,19 @@ function generateGitHubVariations(url: string): string[] {
       if (treeMatch) {
         const [_fullMatch, owner, repo, branch, path] = treeMatch;
 
-        // SECURITY (F3): Use URL constructor instead of template literal
-        // Try JSON format first (preferred)
+        // Try JSON format first (preferred) - proxy only
         const jsonUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/content.json`;
         const proxyJsonUrl = convertGitHubRawToProxyUrl(jsonUrl);
         if (proxyJsonUrl) {
           variations.push(proxyJsonUrl);
         }
-        variations.push(jsonUrl);
 
-        // Then try HTML format as fallback
+        // Then try HTML format as fallback - proxy only
         const htmlUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/unstyled.html`;
         const proxyHtmlUrl = convertGitHubRawToProxyUrl(htmlUrl);
         if (proxyHtmlUrl) {
           variations.push(proxyHtmlUrl);
         }
-        variations.push(htmlUrl);
       }
 
       // Handle blob URLs (specific files)
@@ -867,14 +867,11 @@ function generateGitHubVariations(url: string): string[] {
 
         const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
 
-        // Try data proxy URL first (avoids CORS issues)
+        // Try data proxy URL (avoids CORS issues)
         const proxyUrl = convertGitHubRawToProxyUrl(rawUrl);
         if (proxyUrl) {
           variations.push(proxyUrl);
         }
-
-        // Then try raw URL as fallback
-        variations.push(rawUrl);
 
         // Also try content.json and unstyled.html versions for directory-like paths
         if (!path.endsWith('.json') && !path.endsWith('.html')) {
@@ -884,7 +881,6 @@ function generateGitHubVariations(url: string): string[] {
           if (proxyJsonUrl) {
             variations.push(proxyJsonUrl);
           }
-          variations.push(rawJsonUrl);
 
           // Then try HTML format as fallback
           const rawUnstyledUrl = `${rawUrl}/unstyled.html`;
@@ -892,7 +888,6 @@ function generateGitHubVariations(url: string): string[] {
           if (proxyUnstyledUrl) {
             variations.push(proxyUnstyledUrl);
           }
-          variations.push(rawUnstyledUrl);
         }
       }
     }
@@ -917,7 +912,6 @@ function generateGitHubVariations(url: string): string[] {
           if (proxyJsonUrl) {
             variations.push(proxyJsonUrl);
           }
-          variations.push(jsonUrl);
 
           // Then try HTML format as fallback
           const unstyledUrl = `${url}/unstyled.html`;
@@ -925,17 +919,12 @@ function generateGitHubVariations(url: string): string[] {
           if (proxyUnstyledUrl) {
             variations.push(proxyUnstyledUrl);
           }
-          variations.push(unstyledUrl);
         }
       }
     }
 
-    // Generic fallback: try content.json then unstyled.html (only if no specific conversion worked)
-    if (variations.length === 0) {
-      const baseUrl = url.replace(/\/$/, '');
-      variations.push(`${baseUrl}/content.json`);
-      variations.push(`${baseUrl}/unstyled.html`);
-    }
+    // Note: No generic fallback for direct raw URLs - they would cause CORS errors
+    // If no proxy URL could be generated, the repo/branch is not in ALLOWED_GITHUB_REPOS
   }
 
   return variations;
