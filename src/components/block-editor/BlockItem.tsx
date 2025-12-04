@@ -34,6 +34,10 @@ export interface BlockItemProps {
   onDelete: () => void;
   /** Called to duplicate the block */
   onDuplicate: () => void;
+  /** Called when record is requested (sections only) */
+  onRecord?: () => void;
+  /** Whether recording is active for this section */
+  isRecording?: boolean;
 }
 
 /**
@@ -74,7 +78,16 @@ function getBlockPreview(block: EditorBlock['block']): string {
 /**
  * Block item component
  */
-export function BlockItem({ block, index, totalBlocks, onEdit, onDelete, onDuplicate }: BlockItemProps) {
+export function BlockItem({
+  block,
+  index,
+  totalBlocks,
+  onEdit,
+  onDelete,
+  onDuplicate,
+  onRecord,
+  isRecording = false,
+}: BlockItemProps) {
   const styles = useStyles2(getBlockItemStyles);
   const blockType = block.block.type as BlockType;
   const meta = BLOCK_TYPE_METADATA[blockType];
@@ -99,6 +112,14 @@ export function BlockItem({ block, index, totalBlocks, onEdit, onDelete, onDupli
       onDuplicate();
     },
     [onDuplicate]
+  );
+
+  const handleRecord = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onRecord?.();
+    },
+    [onRecord]
   );
 
   const containerClass = [styles.container, isSection && styles.sectionContainer].filter(Boolean).join(' ');
@@ -133,6 +154,17 @@ export function BlockItem({ block, index, totalBlocks, onEdit, onDelete, onDupli
       {/* draggable={false} prevents drag from starting when clicking this area */}
       <div className={styles.actions} draggable={false} onMouseDown={(e) => e.stopPropagation()}>
         <div className={styles.actionGroup}>
+          {/* Record button for sections */}
+          {isSection && onRecord && (
+            <IconButton
+              name={isRecording ? 'square-shape' : 'circle'}
+              size="md"
+              aria-label={isRecording ? 'Stop recording' : 'Record into section'}
+              onClick={handleRecord}
+              className={isRecording ? styles.recordingButton : styles.recordButton}
+              tooltip={isRecording ? 'Stop recording' : 'Record into section'}
+            />
+          )}
           <IconButton
             name="edit"
             size="md"

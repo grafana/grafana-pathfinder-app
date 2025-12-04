@@ -678,7 +678,7 @@ export function StepEditor({
               Cancel
             </Button>
             <Button variant="primary" onClick={handleAddStep} disabled={!newReftarget.trim()}>
-              Add Step
+              Add step
             </Button>
           </div>
         </div>
@@ -688,16 +688,16 @@ export function StepEditor({
       {!showAddForm && !isRecording && editingStepIndex === null && (
         <div className={styles.controlButtons}>
           <Button variant="secondary" icon="plus" onClick={() => setShowAddForm(true)}>
-            Add Step Manually
+            Add step manually
           </Button>
           {showRecordMode && (
             <Button variant="secondary" icon="circle" onClick={handleStartRecord}>
-              Start Record Mode
+              Start record mode
             </Button>
           )}
           {steps.length > 0 && (
             <Button variant="destructive" icon="trash-alt" onClick={() => onChange([])}>
-              Clear All
+              Clear all
             </Button>
           )}
         </div>

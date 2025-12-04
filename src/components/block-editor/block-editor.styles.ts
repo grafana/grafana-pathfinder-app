@@ -355,6 +355,38 @@ export const getBlockItemStyles = (theme: GrafanaTheme2) => ({
     },
   }),
 
+  recordButton: css({
+    color: theme.colors.error.text,
+    opacity: 0.7,
+    transition: 'all 0.15s ease',
+
+    '&:hover': {
+      opacity: 1,
+      backgroundColor: theme.colors.error.transparent,
+    },
+  }),
+
+  recordingButton: css({
+    color: theme.colors.error.text,
+    backgroundColor: theme.colors.error.transparent,
+    animation: 'pulse 1.5s ease-in-out infinite',
+    transition: 'all 0.15s ease',
+
+    '@keyframes pulse': {
+      '0%, 100%': {
+        opacity: 1,
+      },
+      '50%': {
+        opacity: 0.5,
+      },
+    },
+
+    '&:hover': {
+      backgroundColor: theme.colors.error.shade,
+      color: theme.colors.error.contrastText,
+    },
+  }),
+
   // Section-specific styles
   sectionContainer: css({
     // Sections look the same as other blocks - no special styling

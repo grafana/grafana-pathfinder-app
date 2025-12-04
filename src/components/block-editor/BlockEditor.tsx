@@ -17,7 +17,10 @@ import { BlockList } from './BlockList';
 import { BlockPreview } from './BlockPreview';
 import { BlockFormModal } from './BlockFormModal';
 import { ImportGuideModal } from './ImportGuideModal';
+import { RecordModeOverlay } from './RecordModeOverlay';
+import { useActionRecorder } from '../wysiwyg-editor/devtools/action-recorder.hook';
 import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
+import type { JsonInteractiveBlock } from '../../types/json-guide.types';
 
 export interface BlockEditorProps {
   /** Initial guide to load */
@@ -52,6 +55,21 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     nestedIndex: number;
     block: JsonBlock;
   } | null>(null);
+
+  // Section recording state
+  const [recordingIntoSection, setRecordingIntoSection] = useState<string | null>(null);
+  const pendingSectionIdRef = useRef<string | null>(null);
+
+  // Action recorder for section recording
+  const actionRecorder = useActionRecorder({
+    excludeSelectors: [
+      '[class*="debug"]',
+      '.context-container',
+      '[data-devtools-panel]',
+      '[data-block-editor]',
+      '[data-testid="block-editor"]',
+    ],
+  });
 
   // Persistence - auto-save and restore from localStorage
   // Auto-save is paused while block form modal is open to avoid saving on every keystroke
@@ -238,6 +256,69 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     [editor]
   );
 
+  // Handle section recording toggle
+  const handleSectionRecord = useCallback(
+    (sectionId: string) => {
+      if (recordingIntoSection === sectionId) {
+        // Stop recording - convert recorded steps to Interactive blocks and add to section
+        actionRecorder.stopRecording();
+        const steps = actionRecorder.recordedSteps;
+
+        // Convert each recorded step to an Interactive block
+        steps.forEach((step) => {
+          const interactiveBlock: JsonInteractiveBlock = {
+            type: 'interactive',
+            action: step.action as JsonInteractiveBlock['action'],
+            reftarget: step.selector,
+            content: step.description || `${step.action} on element`,
+            ...(step.value && { targetvalue: step.value }),
+          };
+          editor.addBlockToSection(interactiveBlock, sectionId);
+        });
+
+        actionRecorder.clearRecording();
+        setRecordingIntoSection(null);
+      } else {
+        // Start recording into this section
+        actionRecorder.clearRecording();
+        actionRecorder.startRecording();
+        setRecordingIntoSection(sectionId);
+      }
+    },
+    [recordingIntoSection, actionRecorder, editor]
+  );
+
+  // Handle stop recording from overlay
+  const handleStopRecording = useCallback(() => {
+    if (recordingIntoSection) {
+      handleSectionRecord(recordingIntoSection);
+    }
+  }, [recordingIntoSection, handleSectionRecord]);
+
+  // Handle "Add and Start Recording" for new sections
+  const handleSubmitAndStartRecording = useCallback(
+    (block: JsonBlock) => {
+      // Add the section block - returns the EditorBlock ID (UUID)
+      const editorBlockId = editor.addBlock(block, insertAtIndex);
+      setIsBlockFormOpen(false);
+      setEditingBlockType(null);
+      setEditingBlock(null);
+      setInsertAtIndex(undefined);
+
+      // Start recording into this section after a brief delay to allow UI to update
+      pendingSectionIdRef.current = editorBlockId;
+      setTimeout(() => {
+        if (pendingSectionIdRef.current) {
+          actionRecorder.clearRecording();
+          actionRecorder.startRecording();
+          setRecordingIntoSection(pendingSectionIdRef.current);
+          pendingSectionIdRef.current = null;
+        }
+      }, 100);
+    },
+    [editor, insertAtIndex, actionRecorder]
+  );
+
   // Modified form submit to handle section insertions and nested block edits
   const handleBlockFormSubmitWithSection = useCallback(
     (block: JsonBlock) => {
@@ -357,6 +438,8 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             onNestedBlockDelete={handleNestedBlockDelete}
             onNestedBlockDuplicate={handleNestedBlockDuplicate}
             onNestedBlockMove={handleNestedBlockMove}
+            onSectionRecord={handleSectionRecord}
+            recordingIntoSection={recordingIntoSection}
           />
         ) : (
           <div className={styles.emptyState}>
@@ -386,6 +469,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           blockType={editingBlockType}
           initialData={editingNestedBlock?.block ?? editingBlock?.block}
           onSubmit={handleBlockFormSubmitWithSection}
+          onSubmitAndRecord={editingBlockType === 'section' ? handleSubmitAndStartRecording : undefined}
           onCancel={handleBlockFormCancel}
           isEditing={!!editingBlock || !!editingNestedBlock}
         />
@@ -407,6 +491,23 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         onClose={() => setIsImportModalOpen(false)}
         hasUnsavedChanges={state.isDirty || state.blocks.length > 0}
       />
+
+      {/* Record mode overlay for section recording */}
+      {recordingIntoSection && (
+        <RecordModeOverlay
+          isRecording={actionRecorder.isRecording}
+          stepCount={actionRecorder.recordedSteps.length}
+          onStop={handleStopRecording}
+          sectionName={
+            state.blocks
+              .find((b) => b.id === recordingIntoSection)
+              ?.block.type === 'section'
+              ? ((state.blocks.find((b) => b.id === recordingIntoSection)?.block as { title?: string }).title ??
+                'Section')
+              : 'Section'
+          }
+        />
+      )}
     </div>
   );
 }

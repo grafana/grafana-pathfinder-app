@@ -163,6 +163,10 @@ export interface BlockListProps {
   onNestedBlockDuplicate?: (sectionId: string, nestedIndex: number) => void;
   /** Called to move a nested block within its section */
   onNestedBlockMove?: (sectionId: string, fromIndex: number, toIndex: number) => void;
+  /** Called to start/stop recording into a section */
+  onSectionRecord?: (sectionId: string) => void;
+  /** ID of section currently being recorded into (if any) */
+  recordingIntoSection?: string | null;
 }
 
 // Styles for nested block items - match root BlockItem styling
@@ -375,6 +379,8 @@ export function BlockList({
   onNestedBlockDelete,
   onNestedBlockDuplicate,
   onNestedBlockMove,
+  onSectionRecord,
+  recordingIntoSection,
 }: BlockListProps) {
   const styles = useStyles2(getBlockListStyles);
   const nestedStyles = useStyles2(getNestedStyles);
@@ -648,6 +654,8 @@ export function BlockList({
                 onEdit={() => onBlockEdit(block)}
                 onDelete={() => onBlockDelete(block.id)}
                 onDuplicate={() => onBlockDuplicate(block.id)}
+                onRecord={isSection && onSectionRecord ? () => onSectionRecord(block.id) : undefined}
+                isRecording={isSection && recordingIntoSection === block.id}
               />
             </div>
 
