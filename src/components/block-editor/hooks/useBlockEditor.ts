@@ -671,7 +671,13 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
   // Mark as saved
   const markSaved = useCallback(() => {
-    setState((prev) => ({ ...prev, isDirty: false }));
+    setState((prev) => {
+      // REACT: bail out if already saved - prevents infinite re-render loop (R5)
+      if (!prev.isDirty) {
+        return prev; // Same reference = no re-render
+      }
+      return { ...prev, isDirty: false };
+    });
   }, []);
 
   /**
