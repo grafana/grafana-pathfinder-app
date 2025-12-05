@@ -10,7 +10,7 @@ import { Button, Field, Input, Select, Badge, IconButton, useStyles2 } from '@gr
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css } from '@emotion/css';
 import { INTERACTIVE_ACTIONS } from '../constants';
-import { useActionRecorder } from '../../wysiwyg-editor/devtools/action-recorder.hook';
+import { useActionRecorder } from '../../../utils/devtools';
 import type { JsonStep, JsonInteractiveAction } from '../types';
 
 // Exclude our overlay UI from being recorded as steps

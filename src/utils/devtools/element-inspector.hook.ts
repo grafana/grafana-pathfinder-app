@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createHoverHighlight, updateHoverHighlight, removeHoverHighlight } from './hover-highlight.util';
-import { addGlobalInteractiveStyles } from '../../../styles/interactive.styles';
+import { addGlobalInteractiveStyles } from '../../styles/interactive.styles';
 
 export interface UseElementInspectorOptions {
   isActive: boolean;

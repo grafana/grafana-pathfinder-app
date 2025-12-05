@@ -19,7 +19,7 @@ import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES, getConfigWithDefaults
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
-import { isDevModeEnabledGlobal, isDevModeEnabled } from '../wysiwyg-editor/dev-mode';
+import { isDevModeEnabledGlobal, isDevModeEnabled } from '../../utils/dev-mode';
 import { parseUrlSafely, isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../security';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
@@ -1635,15 +1635,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
                 {/* Return to Editor Banner - only shown for WYSIWYG preview */}
                 {isWysiwygPreview && (
-                  <div className={styles.returnToEditorBanner} data-testid={testIds.wysiwygPreview.banner}>
-                    <div className={styles.returnToEditorLeft} data-testid={testIds.wysiwygPreview.modeIndicator}>
+                  <div className={styles.returnToEditorBanner} data-testid={testIds.devTools.previewBanner}>
+                    <div className={styles.returnToEditorLeft} data-testid={testIds.devTools.previewModeIndicator}>
                       <Icon name="eye" size="sm" />
                       <span>{t('docsPanel.previewMode', 'Preview mode')}</span>
                     </div>
                     <button
                       className={styles.returnToEditorButton}
                       onClick={() => model.openDevToolsTab()}
-                      data-testid={testIds.wysiwygPreview.returnToEditorButton}
+                      data-testid={testIds.devTools.returnToEditorButton}
                     >
                       <Icon name="arrow-left" size="sm" />
                       {t('docsPanel.returnToEditor', 'Return to editor')}

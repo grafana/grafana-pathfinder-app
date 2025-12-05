@@ -19,7 +19,7 @@ import { BlockFormModal } from './BlockFormModal';
 import { ImportGuideModal } from './ImportGuideModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import { GitHubPRModal } from './GitHubPRModal';
-import { useActionRecorder } from '../wysiwyg-editor/devtools/action-recorder.hook';
+import { useActionRecorder } from '../../utils/devtools';
 import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock, JsonStep } from '../../types/json-guide.types';
 

@@ -7,10 +7,10 @@
 
 import { fetchContent } from '../docs-retrieval/content-fetcher';
 import { sanitizeTextForDisplay } from './html-sanitizer';
-import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 
 // Mock the dev-mode module
-jest.mock('../components/wysiwyg-editor/dev-mode', () => ({
+jest.mock('../utils/dev-mode', () => ({
   isDevModeEnabled: jest.fn(() => false),
   isDevModeEnabledGlobal: jest.fn(() => false),
 }));

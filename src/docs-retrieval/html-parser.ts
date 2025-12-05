@@ -11,7 +11,7 @@ import {
   isInteractiveLearningUrl,
   isGitHubRawUrl,
 } from '../security';
-import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 
 // Re-export for convenience
 export type { ParsedElement, ParsedContent };

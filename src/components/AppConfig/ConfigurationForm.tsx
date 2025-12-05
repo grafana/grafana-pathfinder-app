@@ -15,7 +15,7 @@ import {
   DEFAULT_PEERJS_KEY,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
-import { isDevModeEnabled, toggleDevMode } from '../wysiwyg-editor/dev-mode';
+import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { config } from '@grafana/runtime';
 import { FeatureFlags, getFeatureToggle } from '../../utils/openfeature';
 

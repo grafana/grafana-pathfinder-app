@@ -21,7 +21,7 @@ import {
   type InlineAssistantOptions,
   type InlineAssistantResult,
 } from '@grafana/assistant';
-import { isAssistantDevModeEnabledGlobal } from '../../components/wysiwyg-editor/dev-mode';
+import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
 
 // Create a persistent BehaviorSubject for mock availability
 // This ensures the mock stays active and doesn't get overridden

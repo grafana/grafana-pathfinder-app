@@ -2,7 +2,7 @@
  * Step execution utility for running sequences of interactive actions
  */
 
-import { INTERACTIVE_CONFIG } from '../../../constants/interactive-config';
+import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import type { StepDefinition, ProgressInfo } from './dev-tools.types';
 
 export interface ExecutionOptions {

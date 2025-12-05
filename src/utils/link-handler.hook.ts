@@ -15,7 +15,7 @@ import {
   isInteractiveLearningUrl,
   isGitHubRawUrl,
 } from '../security';
-import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
+import { isDevModeEnabledGlobal } from './dev-mode';
 import { LearningJourneyTab } from '../types/content-panel.types';
 
 interface UseLinkClickHandlerProps {
