@@ -68,7 +68,6 @@ export function sanitizeFilename(id: string): string {
   );
 }
 
-
 /**
  * Build the GitHub URL for creating or editing a file.
  * Always uses the "new file" URL - GitHub will handle showing the edit interface
@@ -204,4 +203,3 @@ export async function prepareGitHubPR(guide: JsonGuide): Promise<PRCreationResul
 export function openGitHub(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
-

@@ -18,7 +18,7 @@ import { prepareGitHubPR, openGitHub, type PRCreationResult } from './utils/gith
 function getPRDescriptionTemplate(filename: string, guideTitle: string): string {
   const guideId = filename.replace('.json', '');
   const guideUrl = `https://interactive-learning.grafana.net/guides/${guideId}`;
-  
+
   return `## New interactive guide: ${guideTitle}
 
 ### Description
@@ -333,9 +333,7 @@ export function GitHubPRModal({ isOpen, guide, onClose }: GitHubPRModalProps) {
             <li>
               Click <strong>Propose changes</strong> to create your PR
             </li>
-            <li>
-              Add the PR description below, then submit
-            </li>
+            <li>Add the PR description below, then submit</li>
           </ol>
         </div>
 
@@ -380,4 +378,3 @@ export function GitHubPRModal({ isOpen, guide, onClose }: GitHubPRModalProps) {
     </Modal>
   );
 }
-
