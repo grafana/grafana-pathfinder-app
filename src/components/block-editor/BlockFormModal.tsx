@@ -60,6 +60,10 @@ export interface BlockFormModalProps {
   onCancel: () => void;
   /** Whether editing an existing block */
   isEditing?: boolean;
+  /** Called when user wants to split multistep/guided into individual blocks */
+  onSplitToBlocks?: () => void;
+  /** Called when user wants to convert between multistep and guided */
+  onConvertType?: (newType: 'multistep' | 'guided') => void;
 }
 
 // Map block types to form components - defined outside render
@@ -84,6 +88,8 @@ export function BlockFormModal({
   onSubmitAndRecord,
   onCancel,
   isEditing = false,
+  onSplitToBlocks,
+  onConvertType,
 }: BlockFormModalProps) {
   const styles = useStyles2(getStyles);
   const meta = BLOCK_TYPE_METADATA[blockType];
@@ -311,6 +317,8 @@ export function BlockFormModal({
             isEditing={isEditing}
             onPickerModeChange={handlePickerModeChange}
             onRecordModeChange={handleRecordModeChange}
+            onSplitToBlocks={blockType === 'multistep' || blockType === 'guided' ? onSplitToBlocks : undefined}
+            onConvertType={blockType === 'multistep' || blockType === 'guided' ? onConvertType : undefined}
           />
         </div>
       </Modal>

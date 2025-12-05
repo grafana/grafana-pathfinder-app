@@ -20,7 +20,7 @@ import { ImportGuideModal } from './ImportGuideModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import { useActionRecorder } from '../wysiwyg-editor/devtools/action-recorder.hook';
 import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
-import type { JsonInteractiveBlock } from '../../types/json-guide.types';
+import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock, JsonStep } from '../../types/json-guide.types';
 
 export interface BlockEditorProps {
   /** Initial guide to load */
@@ -74,6 +74,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       '[data-testid="block-editor"]',
       '[data-record-overlay]', // Stop recording button and overlay elements
     ],
+    enableModalDetection: true,
   });
 
   // Persistence - auto-save and restore from localStorage
@@ -135,6 +136,111 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } })
       .__blockEditorSectionContext;
   }, []);
+
+  // Handle split multistep/guided into individual interactive blocks
+  const handleSplitToBlocks = useCallback(() => {
+    // Check if we're editing a root-level or nested block
+    const blockData = editingNestedBlock?.block ?? editingBlock?.block;
+    if (!blockData || (blockData.type !== 'multistep' && blockData.type !== 'guided')) {
+      return;
+    }
+
+    const steps = (blockData as JsonMultistepBlock | JsonGuidedBlock).steps;
+    if (!steps || steps.length === 0) {
+      return;
+    }
+
+    // Convert steps to interactive blocks
+    const interactiveBlocks: JsonInteractiveBlock[] = steps.map((step) => ({
+      type: 'interactive',
+      action: step.action,
+      reftarget: step.reftarget,
+      content: step.tooltip || step.description || `${step.action} on element`,
+      ...(step.targetvalue && { targetvalue: step.targetvalue }),
+    }));
+
+    if (editingNestedBlock) {
+      // Nested block - replace within section
+      const { sectionId, nestedIndex } = editingNestedBlock;
+      // Delete the original block, then add the new ones at the same position
+      editor.deleteNestedBlock(sectionId, nestedIndex);
+      // Add in reverse order so they end up in correct sequence
+      interactiveBlocks.reverse().forEach((block) => {
+        editor.addBlockToSection(block, sectionId, nestedIndex);
+      });
+    } else if (editingBlock) {
+      // Root-level block - replace at same position
+      const blockIndex = editor.state.blocks.findIndex((b) => b.id === editingBlock.id);
+      if (blockIndex !== -1) {
+        // Remove the original
+        editor.removeBlock(editingBlock.id);
+        // Add the new blocks at the same position
+        interactiveBlocks.forEach((block, i) => {
+          editor.addBlock(block, blockIndex + i);
+        });
+      }
+    }
+
+    // Close the modal
+    handleBlockFormCancel();
+  }, [editingBlock, editingNestedBlock, editor, handleBlockFormCancel]);
+
+  // Handle convert between multistep and guided
+  const handleConvertType = useCallback(
+    (newType: 'multistep' | 'guided') => {
+      const blockData = editingNestedBlock?.block ?? editingBlock?.block;
+      if (!blockData || (blockData.type !== 'multistep' && blockData.type !== 'guided')) {
+        return;
+      }
+
+      const currentBlock = blockData as JsonMultistepBlock | JsonGuidedBlock;
+      let convertedBlock: JsonMultistepBlock | JsonGuidedBlock;
+
+      if (newType === 'guided') {
+        // Convert multistep to guided
+        convertedBlock = {
+          type: 'guided',
+          content: currentBlock.content,
+          steps: currentBlock.steps.map((step) => ({
+            ...step,
+            // Move tooltip to description for guided
+            description: step.tooltip || step.description,
+            tooltip: undefined,
+          })),
+          ...(currentBlock.requirements && { requirements: currentBlock.requirements }),
+          ...(currentBlock.objectives && { objectives: currentBlock.objectives }),
+          ...(currentBlock.skippable && { skippable: currentBlock.skippable }),
+        };
+      } else {
+        // Convert guided to multistep
+        convertedBlock = {
+          type: 'multistep',
+          content: currentBlock.content,
+          steps: currentBlock.steps.map((step) => ({
+            ...step,
+            // Move description to tooltip for multistep
+            tooltip: step.description || step.tooltip,
+            description: undefined,
+          })),
+          ...(currentBlock.requirements && { requirements: currentBlock.requirements }),
+          ...(currentBlock.objectives && { objectives: currentBlock.objectives }),
+          ...(currentBlock.skippable && { skippable: currentBlock.skippable }),
+        };
+      }
+
+      if (editingNestedBlock) {
+        // Update nested block
+        editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, convertedBlock);
+      } else if (editingBlock) {
+        // Update root-level block
+        editor.updateBlock(editingBlock.id, convertedBlock);
+      }
+
+      // Close the modal
+      handleBlockFormCancel();
+    },
+    [editingBlock, editingNestedBlock, editor, handleBlockFormCancel]
+  );
 
   // Handle copy to clipboard
   const handleCopy = useCallback(() => {
@@ -265,20 +371,77 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const handleSectionRecord = useCallback(
     (sectionId: string) => {
       if (recordingIntoSection === sectionId) {
-        // Stop recording - convert recorded steps to Interactive blocks and add to section
+        // Stop recording - convert recorded steps to blocks and add to section
         actionRecorder.stopRecording();
         const steps = actionRecorder.recordedSteps;
 
-        // Convert each recorded step to an Interactive block
+        // Group consecutive steps with the same groupId into multisteps
+        const processedSteps: Array<
+          { type: 'single'; step: (typeof steps)[0] } | { type: 'group'; steps: typeof steps }
+        > = [];
+
+        let currentGroup: typeof steps = [];
+        let currentGroupId: string | undefined;
+
         steps.forEach((step) => {
-          const interactiveBlock: JsonInteractiveBlock = {
-            type: 'interactive',
-            action: step.action as JsonInteractiveBlock['action'],
-            reftarget: step.selector,
-            content: step.description || `${step.action} on element`,
-            ...(step.value && { targetvalue: step.value }),
-          };
-          editor.addBlockToSection(interactiveBlock, sectionId);
+          if (step.groupId) {
+            if (step.groupId === currentGroupId) {
+              // Continue current group
+              currentGroup.push(step);
+            } else {
+              // End previous group if exists
+              if (currentGroup.length > 0) {
+                processedSteps.push({ type: 'group', steps: currentGroup });
+              }
+              // Start new group
+              currentGroupId = step.groupId;
+              currentGroup = [step];
+            }
+          } else {
+            // End current group if exists
+            if (currentGroup.length > 0) {
+              processedSteps.push({ type: 'group', steps: currentGroup });
+              currentGroup = [];
+              currentGroupId = undefined;
+            }
+            // Add single step
+            processedSteps.push({ type: 'single', step });
+          }
+        });
+
+        // Don't forget the last group
+        if (currentGroup.length > 0) {
+          processedSteps.push({ type: 'group', steps: currentGroup });
+        }
+
+        // Convert to blocks and add to section
+        processedSteps.forEach((item) => {
+          if (item.type === 'single') {
+            // Single interactive block
+            const interactiveBlock: JsonInteractiveBlock = {
+              type: 'interactive',
+              action: item.step.action as JsonInteractiveBlock['action'],
+              reftarget: item.step.selector,
+              content: item.step.description || `${item.step.action} on element`,
+              ...(item.step.value && { targetvalue: item.step.value }),
+            };
+            editor.addBlockToSection(interactiveBlock, sectionId);
+          } else {
+            // Group of steps - create multistep block
+            const multistepSteps: JsonStep[] = item.steps.map((step) => ({
+              action: step.action as JsonStep['action'],
+              reftarget: step.selector,
+              ...(step.value && { targetvalue: step.value }),
+              tooltip: step.description || `${step.action} on element`,
+            }));
+
+            const multistepBlock: JsonMultistepBlock = {
+              type: 'multistep',
+              content: item.steps[0].description || 'Complete the following steps',
+              steps: multistepSteps,
+            };
+            editor.addBlockToSection(multistepBlock, sectionId);
+          }
         });
 
         actionRecorder.clearRecording();
@@ -555,6 +718,16 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           onSubmitAndRecord={editingBlockType === 'section' ? handleSubmitAndStartRecording : undefined}
           onCancel={handleBlockFormCancel}
           isEditing={!!editingBlock || !!editingNestedBlock}
+          onSplitToBlocks={
+            (editingBlockType === 'multistep' || editingBlockType === 'guided') && (editingBlock || editingNestedBlock)
+              ? handleSplitToBlocks
+              : undefined
+          }
+          onConvertType={
+            (editingBlockType === 'multistep' || editingBlockType === 'guided') && (editingBlock || editingNestedBlock)
+              ? handleConvertType
+              : undefined
+          }
         />
       )}
 
