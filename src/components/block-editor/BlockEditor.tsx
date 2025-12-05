@@ -18,6 +18,7 @@ import { BlockPreview } from './BlockPreview';
 import { BlockFormModal } from './BlockFormModal';
 import { ImportGuideModal } from './ImportGuideModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
+import { GitHubPRModal } from './GitHubPRModal';
 import { useActionRecorder } from '../wysiwyg-editor/devtools/action-recorder.hook';
 import type { JsonGuide, BlockType, JsonBlock, EditorBlock } from './types';
 import type { JsonInteractiveBlock, JsonMultistepBlock, JsonGuidedBlock, JsonStep } from '../../types/json-guide.types';
@@ -49,6 +50,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const [insertAtIndex, setInsertAtIndex] = useState<number | undefined>(undefined);
   const [isNewGuideConfirmOpen, setIsNewGuideConfirmOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isGitHubPRModalOpen, setIsGitHubPRModalOpen] = useState(false);
   // State for editing nested blocks
   const [editingNestedBlock, setEditingNestedBlock] = useState<{
     sectionId: string;
@@ -585,38 +587,25 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         </div>
 
         <div className={styles.headerRight}>
-          {/* View mode toggle */}
-          <ButtonGroup>
-            <Button
-              variant={!state.isPreviewMode ? 'primary' : 'secondary'}
-              size="sm"
-              icon="pen"
-              onClick={() => editor.setPreviewMode(false)}
-            >
-              Edit
-            </Button>
-            <Button
-              variant={state.isPreviewMode ? 'primary' : 'secondary'}
-              size="sm"
-              icon="eye"
-              onClick={() => editor.setPreviewMode(true)}
-            >
-              Preview
-            </Button>
-          </ButtonGroup>
-
-          {/* Selection mode toggle - only in edit mode */}
-          {!state.isPreviewMode && (
-            <Button
-              variant={isSelectionMode ? 'primary' : 'secondary'}
-              size="sm"
-              icon="check-square"
-              onClick={handleToggleSelectionMode}
-              tooltip={
-                isSelectionMode ? 'Done selecting (click to exit)' : 'Select blocks to merge into multistep/guided'
-              }
-            />
-          )}
+          {/* View mode toggle - icon only */}
+          <div className={styles.viewModeToggle}>
+            <ButtonGroup>
+              <Button
+                variant={!state.isPreviewMode ? 'primary' : 'secondary'}
+                size="sm"
+                icon="pen"
+                onClick={() => editor.setPreviewMode(false)}
+                tooltip="Edit mode"
+              />
+              <Button
+                variant={state.isPreviewMode ? 'primary' : 'secondary'}
+                size="sm"
+                icon="eye"
+                onClick={() => editor.setPreviewMode(true)}
+                tooltip="Preview mode"
+              />
+            </ButtonGroup>
+          </div>
 
           {/* Import button */}
           <Button
@@ -639,6 +628,13 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
           <Button
             variant="secondary"
             size="sm"
+            icon="github"
+            onClick={() => setIsGitHubPRModalOpen(true)}
+            tooltip="Create GitHub PR"
+          />
+          <Button
+            variant="secondary"
+            size="sm"
             icon="file-blank"
             onClick={() => setIsNewGuideConfirmOpen(true)}
             tooltip="Start new guide"
@@ -648,19 +644,35 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
 
       {/* Content */}
       <div className={styles.content}>
-        {/* Selection action bar - shown at top when blocks are selected */}
-        {isSelectionMode && selectedBlockIds.size >= 2 && (
-          <div className={styles.selectionActionBar}>
-            <span className={styles.selectionCount}>{selectedBlockIds.size} blocks selected</span>
-            <Button variant="primary" size="sm" onClick={handleMergeToMultistep}>
-              Create multistep
-            </Button>
-            <Button variant="primary" size="sm" onClick={handleMergeToGuided}>
-              Create guided
-            </Button>
-            <Button variant="secondary" size="sm" onClick={handleClearSelection}>
-              Cancel
-            </Button>
+        {/* Selection controls - shown in edit mode, above blocks */}
+        {!state.isPreviewMode && hasBlocks && (
+          <div className={styles.selectionControls}>
+            {isSelectionMode && selectedBlockIds.size >= 2 ? (
+              <>
+                <span className={styles.selectionCount}>{selectedBlockIds.size} blocks selected</span>
+                <Button variant="primary" size="sm" onClick={handleMergeToMultistep}>
+                  Create multistep
+                </Button>
+                <Button variant="primary" size="sm" onClick={handleMergeToGuided}>
+                  Create guided
+                </Button>
+                <Button variant="secondary" size="sm" onClick={handleClearSelection}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant={isSelectionMode ? 'primary' : 'secondary'}
+                size="sm"
+                icon="check-square"
+                onClick={handleToggleSelectionMode}
+                tooltip={
+                  isSelectionMode ? 'Click to exit selection mode' : 'Select blocks to merge into multistep/guided'
+                }
+              >
+                {isSelectionMode ? 'Done selecting' : 'Select blocks'}
+              </Button>
+            )}
           </div>
         )}
 
@@ -746,6 +758,12 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         onImport={handleImportGuide}
         onClose={() => setIsImportModalOpen(false)}
         hasUnsavedChanges={state.isDirty || state.blocks.length > 0}
+      />
+
+      <GitHubPRModal
+        isOpen={isGitHubPRModalOpen}
+        guide={editor.getGuide()}
+        onClose={() => setIsGitHubPRModalOpen(false)}
       />
 
       {/* Record mode overlay for section recording */}
