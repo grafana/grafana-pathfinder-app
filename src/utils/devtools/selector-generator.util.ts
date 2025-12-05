@@ -5,8 +5,8 @@
  * useSelectorCapture and useActionRecorder hooks, reducing code duplication.
  */
 
-import { generateBestSelector, getSelectorInfo, validateAndCleanSelector } from '../../../lib/dom';
-import { detectActionType, type DetectedAction } from '../../../interactive-engine/auto-completion/action-detector';
+import { generateBestSelector, getSelectorInfo, validateAndCleanSelector } from '../../lib/dom';
+import { detectActionType, type DetectedAction } from '../../interactive-engine/auto-completion/action-detector';
 import type { SelectorInfo } from './dev-tools.types';
 
 export interface SelectorGenerationResult {

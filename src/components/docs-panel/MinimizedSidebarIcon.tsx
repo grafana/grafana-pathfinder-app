@@ -125,7 +125,7 @@ export function MinimizedSidebarIcon({ isActive, stepCount, isRecording, onClick
       <div
         className={styles.container}
         data-minimized-sidebar
-        data-testid={testIds.wysiwygEditor.fullScreen.minimizedSidebar.container}
+        data-testid={testIds.devTools.fullScreen.minimizedSidebar.container}
       >
         <div className={styles.iconWrapper}>
           <button
@@ -133,12 +133,12 @@ export function MinimizedSidebarIcon({ isActive, stepCount, isRecording, onClick
             onClick={onClick}
             aria-label="Expand sidebar and exit full screen mode"
             title="Click to exit full screen mode"
-            data-testid={testIds.wysiwygEditor.fullScreen.minimizedSidebar.button}
+            data-testid={testIds.devTools.fullScreen.minimizedSidebar.button}
           >
             <img src={logoSvg} alt="Pathfinder" className={styles.logo} />
           </button>
           {stepCount > 0 && (
-            <div className={styles.badge} data-testid={testIds.wysiwygEditor.fullScreen.minimizedSidebar.badge}>
+            <div className={styles.badge} data-testid={testIds.devTools.fullScreen.minimizedSidebar.badge}>
               <Badge text={String(stepCount)} color={isRecording ? 'red' : 'blue'} />
             </div>
           )}
