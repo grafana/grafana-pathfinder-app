@@ -10,7 +10,7 @@ import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
-import { isGrafanaDocsUrl, isGitHubUrl } from './security';
+import { isGrafanaDocsUrl, isInteractiveLearningUrl } from './security';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
@@ -74,7 +74,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     console.warn(
       'Could not parse doc param:',
       docsParam,
-      '- Supported formats: bundled:<id>, github.com/..., /docs/..., https://grafana.com/docs/...'
+      '- Supported formats: bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
     );
   }
 
@@ -325,17 +325,17 @@ const findDocPage = function (param: string): DocPage | null {
     }
   }
 
-  // Case 2: GitHub URL
-  if (param.includes('github.com')) {
+  // Case 2: Interactive Learning URL
+  if (param.includes('interactive-learning.grafana')) {
     // Ensure protocol
     let url = param;
     if (!url.startsWith('http')) {
       url = 'https://' + url;
     }
 
-    // SECURITY: Use validated GitHub URL check (prevents subdomain hijacking like github.com.evil.com)
-    if (!isGitHubUrl(url)) {
-      console.warn('Security: Rejected non-GitHub URL:', url);
+    // SECURITY: Use validated interactive learning URL check
+    if (!isInteractiveLearningUrl(url)) {
+      console.warn('Security: Rejected non-interactive-learning URL:', url);
       return null;
     }
 

@@ -36,7 +36,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
   // Section expansion state - priority sections expanded by default
   const [recordExpanded, setRecordExpanded] = useState(true); // Priority: expanded by default
-  const [githubExpanded, setGithubExpanded] = useState(true); // Priority: expanded by default
+  const [tutorialTesterExpanded, setTutorialTesterExpanded] = useState(true); // Priority: expanded by default
   const [watchExpanded, setWatchExpanded] = useState(false);
   const [simpleExpanded, setSimpleExpanded] = useState(false);
   const [guidedExpanded, setGuidedExpanded] = useState(false);
@@ -521,14 +521,14 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
       {/* PRIORITY SECTION 2: Tutorial Tester */}
       <div className={styles.section}>
-        <div className={styles.sectionHeader} onClick={() => setGithubExpanded(!githubExpanded)}>
+        <div className={styles.sectionHeader} onClick={() => setTutorialTesterExpanded(!tutorialTesterExpanded)}>
           <Stack direction="row" gap={1} alignItems="center">
             <Icon name="external-link-alt" />
             <h4 className={styles.sectionTitle}>Tutorial tester</h4>
           </Stack>
-          <Icon name={githubExpanded ? 'angle-up' : 'angle-down'} />
+          <Icon name={tutorialTesterExpanded ? 'angle-up' : 'angle-down'} />
         </div>
-        {githubExpanded && onOpenDocsPage && (
+        {tutorialTesterExpanded && onOpenDocsPage && (
           <div className={styles.sectionContent}>
             <URLTester onOpenDocsPage={onOpenDocsPage} />
           </div>

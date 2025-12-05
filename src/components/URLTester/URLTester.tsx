@@ -1,75 +1,84 @@
-import { Box, Button, Icon, Input, Tab, TabContent, TabsBar, useStyles2 } from '@grafana/ui';
-import React, { PropsWithChildren, useCallback, useState } from 'react';
+import { Box, Button, Icon, Input, useStyles2 } from '@grafana/ui';
+import React, { useCallback, useState } from 'react';
 import { getURLTesterStyles } from './url-tester.styles';
-import { validateGitHubUrl, validateTutorialUrl } from '../../security';
+import {
+  isGitHubRawUrl,
+  isInteractiveLearningUrl,
+  isGrafanaDocsUrl,
+  isLocalhostUrl,
+  type URLValidation,
+} from '../../security';
 
 export interface URLTesterProps {
   onOpenDocsPage: (url: string, title: string) => void;
 }
 
-export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
-  const styles = useStyles2(getURLTesterStyles);
-  const [activeTab, setActiveTab] = useState('github');
+/**
+ * Unified URL validator for the dev panel
+ * Accepts all supported content URLs:
+ * - Interactive learning domains (interactive-learning.grafana.net, etc.)
+ * - GitHub raw URLs (raw.githubusercontent.com)
+ * - Grafana docs URLs (grafana.com/docs)
+ * - Localhost URLs (for local testing)
+ *
+ * Note: This validator is used in the URLTester which is only visible in dev mode,
+ * so we allow all dev-mode URLs without checking isDevModeEnabledGlobal().
+ */
+function validateContentUrl(url: string): URLValidation {
+  if (!url) {
+    return {
+      isValid: false,
+      errorMessage: 'Please provide a URL',
+    };
+  }
 
-  return (
-    <div>
-      <TabsBar>
-        <Tab label="GitHub" value="github" active={activeTab === 'github'} onChangeTab={() => setActiveTab('github')} />
-        <Tab label="Other" value="other" active={activeTab === 'other'} onChangeTab={() => setActiveTab('other')} />
-      </TabsBar>
-      <TabContent>
-        <Box paddingY={2}>
-          {activeTab === 'github' && (
-            <URLTesterContent
-              onOpenDocsPage={onOpenDocsPage}
-              placeholder="https://github.com/grafana/interactive-tutorials/tree/main/explore-drilldowns-101"
-              validator={validateGitHubUrl}
-            >
-              <p className={styles.helpText}>
-                Provide a GitHub tree URL pointing to a tutorial directory.
-                <br />
-                The URL should be in format: github.com/{'{owner}'}/{'{repo}'}/tree/{'{branch}'}/{'{path}'}
-              </p>
-            </URLTesterContent>
-          )}
-          {activeTab === 'other' && (
-            <URLTesterContent
-              onOpenDocsPage={onOpenDocsPage}
-              placeholder="http://127.0.0.1:5500/interactive-tutorials/tree/main/explore-drilldowns-101/unstyled.html"
-              validator={validateTutorialUrl}
-            >
-              <p className={styles.helpText}>
-                Provide a URL pointing to a tutorial page. Make sure to include the /unstyled.html suffix.
-              </p>
-            </URLTesterContent>
-          )}
-        </Box>
-      </TabContent>
-    </div>
-  );
-};
+  try {
+    new URL(url);
+  } catch {
+    return {
+      isValid: false,
+      errorMessage: 'Invalid URL format',
+    };
+  }
 
-interface URLTesterContentProps extends PropsWithChildren {
-  onOpenDocsPage: (url: string, title: string) => void;
-  placeholder?: string;
-  validator?: (url: string) => { isValid: boolean; errorMessage?: string };
+  // Accept all supported content sources
+  if (isInteractiveLearningUrl(url)) {
+    return { isValid: true };
+  }
+
+  if (isGitHubRawUrl(url)) {
+    return { isValid: true };
+  }
+
+  if (isGrafanaDocsUrl(url)) {
+    return { isValid: true };
+  }
+
+  if (isLocalhostUrl(url)) {
+    return { isValid: true };
+  }
+
+  return {
+    isValid: false,
+    errorMessage:
+      'URL must be from: interactive-learning.grafana.net, raw.githubusercontent.com, grafana.com/docs, or localhost',
+  };
 }
 
-const URLTesterContent = ({ children, onOpenDocsPage, placeholder, validator }: URLTesterContentProps) => {
+export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
   const styles = useStyles2(getURLTesterStyles);
   const [testUrl, setTestUrl] = useState('');
   const [testError, setTestError] = useState<string | null>(null);
   const [testSuccess, setTestSuccess] = useState(false);
 
-  // GitHub Tutorial Tester Handler
   const handleSubmit = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       const cleanedUrl = testUrl.trim();
-      const validation = validator?.(cleanedUrl);
+      const validation = validateContentUrl(cleanedUrl);
 
-      if (validation && !validation?.isValid) {
-        setTestError(validation?.errorMessage || 'Invalid URL format');
+      if (!validation.isValid) {
+        setTestError(validation.errorMessage || 'Invalid URL format');
         setTestSuccess(false);
         return;
       }
@@ -89,13 +98,13 @@ const URLTesterContent = ({ children, onOpenDocsPage, placeholder, validator }: 
       // Reset success state after 2 seconds
       setTimeout(() => setTestSuccess(false), 2000);
     },
-    [testUrl, onOpenDocsPage, validator]
+    [testUrl, onOpenDocsPage]
   );
 
   return (
     <form className={styles.formGroup} onSubmit={handleSubmit}>
       <label className={styles.label} htmlFor="urlTesterInput">
-        URL to Test
+        URL to test
       </label>
       <Input
         className={styles.selectorInput}
@@ -106,18 +115,16 @@ const URLTesterContent = ({ children, onOpenDocsPage, placeholder, validator }: 
           setTestError(null);
           setTestSuccess(false);
         }}
-        placeholder={placeholder}
+        placeholder="https://interactive-learning.grafana.net/tutorial-name"
       />
-      {children}
-      <Button
-        variant="primary"
-        size="sm"
-        type="submit"
-        disabled={!testUrl.trim() || !onOpenDocsPage}
-        icon="external-link-alt"
-      >
-        Test Tutorial in New Tab
-      </Button>
+      <p className={styles.helpText}>
+        Supported URLs: interactive-learning.grafana.net, raw.githubusercontent.com, grafana.com/docs, localhost
+      </p>
+      <Box marginTop={1}>
+        <Button variant="primary" size="sm" type="submit" disabled={!testUrl.trim() || !onOpenDocsPage}>
+          Test URL
+        </Button>
+      </Box>
 
       {testError && (
         <div className={`${styles.resultBox} ${styles.resultError}`}>
@@ -144,12 +151,12 @@ function extractTitleFromUrl(url: string): string {
     const pathSegments = urlObj.pathname.split('/').filter(Boolean);
     const lastPart = pathSegments[pathSegments.length - 1];
 
-    if (lastPart === `unstyled.html`) {
-      return pathSegments[pathSegments.length - 2];
+    if (lastPart === 'unstyled.html' || lastPart === 'content.json') {
+      return pathSegments[pathSegments.length - 2] || 'Tutorial';
     }
 
-    return lastPart;
-  } catch (error) {
-    return 'Documentation';
+    return lastPart || 'Tutorial';
+  } catch {
+    return 'Tutorial';
   }
 }
