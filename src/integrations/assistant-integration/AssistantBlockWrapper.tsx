@@ -1,3 +1,11 @@
+/**
+ * AssistantBlockWrapper
+ *
+ * A wrapper component that adds assistant-customization functionality
+ * to any child content. Unlike AssistantCustomizable which renders its own
+ * content, this renders children and overlays the customize button.
+ */
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -11,21 +19,22 @@ import {
 import { getDataSourceSrv, locationService } from '@grafana/runtime';
 import { getIsAssistantAvailable, useMockInlineAssistant } from './assistant-dev-mode';
 import { isAssistantDevModeEnabledGlobal } from '../../components/wysiwyg-editor/dev-mode';
-import { useAssistantCustomizableContext } from './AssistantCustomizableContext';
 import { reportAppInteraction, UserInteraction, buildAssistantCustomizableProperties } from '../../lib/analytics';
 import { createDatasourceMetadataTool, type DatasourceMetadataArtifact, isSupportedDatasourceType } from './tools';
 
-export interface AssistantCustomizableProps {
-  /** Default value from the HTML */
-  defaultValue: string;
+export interface AssistantBlockWrapperProps {
   /** Unique ID for this assistant element */
   assistantId: string;
   /** Type of content (query, config, etc.) */
   assistantType: string;
-  /** Whether to render inline or as a block */
-  inline: boolean;
+  /** Default value extracted from the wrapped block */
+  defaultValue: string;
+  /** Type of block being wrapped */
+  blockType: string;
   /** Current content URL for localStorage key */
   contentKey: string;
+  /** Child content to render */
+  children: React.ReactNode;
 }
 
 // REACT: Stable array reference to prevent context thrashing (R3)
@@ -34,61 +43,29 @@ const EMPTY_CONTEXT_DEPS: ChatContextItem[] = [];
 const getStyles = (theme: GrafanaTheme2) => ({
   wrapper: css({
     position: 'relative',
-    display: 'inline-block',
-  }),
-  blockWrapper: css({
-    position: 'relative',
     display: 'block',
   }),
-  inlineValue: css({
-    borderBottom: '2px dotted',
-    borderColor: 'rgb(143, 67, 179)', // Purple to match assistant button
-    cursor: 'pointer',
-    '&:hover': {
-      borderColor: 'rgb(163, 87, 199)', // Lighter purple on hover
-    },
-  }),
-  inlineValueCustomized: css({
-    borderBottom: '2px solid',
-    borderColor: theme.colors.success.border, // Green for customized
-    cursor: 'pointer',
-    '&:hover': {
-      borderColor: theme.colors.success.main,
-    },
-  }),
-  blockValue: css({
+  wrapperDefault: css({
     borderLeft: '3px dotted rgb(143, 67, 179)', // Purple to match assistant button
-    padding: theme.spacing(2),
-    cursor: 'pointer',
+    paddingLeft: theme.spacing(2),
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1),
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.shape.radius.default,
-    fontFamily: theme.typography.fontFamilyMonospace,
-    fontSize: theme.typography.bodySmall.fontSize,
-    overflow: 'auto',
     '&:hover': {
       borderLeftColor: 'rgb(163, 87, 199)', // Lighter purple on hover
     },
   }),
-  blockValueCustomized: css({
+  wrapperCustomized: css({
     borderLeft: `3px solid ${theme.colors.success.border}`, // Green for customized
-    padding: theme.spacing(2),
-    cursor: 'pointer',
+    paddingLeft: theme.spacing(2),
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1),
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: theme.shape.radius.default,
-    fontFamily: theme.typography.fontFamilyMonospace,
-    fontSize: theme.typography.bodySmall.fontSize,
-    overflow: 'auto',
     '&:hover': {
       borderLeftColor: theme.colors.success.main,
     },
   }),
   buttonContainer: css({
     position: 'absolute',
-    top: '-48px', // Position above the text
+    top: '-48px',
     left: '50%',
     transform: 'translateX(-50%)',
     zIndex: theme.zIndex.portal,
@@ -116,26 +93,26 @@ const getStyles = (theme: GrafanaTheme2) => ({
 });
 
 /**
- * Assistant Customizable Element Component
+ * Assistant Block Wrapper Component
  *
- * Displays default content with the ability to customize via Grafana Assistant.
- * Customizations are stored in localStorage and can be reverted.
+ * Wraps child content with assistant customization functionality.
+ * Shows customize button on hover, stores customizations in localStorage.
  */
-export function AssistantCustomizable({
-  defaultValue,
+export function AssistantBlockWrapper({
   assistantId,
   assistantType,
-  inline,
+  defaultValue,
+  blockType,
   contentKey,
-}: AssistantCustomizableProps) {
+  children,
+}: AssistantBlockWrapperProps) {
   const styles = useStyles2(getStyles);
-  const containerRef = useRef<HTMLDivElement | HTMLSpanElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Check if dev mode is enabled
   const devModeEnabled = isAssistantDevModeEnabledGlobal();
 
   // Use the inline assistant hook for generating customized content
-  // In dev mode, use mock implementation; otherwise use real hook
   const realInlineAssistant = useInlineAssistant();
   const mockInlineAssistant = useMockInlineAssistant();
   const { generate, isGenerating, reset } = devModeEnabled ? mockInlineAssistant : realInlineAssistant;
@@ -145,18 +122,7 @@ export function AssistantCustomizable({
     return `pathfinder-assistant-${contentKey}-${assistantId}`;
   }, [contentKey, assistantId]);
 
-  // Load initial value from localStorage using lazy initialization
-  const getInitialValue = useCallback(() => {
-    try {
-      const storageKey = `pathfinder-assistant-${contentKey}-${assistantId}`;
-      const storedValue = localStorage.getItem(storageKey);
-      return storedValue || defaultValue;
-    } catch (error) {
-      console.warn('[AssistantCustomizable] Failed to load from localStorage:', error);
-      return defaultValue;
-    }
-  }, [contentKey, assistantId, defaultValue]);
-
+  // Check if content has been customized
   const getInitialCustomizedState = useCallback(() => {
     try {
       const storageKey = `pathfinder-assistant-${contentKey}-${assistantId}`;
@@ -167,31 +133,14 @@ export function AssistantCustomizable({
     }
   }, [contentKey, assistantId]);
 
-  // State management with lazy initialization
-  const [currentValue, setCurrentValue] = useState(getInitialValue);
+  // State management
   const [isCustomized, setIsCustomized] = useState(getInitialCustomizedState);
   const [isHovered, setIsHovered] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const [isAssistantAvailable, setIsAssistantAvailable] = useState(false);
-  const wrapperRef = useRef<HTMLSpanElement | HTMLDivElement>(null);
-  const isInitialMount = useRef(true);
 
-  // Provide page context for datasource - the assistant will automatically use this
+  // Provide page context for datasource
   const setPageContext = useProvidePageContext('/explore', EMPTY_CONTEXT_DEPS);
-
-  // Get context from parent InteractiveStep (if available)
-  const customizableContext = useAssistantCustomizableContext();
-
-  // Update parent interactive step's targetValue on mount if customized (using React context)
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-
-      if (isCustomized && currentValue !== defaultValue && customizableContext) {
-        customizableContext.updateTargetValue(currentValue);
-      }
-    }
-  }, [isCustomized, currentValue, defaultValue, customizableContext]);
 
   // Check if assistant is available
   useEffect(() => {
@@ -199,45 +148,22 @@ export function AssistantCustomizable({
       setIsAssistantAvailable(available);
     });
 
+    // REACT: cleanup subscription (R1)
     return () => {
       subscription.unsubscribe();
     };
   }, []);
 
-  // Save customized value to localStorage
-  // Note: This function is available for future use when assistant API callback is implemented
-  // const saveCustomizedValue = useCallback((value: string) => {
-  //   try {
-  //     const storageKey = getStorageKey();
-  //     localStorage.setItem(storageKey, value);
-  //     setCurrentValue(value);
-  //     setIsCustomized(true);
-  //   } catch (error) {
-  //     console.warn('[AssistantCustomizable] Failed to save to localStorage:', error);
-  //   }
-  // }, [getStorageKey]);
+  // State to store datasource metadata artifact from tool
+  const [metadataArtifact, setMetadataArtifact] = useState<DatasourceMetadataArtifact | null>(null);
 
-  // Save customized value to localStorage
-  const saveCustomizedValue = useCallback(
-    (value: string) => {
-      try {
-        const storageKey = getStorageKey();
-        localStorage.setItem(storageKey, value);
-        setCurrentValue(value);
-        setIsCustomized(true);
-
-        // Update parent interactive step's targetValue using React context
-        if (customizableContext) {
-          customizableContext.updateTargetValue(value);
-        }
-      } catch (error) {
-        console.warn('[AssistantCustomizable] Failed to save to localStorage:', error);
-      }
-    },
-    [getStorageKey, customizableContext]
+  // REACT: memoize tool creation to prevent recreation on each render (R3)
+  const datasourceMetadataTool = useMemo(
+    () => createDatasourceMetadataTool((artifact) => setMetadataArtifact(artifact)),
+    []
   );
 
-  // Get datasource context for assistant and provide it via page context
+  // Get datasource context for assistant
   const getDatasourceContext = useCallback(async () => {
     try {
       const dataSourceSrv = getDataSourceSrv();
@@ -281,36 +207,25 @@ export function AssistantCustomizable({
           : null,
       };
     } catch (error) {
-      console.warn('[AssistantCustomizable] Failed to fetch datasources:', error);
+      console.warn('[AssistantBlockWrapper] Failed to fetch datasources:', error);
       return { dataSources: [], currentDatasource: null };
     }
   }, [setPageContext]);
 
-  // Build analytics context for this customizable element
+  // Build analytics context
   const getAnalyticsContext = useCallback(() => {
-    return { assistantId, assistantType, contentKey, inline };
-  }, [assistantId, assistantType, contentKey, inline]);
-
-  // State to store datasource metadata artifact from tool
-  const [metadataArtifact, setMetadataArtifact] = useState<DatasourceMetadataArtifact | null>(null);
-
-  // REACT: memoize tool creation to prevent recreation on each render (R3)
-  const datasourceMetadataTool = useMemo(
-    () => createDatasourceMetadataTool((artifact) => setMetadataArtifact(artifact)),
-    []
-  );
+    return { assistantId, assistantType, contentKey, inline: false };
+  }, [assistantId, assistantType, contentKey]);
 
   // Handle customize button click
   const handleCustomize = useCallback(async () => {
-    // Get datasource context
     const dsContext = await getDatasourceContext();
 
     if (!dsContext.currentDatasource) {
-      console.error('[AssistantCustomizable] No datasource available');
+      console.error('[AssistantBlockWrapper] No datasource available');
       return;
     }
 
-    // Build datasource context for the prompt
     const datasourceType = dsContext.currentDatasource.type;
     const hasSupportedDatasource = isSupportedDatasourceType(datasourceType);
 
@@ -319,15 +234,14 @@ export function AssistantCustomizable({
       UserInteraction.AssistantCustomizeClick,
       buildAssistantCustomizableProperties(getAnalyticsContext(), {
         datasource_type: datasourceType,
+        block_type: blockType,
       })
     );
 
-    // For supported datasources (Prometheus, Loki, Tempo, Pyroscope), use the unified tool
-    // For other datasources, fall back to the simple prompt approach
     const tools = hasSupportedDatasource ? [datasourceMetadataTool] : [];
 
     const prompt = hasSupportedDatasource
-      ? `Customize this ${assistantType} using real data from my ${datasourceType} datasource.
+      ? `Customize this ${assistantType} (${blockType} block) using real data from my ${datasourceType} datasource.
 
 Original content:
 ${defaultValue}
@@ -337,7 +251,7 @@ Then adapt the content to use actual values that exist in my environment.
 Keep the same pattern and purpose as the original.
 
 Return only the customized content text.`
-      : `Customize this ${assistantType} for a ${datasourceType} datasource using realistic values.
+      : `Customize this ${assistantType} (${blockType} block) for a ${datasourceType} datasource using realistic values.
 
 Original content:
 ${defaultValue}
@@ -365,7 +279,7 @@ Output only the content - no markdown, no explanation.`;
     // Generate with inline assistant
     await generate({
       prompt,
-      origin: 'grafana-pathfinder-app/assistant-customizable',
+      origin: 'grafana-pathfinder-app/assistant-block-wrapper',
       systemPrompt,
       tools,
       onComplete: (text) => {
@@ -375,34 +289,42 @@ Output only the content - no markdown, no explanation.`;
         customized = customized.trim();
 
         if (customized && customized !== defaultValue) {
-          saveCustomizedValue(customized);
-          setIsPinned(false);
+          // Save to localStorage
+          try {
+            const storageKey = getStorageKey();
+            localStorage.setItem(storageKey, customized);
+            setIsCustomized(true);
+            setIsPinned(false);
 
-          // Track successful customization with metadata artifact info
-          const labelCount = metadataArtifact?.metadata.labels
-            ? Object.keys(metadataArtifact.metadata.labels).length
-            : 0;
+            // Track successful customization
+            const labelCount = metadataArtifact?.metadata.labels
+              ? Object.keys(metadataArtifact.metadata.labels).length
+              : 0;
 
-          reportAppInteraction(
-            UserInteraction.AssistantCustomizeSuccess,
-            buildAssistantCustomizableProperties(getAnalyticsContext(), {
-              datasource_type: datasourceType,
-              original_length: defaultValue.length,
-              customized_length: customized.length,
-              used_real_metadata: hasSupportedDatasource && metadataArtifact !== null,
-              available_labels_count: labelCount,
-            })
-          );
+            reportAppInteraction(
+              UserInteraction.AssistantCustomizeSuccess,
+              buildAssistantCustomizableProperties(getAnalyticsContext(), {
+                datasource_type: datasourceType,
+                block_type: blockType,
+                original_length: defaultValue.length,
+                customized_length: customized.length,
+                used_real_metadata: hasSupportedDatasource && metadataArtifact !== null,
+                available_labels_count: labelCount,
+              })
+            );
+          } catch (error) {
+            console.warn('[AssistantBlockWrapper] Failed to save to localStorage:', error);
+          }
         }
       },
       onError: (err) => {
-        console.error('[AssistantCustomizable] Generation failed:', err);
+        console.error('[AssistantBlockWrapper] Generation failed:', err);
 
-        // Track customization error
         reportAppInteraction(
           UserInteraction.AssistantCustomizeError,
           buildAssistantCustomizableProperties(getAnalyticsContext(), {
             datasource_type: datasourceType,
+            block_type: blockType,
             error_message: err instanceof Error ? err.message : 'Unknown error',
           })
         );
@@ -410,9 +332,10 @@ Output only the content - no markdown, no explanation.`;
     });
   }, [
     assistantType,
+    blockType,
     defaultValue,
     generate,
-    saveCustomizedValue,
+    getStorageKey,
     getDatasourceContext,
     getAnalyticsContext,
     datasourceMetadataTool,
@@ -423,30 +346,21 @@ Output only the content - no markdown, no explanation.`;
   const handleRevert = useCallback(() => {
     try {
       const storageKey = getStorageKey();
-      const previousValue = currentValue; // Capture before clearing
       localStorage.removeItem(storageKey);
-      setCurrentValue(defaultValue);
       setIsCustomized(false);
       setIsPinned(false);
-      reset(); // Clear any assistant state
+      reset();
 
-      // Restore parent interactive step's targetValue to original using React context
-      if (customizableContext) {
-        customizableContext.updateTargetValue(defaultValue);
-      }
-
-      // Track revert action
       reportAppInteraction(
         UserInteraction.AssistantRevertClick,
         buildAssistantCustomizableProperties(getAnalyticsContext(), {
-          reverted_from_length: previousValue.length,
-          reverted_to_length: defaultValue.length,
+          block_type: blockType,
         })
       );
     } catch (error) {
-      console.warn('[AssistantCustomizable] Failed to revert:', error);
+      console.warn('[AssistantBlockWrapper] Failed to revert:', error);
     }
-  }, [getStorageKey, defaultValue, reset, customizableContext, currentValue, getAnalyticsContext]);
+  }, [getStorageKey, reset, getAnalyticsContext, blockType]);
 
   // Mouse handlers
   const handleMouseEnter = useCallback(() => {
@@ -459,8 +373,7 @@ Output only the content - no markdown, no explanation.`;
     }
   }, [isPinned]);
 
-  // Click handler to pin/unpin the button
-  const handleTextClick = useCallback(() => {
+  const handleClick = useCallback(() => {
     setIsPinned((prev) => !prev);
   }, []);
 
@@ -478,6 +391,7 @@ Output only the content - no markdown, no explanation.`;
     };
 
     document.addEventListener('mousedown', handleClickOutside);
+    // REACT: cleanup event listener (R1)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
@@ -486,7 +400,7 @@ Output only the content - no markdown, no explanation.`;
   // Show button if hovered OR pinned, and assistant is available
   const showButton = (isHovered || isPinned) && isAssistantAvailable;
 
-  // Render button (shared between inline and block)
+  // Render button
   const renderButton = () => {
     if (!showButton && !isGenerating) {
       return null;
@@ -523,38 +437,16 @@ Output only the content - no markdown, no explanation.`;
     );
   };
 
-  // Render inline version
-  if (inline) {
-    return (
-      <span className={styles.wrapper} ref={wrapperRef as React.RefObject<HTMLSpanElement>}>
-        <span
-          ref={containerRef as React.RefObject<HTMLSpanElement>}
-          className={isCustomized ? styles.inlineValueCustomized : styles.inlineValue}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-          onClick={handleTextClick}
-          title={isCustomized ? 'Customized by Assistant (click to revert)' : 'Click to customize'}
-        >
-          {currentValue}
-        </span>
-        {renderButton()}
-      </span>
-    );
-  }
-
-  // Render block version
   return (
-    <div className={styles.blockWrapper} ref={wrapperRef as React.RefObject<HTMLDivElement>}>
-      <div
-        ref={containerRef as React.RefObject<HTMLDivElement>}
-        className={isCustomized ? styles.blockValueCustomized : styles.blockValue}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        onClick={handleTextClick}
-        title={isCustomized ? 'Customized (click to revert)' : 'Click to customize'}
-      >
-        <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{currentValue}</pre>
-      </div>
+    <div
+      ref={wrapperRef}
+      className={`${styles.wrapper} ${isCustomized ? styles.wrapperCustomized : styles.wrapperDefault}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onClick={handleClick}
+      title={isCustomized ? 'Customized by Assistant (click to revert)' : 'Click to customize with Assistant'}
+    >
+      {children}
       {renderButton()}
     </div>
   );

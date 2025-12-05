@@ -46,7 +46,8 @@ export type JsonBlock =
   | JsonGuidedBlock
   | JsonImageBlock
   | JsonVideoBlock
-  | JsonQuizBlock;
+  | JsonQuizBlock
+  | JsonAssistantBlock;
 
 // ============ CONTENT BLOCKS ============
 
@@ -98,6 +99,21 @@ export interface JsonVideoBlock {
   provider?: 'youtube' | 'native';
   /** Video title for accessibility */
   title?: string;
+}
+
+/**
+ * Assistant wrapper block for AI-customizable content.
+ * Wraps multiple child blocks, each getting their own customize button.
+ * Uses Grafana Assistant to customize content based on user's datasources and environment.
+ */
+export interface JsonAssistantBlock {
+  type: 'assistant';
+  /** Unique ID prefix for wrapped elements (auto-generated if not provided) */
+  assistantId?: string;
+  /** Type of content - affects AI prompts and customization behavior */
+  assistantType?: 'query' | 'config' | 'code' | 'text';
+  /** Child blocks to wrap with assistant functionality */
+  blocks: JsonBlock[];
 }
 
 // ============ SECTION BLOCK ============
@@ -334,4 +350,11 @@ export function isVideoBlock(block: JsonBlock): block is JsonVideoBlock {
  */
 export function isQuizBlock(block: JsonBlock): block is JsonQuizBlock {
   return block.type === 'quiz';
+}
+
+/**
+ * Type guard for JsonAssistantBlock
+ */
+export function isAssistantBlock(block: JsonBlock): block is JsonAssistantBlock {
+  return block.type === 'assistant';
 }

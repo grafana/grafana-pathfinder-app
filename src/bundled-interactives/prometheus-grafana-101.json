@@ -242,8 +242,8 @@
               "requirements": ["exists-reftarget"]
             },
             {
-              "action": "button",
-              "reftarget": "prometheus",
+              "action": "highlight",
+              "reftarget": "div[data-testid=\"data-source-card\"]:has(small:contains(\"Prometheus\")) button:nth-match(1)",
               "requirements": ["exists-reftarget"]
             }
           ]

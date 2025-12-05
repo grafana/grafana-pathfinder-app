@@ -19,6 +19,7 @@ import type {
   JsonImageBlock,
   JsonVideoBlock,
   JsonQuizBlock,
+  JsonAssistantBlock,
   JsonStep,
 } from '../types/json-guide.types';
 
@@ -76,6 +77,7 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
   let hasCodeBlocks = false;
   let hasImages = false;
   let hasVideos = false;
+  let hasAssistantElements = false;
 
   for (let i = 0; i < guide.blocks.length; i++) {
     const block = guide.blocks[i];
@@ -95,6 +97,9 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
       }
       if (result.hasVideo) {
         hasVideos = true;
+      }
+      if (result.hasAssistant) {
+        hasAssistantElements = true;
       }
       if (result.warning) {
         warnings.push(result.warning);
@@ -116,7 +121,7 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
     hasExpandableTables: false,
     hasImages,
     hasVideos,
-    hasAssistantElements: false,
+    hasAssistantElements,
   };
 
   return {
@@ -133,6 +138,7 @@ interface ConversionResult {
   hasCode?: boolean;
   hasImage?: boolean;
   hasVideo?: boolean;
+  hasAssistant?: boolean;
   warning?: string;
 }
 
@@ -159,6 +165,8 @@ function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: s
       return convertVideoBlock(block, path);
     case 'quiz':
       return convertQuizBlock(block, path);
+    case 'assistant':
+      return convertAssistantBlock(block, path, baseUrl);
     default:
       return {
         element: null,
@@ -804,6 +812,90 @@ function convertQuizBlock(block: JsonQuizBlock, path: string): ConversionResult 
       children: questionElements,
     },
     hasInteractive: true,
+  };
+}
+
+/**
+ * Extract the customizable default value from a block based on its type.
+ * This value is what gets stored in localStorage and customized by the assistant.
+ */
+function extractDefaultValueFromBlock(block: JsonBlock): string {
+  switch (block.type) {
+    case 'markdown':
+    case 'html':
+      return block.content;
+    case 'interactive':
+      // Prefer targetvalue for queries, fall back to content
+      return block.targetvalue || block.content;
+    case 'multistep':
+    case 'guided':
+      return block.content;
+    case 'quiz':
+      return block.question;
+    default:
+      return '';
+  }
+}
+
+/**
+ * Convert assistant wrapper block to wrapped child blocks.
+ * Each child block gets its own assistant-customizable wrapper.
+ * Enables AI-powered customization of content based on user's datasources.
+ */
+function convertAssistantBlock(block: JsonAssistantBlock, path: string, baseUrl?: string): ConversionResult {
+  const wrappedChildren: ParsedElement[] = [];
+  let hasInteractive = false;
+  let hasCode = false;
+  let hasImage = false;
+  let hasVideo = false;
+
+  for (let i = 0; i < block.blocks.length; i++) {
+    const childBlock = block.blocks[i];
+    const childPath = `${path}.blocks[${i}]`;
+
+    // Convert child block normally
+    const childResult = convertBlockToParsedElement(childBlock, childPath, baseUrl);
+
+    if (childResult.element) {
+      // Wrap with assistant-block-wrapper
+      const wrappedElement: ParsedElement = {
+        type: 'assistant-block-wrapper',
+        props: {
+          assistantId: `${block.assistantId || path}-${i}`,
+          assistantType: block.assistantType || 'query',
+          defaultValue: extractDefaultValueFromBlock(childBlock),
+          blockType: childBlock.type,
+        },
+        children: [childResult.element],
+      };
+      wrappedChildren.push(wrappedElement);
+    }
+
+    if (childResult.hasInteractive) {
+      hasInteractive = true;
+    }
+    if (childResult.hasCode) {
+      hasCode = true;
+    }
+    if (childResult.hasImage) {
+      hasImage = true;
+    }
+    if (childResult.hasVideo) {
+      hasVideo = true;
+    }
+  }
+
+  return {
+    element: {
+      type: 'div',
+      props: { className: 'assistant-wrapper' },
+      children: wrappedChildren,
+    },
+    hasAssistant: true,
+    hasInteractive,
+    hasCode,
+    hasImage,
+    hasVideo,
   };
 }
 
