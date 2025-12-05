@@ -12,7 +12,7 @@ import {
   isGrafanaDocsUrl,
   isYouTubeDomain,
   isVimeoDomain,
-  isAllowedGitHubRawUrl,
+  isInteractiveLearningUrl,
 } from './url-validator';
 
 describe('Security: XSS Prevention with DOMPurify', () => {
@@ -161,60 +161,46 @@ describe('Security: URL Validation - Domain Hijacking Prevention', () => {
     });
   });
 
-  describe('isAllowedGitHubRawUrl', () => {
-    const allowedRepos = [
-      {
-        repo: '/grafana/interactive-tutorials/',
-        allowedRefs: ['main'], // SECURITY: Only main branch allowed
-      },
-    ];
-
-    it('should accept URLs from allowed repository and branch', () => {
-      const validUrl = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.html';
-      expect(isAllowedGitHubRawUrl(validUrl, allowedRepos)).toBe(true);
+  describe('isInteractiveLearningUrl', () => {
+    it('should accept URLs from interactive-learning.grafana.net', () => {
+      const validUrl = 'https://interactive-learning.grafana.net/tutorial/content.json';
+      expect(isInteractiveLearningUrl(validUrl)).toBe(true);
     });
 
-    it('should REJECT URLs from other repositories', () => {
-      const otherRepo = 'https://raw.githubusercontent.com/evil/repo/main/tutorial.html';
-      expect(isAllowedGitHubRawUrl(otherRepo, allowedRepos)).toBe(false);
+    it('should accept URLs from interactive-learning.grafana-dev.net', () => {
+      const validUrl = 'https://interactive-learning.grafana-dev.net/tutorial/content.json';
+      expect(isInteractiveLearningUrl(validUrl)).toBe(true);
     });
 
-    it('should REJECT individual user repositories (meeting requirement)', () => {
-      const userRepo1 = 'https://raw.githubusercontent.com/moxious/tutorials/main/test.html';
-      const userRepo2 = 'https://raw.githubusercontent.com/Jayclifford345/tutorials/main/test.html';
+    it('should REJECT domain hijacking attempts', () => {
+      const hijack1 = 'https://interactive-learning.grafana.net.evil.com/tutorial/';
+      const hijack2 = 'https://a-interactive-learning.grafana.net/tutorial/';
+      const hijack3 = 'https://interactive-learning.grafana-dev.net.evil.com/tutorial/';
 
-      expect(isAllowedGitHubRawUrl(userRepo1, allowedRepos)).toBe(false);
-      expect(isAllowedGitHubRawUrl(userRepo2, allowedRepos)).toBe(false);
+      expect(isInteractiveLearningUrl(hijack1)).toBe(false);
+      expect(isInteractiveLearningUrl(hijack2)).toBe(false);
+      expect(isInteractiveLearningUrl(hijack3)).toBe(false);
     });
 
-    it('should REJECT non-GitHub domains', () => {
-      const nonGithub = 'https://evil.com/grafana/interactive-tutorials/main/test.html';
-      expect(isAllowedGitHubRawUrl(nonGithub, allowedRepos)).toBe(false);
+    it('should REJECT other domains', () => {
+      const otherDomain1 = 'https://evil.com/tutorial/';
+      const otherDomain2 = 'https://grafana.com/docs/';
+
+      expect(isInteractiveLearningUrl(otherDomain1)).toBe(false);
+      expect(isInteractiveLearningUrl(otherDomain2)).toBe(false);
     });
 
     it('should require https protocol', () => {
-      const httpUrl = 'http://raw.githubusercontent.com/grafana/interactive-tutorials/main/test.html';
-      expect(isAllowedGitHubRawUrl(httpUrl, allowedRepos)).toBe(false);
+      const httpUrl = 'http://interactive-learning.grafana.net/tutorial/';
+      expect(isInteractiveLearningUrl(httpUrl)).toBe(false);
     });
 
-    it('should REJECT PR branches (SECURITY FIX)', () => {
-      const prBranch =
-        'https://raw.githubusercontent.com/grafana/interactive-tutorials/attacker-pr-branch/exploit.html';
-      expect(isAllowedGitHubRawUrl(prBranch, allowedRepos)).toBe(false);
-    });
+    it('should accept URLs with any path', () => {
+      const url1 = 'https://interactive-learning.grafana.net/guide/step1/content.json';
+      const url2 = 'https://interactive-learning.grafana.net/tutorials/advanced/unstyled.html';
 
-    it('should REJECT arbitrary commit hashes (SECURITY FIX)', () => {
-      const commitHash =
-        'https://raw.githubusercontent.com/grafana/interactive-tutorials/45eae82874d8f9d3899dbf6345759d9ae23f7815/exploit.html';
-      expect(isAllowedGitHubRawUrl(commitHash, allowedRepos)).toBe(false);
-    });
-
-    it('should REJECT develop/staging branches (SECURITY FIX)', () => {
-      const developBranch = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/develop/tutorial.html';
-      const stagingBranch = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/staging/tutorial.html';
-
-      expect(isAllowedGitHubRawUrl(developBranch, allowedRepos)).toBe(false);
-      expect(isAllowedGitHubRawUrl(stagingBranch, allowedRepos)).toBe(false);
+      expect(isInteractiveLearningUrl(url1)).toBe(true);
+      expect(isInteractiveLearningUrl(url2)).toBe(true);
     });
   });
 });
@@ -240,9 +226,9 @@ describe('Security: Interactive Content Source Validation', () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it('should accept interactive content from grafana/interactive-tutorials repo', () => {
+  it('should accept interactive content from interactive-learning.grafana.net', () => {
     const html = '<li class="interactive" data-targetaction="button" data-reftarget="Save">Click</li>';
-    const baseUrl = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/test/unstyled.html';
+    const baseUrl = 'https://interactive-learning.grafana.net/tutorial/content.json';
 
     const result = parseHTMLToComponents(html, baseUrl);
 
@@ -250,9 +236,19 @@ describe('Security: Interactive Content Source Validation', () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it('should REJECT interactive content from untrusted GitHub repos', () => {
+  it('should accept interactive content from interactive-learning.grafana-dev.net', () => {
     const html = '<li class="interactive" data-targetaction="button" data-reftarget="Save">Click</li>';
-    const baseUrl = 'https://raw.githubusercontent.com/evil/malicious-tutorials/main/hack.html';
+    const baseUrl = 'https://interactive-learning.grafana-dev.net/tutorial/unstyled.html';
+
+    const result = parseHTMLToComponents(html, baseUrl);
+
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('should REJECT interactive content from untrusted domains', () => {
+    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Save">Click</li>';
+    const baseUrl = 'https://evil.com/tutorials/hack.html';
 
     const result = parseHTMLToComponents(html, baseUrl);
 
@@ -263,20 +259,6 @@ describe('Security: Interactive Content Source Validation', () => {
         message: 'Interactive content from untrusted source rejected',
       })
     );
-  });
-
-  it('should REJECT interactive content from individual user repos (meeting requirement)', () => {
-    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Delete">Click</li>';
-
-    // These were explicitly removed per meeting commitment
-    const userRepo1 = 'https://raw.githubusercontent.com/moxious/tutorials/main/test.html';
-    const userRepo2 = 'https://raw.githubusercontent.com/Jayclifford345/tutorials/main/test.html';
-
-    const result1 = parseHTMLToComponents(html, userRepo1);
-    const result2 = parseHTMLToComponents(html, userRepo2);
-
-    expect(result1.isValid).toBe(false);
-    expect(result2.isValid).toBe(false);
   });
 
   it('should REJECT interactive content from evil.com', () => {
@@ -301,7 +283,7 @@ describe('Security: Interactive Content Source Validation', () => {
       // Mock dev mode as enabled
       jest.doMock('../components/wysiwyg-editor/dev-mode', () => ({
         isDevModeEnabled: () => true,
-        isDevModeEnabledGlobal: () => true, // NEW: Mock global check
+        isDevModeEnabledGlobal: () => true,
         enableDevMode: jest.fn(),
         disableDevMode: jest.fn(),
         toggleDevMode: jest.fn(),
@@ -310,35 +292,6 @@ describe('Security: Interactive Content Source Validation', () => {
       const { parseHTMLToComponents: parseWithDevMode } = require('../docs-retrieval/html-parser');
 
       localhostUrls.forEach((url) => {
-        const result = parseWithDevMode(html, url);
-        expect(result.isValid).toBe(true);
-        expect(result.errors).toHaveLength(0);
-      });
-    });
-  });
-
-  it('should ALLOW interactive content from any GitHub raw URL in dev mode', () => {
-    const html = '<li class="interactive" data-targetaction="button" data-reftarget="Test">Click</li>';
-    const personalRepoUrls = [
-      'https://raw.githubusercontent.com/Jayclifford345/interactive-tutorials/main/test/unstyled.html',
-      'https://raw.githubusercontent.com/moxious/tutorials/main/demo.html',
-      'https://raw.githubusercontent.com/someuser/somerepo/branch/path/file.html',
-    ];
-
-    // Reimport with mocked dev mode
-    jest.isolateModules(() => {
-      // Mock dev mode as enabled
-      jest.doMock('../components/wysiwyg-editor/dev-mode', () => ({
-        isDevModeEnabled: () => true,
-        isDevModeEnabledGlobal: () => true, // NEW: Mock global check
-        enableDevMode: jest.fn(),
-        disableDevMode: jest.fn(),
-        toggleDevMode: jest.fn(),
-      }));
-
-      const { parseHTMLToComponents: parseWithDevMode } = require('../docs-retrieval/html-parser');
-
-      personalRepoUrls.forEach((url) => {
         const result = parseWithDevMode(html, url);
         expect(result.isValid).toBe(true);
         expect(result.errors).toHaveLength(0);
@@ -374,7 +327,7 @@ describe('Security: Interactive Content Source Validation', () => {
 
   it('should allow testing mode bypass when explicitly enabled', () => {
     const html = '<li class="interactive" data-targetaction="button" data-reftarget="Test">Click</li>';
-    const baseUrl = 'https://raw.githubusercontent.com/testuser/test-repo/main/test.html';
+    const baseUrl = 'https://untrusted.example.com/test.html';
 
     // With bypass enabled (debug panel testing)
     const result = parseHTMLToComponents(html, baseUrl, true);
@@ -457,65 +410,45 @@ describe('Security: URL Parsing (not string matching)', () => {
   });
 });
 
-describe('Security: Meeting Compliance - GitHub Repository Restriction', () => {
-  const allowedRepos = [
-    {
-      repo: '/grafana/interactive-tutorials/',
-      allowedRefs: ['main'], // SECURITY: Only main branch allowed
-    },
-  ];
-
-  it('should ONLY allow grafana/interactive-tutorials repository with main branch', () => {
-    // This should be the ONLY accepted GitHub repo + branch combination
-    const validUrl = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.html';
-    expect(isAllowedGitHubRawUrl(validUrl, allowedRepos)).toBe(true);
+describe('Security: Interactive Learning Domain Validation', () => {
+  it('should ONLY allow interactive-learning.grafana.net domain', () => {
+    const validUrl = 'https://interactive-learning.grafana.net/tutorial/content.json';
+    expect(isInteractiveLearningUrl(validUrl)).toBe(true);
   });
 
-  it('should REJECT individual user repositories (meeting commitment)', () => {
-    // These were explicitly removed per meeting commitment
-    const moxiousRepo = 'https://raw.githubusercontent.com/moxious/tutorials/main/test.html';
-    const jaycliffRepo = 'https://raw.githubusercontent.com/Jayclifford345/tutorials/main/test.html';
-
-    expect(isAllowedGitHubRawUrl(moxiousRepo, allowedRepos)).toBe(false);
-    expect(isAllowedGitHubRawUrl(jaycliffRepo, allowedRepos)).toBe(false);
+  it('should ONLY allow interactive-learning.grafana-dev.net domain', () => {
+    const validUrl = 'https://interactive-learning.grafana-dev.net/tutorial/content.json';
+    expect(isInteractiveLearningUrl(validUrl)).toBe(true);
   });
 
-  it('should REJECT other grafana repositories', () => {
-    // Even other grafana repos should be rejected
-    const grafanaMain = 'https://raw.githubusercontent.com/grafana/grafana/main/README.md';
-    const grafanaOther = 'https://raw.githubusercontent.com/grafana/other-repo/main/file.html';
+  it('should REJECT domain hijacking attempts', () => {
+    const hijackAttempts = [
+      'https://interactive-learning.grafana.net.evil.com/tutorial/',
+      'https://a-interactive-learning.grafana.net/tutorial/',
+      'https://interactive-learning.grafana-dev.net.evil.com/tutorial/',
+      'https://evil.interactive-learning.grafana.net/tutorial/',
+    ];
 
-    expect(isAllowedGitHubRawUrl(grafanaMain, allowedRepos)).toBe(false);
-    expect(isAllowedGitHubRawUrl(grafanaOther, allowedRepos)).toBe(false);
+    hijackAttempts.forEach((url) => {
+      expect(isInteractiveLearningUrl(url)).toBe(false);
+    });
   });
 
-  it('should REJECT PR branch attacks on allowed repository (CRITICAL SECURITY FIX)', () => {
-    // The exact attack vector reported by the user:
-    // https://github.com/grafana/interactive-tutorials/blob/45eae82874d8f9d3899dbf6345759d9ae23f7815/README.md
-    // Attacker opens a PR with malicious content, then uses that PR's commit hash
+  it('should REJECT other domains', () => {
+    const otherDomains = [
+      'https://grafana.com/docs/tutorial/',
+      'https://evil.com/tutorial/',
+      'https://learning.grafana.net/tutorial/',
+    ];
 
-    const prBranchAttack =
-      'https://raw.githubusercontent.com/grafana/interactive-tutorials/attacker-pr-branch/exploit.html';
-    const commitHashAttack =
-      'https://raw.githubusercontent.com/grafana/interactive-tutorials/45eae82874d8f9d3899dbf6345759d9ae23f7815/exploit.html';
-    const featureBranchAttack =
-      'https://raw.githubusercontent.com/grafana/interactive-tutorials/feature/malicious/exploit.html';
-
-    expect(isAllowedGitHubRawUrl(prBranchAttack, allowedRepos)).toBe(false);
-    expect(isAllowedGitHubRawUrl(commitHashAttack, allowedRepos)).toBe(false);
-    expect(isAllowedGitHubRawUrl(featureBranchAttack, allowedRepos)).toBe(false);
+    otherDomains.forEach((url) => {
+      expect(isInteractiveLearningUrl(url)).toBe(false);
+    });
   });
 
-  it('should only allow explicitly whitelisted branches/tags', () => {
-    // Even legitimate-sounding branches should be rejected if not in allowedRefs
-    const developBranch = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/develop/tutorial.html';
-    const stagingBranch = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/staging/tutorial.html';
-    const releaseBranch =
-      'https://raw.githubusercontent.com/grafana/interactive-tutorials/release/v1.0.0/tutorial.html';
-
-    expect(isAllowedGitHubRawUrl(developBranch, allowedRepos)).toBe(false);
-    expect(isAllowedGitHubRawUrl(stagingBranch, allowedRepos)).toBe(false);
-    expect(isAllowedGitHubRawUrl(releaseBranch, allowedRepos)).toBe(false);
+  it('should require HTTPS protocol', () => {
+    const httpUrl = 'http://interactive-learning.grafana.net/tutorial/';
+    expect(isInteractiveLearningUrl(httpUrl)).toBe(false);
   });
 });
 

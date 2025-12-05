@@ -11,7 +11,7 @@
  */
 
 import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
-import { ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../constants';
+import { ALLOWED_GRAFANA_DOCS_HOSTNAMES, ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES } from '../constants';
 
 /**
  * Check if URL uses HTTPS protocol
@@ -76,7 +76,7 @@ export function isLocalhostUrl(urlString: string): boolean {
 /**
  * Check if URL is allowed based on security rules and dev mode
  *
- * In production: Only Grafana docs and bundled content
+ * In production: Only Grafana docs, interactive learning domains, and bundled content
  * In dev mode: Also allows localhost URLs for testing, BUT ONLY if they have valid docs paths
  *
  * @param urlString - The URL to validate
@@ -90,6 +90,11 @@ export function isAllowedContentUrl(urlString: string): boolean {
 
   // Grafana docs are always allowed
   if (isGrafanaDocsUrl(urlString)) {
+    return true;
+  }
+
+  // Interactive learning domains are always allowed
+  if (isInteractiveLearningUrl(urlString)) {
     return true;
   }
 
@@ -221,61 +226,6 @@ export function isVimeoDomain(urlString: string): boolean {
 }
 
 /**
- * Check if URL is a valid GitHub raw content URL from allowed repositories
- *
- * SECURITY: Validates both repository AND branch/ref to prevent PR/commit-based attacks
- * Format: https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}
- *
- * @param urlString - The URL to validate
- * @param allowedRepos - Array of allowed repos with specific branches/refs
- * @returns true if valid GitHub URL from allowed repo AND ref, false otherwise
- */
-export function isAllowedGitHubRawUrl(
-  urlString: string,
-  allowedRepos: Array<{ repo: string; allowedRefs: string[] }>
-): boolean {
-  const url = parseUrlSafely(urlString);
-  if (!url) {
-    return false;
-  }
-
-  // Only allow https protocol for GitHub
-  if (!requiresHttps(url)) {
-    return false;
-  }
-
-  // Check hostname is exactly raw.githubusercontent.com
-  if (url.hostname !== 'raw.githubusercontent.com') {
-    return false;
-  }
-
-  // Parse pathname: /{owner}/{repo}/{ref}/{path...}
-  // Example: /grafana/interactive-tutorials/main/tutorial.md
-  const pathParts = url.pathname.split('/').filter(Boolean);
-
-  if (pathParts.length < 3) {
-    // Need at least: owner, repo, ref
-    return false;
-  }
-
-  const owner = pathParts[0];
-  const repo = pathParts[1];
-  const ref = pathParts[2];
-  const repoPath = `/${owner}/${repo}/`;
-
-  // Find matching allowed repository
-  const allowedRepo = allowedRepos.find((allowed) => allowed.repo === repoPath);
-
-  if (!allowedRepo) {
-    return false;
-  }
-
-  // CRITICAL SECURITY CHECK: Validate the ref (branch/tag/commit)
-  // This prevents attackers from using PR branches or malicious commits
-  return allowedRepo.allowedRefs.includes(ref);
-}
-
-/**
  * Check if URL is a valid Grafana domain (for general use, not just docs)
  *
  * Security: Uses exact hostname matching from ALLOWED_GRAFANA_DOCS_HOSTNAMES
@@ -300,46 +250,42 @@ export function isGrafanaDomain(urlString: string): boolean {
 }
 
 /**
- * Check if URL is a github.com URL (not raw.githubusercontent.com)
+ * Check if URL is from the interactive learning domains
  *
- * Security: Validates hostname is exactly github.com
+ * Security: Validates hostname is exactly one of the allowed interactive learning domains
+ * NO wildcard subdomains to prevent subdomain takeover attacks
  *
  * @param urlString - The URL to validate
- * @returns true if hostname is github.com, false otherwise
+ * @returns true if valid interactive learning URL, false otherwise
  *
  * @example
- * isGitHubUrl('https://github.com/grafana/grafana') // true
- * isGitHubUrl('https://raw.githubusercontent.com/...') // false
- * isGitHubUrl('https://github.com.evil.com/...') // false
+ * isInteractiveLearningUrl('https://interactive-learning.grafana.net/guide/') // true
+ * isInteractiveLearningUrl('https://interactive-learning.grafana-dev.net/guide/') // true
+ * isInteractiveLearningUrl('https://interactive-learning.grafana.net.evil.com/') // false
  */
-export function isGitHubUrl(urlString: string): boolean {
+export function isInteractiveLearningUrl(urlString: string): boolean {
   const url = parseUrlSafely(urlString);
   if (!url) {
     return false;
   }
 
-  // Only allow https protocol for GitHub
-  if (!requiresHttps(url)) {
+  // Only allow https protocol
+  if (url.protocol !== 'https:') {
     return false;
   }
 
-  // Exact hostname match only (prevents subdomain hijacking)
-  return url.hostname === 'github.com';
+  // Check hostname is in allowlist (exact match only, no subdomains)
+  return ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES.includes(url.hostname);
 }
 
 /**
- * Check if URL is a raw.githubusercontent.com URL
+ * Check if URL is a GitHub raw content URL (DEV MODE ONLY)
  *
- * Security: Validates hostname is exactly raw.githubusercontent.com
- * Note: This does NOT check if the repo is in the allowlist - use isAllowedGitHubRawUrl for that
+ * Security: This function is ONLY used in dev mode to allow testing with GitHub content.
+ * In production, GitHub URLs are not allowed.
  *
  * @param urlString - The URL to validate
- * @returns true if hostname is raw.githubusercontent.com, false otherwise
- *
- * @example
- * isGitHubRawUrl('https://raw.githubusercontent.com/grafana/...') // true
- * isGitHubRawUrl('https://github.com/grafana/grafana') // false
- * isGitHubRawUrl('https://raw.githubusercontent.com.evil.com/...') // false
+ * @returns true if valid GitHub raw URL, false otherwise
  */
 export function isGitHubRawUrl(urlString: string): boolean {
   const url = parseUrlSafely(urlString);
@@ -347,37 +293,14 @@ export function isGitHubRawUrl(urlString: string): boolean {
     return false;
   }
 
-  // Only allow https protocol for GitHub
-  if (!requiresHttps(url)) {
+  // Only allow https protocol
+  if (url.protocol !== 'https:') {
     return false;
   }
 
-  // Exact hostname match only (prevents subdomain hijacking)
+  // Allow raw.githubusercontent.com for raw content
   return url.hostname === 'raw.githubusercontent.com';
 }
-
-/**
- * Check if URL is any GitHub URL (github.com or raw.githubusercontent.com)
- *
- * Security: Validates hostname is exactly one of the known GitHub domains
- * Note: This does NOT check if the repo is in the allowlist - use isAllowedGitHubRawUrl for that
- *
- * @param urlString - The URL to validate
- * @returns true if hostname is github.com or raw.githubusercontent.com, false otherwise
- *
- * @example
- * isAnyGitHubUrl('https://github.com/grafana/grafana') // true
- * isAnyGitHubUrl('https://raw.githubusercontent.com/grafana/...') // true
- * isAnyGitHubUrl('https://github.com.evil.com/...') // false
- */
-export function isAnyGitHubUrl(urlString: string): boolean {
-  return isGitHubUrl(urlString) || isGitHubRawUrl(urlString);
-}
-
-/**
- * GitHub URL Validator for Tutorial Testing
- * Validates and parses GitHub tree URLs for tutorial directories
- */
 
 export interface URLValidation {
   isValid: boolean;
@@ -387,7 +310,7 @@ export interface URLValidation {
 /**
  * Validates tutorial URLs for the URL tester component
  * In dev mode, allows localhost URLs for local testing
- * Always allows Grafana docs URLs
+ * Always allows Grafana docs URLs and interactive learning URLs
  *
  * @param url - The URL to validate
  * @returns Validation result with error message if invalid
@@ -427,6 +350,13 @@ export function validateTutorialUrl(url: string): URLValidation {
     };
   }
 
+  // In dev mode, allow GitHub raw URLs for testing
+  if (isDevModeEnabledGlobal() && isGitHubRawUrl(url)) {
+    return {
+      isValid: true,
+    };
+  }
+
   // Allow Grafana docs URLs
   if (isGrafanaDocsUrl(url)) {
     return {
@@ -434,77 +364,16 @@ export function validateTutorialUrl(url: string): URLValidation {
     };
   }
 
+  // Allow interactive learning URLs
+  if (isInteractiveLearningUrl(url)) {
+    return {
+      isValid: true,
+    };
+  }
+
   return {
     isValid: false,
-    errorMessage: 'URL must be a Grafana docs URL. In dev mode, localhost URLs are also allowed.',
-  };
-}
-
-/**
- * Validates and parses a GitHub tree URL
- * Expected format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
- *
- * @param url - The GitHub URL to validate
- * @returns Validation result with parsed data or error message
- */
-export function validateGitHubUrl(url: string): URLValidation {
-  if (!url) {
-    return {
-      isValid: false,
-      errorMessage: 'Please provide a URL',
-    };
-  }
-
-  // Check if it's a valid URL
-  let urlObj: URL;
-  try {
-    urlObj = new URL(url);
-  } catch {
-    return {
-      isValid: false,
-      errorMessage: 'Invalid URL format. Please provide a valid GitHub URL.',
-    };
-  }
-
-  // Check if it's a GitHub URL
-  if (urlObj.hostname !== 'github.com') {
-    return {
-      isValid: false,
-      errorMessage: 'URL must be from github.com',
-    };
-  }
-
-  // Parse the path: /{owner}/{repo}/tree/{branch}/{path}
-  const pathParts = urlObj.pathname.split('/').filter(Boolean);
-
-  // Need at least: owner, repo, tree, branch, path
-  if (pathParts.length < 5) {
-    return {
-      isValid: false,
-      errorMessage:
-        'URL must be a GitHub tree URL pointing to a directory. Format: github.com/{owner}/{repo}/tree/{branch}/{path}',
-    };
-  }
-
-  // Check that it's a tree URL (not blob, etc.)
-  if (pathParts[2] !== 'tree') {
-    return {
-      isValid: false,
-      errorMessage: 'URL must be a GitHub tree URL (not blob). Use tree URLs that point to directories.',
-    };
-  }
-
-  // Extract tutorial name from the last path segment
-  const tutorialName = pathParts[pathParts.length - 1];
-
-  if (!tutorialName) {
-    return {
-      isValid: false,
-      errorMessage: 'Could not extract tutorial name from URL',
-    };
-  }
-
-  return {
-    isValid: true,
+    errorMessage:
+      'URL must be a Grafana docs URL or interactive learning URL. In dev mode, localhost and GitHub raw URLs are also allowed.',
   };
 }

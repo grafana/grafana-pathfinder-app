@@ -11,11 +11,10 @@ import { getJourneyProgress } from '../docs-retrieval/learning-journey-helpers';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
-  isAllowedGitHubRawUrl,
-  isAnyGitHubUrl,
   isLocalhostUrl,
+  isInteractiveLearningUrl,
+  isGitHubRawUrl,
 } from '../security';
-import { ALLOWED_GITHUB_REPOS } from '../constants';
 import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
 import { LearningJourneyTab } from '../types/content-panel.types';
 
@@ -36,33 +35,13 @@ interface UseLinkClickHandlerProps {
 }
 
 /**
- * SECURITY: Validate URL is from a trusted Grafana source (NOT GitHub)
- * GitHub URLs are handled separately in the link handler with specialized logic
- * This function is only for Grafana.com docs and localhost (dev mode)
+ * SECURITY: Validate URL is from a trusted Grafana source
+ * Interactive learning URLs are handled separately in the link handler
+ * This function is for Grafana.com docs and localhost/GitHub (dev mode)
  */
 function isValidGrafanaContentUrl(url: string): boolean {
-  return isAllowedContentUrl(url) || (isDevModeEnabledGlobal() && isLocalhostUrl(url));
-}
-
-/**
- * Attempts to construct an unstyled.html URL for external content
- * This is used to try to embed external documentation in our app
- */
-function tryConstructUnstyledUrl(originalUrl: string): string | null {
-  try {
-    // For files ending in .html, replace with /unstyled.html
-    if (originalUrl.endsWith('.html')) {
-      return originalUrl.replace(/\.html$/, '/unstyled.html');
-    }
-
-    // For directory URLs, append /unstyled.html
-    const newUrl = new URL(originalUrl);
-    newUrl.pathname = newUrl.pathname.replace(/\/$/, '') + '/unstyled.html';
-    return newUrl.href;
-  } catch (error) {
-    console.warn('Failed to construct unstyled URL for:', originalUrl, error);
-    return null;
-  }
+  const isDevMode = isDevModeEnabledGlobal();
+  return isAllowedContentUrl(url) || (isDevMode && isLocalhostUrl(url)) || (isDevMode && isGitHubRawUrl(url));
 }
 
 export function useLinkClickHandler({ contentRef, activeTab, theme, model }: UseLinkClickHandlerProps) {
@@ -237,98 +216,39 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               })
             );
           }
-          // Handle GitHub links - check if allowed to open in app
-          else if (isAnyGitHubUrl(href)) {
+          // Handle interactive learning links - open in app
+          else if (isInteractiveLearningUrl(href)) {
             safeEventHandler(event, {
               preventDefault: true,
               stopPropagation: true,
             });
 
-            const linkText = anchor.textContent?.trim() || 'GitHub Link';
+            const linkText = anchor.textContent?.trim() || 'Interactive Learning';
 
-            // Check if this URL is from an allowed GitHub repository
-            // Uses proper URL parsing to prevent domain hijacking
-            const isAllowedUrl = isAllowedGitHubRawUrl(resolvedUrl, ALLOWED_GITHUB_REPOS);
-
-            if (isAllowedUrl) {
-              // This is an allowed URL - try to open in app with unstyled.html fallback
-              const unstyledUrl = tryConstructUnstyledUrl(resolvedUrl);
-
-              if (unstyledUrl) {
-                // Try to open in app first
-                if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-                  (model as any).openDocsPage(unstyledUrl, linkText);
-                } else {
-                  model.openLearningJourney(unstyledUrl, linkText);
-                }
-
-                // Track analytics for allowed GitHub link attempts
-                reportAppInteraction(
-                  UserInteraction.OpenExtraResource,
-                  enrichWithStepContext(
-                    enrichWithJourneyContext(
-                      {
-                        content_url: unstyledUrl,
-                        content_type: 'docs',
-                        link_text: linkText,
-                        source_page: activeTab?.content?.url || 'unknown',
-                        link_type: 'github_allowed_unstyled',
-                        interaction_location: 'github_link',
-                      },
-                      activeTab?.content
-                    )
-                  )
-                );
-              } else {
-                // Even allowed URLs fallback to opening in app without unstyled
-                if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-                  (model as any).openDocsPage(resolvedUrl, linkText);
-                } else {
-                  model.openLearningJourney(resolvedUrl, linkText);
-                }
-
-                // Track analytics for allowed GitHub direct attempts
-                reportAppInteraction(
-                  UserInteraction.OpenExtraResource,
-                  enrichWithStepContext(
-                    enrichWithJourneyContext(
-                      {
-                        content_url: resolvedUrl,
-                        content_type: 'docs',
-                        link_text: linkText,
-                        source_page: activeTab?.content?.url || 'unknown',
-                        link_type: 'github_allowed_direct',
-                        interaction_location: 'github_link',
-                      },
-                      activeTab?.content
-                    )
-                  )
-                );
-              }
+            // Open interactive learning content in app
+            if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
+              (model as any).openDocsPage(resolvedUrl, linkText);
             } else {
-              // Track analytics for GitHub browser opening
-              reportAppInteraction(
-                UserInteraction.OpenExtraResource,
-                enrichWithStepContext(
-                  enrichWithJourneyContext(
-                    {
-                      content_url: resolvedUrl,
-                      content_type: 'docs',
-                      link_text: linkText,
-                      source_page: activeTab?.content?.url || 'unknown',
-                      link_type: 'github_browser_external',
-                      interaction_location: 'github_link',
-                    },
-                    activeTab?.content
-                  )
-                )
-              );
-
-              // Delay to ensure analytics event is sent before opening new tab
-              setTimeout(() => {
-                window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
-              }, 100);
+              model.openLearningJourney(resolvedUrl, linkText);
             }
+
+            // Track analytics for interactive learning link
+            reportAppInteraction(
+              UserInteraction.OpenExtraResource,
+              enrichWithStepContext(
+                enrichWithJourneyContext(
+                  {
+                    content_url: resolvedUrl,
+                    content_type: 'docs',
+                    link_text: linkText,
+                    source_page: activeTab?.content?.url || 'unknown',
+                    link_type: 'interactive_learning',
+                    interaction_location: 'interactive_learning_link',
+                  },
+                  activeTab?.content
+                )
+              )
+            );
           }
           // For ALL other external links, immediately open in new browser tab
           else if (href.startsWith('http')) {

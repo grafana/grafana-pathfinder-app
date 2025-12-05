@@ -34,20 +34,12 @@ export const DEFAULT_PEERJS_KEY = 'pathfinder';
 export const DEFAULT_CONTENT_FETCH_TIMEOUT = 10000; // 10 seconds for document retrieval
 export const DEFAULT_RECOMMENDER_TIMEOUT = 5000; // 5 seconds for recommender API
 
-// Security: Allowed GitHub repository paths for interactive guides
-// Meeting commitment: ONLY the single controlled interactive-tutorials repo
-// Format: { repo: '/owner/repo/', allowedRefs: ['main', 'v1.0.0'] }
-// Only specified branches/tags are allowed to prevent PR/commit-based attacks
-export interface AllowedGitHubRepo {
-  repo: string; // e.g., '/grafana/interactive-tutorials/'
-  allowedRefs: string[]; // e.g., ['main', 'production'] - branches or tags
-}
-
-export const ALLOWED_GITHUB_REPOS: AllowedGitHubRepo[] = [
-  {
-    repo: '/grafana/interactive-tutorials/',
-    allowedRefs: ['main'], // ONLY main branch - blocks PR/arbitrary commit attacks
-  },
+// Security: Allowed interactive learning hostnames (exact match only, no wildcards)
+// These are the only hostnames permitted for fetching interactive guides
+export const ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES = [
+  'interactive-learning.grafana-dev.net',
+  'interactive-learning.grafana.net',
+  'interactive-learning.grafana-ops.net',
 ];
 
 // Security: Allowed recommender service domains
