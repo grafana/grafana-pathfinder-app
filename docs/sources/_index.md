@@ -23,6 +23,10 @@ cards:
       description: Learn about Interactive learning administrators features. 
       href: administrators-reference/
       height: 24
+    - title: Upgrade notes
+      description: Important information about upgrading, including breaking changes.
+      href: upgrade-notes/
+      height: 24
   title_class: pt-0 lh-1
 weight: 1
 hero:

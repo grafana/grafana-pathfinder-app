@@ -132,16 +132,14 @@ describe('Security: Redirect Chain Validation', () => {
     expect(result.error).toContain('HTTPS');
   });
 
-  it('should accept redirects within GitHub raw domain', async () => {
+  it('should accept redirects within interactive learning domain', async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
-      url: 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/redirected.html',
-      text: () => Promise.resolve('<html><body>GitHub Content</body></html>'),
+      url: 'https://interactive-learning.grafana.net/redirected/content.json',
+      text: () => Promise.resolve('{"id":"test","title":"Test","blocks":[]}'),
     });
 
-    const result = await fetchContent(
-      'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/original.html'
-    );
+    const result = await fetchContent('https://interactive-learning.grafana.net/original/');
 
     expect(result.content).not.toBeNull();
   });

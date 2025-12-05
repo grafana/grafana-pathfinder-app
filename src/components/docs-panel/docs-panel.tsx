@@ -14,26 +14,13 @@ const SelectorDebugPanel = lazy(() =>
 );
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import {
-  DocsPluginConfig,
-  ALLOWED_GRAFANA_DOCS_HOSTNAMES,
-  ALLOWED_GITHUB_REPOS,
-  getConfigWithDefaults,
-} from '../../constants';
+import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES, getConfigWithDefaults } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
 import { isDevModeEnabledGlobal, isDevModeEnabled } from '../wysiwyg-editor/dev-mode';
-import {
-  parseUrlSafely,
-  isAllowedContentUrl,
-  isAllowedGitHubRawUrl,
-  isGitHubUrl,
-  isGitHubRawUrl,
-  isLocalhostUrl,
-} from '../../security';
-import { isDataProxyUrl } from '../../docs-retrieval/data-proxy';
+import { parseUrlSafely, isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../security';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
@@ -190,13 +177,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         // SECURITY: Validate URLs before restoring from storage
         // This prevents XSS attacks via storage injection
         const validateUrl = (url: string): boolean => {
-          return (
-            isAllowedContentUrl(url) ||
-            isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
-            isDataProxyUrl(url) || // SECURITY: Data proxy URLs are internal
-            isGitHubUrl(url) ||
-            (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url)))
-          );
+          const isDevMode = isDevModeEnabledGlobal();
+          return isAllowedContentUrl(url) || (isDevMode && isLocalhostUrl(url)) || (isDevMode && isGitHubRawUrl(url));
         };
 
         const isValidBase = validateUrl(data.baseUrl);

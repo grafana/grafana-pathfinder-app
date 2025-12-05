@@ -327,7 +327,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   Dev mode disables critical security protections:
                 </Text>
                 <ul style={{ marginTop: '8px', marginBottom: '8px' }}>
-                  <li>Allows loading content from ANY GitHub repository (bypasses branch validation)</li>
+                  <li>Allows loading content from ANY localhost URL (bypasses domain validation)</li>
                   <li>Allows loading content from ANY localhost URL</li>
                   <li>Exposes debug tools that can manipulate the Grafana DOM</li>
                   <li>Bypasses source validation for interactive content</li>

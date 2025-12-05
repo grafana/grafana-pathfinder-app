@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.1.83
+
+> ⚠️ **BREAKING CHANGE: New content delivery infrastructure**
+>
+> Interactive guides are now served from a dedicated CDN (`interactive-learning.grafana.net`)
+> instead of GitHub raw URLs. **You must update to this version or later to load interactive guides.**
+>
+> **What changed:**
+>
+> - Content is now delivered from `interactive-learning.grafana.net` (production) and `interactive-learning.grafana-dev.net` (development)
+> - GitHub raw URLs (`raw.githubusercontent.com`) are only supported in dev mode for testing
+> - The backend proxy route for GitHub content has been removed
+>
+> **For content creators:**
+>
+> - No changes required to your content - the CDN serves the same JSON format
+> - Dev mode still supports GitHub raw URLs for testing before publishing
+
+### Changed
+
+- **BREAKING**: Migrated content delivery from GitHub raw URLs to dedicated interactive learning CDN
+- Removed backend proxy route for GitHub content (no longer needed with direct CDN access)
+- Updated security validation to use new `interactive-learning.grafana.net` domains
+- Simplified URL tester in dev mode to accept all supported URL types in single input
+
+### Added
+
+- Added `interactive-learning.grafana-ops.net` to allowed domains
+
+### Removed
+
+- Removed `data-proxy.ts` and GitHub proxy configuration from `plugin.json`
+- Removed `validateGitHubUrl` and related GitHub-specific URL validation functions
+
 ## 1.1.78 (2025-12-01)
 
 ### Changed

@@ -14,7 +14,6 @@ if (!AbortSignal.timeout) {
 
 // JSON-first content fetching tests
 // These tests document the expected behavior of the JSON-first fetching strategy
-// without requiring network mocking which is complex in this codebase
 describe('JSON-first content fetching behavior', () => {
   describe('URL generation priority', () => {
     it('should document that content.json is preferred over unstyled.html', () => {
@@ -22,16 +21,14 @@ describe('JSON-first content fetching behavior', () => {
       // 1. content.json (new JSON format - preferred)
       // 2. unstyled.html (legacy HTML format - fallback)
       //
-      // The generateGitHubVariations function in content-fetcher.ts generates URLs
-      // in this order for GitHub tree URLs. When fetching, the first successful
+      // The generateInteractiveLearningVariations function in content-fetcher.ts generates URLs
+      // in this order for interactive learning URLs. When fetching, the first successful
       // response is used.
       //
-      // Example for URL: https://github.com/grafana/interactive-tutorials/tree/main/test-guide
+      // Example for URL: https://interactive-learning.grafana.net/test-guide
       // Generated variations (in order):
-      // 1. api/plugin-proxy/.../test-guide/content.json (proxy)
-      // 2. raw.githubusercontent.com/.../test-guide/content.json (raw)
-      // 3. api/plugin-proxy/.../test-guide/unstyled.html (proxy)
-      // 4. raw.githubusercontent.com/.../test-guide/unstyled.html (raw)
+      // 1. https://interactive-learning.grafana.net/test-guide/content.json
+      // 2. https://interactive-learning.grafana.net/test-guide/unstyled.html
 
       expect(true).toBe(true); // Documentation test
     });
@@ -83,14 +80,26 @@ describe('fetchContent security validation', () => {
       // Note: This will fail to fetch (no network in tests), but should pass validation
       const result = await fetchContent('https://grafana.com/docs/grafana/latest/');
       // Should not reject with security error
-      expect(result.error).not.toContain('approved GitHub repositories');
+      expect(result.error).not.toContain('interactive learning URLs');
     });
 
     it('should allow bundled content', async () => {
       // This might fail if bundled content doesn't exist, but should pass validation
       const result = await fetchContent('bundled:test-content');
       // Should not reject with security error
-      expect(result.error).not.toContain('approved GitHub repositories');
+      expect(result.error).not.toContain('interactive learning URLs');
+    });
+
+    it('should allow interactive learning URLs', async () => {
+      const result = await fetchContent('https://interactive-learning.grafana.net/tutorial/');
+      // Should not reject with security error
+      expect(result.error).not.toContain('interactive learning URLs');
+    });
+
+    it('should allow interactive learning dev URLs', async () => {
+      const result = await fetchContent('https://interactive-learning.grafana-dev.net/tutorial/');
+      // Should not reject with security error
+      expect(result.error).not.toContain('interactive learning URLs');
     });
 
     it('should reject non-grafana.com URLs', async () => {
@@ -112,16 +121,8 @@ describe('fetchContent security validation', () => {
       expect(result.error).toContain('Only Grafana.com documentation');
     });
 
-    it('should allow grafana/interactive-tutorials GitHub URLs', async () => {
-      const result = await fetchContent(
-        'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/test.html'
-      );
-      // Should not reject with security error
-      expect(result.error).not.toContain('Only Grafana.com documentation');
-    });
-
-    it('should reject non-approved GitHub repos', async () => {
-      const result = await fetchContent('https://raw.githubusercontent.com/evil-user/malicious-repo/main/test.html');
+    it('should reject interactive learning domain hijacking', async () => {
+      const result = await fetchContent('https://interactive-learning.grafana.net.evil.com/tutorial/');
       expect(result.content).toBeNull();
       expect(result.error).toContain('Only Grafana.com documentation');
     });
