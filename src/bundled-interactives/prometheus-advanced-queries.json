@@ -11,6 +11,17 @@
       "content": "# Advanced Prometheus Queries\n\nWelcome to advanced PromQL! In this guide, we'll explore powerful query patterns that help you extract deeper insights from your metrics. Each query example can be customized using Grafana Assistant to work with your specific environment."
     },
     {
+      "type": "assistant",
+      "assistantId": "intro-text",
+      "assistantType": "text",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "**Your Environment:** This tutorial assumes you're monitoring a typical web application with HTTP request metrics, CPU/memory gauges, and garbage collection histograms. The example queries use metrics like `prometheus_http_requests_total`, `process_cpu_seconds_total`, and `go_gc_duration_seconds` which are available on most Prometheus servers."
+        }
+      ]
+    },
+    {
       "type": "markdown",
       "content": "## Section 1: Advanced Aggregations and Grouping\n\nMaster the art of aggregating metrics across multiple dimensions and time ranges."
     },
@@ -26,7 +37,7 @@
         },
         {
           "action": "highlight",
-          "reftarget": "button:contains(\"Prometheus\"):nth-match(1)",
+          "reftarget": "div[data-testid=\"data-source-card\"]:has(small:contains(\"Prometheus\")) button:nth-match(1)",
           "requirements": ["exists-reftarget"],
           "tooltip": "This tutorial uses Prometheus as the data source. If you completed the Prometheus + Grafana 101 tutorial, you should already have a Prometheus datasource configured. If not, you can select any available Prometheus datasource in your instance."
         }
@@ -44,12 +55,19 @@
       "content": "### Multi-Dimensional Grouping\n\nGroup metrics by multiple labels to create detailed breakdowns:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total[5m])) by (job, instance, handler)",
-      "requirements": ["exists-reftarget"],
-      "content": "Try this multi-dimensional grouping query:\n\n`sum(rate(prometheus_http_requests_total[5m])) by (job, instance, handler)`"
+      "type": "assistant",
+      "assistantId": "aggregation-queries",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total[5m])) by (job, instance, handler)",
+          "requirements": ["exists-reftarget"],
+          "content": "Try this multi-dimensional grouping query:\n\n`sum(rate(prometheus_http_requests_total[5m])) by (job, instance, handler)`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -60,12 +78,19 @@
       "content": "### Top-K Results\n\nFind the highest or lowest values using `topk()` and `bottomk()`:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ topk(5, sum(rate(prometheus_http_requests_total[5m])) by (handler))",
-      "requirements": ["exists-reftarget"],
-      "content": "Find the top 5 endpoints by request rate:\n\n`topk(5, sum(rate(prometheus_http_requests_total[5m])) by (handler))`"
+      "type": "assistant",
+      "assistantId": "topk-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ topk(5, sum(rate(prometheus_http_requests_total[5m])) by (handler))",
+          "requirements": ["exists-reftarget"],
+          "content": "Find the top 5 endpoints by request rate:\n\n`topk(5, sum(rate(prometheus_http_requests_total[5m])) by (handler))`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -76,12 +101,19 @@
       "content": "### Without and By - Advanced Label Selection\n\nUse `without` to exclude specific labels from grouping:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total[5m])) without (instance)",
-      "requirements": ["exists-reftarget"],
-      "content": "Aggregate across instances using `without`:\n\n`sum(rate(prometheus_http_requests_total[5m])) without (instance)`"
+      "type": "assistant",
+      "assistantId": "without-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total[5m])) without (instance)",
+          "requirements": ["exists-reftarget"],
+          "content": "Aggregate across instances using `without`:\n\n`sum(rate(prometheus_http_requests_total[5m])) without (instance)`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -96,12 +128,19 @@
       "content": "### Regular Expression Matching\n\nUse regex to match multiple label values:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ prometheus_http_requests_total{code=~\"5..\", handler!~\"/|/-/.*\"}",
-      "requirements": ["exists-reftarget"],
-      "content": "Filter using regex patterns:\n\n`prometheus_http_requests_total{code=~\"5..\", handler!~\"/|/-/.*\"}`"
+      "type": "assistant",
+      "assistantId": "regex-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ prometheus_http_requests_total{code=~\"5..\", handler!~\"/|/-/.*\"}",
+          "requirements": ["exists-reftarget"],
+          "content": "Filter using regex patterns:\n\n`prometheus_http_requests_total{code=~\"5..\", handler!~\"/|/-/.*\"}`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -112,12 +151,19 @@
       "content": "### Label Joins with On and Ignoring\n\nCombine metrics from different time series:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ rate(prometheus_http_requests_total[5m]) * on(instance) group_left(version) alloy_build_info",
-      "requirements": ["exists-reftarget"],
-      "content": "Join metrics using label matching:\n\n`rate(prometheus_http_requests_total[5m]) * on(instance) group_left(version) alloy_build_info`"
+      "type": "assistant",
+      "assistantId": "join-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ rate(prometheus_http_requests_total[5m]) * on(instance) group_left(version) alloy_build_info",
+          "requirements": ["exists-reftarget"],
+          "content": "Join metrics using label matching:\n\n`rate(prometheus_http_requests_total[5m]) * on(instance) group_left(version) alloy_build_info`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -132,12 +178,19 @@
       "content": "### Over-Time Aggregations\n\nCalculate statistics over a time range:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ max_over_time(rate(process_cpu_seconds_total[5m])[1h:1m])",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate maximum CPU rate over time:\n\n`max_over_time(rate(process_cpu_seconds_total[5m])[1h:1m])`"
+      "type": "assistant",
+      "assistantId": "overtime-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ max_over_time(rate(process_cpu_seconds_total[5m])[1h:1m])",
+          "requirements": ["exists-reftarget"],
+          "content": "Calculate maximum CPU rate over time:\n\n`max_over_time(rate(process_cpu_seconds_total[5m])[1h:1m])`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -148,12 +201,19 @@
       "content": "### Derivatives and Rates\n\nCalculate change rates for gauges and counters:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ deriv(process_resident_memory_bytes[5m])",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate derivative for gauge metrics:\n\n`deriv(process_resident_memory_bytes[5m])`"
+      "type": "assistant",
+      "assistantId": "deriv-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ deriv(process_resident_memory_bytes[5m])",
+          "requirements": ["exists-reftarget"],
+          "content": "Calculate derivative for gauge metrics:\n\n`deriv(process_resident_memory_bytes[5m])`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -164,12 +224,19 @@
       "content": "### Offset Modifier\n\nCompare current values with past values:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ (rate(prometheus_http_requests_total[5m]) - rate(prometheus_http_requests_total[5m] offset 1h)) / rate(prometheus_http_requests_total[5m] offset 1h) * 100",
-      "requirements": ["exists-reftarget"],
-      "content": "Compare current vs 1 hour ago:\n\n`(rate(prometheus_http_requests_total[5m]) - rate(prometheus_http_requests_total[5m] offset 1h)) / rate(prometheus_http_requests_total[5m] offset 1h) * 100`"
+      "type": "assistant",
+      "assistantId": "offset-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ (rate(prometheus_http_requests_total[5m]) - rate(prometheus_http_requests_total[5m] offset 1h)) / rate(prometheus_http_requests_total[5m] offset 1h) * 100",
+          "requirements": ["exists-reftarget"],
+          "content": "Compare current vs 1 hour ago:\n\n`(rate(prometheus_http_requests_total[5m]) - rate(prometheus_http_requests_total[5m] offset 1h)) / rate(prometheus_http_requests_total[5m] offset 1h) * 100`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -184,12 +251,19 @@
       "content": "### Error Rate Calculation\n\nCalculate the percentage of failed requests:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total{code=~\"5..\"}[5m])) by (job) / sum(rate(prometheus_http_requests_total[5m])) by (job) * 100",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate error rate percentage:\n\n`sum(rate(prometheus_http_requests_total{code=~\"5..\"}[5m])) by (job) / sum(rate(prometheus_http_requests_total[5m])) by (job) * 100`"
+      "type": "assistant",
+      "assistantId": "error-rate-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total{code=~\"5..\"}[5m])) by (job) / sum(rate(prometheus_http_requests_total[5m])) by (job) * 100",
+          "requirements": ["exists-reftarget"],
+          "content": "Calculate error rate percentage:\n\n`sum(rate(prometheus_http_requests_total{code=~\"5..\"}[5m])) by (job) / sum(rate(prometheus_http_requests_total[5m])) by (job) * 100`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -200,12 +274,19 @@
       "content": "### Resource Utilization Ratios\n\nCalculate utilization as a percentage:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ (process_resident_memory_bytes / process_virtual_memory_max_bytes) * 100",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate memory utilization percentage:\n\n`(process_resident_memory_bytes / process_virtual_memory_max_bytes) * 100`"
+      "type": "assistant",
+      "assistantId": "utilization-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ (process_resident_memory_bytes / process_virtual_memory_max_bytes) * 100",
+          "requirements": ["exists-reftarget"],
+          "content": "Calculate memory utilization percentage:\n\n`(process_resident_memory_bytes / process_virtual_memory_max_bytes) * 100`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -220,12 +301,19 @@
       "content": "### Quantile Calculation\n\nCalculate the 95th percentile from a histogram:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ histogram_quantile(0.95, sum(rate(go_gc_duration_seconds_bucket[5m])) by (le, job))",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate 95th percentile GC duration:\n\n`histogram_quantile(0.95, sum(rate(go_gc_duration_seconds_bucket[5m])) by (le, job))`"
+      "type": "assistant",
+      "assistantId": "quantile-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ histogram_quantile(0.95, sum(rate(go_gc_duration_seconds_bucket[5m])) by (le, job))",
+          "requirements": ["exists-reftarget"],
+          "content": "Calculate 95th percentile GC duration:\n\n`histogram_quantile(0.95, sum(rate(go_gc_duration_seconds_bucket[5m])) by (le, job))`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -236,12 +324,19 @@
       "content": "### Histogram Average\n\nCalculate the average from histogram buckets:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ sum(rate(go_gc_duration_seconds_sum[5m])) / sum(rate(go_gc_duration_seconds_count[5m]))",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate average from histogram:\n\n`sum(rate(go_gc_duration_seconds_sum[5m])) / sum(rate(go_gc_duration_seconds_count[5m]))`"
+      "type": "assistant",
+      "assistantId": "histogram-avg-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ sum(rate(go_gc_duration_seconds_sum[5m])) / sum(rate(go_gc_duration_seconds_count[5m]))",
+          "requirements": ["exists-reftarget"],
+          "content": "Calculate average from histogram:\n\n`sum(rate(go_gc_duration_seconds_sum[5m])) / sum(rate(go_gc_duration_seconds_count[5m]))`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -256,12 +351,19 @@
       "content": "### Linear Prediction\n\nPredict future values based on past trends:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ predict_linear(process_resident_memory_bytes[1h], 4 * 3600)",
-      "requirements": ["exists-reftarget"],
-      "content": "Predict memory usage 4 hours ahead:\n\n`predict_linear(process_resident_memory_bytes[1h], 4 * 3600)`"
+      "type": "assistant",
+      "assistantId": "predict-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ predict_linear(process_resident_memory_bytes[1h], 4 * 3600)",
+          "requirements": ["exists-reftarget"],
+          "content": "Predict memory usage 4 hours ahead:\n\n`predict_linear(process_resident_memory_bytes[1h], 4 * 3600)`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -272,12 +374,19 @@
       "content": "### Standard Deviation\n\nDetect anomalies using standard deviation:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ abs(rate(prometheus_http_requests_total[5m]) - avg_over_time(rate(prometheus_http_requests_total[5m])[1h:5m])) > (2 * stddev_over_time(rate(prometheus_http_requests_total[5m])[1h:5m]))",
-      "requirements": ["exists-reftarget"],
-      "content": "Detect anomalies with standard deviation:\n\n`abs(rate(prometheus_http_requests_total[5m]) - avg_over_time(rate(prometheus_http_requests_total[5m])[1h:5m])) > (2 * stddev_over_time(rate(prometheus_http_requests_total[5m])[1h:5m]))`"
+      "type": "assistant",
+      "assistantId": "anomaly-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ abs(rate(prometheus_http_requests_total[5m]) - avg_over_time(rate(prometheus_http_requests_total[5m])[1h:5m])) > (2 * stddev_over_time(rate(prometheus_http_requests_total[5m])[1h:5m]))",
+          "requirements": ["exists-reftarget"],
+          "content": "Detect anomalies with standard deviation:\n\n`abs(rate(prometheus_http_requests_total[5m]) - avg_over_time(rate(prometheus_http_requests_total[5m])[1h:5m])) > (2 * stddev_over_time(rate(prometheus_http_requests_total[5m])[1h:5m]))`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -292,12 +401,19 @@
       "content": "### Rolling Average\n\nCalculate a moving average using subqueries:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ avg_over_time(rate(prometheus_http_requests_total[5m])[30m:1m])",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate 30-minute rolling average:\n\n`avg_over_time(rate(prometheus_http_requests_total[5m])[30m:1m])`"
+      "type": "assistant",
+      "assistantId": "rolling-avg-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ avg_over_time(rate(prometheus_http_requests_total[5m])[30m:1m])",
+          "requirements": ["exists-reftarget"],
+          "content": "Calculate 30-minute rolling average:\n\n`avg_over_time(rate(prometheus_http_requests_total[5m])[30m:1m])`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -312,12 +428,19 @@
       "content": "### SLI Calculation\n\nCalculate Service Level Indicators:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total{code=~\"2..\"}[5m])) / sum(rate(prometheus_http_requests_total[5m]))",
-      "requirements": ["exists-reftarget"],
-      "content": "Calculate success rate SLI:\n\n`sum(rate(prometheus_http_requests_total{code=~\"2..\"}[5m])) / sum(rate(prometheus_http_requests_total[5m]))`"
+      "type": "assistant",
+      "assistantId": "sli-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ sum(rate(prometheus_http_requests_total{code=~\"2..\"}[5m])) / sum(rate(prometheus_http_requests_total[5m]))",
+          "requirements": ["exists-reftarget"],
+          "content": "Calculate success rate SLI:\n\n`sum(rate(prometheus_http_requests_total{code=~\"2..\"}[5m])) / sum(rate(prometheus_http_requests_total[5m]))`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -332,12 +455,19 @@
       "content": "### Absent Metric Alert\n\nDetect when metrics stop being reported:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ absent(up{job=\"prometheus\"})",
-      "requirements": ["exists-reftarget"],
-      "content": "Detect missing metrics:\n\n`absent(up{job=\"prometheus\"})`"
+      "type": "assistant",
+      "assistantId": "absent-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ absent(up{job=\"prometheus\"})",
+          "requirements": ["exists-reftarget"],
+          "content": "Detect missing metrics:\n\n`absent(up{job=\"prometheus\"})`"
+        }
+      ]
     },
     {
       "type": "markdown",
@@ -352,12 +482,19 @@
       "content": "### Limit Time Range\n\nUse appropriate time ranges for your metrics:"
     },
     {
-      "type": "interactive",
-      "action": "formfill",
-      "reftarget": "textarea.inputarea",
-      "targetvalue": "@@CLEAR@@ rate(prometheus_http_requests_total[2m])",
-      "requirements": ["exists-reftarget"],
-      "content": "Use efficient time ranges:\n\n`rate(prometheus_http_requests_total[2m])`"
+      "type": "assistant",
+      "assistantId": "efficient-query",
+      "assistantType": "query",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "textarea.inputarea",
+          "targetvalue": "@@CLEAR@@ rate(prometheus_http_requests_total[2m])",
+          "requirements": ["exists-reftarget"],
+          "content": "Use efficient time ranges:\n\n`rate(prometheus_http_requests_total[2m])`"
+        }
+      ]
     },
     {
       "type": "markdown",
