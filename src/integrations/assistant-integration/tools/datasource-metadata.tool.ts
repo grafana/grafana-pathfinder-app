@@ -110,7 +110,6 @@ const findDatasource = (
 const fetchMetadataForDatasource = async (
   dsSettings: DataSourceInstanceSettings
 ): Promise<{ metadata: DatasourceMetadata; summary: string }> => {
-   
   const ds = (await getDataSourceSrv().get(dsSettings.uid)) as any;
   const normalizedType = getNormalizedDatasourceType(dsSettings.type);
 
