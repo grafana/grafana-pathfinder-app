@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.84
+
+### Added
+
+- **Assistant wrapper blocks**: New `assistant` block type for JSON guides that wraps child blocks with AI-powered customization
+  - Each child block gets its own "Customize" button that adapts content to the user's actual datasources
+  - Supports wrapping `markdown`, `interactive`, `multistep`, and `guided` blocks
+  - Customizations are persisted in localStorage per block
+- **Unified datasource metadata tool**: New `fetch_datasource_metadata` tool for Grafana Assistant integration
+  - Auto-detects datasource type (Prometheus, Loki, Tempo, Pyroscope)
+  - Fetches labels, metrics, services, tags, and profile types from user's datasources
+  - Enables AI to generate queries using actual data from user's environment
+- **Grafana context tool**: New `get_grafana_context` tool providing environment information to the assistant
+
+### Changed
+
+- Updated datasource picker selectors in bundled tutorials for improved reliability
+  - Uses `data-testid="data-source-card"` with `:has()` selector for robust element targeting
+- Upgraded `@grafana/assistant` SDK to v0.1.7
+
 ## 1.1.83
 
 > ⚠️ **BREAKING CHANGE: New content delivery infrastructure**
