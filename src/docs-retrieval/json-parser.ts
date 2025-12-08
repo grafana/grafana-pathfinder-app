@@ -26,6 +26,53 @@ import type {
   JsonStep,
 } from '../types/json-guide.types';
 
+const MARKDOWN_ALLOWED_TAGS = [
+  'div',
+  'span',
+  'p',
+  'ul',
+  'ol',
+  'li',
+  'strong',
+  'em',
+  'code',
+  'pre',
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'th',
+  'td',
+  'img',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'blockquote',
+  'br',
+  'hr',
+  'a',
+];
+
+const MARKDOWN_ALLOWED_ATTR = [
+  'href',
+  'title',
+  'target',
+  'rel',
+  'src',
+  'alt',
+  'colspan',
+  'rowspan',
+  'class',
+  'id',
+  'width',
+  'height',
+];
+
+const HTML_TAG_PATTERN = /<\s*\/?\s*[a-zA-Z][^>]*>/;
+
 /**
  * Parse a JSON guide into ContentParseResult.
  *
@@ -171,19 +218,24 @@ function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: s
 /**
  * Convert markdown content to ParsedElement children.
  * Handles basic markdown syntax: headings, bold, italic, code, links, lists, code blocks, tables.
- * SECURITY: Input is sanitized to strip raw HTML tags before parsing (F1, F4).
- * This provides defense-in-depth - React escapes text, but this removes HTML at the source.
+ * SECURITY: Input is sanitized with a safe allowlist of structural tags before parsing (F1, F4).
+ * We allow basic content tags (div, span, headings, lists, tables, code) while stripping scripts/events.
  */
 function parseMarkdownToElements(content: string): ParsedElement[] {
-  // SECURITY: Strip any raw HTML tags from markdown content before parsing (F1, F4)
-  // This prevents XSS attacks via HTML injection in markdown content
-  // We strip HTML tags but preserve text content and markdown syntax
+  // SECURITY: Sanitize with a safe allowlist so basic HTML content survives while stripping dangerous markup
   const sanitizedContent = DOMPurify.sanitize(content, {
-    ALLOWED_TAGS: [], // Strip all HTML tags
-    ALLOWED_ATTR: [], // Strip all attributes
-    KEEP_CONTENT: true, // Preserve text content
-    // Don't trim - preserve whitespace/newlines for markdown parsing
+    ALLOWED_TAGS: MARKDOWN_ALLOWED_TAGS,
+    ALLOWED_ATTR: MARKDOWN_ALLOWED_ATTR,
+    KEEP_CONTENT: true,
   });
+
+  // If the content includes HTML tags after sanitization, try parsing as HTML to preserve allowed structure
+  if (HTML_TAG_PATTERN.test(sanitizedContent)) {
+    const htmlResult = parseHTMLToComponents(sanitizeDocumentationHTML(sanitizedContent));
+    if (htmlResult.isValid && htmlResult.data?.elements?.length) {
+      return htmlResult.data.elements;
+    }
+  }
 
   const elements: ParsedElement[] = [];
   const lines = sanitizedContent.split('\n');
@@ -421,7 +473,14 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
  * SECURITY: Output is sanitized with DOMPurify to prevent XSS attacks (F1, F4).
  */
 function markdownToHtml(text: string): string {
-  const html = text
+  // SECURITY: Sanitize input with the same allowlist used for markdown parsing
+  const sanitizedInput = DOMPurify.sanitize(text, {
+    ALLOWED_TAGS: MARKDOWN_ALLOWED_TAGS,
+    ALLOWED_ATTR: MARKDOWN_ALLOWED_ATTR,
+    KEEP_CONTENT: true,
+  });
+
+  const html = sanitizedInput
     // Bold: **text** or __text__
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/__(.+?)__/g, '<strong>$1</strong>')
