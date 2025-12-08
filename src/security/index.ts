@@ -20,7 +20,7 @@ export {
   validateTutorialUrl,
   isYouTubeDomain,
   isVimeoDomain,
-  type URLValidation,
+  type UrlValidation,
 } from './url-validator';
 
 // HTML sanitization

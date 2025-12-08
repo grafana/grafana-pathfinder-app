@@ -250,19 +250,13 @@ describe('Localhost URL validators', () => {
       expect(result.errorMessage).toContain('dev mode');
     });
 
-    it('should accept localhost URLs with /unstyled.html suffix in dev mode', () => {
+    it('should accept localhost URLs in dev mode', () => {
       jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
 
-      const result = validateTutorialUrl('http://localhost:5500/tutorial/unstyled.html');
-      expect(result.isValid).toBe(true);
-    });
-
-    it('should reject localhost URLs without /unstyled.html suffix in dev mode', () => {
-      jest.mocked(isDevModeEnabledGlobal).mockReturnValue(true);
-
-      const result = validateTutorialUrl('http://localhost:5500/tutorial/index.html');
-      expect(result.isValid).toBe(false);
-      expect(result.errorMessage).toContain('unstyled.html');
+      // Content fetcher automatically appends /unstyled.html suffix when needed
+      expect(validateTutorialUrl('http://localhost:5500/tutorial/unstyled.html').isValid).toBe(true);
+      expect(validateTutorialUrl('http://localhost:5500/tutorial/index.html').isValid).toBe(true);
+      expect(validateTutorialUrl('http://localhost:5500/docs/grafana/').isValid).toBe(true);
     });
 
     it('should reject empty URLs', () => {
@@ -274,7 +268,7 @@ describe('Localhost URL validators', () => {
     it('should reject invalid URL formats', () => {
       const result = validateTutorialUrl('not a valid url');
       expect(result.isValid).toBe(false);
-      expect(result.errorMessage).toContain('Invalid URL');
+      expect(result.errorMessage).toContain('Invalid URL format');
     });
   });
 });

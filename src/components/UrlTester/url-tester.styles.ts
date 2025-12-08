@@ -1,7 +1,7 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
-export const getURLTesterStyles = (theme: GrafanaTheme2) => ({
+export const getUrlTesterStyles = (theme: GrafanaTheme2) => ({
   formGroup: css({
     display: 'flex',
     flexDirection: 'column',

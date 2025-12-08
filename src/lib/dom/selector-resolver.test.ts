@@ -5,15 +5,15 @@ import { resolveSelector } from './selector-resolver';
 jest.mock('./grafana-selector', () => ({
   toGrafanaSelector: jest.fn((path: string, id?: string) => {
     if (path === 'components.RefreshPicker.runButtonV2') {
-      return '[data-testid="data-testid RefreshPicker run button"], [aria-label="data-testid RefreshPicker run button"]';
+      return "[data-testid='data-testid RefreshPicker run button'], [aria-label='data-testid RefreshPicker run button']";
     }
     if (path === 'pages.AddDashboard.itemButton' && id === 'Panel') {
-      return 'button[aria-label="Add new panel Panel"]';
+      return "button[aria-label='Add new panel Panel']";
     }
     if (path === 'invalid.path') {
       throw new Error('Selector not found');
     }
-    return `[data-testid="mock-${path}"]`;
+    return `[data-testid='mock-${path}']`;
   }),
 }));
 
@@ -26,7 +26,7 @@ describe('selector-resolver', () => {
     it('should resolve grafana: prefix to CSS selector', () => {
       const result = resolveSelector('grafana:components.RefreshPicker.runButtonV2');
       expect(result).toBe(
-        '[data-testid="data-testid RefreshPicker run button"], [aria-label="data-testid RefreshPicker run button"]'
+        "[data-testid='data-testid RefreshPicker run button'], [aria-label='data-testid RefreshPicker run button']"
       );
     });
 

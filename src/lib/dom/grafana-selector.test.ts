@@ -18,8 +18,8 @@ describe('grafana-selector', () => {
       // This tests that we can navigate the selector object and generate a CSS selector
       // The actual selectors come from @grafana/e2e-selectors
       const result = toGrafanaSelector('components.RefreshPicker.runButtonV2');
-      expect(result).toContain('[data-testid="data-testid RefreshPicker run button"]');
-      expect(result).toContain('[aria-label="data-testid RefreshPicker run button"]');
+      expect(result).toContain("[data-testid='data-testid RefreshPicker run button']");
+      expect(result).toContain("[aria-label='data-testid RefreshPicker run button']");
     });
 
     it('should throw error for empty selector path', () => {
@@ -99,12 +99,12 @@ describe('grafana-selector', () => {
   describe('navSelectors', () => {
     it('should create selector by href', () => {
       const selector = navSelectors.menuItemByHref('/dashboards');
-      expect(selector).toBe('a[data-testid="data-testid Nav menu item"][href="/dashboards"]');
+      expect(selector).toBe("a[data-testid='data-testid Nav menu item'][href='/dashboards']");
     });
 
     it('should create selector by text', () => {
       const selector = navSelectors.menuItemByText('Dashboards');
-      expect(selector).toBe('a[data-testid="data-testid Nav menu item"]:contains("Dashboards")');
+      expect(selector).toBe("a[data-testid='data-testid Nav menu item']:contains('Dashboards')");
     });
   });
 

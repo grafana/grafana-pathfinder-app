@@ -302,7 +302,7 @@ export function isGitHubRawUrl(urlString: string): boolean {
   return url.hostname === 'raw.githubusercontent.com';
 }
 
-export interface URLValidation {
+export interface UrlValidation {
   isValid: boolean;
   errorMessage?: string;
 }
@@ -315,7 +315,7 @@ export interface URLValidation {
  * @param url - The URL to validate
  * @returns Validation result with error message if invalid
  */
-export function validateTutorialUrl(url: string): URLValidation {
+export function validateTutorialUrl(url: string): UrlValidation {
   if (!url) {
     return {
       isValid: false,
@@ -323,28 +323,18 @@ export function validateTutorialUrl(url: string): URLValidation {
     };
   }
 
-  // Check if it's a valid URL
-  let urlObj: URL;
-  try {
-    urlObj = new URL(url);
-  } catch {
+  // Check for valid URL format early
+  const parsedUrl = parseUrlSafely(url);
+  if (!parsedUrl) {
     return {
       isValid: false,
-      errorMessage: 'Invalid URL format. Please provide a valid URL.',
+      errorMessage: 'Invalid URL format',
     };
   }
 
-  const pathParts = urlObj.pathname.split('/').filter(Boolean);
-
   // In dev mode, allow localhost URLs for testing
+  // Note: The content fetcher automatically appends /unstyled.html suffix when needed
   if (isDevModeEnabledGlobal() && isLocalhostUrl(url)) {
-    // Require /unstyled.html suffix for localhost tutorials
-    if (pathParts[pathParts.length - 1] !== 'unstyled.html') {
-      return {
-        isValid: false,
-        errorMessage: 'Localhost tutorial URL must include the /unstyled.html suffix',
-      };
-    }
     return {
       isValid: true,
     };
