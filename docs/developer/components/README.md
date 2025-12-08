@@ -21,7 +21,7 @@ The components are organized into logical groups with clear responsibilities:
 - **DomPathTooltip/**: DOM path visualization tooltip
 - **SelectorDebugPanel/**: CSS selector debugging panel
 - **SkeletonLoader/**: Loading state skeleton UI
-- **URLTester/**: URL testing utilities
+- **UrlTester/**: URL testing utilities
 - **FeedbackButton/**: User feedback collection button
 
 ## Component Files
@@ -75,7 +75,7 @@ App (root)
 ├── DomPathTooltip/ (DOM visualization)
 ├── SelectorDebugPanel/ (selector debugging)
 ├── SkeletonLoader/ (loading states)
-├── URLTester/ (URL testing)
+├── UrlTester/ (URL testing)
 └── FeedbackButton/ (user feedback)
 ```
 

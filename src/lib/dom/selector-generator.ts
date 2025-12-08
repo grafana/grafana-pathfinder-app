@@ -373,7 +373,7 @@ function findNearbyFormControl(element: HTMLElement, maxDepth: number): HTMLElem
           // Look for its label
           const inputId = formControl.id;
           if (inputId) {
-            const associatedLabel = document.querySelector(`label[for="${inputId}"]`);
+            const associatedLabel = document.querySelector(`label[for='${inputId}']`);
             if (associatedLabel instanceof HTMLElement) {
               return associatedLabel;
             }
@@ -491,7 +491,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
         ) || 'data-testid';
 
       // Always combine testId + href for nav menu items
-      const combinedSelector = `${tag}[${testIdAttr}="${testId}"][href="${href}"]`;
+      const combinedSelector = `${tag}[${testIdAttr}='${testId}'][href='${href}']`;
       return cleanDynamicAttributes(combinedSelector);
     }
 
@@ -502,7 +502,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
       ) || 'data-testid';
 
     // Simple test ID selector - check if it's unique first
-    const baseSelector = `${tag}[${testIdAttr}="${testId}"]`;
+    const baseSelector = `${tag}[${testIdAttr}='${testId}']`;
     const matches = querySelectorAllEnhanced(baseSelector);
 
     if (matches.elements.length === 1) {
@@ -522,7 +522,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
     // For links, if parent context didn't work, try adding href as last resort
     if (tag === 'a' && bestElement.hasAttribute('href')) {
       const href = normalizeHref(bestElement.getAttribute('href')!);
-      const hrefSelector = `${tag}[${testIdAttr}="${testId}"][href="${href}"]`;
+      const hrefSelector = `${tag}[${testIdAttr}='${testId}'][href='${href}']`;
 
       const hrefMatches = querySelectorAllEnhanced(hrefSelector);
       if (hrefMatches.elements.length === 1) {
@@ -546,7 +546,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
 
     // If we have meaningful text, use role + contains strategy
     if (text.length > 0 && text.length < 50) {
-      const roleSelector = `[role="${role}"]:contains("${text}")`;
+      const roleSelector = `[role='${role}']:contains('${text}')`;
 
       // Check uniqueness
       const matches = querySelectorAllEnhanced(roleSelector);
@@ -587,7 +587,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
         if (parent && (getAnyTestId(parent) || parent.id || parent.hasAttribute('aria-label'))) {
           // Don't pass click coordinates to parent - they only apply to the clicked element
           const parentSelector = generateBestSelector(parent);
-          const fullSelector = `${parentSelector} button:contains("${cleanText}")`;
+          const fullSelector = `${parentSelector} button:contains('${cleanText}')`;
           return cleanDynamicAttributes(fullSelector);
         }
 
@@ -597,7 +597,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
         }
 
         // Strategy C: Standalone :contains as fallback (with validation)
-        const baseSelector = `button:contains("${cleanText}")`;
+        const baseSelector = `button:contains('${cleanText}')`;
         const contextualSelector = buildContextualSelector(bestElement, baseSelector);
         return cleanDynamicAttributes(contextualSelector);
       }
@@ -608,7 +608,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
   if (bestElement.hasAttribute('aria-label')) {
     const ariaLabel = bestElement.getAttribute('aria-label');
     const tag = bestElement.tagName.toLowerCase();
-    const baseSelector = `${tag}[aria-label="${ariaLabel}"]`;
+    const baseSelector = `${tag}[aria-label='${ariaLabel}']`;
     const contextualSelector = buildContextualSelector(bestElement, baseSelector);
     return cleanDynamicAttributes(contextualSelector);
   }
@@ -629,7 +629,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
 
       if (isRadioOrCheckbox) {
         // For radio/checkbox, prefer text-based selection
-        const textSelector = `label:contains("${text}")`;
+        const textSelector = `label:contains('${text}')`;
         const matches = querySelectorAllEnhanced(textSelector);
         if (matches.elements.length === 1) {
           return cleanDynamicAttributes(textSelector);
@@ -647,11 +647,11 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
       const prefixMatch = forAttr.match(/^([a-z-]+(?:-[a-z]+)?)-/);
       if (prefixMatch) {
         const prefix = prefixMatch[1];
-        const prefixSelector = `label[for^="${prefix}-"]`;
+        const prefixSelector = `label[for^='${prefix}-']`;
 
         // If text content exists, combine prefix with text for best specificity
         if (text.length > 0 && text.length < 50) {
-          const combinedSelector = `${prefixSelector}:contains("${text}")`;
+          const combinedSelector = `${prefixSelector}:contains('${text}')`;
           const matches = querySelectorAllEnhanced(combinedSelector);
           if (matches.elements.length === 1) {
             return cleanDynamicAttributes(combinedSelector);
@@ -660,7 +660,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
       }
 
       // Strategy C: Full 'for' attribute as fallback
-      const baseSelector = `label[for="${forAttr}"]`;
+      const baseSelector = `label[for='${forAttr}']`;
       const matches = querySelectorAllEnhanced(baseSelector);
       if (matches.elements.length === 1) {
         return cleanDynamicAttributes(baseSelector);
@@ -672,7 +672,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
 
     // Strategy D: Text-only label (no 'for' attribute)
     if (text.length > 0 && text.length < 50) {
-      const textSelector = `label:contains("${text}")`;
+      const textSelector = `label:contains('${text}')`;
       const contextualSelector = buildContextualSelector(bestElement, textSelector);
       return cleanDynamicAttributes(contextualSelector);
     }
@@ -686,7 +686,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
   ) {
     const id = bestElement.id;
     const tag = bestElement.tagName.toLowerCase();
-    const baseSelector = `${tag}[id="${id}"]`;
+    const baseSelector = `${tag}[id='${id}']`;
 
     // IDs should be unique
     const matches = querySelectorAllEnhanced(baseSelector);
@@ -713,7 +713,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
         // Try to find associated label instead
         const inputId = bestElement.id;
         if (inputId) {
-          const label = document.querySelector(`label[for="${inputId}"]`);
+          const label = document.querySelector(`label[for='${inputId}']`);
           if (label instanceof HTMLElement) {
             // Recursively generate selector for the label (which has better text-based selection)
             return generateBestSelector(label);
@@ -723,7 +723,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
       } else {
         // For other input types (text, email, etc.), name is fine
         const name = bestElement.getAttribute('name');
-        const baseSelector = `${tag}[name="${name}"]`;
+        const baseSelector = `${tag}[name='${name}']`;
         const contextualSelector = buildContextualSelector(bestElement, baseSelector);
         return cleanDynamicAttributes(contextualSelector);
       }
@@ -739,7 +739,7 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
   // 8. For links with href, use normalized pathname
   if (bestElement.tagName === 'A' && bestElement.hasAttribute('href')) {
     const href = normalizeHref(bestElement.getAttribute('href')!);
-    const baseSelector = `a[href="${href}"]`;
+    const baseSelector = `a[href='${href}']`;
     const contextualSelector = buildContextualSelector(bestElement, baseSelector);
     return cleanDynamicAttributes(contextualSelector);
   }
@@ -787,7 +787,7 @@ function buildContextualSelector(element: HTMLElement, baseSelector: string): st
     // Strategy 2: Try text content with :contains() - much more stable than position!
     const text = normalizeText(element.textContent || '');
     if (text.length > 0 && text.length < 100) {
-      const textSelector = `${baseSelector}:contains("${text}")`;
+      const textSelector = `${baseSelector}:contains('${text}')`;
       try {
         const textMatches = querySelectorAllEnhanced(textSelector);
         if (textMatches.elements.length === 1 && textMatches.elements[0] === element) {
@@ -830,7 +830,7 @@ function findSimpleParentContext(element: HTMLElement, baseSelector: string): st
         ['data-testid', 'data-cy', 'data-test-id', 'data-qa', 'data-test-subj'].find((attr) =>
           current!.hasAttribute(attr)
         ) || 'data-testid';
-      const parentSelector = `${tag}[${testIdAttr}="${testId}"]`;
+      const parentSelector = `${tag}[${testIdAttr}='${testId}']`;
 
       // Use child combinator (>) for all testid parents.
       // The enhanced selector engine handles the fallback to descendant (space) matching
@@ -882,7 +882,7 @@ function findSimpleParentContext(element: HTMLElement, baseSelector: string): st
           const tag = current.tagName.toLowerCase();
           // Try to use the semantic label for context
           // e.g. section[aria-label="Panel header integrations/gcp"]
-          const parentSelector = `${tag}[aria-label="${labelText}"]`;
+          const parentSelector = `${tag}[aria-label='${labelText}']`;
           const candidateSelector = `${parentSelector} ${baseSelector}`;
           try {
             const result = querySelectorAllEnhanced(candidateSelector);
@@ -925,14 +925,14 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
       !attr.name.includes('react') &&
       attr.value.length < 50
     ) {
-      parts.push(`[${attr.name}="${attr.value}"]`);
+      parts.push(`[${attr.name}='${attr.value}']`);
     }
   });
 
   // Add normalized href for links
   if (tag === 'a' && element.hasAttribute('href')) {
     const href = normalizeHref(element.getAttribute('href')!);
-    parts.push(`[href="${href}"]`);
+    parts.push(`[href='${href}']`);
   }
 
   // If we still don't have enough specificity, try these strategies:
@@ -949,7 +949,7 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
       if (tag === 'button' && element.textContent) {
         const text = normalizeText(element.textContent);
         if (text.length > 0 && text.length < 50) {
-          return `${parentSelector} button:contains("${text}")`;
+          return `${parentSelector} button:contains('${text}')`;
         }
       }
 
@@ -961,7 +961,7 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
   if ((tag === 'button' || tag === 'a') && element.textContent) {
     const text = normalizeText(element.textContent);
     if (text.length > 0 && text.length < 50) {
-      return `${tag}:contains("${text}")`;
+      return `${tag}:contains('${text}')`;
     }
   }
 

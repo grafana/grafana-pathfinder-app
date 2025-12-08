@@ -75,10 +75,22 @@ export class GuidedHandler {
     timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout
   ): Promise<CompletionResult> {
     try {
+      if (action.targetAction === 'noop') {
+        return this.executeNoopStep(action, stepIndex, totalSteps, timeout);
+      }
+
+      // At this point, action is not noop, so refTarget must exist and targetAction is hover/button/highlight
+      const refTarget = action.refTarget;
+      const targetAction = action.targetAction as 'hover' | 'button' | 'highlight';
+
+      if (!refTarget) {
+        throw new Error(`Non-noop action ${targetAction} requires a refTarget`);
+      }
+
       // Find target element using action-specific logic with retry
       const targetElement = await this.findTargetElementWithRetry(
-        action.refTarget,
-        action.targetAction,
+        refTarget,
+        targetAction,
         timeout,
         INTERACTIVE_CONFIG.guided.retryInterval
       );
@@ -103,7 +115,7 @@ export class GuidedHandler {
       // the 300ms DOM settling delay after scroll
       await this.highlightTarget(
         targetElement,
-        action.targetAction,
+        targetAction,
         stepIndex,
         totalSteps,
         action.targetComment,
@@ -131,6 +143,158 @@ export class GuidedHandler {
       this.cancel();
       return 'cancelled';
     }
+  }
+
+  /**
+   * Execute a noop step - informational step with no target element
+   * Shows a comment box and waits for user to click "Continue" or skip
+   */
+  private async executeNoopStep(
+    action: GuidedAction,
+    stepIndex: number,
+    totalSteps: number,
+    timeout: number
+  ): Promise<CompletionResult> {
+    this.currentAbortController = new AbortController();
+
+    const skipPromise = action.isSkippable
+      ? this.createSkipListener(stepIndex)
+      : new Promise<CompletionResult>(() => {}); // Never resolves if not skippable
+
+    const cancelPromise = this.createCancelListener(stepIndex);
+    const completionPromise = this.createNoopCompletionListener(stepIndex, timeout);
+
+    // Show comment box without highlighting any element
+    // Use navigationManager to show a floating comment box
+    await this.showNoopCommentBox(
+      stepIndex,
+      totalSteps,
+      action.targetComment || 'Complete this step to continue',
+      action.isSkippable
+    );
+
+    // Wait for user to complete, skip, cancel, or timeout
+    const result = await Promise.race([completionPromise, skipPromise, cancelPromise]);
+
+    // Track completion for progress display
+    if (result === 'completed' || result === 'skipped') {
+      this.completedSteps.push(stepIndex);
+    }
+
+    this.navigationManager.clearAllHighlights();
+
+    return result;
+  }
+
+  /**
+   * Create a completion listener for noop steps - listens for "Continue" button click
+   */
+  private createNoopCompletionListener(stepIndex: number, timeout: number): Promise<CompletionResult> {
+    return new Promise<CompletionResult>((resolve) => {
+      const handleContinue = (event: Event) => {
+        const customEvent = event as CustomEvent<{ stepIndex: number }>;
+        if (customEvent.detail?.stepIndex === stepIndex) {
+          resolve('completed');
+        }
+      };
+
+      document.addEventListener('guided-noop-continue', handleContinue);
+      this.activeListeners.push({
+        target: document,
+        type: 'guided-noop-continue',
+        handler: handleContinue,
+      });
+
+      setTimeout(() => resolve('timeout'), timeout);
+    });
+  }
+
+  /**
+   * Show a comment box for noop steps (no element highlight)
+   */
+  private async showNoopCommentBox(
+    stepIndex: number,
+    totalSteps: number,
+    comment: string,
+    isSkippable?: boolean
+  ): Promise<void> {
+    this.navigationManager.clearAllHighlights();
+
+    const commentBox = document.createElement('div');
+    commentBox.className = 'interactive-comment-box';
+    commentBox.setAttribute('data-position', 'center');
+    commentBox.setAttribute('data-ready', 'true');
+    commentBox.setAttribute('data-noop', 'true');
+
+    const content = document.createElement('div');
+    content.className = 'interactive-comment-content interactive-comment-glow';
+
+    const stepsContainer = document.createElement('div');
+    stepsContainer.className = 'interactive-comment-steps-list';
+    for (let i = 0; i < totalSteps; i++) {
+      const stepItem = document.createElement('div');
+      stepItem.className = 'interactive-comment-step-item';
+      if (this.completedSteps.includes(i)) {
+        stepItem.classList.add('interactive-comment-step-completed');
+      }
+      if (i === stepIndex) {
+        stepItem.classList.add('interactive-comment-step-current');
+      }
+      stepsContainer.appendChild(stepItem);
+    }
+
+    const logoContainer = document.createElement('div');
+    logoContainer.className = 'interactive-comment-logo';
+    const logo = document.createElement('img');
+    logo.src = 'public/plugins/grafana-pathfinder-app/img/logo.svg';
+    logo.alt = 'Pathfinder';
+    logoContainer.appendChild(logo);
+
+    const textContainer = document.createElement('div');
+    textContainer.className = 'interactive-comment-text';
+    textContainer.innerHTML = comment;
+
+    const contentWrapper = document.createElement('div');
+    contentWrapper.className = 'interactive-comment-wrapper';
+    contentWrapper.appendChild(logoContainer);
+    contentWrapper.appendChild(textContainer);
+
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'interactive-comment-buttons';
+
+    const continueButton = document.createElement('button');
+    continueButton.className = 'interactive-comment-skip-btn'; // Reuse skip button styling
+    continueButton.textContent = 'Continue →';
+    continueButton.style.backgroundColor = '#3871dc'; // Primary color
+    continueButton.onclick = () => {
+      document.dispatchEvent(new CustomEvent('guided-noop-continue', { detail: { stepIndex } }));
+    };
+    buttonContainer.appendChild(continueButton);
+
+    if (isSkippable) {
+      const skipButton = document.createElement('button');
+      skipButton.className = 'interactive-comment-skip-btn';
+      skipButton.textContent = 'Skip';
+      skipButton.onclick = () => {
+        document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex } }));
+      };
+      buttonContainer.appendChild(skipButton);
+    }
+
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'interactive-comment-cancel-btn';
+    cancelButton.textContent = 'Cancel';
+    cancelButton.onclick = () => {
+      document.dispatchEvent(new CustomEvent('guided-step-cancelled', { detail: { stepIndex } }));
+    };
+    buttonContainer.appendChild(cancelButton);
+
+    content.appendChild(stepsContainer);
+    content.appendChild(contentWrapper);
+    content.appendChild(buttonContainer);
+    commentBox.appendChild(content);
+
+    document.body.appendChild(commentBox);
   }
 
   /**
@@ -328,7 +492,9 @@ export class GuidedHandler {
     const signal = this.currentAbortController.signal;
 
     // Create completion promise based on action type (listener attached immediately)
-    const completionPromise = this.attachCompletionListener(action.targetAction, targetElement, signal);
+    // Note: This method is only called for non-noop actions, so we can safely narrow the type
+    const actionType = action.targetAction as 'hover' | 'button' | 'highlight';
+    const completionPromise = this.attachCompletionListener(actionType, targetElement, signal);
 
     // Create timeout promise
     const timeoutPromise = new Promise<CompletionResult>((resolve) => {

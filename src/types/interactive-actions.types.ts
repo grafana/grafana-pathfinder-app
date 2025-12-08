@@ -21,8 +21,8 @@ export interface InternalAction {
  * Extends InternalAction with stricter types and additional fields
  */
 export interface GuidedAction extends InternalAction {
-  targetAction: 'hover' | 'button' | 'highlight';
-  refTarget: string; // Required for guided actions
+  targetAction: 'hover' | 'button' | 'highlight' | 'noop';
+  refTarget?: string; // Required for hover/button/highlight, optional for noop
   targetComment?: string; // Optional comment to display in tooltip during this step
   isSkippable?: boolean; // Whether this specific step can be skipped
 }

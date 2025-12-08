@@ -1419,10 +1419,28 @@ export const addGlobalInteractiveStyles = () => {
       transform: scale(0.96) translateY(8px);
     }
 
+    /* Centered position for noop steps (no element to highlight) */
+    .interactive-comment-box[data-position="center"] {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: scale(0.96) translate(-50%, -50%);
+      z-index: 10001;
+    }
+
+    /* Noop comment boxes get a slightly different style */
+    .interactive-comment-box[data-noop="true"] .interactive-comment-content::before {
+      display: none; /* No arrow for centered boxes */
+    }
+
     /* Final state - visible and in position */
     .interactive-comment-box[data-ready="true"] {
       opacity: 1;
       transform: scale(1) translateX(0) translateY(0);
+    }
+
+    .interactive-comment-box[data-ready="true"][data-position="center"] {
+      transform: scale(1) translate(-50%, -50%);
     }
 
     .interactive-comment-content {
