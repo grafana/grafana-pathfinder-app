@@ -34,6 +34,7 @@ node dist/cli/cli/index.js validate [options] [files...]
 - `--bundled`: Validate all bundled guides located in `src/bundled-interactives/`. This option automatically discovers all JSON files in the directory (excluding `index.json`) relative to the current working directory where the command is executed. When run in another repository, it will look for `src/bundled-interactives/` in that repository's directory structure.
 - `--strict`: Treat warnings as errors. The command will exit with a non-zero status code if any warnings are found.
 - `--format <format>`: Output format. Options are `text` (default) or `json`.
+- File arguments accept `*.json` and `**/*.json` globs for nested directories (non-JSON files are ignored).
 
 ### Examples
 
