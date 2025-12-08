@@ -18,7 +18,7 @@ import {
 } from '@grafana/assistant';
 import { getDataSourceSrv, locationService } from '@grafana/runtime';
 import { getIsAssistantAvailable, useMockInlineAssistant } from './assistant-dev-mode';
-import { isAssistantDevModeEnabledGlobal } from '../../components/wysiwyg-editor/dev-mode';
+import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { reportAppInteraction, UserInteraction, buildAssistantCustomizableProperties } from '../../lib/analytics';
 import { createDatasourceMetadataTool, type DatasourceMetadataArtifact, isSupportedDatasourceType } from './tools';
 

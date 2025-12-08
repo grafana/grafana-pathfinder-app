@@ -1,15 +1,16 @@
 import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
-import { Button, Input, Badge, Icon, useStyles2, TextArea, Stack, Alert, Field, TabsBar, Tab } from '@grafana/ui';
+import { Button, Input, Badge, Icon, useStyles2, TextArea, Stack, Alert, Field } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive-engine';
 import { getDebugPanelStyles } from './debug-panel.styles';
-import { combineStepsIntoMultistep } from '../wysiwyg-editor/devtools/tutorial-exporter';
+import {
+  combineStepsIntoMultistep,
+  useSelectorTester,
+  useStepExecutor,
+  useSelectorCapture,
+  useActionRecorder,
+  parseStepString,
+} from '../../utils/devtools';
 import { UrlTester } from 'components/UrlTester';
-import { WysiwygEditor } from '../wysiwyg-editor';
-import { useSelectorTester } from '../wysiwyg-editor/devtools/selector-tester.hook';
-import { useStepExecutor } from '../wysiwyg-editor/devtools/step-executor.hook';
-import { useSelectorCapture } from '../wysiwyg-editor/devtools/selector-capture.hook';
-import { useActionRecorder } from '../wysiwyg-editor/devtools/action-recorder.hook';
-import { parseStepString } from '../wysiwyg-editor/devtools/step-parser.util';
 import { DomPathTooltip } from '../DomPathTooltip';
 import { SkeletonLoader } from '../SkeletonLoader';
 
@@ -20,9 +21,6 @@ const BlockEditor = lazy(() =>
   }))
 );
 
-// Editor tab types
-type EditorTab = 'html' | 'json';
-
 export interface SelectorDebugPanelProps {
   onOpenDocsPage?: (url: string, title: string) => void;
 }
@@ -30,9 +28,6 @@ export interface SelectorDebugPanelProps {
 export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps = {}) {
   const styles = useStyles2(getDebugPanelStyles);
   const { executeInteractiveAction } = useInteractiveElements();
-
-  // Editor tab state
-  const [activeEditorTab, setActiveEditorTab] = useState<EditorTab>('json');
 
   // Section expansion state - priority sections expanded by default
   const [recordExpanded, setRecordExpanded] = useState(true); // Priority: expanded by default
@@ -51,13 +46,13 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       const currentUserIds = globalConfig?.devModeUserIds ?? [];
 
       // Import dynamically to avoid circular dependency
-      const { disableDevModeForUser } = await import('../wysiwyg-editor/dev-mode');
+      const { disableDevModeForUser } = await import('../../utils/dev-mode');
 
       if (currentUserId) {
         await disableDevModeForUser(currentUserId, currentUserIds);
       } else {
         // Fallback: disable for all if can't determine user
-        const { disableDevMode } = await import('../wysiwyg-editor/dev-mode');
+        const { disableDevMode } = await import('../../utils/dev-mode');
         await disableDevMode();
       }
 
@@ -323,31 +318,12 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         </Button>
       </div>
 
-      {/* Editor Tabs */}
+      {/* Block Editor */}
       <div className={styles.editorSection}>
-        <TabsBar>
-          <Tab
-            label="JSON Editor ✨"
-            icon="brackets-curly"
-            active={activeEditorTab === 'json'}
-            onChangeTab={() => setActiveEditorTab('json')}
-          />
-          <Tab
-            label="HTML Editor"
-            icon="file-alt"
-            active={activeEditorTab === 'html'}
-            onChangeTab={() => setActiveEditorTab('html')}
-          />
-        </TabsBar>
-
         <div className={styles.editorContent}>
-          {activeEditorTab === 'html' ? (
-            <WysiwygEditor />
-          ) : (
-            <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-              <BlockEditor />
-            </Suspense>
-          )}
+          <Suspense fallback={<SkeletonLoader type="recommendations" />}>
+            <BlockEditor />
+          </Suspense>
         </div>
       </div>
 

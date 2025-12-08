@@ -12,10 +12,10 @@
  */
 
 import { ContextService } from './context.service';
-import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 
 // Mock dependencies
-jest.mock('../components/wysiwyg-editor/dev-mode', () => ({
+jest.mock('../utils/dev-mode', () => ({
   isDevModeEnabled: jest.fn(() => false),
   isDevModeEnabledGlobal: jest.fn(() => false),
 }));

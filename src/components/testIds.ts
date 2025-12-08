@@ -63,121 +63,19 @@ export const testIds = {
     errorAlert: 'context-panel-error-alert',
   },
 
-  // WYSIWYG Preview Banner
-  wysiwygPreview: {
-    banner: 'wysiwyg-preview-banner',
-    modeIndicator: 'wysiwyg-preview-mode-indicator',
-    returnToEditorButton: 'wysiwyg-preview-return-to-editor',
-  },
-
-  // WYSIWYG Editor
-  wysiwygEditor: {
-    // Main container
-    container: 'wysiwyg-editor-container',
-    editorContent: 'wysiwyg-editor-content',
-
-    // Toolbar
-    toolbar: {
-      container: 'wysiwyg-toolbar',
-      undoButton: 'wysiwyg-toolbar-undo',
-      redoButton: 'wysiwyg-toolbar-redo',
-      styleDropdown: 'wysiwyg-toolbar-style-dropdown',
-      boldButton: 'wysiwyg-toolbar-bold',
-      codeButton: 'wysiwyg-toolbar-code',
-      bulletListButton: 'wysiwyg-toolbar-bullet-list',
-      orderedListButton: 'wysiwyg-toolbar-ordered-list',
-      addActionButton: 'wysiwyg-toolbar-add-action',
-      addSectionButton: 'wysiwyg-toolbar-add-section',
-      addCommentButton: 'wysiwyg-toolbar-add-comment',
-      fullScreenButton: 'wysiwyg-toolbar-fullscreen',
-      clearFormattingButton: 'wysiwyg-toolbar-clear-formatting',
-      copyButton: 'wysiwyg-toolbar-copy',
-      downloadButton: 'wysiwyg-toolbar-download',
-      testButton: 'wysiwyg-toolbar-test',
-      resetButton: 'wysiwyg-toolbar-reset',
-    },
-
-    // Bubble menu (floating selection toolbar)
-    bubbleMenu: {
-      container: 'wysiwyg-bubble-menu',
-      boldButton: 'wysiwyg-bubble-bold',
-      codeButton: 'wysiwyg-bubble-code',
-      linkButton: 'wysiwyg-bubble-link',
-      clearButton: 'wysiwyg-bubble-clear',
-    },
-
-    // Link dialog
-    linkDialog: {
-      modal: 'wysiwyg-link-dialog',
-      urlInput: 'wysiwyg-link-url-input',
-      applyButton: 'wysiwyg-link-apply',
-      removeButton: 'wysiwyg-link-remove',
-      cancelButton: 'wysiwyg-link-cancel',
-    },
-
-    // Comment dialog
-    commentDialog: {
-      modal: 'wysiwyg-comment-dialog',
-      textArea: 'wysiwyg-comment-textarea',
-      insertButton: 'wysiwyg-comment-insert',
-      cancelButton: 'wysiwyg-comment-cancel',
-      deleteButton: 'wysiwyg-comment-delete',
-    },
-
-    // Export dialog
-    exportDialog: {
-      modal: 'wysiwyg-export-dialog',
-      titleInput: 'wysiwyg-export-title',
-      idInput: 'wysiwyg-export-id',
-      exportButton: 'wysiwyg-export-confirm',
-      cancelButton: 'wysiwyg-export-cancel',
-    },
-
-    // Form panel (action editor)
-    formPanel: {
-      container: 'wysiwyg-form-panel',
-      title: 'wysiwyg-form-title',
-      actionSelector: 'wysiwyg-action-selector',
-      actionCard: (actionType: string) => `wysiwyg-action-card-${actionType}`,
-      selectorInput: 'wysiwyg-form-selector-input',
-      selectorCaptureButton: 'wysiwyg-form-selector-capture',
-      descriptionInput: 'wysiwyg-form-description',
-      requirementsInput: 'wysiwyg-form-requirements',
-      applyButton: 'wysiwyg-form-apply',
-      cancelButton: 'wysiwyg-form-cancel',
-      switchTypeButton: 'wysiwyg-form-switch-type',
-    },
-
-    // Full screen mode
+  // Dev Tools / Block Editor
+  devTools: {
+    // Preview banner
+    previewBanner: 'dev-tools-preview-banner',
+    previewModeIndicator: 'dev-tools-preview-mode-indicator',
+    returnToEditorButton: 'dev-tools-return-to-editor',
+    // Full screen mode (used by element picker and recording)
     fullScreen: {
-      overlay: 'wysiwyg-fullscreen-overlay',
-      domPathTooltip: 'wysiwyg-fullscreen-tooltip',
-      stepEditor: {
-        modal: 'wysiwyg-step-editor',
-        selectorDisplay: 'wysiwyg-step-selector',
-        selectorCaptureButton: 'wysiwyg-step-selector-capture',
-        actionTypeSelect: 'wysiwyg-step-action-type',
-        descriptionInput: 'wysiwyg-step-description',
-        requirementsInput: 'wysiwyg-step-requirements',
-        commentInput: 'wysiwyg-step-comment',
-        sectionSelect: 'wysiwyg-step-section',
-        skipButton: 'wysiwyg-step-skip',
-        cancelButton: 'wysiwyg-step-cancel',
-        saveButton: 'wysiwyg-step-save',
-      },
-      bundlingIndicator: 'wysiwyg-bundling-indicator',
-      bundlingStepEditor: {
-        modal: 'wysiwyg-bundling-step-editor',
-        commentInput: 'wysiwyg-bundling-comment',
-        requirementsInput: 'wysiwyg-bundling-requirements',
-        saveButton: 'wysiwyg-bundling-save',
-        skipButton: 'wysiwyg-bundling-skip',
-        cancelButton: 'wysiwyg-bundling-cancel',
-      },
+      domPathTooltip: 'dev-tools-fullscreen-tooltip',
       minimizedSidebar: {
-        container: 'wysiwyg-minimized-sidebar',
-        button: 'wysiwyg-minimized-button',
-        badge: 'wysiwyg-minimized-badge',
+        container: 'dev-tools-minimized-sidebar',
+        button: 'dev-tools-minimized-button',
+        badge: 'dev-tools-minimized-badge',
       },
     },
   },
