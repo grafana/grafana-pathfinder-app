@@ -139,4 +139,3 @@ describe('KNOWN_FIELDS sync', () => {
     verifyFields(JsonAssistantBlockSchema, 'assistant');
   });
 });
-
