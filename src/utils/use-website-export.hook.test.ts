@@ -3,7 +3,8 @@
  */
 
 import { renderHook, act } from '@testing-library/react';
-import { useWebsiteExport, type RecordedStep } from './use-website-export.hook';
+import { useWebsiteExport } from './use-website-export.hook';
+import type { RecordedStep } from './devtools';
 
 const mockClipboard = {
   writeText: jest.fn(),

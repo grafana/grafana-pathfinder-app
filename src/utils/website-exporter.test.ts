@@ -2,7 +2,8 @@
  * Tests for Website Shortcode Export Utilities
  */
 
-import { exportStepsForWebsite, exportSingleStepForWebsite, type RecordedStep } from './website-exporter';
+import { exportStepsForWebsite, exportSingleStepForWebsite } from './website-exporter';
+import type { RecordedStep } from './devtools';
 
 describe('website-exporter', () => {
   describe('exportSingleStepForWebsite', () => {

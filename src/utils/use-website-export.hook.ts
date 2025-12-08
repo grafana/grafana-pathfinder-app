@@ -4,16 +4,7 @@
 
 import { useCallback, useState } from 'react';
 import { exportStepsForWebsite, exportSingleStepForWebsite, type WebsiteExportOptions } from './website-exporter';
-
-export interface RecordedStep {
-  action: string;
-  selector: string;
-  value?: string;
-  description: string;
-  isUnique?: boolean;
-  matchCount?: number;
-  contextStrategy?: string;
-}
+import type { RecordedStep } from './devtools';
 
 export interface UseWebsiteExportReturn {
   /** Export multiple steps to website shortcodes */

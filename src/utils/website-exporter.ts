@@ -4,15 +4,7 @@
  * for use in Grafana documentation website
  */
 
-export interface RecordedStep {
-  action: string;
-  selector: string;
-  value?: string;
-  description: string;
-  isUnique?: boolean;
-  matchCount?: number;
-  contextStrategy?: string;
-}
+import type { RecordedStep } from './devtools';
 
 export interface WebsiteExportOptions {
   includeComments?: boolean;
