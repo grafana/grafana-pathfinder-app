@@ -35,3 +35,4 @@ export interface ExtractedSelector {
   matchCount?: number;
   contextStrategy?: string;
 }
+
