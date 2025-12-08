@@ -99,7 +99,7 @@ function formatJsonOutput(summary: ValidationSummary): void {
 
 export const validateCommand = new Command('validate')
   .description('Validate JSON guide files')
-  .argument('[files...]', 'JSON guide files to validate (explicit paths only)')
+  .arguments('[files...]')
   .option('--bundled', 'Validate all bundled guides in src/bundled-interactives/')
   .option('--strict', 'Treat warnings as errors')
   .option('--format <format>', 'Output format: text or json', 'text')

@@ -2,7 +2,7 @@
  * Unknown field detection for forward compatibility
  */
 import { KNOWN_FIELDS } from '../types/json-guide.schema';
-import type { ValidationWarning } from './errors';
+import { formatPath, type ValidationWarning } from './errors';
 
 function checkUnknownFields(
   obj: Record<string, unknown>,
@@ -20,13 +20,6 @@ function checkUnknownFields(
     }
   }
   return warnings;
-}
-
-function formatPath(path: Array<string | number>): string {
-  if (path.length === 0) {
-    return 'root';
-  }
-  return path.map((p) => (typeof p === 'number' ? `[${p}]` : `.${p}`)).join('');
 }
 
 function detectUnknownFieldsInBlock(block: Record<string, unknown>, path: Array<string | number>): ValidationWarning[] {

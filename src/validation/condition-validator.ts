@@ -13,10 +13,7 @@
  * @coupling Uses types from src/types/requirements.types.ts
  */
 
-import {
-  FixedRequirementType,
-  ParameterizedRequirementPrefix,
-} from '../types/requirements.types';
+import { FixedRequirementType, ParameterizedRequirementPrefix } from '../types/requirements.types';
 import type { JsonGuide, JsonBlock, JsonStep } from '../types/json-guide.types';
 
 // Maximum number of comma-separated components in a single condition string
@@ -35,20 +32,8 @@ export interface ConditionIssue {
   message: string;
   /** Machine-readable error code for categorization */
   code: 'unknown_type' | 'missing_argument' | 'unexpected_argument' | 'invalid_format' | 'too_many_components';
-  /** Optional suggestion for fixing the issue */
-  suggestion?: string;
   /** JSON path to the condition (e.g., ['blocks', 2, 'requirements', 0]) */
   path: Array<string | number>;
-}
-
-/**
- * Result of validating a condition string or array.
- */
-export interface ConditionValidationResult {
-  /** Hard errors that should always fail validation */
-  errors: ConditionIssue[];
-  /** Soft warnings (become errors in strict mode) */
-  warnings: ConditionIssue[];
 }
 
 /**
@@ -62,17 +47,9 @@ const FIXED_TYPES = new Set(Object.values(FixedRequirementType));
 const PARAMETERIZED_PREFIXES = Object.values(ParameterizedRequirementPrefix);
 
 /**
- * Get parameterized prefixes without the trailing colon, for helpful suggestions.
- */
-const PARAMETERIZED_PREFIXES_WITHOUT_COLON = PARAMETERIZED_PREFIXES.map((p) => p.slice(0, -1));
-
-/**
  * Validate a single condition component (one item, not comma-separated).
  */
-function validateSingleCondition(
-  condition: string,
-  path: Array<string | number>
-): ConditionIssue | null {
+function validateSingleCondition(condition: string, path: Array<string | number>): ConditionIssue | null {
   const trimmed = condition.trim();
 
   if (!trimmed) {
@@ -91,7 +68,6 @@ function validateSingleCondition(
         condition: trimmed,
         message: `'${fixedType}' does not take an argument`,
         code: 'unexpected_argument',
-        suggestion: `Use '${fixedType}' without arguments`,
         path,
       };
     }
@@ -108,7 +84,6 @@ function validateSingleCondition(
           condition: trimmed,
           message: `'${prefix}' requires an argument`,
           code: 'missing_argument',
-          suggestion: `Add an argument after '${prefix}' (e.g., '${prefix}value')`,
           path,
         };
       }
@@ -123,25 +98,11 @@ function validateSingleCondition(
     }
   }
 
-  // Check if it matches a parameterized prefix without the colon (common mistake)
-  for (const prefixWithoutColon of PARAMETERIZED_PREFIXES_WITHOUT_COLON) {
-    if (trimmed === prefixWithoutColon) {
-      return {
-        condition: trimmed,
-        message: `Unknown condition type '${trimmed}'`,
-        code: 'unknown_type',
-        suggestion: `Did you mean '${prefixWithoutColon}:X'? Parameterized conditions require a colon and argument.`,
-        path,
-      };
-    }
-  }
-
   // Unknown condition type
   return {
     condition: trimmed,
     message: `Unknown condition type '${trimmed}'`,
     code: 'unknown_type',
-    suggestion: getUnknownTypeSuggestion(trimmed),
     path,
   };
 }
@@ -163,7 +124,6 @@ function validateArgumentFormat(
           condition: fullCondition,
           message: `Path argument should start with '/'`,
           code: 'invalid_format',
-          suggestion: `Use 'on-page:/${argument}' instead`,
           path,
         };
       }
@@ -176,20 +136,18 @@ function validateArgumentFormat(
           condition: fullCondition,
           message: `Version should be in semver format (e.g., '11.0.0')`,
           code: 'invalid_format',
-          suggestion: `Use a version like 'min-version:11.0.0'`,
           path,
         };
       }
       break;
 
     case ParameterizedRequirementPrefix.HAS_ROLE:
-      // Role should be lowercase (advisory)
+      // Role should be lowercase
       if (argument !== argument.toLowerCase()) {
         return {
           condition: fullCondition,
           message: `Role should be lowercase`,
           code: 'invalid_format',
-          suggestion: `Use 'has-role:${argument.toLowerCase()}' instead`,
           path,
         };
       }
@@ -200,50 +158,14 @@ function validateArgumentFormat(
 }
 
 /**
- * Get a helpful suggestion for an unknown condition type.
- */
-function getUnknownTypeSuggestion(condition: string): string {
-  const lower = condition.toLowerCase();
-
-  // Check for common typos
-  const typoSuggestions: Record<string, string> = {
-    'exist-reftarget': 'exists-reftarget',
-    'esists-reftarget': 'exists-reftarget',
-    'existsreftarget': 'exists-reftarget',
-    'navmenu': 'navmenu-open',
-    'nav-open': 'navmenu-open',
-    'admin': 'is-admin',
-    'logged-in': 'is-logged-in',
-    'loggedin': 'is-logged-in',
-    editor: 'is-editor',
-    datasources: 'has-datasources',
-    'dashboard-exist': 'dashboard-exists',
-    'dashboardexists': 'dashboard-exists',
-    'form-validation': 'form-valid',
-    formvalid: 'form-valid',
-  };
-
-  if (typoSuggestions[lower]) {
-    return `Did you mean '${typoSuggestions[lower]}'?`;
-  }
-
-  // List valid fixed types
-  const fixedTypesList = Array.from(FIXED_TYPES).slice(0, 4).join("', '");
-  return `Valid fixed types include: '${fixedTypesList}', etc.`;
-}
-
-/**
  * Validate a comma-separated condition string.
  *
  * @param conditionString - The condition string (may contain multiple comma-separated conditions)
  * @param path - JSON path to this condition string
- * @returns Validation result with errors and warnings
+ * @returns Array of validation issues found
  */
-export function validateConditionString(
-  conditionString: string,
-  path: Array<string | number>
-): ConditionValidationResult {
-  const warnings: ConditionIssue[] = [];
+export function validateConditionString(conditionString: string, path: Array<string | number>): ConditionIssue[] {
+  const issues: ConditionIssue[] = [];
 
   // Split by comma and filter empty strings
   const components = conditionString
@@ -253,26 +175,24 @@ export function validateConditionString(
 
   // Check component count limit
   if (components.length > MAX_CONDITION_COMPONENTS) {
-    warnings.push({
+    issues.push({
       condition: conditionString,
       message: `Condition has ${components.length} components, maximum is ${MAX_CONDITION_COMPONENTS}`,
       code: 'too_many_components',
-      suggestion: `Split into multiple steps or simplify the conditions`,
       path,
     });
     // Still validate individual components, but we've noted the limit issue
   }
 
-  // Validate each component
-  for (let i = 0; i < components.length; i++) {
-    const issue = validateSingleCondition(components[i], [...path, i]);
+  // Validate each component (use the same path for all - condition string provides context)
+  for (const component of components) {
+    const issue = validateSingleCondition(component, path);
     if (issue) {
-      warnings.push(issue);
+      issues.push(issue);
     }
   }
 
-  // All condition validation issues are warnings (become errors in strict mode)
-  return { errors: [], warnings };
+  return issues;
 }
 
 /**
@@ -280,24 +200,24 @@ export function validateConditionString(
  *
  * @param conditions - Array of condition strings (each may be comma-separated)
  * @param basePath - JSON path to the array (e.g., ['blocks', 2, 'requirements'])
- * @returns Combined validation result
+ * @returns Array of all validation issues found
  */
 export function validateConditions(
   conditions: string[] | undefined,
   basePath: Array<string | number>
-): ConditionValidationResult {
+): ConditionIssue[] {
   if (!conditions || conditions.length === 0) {
-    return { errors: [], warnings: [] };
+    return [];
   }
 
-  const allWarnings: ConditionIssue[] = [];
+  const allIssues: ConditionIssue[] = [];
 
   for (let i = 0; i < conditions.length; i++) {
-    const result = validateConditionString(conditions[i], [...basePath, i]);
-    allWarnings.push(...result.warnings);
+    const issues = validateConditionString(conditions[i], [...basePath, i]);
+    allIssues.push(...issues);
   }
 
-  return { errors: [], warnings: allWarnings };
+  return allIssues;
 }
 
 /**
@@ -312,28 +232,24 @@ export function validateBlockConditions(guide: JsonGuide): ConditionIssue[] {
 
   function visitStep(step: JsonStep, path: Array<string | number>): void {
     if (step.requirements) {
-      const result = validateConditions(step.requirements, [...path, 'requirements']);
-      issues.push(...result.warnings);
+      issues.push(...validateConditions(step.requirements, [...path, 'requirements']));
     }
   }
 
   function visitBlock(block: JsonBlock, path: Array<string | number>): void {
     // Check requirements if present
     if ('requirements' in block && block.requirements) {
-      const result = validateConditions(block.requirements, [...path, 'requirements']);
-      issues.push(...result.warnings);
+      issues.push(...validateConditions(block.requirements, [...path, 'requirements']));
     }
 
     // Check objectives if present
     if ('objectives' in block && block.objectives) {
-      const result = validateConditions(block.objectives, [...path, 'objectives']);
-      issues.push(...result.warnings);
+      issues.push(...validateConditions(block.objectives, [...path, 'objectives']));
     }
 
     // Check verify field for interactive blocks (uses same grammar)
     if ('verify' in block && block.verify) {
-      const result = validateConditionString(block.verify, [...path, 'verify']);
-      issues.push(...result.warnings);
+      issues.push(...validateConditionString(block.verify, [...path, 'verify']));
     }
 
     // Check steps (multistep, guided blocks)
@@ -358,4 +274,3 @@ export function validateBlockConditions(guide: JsonGuide): ConditionIssue[] {
 
   return issues;
 }
-

@@ -27,16 +27,10 @@ export {
   type ValidationOptions,
 } from './validate-guide';
 
-export { formatZodErrors, formatErrorsAsStrings, formatWarningsAsStrings } from './errors';
+export { formatPath, formatZodErrors, formatErrorsAsStrings, formatWarningsAsStrings } from './errors';
 
 export type { ValidationError, ValidationWarning } from './errors';
 
 export { detectUnknownFields } from './unknown-fields';
 
-export {
-  validateConditionString,
-  validateConditions,
-  validateBlockConditions,
-  type ConditionIssue,
-  type ConditionValidationResult,
-} from './condition-validator';
+export { validateConditionString, validateConditions, validateBlockConditions, type ConditionIssue } from './condition-validator';

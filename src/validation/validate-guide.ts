@@ -4,6 +4,7 @@
 import type { JsonGuide } from '../types/json-guide.types';
 import { JsonGuideSchema } from '../types/json-guide.schema';
 import {
+  formatPath,
   formatZodErrors,
   formatErrorsAsStrings,
   formatWarningsAsStrings,
@@ -36,10 +37,8 @@ export interface ValidationOptions {
  * Convert a condition issue to a validation warning.
  */
 function conditionIssueToWarning(issue: ConditionIssue): ValidationWarning {
-  const pathStr = issue.path.join('.');
-  const suggestion = issue.suggestion ? ` ${issue.suggestion}` : '';
   return {
-    message: `${pathStr}: ${issue.message}${suggestion}`,
+    message: `${formatPath(issue.path)}: ${issue.message}`,
     path: issue.path,
     type: 'invalid-condition',
   };
