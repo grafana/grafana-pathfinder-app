@@ -8,6 +8,8 @@
 import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from './content.types';
 import { parseHTMLToComponents } from './html-parser';
 import { validateGuide } from '../validation';
+import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
+import DOMPurify from 'dompurify';
 import type {
   JsonGuide,
   JsonBlock,
@@ -169,10 +171,22 @@ function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: s
 /**
  * Convert markdown content to ParsedElement children.
  * Handles basic markdown syntax: headings, bold, italic, code, links, lists, code blocks, tables.
+ * SECURITY: Input is sanitized to strip raw HTML tags before parsing (F1, F4).
+ * This provides defense-in-depth - React escapes text, but this removes HTML at the source.
  */
 function parseMarkdownToElements(content: string): ParsedElement[] {
+  // SECURITY: Strip any raw HTML tags from markdown content before parsing (F1, F4)
+  // This prevents XSS attacks via HTML injection in markdown content
+  // We strip HTML tags but preserve text content and markdown syntax
+  const sanitizedContent = DOMPurify.sanitize(content, {
+    ALLOWED_TAGS: [], // Strip all HTML tags
+    ALLOWED_ATTR: [], // Strip all attributes
+    KEEP_CONTENT: true, // Preserve text content
+    // Don't trim - preserve whitespace/newlines for markdown parsing
+  });
+
   const elements: ParsedElement[] = [];
-  const lines = content.split('\n');
+  const lines = sanitizedContent.split('\n');
   let currentList: ParsedElement | null = null;
   let currentListItems: ParsedElement[] = [];
   let inCodeBlock = false;
@@ -404,21 +418,25 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
 /**
  * Convert inline markdown to HTML string.
  * Used for targetComment which expects HTML.
+ * SECURITY: Output is sanitized with DOMPurify to prevent XSS attacks (F1, F4).
  */
 function markdownToHtml(text: string): string {
-  return (
-    text
-      // Bold: **text** or __text__
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/__(.+?)__/g, '<strong>$1</strong>')
-      // Italic: *text* or _text_ (but not inside words)
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>')
-      // Inline code: `code`
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      // Links: [text](url)
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-  );
+  const html = text
+    // Bold: **text** or __text__
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // Italic: *text* or _text_ (but not inside words)
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>')
+    // Inline code: `code`
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Links: [text](url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+  // SECURITY: Sanitize HTML output to prevent XSS attacks (F1, F4)
+  // This is defense-in-depth - targetComment is also sanitized at render time,
+  // but sanitizing here ensures safety at the source
+  return sanitizeDocumentationHTML(html);
 }
 
 /**
