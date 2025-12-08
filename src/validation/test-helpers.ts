@@ -1,4 +1,4 @@
-import type { JsonGuide } from '../../types/json-guide.types';
+import type { JsonGuide } from '../types/json-guide.types';
 
 export function createDeeplyNestedGuide(depth: number): JsonGuide {
   // Depth 0: blocks = [markdown]

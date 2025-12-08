@@ -99,7 +99,7 @@ function formatJsonOutput(summary: ValidationSummary): void {
 
 export const validateCommand = new Command('validate')
   .description('Validate JSON guide files')
-  .argument('[files...]', 'Files or glob patterns to validate')
+  .argument('[files...]', 'JSON guide files to validate (explicit paths only)')
   .option('--bundled', 'Validate all bundled guides in src/bundled-interactives/')
   .option('--strict', 'Treat warnings as errors')
   .option('--format <format>', 'Output format: text or json', 'text')
@@ -116,7 +116,7 @@ export const validateCommand = new Command('validate')
       } else if (files.length > 0) {
         guides = loadGuideFiles(files);
         if (guides.length === 0) {
-          console.error('No guide files found matching the specified patterns');
+          console.error('No valid JSON guide files found in the specified paths');
           process.exit(1);
         }
       } else {
