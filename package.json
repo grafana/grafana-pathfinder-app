@@ -1,6 +1,12 @@
 {
   "name": "grafana-pathfinder-app",
   "version": "1.1.84",
+  "bin": {
+    "pathfinder-cli": "./dist/cli/cli/index.js"
+  },
+  "files": [
+    "dist/"
+  ],
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
     "dev": "webpack -w -c ./.config/webpack/webpack.config.ts --env development",
@@ -17,7 +23,10 @@
     "sign": "npx --yes @grafana/sign-plugin@latest",
     "prettier": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,json,yaml,md}' --write",
     "prettier-test": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,json,yaml,md}'",
-    "i18n-extract": "i18next --config src/locales/i18next-parser.config.js"
+    "i18n-extract": "i18next --config src/locales/i18next-parser.config.js",
+    "build:cli": "tsc -p tsconfig.cli.json",
+    "validate": "node dist/cli/cli/index.js validate --bundled",
+    "validate:strict": "node dist/cli/cli/index.js validate --bundled --strict"
   },
   "author": "Grafanalabs",
   "license": "Apache-2.0",
@@ -42,6 +51,7 @@
     "@types/testing-library__jest-dom": "5.14.9",
     "@typescript-eslint/eslint-plugin": "^8.46.4",
     "@typescript-eslint/parser": "^8.46.4",
+    "commander": "^12.1.0",
     "copy-webpack-plugin": "^13.0.1",
     "css-loader": "^7.1.2",
     "eslint": "^9.39.1",
@@ -101,7 +111,8 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-router-dom": "^6.28.0",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "zod": "^3.25.76"
   },
   "overrides": {
     "@grafana/runtime": "^12.3.0-18562067081"
