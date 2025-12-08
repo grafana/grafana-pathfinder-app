@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { querySelectorAllEnhanced } from '../../../lib/dom';
+import { querySelectorAllEnhanced } from '../../lib/dom';
 import { extractSelector } from './step-parser.util';
 import type { TestResult } from './dev-tools.types';
 

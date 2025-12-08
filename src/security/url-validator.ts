@@ -10,7 +10,7 @@
  * In dev mode, localhost URLs are permitted for local testing.
  */
 
-import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { ALLOWED_GRAFANA_DOCS_HOSTNAMES, ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES } from '../constants';
 
 /**

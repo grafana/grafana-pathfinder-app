@@ -10,7 +10,7 @@ import { createPortal } from 'react-dom';
 import { useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
-import { generateFullDomPath } from '../wysiwyg-editor/devtools/element-inspector.hook';
+import { generateFullDomPath } from '../../utils/devtools';
 import { DomPathTooltip } from '../DomPathTooltip';
 
 const getStyles = (theme: GrafanaTheme2) => ({

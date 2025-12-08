@@ -99,7 +99,7 @@ export function DomPathTooltip({ domPath, position, visible }: DomPathTooltipPro
     <div
       className={styles.tooltip}
       data-inspector-tooltip="true"
-      data-testid={testIds.wysiwygEditor.fullScreen.domPathTooltip}
+      data-testid={testIds.devTools.fullScreen.domPathTooltip}
       style={{
         left: `${position.x + OFFSET_X}px`,
         top: `${position.y + OFFSET_Y}px`,

@@ -15,7 +15,7 @@ import { getStyles } from '../../styles/context-panel.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { getConfigWithDefaults } from '../../constants';
-import { isDevModeEnabled } from '../wysiwyg-editor/dev-mode';
+import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../testIds';
 
 interface ContextPanelState extends SceneObjectState {
