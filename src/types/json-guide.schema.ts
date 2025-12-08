@@ -288,7 +288,7 @@ export const CURRENT_SCHEMA_VERSION = '1.0.0';
  * @coupling Type: JsonGuide
  */
 export const JsonGuideSchemaStrict = z.object({
-  schemaVersion: z.literal(CURRENT_SCHEMA_VERSION).default(CURRENT_SCHEMA_VERSION),
+  schemaVersion: z.string().optional(),
   id: z.string().min(1, 'Guide id is required'),
   title: z.string().min(1, 'Guide title is required'),
   blocks: z.array(JsonBlockSchema),
