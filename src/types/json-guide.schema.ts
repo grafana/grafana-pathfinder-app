@@ -26,7 +26,7 @@ const SafeUrlSchema = z
         return false;
       }
     },
-    { message: 'URL must use http or https protocol' }
+    { error: 'URL must use http or https protocol' }
   );
 
 /**
@@ -76,7 +76,7 @@ export const JsonStepSchema = z
     skippable: z.boolean().optional(),
   })
   .refine((step) => step.action !== 'formfill' || (step.targetvalue !== undefined && step.targetvalue !== ''), {
-    message: "formfill action requires 'targetvalue'",
+    error: "formfill action requires 'targetvalue'",
   });
 
 // ============ CONTENT BLOCK SCHEMAS ============
@@ -146,7 +146,7 @@ export const JsonInteractiveBlockSchema = z
     verify: z.string().optional(),
   })
   .refine((block) => block.action !== 'formfill' || (block.targetvalue !== undefined && block.targetvalue !== ''), {
-    message: "formfill action requires 'targetvalue'",
+    error: "formfill action requires 'targetvalue'",
   });
 
 /**
