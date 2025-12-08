@@ -1,0 +1,118 @@
+---
+title: Schema-Type Coupling Rule
+description: Guidance for keeping TypeScript types and Zod schemas synchronized
+globs:
+  - "src/types/json-guide.types.ts"
+  - "src/types/json-guide.schema.ts"
+alwaysApply: false
+---
+
+# Schema-Type Coupling Rules
+
+This project uses **co-located TypeScript types and Zod schemas** for JSON guide validation. The types in `json-guide.types.ts` are the source of truth, and schemas in `json-guide.schema.ts` must mirror them exactly.
+
+## Core Principle
+
+**TypeScript types define what we expect. Zod schemas enforce it at runtime.**
+
+Every structural change to a type MUST have a corresponding schema change, and vice versa.
+
+## When Modifying Types
+
+If you add, remove, or change a field in `json-guide.types.ts`:
+
+1. **Update the corresponding Zod schema** in `json-guide.schema.ts`
+2. **Run `npm run typecheck`** - the `satisfies z.ZodType<T>` pattern will catch mismatches
+3. **Run `npm run validate`** - verify bundled guides still pass
+4. **Update the `KNOWN_FIELDS` export** if adding new fields (for unknown field detection)
+
+### Example: Adding a New Field
+
+```typescript
+// 1. Add to type
+export interface JsonGuide {
+  // ... existing fields
+  newField?: string; // NEW
+}
+
+// 2. Add to schema
+export const JsonGuideSchema = z.object({
+  // ... existing fields
+  newField: z.string().optional(), // NEW - matches type
+}).passthrough() satisfies z.ZodType<JsonGuide>;
+
+// 3. Add to KNOWN_FIELDS
+export const KNOWN_FIELDS = {
+  _guide: ['id', 'title', 'blocks', 'match', 'schemaVersion', 'newField'], // ADD HERE
+  // ...
+};
+```
+
+## When Modifying Schemas
+
+If you change validation rules in `json-guide.schema.ts`:
+
+1. **Consider if the type needs updating** - e.g., making a field required
+2. **Update error messages** to be user-friendly
+3. **Run tests** - `npm run test:ci -- --testPathPatterns=validation`
+4. **Run `npm run validate:strict`** - ensure bundled guides comply
+
+## Coupling Markers
+
+Look for `@coupling` JSDoc tags that explicitly link types and schemas:
+
+```typescript
+/**
+ * @coupling JsonGuideSchema in json-guide.schema.ts
+ */
+export interface JsonGuide { ... }
+
+/**
+ * @coupling JsonGuide in json-guide.types.ts
+ */
+export const JsonGuideSchema = z.object({ ... });
+```
+
+When you see a `@coupling` tag, **always check the linked file** before making changes.
+
+## Forward Compatibility
+
+All schemas use `.passthrough()` to allow unknown fields. This means:
+
+- Newer guides with new fields will still parse successfully
+- Unknown fields generate warnings, not errors (unless `--strict` mode)
+- The `KNOWN_FIELDS` object determines what triggers warnings
+
+## Validation Module Structure
+
+```
+src/validation/
+├── index.ts          # Public exports
+├── validate-guide.ts # Main validateGuide() function
+├── unknown-fields.ts # Forward compatibility warnings
+└── errors.ts         # Error formatting utilities
+
+src/types/
+├── json-guide.types.ts  # TypeScript interfaces (source of truth)
+└── json-guide.schema.ts # Zod schemas (runtime validation)
+```
+
+## Commands
+
+```bash
+npm run typecheck       # Catch type/schema drift at compile time
+npm run validate        # Validate bundled guides (warnings allowed)
+npm run validate:strict # Validate bundled guides (warnings = errors)
+npm run test:ci -- --testPathPatterns=validation  # Run validation tests
+```
+
+## Agent Checklist
+
+When modifying JSON guide types or schemas:
+
+- [ ] Type change has corresponding schema change
+- [ ] Schema change has corresponding type change (if structural)
+- [ ] `KNOWN_FIELDS` updated for new fields
+- [ ] `npm run typecheck` passes
+- [ ] `npm run validate:strict` passes
+- [ ] Validation tests pass
