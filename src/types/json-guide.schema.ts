@@ -274,11 +274,16 @@ export const JsonAssistantBlockSchema = z.object({
 // ============ ROOT GUIDE SCHEMA ============
 
 /**
+ * The current version of the schema.
+ */
+export const CURRENT_SCHEMA_VERSION = '1.0.0';
+
+/**
  * Root schema for JSON guide (strict - no extra fields allowed).
  * @coupling Type: JsonGuide
  */
 export const JsonGuideSchemaStrict = z.object({
-  schemaVersion: z.string().optional(),
+  schemaVersion: z.literal(CURRENT_SCHEMA_VERSION).default(CURRENT_SCHEMA_VERSION),
   id: z.string().min(1, 'Guide id is required'),
   title: z.string().min(1, 'Guide title is required'),
   blocks: z.array(JsonBlockSchema),

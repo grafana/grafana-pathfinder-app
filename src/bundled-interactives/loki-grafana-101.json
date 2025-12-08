@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "1.0.0",
   "id": "loki-grafana-101",
   "title": "Loki & Grafana 101",
   "blocks": [

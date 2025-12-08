@@ -26,6 +26,10 @@ If you add, remove, or change a field in `json-guide.types.ts`:
 3. **Run `npm run validate`** - verify bundled guides still pass
 4. **Update the `KNOWN_FIELDS` export** if adding new fields (for unknown field detection)
 
+The file `json-guide.schema.ts` exposes a global schema version. When making changes to schema, 
+always consider advising the user to update the schema version following schema best practices, 
+and providing them guidance on forwards and backwards compatibility issues as appropriate.
+
 ### Example: Adding a New Field
 
 ```typescript
