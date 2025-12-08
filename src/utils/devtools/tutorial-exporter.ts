@@ -236,4 +236,3 @@ export function exportAsFullHTML(steps: RecordedStep[], options: ExportOptions =
 
   return html;
 }
-

@@ -119,4 +119,3 @@ export function extractSelector(input: string): string {
   // Plain selector - return as-is
   return trimmed;
 }
-

@@ -149,4 +149,3 @@ export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): Use
     cursorPosition,
   };
 }
-

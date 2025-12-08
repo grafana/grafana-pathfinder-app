@@ -121,4 +121,3 @@ export function useSelectorTester({ executeInteractiveAction }: UseSelectorTeste
     extractedSelector,
   };
 }
-
