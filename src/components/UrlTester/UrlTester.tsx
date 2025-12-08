@@ -1,15 +1,17 @@
 import { Box, Button, Icon, Input, useStyles2 } from '@grafana/ui';
-import React, { useCallback, useState } from 'react';
-import { getURLTesterStyles } from './url-tester.styles';
+import React, { useCallback, useEffect, useState } from 'react';
+import { getUrlTesterStyles } from './url-tester.styles';
 import {
   isGitHubRawUrl,
   isInteractiveLearningUrl,
   isGrafanaDocsUrl,
   isLocalhostUrl,
-  type URLValidation,
+  type UrlValidation,
 } from '../../security';
 
-export interface URLTesterProps {
+const STORAGE_KEY = 'pathfinder-url-tester-url';
+
+export interface UrlTesterProps {
   onOpenDocsPage: (url: string, title: string) => void;
 }
 
@@ -21,10 +23,10 @@ export interface URLTesterProps {
  * - Grafana docs URLs (grafana.com/docs)
  * - Localhost URLs (for local testing)
  *
- * Note: This validator is used in the URLTester which is only visible in dev mode,
+ * Note: This validator is used in the UrlTester which is only visible in dev mode,
  * so we allow all dev-mode URLs without checking isDevModeEnabledGlobal().
  */
-function validateContentUrl(url: string): URLValidation {
+function validateContentUrl(url: string): UrlValidation {
   if (!url) {
     return {
       isValid: false,
@@ -65,11 +67,23 @@ function validateContentUrl(url: string): URLValidation {
   };
 }
 
-export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
-  const styles = useStyles2(getURLTesterStyles);
-  const [testUrl, setTestUrl] = useState('');
+export const UrlTester = ({ onOpenDocsPage }: UrlTesterProps) => {
+  const styles = useStyles2(getUrlTesterStyles);
+  const [testUrl, setTestUrl] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
   const [testError, setTestError] = useState<string | null>(null);
   const [testSuccess, setTestSuccess] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, testUrl);
+    } catch {}
+  }, [testUrl]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
@@ -88,14 +102,12 @@ export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
         return;
       }
 
-      const tutorialName = extractTitleFromUrl(cleanedUrl);
+      const tutorialName = extractTitleFromUrl(testUrl);
 
-      // Open in new tab with tutorial name as title
-      onOpenDocsPage(cleanedUrl, tutorialName);
+      onOpenDocsPage(testUrl, tutorialName);
       setTestSuccess(true);
       setTestError(null);
 
-      // Reset success state after 2 seconds
       setTimeout(() => setTestSuccess(false), 2000);
     },
     [testUrl, onOpenDocsPage]
@@ -109,7 +121,7 @@ export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
       <Input
         className={styles.selectorInput}
         value={testUrl}
-        id="urlTesterInput"
+        id="url"
         onChange={(e) => {
           setTestUrl(e.currentTarget.value);
           setTestError(null);
@@ -137,7 +149,8 @@ export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
       {testSuccess && (
         <div className={`${styles.resultBox} ${styles.resultSuccess}`}>
           <p className={styles.resultText}>
-            <Icon name="check" /> Tutorial opened in new tab!
+            <Icon name="check" />
+            Opened in new tab
           </p>
         </div>
       )}

@@ -10,7 +10,7 @@ import {
   useActionRecorder,
   parseStepString,
 } from '../../utils/devtools';
-import { URLTester } from 'components/URLTester';
+import { UrlTester } from 'components/UrlTester';
 import { DomPathTooltip } from '../DomPathTooltip';
 import { SkeletonLoader } from '../SkeletonLoader';
 
@@ -31,7 +31,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
   // Section expansion state - priority sections expanded by default
   const [recordExpanded, setRecordExpanded] = useState(true); // Priority: expanded by default
-  const [tutorialTesterExpanded, setTutorialTesterExpanded] = useState(true); // Priority: expanded by default
+  const [UrlTesterExpanded, setUrlTesterExpanded] = useState(true); // Priority: expanded by default
   const [watchExpanded, setWatchExpanded] = useState(false);
   const [simpleExpanded, setSimpleExpanded] = useState(false);
   const [guidedExpanded, setGuidedExpanded] = useState(false);
@@ -260,8 +260,8 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       includeComments: true,
       includeHints: true,
       wrapInSection: true,
-      sectionId: 'tutorial-section',
-      sectionTitle: 'Tutorial section',
+      sectionId: 'Url-section',
+      sectionTitle: 'Url section',
     });
 
     try {
@@ -495,18 +495,18 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         )}
       </div>
 
-      {/* PRIORITY SECTION 2: Tutorial Tester */}
+      {/* PRIORITY SECTION 2: Url tester */}
       <div className={styles.section}>
-        <div className={styles.sectionHeader} onClick={() => setTutorialTesterExpanded(!tutorialTesterExpanded)}>
+        <div className={styles.sectionHeader} onClick={() => setUrlTesterExpanded(!UrlTesterExpanded)}>
           <Stack direction="row" gap={1} alignItems="center">
             <Icon name="external-link-alt" />
-            <h4 className={styles.sectionTitle}>Tutorial tester</h4>
+            <h4 className={styles.sectionTitle}>Url tester</h4>
           </Stack>
-          <Icon name={tutorialTesterExpanded ? 'angle-up' : 'angle-down'} />
+          <Icon name={UrlTesterExpanded ? 'angle-up' : 'angle-down'} />
         </div>
-        {tutorialTesterExpanded && onOpenDocsPage && (
+        {UrlTesterExpanded && onOpenDocsPage && (
           <div className={styles.sectionContent}>
-            <URLTester onOpenDocsPage={onOpenDocsPage} />
+            <UrlTester onOpenDocsPage={onOpenDocsPage} />
           </div>
         )}
       </div>
