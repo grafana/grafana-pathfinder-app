@@ -1,8 +1,12 @@
 /**
  * Error formatting utilities for Zod validation errors
+ *
+ * This module is responsible for formatting Zod validation errors into
+ * human-readable messages. It extracts context from Zod's error structure
+ * without re-implementing validation logic.
  */
 
-import type { ZodIssue } from 'zod';
+import type { ZodIssue, ZodError } from 'zod';
 import { VALID_BLOCK_TYPES } from '../types/json-guide.schema';
 
 export interface ValidationError {
@@ -17,6 +21,9 @@ export interface ValidationWarning {
   type: 'unknown-field' | 'deprecation' | 'suggestion';
 }
 
+/**
+ * Extract the block type from a path in the data structure.
+ */
 function getBlockTypeFromPath(data: unknown, path: Array<string | number>): string | null {
   let current: unknown = data;
   for (const segment of path) {
@@ -37,6 +44,9 @@ function getBlockTypeFromPath(data: unknown, path: Array<string | number>): stri
   return null;
 }
 
+/**
+ * Get the object at a specific path in the data structure.
+ */
 function getBlockAtPath(data: unknown, path: Array<string | number>): Record<string, unknown> | null {
   let current: unknown = data;
   for (const segment of path) {
@@ -54,6 +64,11 @@ function getBlockAtPath(data: unknown, path: Array<string | number>): Record<str
   return current && typeof current === 'object' ? (current as Record<string, unknown>) : null;
 }
 
+/**
+ * Format a path into a human-readable block reference.
+ * E.g., ["blocks", 0] -> "Block 1"
+ * E.g., ["blocks", 2, "steps", 1] -> "Block 3, step 2"
+ */
 function formatBlockPath(path: Array<string | number>, data: unknown): string {
   const parts: string[] = [];
   for (let i = 0; i < path.length; i++) {
@@ -73,11 +88,17 @@ function formatBlockPath(path: Array<string | number>, data: unknown): string {
   return parts.join(' > ');
 }
 
+/**
+ * Extract the field name from the end of a path.
+ */
 function formatFieldName(path: Array<string | number>): string {
   const lastSegment = path[path.length - 1];
   return typeof lastSegment === 'string' ? lastSegment : '';
 }
 
+/**
+ * Check if a path points to a block (e.g., ["blocks", 0]).
+ */
 function isBlockPath(path: Array<string | number>): boolean {
   if (path.length < 2) {
     return false;
@@ -85,61 +106,111 @@ function isBlockPath(path: Array<string | number>): boolean {
   return path[path.length - 2] === 'blocks' && typeof path[path.length - 1] === 'number';
 }
 
-function validateStepFields(step: Record<string, unknown>, stepIndex: number, blockIndex: number): string | null {
-  if (!step.action) {
-    return `Block ${blockIndex + 1}, step ${stepIndex + 1}: missing required field 'action'`;
-  }
-  if (!step.reftarget) {
-    return `Block ${blockIndex + 1}, step ${stepIndex + 1}: missing required field 'reftarget'`;
-  }
-  if (step.action === 'formfill' && !step.targetvalue) {
-    return `Block ${blockIndex + 1}, step ${stepIndex + 1}: formfill action requires 'targetvalue'`;
-  }
-  const validActions = ['highlight', 'button', 'formfill', 'navigate', 'hover'];
-  if (!validActions.includes(step.action as string)) {
-    return `Block ${blockIndex + 1}, step ${stepIndex + 1}: unknown action type '${step.action}'`;
-  }
-  return null;
+/**
+ * Check if a ZodError has ANY type literal error (regardless of what type it expects).
+ * If there's a type error, this schema didn't match the input's type field.
+ */
+function hasAnyTypeLiteralError(zodError: ZodError): boolean {
+  return zodError.issues.some((issue) => {
+    // Check if this is a type literal mismatch - the last path segment should be 'type'
+    if (issue.code !== 'invalid_literal') {
+      return false;
+    }
+    const lastSegment = issue.path[issue.path.length - 1];
+    return lastSegment === 'type';
+  });
 }
 
-function validateNestedBlock(
-  nestedBlock: Record<string, unknown>,
-  nestedIndex: number,
-  parentPath: string
-): string | null {
-  const blockType = typeof nestedBlock.type === 'string' ? nestedBlock.type : null;
-  if (!blockType) {
-    return `${parentPath} > Block ${nestedIndex + 1}: missing required field 'type'`;
-  }
-  if (!VALID_BLOCK_TYPES.has(blockType)) {
-    return `${parentPath} > Block ${nestedIndex + 1}: unknown block type '${blockType}'`;
-  }
-  const requiredFields: Record<string, string[]> = {
-    markdown: ['content'],
-    html: ['content'],
-    image: ['src'],
-    video: ['src'],
-    interactive: ['action', 'reftarget', 'content'],
-    multistep: ['content', 'steps'],
-    guided: ['content', 'steps'],
-    section: ['blocks'],
-    quiz: ['question', 'choices'],
-    assistant: ['blocks'],
-  };
-  const required = requiredFields[blockType] || [];
-  for (const field of required) {
-    if (
-      !(field in nestedBlock) ||
-      nestedBlock[field] === undefined ||
-      nestedBlock[field] === null ||
-      nestedBlock[field] === ''
-    ) {
-      return `${parentPath} > Block ${nestedIndex + 1} (${blockType}): missing required field '${field}'`;
+/**
+ * Extract field error from a ZodError for a specific issue type.
+ */
+function extractFieldError(zodError: ZodError): string | null {
+  for (const issue of zodError.issues) {
+    if (issue.path.length > 0) {
+      const fieldName = issue.path[issue.path.length - 1];
+      if (typeof fieldName === 'string') {
+        if (issue.code === 'too_small') {
+          return `missing required field '${fieldName}'`;
+        } else if (issue.code === 'invalid_type' && 'received' in issue && issue.received === 'undefined') {
+          return `missing required field '${fieldName}'`;
+        } else if (issue.code === 'invalid_enum_value') {
+          const received = (issue as unknown as { received: string }).received;
+          return `unknown ${fieldName} '${received}'`;
+        } else if (issue.code === 'custom') {
+          // Custom refinement error (e.g., formfill requires targetvalue)
+          return issue.message;
+        }
+      }
     }
   }
   return null;
 }
 
+/**
+ * Recursively find field errors in union errors, filtering by block type.
+ * Only descends into union branches that don't have type literal errors
+ * (meaning the type field matched for that schema).
+ */
+function findFieldErrorInUnion(zodError: ZodError, _expectedBlockType: string): string | null {
+  // If this error has a type literal mismatch, skip it entirely
+  // (This schema expected a different block type than we provided)
+  if (hasAnyTypeLiteralError(zodError)) {
+    return null;
+  }
+
+  // Check each issue in this error for nested unions
+  for (const issue of zodError.issues) {
+    if (issue.code === 'invalid_union') {
+      const unionIssue = issue as ZodIssue & { unionErrors?: ZodError[] };
+      if (unionIssue.unionErrors) {
+        for (const nestedError of unionIssue.unionErrors) {
+          const fieldError = findFieldErrorInUnion(nestedError, _expectedBlockType);
+          if (fieldError) {
+            return fieldError;
+          }
+        }
+      }
+    }
+  }
+
+  // No nested unions or they didn't have field errors - check direct field errors
+  return extractFieldError(zodError);
+}
+
+/**
+ * Extract the most useful error message from a union error's nested errors.
+ */
+function extractUnionErrorDetails(issue: ZodIssue, blockType: string | null): string | null {
+  const unionIssue = issue as ZodIssue & { unionErrors?: ZodError[] };
+  if (!unionIssue.unionErrors || unionIssue.unionErrors.length === 0) {
+    return null;
+  }
+
+  // If we know the block type, find errors from the matching schema
+  if (blockType && VALID_BLOCK_TYPES.has(blockType)) {
+    for (const zodError of unionIssue.unionErrors) {
+      const fieldError = findFieldErrorInUnion(zodError, blockType);
+      if (fieldError) {
+        return fieldError;
+      }
+    }
+  }
+
+  // Fallback: just get any field error
+  for (const zodError of unionIssue.unionErrors) {
+    const fieldError = extractFieldError(zodError);
+    if (fieldError) {
+      return fieldError;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract a contextual error message from a union error.
+ * Uses block type context and nested error details.
+ */
 function getUnionErrorMessage(issue: ZodIssue, data: unknown): string | null {
   if (issue.code !== 'invalid_union') {
     return null;
@@ -151,6 +222,8 @@ function getUnionErrorMessage(issue: ZodIssue, data: unknown): string | null {
   }
 
   const blockType = typeof block.type === 'string' ? block.type : null;
+
+  // Check for unknown block type first
   if (blockType && !VALID_BLOCK_TYPES.has(blockType)) {
     return `unknown block type '${blockType}'`;
   }
@@ -158,81 +231,19 @@ function getUnionErrorMessage(issue: ZodIssue, data: unknown): string | null {
     return "missing required field 'type'";
   }
 
-  // Check for step-level errors
-  if ((blockType === 'multistep' || blockType === 'guided') && Array.isArray(block.steps)) {
-    const blockIndex =
-      issue.path.length >= 2 && typeof issue.path[issue.path.length - 1] === 'number'
-        ? (issue.path[issue.path.length - 1] as number)
-        : 0;
-    for (let i = 0; i < block.steps.length; i++) {
-      const step = block.steps[i] as Record<string, unknown>;
-      if (step && typeof step === 'object') {
-        const stepError = validateStepFields(step, i, blockIndex);
-        if (stepError) {
-          return stepError;
-        }
-      }
-    }
+  // Try to extract specific field error from union's nested errors
+  const fieldError = extractUnionErrorDetails(issue, blockType);
+  if (fieldError) {
+    return fieldError;
   }
 
-  // Check for nested block errors in section/assistant
-  if ((blockType === 'section' || blockType === 'assistant') && Array.isArray(block.blocks)) {
-    const blockIndex =
-      issue.path.length >= 2 && typeof issue.path[issue.path.length - 1] === 'number'
-        ? (issue.path[issue.path.length - 1] as number)
-        : 0;
-    for (let i = 0; i < block.blocks.length; i++) {
-      const nestedBlock = block.blocks[i] as Record<string, unknown>;
-      if (nestedBlock && typeof nestedBlock === 'object') {
-        const nestedError = validateNestedBlock(nestedBlock, i, `Block ${blockIndex + 1}`);
-        if (nestedError) {
-          return nestedError;
-        }
-      }
-    }
-  }
-
-  // Check for missing required fields
-  const requiredFields: Record<string, string[]> = {
-    markdown: ['content'],
-    html: ['content'],
-    image: ['src'],
-    video: ['src'],
-    interactive: ['action', 'reftarget', 'content'],
-    multistep: ['content', 'steps'],
-    guided: ['content', 'steps'],
-    section: ['blocks'],
-    quiz: ['question', 'choices'],
-    assistant: ['blocks'],
-  };
-  const required = requiredFields[blockType] || [];
-  for (const field of required) {
-    if (!(field in block) || block[field] === undefined || block[field] === null || block[field] === '') {
-      return `missing required field '${field}'`;
-    }
-    if (
-      Array.isArray(block[field]) &&
-      block[field].length === 0 &&
-      (field === 'steps' || field === 'choices' || field === 'blocks')
-    ) {
-      return `missing required field '${field}' array`;
-    }
-  }
-
-  // Check interactive-specific validations
-  if (blockType === 'interactive') {
-    const validActions = ['highlight', 'button', 'formfill', 'navigate', 'hover'];
-    if (block.action && !validActions.includes(block.action as string)) {
-      return `unknown action type '${block.action}'`;
-    }
-    if (block.action === 'formfill' && !block.targetvalue) {
-      return "formfill action requires 'targetvalue'";
-    }
-  }
-
+  // No specific error found - return null to use Zod's message
   return null;
 }
 
+/**
+ * Format Zod validation issues into human-readable error objects.
+ */
 export function formatZodErrors(issues: ZodIssue[], data: unknown): ValidationError[] {
   return issues.map((issue) => {
     const blockPath = formatBlockPath(issue.path, data);
@@ -242,10 +253,7 @@ export function formatZodErrors(issues: ZodIssue[], data: unknown): ValidationEr
     if (issue.code === 'invalid_union') {
       const unionMsg = getUnionErrorMessage(issue, data);
       if (unionMsg) {
-        // Check if unionMsg already has block prefix (from nested errors)
-        if (unionMsg.startsWith('Block ')) {
-          message = unionMsg;
-        } else if (isBlockPath(issue.path)) {
+        if (isBlockPath(issue.path)) {
           const blockIndex = issue.path[issue.path.length - 1] as number;
           const blockType = getBlockTypeFromPath(data, issue.path);
           const prefix = blockType ? `Block ${blockIndex + 1} (${blockType})` : `Block ${blockIndex + 1}`;
@@ -256,7 +264,8 @@ export function formatZodErrors(issues: ZodIssue[], data: unknown): ValidationEr
           message = unionMsg;
         }
       } else {
-        message = blockPath ? `${blockPath}: Invalid input` : 'Invalid input';
+        // Fall back to Zod's message for complex union errors
+        message = blockPath ? `${blockPath}: ${issue.message}` : issue.message;
       }
     } else if (blockPath) {
       if (
