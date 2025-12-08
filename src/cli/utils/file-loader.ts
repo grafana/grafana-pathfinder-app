@@ -64,34 +64,50 @@ function loadGuideFile(filePath: string): LoadedGuide | null {
 }
 
 /**
- * Expand simple glob patterns (handles *.json patterns)
+ * Expand simple glob patterns (supports *.json and **/*.json patterns)
  */
 function expandGlob(pattern: string): string[] {
-  const files: string[] = [];
-  const dir = path.dirname(pattern);
-  const filePattern = path.basename(pattern);
+  const results: string[] = [];
+  const recursiveIndex = pattern.indexOf('**/');
+  const hasRecursive = recursiveIndex !== -1;
+  const dirPart = hasRecursive ? pattern.slice(0, recursiveIndex) : path.dirname(pattern);
+  const filePattern = hasRecursive ? pattern.slice(recursiveIndex + 3) : path.basename(pattern);
+  const baseDirRelative = dirPart === '' ? '.' : dirPart;
+  const baseDirAbsolute = path.isAbsolute(baseDirRelative)
+    ? baseDirRelative
+    : path.resolve(process.cwd(), baseDirRelative);
 
-  // Convert glob pattern to regex
+  // Convert glob pattern to regex (only supports * wildcards in filename)
   const regex = new RegExp('^' + filePattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$');
 
-  try {
-    const absoluteDir = path.isAbsolute(dir) ? dir : path.resolve(process.cwd(), dir);
-
-    if (!fs.existsSync(absoluteDir)) {
-      return files;
+  const walk = (absoluteDir: string, relativeDir: string) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(absoluteDir, { withFileTypes: true });
+    } catch {
+      return;
     }
 
-    const entries = fs.readdirSync(absoluteDir);
     for (const entry of entries) {
-      if (regex.test(entry)) {
-        files.push(path.join(dir, entry));
+      const entryAbsPath = path.join(absoluteDir, entry.name);
+      const entryRelPath = relativeDir ? path.join(relativeDir, entry.name) : entry.name;
+
+      if (entry.isDirectory()) {
+        if (hasRecursive) {
+          walk(entryAbsPath, entryRelPath);
+        }
+        continue;
+      }
+
+      if (regex.test(entry.name)) {
+        results.push(path.join(baseDirRelative, entryRelPath));
       }
     }
-  } catch {
-    // Silently ignore errors when expanding globs
-  }
+  };
 
-  return files;
+  walk(baseDirAbsolute, '');
+
+  return results;
 }
 
 /**
