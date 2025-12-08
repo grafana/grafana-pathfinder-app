@@ -79,6 +79,11 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     enableModalDetection: true,
   });
 
+  // Memoized callback for persistence save - prevents unnecessary effect triggers
+  const handlePersistenceSave = useCallback(() => {
+    editor.markSaved();
+  }, [editor]);
+
   // Persistence - auto-save and restore from localStorage
   // Auto-save is paused while block form modal is open to avoid saving on every keystroke
   const persistence = useBlockPersistence({
@@ -93,10 +98,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         editor.markSaved(); // Don't mark as dirty after loading
       }
     },
-    onSave: () => {
-      // Mark editor as saved after successful auto-save
-      editor.markSaved();
-    },
+    onSave: handlePersistenceSave,
   });
 
   // Load from localStorage on mount (if no initialGuide provided)
