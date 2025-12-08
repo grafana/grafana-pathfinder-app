@@ -4,7 +4,7 @@
  * Tests for the Zod schemas in json-guide.schema.ts
  */
 
-import { validateGuideFromString } from '../';
+import { validateGuideFromString } from './index';
 
 describe('JsonGuideSchema', () => {
   describe('happy path - valid guides', () => {
@@ -246,3 +246,4 @@ describe('JsonGuideSchema', () => {
     });
   });
 });
+

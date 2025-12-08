@@ -1,4 +1,4 @@
-import type { JsonGuide } from '../../types/json-guide.types';
+import type { JsonGuide } from '../types/json-guide.types';
 import {
   JsonGuideSchema,
   JsonMarkdownBlockSchema,
@@ -13,7 +13,7 @@ import {
   JsonAssistantBlockSchema,
   KNOWN_FIELDS,
   type InferredJsonGuide,
-} from '../../types/json-guide.schema';
+} from '../types/json-guide.schema';
 import { z } from 'zod';
 
 describe('Type Coupling: TypeScript <-> Zod', () => {
@@ -139,3 +139,4 @@ describe('KNOWN_FIELDS sync', () => {
     verifyFields(JsonAssistantBlockSchema, 'assistant');
   });
 });
+

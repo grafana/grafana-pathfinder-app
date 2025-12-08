@@ -7,14 +7,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { validateGuideFromString, toLegacyResult } from '../';
+import { validateGuideFromString, toLegacyResult } from './index';
 
 /**
  * Collect all guide files from the bundled-interactives directory.
  * Excludes index.json and static-links subdirectory.
  */
 function collectGuideFiles(): Array<{ filePath: string; fileName: string }> {
-  const bundledDir = path.resolve(__dirname, '../../bundled-interactives');
+  const bundledDir = path.resolve(__dirname, '../bundled-interactives');
   const files: Array<{ filePath: string; fileName: string }> = [];
 
   if (!fs.existsSync(bundledDir)) {
@@ -79,3 +79,4 @@ describe('Bundled Guides', () => {
     });
   }
 });
+
