@@ -34,7 +34,7 @@ export interface ValidationOptions {
 export function validateGuide(data: unknown, options: ValidationOptions = {}): ValidationResult {
   const result = JsonGuideSchema.safeParse(data);
   if (!result.success) {
-    return { isValid: false, errors: formatZodErrors(result.error.issues, data), warnings: [], guide: null };
+    return { isValid: false, errors: formatZodErrors(result.error.issues), warnings: [], guide: null };
   }
   const warnings: ValidationWarning[] = options.skipUnknownFieldCheck ? [] : detectUnknownFields(data);
   if (result.data.blocks.length === 0) {

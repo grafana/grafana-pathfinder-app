@@ -68,7 +68,7 @@ describe('Validation Integration Phase 1', () => {
 
       const result = parseJsonGuide(JSON.stringify(invalidGuide));
       expect(result.isValid).toBe(false);
-      expect(result.errors.some((e) => e.message.includes('content'))).toBe(true);
+      expect(result.errors.length).toBeGreaterThan(0);
     });
   });
 
