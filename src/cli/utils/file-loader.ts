@@ -64,7 +64,7 @@ function loadGuideFile(filePath: string): LoadedGuide | null {
 }
 
 /**
- * Expand simple glob patterns (supports *.json and **/*.json patterns)
+ * Expand simple glob patterns (supports `*.json` and `**\/*.json` patterns)
  */
 function expandGlob(pattern: string): string[] {
   const results: string[] = [];
