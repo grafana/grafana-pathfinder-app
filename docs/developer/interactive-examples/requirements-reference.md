@@ -383,7 +383,32 @@ Requirements can be combined using commas. **All requirements must pass** for th
 </li>
 ```
 
-## Objectives System
+## Validation rules
+
+The CLI validates condition syntax statically. Invalid conditions produce **warnings** in normal mode and **errors** in strict mode (`--strict`).
+
+### Limits
+
+- **Maximum 10 components** per condition string (comma-separated)
+
+### Syntax rules
+
+- Fixed types (`is-admin`, `exists-reftarget`, etc.) cannot have arguments
+- Parameterized types (`has-datasource:X`, `on-page:/path`) require an argument after the colon
+- Path arguments (e.g., `on-page:`) should start with `/`
+- Version arguments (e.g., `min-version:`) should be semver format (e.g., `11.0.0`)
+
+### Common errors
+
+| Invalid | Error | Fix |
+|---------|-------|-----|
+| `is-admin:true` | Unexpected argument | `is-admin` |
+| `has-datasource:` | Missing argument | `has-datasource:prometheus` |
+| `has-datasource` | Unknown type | `has-datasource:X` or `has-datasources` |
+| `on-page:dashboard` | Invalid path format | `on-page:/dashboard` |
+| `min-version:latest` | Invalid version format | `min-version:11.0.0` |
+
+## Objectives system
 
 Objectives declare what a guide step will accomplish. They use the `data-objectives` attribute with the same syntax as requirements.
 

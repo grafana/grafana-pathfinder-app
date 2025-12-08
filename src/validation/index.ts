@@ -32,3 +32,11 @@ export { formatZodErrors, formatErrorsAsStrings, formatWarningsAsStrings } from 
 export type { ValidationError, ValidationWarning } from './errors';
 
 export { detectUnknownFields } from './unknown-fields';
+
+export {
+  validateConditionString,
+  validateConditions,
+  validateBlockConditions,
+  type ConditionIssue,
+  type ConditionValidationResult,
+} from './condition-validator';
