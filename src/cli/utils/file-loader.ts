@@ -72,9 +72,7 @@ function expandGlob(pattern: string): string[] {
   const filePattern = path.basename(pattern);
 
   // Convert glob pattern to regex
-  const regex = new RegExp(
-    '^' + filePattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$'
-  );
+  const regex = new RegExp('^' + filePattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$');
 
   try {
     const absoluteDir = path.isAbsolute(dir) ? dir : path.resolve(process.cwd(), dir);
@@ -98,7 +96,7 @@ function expandGlob(pattern: string): string[] {
 
 /**
  * Load all bundled guides from src/bundled-interactives/
- * 
+ *
  * Note: static-links/ subdirectory is skipped as those are static link
  * rule files, not interactive guides.
  */
@@ -124,4 +122,3 @@ export function loadBundledGuides(): LoadedGuide[] {
 
   return guides;
 }
-

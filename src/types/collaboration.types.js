@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 /**
  * Type definitions for Collaborative Live Learning Sessions
  *
@@ -6,4 +6,4 @@
  * collaborative learning feature where presenters can broadcast their actions
  * to attendees in real-time.
  */
-Object.defineProperty(exports, "__esModule", { value: true });
+Object.defineProperty(exports, '__esModule', { value: true });

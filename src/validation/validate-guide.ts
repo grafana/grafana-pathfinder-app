@@ -3,8 +3,13 @@
  */
 import type { JsonGuide } from '../types/json-guide.types';
 import { JsonGuideSchema } from '../types/json-guide.schema';
-import { formatZodErrors, formatErrorsAsStrings, formatWarningsAsStrings } from './errors';
-import type { ValidationError, ValidationWarning } from './errors';
+import {
+  formatZodErrors,
+  formatErrorsAsStrings,
+  formatWarningsAsStrings,
+  type ValidationError,
+  type ValidationWarning,
+} from './errors';
 import { detectUnknownFields } from './unknown-fields';
 
 export interface ValidationResult {
@@ -36,22 +41,44 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
     warnings.push({ message: 'Guide has no blocks', path: ['blocks'], type: 'suggestion' });
   }
   if (options.strict && warnings.length > 0) {
-    return { isValid: false, errors: warnings.map(w => ({ message: w.message, path: w.path, code: 'strict' })), warnings: [], guide: null };
+    return {
+      isValid: false,
+      errors: warnings.map((w) => ({ message: w.message, path: w.path, code: 'strict' })),
+      warnings: [],
+      guide: null,
+    };
   }
   return { isValid: true, errors: [], warnings, guide: result.data as JsonGuide };
 }
 
 export function validateGuideFromString(jsonString: string, options: ValidationOptions = {}): ValidationResult {
   let parsed: unknown;
-  try { parsed = JSON.parse(jsonString); } catch {
-    return { isValid: false, errors: [{ message: 'The file does not contain valid JSON', path: [], code: 'invalid_json' }], warnings: [], guide: null };
+  try {
+    parsed = JSON.parse(jsonString);
+  } catch {
+    return {
+      isValid: false,
+      errors: [{ message: 'The file does not contain valid JSON', path: [], code: 'invalid_json' }],
+      warnings: [],
+      guide: null,
+    };
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return { isValid: false, errors: [{ message: 'JSON must be an object with id, title, and blocks', path: [], code: 'invalid_type' }], warnings: [], guide: null };
+    return {
+      isValid: false,
+      errors: [{ message: 'JSON must be an object with id, title, and blocks', path: [], code: 'invalid_type' }],
+      warnings: [],
+      guide: null,
+    };
   }
   return validateGuide(parsed, options);
 }
 
 export function toLegacyResult(result: ValidationResult): LegacyValidationResult {
-  return { isValid: result.isValid, errors: formatErrorsAsStrings(result.errors), warnings: formatWarningsAsStrings(result.warnings), guide: result.guide };
+  return {
+    isValid: result.isValid,
+    errors: formatErrorsAsStrings(result.errors),
+    warnings: formatWarningsAsStrings(result.warnings),
+    guide: result.guide,
+  };
 }

@@ -1,11 +1,46 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ROUTES = exports.DOCS_BASE_URL = exports.RECOMMENDER_SERVICE_URL = exports.getDevModeUserIds = exports.getDevMode = exports.getTermsVersion = exports.getTermsAccepted = exports.getTutorialUrl = exports.getRecommenderServiceUrl = exports.isRecommenderEnabled = exports.getConfigWithDefaults = exports.DEFAULT_DEV_MODE_USER_IDS = exports.DEFAULT_DEV_MODE = exports.ALLOWED_GRAFANA_DOCS_HOSTNAMES = exports.ALLOWED_RECOMMENDER_DOMAINS = exports.ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES = exports.DEFAULT_RECOMMENDER_TIMEOUT = exports.DEFAULT_CONTENT_FETCH_TIMEOUT = exports.DEFAULT_PEERJS_KEY = exports.DEFAULT_PEERJS_PORT = exports.DEFAULT_PEERJS_HOST = exports.DEFAULT_ENABLE_LIVE_SESSIONS = exports.DEFAULT_OPEN_PANEL_ON_LAUNCH = exports.DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS = exports.DEFAULT_GUIDED_STEP_TIMEOUT = exports.DEFAULT_REQUIREMENTS_CHECK_TIMEOUT = exports.DEFAULT_ENABLE_AUTO_DETECTION = exports.TERMS_VERSION = exports.DEFAULT_TUTORIAL_URL = exports.DEFAULT_TERMS_ACCEPTED = exports.DEFAULT_RECOMMENDER_SERVICE_URL = exports.DEFAULT_DOCS_BASE_URL = exports.PLUGIN_BASE_URL = void 0;
-const plugin_json_1 = __importDefault(require("./plugin.json"));
-const runtime_1 = require("@grafana/runtime");
+'use strict';
+let __importDefault =
+  (this && this.__importDefault) ||
+  function (mod) {
+    return mod && mod.__esModule ? mod : { default: mod };
+  };
+Object.defineProperty(exports, '__esModule', { value: true });
+exports.ROUTES =
+  exports.DOCS_BASE_URL =
+  exports.RECOMMENDER_SERVICE_URL =
+  exports.getDevModeUserIds =
+  exports.getDevMode =
+  exports.getTermsVersion =
+  exports.getTermsAccepted =
+  exports.getTutorialUrl =
+  exports.getRecommenderServiceUrl =
+  exports.isRecommenderEnabled =
+  exports.getConfigWithDefaults =
+  exports.DEFAULT_DEV_MODE_USER_IDS =
+  exports.DEFAULT_DEV_MODE =
+  exports.ALLOWED_GRAFANA_DOCS_HOSTNAMES =
+  exports.ALLOWED_RECOMMENDER_DOMAINS =
+  exports.ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES =
+  exports.DEFAULT_RECOMMENDER_TIMEOUT =
+  exports.DEFAULT_CONTENT_FETCH_TIMEOUT =
+  exports.DEFAULT_PEERJS_KEY =
+  exports.DEFAULT_PEERJS_PORT =
+  exports.DEFAULT_PEERJS_HOST =
+  exports.DEFAULT_ENABLE_LIVE_SESSIONS =
+  exports.DEFAULT_OPEN_PANEL_ON_LAUNCH =
+  exports.DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS =
+  exports.DEFAULT_GUIDED_STEP_TIMEOUT =
+  exports.DEFAULT_REQUIREMENTS_CHECK_TIMEOUT =
+  exports.DEFAULT_ENABLE_AUTO_DETECTION =
+  exports.TERMS_VERSION =
+  exports.DEFAULT_TUTORIAL_URL =
+  exports.DEFAULT_TERMS_ACCEPTED =
+  exports.DEFAULT_RECOMMENDER_SERVICE_URL =
+  exports.DEFAULT_DOCS_BASE_URL =
+  exports.PLUGIN_BASE_URL =
+    void 0;
+const plugin_json_1 = __importDefault(require('./plugin.json'));
+const runtime_1 = require('@grafana/runtime');
 exports.PLUGIN_BASE_URL = `/a/${plugin_json_1.default.id}`;
 // Default configuration values
 exports.DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
@@ -34,9 +69,9 @@ exports.DEFAULT_RECOMMENDER_TIMEOUT = 5000; // 5 seconds for recommender API
 // Security: Allowed interactive learning hostnames (exact match only, no wildcards)
 // These are the only hostnames permitted for fetching interactive guides
 exports.ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES = [
-    'interactive-learning.grafana-dev.net',
-    'interactive-learning.grafana.net',
-    'interactive-learning.grafana-ops.net',
+  'interactive-learning.grafana-dev.net',
+  'interactive-learning.grafana.net',
+  'interactive-learning.grafana-ops.net',
 ];
 // Security: Allowed recommender service domains
 // Only these domains are permitted for the recommendation API to prevent MITM attacks
@@ -50,28 +85,28 @@ exports.DEFAULT_DEV_MODE_USER_IDS = [];
 // Helper functions to get configuration values with defaults
 // Note: devModeUserIds remains as array (empty when dev mode is disabled)
 const getConfigWithDefaults = (config) => ({
-    recommenderServiceUrl: config.recommenderServiceUrl || exports.DEFAULT_RECOMMENDER_SERVICE_URL,
-    tutorialUrl: config.tutorialUrl || exports.DEFAULT_TUTORIAL_URL,
-    acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? getPlatformSpecificDefault(),
-    termsVersion: config.termsVersion || exports.TERMS_VERSION,
-    // Dev mode - SECURITY: Hybrid approach (stored server-side, scoped per-user)
-    devMode: config.devMode ?? exports.DEFAULT_DEV_MODE,
-    devModeUserIds: config.devModeUserIds ?? exports.DEFAULT_DEV_MODE_USER_IDS,
-    // Assistant dev mode
-    enableAssistantDevMode: config.enableAssistantDevMode ?? false,
-    // Interactive Features
-    enableAutoDetection: config.enableAutoDetection ?? exports.DEFAULT_ENABLE_AUTO_DETECTION,
-    requirementsCheckTimeout: config.requirementsCheckTimeout ?? exports.DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
-    guidedStepTimeout: config.guidedStepTimeout ?? exports.DEFAULT_GUIDED_STEP_TIMEOUT,
-    // Global Link Interception
-    interceptGlobalDocsLinks: config.interceptGlobalDocsLinks ?? exports.DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
-    // Open Panel on Launch
-    openPanelOnLaunch: config.openPanelOnLaunch ?? exports.DEFAULT_OPEN_PANEL_ON_LAUNCH,
-    // Live Sessions
-    enableLiveSessions: config.enableLiveSessions ?? exports.DEFAULT_ENABLE_LIVE_SESSIONS,
-    peerjsHost: config.peerjsHost || exports.DEFAULT_PEERJS_HOST,
-    peerjsPort: config.peerjsPort ?? exports.DEFAULT_PEERJS_PORT,
-    peerjsKey: config.peerjsKey || exports.DEFAULT_PEERJS_KEY,
+  recommenderServiceUrl: config.recommenderServiceUrl || exports.DEFAULT_RECOMMENDER_SERVICE_URL,
+  tutorialUrl: config.tutorialUrl || exports.DEFAULT_TUTORIAL_URL,
+  acceptedTermsAndConditions: config.acceptedTermsAndConditions ?? getPlatformSpecificDefault(),
+  termsVersion: config.termsVersion || exports.TERMS_VERSION,
+  // Dev mode - SECURITY: Hybrid approach (stored server-side, scoped per-user)
+  devMode: config.devMode ?? exports.DEFAULT_DEV_MODE,
+  devModeUserIds: config.devModeUserIds ?? exports.DEFAULT_DEV_MODE_USER_IDS,
+  // Assistant dev mode
+  enableAssistantDevMode: config.enableAssistantDevMode ?? false,
+  // Interactive Features
+  enableAutoDetection: config.enableAutoDetection ?? exports.DEFAULT_ENABLE_AUTO_DETECTION,
+  requirementsCheckTimeout: config.requirementsCheckTimeout ?? exports.DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
+  guidedStepTimeout: config.guidedStepTimeout ?? exports.DEFAULT_GUIDED_STEP_TIMEOUT,
+  // Global Link Interception
+  interceptGlobalDocsLinks: config.interceptGlobalDocsLinks ?? exports.DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+  // Open Panel on Launch
+  openPanelOnLaunch: config.openPanelOnLaunch ?? exports.DEFAULT_OPEN_PANEL_ON_LAUNCH,
+  // Live Sessions
+  enableLiveSessions: config.enableLiveSessions ?? exports.DEFAULT_ENABLE_LIVE_SESSIONS,
+  peerjsHost: config.peerjsHost || exports.DEFAULT_PEERJS_HOST,
+  peerjsPort: config.peerjsPort ?? exports.DEFAULT_PEERJS_PORT,
+  peerjsKey: config.peerjsKey || exports.DEFAULT_PEERJS_KEY,
 });
 exports.getConfigWithDefaults = getConfigWithDefaults;
 /**
@@ -80,17 +115,16 @@ exports.getConfigWithDefaults = getConfigWithDefaults;
  * OSS: disabled by default (might be offline)
  */
 const getPlatformSpecificDefault = () => {
-    try {
-        const isCloud = runtime_1.config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
-        return isCloud; // Cloud = true (enabled), OSS = false (disabled)
-    }
-    catch (error) {
-        console.warn('Failed to detect platform, defaulting to disabled:', error);
-        return false; // Conservative default
-    }
+  try {
+    const isCloud = runtime_1.config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
+    return isCloud; // Cloud = true (enabled), OSS = false (disabled)
+  } catch (error) {
+    console.warn('Failed to detect platform, defaulting to disabled:', error);
+    return false; // Conservative default
+  }
 };
 const isRecommenderEnabled = (pluginConfig) => {
-    return (0, exports.getConfigWithDefaults)(pluginConfig).acceptedTermsAndConditions;
+  return (0, exports.getConfigWithDefaults)(pluginConfig).acceptedTermsAndConditions;
 };
 exports.isRecommenderEnabled = isRecommenderEnabled;
 // Legacy exports for backward compatibility - now require config parameter
@@ -110,7 +144,7 @@ exports.getDevModeUserIds = getDevModeUserIds;
 // Legacy exports for backward compatibility
 exports.RECOMMENDER_SERVICE_URL = exports.DEFAULT_RECOMMENDER_SERVICE_URL;
 exports.DOCS_BASE_URL = exports.DEFAULT_DOCS_BASE_URL;
-var ROUTES;
+let ROUTES;
 (function (ROUTES) {
-    ROUTES["Context"] = "";
+  ROUTES['Context'] = '';
 })(ROUTES || (exports.ROUTES = ROUTES = {}));

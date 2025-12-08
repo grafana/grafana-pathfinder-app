@@ -14,17 +14,20 @@ import { z } from 'zod';
 /**
  * Schema for safe URLs (http/https only).
  */
-const SafeUrlSchema = z.string().min(1).refine(
-  (url) => {
-    try {
-      const parsed = new URL(url, 'https://example.com');
-      return ['http:', 'https:'].includes(parsed.protocol);
-    } catch {
-      return false;
-    }
-  },
-  { message: 'URL must use http or https protocol' }
-);
+const SafeUrlSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (url) => {
+      try {
+        const parsed = new URL(url, 'https://example.com');
+        return ['http:', 'https:'].includes(parsed.protocol);
+      } catch {
+        return false;
+      }
+    },
+    { message: 'URL must use http or https protocol' }
+  );
 
 /**
  * Schema for interactive action types.
@@ -62,18 +65,19 @@ export const JsonQuizChoiceSchema = z.object({
  * Schema for individual step within multistep/guided blocks.
  * @coupling Type: JsonStep
  */
-export const JsonStepSchema = z.object({
-  action: JsonInteractiveActionSchema,
-  reftarget: z.string().min(1, 'Step reftarget is required'),
-  targetvalue: z.string().optional(),
-  requirements: z.array(z.string()).optional(),
-  tooltip: z.string().optional(),
-  description: z.string().optional(),
-  skippable: z.boolean().optional(),
-}).refine(
-  (step) => step.action !== 'formfill' || (step.targetvalue !== undefined && step.targetvalue !== ''),
-  { message: "formfill action requires 'targetvalue'" }
-);
+export const JsonStepSchema = z
+  .object({
+    action: JsonInteractiveActionSchema,
+    reftarget: z.string().min(1, 'Step reftarget is required'),
+    targetvalue: z.string().optional(),
+    requirements: z.array(z.string()).optional(),
+    tooltip: z.string().optional(),
+    description: z.string().optional(),
+    skippable: z.boolean().optional(),
+  })
+  .refine((step) => step.action !== 'formfill' || (step.targetvalue !== undefined && step.targetvalue !== ''), {
+    message: "formfill action requires 'targetvalue'",
+  });
 
 // ============ CONTENT BLOCK SCHEMAS ============
 
@@ -124,25 +128,26 @@ export const JsonVideoBlockSchema = z.object({
  * Schema for single-action interactive block.
  * @coupling Type: JsonInteractiveBlock
  */
-export const JsonInteractiveBlockSchema = z.object({
-  type: z.literal('interactive'),
-  action: JsonInteractiveActionSchema,
-  reftarget: z.string().min(1, 'Interactive reftarget is required'),
-  targetvalue: z.string().optional(),
-  content: z.string().min(1, 'Interactive content is required'),
-  tooltip: z.string().optional(),
-  requirements: z.array(z.string()).optional(),
-  objectives: z.array(z.string()).optional(),
-  skippable: z.boolean().optional(),
-  hint: z.string().optional(),
-  showMe: z.boolean().optional(),
-  doIt: z.boolean().optional(),
-  completeEarly: z.boolean().optional(),
-  verify: z.string().optional(),
-}).refine(
-  (block) => block.action !== 'formfill' || (block.targetvalue !== undefined && block.targetvalue !== ''),
-  { message: "formfill action requires 'targetvalue'" }
-);
+export const JsonInteractiveBlockSchema = z
+  .object({
+    type: z.literal('interactive'),
+    action: JsonInteractiveActionSchema,
+    reftarget: z.string().min(1, 'Interactive reftarget is required'),
+    targetvalue: z.string().optional(),
+    content: z.string().min(1, 'Interactive content is required'),
+    tooltip: z.string().optional(),
+    requirements: z.array(z.string()).optional(),
+    objectives: z.array(z.string()).optional(),
+    skippable: z.boolean().optional(),
+    hint: z.string().optional(),
+    showMe: z.boolean().optional(),
+    doIt: z.boolean().optional(),
+    completeEarly: z.boolean().optional(),
+    verify: z.string().optional(),
+  })
+  .refine((block) => block.action !== 'formfill' || (block.targetvalue !== undefined && block.targetvalue !== ''), {
+    message: "formfill action requires 'targetvalue'",
+  });
 
 /**
  * Schema for multistep block.
@@ -229,9 +234,9 @@ function createBlockSchemaWithDepth(currentDepth: number): z.ZodSchema {
     // At max depth, only allow non-recursive blocks
     return NonRecursiveBlockSchema;
   }
-  
+
   const nestedBlockSchema = z.lazy(() => createBlockSchemaWithDepth(currentDepth + 1));
-  
+
   return z.union([
     NonRecursiveBlockSchema,
     z.object({

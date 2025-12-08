@@ -1,8 +1,7 @@
-
 import { fetchContent } from './content-fetcher';
 import { parseJsonGuide } from './json-parser';
 
-// Mock validateGuide to control validation results if needed, 
+// Mock validateGuide to control validation results if needed,
 // but for integration tests we want to use the real one to verify it works.
 // However, we might want to mock fetch for external URLs.
 
@@ -29,12 +28,12 @@ describe('Validation Integration Phase 1', () => {
     it('should successfully load and validate a known bundled guide', async () => {
       // 'welcome-to-grafana' is a standard bundled guide
       const result = await fetchContent('bundled:welcome-to-grafana');
-      
+
       expect(result.error).toBeUndefined();
       expect(result.content).not.toBeNull();
       // Bundled guides are loaded as single-doc type with content string
       // The content string is valid JSON
-      
+
       // Parse it to ensure it passes validation
       if (result.content?.content) {
         const parseResult = parseJsonGuide(result.content.content);
@@ -49,12 +48,12 @@ describe('Validation Integration Phase 1', () => {
       const invalidGuide = {
         id: 'test',
         // missing title
-        blocks: []
+        blocks: [],
       };
-      
+
       const result = parseJsonGuide(JSON.stringify(invalidGuide));
       expect(result.isValid).toBe(false);
-      expect(result.errors.some(e => e.message.includes('title'))).toBe(true);
+      expect(result.errors.some((e) => e.message.includes('title'))).toBe(true);
       expect(result.errors[0].type).toBe('schema_validation');
     });
 
@@ -63,13 +62,13 @@ describe('Validation Integration Phase 1', () => {
         id: 'test',
         title: 'Test',
         blocks: [
-          { type: 'markdown' } // missing content
-        ]
+          { type: 'markdown' }, // missing content
+        ],
       };
-      
+
       const result = parseJsonGuide(JSON.stringify(invalidGuide));
       expect(result.isValid).toBe(false);
-      expect(result.errors.some(e => e.message.includes('content'))).toBe(true);
+      expect(result.errors.some((e) => e.message.includes('content'))).toBe(true);
     });
   });
 
@@ -78,14 +77,14 @@ describe('Validation Integration Phase 1', () => {
       const validGuide = {
         id: 'test-guide',
         title: 'Test Guide',
-        blocks: [{ type: 'markdown', content: 'Hello' }]
+        blocks: [{ type: 'markdown', content: 'Hello' }],
       };
 
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         url: 'https://example.com/content.json',
         text: () => Promise.resolve(JSON.stringify(validGuide)),
-        headers: { get: () => null }
+        headers: { get: () => null },
       });
 
       const result = await fetchContent('https://example.com/content.json');
@@ -104,7 +103,7 @@ describe('Validation Integration Phase 1', () => {
         ok: true,
         url: 'https://example.com/content.json',
         text: () => Promise.resolve(JSON.stringify(invalidGuide)),
-        headers: { get: () => null }
+        headers: { get: () => null },
       });
 
       const result = await fetchContent('https://example.com/content.json');

@@ -141,4 +141,3 @@ export const validateCommand = new Command('validate')
       process.exit(1);
     }
   });
-

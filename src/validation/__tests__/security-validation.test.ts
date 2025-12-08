@@ -1,4 +1,3 @@
-
 import { validateGuide } from '../index';
 import { createDeeplyNestedGuide, createWideGuide } from './test-utils';
 import { parseJsonGuide } from '../../docs-retrieval/json-parser';
@@ -31,7 +30,7 @@ describe('Security Validation', () => {
           title: 'Test',
           blocks: [
             {
-              type: 'markdown',
+              type: 'markdown' as const,
               content: '# Heading\n\n<script>alert("xss")</script>\n\nNormal text here.',
             },
           ],
@@ -58,8 +57,8 @@ describe('Security Validation', () => {
           title: 'Test',
           blocks: [
             {
-              type: 'interactive',
-              action: 'highlight',
+              type: 'interactive' as const,
+              action: 'highlight' as const,
               reftarget: '.test',
               content: 'Click here',
               tooltip: '**Bold text** <script>alert("xss")</script>',
@@ -72,13 +71,11 @@ describe('Security Validation', () => {
         expect(parseResult.data).toBeTruthy();
 
         // Find the interactive step element
-        const stepElement = parseResult.data!.elements.find(
-          (el: any) => el.type === 'interactive-step'
-        );
+        const stepElement = parseResult.data!.elements.find((el: any) => el.type === 'interactive-step');
         expect(stepElement).toBeTruthy();
 
         // targetComment should be sanitized HTML (script tag removed)
-        const targetComment = stepElement.props.targetComment;
+        const targetComment = stepElement?.props.targetComment;
         expect(targetComment).toBeTruthy();
         // Script tag should be removed by DOMPurify
         expect(targetComment).not.toContain('<script>');
@@ -94,7 +91,7 @@ describe('Security Validation', () => {
           title: 'Test',
           blocks: [
             {
-              type: 'markdown',
+              type: 'markdown' as const,
               content: `# Heading 1
 
 ## Heading 2
@@ -194,13 +191,13 @@ const code = "block";
     });
 
     it('should accept http URLs', () => {
-        const result = validateGuide({
-          id: 'test',
-          title: 'Test',
-          blocks: [{ type: 'image', src: 'http://example.com/img.png' }],
-        });
-        expect(result.isValid).toBe(true);
+      const result = validateGuide({
+        id: 'test',
+        title: 'Test',
+        blocks: [{ type: 'image', src: 'http://example.com/img.png' }],
       });
+      expect(result.isValid).toBe(true);
+    });
   });
 
   describe('Nesting Limits', () => {
@@ -211,37 +208,37 @@ const code = "block";
     });
 
     it('should reject 6-level nesting', () => {
-        // Nested level 6 means: Section -> Section -> ... (6 times) -> Markdown
-        // The schema allows 5 levels of recursion.
-        // Level 0 (Root blocks) -> Section (contains Level 1)
-        // Level 1 -> Section (contains Level 2)
-        // ...
-        // Level 4 -> Section (contains Level 5)
-        // Level 5 -> CANNOT contain Section (must be NonRecursive)
-        
-        // If we createDeeplyNestedGuide(6), we have 6 sections nested.
-        // The innermost section (the 6th one) will be at Level 5.
-        // But it contains 'blocks'.
-        // Wait, createDeeplyNestedGuide(1) returns { blocks: [{ type: 'section', blocks: [markdown] }] }
-        // This is 1 level of nesting.
-        
-        // Let's trace createBlockSchemaWithDepth:
-        // depth(0) -> allows Section(blocks: depth(1))
-        // depth(1) -> allows Section(blocks: depth(2))
-        // ...
-        // depth(4) -> allows Section(blocks: depth(5))
-        // depth(5) -> returns NonRecursiveBlockSchema (NO Section)
-        
-        // So valid structure:
-        // Guide -> Section (from depth 0) -> Section (from depth 1) -> ... -> Section (from depth 4) -> Markdown (from depth 5)
-        // Total sections: 5.
-        
-        // createDeeplyNestedGuide(5) creates 5 sections. This should be VALID.
-        // createDeeplyNestedGuide(6) creates 6 sections. The 6th section (innermost) is inside the 5th section.
-        // The 5th section is validated by depth(4), which expects blocks of depth(5).
-        // Depth(5) does NOT allow Section.
-        // So the 6th section (which is a Section) will fail validation against Depth(5) schema.
-        
+      // Nested level 6 means: Section -> Section -> ... (6 times) -> Markdown
+      // The schema allows 5 levels of recursion.
+      // Level 0 (Root blocks) -> Section (contains Level 1)
+      // Level 1 -> Section (contains Level 2)
+      // ...
+      // Level 4 -> Section (contains Level 5)
+      // Level 5 -> CANNOT contain Section (must be NonRecursive)
+
+      // If we createDeeplyNestedGuide(6), we have 6 sections nested.
+      // The innermost section (the 6th one) will be at Level 5.
+      // But it contains 'blocks'.
+      // Wait, createDeeplyNestedGuide(1) returns { blocks: [{ type: 'section', blocks: [markdown] }] }
+      // This is 1 level of nesting.
+
+      // Let's trace createBlockSchemaWithDepth:
+      // depth(0) -> allows Section(blocks: depth(1))
+      // depth(1) -> allows Section(blocks: depth(2))
+      // ...
+      // depth(4) -> allows Section(blocks: depth(5))
+      // depth(5) -> returns NonRecursiveBlockSchema (NO Section)
+
+      // So valid structure:
+      // Guide -> Section (from depth 0) -> Section (from depth 1) -> ... -> Section (from depth 4) -> Markdown (from depth 5)
+      // Total sections: 5.
+
+      // createDeeplyNestedGuide(5) creates 5 sections. This should be VALID.
+      // createDeeplyNestedGuide(6) creates 6 sections. The 6th section (innermost) is inside the 5th section.
+      // The 5th section is validated by depth(4), which expects blocks of depth(5).
+      // Depth(5) does NOT allow Section.
+      // So the 6th section (which is a Section) will fail validation against Depth(5) schema.
+
       const guide = createDeeplyNestedGuide(6);
       const result = validateGuide(guide);
       expect(result.isValid).toBe(false);
@@ -281,4 +278,3 @@ const code = "block";
     });
   });
 });
-

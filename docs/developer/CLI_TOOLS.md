@@ -7,6 +7,7 @@ The `pathfinder-cli` is a command-line interface for validating interactive JSON
 The CLI is built from the source code within this repository. To set it up:
 
 1.  **Install dependencies**:
+
     ```bash
     npm install
     ```
@@ -30,9 +31,9 @@ node dist/cli/cli/index.js validate [options] [files...]
 
 ### Options
 
--   `--bundled`: Validate all bundled guides located in `src/bundled-interactives/`. This option automatically discovers all JSON files in the directory (excluding `index.json`) relative to the current working directory where the command is executed. When run in another repository, it will look for `src/bundled-interactives/` in that repository's directory structure.
--   `--strict`: Treat warnings as errors. The command will exit with a non-zero status code if any warnings are found.
--   `--format <format>`: Output format. Options are `text` (default) or `json`.
+- `--bundled`: Validate all bundled guides located in `src/bundled-interactives/`. This option automatically discovers all JSON files in the directory (excluding `index.json`) relative to the current working directory where the command is executed. When run in another repository, it will look for `src/bundled-interactives/` in that repository's directory structure.
+- `--strict`: Treat warnings as errors. The command will exit with a non-zero status code if any warnings are found.
+- `--format <format>`: Output format. Options are `text` (default) or `json`.
 
 ### Examples
 
@@ -96,4 +97,3 @@ jobs:
       - name: Validate Guides
         run: npm run validate:strict
 ```
-
