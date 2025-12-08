@@ -876,7 +876,11 @@ export function FullScreenStepEditor({
           <div className={styles.warningBox}>
             {hasWarnings && (
               <Alert title="Selector warnings" severity="warning">
-                <ul>{pendingClick?.warnings?.map((warning, idx) => <li key={idx}>{warning}</li>)}</ul>
+                <ul>
+                  {pendingClick?.warnings?.map((warning, idx) => (
+                    <li key={idx}>{warning}</li>
+                  ))}
+                </ul>
               </Alert>
             )}
             {isNonUnique && (
