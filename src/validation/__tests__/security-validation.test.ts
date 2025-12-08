@@ -1,5 +1,5 @@
 import { validateGuide } from '../index';
-import { createDeeplyNestedGuide, createWideGuide } from './test-utils';
+import { createDeeplyNestedGuide, createWideGuide } from '../test-helpers';
 import { parseJsonGuide } from '../../docs-retrieval/json-parser';
 
 describe('Security Validation', () => {

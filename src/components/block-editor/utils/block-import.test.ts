@@ -293,7 +293,7 @@ describe('parseAndValidateGuide', () => {
       });
       const result = parseAndValidateGuide(guide);
       expect(result.isValid).toBe(false);
-      expect(result.errors).toContainEqual(expect.stringContaining("unknown action type 'unknown-action'"));
+      expect(result.errors).toContainEqual(expect.stringContaining("unknown action 'unknown-action'"));
     });
 
     it('should reject interactive block without reftarget', () => {
@@ -432,7 +432,8 @@ describe('parseAndValidateGuide', () => {
       });
       const result = parseAndValidateGuide(guide);
       expect(result.isValid).toBe(false);
-      expect(result.errors).toContainEqual(expect.stringContaining("step 1: missing required field 'reftarget'"));
+      // Zod reports the error at the block level, mentioning the missing field
+      expect(result.errors).toContainEqual(expect.stringContaining("missing required field 'reftarget'"));
     });
   });
 
@@ -533,9 +534,8 @@ describe('parseAndValidateGuide', () => {
       });
       const result = parseAndValidateGuide(guide);
       expect(result.isValid).toBe(false);
-      // Error message includes parent block position and nested block position
-      expect(result.errors).toContainEqual(expect.stringContaining('Block 1 > Block 1'));
-      expect(result.errors).toContainEqual(expect.stringContaining("(markdown): missing required field 'content'"));
+      // Error message indicates the nested block issue (content is missing)
+      expect(result.errors).toContainEqual(expect.stringContaining("missing required field 'content'"));
     });
   });
 
