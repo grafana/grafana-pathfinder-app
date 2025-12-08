@@ -323,7 +323,17 @@ export function validateTutorialUrl(url: string): UrlValidation {
     };
   }
 
+  // Check for valid URL format early
+  const parsedUrl = parseUrlSafely(url);
+  if (!parsedUrl) {
+    return {
+      isValid: false,
+      errorMessage: 'Invalid URL format',
+    };
+  }
+
   // In dev mode, allow localhost URLs for testing
+  // Note: The content fetcher automatically appends /unstyled.html suffix when needed
   if (isDevModeEnabledGlobal() && isLocalhostUrl(url)) {
     return {
       isValid: true,
