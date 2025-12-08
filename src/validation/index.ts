@@ -33,4 +33,9 @@ export type { ValidationError, ValidationWarning } from './errors';
 
 export { detectUnknownFields } from './unknown-fields';
 
-export { validateConditionString, validateConditions, validateBlockConditions, type ConditionIssue } from './condition-validator';
+export {
+  validateConditionString,
+  validateConditions,
+  validateBlockConditions,
+  type ConditionIssue,
+} from './condition-validator';

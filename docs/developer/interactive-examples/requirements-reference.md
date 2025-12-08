@@ -400,13 +400,13 @@ The CLI validates condition syntax statically. Invalid conditions produce **warn
 
 ### Common errors
 
-| Invalid | Error | Fix |
-|---------|-------|-----|
-| `is-admin:true` | Unexpected argument | `is-admin` |
-| `has-datasource:` | Missing argument | `has-datasource:prometheus` |
-| `has-datasource` | Unknown type | `has-datasource:X` or `has-datasources` |
-| `on-page:dashboard` | Invalid path format | `on-page:/dashboard` |
-| `min-version:latest` | Invalid version format | `min-version:11.0.0` |
+| Invalid              | Error                  | Fix                                     |
+| -------------------- | ---------------------- | --------------------------------------- |
+| `is-admin:true`      | Unexpected argument    | `is-admin`                              |
+| `has-datasource:`    | Missing argument       | `has-datasource:prometheus`             |
+| `has-datasource`     | Unknown type           | `has-datasource:X` or `has-datasources` |
+| `on-page:dashboard`  | Invalid path format    | `on-page:/dashboard`                    |
+| `min-version:latest` | Invalid version format | `min-version:11.0.0`                    |
 
 ## Objectives system
 
