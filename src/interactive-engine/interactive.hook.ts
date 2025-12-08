@@ -427,6 +427,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       interactiveGuided,
       interactiveSequence,
       stateManager,
+      navigationManager,
     ]
   );
 
