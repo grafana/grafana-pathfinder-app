@@ -12,6 +12,21 @@ import { z } from 'zod';
 // ============ PRIMITIVE SCHEMAS ============
 
 /**
+ * Schema for safe URLs (http/https only).
+ */
+const SafeUrlSchema = z.string().min(1).refine(
+  (url) => {
+    try {
+      const parsed = new URL(url, 'https://example.com');
+      return ['http:', 'https:'].includes(parsed.protocol);
+    } catch {
+      return false;
+    }
+  },
+  { message: 'URL must use http or https protocol' }
+);
+
+/**
  * Schema for interactive action types.
  * @coupling Type: JsonInteractiveAction
  */
@@ -86,7 +101,7 @@ export const JsonHtmlBlockSchema = z.object({
  */
 export const JsonImageBlockSchema = z.object({
   type: z.literal('image'),
-  src: z.string().min(1, 'Image src is required'),
+  src: SafeUrlSchema,
   alt: z.string().optional(),
   width: z.number().optional(),
   height: z.number().optional(),
@@ -98,7 +113,7 @@ export const JsonImageBlockSchema = z.object({
  */
 export const JsonVideoBlockSchema = z.object({
   type: z.literal('video'),
-  src: z.string().min(1, 'Video src is required'),
+  src: SafeUrlSchema,
   provider: z.enum(['youtube', 'native']).optional(),
   title: z.string().optional(),
 });
@@ -191,42 +206,70 @@ const NonRecursiveBlockSchema = z.union([
 
 // ============ RECURSIVE BLOCK SCHEMAS ============
 
-/**
- * Schema for section block (contains nested blocks).
- * @coupling Type: JsonSectionBlock
- */
-export const JsonSectionBlockSchema = z.object({
+// Common properties for recursive blocks to avoid duplication
+const SectionProps = {
   type: z.literal('section'),
   id: z.string().optional(),
   title: z.string().optional(),
-  blocks: z.lazy(() => z.array(JsonBlockSchema)),
   requirements: z.array(z.string()).optional(),
   objectives: z.array(z.string()).optional(),
+};
+
+const AssistantProps = {
+  type: z.literal('assistant'),
+  assistantId: z.string().optional(),
+  assistantType: z.enum(['query', 'config', 'code', 'text']).optional(),
+};
+
+const MAX_NESTING_DEPTH = 5;
+
+// Helper to create depth-limited block schema
+function createBlockSchemaWithDepth(currentDepth: number): z.ZodSchema {
+  if (currentDepth >= MAX_NESTING_DEPTH) {
+    // At max depth, only allow non-recursive blocks
+    return NonRecursiveBlockSchema;
+  }
+  
+  const nestedBlockSchema = z.lazy(() => createBlockSchemaWithDepth(currentDepth + 1));
+  
+  return z.union([
+    NonRecursiveBlockSchema,
+    z.object({
+      ...SectionProps,
+      blocks: z.array(nestedBlockSchema),
+    }),
+    z.object({
+      ...AssistantProps,
+      blocks: z.array(nestedBlockSchema),
+    }),
+  ]);
+}
+
+/**
+ * Discriminated union schema for all block types with depth limit.
+ * @coupling Type: JsonBlock
+ */
+export const JsonBlockSchema = createBlockSchemaWithDepth(0);
+
+/**
+ * Schema for section block (contains nested blocks).
+ * Uses JsonBlockSchema which enforces depth limit globally.
+ * @coupling Type: JsonSectionBlock
+ */
+export const JsonSectionBlockSchema = z.object({
+  ...SectionProps,
+  blocks: z.lazy(() => z.array(JsonBlockSchema)),
 });
 
 /**
  * Schema for assistant block (contains nested blocks).
+ * Uses JsonBlockSchema which enforces depth limit globally.
  * @coupling Type: JsonAssistantBlock
  */
 export const JsonAssistantBlockSchema = z.object({
-  type: z.literal('assistant'),
-  assistantId: z.string().optional(),
-  assistantType: z.enum(['query', 'config', 'code', 'text']).optional(),
+  ...AssistantProps,
   blocks: z.lazy(() => z.array(JsonBlockSchema)),
 });
-
-// ============ BLOCK UNION (Full) ============
-
-/**
- * Discriminated union schema for all block types.
- * Uses Zod's union for flexible parsing.
- * @coupling Type: JsonBlock
- */
-export const JsonBlockSchema: z.ZodSchema = z.union([
-  NonRecursiveBlockSchema,
-  JsonSectionBlockSchema,
-  JsonAssistantBlockSchema,
-]);
 
 // ============ ROOT GUIDE SCHEMA ============
 
@@ -257,6 +300,7 @@ export const JsonGuideSchema = JsonGuideSchemaStrict.passthrough();
 export type InferredJsonGuide = z.infer<typeof JsonGuideSchemaStrict>;
 export type InferredJsonBlock = z.infer<typeof NonRecursiveBlockSchema>;
 export type InferredJsonStep = z.infer<typeof JsonStepSchema>;
+export type InferredJsonQuizChoice = z.infer<typeof JsonQuizChoiceSchema>;
 
 // ============ KNOWN FIELDS FOR UNKNOWN FIELD DETECTION ============
 
