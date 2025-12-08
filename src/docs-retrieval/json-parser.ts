@@ -97,7 +97,7 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
     return { isValid: false, errors, warnings };
   }
 
-  // NEW: Zod validation replaces manual checks
+  // Zod validation replaces manual checks
   const validationResult = validateGuide(guide);
   if (!validationResult.isValid) {
     return {
@@ -110,6 +110,9 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
       warnings: validationResult.warnings.map((w) => w.message),
     };
   }
+
+  // Preserve validation warnings (e.g., unknown fields, invalid condition syntax)
+  warnings.push(...validationResult.warnings.map((w) => w.message));
 
   // Convert blocks to ParsedElements
   const elements: ParsedElement[] = [];
