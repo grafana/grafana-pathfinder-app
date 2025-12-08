@@ -1,17 +1,17 @@
-import { Button, Icon, Input, useStyles2 } from '@grafana/ui';
+import { Box, Button, Icon, Input, useStyles2 } from '@grafana/ui';
 import React, { useCallback, useEffect, useState } from 'react';
-import { getURLTesterStyles } from './url-tester.styles';
+import { getUrlTesterStyles } from './url-tester.styles';
 import {
   isGitHubRawUrl,
   isInteractiveLearningUrl,
   isGrafanaDocsUrl,
   isLocalhostUrl,
-  type URLValidation,
+  type UrlValidation,
 } from '../../security';
 
 const STORAGE_KEY = 'pathfinder-url-tester-url';
 
-export interface URLTesterProps {
+export interface UrlTesterProps {
   onOpenDocsPage: (url: string, title: string) => void;
 }
 
@@ -23,10 +23,10 @@ export interface URLTesterProps {
  * - Grafana docs URLs (grafana.com/docs)
  * - Localhost URLs (for local testing)
  *
- * Note: This validator is used in the URLTester which is only visible in dev mode,
+ * Note: This validator is used in the UrlTester which is only visible in dev mode,
  * so we allow all dev-mode URLs without checking isDevModeEnabledGlobal().
  */
-function validateContentUrl(url: string): URLValidation {
+function validateContentUrl(url: string): UrlValidation {
   if (!url) {
     return {
       isValid: false,
@@ -67,8 +67,8 @@ function validateContentUrl(url: string): URLValidation {
   };
 }
 
-export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
-  const styles = useStyles2(getURLTesterStyles);
+export const UrlTester = ({ onOpenDocsPage }: UrlTesterProps) => {
+  const styles = useStyles2(getUrlTesterStyles);
   const [testUrl, setTestUrl] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) || '';
@@ -102,9 +102,9 @@ export const URLTester = ({ onOpenDocsPage }: URLTesterProps) => {
         return;
       }
 
-      const tutorialName = extractTitleFromUrl(url);
+      const tutorialName = extractTitleFromUrl(testUrl);
 
-      onOpenDocsPage(url, tutorialName);
+      onOpenDocsPage(testUrl, tutorialName);
       setTestSuccess(true);
       setTestError(null);
 

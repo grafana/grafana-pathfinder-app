@@ -1,1 +1,1 @@
-export { URLTester, type URLTesterProps } from './URLTester';
+export { UrlTester, type UrlTesterProps } from './UrlTester';

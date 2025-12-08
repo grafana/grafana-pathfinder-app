@@ -302,7 +302,7 @@ export function isGitHubRawUrl(urlString: string): boolean {
   return url.hostname === 'raw.githubusercontent.com';
 }
 
-export interface URLValidation {
+export interface UrlValidation {
   isValid: boolean;
   errorMessage?: string;
 }
@@ -315,7 +315,7 @@ export interface URLValidation {
  * @param url - The URL to validate
  * @returns Validation result with error message if invalid
  */
-export function validateTutorialUrl(url: string): URLValidation {
+export function validateTutorialUrl(url: string): UrlValidation {
   if (!url) {
     return {
       isValid: false,
