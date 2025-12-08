@@ -171,7 +171,7 @@ describe('useLinkClickHandler', () => {
     });
   });
 
-  describe('GitHub Links', () => {
+  describe('Interactive Learning Links', () => {
     let windowOpen: jest.SpyInstance;
 
     beforeEach(() => {
@@ -182,7 +182,7 @@ describe('useLinkClickHandler', () => {
       windowOpen.mockRestore();
     });
 
-    it('should open allowed GitHub tutorial URLs in app tabs', () => {
+    it('should open interactive learning URLs in app tabs', () => {
       renderHook(() =>
         useLinkClickHandler({
           contentRef,
@@ -192,17 +192,16 @@ describe('useLinkClickHandler', () => {
         })
       );
 
-      // Updated to use the ONLY allowed repo: grafana/interactive-tutorials
-      const grafanaLink = document.createElement('a');
-      grafanaLink.href = 'https://raw.githubusercontent.com/grafana/interactive-tutorials/main/tutorial.html';
-      grafanaLink.textContent = 'interactive guide';
-      contentDiv.appendChild(grafanaLink);
+      const interactiveLink = document.createElement('a');
+      interactiveLink.href = 'https://interactive-learning.grafana.net/tutorial/content.json';
+      interactiveLink.textContent = 'interactive guide';
+      contentDiv.appendChild(interactiveLink);
 
-      fireEvent.click(grafanaLink);
+      fireEvent.click(interactiveLink);
 
-      // Should try to open in app with unstyled URL
+      // Should open in app
       expect(mockModel.openDocsPage).toHaveBeenCalledWith(
-        expect.stringContaining('unstyled.html'),
+        'https://interactive-learning.grafana.net/tutorial/content.json',
         'interactive guide'
       );
       expect(windowOpen).not.toHaveBeenCalled();
@@ -242,9 +241,7 @@ describe('useLinkClickHandler', () => {
       jest.useRealTimers();
     });
 
-    it('should open regular github.com URLs in browser if not in raw allowed list', () => {
-      jest.useFakeTimers();
-
+    it('should open interactive-learning.grafana-dev.net URLs in app', () => {
       renderHook(() =>
         useLinkClickHandler({
           contentRef,
@@ -254,20 +251,18 @@ describe('useLinkClickHandler', () => {
         })
       );
 
-      const regularGitHubLink = document.createElement('a');
-      regularGitHubLink.href = 'https://github.com/grafana/grafana';
-      regularGitHubLink.textContent = 'Grafana GitHub';
-      contentDiv.appendChild(regularGitHubLink);
+      const devLink = document.createElement('a');
+      devLink.href = 'https://interactive-learning.grafana-dev.net/tutorial/';
+      devLink.textContent = 'Dev Tutorial';
+      contentDiv.appendChild(devLink);
 
-      fireEvent.click(regularGitHubLink);
+      fireEvent.click(devLink);
 
-      // Advance timers to execute the setTimeout delay
-      jest.advanceTimersByTime(100);
-
-      expect(windowOpen).toHaveBeenCalledWith('https://github.com/grafana/grafana', '_blank', 'noopener,noreferrer');
-      expect(mockModel.openDocsPage).not.toHaveBeenCalled();
-
-      jest.useRealTimers();
+      expect(mockModel.openDocsPage).toHaveBeenCalledWith(
+        'https://interactive-learning.grafana-dev.net/tutorial/',
+        'Dev Tutorial'
+      );
+      expect(windowOpen).not.toHaveBeenCalled();
     });
   });
 

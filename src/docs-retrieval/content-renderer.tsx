@@ -26,6 +26,7 @@ import {
   AssistantSelectionPopover,
   buildDocumentContext,
   AssistantCustomizable,
+  AssistantBlockWrapper,
 } from '../integrations/assistant-integration';
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
@@ -451,7 +452,7 @@ function renderParsedElement(
       return (
         <InteractiveSection
           key={key}
-          title={element.props.title || 'Interactive Section'}
+          title={element.props.title || 'Interactive section'}
           isSequence={element.props.isSequence}
           skippable={element.props.skippable}
           requirements={element.props.requirements}
@@ -609,6 +610,21 @@ function renderParsedElement(
           inline={element.props.inline}
           contentKey={contentKey || ''}
         />
+      );
+    case 'assistant-block-wrapper':
+      return (
+        <AssistantBlockWrapper
+          key={key}
+          assistantId={element.props.assistantId}
+          assistantType={element.props.assistantType}
+          defaultValue={element.props.defaultValue}
+          blockType={element.props.blockType}
+          contentKey={contentKey || ''}
+        >
+          {element.children.map((child: ParsedElement | string, childIndex: number) =>
+            typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
+          )}
+        </AssistantBlockWrapper>
       );
     case 'raw-html':
       // SECURITY: raw-html type is removed - all HTML must go through the parser

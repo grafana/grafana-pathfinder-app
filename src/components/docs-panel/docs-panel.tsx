@@ -14,26 +14,13 @@ const SelectorDebugPanel = lazy(() =>
 );
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import {
-  DocsPluginConfig,
-  ALLOWED_GRAFANA_DOCS_HOSTNAMES,
-  ALLOWED_GITHUB_REPOS,
-  getConfigWithDefaults,
-} from '../../constants';
+import { DocsPluginConfig, ALLOWED_GRAFANA_DOCS_HOSTNAMES, getConfigWithDefaults } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from '../../utils/keyboard-shortcuts.hook';
 import { useLinkClickHandler } from '../../utils/link-handler.hook';
-import { isDevModeEnabledGlobal, isDevModeEnabled } from '../wysiwyg-editor/dev-mode';
-import {
-  parseUrlSafely,
-  isAllowedContentUrl,
-  isAllowedGitHubRawUrl,
-  isGitHubUrl,
-  isGitHubRawUrl,
-  isLocalhostUrl,
-} from '../../security';
-import { isDataProxyUrl } from '../../docs-retrieval/data-proxy';
+import { isDevModeEnabledGlobal, isDevModeEnabled } from '../../utils/dev-mode';
+import { parseUrlSafely, isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../security';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
@@ -190,13 +177,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         // SECURITY: Validate URLs before restoring from storage
         // This prevents XSS attacks via storage injection
         const validateUrl = (url: string): boolean => {
-          return (
-            isAllowedContentUrl(url) ||
-            isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
-            isDataProxyUrl(url) || // SECURITY: Data proxy URLs are internal
-            isGitHubUrl(url) ||
-            (isDevModeEnabledGlobal() && (isLocalhostUrl(url) || isGitHubRawUrl(url)))
-          );
+          const isDevMode = isDevModeEnabledGlobal();
+          return isAllowedContentUrl(url) || (isDevMode && isLocalhostUrl(url)) || (isDevMode && isGitHubRawUrl(url));
         };
 
         const isValidBase = validateUrl(data.baseUrl);
@@ -284,7 +266,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async openLearningJourney(url: string, title?: string): Promise<string> {
-    const finalTitle = title || 'Learning Journey';
+    const finalTitle = title || 'Learning journey';
     const tabId = this.generateTabId();
 
     const newTab: LearningJourneyTab = {
@@ -313,6 +295,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   }
 
   public async loadTabContent(tabId: string, url: string) {
+    // Skip loading if URL is empty
+    if (!url || url.trim() === '') {
+      return;
+    }
+
     // Update tab to loading state
     const updatedTabs = this.state.tabs.map((t) =>
       t.id === tabId
@@ -515,7 +502,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.saveTabsToStorage();
   }
 
-  public async openDocsPage(url: string, title?: string): Promise<string> {
+  public async openDocsPage(url: string, title?: string, skipReadyToBegin?: boolean): Promise<string> {
     const finalTitle = title || 'Documentation';
     const tabId = this.generateTabId();
 
@@ -539,12 +526,17 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.saveTabsToStorage();
 
     // Load docs content for the tab
-    this.loadDocsTabContent(tabId, url);
+    this.loadDocsTabContent(tabId, url, skipReadyToBegin);
 
     return tabId;
   }
 
-  public async loadDocsTabContent(tabId: string, url: string) {
+  public async loadDocsTabContent(tabId: string, url: string, skipReadyToBegin?: boolean) {
+    // Skip loading if URL is empty
+    if (!url || url.trim() === '') {
+      return;
+    }
+
     // Update tab to loading state
     const updatedTabs = this.state.tabs.map((t) =>
       t.id === tabId
@@ -558,7 +550,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     this.setState({ tabs: updatedTabs });
 
     try {
-      const result = await fetchContent(url);
+      const result = await fetchContent(url, { skipReadyToBegin });
 
       // Check if fetch succeeded or failed
       if (result.content) {
@@ -668,7 +660,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         getAppEvents().publish({
           type: 'alert-warning',
           payload: [
-            'Live Sessions Disabled',
+            'Live sessions disabled',
             'Live sessions are disabled on this Grafana instance. Ask your administrator to enable them in the Pathfinder plugin configuration.',
           ],
         });
@@ -731,7 +723,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           console.log('[DocsPanel] Showing toast for hand raise:', event.attendeeName);
           getAppEvents().publish({
             type: 'alert-success',
-            payload: ['Live Session', `${event.attendeeName} has raised their hand`],
+            payload: ['Live session', `${event.attendeeName} has raised their hand`],
           });
         }
       }
@@ -1056,7 +1048,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         // Show notification to attendee
         getAppEvents().publish({
           type: 'alert-warning',
-          payload: ['Session Ended', 'The presenter has ended the live session.'],
+          payload: ['Session ended', 'The presenter has ended the live session.'],
         });
 
         return;
@@ -1248,7 +1240,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 onClick={() => setShowPresenterControls(true)}
                 tooltip="Start a live session to broadcast your actions to attendees"
               >
-                Start Live Session
+                Start live session
               </Button>
               <Button
                 size="sm"
@@ -1257,14 +1249,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 onClick={() => setShowAttendeeJoin(true)}
                 tooltip="Join an existing live session"
               >
-                Join Live Session
+                Join live session
               </Button>
             </>
           )}
           {isSessionActive && sessionRole === 'presenter' && (
             <>
               <Button size="sm" variant="primary" icon="circle" onClick={() => setShowPresenterControls(true)}>
-                Session Active
+                Session active
               </Button>
               <div ref={handRaiseIndicatorRef}>
                 <HandRaiseIndicator count={handRaises.length} onClick={() => setShowHandRaiseQueue(true)} />
@@ -1276,7 +1268,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Icon name="check-circle" />
-                  <span style={{ fontWeight: 500 }}>Connected to: {sessionInfo?.config.name || 'Live Session'}</span>
+                  <span style={{ fontWeight: 500 }}>Connected to: {sessionInfo?.config.name || 'Live session'}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '12px', color: 'rgba(204, 204, 220, 0.85)' }}>Mode:</span>
@@ -1368,8 +1360,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                   if (title === 'Recommendations') {
                     return t('docsPanel.recommendations', 'Recommendations');
                   }
-                  if (title === 'Learning Journey') {
-                    return t('docsPanel.learningJourney', 'Learning Journey');
+                  if (title === 'Learning journey') {
+                    return t('docsPanel.learningJourney', 'Learning journey');
                   }
                   if (title === 'Documentation') {
                     return t('docsPanel.documentation', 'Documentation');
@@ -1568,7 +1560,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             return (
               <div className={styles.devToolsContent} data-testid="devtools-tab-content">
                 <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-                  <SelectorDebugPanel onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title)} />
+                  <SelectorDebugPanel
+                    onOpenDocsPage={(url: string, title: string) => model.openDocsPage(url, title, true)}
+                  />
                 </Suspense>
               </div>
             );
@@ -1643,15 +1637,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               <div className={activeTab.type === 'docs' ? styles.docsContent : styles.journeyContent}>
                 {/* Return to Editor Banner - only shown for WYSIWYG preview */}
                 {isWysiwygPreview && (
-                  <div className={styles.returnToEditorBanner} data-testid={testIds.wysiwygPreview.banner}>
-                    <div className={styles.returnToEditorLeft} data-testid={testIds.wysiwygPreview.modeIndicator}>
+                  <div className={styles.returnToEditorBanner} data-testid={testIds.devTools.previewBanner}>
+                    <div className={styles.returnToEditorLeft} data-testid={testIds.devTools.previewModeIndicator}>
                       <Icon name="eye" size="sm" />
-                      <span>{t('docsPanel.previewMode', 'Preview Mode')}</span>
+                      <span>{t('docsPanel.previewMode', 'Preview mode')}</span>
                     </div>
                     <button
                       className={styles.returnToEditorButton}
                       onClick={() => model.openDevToolsTab()}
-                      data-testid={testIds.wysiwygPreview.returnToEditorButton}
+                      data-testid={testIds.devTools.returnToEditorButton}
                     >
                       <Icon name="arrow-left" size="sm" />
                       {t('docsPanel.returnToEditor', 'Return to editor')}
@@ -1663,7 +1657,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 {isLearningJourneyTab && !showMilestoneProgress && (
                   <div className={styles.contentMeta}>
                     <div className={styles.metaInfo}>
-                      <span>{t('docsPanel.learningJourney', 'Learning Journey')}</span>
+                      <span>{t('docsPanel.learningJourney', 'Learning journey')}</span>
                     </div>
                     <small>
                       {(activeTab.content?.metadata.learningJourney?.totalMilestones || 0) > 0

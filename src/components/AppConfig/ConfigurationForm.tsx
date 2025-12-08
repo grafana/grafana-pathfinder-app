@@ -15,7 +15,7 @@ import {
   DEFAULT_PEERJS_KEY,
 } from '../../constants';
 import { updatePluginSettings } from '../../utils/utils.plugin';
-import { isDevModeEnabled, toggleDevMode } from '../wysiwyg-editor/dev-mode';
+import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { config } from '@grafana/runtime';
 import { FeatureFlags, getFeatureToggle } from '../../utils/openfeature';
 
@@ -244,7 +244,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
   return (
     <form onSubmit={onSubmit}>
-      <FieldSet label="Plugin Configuration" className={s.marginTopXl}>
+      <FieldSet label="Plugin configuration" className={s.marginTopXl}>
         {/* Advanced configuration fields - only shown in dev mode */}
         {showAdvancedConfig && (
           <>
@@ -285,7 +285,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         {showDevModeInput && (
           <>
             <Field
-              label="Dev Mode"
+              label="Dev mode"
               description="⚠️ WARNING: Disables security protections. Only enable in isolated development environments. Requires admin permissions to change. Only visible to the user who enabled it."
               className={s.marginTop}
             >
@@ -327,7 +327,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   Dev mode disables critical security protections:
                 </Text>
                 <ul style={{ marginTop: '8px', marginBottom: '8px' }}>
-                  <li>Allows loading content from ANY GitHub repository (bypasses branch validation)</li>
+                  <li>Allows loading content from ANY localhost URL (bypasses domain validation)</li>
                   <li>Allows loading content from ANY localhost URL</li>
                   <li>Exposes debug tools that can manipulate the Grafana DOM</li>
                   <li>Bypasses source validation for interactive content</li>
@@ -421,12 +421,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           )}
         </FieldSet>
 
-        {/* Live Sessions (Collaborative Learning) - Dev Mode Only */}
+        {/* Live sessions (collaborative learning) - Dev Mode Only */}
         {devModeEnabledForUser && (
           <FieldSet
             label={
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                Live Sessions (Collaborative Learning)
+                Live sessions (collaborative learning)
                 <Badge text="Experimental - Dev Mode Only" color="orange" />
               </div>
             }
@@ -464,11 +464,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                     </Text>
                   </div>
 
-                  <Field label="Server Host" description="Hostname or IP address">
+                  <Field label="Server host" description="Hostname or IP address">
                     <Input value={state.peerjsHost} onChange={onChangePeerjsHost} placeholder={DEFAULT_PEERJS_HOST} />
                   </Field>
 
-                  <Field label="Server Port" description="Port number">
+                  <Field label="Server port" description="Port number">
                     <Input
                       type="number"
                       value={state.peerjsPort}

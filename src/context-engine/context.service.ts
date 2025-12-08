@@ -8,7 +8,7 @@ import {
 } from '../constants';
 import { fetchContent, getJourneyCompletionPercentage } from '../docs-retrieval';
 import { hashUserData } from '../lib/hash.util';
-import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
   ContextData,
@@ -645,6 +645,17 @@ export class ContextService {
     return Promise.all(
       recommendations.map(async (rec) => {
         if (rec.type === 'learning-journey' || !rec.type) {
+          // Skip fetching if URL is empty
+          if (!rec.url || rec.url.trim() === '') {
+            return {
+              ...rec,
+              totalSteps: 0,
+              milestones: [],
+              summary: rec.summary || '',
+              completionPercentage: 0,
+            };
+          }
+
           try {
             const result = await fetchContent(rec.url);
             const completionPercentage = getJourneyCompletionPercentage(rec.url);

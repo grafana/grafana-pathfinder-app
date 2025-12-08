@@ -169,9 +169,9 @@ export interface ContentParsingErrorProps {
 // ============================================================================
 
 /**
- * Props for URLTester component
+ * Props for UrlTester component
  */
-export interface URLTesterProps {
+export interface UrlTesterProps {
   className?: string;
 }
 

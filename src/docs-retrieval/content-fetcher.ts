@@ -11,18 +11,16 @@ import {
   SingleDocMetadata,
   Milestone,
 } from './content.types';
-import { DEFAULT_CONTENT_FETCH_TIMEOUT, ALLOWED_GITHUB_REPOS } from '../constants';
+import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
   isGrafanaDocsUrl,
-  isGitHubUrl,
-  isGitHubRawUrl,
-  isAllowedGitHubRawUrl,
   isLocalhostUrl,
+  isInteractiveLearningUrl,
+  isGitHubRawUrl,
 } from '../security';
-import { convertGitHubRawToProxyUrl, isDataProxyUrl } from './data-proxy';
-import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { StorageKeys } from '../lib/user-storage';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 
@@ -74,14 +72,9 @@ function wrapContentAsJsonGuide(content: string, url: string, title: string): st
 
 /**
  * SECURITY: Enforce HTTPS for all external URLs to prevent MITM attacks
- * Exceptions: localhost in dev mode, data proxy URLs (internal to Grafana)
+ * Exceptions: localhost in dev mode
  */
 function enforceHttps(url: string): boolean {
-  // Data proxy URLs are internal to Grafana and don't need HTTPS enforcement
-  if (isDataProxyUrl(url)) {
-    return true;
-  }
-
   // Parse URL safely
   const parsedUrl = parseUrlSafely(url);
   if (!parsedUrl) {
@@ -122,21 +115,15 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 
     // SECURITY: Validate URL is from a trusted source before fetching
     // Defense-in-depth: Even if callers validate, fetchContent provides final check
-    // In production: Only Grafana docs, bundled content, and approved GitHub repos
-    // In dev mode: Also allows any GitHub raw URL and localhost for local testing
-    // Data proxy: Routes requests through Grafana backend to avoid CORS issues
+    // In production: Only Grafana docs, interactive learning domains, and bundled content
+    // In dev mode: Also allows localhost and GitHub raw URLs for testing
     const isDevMode = isDevModeEnabledGlobal();
-    const isTrustedSource =
-      isAllowedContentUrl(url) ||
-      isAllowedGitHubRawUrl(url, ALLOWED_GITHUB_REPOS) ||
-      isDataProxyUrl(url) || // SECURITY: Data proxy URLs are internal and route through Grafana backend
-      isGitHubUrl(url) ||
-      (isDevMode && (isGitHubRawUrl(url) || isLocalhostUrl(url)));
+    const isTrustedSource = isAllowedContentUrl(url) || (isDevMode && (isLocalhostUrl(url) || isGitHubRawUrl(url)));
 
     if (!isTrustedSource) {
       const errorMessage = isDevMode
-        ? 'Only Grafana.com documentation, any GitHub repositories (dev mode), localhost URLs (dev mode), approved GitHub repositories, and data proxy URLs can be loaded'
-        : 'Only Grafana.com documentation, approved GitHub repositories, and data proxy URLs can be loaded';
+        ? 'Only Grafana.com documentation, interactive learning URLs, localhost URLs, and GitHub raw URLs (dev mode) can be loaded'
+        : 'Only Grafana.com documentation and interactive learning URLs can be loaded';
 
       return {
         content: null,
@@ -207,7 +194,11 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       // HTML content - apply learning journey extras then wrap
       let processedHtml = fetchResult.html;
       if (contentType === 'learning-journey' && metadata.learningJourney) {
-        processedHtml = generateJourneyContentWithExtras(processedHtml, metadata.learningJourney);
+        processedHtml = generateJourneyContentWithExtras(
+          processedHtml,
+          metadata.learningJourney,
+          options.skipReadyToBegin
+        );
       }
 
       // Wrap content as JSON guide for unified rendering pipeline
@@ -441,13 +432,12 @@ function isJsonContentUrl(url: string): boolean {
 
 /**
  * Try multiple URL variations in order, returning the first successful result.
- * This is used for GitHub URLs where we want to try content.json first, then unstyled.html.
+ * This is used for content URLs where we want to try content.json first, then unstyled.html.
  */
 async function tryUrlVariations(urls: string[], options: ContentFetchOptions): Promise<FetchRawResult> {
   const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
   let lastError: FetchError | undefined;
 
-  // Build fetch options - use minimal headers for GitHub raw URLs to avoid CORS preflight
   const fetchOptions: RequestInit = {
     method: 'GET',
     headers: { ...headers },
@@ -464,12 +454,11 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
         if (content && content.trim()) {
           // SECURITY: Validate the final URL is trusted
           const finalUrl = response.url;
+          const isDevMode = isDevModeEnabledGlobal();
           const isFinalUrlTrusted =
             isAllowedContentUrl(finalUrl) ||
-            isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPOS) ||
-            isDataProxyUrl(finalUrl) ||
-            isGitHubUrl(finalUrl) ||
-            (isDevModeEnabledGlobal() && (isLocalhostUrl(finalUrl) || isGitHubRawUrl(finalUrl)));
+            (isDevMode && isLocalhostUrl(finalUrl)) ||
+            (isDevMode && isGitHubRawUrl(finalUrl));
 
           if (!isFinalUrlTrusted) {
             console.warn(`URL variation ${urlVariation} redirected to untrusted URL: ${finalUrl}`);
@@ -519,80 +508,48 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<FetchRawResult> {
   const { headers = {}, timeout = DEFAULT_CONTENT_FETCH_TIMEOUT } = options;
 
-  // Handle GitHub URLs proactively to avoid CORS issues
-  // Convert tree/blob URLs to raw URLs before attempting fetch
-  // Use proper URL parsing to prevent domain hijacking
-  const isGitHubRawUrlCheck = isGitHubRawUrl(url);
-  const isGitHubUrlCheck = isGitHubUrl(url);
-
-  // For GitHub URLs, try all variations (JSON first, then HTML fallback)
-  if (isGitHubUrlCheck && !isGitHubRawUrlCheck) {
-    const githubVariations = generateGitHubVariations(url);
-    if (githubVariations.length > 0) {
-      return tryUrlVariations(githubVariations, options);
+  // For interactive learning URLs, try content.json first, then unstyled.html
+  if (isInteractiveLearningUrl(url)) {
+    const variations = generateInteractiveLearningVariations(url);
+    if (variations.length > 0) {
+      return tryUrlVariations(variations, options);
     }
   }
 
-  // For non-GitHub URLs, use the original URL
-  let actualUrl = url;
-
-  // Check if this is a GitHub raw URL or data proxy URL to use minimal headers
-  const isDataProxy = isDataProxyUrl(actualUrl);
-  const useMinimalHeaders = isGitHubRawUrlCheck || isDataProxy;
-
-  // Build fetch options - use minimal headers for GitHub raw URLs and data proxy to avoid CORS preflight
   const fetchOptions: RequestInit = {
     method: 'GET',
-    headers: useMinimalHeaders
-      ? {
-          // Minimal headers for GitHub raw URLs and data proxy - avoid triggering CORS preflight
-          // Only use simple headers that don't require preflight
-          ...headers,
-        }
-      : {
-          // Full headers for other URLs
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'User-Agent': 'Grafana-Docs-Plugin/1.0',
-          ...headers,
-        },
+    headers: {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.5',
+      'User-Agent': 'Grafana-Docs-Plugin/1.0',
+      ...headers,
+    },
     signal: AbortSignal.timeout(timeout),
-    redirect: 'follow', // Explicitly follow redirects (up to 20 by default)
+    redirect: 'follow',
   };
 
-  // Try the actual URL (original or converted GitHub raw URL)
   let lastError: FetchError | undefined;
 
   try {
-    const response = await fetch(actualUrl, fetchOptions);
+    const response = await fetch(url, fetchOptions);
 
     if (response.ok) {
       const html = await response.text();
       if (html && html.trim()) {
         // SECURITY: Validate redirect target is still trusted
-        // After fetch redirects, check the final URL is still in our trusted domain list
         const finalUrl = response.url;
-
-        // Re-validate the final URL after redirects
-        // In dev mode: Allow any GitHub raw URL and localhost
-        // Data proxy: Internal URLs are trusted
+        const isDevMode = isDevModeEnabledGlobal();
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
-          isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPOS) ||
-          isDataProxyUrl(finalUrl) || // SECURITY: Data proxy URLs are internal
-          isGitHubUrl(finalUrl) ||
-          (isDevModeEnabledGlobal() && (isLocalhostUrl(finalUrl) || isGitHubRawUrl(finalUrl)));
+          (isDevMode && isLocalhostUrl(finalUrl)) ||
+          (isDevMode && isGitHubRawUrl(finalUrl));
 
         if (!isFinalUrlTrusted) {
           console.warn(
             `Redirect target not in trusted domain list.\n` +
-              `Original URL: ${actualUrl}\n` +
+              `Original URL: ${url}\n` +
               `Final URL: ${finalUrl}\n` +
-              `Checks:\n` +
-              `  - isAllowedContentUrl: ${isAllowedContentUrl(finalUrl)}\n` +
-              `  - isAllowedGitHubRawUrl: ${isAllowedGitHubRawUrl(finalUrl, ALLOWED_GITHUB_REPOS)}\n` +
-              `  - isDataProxyUrl: ${isDataProxyUrl(finalUrl)}\n` +
-              `  - isGitHubUrl: ${isGitHubUrl(finalUrl)}`
+              `isAllowedContentUrl: ${isAllowedContentUrl(finalUrl)}`
           );
           lastError = {
             message: 'Redirect target is not in trusted domain list',
@@ -614,48 +571,55 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         // 1. content.json (new JSON format - preferred)
         // 2. unstyled.html (legacy HTML format - fallback)
         // Use proper URL parsing to prevent domain hijacking attacks
-        const shouldFetchContent = isGrafanaDocsUrl(finalUrl);
+        const shouldFetchContent = isGrafanaDocsUrl(finalUrl) || (isDevModeEnabledGlobal() && isLocalhostUrl(finalUrl));
 
         if (shouldFetchContent) {
           const { jsonUrl, htmlUrl } = getContentUrls(response.url);
 
-          // Try JSON format first (preferred)
-          if (jsonUrl !== response.url) {
+          // Determine fetch order based on domain:
+          // - grafana.com/docs and grafana.com/tutorials: HTML first (JSON not yet available)
+          // - Other sources: JSON first (preferred format)
+          const preferHtmlFirst = isGrafanaComDocsOrTutorials(finalUrl);
+
+          const primaryUrl = preferHtmlFirst ? htmlUrl : jsonUrl;
+          const fallbackUrl = preferHtmlFirst ? jsonUrl : htmlUrl;
+          const primaryIsJson = !preferHtmlFirst;
+
+          // Try primary format first
+          if (primaryUrl !== response.url) {
             try {
-              const jsonResponse = await fetch(jsonUrl, fetchOptions);
-              if (jsonResponse.ok) {
-                const jsonContent = await jsonResponse.text();
-                if (jsonContent && jsonContent.trim()) {
-                  return { html: jsonContent, finalUrl: jsonResponse.url, isNativeJson: true };
+              const primaryResponse = await fetch(primaryUrl, fetchOptions);
+              if (primaryResponse.ok) {
+                const primaryContent = await primaryResponse.text();
+                if (primaryContent && primaryContent.trim()) {
+                  return { html: primaryContent, finalUrl: primaryResponse.url, isNativeJson: primaryIsJson };
                 }
               }
-              // JSON not found or empty - fall through to HTML
             } catch {
-              // JSON fetch failed - fall through to HTML
+              // Primary fetch failed - fall through to fallback
             }
           }
 
-          // Fall back to HTML format
-          if (htmlUrl !== response.url) {
+          // Fall back to secondary format
+          if (fallbackUrl !== response.url) {
             try {
-              const unstyledResponse = await fetch(htmlUrl, fetchOptions);
-              if (unstyledResponse.ok) {
-                const unstyledHtml = await unstyledResponse.text();
-                if (unstyledHtml && unstyledHtml.trim()) {
-                  return { html: unstyledHtml, finalUrl: unstyledResponse.url, isNativeJson: false };
+              const fallbackResponse = await fetch(fallbackUrl, fetchOptions);
+              if (fallbackResponse.ok) {
+                const fallbackContent = await fallbackResponse.text();
+                if (fallbackContent && fallbackContent.trim()) {
+                  return { html: fallbackContent, finalUrl: fallbackResponse.url, isNativeJson: !primaryIsJson };
                 }
               }
-              // If HTML version also fails, fail the request
               lastError = {
                 message: `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${response.url}`,
-                errorType: unstyledResponse.status === 404 ? 'not-found' : 'other',
-                statusCode: unstyledResponse.status,
+                errorType: fallbackResponse.status === 404 ? 'not-found' : 'other',
+                statusCode: fallbackResponse.status,
               };
               return { html: null, error: lastError };
-            } catch (unstyledError) {
+            } catch (fallbackError) {
               lastError = {
                 message: `Cannot load Grafana content. Content fetch failed: ${
-                  unstyledError instanceof Error ? unstyledError.message : 'Unknown error'
+                  fallbackError instanceof Error ? fallbackError.message : 'Unknown error'
                 }`,
                 errorType: 'other',
               };
@@ -664,9 +628,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           }
         }
 
-        // Content fetched successfully - use response.url to get final URL after redirects
-        // Detect if this is native JSON content based on the URL
-        const isNativeJson = isJsonContentUrl(response.url) || isJsonContentUrl(actualUrl);
+        // Content fetched successfully
+        const isNativeJson = isJsonContentUrl(response.url) || isJsonContentUrl(url);
         return { html, finalUrl: response.url, isNativeJson };
       }
     } else if (response.status >= 300 && response.status < 400) {
@@ -680,15 +643,11 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         };
         console.warn(`Manual redirect detected from ${url}:`, lastError.message);
 
-        // Try to fetch the redirect target if it's a relative URL
         if (location.startsWith('/')) {
           try {
-            // SECURITY (F3): Use URL constructor instead of string concatenation
-            // Parse original URL to get origin
             const originalUrl = new URL(url);
             const redirectUrl = new URL(location, originalUrl.origin);
 
-            // SECURITY (F6): Validate redirect stays within same origin
             if (redirectUrl.origin !== originalUrl.origin) {
               console.warn(`Blocked redirect to different origin: ${redirectUrl.origin}`);
               lastError = {
@@ -696,14 +655,11 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
                 errorType: 'other',
               };
             } else {
-              // SECURITY: Re-validate the redirect URL is still trusted
-              // Must match the same validation as the main fetch
+              const isDevMode = isDevModeEnabledGlobal();
               const isRedirectTrusted =
                 isAllowedContentUrl(redirectUrl.href) ||
-                isAllowedGitHubRawUrl(redirectUrl.href, ALLOWED_GITHUB_REPOS) ||
-                isDataProxyUrl(redirectUrl.href) || // SECURITY: Data proxy URLs are internal
-                isGitHubUrl(redirectUrl.href) ||
-                (isDevModeEnabledGlobal() && (isLocalhostUrl(redirectUrl.href) || isGitHubRawUrl(redirectUrl.href)));
+                (isDevMode && isLocalhostUrl(redirectUrl.href)) ||
+                (isDevMode && isGitHubRawUrl(redirectUrl.href));
 
               if (!isRedirectTrusted) {
                 console.warn(`Redirect target not in trusted domain list: ${redirectUrl.href}`);
@@ -738,17 +694,15 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         };
       }
     } else {
-      // Categorize HTTP errors by status code
       const errorType = response.status === 404 ? 'not-found' : response.status >= 500 ? 'server-error' : 'other';
       lastError = {
         message: `HTTP ${response.status}: ${response.statusText}`,
         errorType,
         statusCode: response.status,
       };
-      console.warn(`Failed to fetch from ${actualUrl}: ${lastError.message}`);
+      console.warn(`Failed to fetch from ${url}: ${lastError.message}`);
     }
   } catch (error) {
-    // Categorize catch errors (network, timeout, etc.)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('aborted');
     const isNetwork =
@@ -761,176 +715,61 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
       message: errorMessage,
       errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
     };
-    console.warn(`Failed to fetch from ${actualUrl}:`, error);
+    console.warn(`Failed to fetch from ${url}:`, error);
   }
 
-  // If original URL failed and we haven't already converted the URL (to avoid trying the same variations twice)
-  if (!lastError?.message.includes('Unstyled version required') && actualUrl === url) {
-    // Only try GitHub for URLs that are actually GitHub URLs
-    const githubVariations = generateGitHubVariations(url);
-    if (githubVariations.length > 0) {
-      for (const githubUrl of githubVariations) {
-        try {
-          const githubResponse = await fetch(githubUrl, fetchOptions);
-          if (githubResponse.ok) {
-            const githubHtml = await githubResponse.text();
-            if (githubHtml && githubHtml.trim()) {
-              const isNativeJson = isJsonContentUrl(githubResponse.url) || isJsonContentUrl(githubUrl);
-              return { html: githubHtml, finalUrl: githubResponse.url, isNativeJson };
-            }
-          }
-        } catch (githubError) {
-          console.warn(`Failed to fetch from GitHub variation ${githubUrl}:`, githubError);
-        }
-      }
-    }
-  }
-
-  // Log final failure with most relevant error
   if (lastError) {
-    // Provide specific guidance for GitHub content loading issues (using centralized validator)
-    if (isGitHubUrl(url) && lastError.message.includes('NetworkError')) {
-      console.error(
-        `Failed to fetch content from ${url}. Last error: ${lastError.message}\n` +
-          `GitHub content loading failed. System automatically tries:\n` +
-          `1. Grafana data proxy (routes through backend, avoids CORS)\n` +
-          `2. raw.githubusercontent.com (direct access as fallback)\n` +
-          `3. Unstyled HTML variations\n` +
-          `Consider using bundled content (bundled: URLs) for guaranteed availability.`
-      );
-    } else {
-      console.error(`Failed to fetch content from ${url}. Last error: ${lastError.message}`);
-    }
+    console.error(`Failed to fetch content from ${url}. Last error: ${lastError.message}`);
   }
 
   return { html: null, error: lastError };
 }
 
 /**
- * Generate GitHub raw content URL variations to try
- * Uses proper URL parsing to prevent domain hijacking
+ * Generate URL variations for interactive learning content
+ * Tries content.json first (preferred JSON format), then unstyled.html (fallback)
  *
- * SECURITY: Uses data proxy URLs to avoid CORS issues across all browsers
- * Data proxy routes requests through Grafana backend, providing consistent behavior
- *
- * SECURITY: All generated URLs must pass ALLOWED_GITHUB_REPOS validation
- *
- * URL PRIORITY ORDER:
- * 1. content.json (new JSON format - preferred)
- * 2. unstyled.html (legacy HTML format - fallback)
+ * @param url - The interactive learning URL
+ * @returns Array of URLs to try in order: [content.json, unstyled.html]
  */
-function generateGitHubVariations(url: string): string[] {
+function generateInteractiveLearningVariations(url: string): string[] {
   const variations: string[] = [];
 
-  // Parse URL and validate it's actually GitHub (using centralized validators)
-  const isGitHubDomain = isGitHubUrl(url);
-  const isGitHubRawDomain = isGitHubRawUrl(url);
-
-  // Only try GitHub variations for actual GitHub URLs
-  if (isGitHubDomain || isGitHubRawDomain) {
-    if (isGitHubDomain) {
-      // Handle tree URLs (directories) - try content.json first, then unstyled.html
-      const treeMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
-      if (treeMatch) {
-        const [_fullMatch, owner, repo, branch, path] = treeMatch;
-
-        // SECURITY (F3): Use URL constructor instead of template literal
-        // Try JSON format first (preferred)
-        const jsonUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/content.json`;
-        const proxyJsonUrl = convertGitHubRawToProxyUrl(jsonUrl);
-        if (proxyJsonUrl) {
-          variations.push(proxyJsonUrl);
-        }
-        variations.push(jsonUrl);
-
-        // Then try HTML format as fallback
-        const htmlUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}/unstyled.html`;
-        const proxyHtmlUrl = convertGitHubRawToProxyUrl(htmlUrl);
-        if (proxyHtmlUrl) {
-          variations.push(proxyHtmlUrl);
-        }
-        variations.push(htmlUrl);
-      }
-
-      // Handle blob URLs (specific files)
-      const blobMatch = url.match(/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)/);
-      if (blobMatch) {
-        const [_fullMatch, owner, repo, branch, path] = blobMatch;
-
-        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
-
-        // Try data proxy URL first (avoids CORS issues)
-        const proxyUrl = convertGitHubRawToProxyUrl(rawUrl);
-        if (proxyUrl) {
-          variations.push(proxyUrl);
-        }
-
-        // Then try raw URL as fallback
-        variations.push(rawUrl);
-
-        // Also try content.json and unstyled.html versions for directory-like paths
-        if (!path.endsWith('.json') && !path.endsWith('.html')) {
-          // Try JSON format first (preferred)
-          const rawJsonUrl = `${rawUrl}/content.json`;
-          const proxyJsonUrl = convertGitHubRawToProxyUrl(rawJsonUrl);
-          if (proxyJsonUrl) {
-            variations.push(proxyJsonUrl);
-          }
-          variations.push(rawJsonUrl);
-
-          // Then try HTML format as fallback
-          const rawUnstyledUrl = `${rawUrl}/unstyled.html`;
-          const proxyUnstyledUrl = convertGitHubRawToProxyUrl(rawUnstyledUrl);
-          if (proxyUnstyledUrl) {
-            variations.push(proxyUnstyledUrl);
-          }
-          variations.push(rawUnstyledUrl);
-        }
-      }
-    }
-
-    // If it's already a raw.githubusercontent.com URL
-    if (isGitHubRawDomain) {
-      const rawMatch = url.match(/https:\/\/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)/);
-      if (rawMatch) {
-        const [_fullMatch, _owner, _repo, _branch, path] = rawMatch;
-
-        // Try data proxy URL for the raw URL
-        const proxyUrl = convertGitHubRawToProxyUrl(url);
-        if (proxyUrl) {
-          variations.push(proxyUrl);
-        }
-
-        // Also try content.json and unstyled.html versions if not already a specific file
-        if (!path.endsWith('.json') && !path.endsWith('.html')) {
-          // Try JSON format first (preferred)
-          const jsonUrl = `${url}/content.json`;
-          const proxyJsonUrl = convertGitHubRawToProxyUrl(jsonUrl);
-          if (proxyJsonUrl) {
-            variations.push(proxyJsonUrl);
-          }
-          variations.push(jsonUrl);
-
-          // Then try HTML format as fallback
-          const unstyledUrl = `${url}/unstyled.html`;
-          const proxyUnstyledUrl = convertGitHubRawToProxyUrl(unstyledUrl);
-          if (proxyUnstyledUrl) {
-            variations.push(proxyUnstyledUrl);
-          }
-          variations.push(unstyledUrl);
-        }
-      }
-    }
-
-    // Generic fallback: try content.json then unstyled.html (only if no specific conversion worked)
-    if (variations.length === 0) {
-      const baseUrl = url.replace(/\/$/, '');
-      variations.push(`${baseUrl}/content.json`);
-      variations.push(`${baseUrl}/unstyled.html`);
-    }
+  // Only generate variations for interactive learning URLs
+  if (!isInteractiveLearningUrl(url)) {
+    return variations;
   }
 
+  // Clean the URL path (remove trailing slash)
+  const baseUrl = url.split('?')[0].split('#')[0].replace(/\/$/, '');
+
+  // If URL already points to content.json or unstyled.html, return as-is
+  if (baseUrl.endsWith('/content.json') || baseUrl.endsWith('/unstyled.html')) {
+    return [url];
+  }
+
+  // Try content.json first (preferred), then unstyled.html as fallback
+  variations.push(`${baseUrl}/content.json`);
+  variations.push(`${baseUrl}/unstyled.html`);
+
   return variations;
+}
+
+/**
+ * Check if a URL is specifically grafana.com/docs/* or grafana.com/tutorials/*
+ * These domains don't have content.json available yet, so we prefer unstyled.html
+ * Other sources (like interactive learning domains) should still try JSON first.
+ */
+function isGrafanaComDocsOrTutorials(urlString: string): boolean {
+  try {
+    const url = new URL(urlString);
+    // Only match grafana.com (no subdomains) with /docs/ or /tutorials/ paths
+    return (
+      url.hostname === 'grafana.com' && (url.pathname.startsWith('/docs/') || url.pathname.startsWith('/tutorials/'))
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**

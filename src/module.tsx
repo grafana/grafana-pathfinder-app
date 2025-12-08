@@ -3,21 +3,23 @@ import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents, locationService } from '@grafana/runtime';
 import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
-import { initializeFaroMetrics } from './lib/faro';
+// TODO: Re-enable Faro once collector CORS is configured correctly
+// import { initializeFaroMetrics } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
-import { isGrafanaDocsUrl, isGitHubUrl } from './security';
+import { isGrafanaDocsUrl, isInteractiveLearningUrl } from './security';
 
+// TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
 // Wrapped in try-catch to prevent plugin load failure if Faro has issues
-try {
-  await initializeFaroMetrics();
-} catch (e) {
-  console.error('[Faro] Error initializing frontend metrics:', e);
-}
+// try {
+//   await initializeFaroMetrics();
+// } catch (e) {
+//   console.error('[Faro] Error initializing frontend metrics:', e);
+// }
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
@@ -47,7 +49,7 @@ const plugin = new AppPlugin<{}>()
     id: 'recommendations-config',
   })
   .addConfigPage({
-    title: 'Interactive Features',
+    title: 'Interactive features',
     body: LazyInteractiveFeatures,
     id: 'interactive-features',
   });
@@ -72,7 +74,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     console.warn(
       'Could not parse doc param:',
       docsParam,
-      '- Supported formats: bundled:<id>, github.com/..., /docs/..., https://grafana.com/docs/...'
+      '- Supported formats: bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
     );
   }
 
@@ -323,23 +325,23 @@ const findDocPage = function (param: string): DocPage | null {
     }
   }
 
-  // Case 2: GitHub URL
-  if (param.includes('github.com')) {
+  // Case 2: Interactive Learning URL
+  if (param.includes('interactive-learning.grafana')) {
     // Ensure protocol
     let url = param;
     if (!url.startsWith('http')) {
       url = 'https://' + url;
     }
 
-    // SECURITY: Use validated GitHub URL check (prevents subdomain hijacking like github.com.evil.com)
-    if (!isGitHubUrl(url)) {
-      console.warn('Security: Rejected non-GitHub URL:', url);
+    // SECURITY: Use validated interactive learning URL check
+    if (!isInteractiveLearningUrl(url)) {
+      console.warn('Security: Rejected non-interactive-learning URL:', url);
       return null;
     }
 
     // Basic title extraction from last path segment
     const parts = url.split('/');
-    const title = parts[parts.length - 1] || 'Interactive Tutorial';
+    const title = parts[parts.length - 1] || 'Interactive tutorial';
 
     return {
       type: 'docs-page',

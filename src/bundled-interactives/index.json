@@ -18,7 +18,7 @@
     },
     {
       "id": "prometheus-advanced-queries",
-      "title": "Advanced Prometheus Queries",
+      "title": "Advanced Prometheus queries",
       "summary": "Master advanced PromQL patterns including aggregations, histograms, predictions, and SLO calculations. Queries can be customized with Assistant for your datasources.",
       "filename": "prometheus-advanced-queries.json",
       "url": ["/explore"]

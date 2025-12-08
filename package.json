@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "1.1.80",
+  "version": "1.1.84",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
     "dev": "webpack -w -c ./.config/webpack/webpack.config.ts --env development",
@@ -60,7 +60,7 @@
     "peer": "^1.0.2",
     "prettier": "3.6.2",
     "replace-in-file-webpack-plugin": "^1.0.6",
-    "sass": "1.94.0",
+    "sass": "1.94.2",
     "sass-loader": "16.0.6",
     "semver": "^7.7.3",
     "style-loader": "4.0.0",
@@ -80,7 +80,7 @@
   },
   "dependencies": {
     "@emotion/css": "11.13.5",
-    "@grafana/assistant": "^0.1.5",
+    "@grafana/assistant": "^0.1.7",
     "@grafana/data": "^12.2.1",
     "@grafana/faro-react": "^2.0.2",
     "@grafana/faro-web-tracing": "^2.0.2",
@@ -89,7 +89,6 @@
     "@grafana/schema": "^12.2.1",
     "@grafana/ui": "^12.2.1",
     "@tiptap/extension-link": "^3.10.4",
-    "@tiptap/extension-text-style": "^3.10.4",
     "@tiptap/pm": "^3.10.4",
     "@tiptap/react": "^3.10.4",
     "@tiptap/starter-kit": "^3.10.4",

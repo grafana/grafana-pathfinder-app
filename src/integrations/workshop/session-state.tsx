@@ -234,7 +234,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
               joinUrl: '',
               qrCode: '',
               config: {
-                name: 'Unknown Session',
+                name: 'Unknown session',
                 tutorialUrl: '',
                 defaultMode: mode,
               },

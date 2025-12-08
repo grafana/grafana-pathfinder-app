@@ -58,8 +58,8 @@ export function toGrafanaSelector(selectorPath: string, selectorId?: string): st
 
   // Most Grafana selectors use data-testid, but some older ones use aria-label
   // Return a compound selector that works with both
-  const dataTestIdSelector = `[data-testid="${resolvedValue}"]`;
-  const ariaLabelSelector = `[aria-label="${resolvedValue}"]`;
+  const dataTestIdSelector = `[data-testid='${resolvedValue}']`;
+  const ariaLabelSelector = `[aria-label='${resolvedValue}']`;
 
   return `${dataTestIdSelector}, ${ariaLabelSelector}`;
 }
@@ -122,9 +122,9 @@ export const selectors = grafanaSelectors;
 /** @deprecated Unused in production - kept for test compatibility only */
 export const navSelectors = {
   menuItemByHref: (href: string): string => {
-    return `a[data-testid="data-testid Nav menu item"][href="${href}"]`;
+    return `a[data-testid='data-testid Nav menu item'][href='${href}']`;
   },
   menuItemByText: (text: string): string => {
-    return `a[data-testid="data-testid Nav menu item"]:contains("${text}")`;
+    return `a[data-testid='data-testid Nav menu item']:contains('${text}')`;
   },
 };

@@ -131,8 +131,49 @@ I use type annotations whenever possible.
 I use this style when I code in Python, JavaScript/TypeScript (FP style), Scala, Kotlin.
 
 I favor idiomatic usage of React that is similar to that found in the Grafana code base.
-  
-  
+
+# Writing Style
+
+All UI text and documentation in this project MUST follow **sentence case** according to the [Grafana Writers' Toolkit](https://grafana.com/docs/writers-toolkit/write/style-guide/capitalization-punctuation/#capitalization).
+
+## Sentence Case Rules
+
+- **Capitalize only the first word** and any proper nouns (product names, company names, etc.)
+- **Do NOT use title case** for headings, button labels, menu items, or other UI elements
+
+### Examples
+
+| ❌ Don't (Title Case) | ✅ Do (Sentence Case) |
+|----------------------|----------------------|
+| Create New Dashboard | Create new dashboard |
+| Data Source Settings | Data source settings |
+| Getting Started Guide | Getting started guide |
+| Add Your First Panel | Add your first panel |
+| View All Alerts | View all alerts |
+| Learn More About Grafana | Learn more about Grafana |
+
+### What to Capitalize
+
+- First word of any sentence, heading, or label
+- Proper nouns: **Grafana**, **Loki**, **Prometheus**, **Tempo**, **Mimir**, **Alloy**
+- Product names: **Grafana Cloud**, **Grafana Enterprise**
+- Company names: **Grafana Labs**
+
+### What NOT to Capitalize
+
+- Generic terms: dashboard, alert, data source, panel, query, plugin
+- Actions in buttons: save, create, delete, edit, view, add
+- Common UI terms: settings, configuration, options, preferences
+
+## Agent Behavior
+
+When writing or reviewing:
+- UI labels, button text, menu items
+- Headings in documentation
+- Error messages and tooltips
+- Placeholder text and help text
+
+Always apply sentence case. When in doubt, refer to the [Grafana Writers' Toolkit capitalization guide](https://grafana.com/docs/writers-toolkit/write/style-guide/capitalization-punctuation/).
 
 # Roles
 

@@ -7,24 +7,20 @@ import { ParseError, ParseResult, ParsedElement, ParsedContent, ContentParseResu
 import {
   sanitizeDocumentationHTML,
   isGrafanaDocsUrl,
-  isAllowedGitHubRawUrl,
   isLocalhostUrl,
+  isInteractiveLearningUrl,
   isGitHubRawUrl,
 } from '../security';
-import { isDataProxyUrl } from './data-proxy';
-import { ALLOWED_GITHUB_REPOS } from '../constants';
-import { isDevModeEnabledGlobal } from '../components/wysiwyg-editor/dev-mode';
+import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 
 // Re-export for convenience
 export type { ParsedElement, ParsedContent };
 
 /**
  * Validate that interactive content comes from trusted sources only
- * Meeting requirement: interactive guides ONLY from grafana.com or grafana/interactive-tutorials repo
  *
- * In production: Only Grafana docs, bundled content, and approved GitHub repos
- * In dev mode: Also allows localhost URLs and any GitHub raw URLs for local testing
- * Data proxy: Routes requests through Grafana backend to avoid CORS issues
+ * In production: Only Grafana docs, bundled content, and interactive learning domains
+ * In dev mode: Also allows localhost and GitHub raw URLs for testing
  *
  * @param baseUrl - The source URL of the content being parsed
  * @returns true if source is trusted for interactive content, false otherwise
@@ -44,26 +40,21 @@ function isTrustedInteractiveSource(baseUrl?: string): boolean {
     return true;
   }
 
-  // Allow ONLY grafana/interactive-tutorials GitHub repo in production
-  if (isAllowedGitHubRawUrl(baseUrl, ALLOWED_GITHUB_REPOS)) {
+  // Allow interactive learning domains
+  if (isInteractiveLearningUrl(baseUrl)) {
     return true;
   }
 
-  // SECURITY: Allow data proxy URLs (internal URLs that route through Grafana backend)
-  if (isDataProxyUrl(baseUrl)) {
+  // In dev mode, allow localhost URLs for local testing
+  if (isDevModeEnabledGlobal() && isLocalhostUrl(baseUrl)) {
+    console.log('[DEV MODE] Allowing interactive content from localhost:', baseUrl);
     return true;
   }
 
-  // In dev mode, allow localhost URLs and any GitHub raw URLs for local testing
-  if (isDevModeEnabledGlobal()) {
-    if (isLocalhostUrl(baseUrl)) {
-      console.log('[DEV MODE] Allowing interactive content from localhost:', baseUrl);
-      return true;
-    }
-    if (isGitHubRawUrl(baseUrl)) {
-      console.log('[DEV MODE] Allowing interactive content from GitHub:', baseUrl);
-      return true;
-    }
+  // In dev mode, allow GitHub raw URLs for testing
+  if (isDevModeEnabledGlobal() && isGitHubRawUrl(baseUrl)) {
+    console.log('[DEV MODE] Allowing interactive content from GitHub raw:', baseUrl);
+    return true;
   }
 
   return false;
@@ -225,8 +216,8 @@ export function parseHTMLToComponents(
     const allowInteractiveContent = isTrustedInteractiveSource(baseUrl);
     if (!allowInteractiveContent && html.includes('data-targetaction')) {
       const errorMessage = isDevModeEnabledGlobal()
-        ? '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, localhost (dev mode), GitHub raw URLs (dev mode), or github.com/grafana/interactive-tutorials/. Source:'
-        : '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, or github.com/grafana/interactive-tutorials/. Source:';
+        ? '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, localhost (dev mode), GitHub raw (dev mode), or interactive-learning.grafana.net. Source:'
+        : '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, or interactive-learning.grafana.net. Source:';
 
       console.error(errorMessage, baseUrl);
       errorCollector.addError(
@@ -696,7 +687,7 @@ export function parseHTMLToComponents(
           const internalActions: Array<{
             requirements?: string;
             targetAction: string;
-            refTarget: string;
+            refTarget?: string; // Optional for noop actions
             targetValue?: string;
             targetComment?: string;
           }> = [];
@@ -706,7 +697,7 @@ export function parseHTMLToComponents(
               const targetAction = span.getAttribute('data-targetaction');
               const refTarget = span.getAttribute('data-reftarget');
 
-              if (!targetAction || !refTarget) {
+              if (!targetAction || (!refTarget && targetAction !== 'noop')) {
                 errorCollector.addError(
                   'element_creation',
                   `Multi-step internal action ${
@@ -731,7 +722,7 @@ export function parseHTMLToComponents(
               internalActions.push({
                 requirements: span.getAttribute('data-requirements') || undefined,
                 targetAction,
-                refTarget,
+                refTarget: refTarget || undefined, // Optional for noop actions
                 targetValue: span.getAttribute('data-targetvalue') || undefined,
                 targetComment: interactiveComment || undefined,
               });
@@ -815,7 +806,7 @@ export function parseHTMLToComponents(
           const internalActions: Array<{
             requirements?: string;
             targetAction: string;
-            refTarget: string;
+            refTarget?: string; // Optional for noop actions
             targetValue?: string;
             targetComment?: string;
             isSkippable?: boolean;
@@ -826,18 +817,19 @@ export function parseHTMLToComponents(
               const targetAction = span.getAttribute('data-targetaction');
               const refTarget = span.getAttribute('data-reftarget');
 
-              // Validate action type for guided (only hover, button, highlight supported)
-              if (targetAction && !['hover', 'button', 'highlight'].includes(targetAction)) {
+              // Validate action type for guided (hover, button, highlight, and noop supported)
+              if (targetAction && !['hover', 'button', 'highlight', 'noop'].includes(targetAction)) {
                 errorCollector.addError(
                   'element_creation',
-                  `Guided internal action ${index + 1} has unsupported action type: ${targetAction}. Only 'hover', 'button', and 'highlight' are supported.`,
+                  `Guided internal action ${index + 1} has unsupported action type: ${targetAction}. Only 'hover', 'button', 'highlight', and 'noop' are supported.`,
                   span.outerHTML,
                   `${currentPath}.guided.action[${index}]`
                 );
                 return;
               }
 
-              if (!targetAction || !refTarget) {
+              // noop actions don't require refTarget (they're informational steps)
+              if (!targetAction || (!refTarget && targetAction !== 'noop')) {
                 errorCollector.addError(
                   'element_creation',
                   `Guided internal action ${
@@ -864,7 +856,7 @@ export function parseHTMLToComponents(
               internalActions.push({
                 requirements: span.getAttribute('data-requirements') || undefined,
                 targetAction,
-                refTarget,
+                refTarget: refTarget || undefined, // Optional for noop actions
                 targetValue: span.getAttribute('data-targetvalue') || undefined,
                 targetComment: interactiveComment || undefined,
                 isSkippable,

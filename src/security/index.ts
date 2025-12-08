@@ -13,17 +13,14 @@ export {
   parseUrlSafely,
   isGrafanaDomain,
   isGrafanaDocsUrl,
-  isGitHubUrl,
+  isInteractiveLearningUrl,
   isGitHubRawUrl,
-  isAnyGitHubUrl,
   isLocalhostUrl,
   isAllowedContentUrl,
-  isAllowedGitHubRawUrl,
-  validateGitHubUrl,
   validateTutorialUrl,
   isYouTubeDomain,
   isVimeoDomain,
-  type URLValidation,
+  type UrlValidation,
 } from './url-validator';
 
 // HTML sanitization

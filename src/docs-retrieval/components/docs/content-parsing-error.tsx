@@ -57,7 +57,7 @@ export function ContentParsingError({ errors, warnings, fallbackHtml, onRetry, c
 
         <div className="error-actions">
           <Button onClick={() => setShowDetails(!showDetails)} variant="secondary" size="sm">
-            {showDetails ? 'Hide Details' : 'Show Details'}
+            {showDetails ? 'Hide details' : 'Show details'}
           </Button>
           {onRetry && (
             <Button onClick={onRetry} variant="primary" size="sm">

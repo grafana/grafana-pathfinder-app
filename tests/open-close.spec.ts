@@ -22,7 +22,7 @@ test('should open and close docs panel', async ({ page }) => {
   // Verify the context panel heading is visible using testId
   const recommendedDocsHeading = page.getByTestId(testIds.contextPanel.heading);
   await expect(recommendedDocsHeading).toBeVisible();
-  await expect(recommendedDocsHeading).toHaveText('Recommended Documentation');
+  await expect(recommendedDocsHeading).toHaveText('Recommended documentation');
 
   // Verify the recommendations container is visible
   const recommendationsContainer = page.getByTestId(testIds.contextPanel.recommendationsContainer);

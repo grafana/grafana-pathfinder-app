@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2, Button } from '@grafana/ui';
@@ -10,9 +10,10 @@ import {
 } from '@grafana/assistant';
 import { getDataSourceSrv, locationService } from '@grafana/runtime';
 import { getIsAssistantAvailable, useMockInlineAssistant } from './assistant-dev-mode';
-import { isAssistantDevModeEnabledGlobal } from '../../components/wysiwyg-editor/dev-mode';
+import { isAssistantDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { useAssistantCustomizableContext } from './AssistantCustomizableContext';
 import { reportAppInteraction, UserInteraction, buildAssistantCustomizableProperties } from '../../lib/analytics';
+import { createDatasourceMetadataTool, type DatasourceMetadataArtifact, isSupportedDatasourceType } from './tools';
 
 export interface AssistantCustomizableProps {
   /** Default value from the HTML */
@@ -290,6 +291,15 @@ export function AssistantCustomizable({
     return { assistantId, assistantType, contentKey, inline };
   }, [assistantId, assistantType, contentKey, inline]);
 
+  // State to store datasource metadata artifact from tool
+  const [metadataArtifact, setMetadataArtifact] = useState<DatasourceMetadataArtifact | null>(null);
+
+  // REACT: memoize tool creation to prevent recreation on each render (R3)
+  const datasourceMetadataTool = useMemo(
+    () => createDatasourceMetadataTool((artifact) => setMetadataArtifact(artifact)),
+    []
+  );
+
   // Handle customize button click
   const handleCustomize = useCallback(async () => {
     // Get datasource context
@@ -302,6 +312,7 @@ export function AssistantCustomizable({
 
     // Build datasource context for the prompt
     const datasourceType = dsContext.currentDatasource.type;
+    const hasSupportedDatasource = isSupportedDatasourceType(datasourceType);
 
     // Track customize button click
     reportAppInteraction(
@@ -311,30 +322,52 @@ export function AssistantCustomizable({
       })
     );
 
-    // Simplified prompt - inline assistant will make educated guesses based on common patterns
-    const prompt = `Customize this ${assistantType} for a ${datasourceType} datasource using realistic metric names.
+    // For supported datasources (Prometheus, Loki, Tempo, Pyroscope), use the unified tool
+    // For other datasources, fall back to the simple prompt approach
+    const tools = hasSupportedDatasource ? [datasourceMetadataTool] : [];
 
-Original query:
+    const prompt = hasSupportedDatasource
+      ? `Customize this ${assistantType} using real data from my ${datasourceType} datasource.
+
+Original content:
 ${defaultValue}
 
-Adapt this to use common ${datasourceType} metrics and labels that typically exist. Keep the same query pattern and purpose.
+First, use the fetch_datasource_metadata tool to discover what labels, metrics, services, or other data is available in my datasource.
+Then adapt the content to use actual values that exist in my environment.
+Keep the same pattern and purpose as the original.
 
-Return only the customized query text.`;
+Return only the customized content text.`
+      : `Customize this ${assistantType} for a ${datasourceType} datasource using realistic values.
 
-    const systemPrompt = `You are a Grafana ${datasourceType} query expert.
+Original content:
+${defaultValue}
 
-Customize queries to use realistic, commonly-available metrics for ${datasourceType}.
+Adapt this to use common ${datasourceType} values that typically exist. Keep the same pattern and purpose.
 
-For Prometheus: use metrics like up, prometheus_*, node_*, process_*, go_*, http_requests_total
-Common labels: job, instance, status, method, handler
+Return only the customized content text.`;
 
-Output only the query - no markdown, no explanation.`;
+    const systemPrompt = hasSupportedDatasource
+      ? `You are a Grafana ${datasourceType} expert.
+
+When customizing content:
+1. ALWAYS use the fetch_datasource_metadata tool first to discover available data
+2. Use the actual values (labels, metrics, services, tags, etc.) returned by the tool
+3. Keep the original pattern and structure
+4. Select values that make semantic sense for the content's purpose
+
+Output only the customized content - no markdown, no explanation, no code blocks.`
+      : `You are a Grafana ${datasourceType} expert.
+
+Customize content to use realistic, commonly-available values for ${datasourceType}.
+
+Output only the content - no markdown, no explanation.`;
 
     // Generate with inline assistant
     await generate({
       prompt,
       origin: 'grafana-pathfinder-app/assistant-customizable',
       systemPrompt,
+      tools,
       onComplete: (text) => {
         // Clean up the response (remove markdown code blocks if present)
         let customized = text.trim();
@@ -345,13 +378,19 @@ Output only the query - no markdown, no explanation.`;
           saveCustomizedValue(customized);
           setIsPinned(false);
 
-          // Track successful customization
+          // Track successful customization with metadata artifact info
+          const labelCount = metadataArtifact?.metadata.labels
+            ? Object.keys(metadataArtifact.metadata.labels).length
+            : 0;
+
           reportAppInteraction(
             UserInteraction.AssistantCustomizeSuccess,
             buildAssistantCustomizableProperties(getAnalyticsContext(), {
               datasource_type: datasourceType,
               original_length: defaultValue.length,
               customized_length: customized.length,
+              used_real_metadata: hasSupportedDatasource && metadataArtifact !== null,
+              available_labels_count: labelCount,
             })
           );
         }
@@ -369,7 +408,16 @@ Output only the query - no markdown, no explanation.`;
         );
       },
     });
-  }, [assistantType, defaultValue, generate, saveCustomizedValue, getDatasourceContext, getAnalyticsContext]);
+  }, [
+    assistantType,
+    defaultValue,
+    generate,
+    saveCustomizedValue,
+    getDatasourceContext,
+    getAnalyticsContext,
+    datasourceMetadataTool,
+    metadataArtifact,
+  ]);
 
   // Handle revert button click
   const handleRevert = useCallback(() => {

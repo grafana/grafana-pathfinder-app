@@ -1,5 +1,6 @@
 import { AppRootProps, GrafanaTheme2 } from '@grafana/data';
-import { faro } from '@grafana/faro-react';
+// TODO: Re-enable Faro once collector CORS is configured correctly
+// import { faro } from '@grafana/faro-react';
 import React, { useMemo, useEffect, Component, ReactNode } from 'react';
 import { SceneApp } from '@grafana/scenes';
 import { Button, useStyles2 } from '@grafana/ui';
@@ -34,17 +35,18 @@ class PluginErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
     console.error('Pathfinder plugin error:', error, errorInfo);
     this.setState({ errorInfo });
 
+    // TODO: Re-enable Faro once collector CORS is configured correctly
     // Report error to Faro if available
-    try {
-      faro.api?.pushError(error, {
-        context: {
-          componentStack: errorInfo.componentStack ?? 'unknown',
-          source: 'PluginErrorBoundary',
-        },
-      });
-    } catch {
-      // Faro may not be initialized, ignore silently
-    }
+    // try {
+    //   faro.api?.pushError(error, {
+    //     context: {
+    //       componentStack: errorInfo.componentStack ?? 'unknown',
+    //       source: 'PluginErrorBoundary',
+    //     },
+    //   });
+    // } catch {
+    //   // Faro may not be initialized, ignore silently
+    // }
   }
 
   handleReset = () => {

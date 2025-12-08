@@ -34,7 +34,7 @@ function getErrorGuidance(error: unknown): { title: string; message: string; ste
 
   if (errorMessage.includes('timeout') || errorMessage.includes('Peer connection timeout')) {
     return {
-      title: 'Connection Timeout',
+      title: 'Connection timeout',
       message: 'Could not establish connection within the expected time.',
       steps: [
         'Check your network connection',
@@ -59,7 +59,7 @@ function getErrorGuidance(error: unknown): { title: string; message: string; ste
 
   // Generic connection failure
   return {
-    title: 'Connection Failed',
+    title: 'Connection failed',
     message: 'Unable to join the session.',
     steps: [
       'Verify PeerJS server is running at the configured address',
@@ -247,7 +247,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
   ];
 
   return (
-    <Modal title="Join Live Session" isOpen={isOpen} onDismiss={handleClose} className={styles.modal}>
+    <Modal title="Join live session" isOpen={isOpen} onDismiss={handleClose} className={styles.modal}>
       <div className={styles.container}>
         {!sessionOffer ? (
           // Step 1: Enter join code
@@ -330,7 +330,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
                 Back
               </Button>
               <Button variant="primary" onClick={handleJoinSession} disabled={isJoining}>
-                {isJoining ? 'Joining...' : 'Join Session'}
+                {isJoining ? 'Joining...' : 'Join session'}
               </Button>
             </div>
           </>

@@ -1,5 +1,59 @@
 # Changelog
 
+## 1.1.84
+
+### Added
+
+- **Assistant wrapper blocks**: New `assistant` block type for JSON guides that wraps child blocks with AI-powered customization
+  - Each child block gets its own "Customize" button that adapts content to the user's actual datasources
+  - Supports wrapping `markdown`, `interactive`, `multistep`, and `guided` blocks
+  - Customizations are persisted in localStorage per block
+- **Unified datasource metadata tool**: New `fetch_datasource_metadata` tool for Grafana Assistant integration
+  - Auto-detects datasource type (Prometheus, Loki, Tempo, Pyroscope)
+  - Fetches labels, metrics, services, tags, and profile types from user's datasources
+  - Enables AI to generate queries using actual data from user's environment
+- **Grafana context tool**: New `get_grafana_context` tool providing environment information to the assistant
+
+### Changed
+
+- Updated datasource picker selectors in bundled tutorials for improved reliability
+  - Uses `data-testid="data-source-card"` with `:has()` selector for robust element targeting
+- Upgraded `@grafana/assistant` SDK to v0.1.7
+
+## 1.1.83
+
+> ⚠️ **BREAKING CHANGE: New content delivery infrastructure**
+>
+> Interactive guides are now served from a dedicated CDN (`interactive-learning.grafana.net`)
+> instead of GitHub raw URLs. **You must update to this version or later to load interactive guides.**
+>
+> **What changed:**
+>
+> - Content is now delivered from `interactive-learning.grafana.net` (production) and `interactive-learning.grafana-dev.net` (development)
+> - GitHub raw URLs (`raw.githubusercontent.com`) are only supported in dev mode for testing
+> - The backend proxy route for GitHub content has been removed
+>
+> **For content creators:**
+>
+> - No changes required to your content - the CDN serves the same JSON format
+> - Dev mode still supports GitHub raw URLs for testing before publishing
+
+### Changed
+
+- **BREAKING**: Migrated content delivery from GitHub raw URLs to dedicated interactive learning CDN
+- Removed backend proxy route for GitHub content (no longer needed with direct CDN access)
+- Updated security validation to use new `interactive-learning.grafana.net` domains
+- Simplified URL tester in dev mode to accept all supported URL types in single input
+
+### Added
+
+- Added `interactive-learning.grafana-ops.net` to allowed domains
+
+### Removed
+
+- Removed `data-proxy.ts` and GitHub proxy configuration from `plugin.json`
+- Removed `validateGitHubUrl` and related GitHub-specific URL validation functions
+
 ## 1.1.78 (2025-12-01)
 
 ### Changed
