@@ -7,6 +7,7 @@
 
 import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from './content.types';
 import { parseHTMLToComponents } from './html-parser';
+import { validateGuide } from '../validation';
 import type {
   JsonGuide,
   JsonBlock,
@@ -47,28 +48,18 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
     return { isValid: false, errors, warnings };
   }
 
-  // Validate required fields
-  if (!guide.id || typeof guide.id !== 'string') {
-    errors.push({
-      type: 'html_parsing',
-      message: 'Guide missing required "id" field',
-    });
-  }
-  if (!guide.title || typeof guide.title !== 'string') {
-    errors.push({
-      type: 'html_parsing',
-      message: 'Guide missing required "title" field',
-    });
-  }
-  if (!Array.isArray(guide.blocks)) {
-    errors.push({
-      type: 'html_parsing',
-      message: 'Guide missing required "blocks" array',
-    });
-  }
-
-  if (errors.length > 0) {
-    return { isValid: false, errors, warnings };
+  // NEW: Zod validation replaces manual checks
+  const validationResult = validateGuide(guide);
+  if (!validationResult.isValid) {
+    return {
+      isValid: false,
+      errors: validationResult.errors.map((e) => ({
+        type: 'schema_validation',
+        message: e.message,
+        location: e.path.join('.'),
+      })),
+      warnings: validationResult.warnings.map((w) => w.message),
+    };
   }
 
   // Convert blocks to ParsedElements
