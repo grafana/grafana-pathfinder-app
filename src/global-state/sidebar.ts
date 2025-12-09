@@ -69,7 +69,7 @@ class GlobalSidebarState {
     reportAppInteraction(UserInteraction.DocsPanelInteraction, {
       action: 'close',
       source: 'sidebar_unmount',
-      timestamp: Date.now(),
+      event_time: Date.now(),
     });
   }
 }

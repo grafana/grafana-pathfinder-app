@@ -6,7 +6,7 @@
  */
 
 import { reportInteraction } from '@grafana/runtime';
-import pluginJson from '../plugin.json';
+import packageJson from '../../package.json';
 
 // ============================================================================
 // USER INTERACTION TYPES
@@ -83,7 +83,7 @@ export function reportAppInteraction(
 
     // Add global attributes to all events
     const enrichedProperties = {
-      plugin_version: pluginJson.info.version,
+      plugin_version: packageJson.version,
       ...properties,
     };
 

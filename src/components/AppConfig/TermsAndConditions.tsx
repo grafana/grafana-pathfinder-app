@@ -7,6 +7,7 @@ import { DocsPluginConfig, TERMS_VERSION, getConfigWithDefaults } from '../../co
 import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
+import { pauseFaroBeforeReload } from '../../lib/faro';
 
 type JsonData = DocsPluginConfig & {
   isDocsPasswordSet?: boolean;
@@ -48,9 +49,12 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
         jsonData: newJsonData,
       });
 
-      // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh
+      // Reload the page to ensure plugin context is refreshed with new settings
+      // Use a small delay to ensure the save completes before reload
       setTimeout(() => {
         try {
+          // Pause Faro before reload to prevent "Failed to fetch" errors
+          pauseFaroBeforeReload();
           window.location.reload();
         } catch (e) {
           console.error('Failed to reload page after saving settings', e);

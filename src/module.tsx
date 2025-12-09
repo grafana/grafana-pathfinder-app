@@ -3,8 +3,7 @@ import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents, locationService } from '@grafana/runtime';
 import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
-// TODO: Re-enable Faro once collector CORS is configured correctly
-// import { initializeFaroMetrics } from './lib/faro';
+import { initFaro } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
@@ -12,14 +11,14 @@ import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { isGrafanaDocsUrl, isInteractiveLearningUrl } from './security';
 
-// TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
+// Only initializes on Grafana Cloud environments
 // Wrapped in try-catch to prevent plugin load failure if Faro has issues
-// try {
-//   await initializeFaroMetrics();
-// } catch (e) {
-//   console.error('[Faro] Error initializing frontend metrics:', e);
-// }
+try {
+  initFaro();
+} catch (e) {
+  console.error('[Faro] Failed to initialize:', e);
+}
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
@@ -208,7 +207,7 @@ plugin.addComponent({
       reportAppInteraction(UserInteraction.DocsPanelInteraction, {
         action: 'open',
         source: openSource,
-        timestamp: Date.now(),
+        event_time: Date.now(),
       });
 
       // Fire custom event when sidebar component mounts
@@ -226,7 +225,7 @@ plugin.addComponent({
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
           action: 'close',
           source: 'sidebar_toggle',
-          timestamp: Date.now(),
+          event_time: Date.now(),
         });
       };
     }, []);

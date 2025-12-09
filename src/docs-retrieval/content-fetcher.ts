@@ -150,6 +150,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 
     // Fetch raw HTML with structured error handling
     const fetchResult = await fetchRawHtml(cleanUrl, options);
+
     if (!fetchResult.html) {
       // Generate user-friendly error message based on error type
       const userFriendlyError = generateUserFriendlyError(fetchResult.error, cleanUrl);
@@ -467,6 +468,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 
           // Detect if this is native JSON content
           const isNativeJson = isJsonContentUrl(response.url) || isJsonContentUrl(urlVariation);
+
           return { html: content, finalUrl: response.url, isNativeJson };
         }
       }
@@ -538,6 +540,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
       if (html && html.trim()) {
         // SECURITY: Validate redirect target is still trusted
         const finalUrl = response.url;
+
         const isDevMode = isDevModeEnabledGlobal();
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
