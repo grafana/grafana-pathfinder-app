@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.1.85
+
+### Added
+
+- **Hugo shortcodes export**: Added option to export Hugo shortcodes from debug tools (#326)
+
+### Changed
+
+- **Block editor replaces WYSIWYG**: Replaced WYSIWYG editor with new block editor for improved content creation experience (#414)
+- Improved UX of URL tester in dev tools (#392)
+
+### Fixed
+
+- Fixed infinite loop that blocked renders (#413)
+
+### Chore
+
+- Updated actions/checkout action to v6 (#407)
+- Updated actions/setup-node digest to 395ad32 (#395)
+- Updated dependency sass to v1.94.2 (#375)
+- Updated dependency prettier to v3.7.4 (#377)
+- Updated npm to v11.6.4 (#376)
+
 ## 1.1.84
 
 ### Added
