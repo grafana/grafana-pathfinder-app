@@ -37,6 +37,7 @@
 
 import { usePluginUserStorage } from '@grafana/runtime';
 import { useCallback, useRef, useEffect } from 'react';
+import { warn, error } from './logger';
 
 // ============================================================================
 // STORAGE KEYS
@@ -141,8 +142,8 @@ function createLocalStorage(): UserStorage {
           // Not JSON, return as-is
           return value as unknown as T;
         }
-      } catch (error) {
-        console.warn(`Failed to get item from localStorage: ${key}`, error);
+      } catch (err) {
+        warn(`Failed to get item from localStorage: ${key}`, err);
         return null;
       }
     },
@@ -151,22 +152,22 @@ function createLocalStorage(): UserStorage {
       try {
         const serialized = JSON.stringify(value);
         localStorage.setItem(key, serialized);
-      } catch (error) {
+      } catch (err) {
         // SECURITY: Handle QuotaExceededError
-        if (error instanceof Error && error.name === 'QuotaExceededError') {
-          console.warn('localStorage quota exceeded', error);
-          throw error;
+        if (err instanceof Error && err.name === 'QuotaExceededError') {
+          warn('localStorage quota exceeded', err);
+          throw err;
         }
-        console.error(`Failed to set item in localStorage: ${key}`, error);
-        throw error;
+        error(`Failed to set item in localStorage: ${key}`, err);
+        throw err;
       }
     },
 
     async removeItem(key: string): Promise<void> {
       try {
         localStorage.removeItem(key);
-      } catch (error) {
-        console.warn(`Failed to remove item from localStorage: ${key}`, error);
+      } catch (err) {
+        warn(`Failed to remove item from localStorage: ${key}`, err);
       }
     },
 
@@ -181,8 +182,8 @@ function createLocalStorage(): UserStorage {
           }
         }
         keys.forEach((key) => localStorage.removeItem(key));
-      } catch (error) {
-        console.warn('Failed to clear localStorage', error);
+      } catch (err) {
+        warn('Failed to clear localStorage', err);
       }
     },
   };
@@ -221,8 +222,8 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
       if (item) {
         try {
           await grafanaStorage.setItem(item.key, item.value);
-        } catch (error) {
-          console.warn(`Failed to sync to Grafana storage: ${item.key}`, error);
+        } catch (err) {
+          warn(`Failed to sync to Grafana storage: ${item.key}`, err);
           // Don't retry - localStorage is the immediate source of truth
         }
       }
@@ -252,19 +253,19 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
         writeQueue.push({ key: getTimestampKey(key), value: timestamp });
 
         // Process queue in background (don't await - we don't want to block)
-        processQueue().catch((error) => {
-          console.warn('Error processing Grafana storage queue:', error);
+        processQueue().catch((e) => {
+          warn('Error processing Grafana storage queue:', e);
         });
-      } catch (error) {
+      } catch (err) {
         // If localStorage fails, at least try Grafana storage
-        console.warn(`Failed to write to localStorage: ${key}, trying Grafana storage`, error);
+        warn(`Failed to write to localStorage: ${key}, trying Grafana storage`, err);
         try {
           const serialized = JSON.stringify(value);
           const timestamp = Date.now().toString();
           await grafanaStorage.setItem(key, serialized);
           await grafanaStorage.setItem(getTimestampKey(key), timestamp);
         } catch (grafanaError) {
-          console.error(`Failed to write to both storages: ${key}`, grafanaError);
+          error(`Failed to write to both storages: ${key}`, grafanaError);
           throw grafanaError;
         }
       }
@@ -281,8 +282,8 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
       // Queue removal to Grafana storage (set to empty string with timestamp)
       writeQueue.push({ key, value: '' });
       writeQueue.push({ key: getTimestampKey(key), value: timestamp });
-      processQueue().catch((error) => {
-        console.warn('Error processing Grafana storage queue:', error);
+      processQueue().catch((e) => {
+        warn('Error processing Grafana storage queue:', e);
       });
     },
 
@@ -291,7 +292,7 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
       await localStorage.clear();
 
       // Note: Grafana storage doesn't support bulk clear
-      console.warn('Clear operation not fully supported for Grafana user storage');
+      warn('Clear operation not fully supported for Grafana user storage');
     },
   };
 }
@@ -381,12 +382,12 @@ async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
           }
         }
         // If neither has timestamp, nothing to sync
-      } catch (error) {
-        console.warn(`Failed to sync key from Grafana storage: ${key}`, error);
+      } catch (err) {
+        warn(`Failed to sync key from Grafana storage: ${key}`, err);
       }
     }
-  } catch (error) {
-    console.warn('Failed to sync from Grafana storage:', error);
+  } catch (err) {
+    warn('Failed to sync from Grafana storage:', err);
   }
 }
 
@@ -409,7 +410,7 @@ async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
  *
  *   useEffect(() => {
  *     storage.getItem('my-key').then(value => {
- *       console.log('Stored value:', value);
+ *       log('Stored value:', value);
  *     });
  *   }, [storage]);
  *
@@ -443,8 +444,8 @@ export function useUserStorage(): UserStorage {
 
         // Sync from Grafana storage to localStorage on init
         // Grafana storage is the source of truth across devices/sessions
-        syncFromGrafanaStorage(grafanaStorage).catch((error) => {
-          console.warn('Failed initial sync from Grafana storage:', error);
+        syncFromGrafanaStorage(grafanaStorage).catch((e) => {
+          warn('Failed initial sync from Grafana storage:', e);
         });
       } else {
         // Fall back to localStorage only
@@ -537,15 +538,15 @@ export const journeyCompletionStorage = {
       } else {
         await storage.setItem(StorageKeys.JOURNEY_COMPLETION, completionData);
       }
-    } catch (error) {
+    } catch (err) {
       // SECURITY: Handle QuotaExceededError gracefully
-      if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('Storage quota exceeded, clearing old journey data');
+      if (err instanceof Error && err.name === 'QuotaExceededError') {
+        warn('Storage quota exceeded, clearing old journey data');
         await journeyCompletionStorage.cleanup();
         // Retry after cleanup
         await journeyCompletionStorage.set(journeyBaseUrl, percentage);
       } else {
-        console.warn('Failed to save journey completion percentage:', error);
+        warn('Failed to save journey completion percentage:', err);
       }
     }
   },
@@ -559,8 +560,8 @@ export const journeyCompletionStorage = {
       const completionData = (await storage.getItem<Record<string, number>>(StorageKeys.JOURNEY_COMPLETION)) || {};
       delete completionData[journeyBaseUrl];
       await storage.setItem(StorageKeys.JOURNEY_COMPLETION, completionData);
-    } catch (error) {
-      console.warn('Failed to clear journey completion:', error);
+    } catch (err) {
+      warn('Failed to clear journey completion:', err);
     }
   },
 
@@ -589,8 +590,8 @@ export const journeyCompletionStorage = {
         const reduced = Object.fromEntries(entries.slice(-LIMITS.MAX_JOURNEY_COMPLETIONS));
         await storage.setItem(StorageKeys.JOURNEY_COMPLETION, reduced);
       }
-    } catch (error) {
-      console.warn('Failed to cleanup journey completions:', error);
+    } catch (err) {
+      warn('Failed to cleanup journey completions:', err);
     }
   },
 };
@@ -624,16 +625,16 @@ export const tabStorage = {
       const tabsToSave = tabs.slice(-LIMITS.MAX_PERSISTED_TABS);
 
       await storage.setItem(StorageKeys.TABS, tabsToSave);
-    } catch (error) {
+    } catch (err) {
       // SECURITY: Handle QuotaExceededError
-      if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('Storage quota exceeded, reducing number of tabs');
+      if (err instanceof Error && err.name === 'QuotaExceededError') {
+        warn('Storage quota exceeded, reducing number of tabs');
         // Save only the most recent 25 tabs
         const reducedTabs = tabs.slice(-25);
         const storage = createUserStorage();
         await storage.setItem(StorageKeys.TABS, reducedTabs);
       } else {
-        console.warn('Failed to save tabs:', error);
+        warn('Failed to save tabs:', err);
       }
     }
   },
@@ -657,8 +658,8 @@ export const tabStorage = {
     try {
       const storage = createUserStorage();
       await storage.setItem(StorageKeys.ACTIVE_TAB, tabId);
-    } catch (error) {
-      console.warn('Failed to save active tab:', error);
+    } catch (err) {
+      warn('Failed to save active tab:', err);
     }
   },
 
@@ -670,8 +671,8 @@ export const tabStorage = {
       const storage = createUserStorage();
       await storage.removeItem(StorageKeys.TABS);
       await storage.removeItem(StorageKeys.ACTIVE_TAB);
-    } catch (error) {
-      console.warn('Failed to clear tab data:', error);
+    } catch (err) {
+      warn('Failed to clear tab data:', err);
     }
   },
 };
@@ -702,8 +703,8 @@ export const interactiveStepStorage = {
       const storage = createUserStorage();
       const key = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
       await storage.setItem(key, Array.from(completedIds));
-    } catch (error) {
-      console.warn('Failed to save completed steps:', error);
+    } catch (err) {
+      warn('Failed to save completed steps:', err);
     }
   },
 
@@ -715,8 +716,8 @@ export const interactiveStepStorage = {
       const storage = createUserStorage();
       const key = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
       await storage.removeItem(key);
-    } catch (error) {
-      console.warn('Failed to clear completed steps:', error);
+    } catch (err) {
+      warn('Failed to clear completed steps:', err);
     }
   },
 };
@@ -747,8 +748,8 @@ export const sectionCollapseStorage = {
       const storage = createUserStorage();
       const key = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-${sectionId}`;
       await storage.setItem(key, isCollapsed);
-    } catch (error) {
-      console.warn('Failed to save section collapse state:', error);
+    } catch (err) {
+      warn('Failed to save section collapse state:', err);
     }
   },
 
@@ -760,8 +761,8 @@ export const sectionCollapseStorage = {
       const storage = createUserStorage();
       const key = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-${sectionId}`;
       await storage.removeItem(key);
-    } catch (error) {
-      console.warn('Failed to clear section collapse state:', error);
+    } catch (err) {
+      warn('Failed to clear section collapse state:', err);
     }
   },
 };
@@ -817,8 +818,8 @@ export const fullScreenModeStorage = {
     try {
       const storage = createUserStorage();
       await storage.setItem(StorageKeys.FULLSCREEN_MODE_STATE, state);
-    } catch (error) {
-      console.warn('Failed to save full screen mode state:', error);
+    } catch (err) {
+      warn('Failed to save full screen mode state:', err);
     }
   },
 
@@ -841,8 +842,8 @@ export const fullScreenModeStorage = {
     try {
       const storage = createUserStorage();
       await storage.setItem(StorageKeys.FULLSCREEN_BUNDLED_STEPS, steps);
-    } catch (error) {
-      console.warn('Failed to save bundled steps:', error);
+    } catch (err) {
+      warn('Failed to save bundled steps:', err);
     }
   },
 
@@ -869,8 +870,8 @@ export const fullScreenModeStorage = {
       } else {
         await storage.setItem(StorageKeys.FULLSCREEN_BUNDLING_ACTION, action);
       }
-    } catch (error) {
-      console.warn('Failed to save bundling action:', error);
+    } catch (err) {
+      warn('Failed to save bundling action:', err);
     }
   },
 
@@ -897,8 +898,8 @@ export const fullScreenModeStorage = {
       } else {
         await storage.setItem(StorageKeys.FULLSCREEN_SECTION_INFO, info);
       }
-    } catch (error) {
-      console.warn('Failed to save section info:', error);
+    } catch (err) {
+      warn('Failed to save section info:', err);
     }
   },
 
@@ -914,8 +915,8 @@ export const fullScreenModeStorage = {
         storage.removeItem(StorageKeys.FULLSCREEN_BUNDLING_ACTION),
         storage.removeItem(StorageKeys.FULLSCREEN_SECTION_INFO),
       ]);
-    } catch (error) {
-      console.warn('Failed to clear full screen mode state:', error);
+    } catch (err) {
+      warn('Failed to clear full screen mode state:', err);
     }
   },
 };

@@ -94,15 +94,11 @@ export function useSelectorTester({ executeInteractiveAction }: UseSelectorTeste
         };
         setResult(successResult);
         return successResult;
-      } catch (error) {
+      } catch (err) {
         const errorResult: TestResult = {
           success: false,
           message:
-            error instanceof Error
-              ? error.message
-              : mode === 'show'
-                ? 'Selector test failed'
-                : 'Selector action failed',
+            err instanceof Error ? err.message : mode === 'show' ? 'Selector test failed' : 'Selector action failed',
         };
         setResult(errorResult);
         return errorResult;

@@ -1,3 +1,4 @@
+import { warn, error } from '../lib/logger';
 import React, { useRef, useEffect, useMemo } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -65,7 +66,7 @@ function resolveRelativeUrls(html: string, baseUrl: string): string {
             const resolvedUrl = new URL(attrValue, baseUrlObj).href;
             element.setAttribute(attr, resolvedUrl);
           } catch (urlError) {
-            console.warn(`Failed to resolve URL: ${attrValue}`, urlError);
+            warn(`Failed to resolve URL: ${attrValue}`, urlError);
           }
         }
       });
@@ -76,8 +77,8 @@ function resolveRelativeUrls(html: string, baseUrl: string): string {
       return doc.body.innerHTML;
     }
     return doc.documentElement.outerHTML;
-  } catch (error) {
-    console.warn('Failed to resolve relative URLs in content:', error);
+  } catch (err) {
+    warn('Failed to resolve relative URLs in content:', err);
     return html; // Return original HTML if processing fails
   }
 }
@@ -115,10 +116,10 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
         targetElement!.classList.remove('fragment-highlight');
       }, 3000);
     } else {
-      console.warn(`Fragment element not found: #${fragment}`);
+      warn(`Fragment element not found: #${fragment}`);
     }
-  } catch (error) {
-    console.warn(`Error scrolling to fragment #${fragment}:`, error);
+  } catch (err) {
+    warn(`Error scrolling to fragment #${fragment}:`, err);
   }
 }
 
@@ -278,7 +279,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
 
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
-    console.error('Content parsing failed:', parseResult.errors);
+    error('Content parsing failed:', parseResult.errors);
     return (
       <div ref={ref}>
         <ContentParsingError
@@ -297,7 +298,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady }: ContentProces
   const { data: parsedContent } = parseResult;
 
   if (!parsedContent) {
-    console.error('[DocsPlugin] Parsing succeeded but no data returned');
+    error('[DocsPlugin] Parsing succeeded but no data returned');
     return (
       <div ref={ref}>
         <ContentParsingError
@@ -361,7 +362,7 @@ function TabsWrapper({ element }: { element: ParsedElement }) {
   }, [tabsData, activeTab]);
 
   if (!tabsBarElement || !tabContentElement) {
-    console.warn('Missing required tabs elements');
+    warn('Missing required tabs elements');
     return null;
   }
 
@@ -410,7 +411,7 @@ function TabContentRenderer({ html }: { html: string }) {
 
   if (!parseResult.isValid || !parseResult.data) {
     // SECURITY: No dangerouslySetInnerHTML fallback - return null on parse failure
-    console.error('TabContentRenderer: Failed to parse content.');
+    error('TabContentRenderer: Failed to parse content.');
     return null;
   }
 
@@ -628,7 +629,7 @@ function renderParsedElement(
       );
     case 'raw-html':
       // SECURITY: raw-html type is removed - all HTML must go through the parser
-      console.error('raw-html element type encountered - this should have been caught during parsing');
+      error('raw-html element type encountered - this should have been caught during parsing');
       return null;
     default:
       // Handle tabs root
@@ -683,7 +684,7 @@ function renderParsedElement(
 
       // Standard HTML elements - strict validation
       if (!element.type || (typeof element.type !== 'string' && typeof element.type !== 'function')) {
-        console.error('Invalid element type for parsed element:', element);
+        error('Invalid element type for parsed element:', element);
         throw new Error(`Invalid element type: ${element.type}. This should have been caught during parsing.`);
       }
 

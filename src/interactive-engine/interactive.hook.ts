@@ -1,3 +1,4 @@
+import { warn } from '../lib/logger';
 import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { addGlobalInteractiveStyles } from '../styles/interactive.styles';
 import {
@@ -316,8 +317,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
         activeRefsRef.current.delete(data.reftarget);
         return data.reftarget;
-      } catch (error) {
-        stateManager.handleError(error as Error, 'interactiveSequence', data, false);
+      } catch (err) {
+        stateManager.handleError(err as Error, 'interactiveSequence', data, false);
         activeRefsRef.current.delete(data.reftarget);
       }
 
@@ -412,10 +413,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             break;
 
           default:
-            console.warn(`Unknown interactive action: ${targetAction}`);
+            warn(`Unknown interactive action: ${targetAction}`);
         }
-      } catch (error) {
-        stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);
+      } catch (err) {
+        stateManager.handleError(err as Error, 'executeInteractiveAction', elementData, true);
       }
     },
     [

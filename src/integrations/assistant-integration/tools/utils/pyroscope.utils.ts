@@ -1,3 +1,4 @@
+import { warn } from '../../../../lib/logger';
 /**
  * Pyroscope Metadata Utilities
  *
@@ -48,8 +49,8 @@ const fetchProfileTypes = async (ds: PyroscopeDatasource): Promise<string[]> => 
     }
 
     return [];
-  } catch (error) {
-    console.warn('[PyroscopeUtils] Failed to fetch profile types:', error);
+  } catch (err) {
+    warn('[PyroscopeUtils] Failed to fetch profile types:', err);
     return [];
   }
 };
@@ -67,8 +68,8 @@ const fetchLabels = async (ds: PyroscopeDatasource): Promise<string[]> => {
     }
 
     return [];
-  } catch (error) {
-    console.warn('[PyroscopeUtils] Failed to fetch labels:', error);
+  } catch (err) {
+    warn('[PyroscopeUtils] Failed to fetch labels:', err);
     return [];
   }
 };
@@ -87,8 +88,8 @@ const fetchLabelValues = async (ds: PyroscopeDatasource, labelName: string): Pro
     }
 
     return [];
-  } catch (error) {
-    console.warn(`[PyroscopeUtils] Failed to fetch values for label ${labelName}:`, error);
+  } catch (err) {
+    warn(`[PyroscopeUtils] Failed to fetch values for label ${labelName}:`, err);
     return [];
   }
 };

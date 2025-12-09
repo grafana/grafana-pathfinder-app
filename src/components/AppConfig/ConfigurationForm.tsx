@@ -1,3 +1,4 @@
+import { error } from '../../lib/logger';
 import React, { useState, ChangeEvent } from 'react';
 import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
@@ -118,12 +119,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       setTimeout(() => {
         window.location.reload();
       }, 500);
-    } catch (error) {
-      console.error('Failed to toggle dev mode:', error);
+    } catch (err) {
+      error('Failed to toggle dev mode:', err);
 
       // Show user-friendly error message
       const errorMessage =
-        error instanceof Error ? error.message : 'Failed to toggle dev mode. You may need admin permissions.';
+        err instanceof Error ? err.message : 'Failed to toggle dev mode. You may need admin permissions.';
       alert(errorMessage);
 
       setDevModeToggling(false);
@@ -148,11 +149,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       setTimeout(() => {
         window.location.reload();
       }, 500);
-    } catch (error) {
-      console.error('Failed to toggle assistant dev mode:', error);
+    } catch (err) {
+      error('Failed to toggle assistant dev mode:', err);
 
       const errorMessage =
-        error instanceof Error ? error.message : 'Failed to toggle assistant dev mode. You may need admin permissions.';
+        err instanceof Error ? err.message : 'Failed to toggle assistant dev mode. You may need admin permissions.';
       alert(errorMessage);
 
       setAssistantDevModeToggling(false);
@@ -231,11 +232,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         try {
           window.location.reload();
         } catch (e) {
-          console.error('Failed to reload page after saving configuration', e);
+          error('Failed to reload page after saving configuration', e);
         }
       }, 100);
-    } catch (error) {
-      console.error('Error saving configuration:', error);
+    } catch (err) {
+      error('Error saving configuration:', err);
       setIsSaving(false);
       // Re-throw to let user know something went wrong
       throw error;

@@ -1,3 +1,4 @@
+import { error } from '../../lib/logger';
 import React, { useState, ChangeEvent } from 'react';
 import { Button, Field, Input, useStyles2, FieldSet, Switch, Text, Alert } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
@@ -109,13 +110,13 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
         try {
           window.location.reload();
         } catch (e) {
-          console.error('Failed to reload page after saving settings', e);
+          error('Failed to reload page after saving settings', e);
         }
       }, 100);
 
       setIsSaving(false);
-    } catch (error) {
-      console.error('Error saving Interactive Features:', error);
+    } catch (err) {
+      error('Error saving Interactive Features:', err);
       setIsSaving(false);
       throw error;
     }

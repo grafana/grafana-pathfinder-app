@@ -1,3 +1,4 @@
+import { warn } from '../../lib/logger';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
@@ -26,8 +27,8 @@ export class FormFillHandler {
       }
 
       await this.handleDoMode(targetElement, data);
-    } catch (error) {
-      this.stateManager.handleError(error as Error, 'FormFillHandler', data, false);
+    } catch (err) {
+      this.stateManager.handleError(err as Error, 'FormFillHandler', data, false);
     }
   }
 
@@ -43,7 +44,7 @@ export class FormFillHandler {
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${resolvedSelector}`);
+      warn(`Multiple elements found matching selector: ${resolvedSelector}`);
     }
 
     const targetElement = targetElements[0];
@@ -53,7 +54,7 @@ export class FormFillHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      console.warn('Target element is not visible:', targetElement);
+      warn('Target element is not visible:', targetElement);
       // Continue anyway (non-breaking)
     }
 
@@ -253,7 +254,7 @@ export class FormFillHandler {
 
     // SECURITY: Prevent ReDoS attacks with length limit
     if (fullValue.length > 1000) {
-      console.warn('Input too long for combobox, truncating to 1000 chars');
+      warn('Input too long for combobox, truncating to 1000 chars');
       fullValue = fullValue.substring(0, 1000);
     }
 

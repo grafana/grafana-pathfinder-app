@@ -1,3 +1,4 @@
+import { warn, error } from '../../lib/logger';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -151,8 +152,8 @@ export function AssistantCustomizable({
       const storageKey = `pathfinder-assistant-${contentKey}-${assistantId}`;
       const storedValue = localStorage.getItem(storageKey);
       return storedValue || defaultValue;
-    } catch (error) {
-      console.warn('[AssistantCustomizable] Failed to load from localStorage:', error);
+    } catch (err) {
+      warn('[AssistantCustomizable] Failed to load from localStorage:', err);
       return defaultValue;
     }
   }, [contentKey, assistantId, defaultValue]);
@@ -162,7 +163,7 @@ export function AssistantCustomizable({
       const storageKey = `pathfinder-assistant-${contentKey}-${assistantId}`;
       const storedValue = localStorage.getItem(storageKey);
       return storedValue !== null;
-    } catch (error) {
+    } catch (err) {
       return false;
     }
   }, [contentKey, assistantId]);
@@ -212,8 +213,8 @@ export function AssistantCustomizable({
   //     localStorage.setItem(storageKey, value);
   //     setCurrentValue(value);
   //     setIsCustomized(true);
-  //   } catch (error) {
-  //     console.warn('[AssistantCustomizable] Failed to save to localStorage:', error);
+  //   } catch (err) {
+  //     warn('[AssistantCustomizable] Failed to save to localStorage:', err);
   //   }
   // }, [getStorageKey]);
 
@@ -230,8 +231,8 @@ export function AssistantCustomizable({
         if (customizableContext) {
           customizableContext.updateTargetValue(value);
         }
-      } catch (error) {
-        console.warn('[AssistantCustomizable] Failed to save to localStorage:', error);
+      } catch (err) {
+        warn('[AssistantCustomizable] Failed to save to localStorage:', err);
       }
     },
     [getStorageKey, customizableContext]
@@ -280,8 +281,8 @@ export function AssistantCustomizable({
             }
           : null,
       };
-    } catch (error) {
-      console.warn('[AssistantCustomizable] Failed to fetch datasources:', error);
+    } catch (err) {
+      warn('[AssistantCustomizable] Failed to fetch datasources:', err);
       return { dataSources: [], currentDatasource: null };
     }
   }, [setPageContext]);
@@ -306,7 +307,7 @@ export function AssistantCustomizable({
     const dsContext = await getDatasourceContext();
 
     if (!dsContext.currentDatasource) {
-      console.error('[AssistantCustomizable] No datasource available');
+      error('[AssistantCustomizable] No datasource available');
       return;
     }
 
@@ -396,7 +397,7 @@ Output only the content - no markdown, no explanation.`;
         }
       },
       onError: (err) => {
-        console.error('[AssistantCustomizable] Generation failed:', err);
+        error('[AssistantCustomizable] Generation failed:', err);
 
         // Track customization error
         reportAppInteraction(
@@ -443,8 +444,8 @@ Output only the content - no markdown, no explanation.`;
           reverted_to_length: defaultValue.length,
         })
       );
-    } catch (error) {
-      console.warn('[AssistantCustomizable] Failed to revert:', error);
+    } catch (err) {
+      warn('[AssistantCustomizable] Failed to revert:', err);
     }
   }, [getStorageKey, defaultValue, reset, customizableContext, currentValue, getAnalyticsContext]);
 

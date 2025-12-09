@@ -1,3 +1,4 @@
+import { warn, error } from '../lib/logger';
 /**
  * Pure requirements checking utilities
  * Extracted from interactive.hook.ts to eliminate mock element anti-pattern
@@ -57,7 +58,7 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
 
   // Type-safe validation with helpful developer feedback
   if (!isValidRequirement(check)) {
-    console.warn(
+    warn(
       `Unknown requirement type: '${check}'. Check the requirement syntax and ensure it's supported. Allowing step to proceed.`
     );
 
@@ -144,9 +145,7 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
   }
 
   // This should never be reached due to type validation above, but keeping as fallback
-  console.error(
-    `Unexpected requirement type reached end of router: '${check}'. This indicates a bug in the type validation.`
-  );
+  error(`Unexpected requirement type reached end of router: '${check}'. This indicates a bug in the type validation.`);
 
   return {
     requirement: check,
@@ -233,7 +232,7 @@ async function executeChecksWithRetry(
 
     // If we've exhausted retries, return the last failed result
     return result;
-  } catch (error) {
+  } catch (err) {
     // On error, retry if we haven't exhausted attempts
     if (retryCount < maxRetries) {
       const timeoutManager = TimeoutManager.getInstance();
@@ -332,7 +331,7 @@ async function hasPermissionCheck(check: string): Promise<CheckResultError> {
       error: hasAccess ? undefined : `Missing permission: ${permission}`,
       context: { permission, hasAccess },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -410,7 +409,7 @@ async function hasRoleCheck(check: string): Promise<CheckResultError> {
         userId: user.id,
       },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -480,7 +479,7 @@ async function hasDataSourceCheck(check: string): Promise<CheckResultError> {
         available: dataSources.map((ds) => ({ name: ds.name, type: ds.type, id: ds.id })),
       },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -538,7 +537,7 @@ async function hasPluginCheck(check: string): Promise<CheckResultError> {
             : 'No plugins found - check your Grafana installation',
       },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -597,7 +596,7 @@ async function hasDashboardNamedCheck(check: string): Promise<CheckResultError> 
             : `No dashboards found matching '${dashboardName}'. Check if the dashboard exists.`,
       },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -654,7 +653,7 @@ async function onPageCheck(check: string): Promise<CheckResultError> {
       fixType: matches ? undefined : 'location',
       targetHref: matches ? undefined : requiredPath,
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -701,7 +700,7 @@ async function hasFeatureCheck(check: string): Promise<CheckResultError> {
       pass: !!isEnabled,
       error: isEnabled ? undefined : `Feature toggle '${featureName}' is not enabled`,
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -749,7 +748,7 @@ async function inEnvironmentCheck(check: string): Promise<CheckResultError> {
           ? undefined
           : `Current environment '${currentEnv}' does not match required '${requiredEnv}'`,
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -808,7 +807,7 @@ async function minVersionCheck(check: string): Promise<CheckResultError> {
         ? undefined
         : `Current version '${currentVersion}' does not meet minimum requirement '${requiredVersion}'`,
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -893,7 +892,7 @@ async function isLoggedInCheck(check: string): Promise<CheckResultError> {
         userId: user?.id,
       },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -957,7 +956,7 @@ async function isEditorCheck(check: string): Promise<CheckResultError> {
         userId: user.id,
       },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -1005,7 +1004,7 @@ async function hasDatasourcesCheck(check: string): Promise<CheckResultError> {
       error: dataSources.length > 0 ? undefined : 'No data sources found',
       context: { count: dataSources.length, types: dataSources.map((ds) => ds.type) },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -1074,7 +1073,7 @@ async function pluginEnabledCheck(check: string): Promise<CheckResultError> {
           : `Plugin '${pluginId}' is installed but disabled. Enable it in Grafana plugin settings.`,
       },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -1132,7 +1131,7 @@ async function dashboardExistsCheck(check: string): Promise<CheckResultError> {
         dashboardCount: dashboards?.length || 0,
       },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -1250,7 +1249,7 @@ async function datasourceConfiguredCheck(check: string): Promise<CheckResultErro
         },
       };
     }
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,
@@ -1309,7 +1308,7 @@ export function validateInteractiveRequirements(
       );
     }
 
-    console.error(errorMessage.join('\n'));
+    error(errorMessage.join('\n'));
 
     return false;
   }

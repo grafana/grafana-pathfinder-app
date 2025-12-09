@@ -1,3 +1,4 @@
+import { error as logError } from '../../lib/logger';
 /**
  * Attendee Join Interface for Live Sessions
  *
@@ -214,7 +215,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
       onJoined();
       onClose();
     } catch (err) {
-      console.error('[AttendeeJoin] Failed to join session:', err);
+      logError('[AttendeeJoin] Failed to join session:', err);
       setError(err); // Store the actual error for better guidance
       setIsJoining(false);
     }

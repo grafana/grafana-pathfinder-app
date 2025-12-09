@@ -72,10 +72,10 @@ export function useStepExecutor({ executeInteractiveAction }: UseStepExecutorOpt
         setResult(testResult);
         setProgress(null);
         return testResult;
-      } catch (error) {
+      } catch (err) {
         const errorResult: TestResult = {
           success: false,
-          message: error instanceof Error ? error.message : 'Step execution failed',
+          message: err instanceof Error ? err.message : 'Step execution failed',
         };
         setResult(errorResult);
         setProgress(null);

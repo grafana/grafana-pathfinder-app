@@ -1,3 +1,4 @@
+import { warn, error } from '../../../lib/logger';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
@@ -318,9 +319,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         }
 
         return true;
-      } catch (error) {
-        console.error(`Guided execution failed: ${stepId}`, error);
-        const errorMessage = error instanceof Error ? error.message : 'Guided execution failed';
+      } catch (err) {
+        error(`Guided execution failed: ${stepId}`, err);
+        const errorMessage = err instanceof Error ? err.message : 'Guided execution failed';
         setExecutionError(errorMessage);
         return false;
       } finally {
@@ -401,9 +402,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             const result = querySelectorAllEnhanced(selector);
             targetElement = result.elements[0] || null;
           }
-        } catch (error) {
+        } catch (err) {
           // Element resolution failed, fall back to selector-based matching
-          console.warn('Failed to resolve target element for coordinate matching:', error);
+          warn('Failed to resolve target element for coordinate matching:', err);
         }
 
         // Check if action matches (with coordinate support)

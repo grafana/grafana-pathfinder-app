@@ -1,3 +1,4 @@
+import { log, warn } from '../../lib/logger';
 /**
  * Element Picker Component
  *
@@ -177,7 +178,7 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
       const target = getElementUnderCursor(clientX, clientY);
 
       if (!target) {
-        console.warn('[ElementPicker] No element found under cursor');
+        warn('[ElementPicker] No element found under cursor');
         return;
       }
 
@@ -185,10 +186,10 @@ export function ElementPicker({ onSelect, onCancel }: ElementPickerProps) {
       const result = generateSelectorFromEvent(target, event);
 
       if (result.warnings.length > 0) {
-        console.warn('[ElementPicker] Selector warnings:', result.warnings);
+        warn('[ElementPicker] Selector warnings:', result.warnings);
       }
 
-      console.log('[ElementPicker] Selected:', result.selector);
+      log('[ElementPicker] Selected:', result.selector);
 
       // Return the selector
       onSelect(result.selector);

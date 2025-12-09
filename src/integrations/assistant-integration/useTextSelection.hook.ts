@@ -1,3 +1,4 @@
+import { warn } from '../../lib/logger';
 import { useState, useEffect, useCallback, RefObject } from 'react';
 import { isValidSelection } from './assistant-context.utils';
 import type { TextSelectionState } from '../../types/hooks.types';
@@ -84,8 +85,8 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
         },
         isValid: true,
       });
-    } catch (error) {
-      console.warn('[useTextSelection] Error handling selection change:', error);
+    } catch (err) {
+      warn('[useTextSelection] Error handling selection change:', err);
       setSelectionState({
         selectedText: '',
         position: null,

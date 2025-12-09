@@ -1,3 +1,4 @@
+import { warn, error } from '../../../lib/logger';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
@@ -245,9 +246,9 @@ export const InteractiveStep = forwardRef<
         }
 
         return true;
-      } catch (error) {
-        console.error(`Step execution failed: ${stepId}`, error);
-        setPostVerifyError(error instanceof Error ? error.message : 'Execution failed');
+      } catch (err) {
+        error(`Step execution failed: ${stepId}`, err);
+        setPostVerifyError(err instanceof Error ? err.message : 'Execution failed');
         return false;
       }
     }, [
@@ -313,9 +314,9 @@ export const InteractiveStep = forwardRef<
             targetElement = result.elements[0] || null;
           }
           // Note: formfill and navigate don't use coordinate matching
-        } catch (error) {
+        } catch (err) {
           // Element resolution failed, fall back to selector-based matching
-          console.warn('Failed to resolve target element for coordinate matching:', error);
+          warn('Failed to resolve target element for coordinate matching:', err);
         }
 
         // Check if detected action matches this step's configuration
@@ -352,7 +353,7 @@ export const InteractiveStep = forwardRef<
               // Verification failed - don't auto-complete
               return;
             }
-          } catch (error) {
+          } catch (err) {
             // Verification error - don't auto-complete
             return;
           }
@@ -453,8 +454,8 @@ export const InteractiveStep = forwardRef<
             onComplete();
           }
         }
-      } catch (error) {
-        console.error('Interactive show action failed:', error);
+      } catch (err) {
+        error('Interactive show action failed:', err);
       } finally {
         setIsShowRunning(false);
       }
@@ -498,8 +499,8 @@ export const InteractiveStep = forwardRef<
       setIsDoRunning(true);
       try {
         await executeStep();
-      } catch (error) {
-        console.error('Interactive do action failed:', error);
+      } catch (err) {
+        error('Interactive do action failed:', err);
       } finally {
         setIsDoRunning(false);
       }

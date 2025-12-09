@@ -1,3 +1,4 @@
+import { log, warn, error } from '../lib/logger';
 import { getBackendSrv, config, locationService, getEchoSrv, EchoEventType } from '@grafana/runtime';
 import {
   getConfigWithDefaults,
@@ -72,8 +73,8 @@ export class ContextService {
     this.changeListeners.forEach((listener) => {
       try {
         listener();
-      } catch (error) {
-        console.error('Error in context change listener:', error);
+      } catch (err) {
+        error('Error in context change listener:', err);
       }
     });
   }
@@ -201,8 +202,8 @@ export class ContextService {
       });
 
       this.echoLoggingInitialized = true;
-    } catch (error) {
-      console.error('Failed to initialize EchoSrv logging:', error);
+    } catch (err) {
+      error('Failed to initialize EchoSrv logging:', err);
     }
   }
 
@@ -299,14 +300,14 @@ export class ContextService {
 
       // Always try external recommendations when T&C are enabled, regardless of previous errors
       return this.getExternalRecommendations(contextData, pluginConfig, bundledRecommendations);
-    } catch (error) {
-      console.warn('Failed to fetch recommendations:', error);
+    } catch (err) {
+      warn('Failed to fetch recommendations:', err);
       const bundledRecommendations = this.getBundledInteractiveRecommendations(contextData, pluginConfig);
       const fallbackResult = await this.getFallbackRecommendations(contextData, bundledRecommendations);
       return {
         ...fallbackResult,
         featuredRecommendations: [],
-        error: error instanceof Error ? error.message : 'Failed to fetch recommendations',
+        error: err instanceof Error ? err.message : 'Failed to fetch recommendations',
         errorType: 'other',
         usingFallbackRecommendations: true,
       };
@@ -339,19 +340,19 @@ export class ContextService {
     const parsedUrl = parseUrlSafely(url);
 
     if (!parsedUrl) {
-      console.error('Invalid recommender service URL');
+      error('Invalid recommender service URL');
       return false;
     }
 
     // Dev mode: Allow any HTTP/HTTPS URL for local testing
     if (isDevModeEnabledGlobal()) {
-      console.log('Dev mode enabled: Allowing recommender URL', url);
+      log('Dev mode enabled: Allowing recommender URL', url);
       return true;
     }
 
     // Production: Require HTTPS
     if (parsedUrl.protocol !== 'https:') {
-      console.error('Recommender service URL must use HTTPS (dev mode disabled)');
+      error('Recommender service URL must use HTTPS (dev mode disabled)');
       return false;
     }
 
@@ -361,7 +362,7 @@ export class ContextService {
     });
 
     if (!isAllowedDomain) {
-      console.error('Recommender service domain not in allowlist');
+      error('Recommender service domain not in allowlist');
       return false;
     }
 
@@ -414,8 +415,8 @@ export class ContextService {
           }
 
           return hostname;
-        } catch (error) {
-          console.warn('Failed to extract/hash source:', error);
+        } catch (err) {
+          warn('Failed to extract/hash source:', err);
           return undefined;
         }
       };
@@ -565,9 +566,9 @@ export class ContextService {
         // Handle other errors
         return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
       }
-    } catch (error) {
+    } catch (err) {
       // Handle outer errors (hashing, payload construction, etc.)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       return this.handleRecommenderError('other', errorMessage, contextData, bundledRecommendations);
     }
   }
@@ -671,8 +672,8 @@ export class ContextService {
               summary: summary,
               completionPercentage,
             };
-          } catch (error) {
-            console.warn(`Failed to fetch journey data for ${sanitizeForLogging(rec.title)}:`, error);
+          } catch (err) {
+            warn(`Failed to fetch journey data for ${sanitizeForLogging(rec.title)}:`, err);
             return {
               ...rec,
               totalSteps: 0,
@@ -703,8 +704,8 @@ export class ContextService {
     try {
       const language = config.bootData.user.language;
       return language;
-    } catch (error) {
-      console.warn('Failed to get current language:', error);
+    } catch (err) {
+      warn('Failed to get current language:', err);
       return 'en-US';
     }
   }
@@ -716,8 +717,8 @@ export class ContextService {
     try {
       const dataSources = await getBackendSrv().get('/api/datasources');
       return dataSources || [];
-    } catch (error) {
-      console.warn('Failed to fetch data sources:', error);
+    } catch (err) {
+      warn('Failed to fetch data sources:', err);
       return [];
     }
   }
@@ -729,8 +730,8 @@ export class ContextService {
     try {
       const plugins = await getBackendSrv().get('/api/plugins');
       return plugins || [];
-    } catch (error) {
-      console.warn('Failed to fetch plugins:', error);
+    } catch (err) {
+      warn('Failed to fetch plugins:', err);
       return [];
     }
   }
@@ -747,8 +748,8 @@ export class ContextService {
         query: name,
       });
       return dashboards || [];
-    } catch (error) {
-      console.warn('Failed to fetch dashboards:', error);
+    } catch (err) {
+      warn('Failed to fetch dashboards:', err);
       return [];
     }
   }
@@ -772,8 +773,8 @@ export class ContextService {
         };
       }
       return null;
-    } catch (error) {
-      console.warn('Failed to fetch dashboard info:', error);
+    } catch (err) {
+      warn('Failed to fetch dashboard info:', err);
       return null;
     }
   }
@@ -1009,7 +1010,7 @@ export class ContextService {
   private static getGrafanaVersion(): string {
     try {
       return config.bootData.settings.buildInfo.version || 'Unknown';
-    } catch (error) {
+    } catch (err) {
       return 'Unknown';
     }
   }
@@ -1103,12 +1104,12 @@ export class ContextService {
               });
             });
           }
-        } catch (error) {
-          console.warn(`Failed to load static links file ${filename}:`, error);
+        } catch (err) {
+          warn(`Failed to load static links file ${filename}:`, err);
         }
       }
-    } catch (error) {
-      console.warn('Failed to load static link recommendations:', error);
+    } catch (err) {
+      warn('Failed to load static link recommendations:', err);
     }
 
     return staticRecommendations;
@@ -1260,8 +1261,8 @@ export class ContextService {
           });
         });
       }
-    } catch (error) {
-      console.warn('Failed to load bundled interactives index.json:', error);
+    } catch (err) {
+      warn('Failed to load bundled interactives index.json:', err);
       // Fallback to empty array - no bundled interactives will be shown
     }
 

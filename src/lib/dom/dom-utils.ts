@@ -1,3 +1,4 @@
+import { warn, error } from '../logger';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 import { resolveSelector } from './selector-resolver';
@@ -59,7 +60,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
 
   // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
   if (reftarget && textContent && reftarget === textContent && reftarget.length > 5) {
-    console.warn(`reftarget "${reftarget}" matches element text - check data-reftarget attribute`);
+    warn(`reftarget "${reftarget}" matches element text - check data-reftarget attribute`);
   }
 
   return {
@@ -323,8 +324,8 @@ export async function sectionCompletedCheck(check: string): Promise<{
       error: isCompleted ? undefined : `Section '${sectionId}' must be completed first`,
       context: { sectionId, found: !!sectionElement, hasCompletedClass: isCompleted },
     };
-  } catch (error) {
-    console.error('Section completion check error:', error);
+  } catch (err) {
+    error('Section completion check error:', err);
     return {
       requirement: check,
       pass: false,
@@ -399,7 +400,7 @@ export async function formValidCheck(check: string): Promise<{
         hasValidForms,
       },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       requirement: check,
       pass: false,

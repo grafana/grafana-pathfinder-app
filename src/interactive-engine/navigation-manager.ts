@@ -1,3 +1,4 @@
+import { warn, error } from '../lib/logger';
 import { waitForReactUpdates } from '../requirements-manager';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import logoSvg from '../img/logo.svg';
@@ -410,7 +411,7 @@ export class NavigationManager {
   async ensureElementVisible(element: HTMLElement): Promise<void> {
     // 1. Check if element is visible in DOM (not hidden by CSS)
     if (!isElementVisible(element)) {
-      console.warn('Element is hidden or not visible:', element);
+      warn('Element is hidden or not visible:', element);
       // Continue anyway - element might become visible during interaction
     }
 
@@ -562,7 +563,7 @@ export class NavigationManager {
 
     if (isAtOrigin || hasNoDimensions) {
       // Element is in invalid state - don't show highlight
-      console.warn('Cannot highlight element: invalid position or dimensions', {
+      warn('Cannot highlight element: invalid position or dimensions', {
         rect,
         scrollTop,
         scrollLeft,
@@ -939,8 +940,8 @@ export class NavigationManager {
       await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.expansionAnimationMs));
 
       return true;
-    } catch (error) {
-      console.error('Failed to expand parent navigation section:', error);
+    } catch (err) {
+      error('Failed to expand parent navigation section:', err);
       return false;
     }
   }
@@ -1069,8 +1070,8 @@ export class NavigationManager {
       }
 
       return true;
-    } catch (error) {
-      console.error('Failed to expand all navigation sections:', error);
+    } catch (err) {
+      error('Failed to expand all navigation sections:', err);
       return false;
     }
   }
@@ -1100,7 +1101,7 @@ export class NavigationManager {
     const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
     if (!megaMenuToggle) {
       if (logWarnings) {
-        console.warn('Mega menu toggle button not found - navigation may already be open or use different structure');
+        warn('Mega menu toggle button not found - navigation may already be open or use different structure');
       }
       return;
     }
@@ -1122,7 +1123,7 @@ export class NavigationManager {
         return;
       } else {
         if (logWarnings) {
-          console.warn('Dock menu button not found, navigation will remain in modal mode');
+          warn('Dock menu button not found, navigation will remain in modal mode');
         }
         return;
       }

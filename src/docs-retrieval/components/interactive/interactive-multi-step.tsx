@@ -1,3 +1,4 @@
+import { warn, error } from '../../../lib/logger';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
@@ -94,12 +95,12 @@ async function checkActionRequirements(
         explanation: explanation,
       };
     }
-  } catch (error) {
-    console.error(`Requirements check failed for action ${actionIndex + 1}:`, error);
+  } catch (err) {
+    error(`Requirements check failed for action ${actionIndex + 1}:`, err);
     return {
       pass: false,
       explanation: `Step ${actionIndex + 1} requirements check failed: ${
-        error instanceof Error ? error.message : 'Unknown error'
+        err instanceof Error ? err.message : 'Unknown error'
       }`,
     };
   }
@@ -316,7 +317,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           if (action.requirements) {
             const requirementsResult = await checkActionRequirements(action, i, checkRequirementsFromData);
             if (!requirementsResult.pass) {
-              console.error(
+              error(
                 `Multi-step ${stepId}: Internal action ${i + 1} requirements failed`,
                 requirementsResult.explanation
               );
@@ -372,7 +373,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               }
             }
           } catch (actionError) {
-            console.error(`Multi-step ${stepId}: Internal action ${i + 1} execution failed`, actionError);
+            error(`Multi-step ${stepId}: Internal action ${i + 1} execution failed`, actionError);
             const errorMessage = actionError instanceof Error ? actionError.message : 'Action execution failed';
             setFailedStepIndex(i);
             setExecutionError(`Step ${i + 1} failed: ${errorMessage}`);
@@ -402,9 +403,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         }
 
         return true;
-      } catch (error) {
-        console.error(`Multi-step execution failed: ${stepId}`, error);
-        const errorMessage = error instanceof Error ? error.message : 'Multi-step execution failed';
+      } catch (err) {
+        error(`Multi-step execution failed: ${stepId}`, err);
+        const errorMessage = err instanceof Error ? err.message : 'Multi-step execution failed';
         setExecutionError(errorMessage);
         return false;
       } finally {
@@ -500,9 +501,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               targetElement = result.elements[0] || null;
             }
             // Note: formfill and navigate don't use coordinate matching
-          } catch (error) {
+          } catch (err) {
             // Element resolution failed, fall back to selector-based matching
-            console.warn('Failed to resolve target element for coordinate matching:', error);
+            warn('Failed to resolve target element for coordinate matching:', err);
           }
 
           // Check if action matches (with coordinate support)

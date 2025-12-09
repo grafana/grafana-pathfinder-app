@@ -1,3 +1,4 @@
+import { warn } from '../../../lib/logger';
 /**
  * GitHub PR Utilities
  *
@@ -98,7 +99,7 @@ async function copyToClipboard(json: string): Promise<boolean> {
       return true;
     }
   } catch (e) {
-    console.warn('Clipboard API failed, trying fallback:', e);
+    warn('Clipboard API failed, trying fallback:', e);
   }
 
   // Fallback for older browsers or when clipboard API fails
@@ -116,7 +117,7 @@ async function copyToClipboard(json: string): Promise<boolean> {
     document.body.removeChild(textArea);
     return success;
   } catch (e) {
-    console.warn('Fallback clipboard copy failed:', e);
+    warn('Fallback clipboard copy failed:', e);
     return false;
   }
 }
@@ -187,10 +188,10 @@ export async function prepareGitHubPR(guide: JsonGuide): Promise<PRCreationResul
         copiedToClipboard,
       },
     };
-  } catch (error) {
+  } catch (err) {
     return {
       status: 'error',
-      message: error instanceof Error ? error.message : 'Failed to prepare PR',
+      message: err instanceof Error ? err.message : 'Failed to prepare PR',
     };
   }
 }

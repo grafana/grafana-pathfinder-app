@@ -1,3 +1,4 @@
+import { warn, error } from '../../lib/logger';
 /**
  * AssistantBlockWrapper
  *
@@ -128,7 +129,7 @@ export function AssistantBlockWrapper({
       const storageKey = `pathfinder-assistant-${contentKey}-${assistantId}`;
       const storedValue = localStorage.getItem(storageKey);
       return storedValue !== null;
-    } catch (error) {
+    } catch (err) {
       return false;
     }
   }, [contentKey, assistantId]);
@@ -206,8 +207,8 @@ export function AssistantBlockWrapper({
             }
           : null,
       };
-    } catch (error) {
-      console.warn('[AssistantBlockWrapper] Failed to fetch datasources:', error);
+    } catch (err) {
+      warn('[AssistantBlockWrapper] Failed to fetch datasources:', err);
       return { dataSources: [], currentDatasource: null };
     }
   }, [setPageContext]);
@@ -222,7 +223,7 @@ export function AssistantBlockWrapper({
     const dsContext = await getDatasourceContext();
 
     if (!dsContext.currentDatasource) {
-      console.error('[AssistantBlockWrapper] No datasource available');
+      error('[AssistantBlockWrapper] No datasource available');
       return;
     }
 
@@ -312,13 +313,13 @@ Output only the content - no markdown, no explanation.`;
                 available_labels_count: labelCount,
               })
             );
-          } catch (error) {
-            console.warn('[AssistantBlockWrapper] Failed to save to localStorage:', error);
+          } catch (err) {
+            warn('[AssistantBlockWrapper] Failed to save to localStorage:', err);
           }
         }
       },
       onError: (err) => {
-        console.error('[AssistantBlockWrapper] Generation failed:', err);
+        error('[AssistantBlockWrapper] Generation failed:', err);
 
         reportAppInteraction(
           UserInteraction.AssistantCustomizeError,
@@ -357,8 +358,8 @@ Output only the content - no markdown, no explanation.`;
           block_type: blockType,
         })
       );
-    } catch (error) {
-      console.warn('[AssistantBlockWrapper] Failed to revert:', error);
+    } catch (err) {
+      warn('[AssistantBlockWrapper] Failed to revert:', err);
     }
   }, [getStorageKey, reset, getAnalyticsContext, blockType]);
 

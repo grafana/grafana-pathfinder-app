@@ -85,7 +85,7 @@ export function generateFullDomPath(element: HTMLElement): string {
  * const { hoveredElement, domPath, cursorPosition } = useElementInspector({
  *   isActive: true,
  *   excludeSelectors: ['.debug-panel'],
- *   onHover: (element, path) => console.log('Hovering:', path)
+ *   onHover: (element, path) => log('Hovering:', path)
  * });
  * ```
  */

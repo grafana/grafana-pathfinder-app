@@ -1,3 +1,4 @@
+import { warn } from '../../../../lib/logger';
 /**
  * Prometheus Metadata Utilities
  *
@@ -55,8 +56,8 @@ const fetchLabelNames = async (ds: PrometheusDatasource, timeRange: TimeRange): 
     const labels = await ds.languageProvider.queryLabelKeys(timeRange);
     // Filter out internal labels (starting with __)
     return labels.filter((label) => !label.startsWith('__'));
-  } catch (error) {
-    console.warn('[PrometheusUtils] Failed to fetch label names:', error);
+  } catch (err) {
+    warn('[PrometheusUtils] Failed to fetch label names:', err);
     return [];
   }
 };
@@ -73,8 +74,8 @@ const fetchLabelValues = async (
   try {
     const values = await ds.languageProvider.queryLabelValues(timeRange, labelName);
     return Array.isArray(values) ? values.slice(0, limit) : [];
-  } catch (error) {
-    console.warn(`[PrometheusUtils] Failed to fetch values for label ${labelName}:`, error);
+  } catch (err) {
+    warn(`[PrometheusUtils] Failed to fetch values for label ${labelName}:`, err);
     return [];
   }
 };

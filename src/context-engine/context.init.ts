@@ -1,3 +1,4 @@
+import { error } from '../lib/logger';
 import { ContextService } from './context.service';
 
 /**
@@ -11,8 +12,8 @@ export function initializeContextServices(): void {
 
     // Initialize from any recent events that might have been cached
     ContextService.initializeFromRecentEvents();
-  } catch (error) {
-    console.error('Failed to initialize context services:', error);
+  } catch (err) {
+    error('Failed to initialize context services:', err);
   }
 }
 

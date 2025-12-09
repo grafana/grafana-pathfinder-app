@@ -1,3 +1,4 @@
+import { warn } from '../../lib/logger';
 /**
  * Assistant Dev Mode Utilities
  *
@@ -44,12 +45,12 @@ const getMockOpenAssistant = (props: {
   context?: ChatContextItem[];
   autoSend?: boolean;
 }): void => {
-  console.warn('=== Assistant Dev Mode ===');
-  console.warn('Origin:', props.origin);
-  console.warn('Prompt:', props.prompt || '(no prompt)');
-  console.warn('AutoSend:', props.autoSend ?? true);
-  console.warn('Context:', props.context);
-  console.warn('=========================');
+  warn('=== Assistant Dev Mode ===');
+  warn('Origin:', props.origin);
+  warn('Prompt:', props.prompt || '(no prompt)');
+  warn('AutoSend:', props.autoSend ?? true);
+  warn('Context:', props.context);
+  warn('=========================');
 };
 
 /**
@@ -94,11 +95,11 @@ export const useMockInlineAssistant = (): InlineAssistantResult => {
   const [error, setError] = useState<Error | null>(null);
 
   const generate = useCallback(async (options: InlineAssistantOptions) => {
-    console.warn('=== Inline Assistant Dev Mode ===');
-    console.warn('Origin:', options.origin);
-    console.warn('Prompt:', options.prompt);
-    console.warn('System Prompt:', options.systemPrompt || '(none)');
-    console.warn('=====================================');
+    warn('=== Inline Assistant Dev Mode ===');
+    warn('Origin:', options.origin);
+    warn('Prompt:', options.prompt);
+    warn('System Prompt:', options.systemPrompt || '(none)');
+    warn('=====================================');
 
     // Set isGenerating to true at the start
     setIsGenerating(true);
@@ -132,12 +133,12 @@ export const useMockInlineAssistant = (): InlineAssistantResult => {
   }, []);
 
   const cancel = useCallback(() => {
-    console.warn('[Dev Mode] Cancel called');
+    warn('[Dev Mode] Cancel called');
     setIsGenerating(false);
   }, []);
 
   const reset = useCallback(() => {
-    console.warn('[Dev Mode] Reset called');
+    warn('[Dev Mode] Reset called');
     setIsGenerating(false);
     setContent('');
     setError(null);

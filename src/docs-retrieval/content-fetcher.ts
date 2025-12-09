@@ -23,6 +23,7 @@ import {
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { StorageKeys } from '../lib/user-storage';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
+import { error, warn } from '../lib/logger';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -78,7 +79,7 @@ function enforceHttps(url: string): boolean {
   // Parse URL safely
   const parsedUrl = parseUrlSafely(url);
   if (!parsedUrl) {
-    console.error('Invalid URL format:');
+    error('Invalid URL format:');
     return false;
   }
 
@@ -89,7 +90,7 @@ function enforceHttps(url: string): boolean {
 
   // Require HTTPS for all other URLs
   if (parsedUrl.protocol !== 'https:') {
-    console.error('Only HTTPS URLs are allowed');
+    error('Only HTTPS URLs are allowed');
     return false;
   }
 
@@ -104,7 +105,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
   try {
     // Validate URL
     if (!url || typeof url !== 'string' || url.trim() === '') {
-      console.error('fetchContent called with invalid URL:', url);
+      error('fetchContent called with invalid URL:', url);
       return { content: null, error: 'Invalid URL provided', errorType: 'other' };
     }
 
@@ -183,12 +184,12 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
           jsonContent = fetchResult.html; // Already valid JSON guide
         } else {
           // JSON but not a valid guide structure - wrap it
-          console.warn('JSON content does not match guide structure, wrapping as HTML');
+          warn('JSON content does not match guide structure, wrapping as HTML');
           jsonContent = wrapContentAsJsonGuide(fetchResult.html, finalUrl, metadata.title);
         }
       } catch {
         // Invalid JSON - treat as HTML and wrap
-        console.warn('Failed to parse native JSON, treating as HTML');
+        warn('Failed to parse native JSON, treating as HTML');
         jsonContent = wrapContentAsJsonGuide(fetchResult.html, finalUrl, metadata.title);
       }
     } else {
@@ -218,11 +219,11 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
     };
 
     return { content: rawContent };
-  } catch (error) {
-    console.error(`Failed to fetch content from ${url}:`, error);
+  } catch (err) {
+    error(`Failed to fetch content from ${url}:`, err);
     return {
       content: null,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: err instanceof Error ? err.message : 'Unknown error',
       errorType: 'other',
     };
   }
@@ -294,11 +295,11 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
       };
 
       return { content: rawContent };
-    } catch (error) {
-      console.error('Failed to load WYSIWYG preview:', error);
+    } catch (err) {
+      error('Failed to load WYSIWYG preview:', err);
       return {
         content: null,
-        error: `Failed to load preview: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error: `Failed to load preview: ${err instanceof Error ? err.message : 'Unknown error'}`,
       };
     }
   }
@@ -344,12 +345,12 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
     };
 
     return { content: rawContent };
-  } catch (error) {
-    console.error(`Failed to load bundled interactive ${contentId}:`, error);
+  } catch (err) {
+    error(`Failed to load bundled interactive ${contentId}:`, err);
     return {
       content: null,
       error: `Failed to load bundled interactive: ${contentId}. Error: ${
-        error instanceof Error ? error.message : 'Unknown error'
+        err instanceof Error ? err.message : 'Unknown error'
       }`,
     };
   }
@@ -362,7 +363,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
 function determineContentType(url: string): ContentType {
   // Handle undefined or empty URL
   if (!url || typeof url !== 'string') {
-    console.warn('determineContentType called with invalid URL:', url);
+    warn('determineContentType called with invalid URL:', url);
     return 'single-doc';
   }
 
@@ -462,7 +463,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
             (isDevMode && isGitHubRawUrl(finalUrl));
 
           if (!isFinalUrlTrusted) {
-            console.warn(`URL variation ${urlVariation} redirected to untrusted URL: ${finalUrl}`);
+            warn(`URL variation ${urlVariation} redirected to untrusted URL: ${finalUrl}`);
             continue; // Try next variation
           }
 
@@ -484,8 +485,8 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
         errorType: response.status >= 500 ? 'server-error' : 'other',
         statusCode: response.status,
       };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('aborted');
       const isNetwork =
         errorMessage.includes('NetworkError') ||
@@ -502,7 +503,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 
   // All variations failed
   if (lastError) {
-    console.error(`Failed to fetch from any URL variation. Last error: ${lastError.message}`);
+    error(`Failed to fetch from any URL variation. Last error: ${lastError.message}`);
   }
   return { html: null, error: lastError || { message: 'No content found', errorType: 'not-found' } };
 }
@@ -548,7 +549,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           (isDevMode && isGitHubRawUrl(finalUrl));
 
         if (!isFinalUrlTrusted) {
-          console.warn(
+          warn(
             `Redirect target not in trusted domain list.\n` +
               `Original URL: ${url}\n` +
               `Final URL: ${finalUrl}\n` +
@@ -644,7 +645,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           errorType: 'other',
           statusCode: response.status,
         };
-        console.warn(`Manual redirect detected from ${url}:`, lastError.message);
+        warn(`Manual redirect detected from ${url}:`, lastError.message);
 
         if (location.startsWith('/')) {
           try {
@@ -652,7 +653,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
             const redirectUrl = new URL(location, originalUrl.origin);
 
             if (redirectUrl.origin !== originalUrl.origin) {
-              console.warn(`Blocked redirect to different origin: ${redirectUrl.origin}`);
+              warn(`Blocked redirect to different origin: ${redirectUrl.origin}`);
               lastError = {
                 message: `Cross-origin redirect blocked for security: ${redirectUrl.origin}`,
                 errorType: 'other',
@@ -665,7 +666,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
                 (isDevMode && isGitHubRawUrl(redirectUrl.href));
 
               if (!isRedirectTrusted) {
-                console.warn(`Redirect target not in trusted domain list: ${redirectUrl.href}`);
+                warn(`Redirect target not in trusted domain list: ${redirectUrl.href}`);
                 lastError = {
                   message: 'Redirect target is not in trusted domain list',
                   errorType: 'other',
@@ -682,7 +683,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
               }
             }
           } catch (redirectError) {
-            console.warn(`Failed to fetch redirect target:`, redirectError);
+            warn(`Failed to fetch redirect target:`, redirectError);
             lastError = {
               message: redirectError instanceof Error ? redirectError.message : 'Redirect failed',
               errorType: 'other',
@@ -703,10 +704,10 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         errorType,
         statusCode: response.status,
       };
-      console.warn(`Failed to fetch from ${url}: ${lastError.message}`);
+      warn(`Failed to fetch from ${url}: ${lastError.message}`);
     }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('aborted');
     const isNetwork =
       errorMessage.includes('NetworkError') ||
@@ -718,11 +719,11 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
       message: errorMessage,
       errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
     };
-    console.warn(`Failed to fetch from ${url}:`, error);
+    warn(`Failed to fetch from ${url}:`, err);
   }
 
   if (lastError) {
-    console.error(`Failed to fetch content from ${url}. Last error: ${lastError.message}`);
+    error(`Failed to fetch content from ${url}. Last error: ${lastError.message}`);
   }
 
   return { html: null, error: lastError };
@@ -988,10 +989,10 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
         return milestones; // Already in sequential order, no need to sort
       }
     } else {
-      console.warn(`Failed to fetch metadata (${response.status}): ${indexJsonUrl}`);
+      warn(`Failed to fetch metadata (${response.status}): ${indexJsonUrl}`);
     }
-  } catch (error) {
-    console.warn(`Failed to fetch learning journey metadata from ${baseUrl}/index.json:`, error);
+  } catch (err) {
+    warn(`Failed to fetch learning journey metadata from ${baseUrl}/index.json:`, err);
   }
 
   return [];

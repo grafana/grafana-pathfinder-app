@@ -33,7 +33,7 @@ type ExecuteActionFunction = (action: string, selector: string, value?: string, 
  * const result = await executeStepSequence(
  *   [{ action: 'highlight', selector: 'button[data-testid="save"]' }],
  *   executeInteractiveAction,
- *   { mode: 'auto', onProgress: (p) => console.log(p) }
+ *   { mode: 'auto', onProgress: (p) => log(p) }
  * );
  * ```
  */
@@ -163,8 +163,8 @@ export async function executeStepSequence(
         stepsCompleted: steps.length,
       };
     }
-  } catch (error) {
-    if (error instanceof Error && error.message === 'Cancelled') {
+  } catch (err) {
+    if (err instanceof Error && err.message === 'Cancelled') {
       return {
         success: false,
         message: 'Guided sequence cancelled',
@@ -174,7 +174,7 @@ export async function executeStepSequence(
 
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Step execution failed',
+      message: err instanceof Error ? err.message : 'Step execution failed',
       stepsCompleted: completedSteps,
     };
   }

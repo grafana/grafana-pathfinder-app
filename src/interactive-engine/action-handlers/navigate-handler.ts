@@ -22,8 +22,8 @@ export class NavigateHandler {
 
       await this.handleDoMode(data);
       await this.markAsCompleted(data);
-    } catch (error) {
-      this.stateManager.handleError(error as Error, 'NavigateHandler', data);
+    } catch (err) {
+      this.stateManager.handleError(err as Error, 'NavigateHandler', data);
     }
   }
 

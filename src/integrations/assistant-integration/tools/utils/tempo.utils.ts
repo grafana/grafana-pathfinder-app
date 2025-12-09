@@ -1,3 +1,4 @@
+import { warn } from '../../../../lib/logger';
 /**
  * Tempo Metadata Utilities
  *
@@ -56,8 +57,8 @@ const fetchTags = async (ds: TempoDatasource): Promise<string[]> => {
     }
 
     return [];
-  } catch (error) {
-    console.warn('[TempoUtils] Failed to fetch tags:', error);
+  } catch (err) {
+    warn('[TempoUtils] Failed to fetch tags:', err);
     return [];
   }
 };
@@ -76,8 +77,8 @@ const fetchTagValues = async (ds: TempoDatasource, tagName: string): Promise<str
     }
 
     return [];
-  } catch (error) {
-    console.warn(`[TempoUtils] Failed to fetch values for tag ${tagName}:`, error);
+  } catch (err) {
+    warn(`[TempoUtils] Failed to fetch values for tag ${tagName}:`, err);
     return [];
   }
 };

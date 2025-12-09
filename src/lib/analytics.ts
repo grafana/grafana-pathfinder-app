@@ -7,6 +7,7 @@
 
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
+import { warn } from './logger';
 
 // ============================================================================
 // USER INTERACTION TYPES
@@ -88,8 +89,8 @@ export function reportAppInteraction(
     };
 
     reportInteraction(interactionName, enrichedProperties);
-  } catch (error) {
-    console.warn('Analytics reporting failed:', error);
+  } catch (err) {
+    warn('Analytics reporting failed:', err);
   }
 }
 

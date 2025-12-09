@@ -1,3 +1,4 @@
+import { log } from '../../lib/logger';
 /**
  * Block Editor
  *
@@ -256,7 +257,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     } else {
       navigator.clipboard.writeText(json).then(() => {
         // Could add a toast notification here
-        console.log('Copied to clipboard');
+        log('Copied to clipboard');
       });
     }
   }, [editor, onCopy]);

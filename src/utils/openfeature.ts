@@ -1,3 +1,4 @@
+import { warn, error } from '../lib/logger';
 import { config } from '@grafana/runtime';
 
 /**
@@ -45,7 +46,7 @@ export const getFeatureToggle = (flagName: string, defaultValue?: boolean): bool
 
     if (!featureToggles) {
       if (defaultValue !== undefined) {
-        console.warn(`[FeatureFlags] featureToggles not available, using default: ${defaultValue}`);
+        warn(`[FeatureFlags] featureToggles not available, using default: ${defaultValue}`);
       }
       return defaultValue;
     }
@@ -53,8 +54,8 @@ export const getFeatureToggle = (flagName: string, defaultValue?: boolean): bool
     // Return the toggle value if it exists, otherwise use default
     const value = featureToggles[flagName];
     return value !== undefined ? value : defaultValue;
-  } catch (error) {
-    console.error(`[FeatureFlags] Error checking feature toggle '${flagName}':`, error);
+  } catch (err) {
+    error(`[FeatureFlags] Error checking feature toggle '${flagName}':`, err);
     return defaultValue;
   }
 };

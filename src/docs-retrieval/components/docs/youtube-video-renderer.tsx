@@ -1,3 +1,4 @@
+import { warn } from '../../../lib/logger';
 import React, { useEffect, useRef, useCallback } from 'react';
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 
@@ -93,8 +94,8 @@ export function YouTubeVideoRenderer({
         if (playerRef.current && playerRef.current.getCurrentTime) {
           videoPosition = Math.round(playerRef.current.getCurrentTime());
         }
-      } catch (error) {
-        console.warn('Could not get video duration/position:', error);
+      } catch (err) {
+        warn('Could not get video duration/position:', err);
       }
 
       reportAppInteraction(UserInteraction.VideoViewLength, {
@@ -154,8 +155,8 @@ export function YouTubeVideoRenderer({
               if (videoData && videoData.title) {
                 actualVideoTitleRef.current = videoData.title;
               }
-            } catch (error) {
-              console.warn('Could not get video title from YouTube API:', error);
+            } catch (err) {
+              warn('Could not get video title from YouTube API:', err);
             }
           },
           onStateChange: (event: any) => {
@@ -181,8 +182,8 @@ export function YouTubeVideoRenderer({
                 if (playerRef.current && playerRef.current.getCurrentTime) {
                   lastPositionRef.current = playerRef.current.getCurrentTime();
                 }
-              } catch (error) {
-                console.warn('Could not get current video position:', error);
+              } catch (err) {
+                warn('Could not get current video position:', err);
               }
             } else if (event.data === window.YT.PlayerState.PAUSED || event.data === window.YT.PlayerState.ENDED) {
               // Calculate and accumulate viewing time
@@ -201,8 +202,8 @@ export function YouTubeVideoRenderer({
           },
         },
       });
-    } catch (error) {
-      console.warn('Failed to initialize YouTube player for analytics:', error);
+    } catch (err) {
+      warn('Failed to initialize YouTube player for analytics:', err);
     }
   }, [src, getVideoId, getDocumentInfo, trackViewLength]);
 
@@ -216,8 +217,8 @@ export function YouTubeVideoRenderer({
         setTimeout(() => {
           initializePlayer();
         }, 100);
-      } catch (error) {
-        console.warn('Failed to setup YouTube analytics tracking:', error);
+      } catch (err) {
+        warn('Failed to setup YouTube analytics tracking:', err);
       }
     };
 
@@ -239,8 +240,8 @@ export function YouTubeVideoRenderer({
       if (playerRef.current && playerRef.current.destroy) {
         try {
           playerRef.current.destroy();
-        } catch (error) {
-          console.warn('Error destroying YouTube player:', error);
+        } catch (err) {
+          warn('Error destroying YouTube player:', err);
         }
       }
     };
@@ -248,7 +249,7 @@ export function YouTubeVideoRenderer({
 
   const videoId = getVideoId(src);
   if (!videoId) {
-    console.warn('Invalid YouTube URL provided to YouTubeVideoRenderer:', src);
+    warn('Invalid YouTube URL provided to YouTubeVideoRenderer:', src);
     // Fallback to regular iframe
     return (
       <iframe

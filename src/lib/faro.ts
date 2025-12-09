@@ -38,6 +38,7 @@ import {
 } from '@grafana/faro-react';
 import { TracingInstrumentation } from '@grafana/faro-web-tracing';
 import packageJson from '../../package.json';
+import { error as logError } from './logger';
 
 const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
 const VERSION = packageJson.version ?? '0.0.0';
@@ -126,24 +127,31 @@ export const initFaro = (): void => {
         /grafana\.com\/tutorials/,
         /grafana\.com\/learning-journeys/,
       ],
-      ignoreErrors: [
-        // Browser extensions
-        'chrome-extension',
-        'moz-extension',
+      // Filter events to only capture Pathfinder-related logs and errors
+      // This is a whitelist approach - much cleaner than maintaining a long ignoreErrors list
+      beforeSend: (item) => {
+        // For logs, only send those with our [pathfinder] prefix
+        if (item.type === 'log') {
+          const message = String((item.payload as { message?: string })?.message || '');
+          if (!message.includes('[pathfinder]')) {
+            return null;
+          }
+        }
 
-        // Network errors (expected in some scenarios)
-        'Failed to fetch',
-        'NetworkError',
-        'ChunkLoadError',
+        // For exceptions, check stack trace for our plugin code
+        if (item.type === 'exception') {
+          const payload = item.payload as { stacktrace?: { frames?: Array<{ filename?: string }> } };
+          const frames = payload?.stacktrace?.frames || [];
+          const isFromPathfinder = frames.some(
+            (frame) => frame.filename?.includes('grafana-pathfinder-app') || frame.filename?.includes('/pathfinder/')
+          );
+          if (!isFromPathfinder) {
+            return null;
+          }
+        }
 
-        // Grafana core issues (not our problem)
-        'ResizeObserver loop completed',
-        'ResizeObserver loop limit exceeded',
-
-        // Generic
-        'Script error.',
-        'Non-Error exception captured',
-      ],
+        return item;
+      },
       sessionTracking: {
         enabled: true,
         persistent: true,
@@ -151,8 +159,8 @@ export const initFaro = (): void => {
     });
 
     faroInitialized = true;
-  } catch (error) {
-    console.error('[Faro] Failed to initialize:', error);
+  } catch (err) {
+    logError('[Faro] Failed to initialize:', err);
   }
 };
 
@@ -169,7 +177,7 @@ export const pauseFaroBeforeReload = (): void => {
   try {
     // Pause Faro to stop all instrumentations and prevent pending requests
     faro.pause();
-  } catch (error) {
+  } catch (err) {
     // Silently ignore - we're about to reload anyway
   }
 };

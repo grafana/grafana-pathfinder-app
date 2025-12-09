@@ -44,7 +44,7 @@ function resolveURL(href: string | null) {
 
   try {
     return new URL(href, window.location.href).href;
-  } catch (error) {
+  } catch (err) {
     return null;
   }
 }
@@ -60,7 +60,7 @@ function extractTitle(url: string) {
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
     }
-  } catch (error) {
+  } catch (err) {
     return 'Documentation';
   }
 

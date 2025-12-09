@@ -1,3 +1,4 @@
+import { warn } from '../../lib/logger';
 /**
  * Action matching utilities for auto-detection of step completion
  *
@@ -458,9 +459,9 @@ export class ActionMatcher {
       if (elementResolver) {
         try {
           targetElement = elementResolver();
-        } catch (error) {
+        } catch (err) {
           // Element resolution failed, fall back to selector-based matching
-          console.warn(`Element resolver failed for step ${stepId}:`, error);
+          warn(`Element resolver failed for step ${stepId}:`, err);
         }
       }
 

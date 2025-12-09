@@ -45,9 +45,9 @@ export async function withTimeout<T>(
     const result = await Promise.race([promise, timeoutPromise]);
     clearTimeout(timeoutId!);
     return result;
-  } catch (error) {
+  } catch (err) {
     clearTimeout(timeoutId!);
-    throw error;
+    throw err;
   }
 }
 
@@ -65,7 +65,7 @@ export async function withTimeout<T>(
  *   () => fetchData(),
  *   3,
  *   1000,
- *   (error) => error.message !== 'Auth failed' // Don't retry auth failures
+ *   (error) => err.message !== 'Auth failed' // Don't retry auth failures
  * );
  */
 export async function retry<T>(
@@ -79,12 +79,12 @@ export async function retry<T>(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await operation();
-    } catch (error) {
-      lastError = error;
+    } catch (err) {
+      lastError = err;
 
       // Check if we should retry
-      if (shouldRetry && !shouldRetry(error)) {
-        throw error;
+      if (shouldRetry && !shouldRetry(err)) {
+        throw err;
       }
 
       // Don't delay after the last attempt

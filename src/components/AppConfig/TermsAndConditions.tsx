@@ -8,6 +8,7 @@ import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
 import { updatePluginSettings } from '../../utils/utils.plugin';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { pauseFaroBeforeReload } from '../../lib/faro';
+import { error } from '../../lib/logger';
 
 type JsonData = DocsPluginConfig & {
   isDocsPasswordSet?: boolean;
@@ -57,17 +58,17 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
           pauseFaroBeforeReload();
           window.location.reload();
         } catch (e) {
-          console.error('Failed to reload page after saving settings', e);
+          error('Failed to reload page after saving settings', e);
         }
       }, 100);
 
       // Reset saving state - let Grafana's plugin context system handle the refresh
       setIsSaving(false);
-    } catch (error) {
-      console.error('Error saving Terms and Conditions:', error);
+    } catch (err) {
+      error('Error saving Terms and Conditions:', err);
       setIsSaving(false);
       // Re-throw to let user know something went wrong
-      throw error;
+      throw err;
     }
   };
 

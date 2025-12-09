@@ -1,3 +1,4 @@
+import { warn } from '../lib/logger';
 import { useEffect } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { safeEventHandler } from './safe-event-handler.util';
@@ -91,7 +92,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             model.loadTabContent(activeTab.id, firstMilestone.url);
           }
         } else {
-          console.warn('No milestone URL found to navigate to');
+          warn('No milestone URL found to navigate to');
         }
       }
 
@@ -148,8 +149,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               try {
                 const baseUrl = new URL(currentPageUrl);
                 resolvedUrl = new URL(href, baseUrl).href;
-              } catch (error) {
-                console.warn('Failed to resolve relative URL:', href, 'against base:', currentPageUrl, error);
+              } catch (err) {
+                warn('Failed to resolve relative URL:', href, 'against base:', currentPageUrl, err);
                 // Fallback: assume it's relative to Grafana docs root
                 resolvedUrl = `https://grafana.com/docs/${href}`;
               }
@@ -170,8 +171,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             const baseUrl = activeTab?.content?.url || 'https://grafana.com';
             try {
               fullUrl = new URL(resolvedUrl, baseUrl).href;
-            } catch (error) {
-              console.warn('Failed to resolve URL against base:', resolvedUrl, baseUrl, error);
+            } catch (err) {
+              warn('Failed to resolve URL against base:', resolvedUrl, baseUrl, err);
               // Fallback to grafana.com only if resolution fails
               fullUrl = `https://grafana.com${resolvedUrl}`;
             }
@@ -325,8 +326,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             const baseUrl = activeTab?.content?.metadata?.learningJourney?.baseUrl || 'https://grafana.com';
             try {
               fullUrl = new URL(linkUrl, baseUrl).href;
-            } catch (error) {
-              console.warn('Failed to resolve side journey URL:', linkUrl, error);
+            } catch (err) {
+              warn('Failed to resolve side journey URL:', linkUrl, err);
               // Fallback to grafana.com only if resolution fails
               fullUrl = linkUrl.startsWith('/')
                 ? `https://grafana.com${linkUrl}`
@@ -336,7 +337,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
           // Validate the resolved URL before opening
           if (!isValidGrafanaContentUrl(fullUrl)) {
-            console.warn('Side journey link resolved to non-allowed URL, ignoring:', fullUrl);
+            warn('Side journey link resolved to non-allowed URL, ignoring:', fullUrl);
             return;
           }
 
@@ -392,8 +393,8 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             const baseUrl = activeTab?.content?.metadata?.learningJourney?.baseUrl || 'https://grafana.com';
             try {
               fullUrl = new URL(linkUrl, baseUrl).href;
-            } catch (error) {
-              console.warn('Failed to resolve related journey URL:', linkUrl, error);
+            } catch (err) {
+              warn('Failed to resolve related journey URL:', linkUrl, err);
               // Fallback to grafana.com only if resolution fails
               fullUrl = linkUrl.startsWith('/')
                 ? `https://grafana.com${linkUrl}`
@@ -403,7 +404,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
           // Validate the resolved URL before opening
           if (!isValidGrafanaContentUrl(fullUrl)) {
-            console.warn('Related journey link resolved to non-allowed URL, ignoring:', fullUrl);
+            warn('Related journey link resolved to non-allowed URL, ignoring:', fullUrl);
             return;
           }
 

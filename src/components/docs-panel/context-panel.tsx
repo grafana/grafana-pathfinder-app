@@ -9,6 +9,7 @@ import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
 import { locationService, config } from '@grafana/runtime';
+import { warn } from '../../lib/logger';
 
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
@@ -53,7 +54,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     if (this.state.onOpenDocsPage) {
       this.state.onOpenDocsPage(url, title);
     } else {
-      console.warn('No onOpenDocsPage callback available');
+      warn('No onOpenDocsPage callback available');
     }
   }
 

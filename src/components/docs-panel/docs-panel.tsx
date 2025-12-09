@@ -48,6 +48,7 @@ import { config, getAppEvents, locationService } from '@grafana/runtime';
 import logoSvg from '../../img/logo.svg';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
+import { log, warn, error } from '../../lib/logger';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { testIds } from '../testIds';
@@ -185,7 +186,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         const isValidCurrent = !data.currentUrl || validateUrl(data.currentUrl);
 
         if (!isValidBase || !isValidCurrent) {
-          console.warn('Rejected potentially unsafe URL from storage:', {
+          warn('Rejected potentially unsafe URL from storage:', {
             baseUrl: data.baseUrl,
             currentUrl: data.currentUrl,
             isValidBase,
@@ -207,8 +208,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       });
 
       return tabs;
-    } catch (error) {
-      console.error('Failed to restore tabs from storage:', error);
+    } catch (err) {
+      error('Failed to restore tabs from storage:', err);
       return [
         {
           id: 'recommendations',
@@ -231,8 +232,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         const tabExists = tabs.some((t) => t.id === activeTabId);
         return tabExists ? activeTabId : 'recommendations';
       }
-    } catch (error) {
-      console.error('Failed to restore active tab from storage:', error);
+    } catch (err) {
+      error('Failed to restore active tab from storage:', err);
     }
 
     return 'recommendations';
@@ -252,16 +253,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
       // Save both tabs and active tab
       await Promise.all([tabStorage.setTabs(tabsToSave), tabStorage.setActiveTab(this.state.activeTabId)]);
-    } catch (error) {
-      console.error('Failed to save tabs to storage:', error);
+    } catch (err) {
+      error('Failed to save tabs to storage:', err);
     }
   }
 
   public static async clearPersistedTabs(): Promise<void> {
     try {
       await tabStorage.clear();
-    } catch (error) {
-      console.error('Failed to clear persisted tabs:', error);
+    } catch (err) {
+      error('Failed to clear persisted tabs:', err);
     }
   }
 
@@ -356,15 +357,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         // Save tabs to storage even when there's an error
         this.saveTabsToStorage();
       }
-    } catch (error) {
-      console.error(`Failed to load journey content for tab ${tabId}:`, error);
+    } catch (err) {
+      error(`Failed to load journey content for tab ${tabId}:`, err);
 
       const errorUpdatedTabs = this.state.tabs.map((t) =>
         t.id === tabId
           ? {
               ...t,
               isLoading: false,
-              error: error instanceof Error ? error.message : 'Failed to load content',
+              error: err instanceof Error ? err.message : 'Failed to load content',
             }
           : t
       );
@@ -586,15 +587,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         // Save tabs to storage even when there's an error
         this.saveTabsToStorage();
       }
-    } catch (error) {
-      console.error(`Failed to load docs content for tab ${tabId}:`, error);
+    } catch (err) {
+      error(`Failed to load docs content for tab ${tabId}:`, err);
 
       const errorUpdatedTabs = this.state.tabs.map((t) =>
         t.id === tabId
           ? {
               ...t,
               isLoading: false,
-              error: error instanceof Error ? error.message : 'Failed to load documentation',
+              error: err instanceof Error ? err.message : 'Failed to load documentation',
             }
           : t
       );
@@ -701,7 +702,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         isRaised,
       });
 
-      console.log(`[DocsPanel] Hand ${isRaised ? 'raised' : 'lowered'} by ${attendeeName}`);
+      log(`[DocsPanel] Hand ${isRaised ? 'raised' : 'lowered'} by ${attendeeName}`);
     },
     [sessionManager, sessionInfo, attendeeName]
   );
@@ -712,15 +713,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       return;
     }
 
-    console.log('[DocsPanel] Setting up hand raise event listener for presenter');
+    log('[DocsPanel] Setting up hand raise event listener for presenter');
 
     const cleanup = onEvent((event) => {
-      console.log('[DocsPanel] Presenter received event:', event.type, event);
+      log('[DocsPanel] Presenter received event:', event.type, event);
 
       if (event.type === 'hand_raise') {
         if (event.isRaised) {
           // Show toast notification when someone raises their hand
-          console.log('[DocsPanel] Showing toast for hand raise:', event.attendeeName);
+          log('[DocsPanel] Showing toast for hand raise:', event.attendeeName);
           getAppEvents().publish({
             type: 'alert-success',
             payload: ['Live session', `${event.attendeeName} has raised their hand`],
@@ -992,14 +993,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Initialize ActionCaptureSystem when creating session as presenter
   useEffect(() => {
     if (sessionRole === 'presenter' && sessionManager && sessionInfo && !actionCaptureRef.current) {
-      console.log('[DocsPanel] Initializing ActionCaptureSystem for presenter');
+      log('[DocsPanel] Initializing ActionCaptureSystem for presenter');
       actionCaptureRef.current = new ActionCaptureSystem(sessionManager, sessionInfo.sessionId);
       actionCaptureRef.current.startCapture();
     }
 
     // Cleanup when ending session
     if (sessionRole !== 'presenter' && actionCaptureRef.current) {
-      console.log('[DocsPanel] Cleaning up ActionCaptureSystem');
+      log('[DocsPanel] Cleaning up ActionCaptureSystem');
       actionCaptureRef.current.stopCapture();
       actionCaptureRef.current = null;
     }
@@ -1012,19 +1013,19 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Initialize ActionReplaySystem when joining as attendee
   useEffect(() => {
     if (sessionRole === 'attendee' && navigationManagerRef.current && attendeeMode && !actionReplayRef.current) {
-      console.log(`[DocsPanel] Initializing ActionReplaySystem for attendee in ${attendeeMode} mode`);
+      log(`[DocsPanel] Initializing ActionReplaySystem for attendee in ${attendeeMode} mode`);
       actionReplayRef.current = new ActionReplaySystem(attendeeMode, navigationManagerRef.current);
     }
 
     // Update mode if it changes
     if (sessionRole === 'attendee' && actionReplayRef.current && attendeeMode) {
       actionReplayRef.current.setMode(attendeeMode);
-      console.log(`[DocsPanel] Updated ActionReplaySystem mode to ${attendeeMode}`);
+      log(`[DocsPanel] Updated ActionReplaySystem mode to ${attendeeMode}`);
     }
 
     // Cleanup when leaving session
     if (sessionRole !== 'attendee' && actionReplayRef.current) {
-      console.log('[DocsPanel] Cleaning up ActionReplaySystem');
+      log('[DocsPanel] Cleaning up ActionReplaySystem');
       actionReplayRef.current = null;
     }
   }, [sessionRole, attendeeMode]);
@@ -1035,14 +1036,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       return;
     }
 
-    console.log('[DocsPanel] Setting up event listener for attendee');
+    log('[DocsPanel] Setting up event listener for attendee');
 
     const cleanup = onEvent((event) => {
-      console.log('[DocsPanel] Received event:', event.type);
+      log('[DocsPanel] Received event:', event.type);
 
       // Handle session end
       if (event.type === 'session_end') {
-        console.log('[DocsPanel] Presenter ended the session');
+        log('[DocsPanel] Presenter ended the session');
         endSession();
 
         // Show notification to attendee
@@ -1064,7 +1065,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Auto-open tutorial when joining session as attendee
   useEffect(() => {
     if (sessionRole === 'attendee' && sessionInfo?.config.tutorialUrl) {
-      console.log('[DocsPanel] Auto-opening tutorial:', sessionInfo.config.tutorialUrl);
+      log('[DocsPanel] Auto-opening tutorial:', sessionInfo.config.tutorialUrl);
 
       const url = sessionInfo.config.tutorialUrl;
       const title = sessionInfo.config.name;
@@ -1295,7 +1296,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                               mode: newMode,
                             } as any);
                           }
-                          console.log('[DocsPanel] Switched to Guided mode');
+                          log('[DocsPanel] Switched to Guided mode');
                         }
                       }}
                       tooltip="Only see highlights when presenter clicks Show Me"
@@ -1324,7 +1325,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                               mode: newMode,
                             } as any);
                           }
-                          console.log('[DocsPanel] Switched to Follow mode');
+                          log('[DocsPanel] Switched to Follow mode');
                         }
                       }}
                       tooltip="Execute actions automatically when presenter clicks Do It"

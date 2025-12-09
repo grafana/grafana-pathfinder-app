@@ -287,6 +287,7 @@ describe('FormFillHandler', () => {
       await formFillHandler.execute(mockData, true);
 
       expect(mockConsoleWarn).toHaveBeenCalledWith(
+        '[pathfinder]',
         expect.stringContaining('Multiple elements found matching selector')
       );
     });

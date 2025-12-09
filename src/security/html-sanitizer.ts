@@ -342,11 +342,11 @@ export function sanitizeDocumentationHTML(html: string): string {
     }
 
     return sanitized;
-  } catch (error) {
+  } catch (err) {
     // Remove hook on error too
     DOMPurify.removeHook('afterSanitizeAttributes');
 
-    throw new Error(`HTML sanitization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`HTML sanitization failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
 }
 

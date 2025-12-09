@@ -102,7 +102,7 @@ describe('ButtonHandler', () => {
 
       await buttonHandler.execute(mockData, false);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible:', mockButtons[0]);
+      expect(mockConsoleWarn).toHaveBeenCalledWith('[pathfinder]', 'Target button is not visible:', mockButtons[0]);
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalled();
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalled();
     });
@@ -112,7 +112,7 @@ describe('ButtonHandler', () => {
 
       await buttonHandler.execute(mockData, true);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target button is not visible:', mockButtons[0]);
+      expect(mockConsoleWarn).toHaveBeenCalledWith('[pathfinder]', 'Target button is not visible:', mockButtons[0]);
       expect(mockButtons[0].click).toHaveBeenCalled();
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });

@@ -1,3 +1,4 @@
+import { error } from '../../../lib/logger';
 /**
  * Block Export Utilities
  *
@@ -129,13 +130,13 @@ export function parseGuideJson(json: string): JsonGuide | null {
     const validation = validateGuide(parsed);
 
     if (!validation.isValid) {
-      console.error('Invalid guide JSON:', validation.errors);
+      error('Invalid guide JSON:', validation.errors);
       return null;
     }
 
     return parsed as JsonGuide;
   } catch (e) {
-    console.error('Failed to parse guide JSON:', e);
+    error('Failed to parse guide JSON:', e);
     return null;
   }
 }

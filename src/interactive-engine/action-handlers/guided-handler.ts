@@ -1,3 +1,4 @@
+import { warn, error } from '../../lib/logger';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
@@ -52,8 +53,8 @@ export class GuidedHandler {
       // This handler is just for compatibility with the action system
       await this.waitForReactUpdates();
       this.stateManager.setState(data, 'completed');
-    } catch (error) {
-      this.stateManager.handleError(error as Error, 'GuidedHandler', data, false);
+    } catch (err) {
+      this.stateManager.handleError(err as Error, 'GuidedHandler', data, false);
     }
   }
 
@@ -137,8 +138,8 @@ export class GuidedHandler {
       // 3. Section execution completes
 
       return result;
-    } catch (error) {
-      console.error(`Guided step ${stepIndex + 1} failed:`, error);
+    } catch (err) {
+      error(`Guided step ${stepIndex + 1} failed:`, err);
       // Clean up abort controller and listeners on error to prevent resource leaks
       this.cancel();
       return 'cancelled';
@@ -314,12 +315,12 @@ export class GuidedHandler {
       try {
         const element = await this.findTargetElement(selector, actionType);
         return element;
-      } catch (error) {
+      } catch (err) {
         const elapsed = Date.now() - startTime;
         const remaining = timeout - elapsed;
 
         if (remaining <= 0) {
-          console.error(`Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
+          error(`Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
           throw error;
         }
         // Wait before retrying, but don't exceed timeout
@@ -355,12 +356,12 @@ export class GuidedHandler {
 
           if (targetElements.length > 0) {
             if (targetElements.length > 1) {
-              console.warn(`Multiple buttons found matching selector: ${resolvedSelector}, using first button`);
+              warn(`Multiple buttons found matching selector: ${resolvedSelector}, using first button`);
             }
             return targetElements[0];
           }
-        } catch (error) {
-          console.warn(`Button selector matching failed for "${resolvedSelector}", trying text match:`, error);
+        } catch (err) {
+          warn(`Button selector matching failed for "${resolvedSelector}", trying text match:`, err);
         }
       }
 
@@ -369,13 +370,13 @@ export class GuidedHandler {
         targetElements = findButtonByText(resolvedSelector);
         if (targetElements.length > 0) {
           if (targetElements.length > 1) {
-            console.warn(`Multiple buttons found matching text: ${resolvedSelector}, using first button`);
+            warn(`Multiple buttons found matching text: ${resolvedSelector}, using first button`);
           }
           return targetElements[0];
         }
-      } catch (error) {
+      } catch (err) {
         // Fall through to enhanced selector as last resort
-        console.warn(`findButtonByText failed for "${resolvedSelector}", trying enhanced selector:`, error);
+        warn(`findButtonByText failed for "${resolvedSelector}", trying enhanced selector:`, err);
       }
     }
 
@@ -388,7 +389,7 @@ export class GuidedHandler {
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
+      warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
     }
 
     return targetElements[0];
@@ -400,7 +401,7 @@ export class GuidedHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      console.warn('Target element is not visible:', targetElement);
+      warn('Target element is not visible:', targetElement);
       // Continue anyway (non-breaking)
     }
 

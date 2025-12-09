@@ -1,3 +1,4 @@
+import { warn } from '../../lib/logger';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
@@ -27,8 +28,8 @@ export class ButtonHandler {
 
       await this.handleDoMode(buttons);
       await this.markAsCompleted(data);
-    } catch (error) {
-      this.stateManager.handleError(error as Error, 'ButtonHandler', data, false);
+    } catch (err) {
+      this.stateManager.handleError(err as Error, 'ButtonHandler', data, false);
     }
   }
 
@@ -62,8 +63,8 @@ export class ButtonHandler {
 
       // Filter to only button elements
       return result.elements.filter((el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button');
-    } catch (error) {
-      console.warn(`Button selector matching failed for "${selector}":`, error);
+    } catch (err) {
+      warn(`Button selector matching failed for "${selector}":`, err);
       return [];
     }
   }
@@ -73,7 +74,7 @@ export class ButtonHandler {
     for (const button of buttons) {
       // Validate visibility before interaction
       if (!isElementVisible(button)) {
-        console.warn('Target button is not visible:', button);
+        warn('Target button is not visible:', button);
         // Continue anyway (non-breaking)
       }
 
@@ -91,7 +92,7 @@ export class ButtonHandler {
     for (const button of buttons) {
       // Validate visibility before interaction
       if (!isElementVisible(button)) {
-        console.warn('Target button is not visible:', button);
+        warn('Target button is not visible:', button);
         // Continue anyway (non-breaking)
       }
 

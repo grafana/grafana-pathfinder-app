@@ -1,3 +1,4 @@
+import { warn, error } from '../../../lib/logger';
 /**
  * useBlockPersistence Hook
  *
@@ -85,7 +86,7 @@ export function useBlockPersistence({
       // Notify that save was successful
       onSave?.();
     } catch (e) {
-      console.error('Failed to save guide to localStorage:', e);
+      error('Failed to save guide to localStorage:', e);
     }
   }, [guide, storageKey, onSave]);
 
@@ -101,12 +102,12 @@ export function useBlockPersistence({
 
       // Version check for future migrations
       if (parsed.version !== STORAGE_VERSION) {
-        console.warn('Stored guide version mismatch, may need migration');
+        warn('Stored guide version mismatch, may need migration');
       }
 
       return parsed.guide;
     } catch (e) {
-      console.error('Failed to load guide from localStorage:', e);
+      error('Failed to load guide from localStorage:', e);
       return null;
     }
   }, [storageKey]);
@@ -117,7 +118,7 @@ export function useBlockPersistence({
       localStorage.removeItem(storageKey);
       lastGuideRef.current = '';
     } catch (e) {
-      console.error('Failed to clear guide from localStorage:', e);
+      error('Failed to clear guide from localStorage:', e);
     }
   }, [storageKey]);
 
