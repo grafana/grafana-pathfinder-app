@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "1.1.85",
+  "version": "1.1.86",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
     "dev": "webpack -w -c ./.config/webpack/webpack.config.ts --env development",
@@ -20,7 +20,7 @@
     "i18n-extract": "i18next --config src/locales/i18next-parser.config.js"
   },
   "author": "Grafanalabs",
-  "license": "Apache-2.0",
+  "license": "AGPL-3.0",
   "devDependencies": {
     "@grafana/eslint-config": "^9.0.0",
     "@grafana/faro-webpack-plugin": "^0.8.1",
