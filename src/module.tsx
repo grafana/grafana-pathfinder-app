@@ -11,6 +11,8 @@ import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { isGrafanaDocsUrl, isInteractiveLearningUrl } from './security';
+import { initializeOpenFeature, getFeatureFlagValue, getStringFlagValue, FeatureFlags } from './utils/openfeature';
+import { PathfinderFeatureProvider } from './components/OpenFeatureProvider';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
@@ -20,6 +22,27 @@ import { isGrafanaDocsUrl, isInteractiveLearningUrl } from './security';
 // } catch (e) {
 //   console.error('[Faro] Error initializing frontend metrics:', e);
 // }
+
+// Initialize OpenFeature provider for dynamic feature flag evaluation
+// This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
+try {
+  initializeOpenFeature();
+} catch (e) {
+  console.error('[OpenFeature] Error initializing feature flags:', e);
+}
+
+// Evaluate A/B experiment variant at module load time
+// - Variant "a" (treatment): Register sidebar, auto-open enabled
+// - Variant "b" (control): Don't register sidebar, Grafana falls back to native help dropdown
+// DEBUG: URL parameter override for testing (e.g., ?pathfinder_variant=b)
+// TODO: Remove this debug override after experiment testing is complete
+const debugUrlParams = new URLSearchParams(window.location.search);
+const debugVariantOverride = debugUrlParams.get('pathfinder_variant');
+const experimentVariant = debugVariantOverride || getStringFlagValue(FeatureFlags.EXPERIMENT_VARIANT, 'a');
+
+if (debugVariantOverride) {
+  console.warn(`[Pathfinder] DEBUG: Using URL override for experiment variant: "${debugVariantOverride}"`);
+}
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
@@ -117,10 +140,13 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   }
 
   // Check if auto-open is enabled
-  // Feature toggle sets the default, but user config always takes precedence
-  const shouldAutoOpen = config.openPanelOnLaunch;
+  // For variant "a" (treatment): always auto-open to provide full Pathfinder experience
+  // For variant "b" (control): no sidebar is registered, skip auto-open entirely
+  const featureFlagEnabled = getFeatureFlagValue(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH, false);
+  const isVariantA = experimentVariant === 'a';
+  const shouldAutoOpen = isVariantA || (experimentVariant !== 'b' && (featureFlagEnabled || config.openPanelOnLaunch));
 
-  // Auto-open panel if enabled (once per session per instance)
+  // Auto-open panel if enabled (once per session per instance, unless variant A which always opens)
   if (shouldAutoOpen) {
     // Include hostname to make this unique per Grafana instance
     // This ensures each Cloud instance (e.g., company1.grafana.net, company2.grafana.net)
@@ -134,26 +160,38 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     const isOnboardingFlow = currentPath.includes('/a/grafana-setupguide-app/onboarding-flow');
     const hasAutoOpened = sessionStorage.getItem(sessionKey);
 
+    // Variant A always auto-opens (ignores sessionStorage), others respect once-per-session
+    const shouldOpenNow = isVariantA || !hasAutoOpened;
+
     // Auto-open immediately if not on onboarding flow
-    if (!hasAutoOpened && !isOnboardingFlow) {
-      sessionStorage.setItem(sessionKey, 'true');
-      sidebarState.setPendingOpenSource('auto_open');
+    if (shouldOpenNow && !isOnboardingFlow) {
+      if (!isVariantA) {
+        sessionStorage.setItem(sessionKey, 'true');
+      }
+      sidebarState.setPendingOpenSource(isVariantA ? 'experiment_variant_a' : 'auto_open');
       attemptAutoOpen(200);
     }
 
     // If user starts on onboarding flow, listen for navigation away from it
     // This ensures the sidebar opens when they navigate to normal Grafana
-    if (!hasAutoOpened && isOnboardingFlow) {
+    if (shouldOpenNow && isOnboardingFlow) {
       const checkLocationChange = () => {
         const newLocation = locationService.getLocation();
         const newPath = newLocation.pathname || window.location.pathname || '';
         const stillOnOnboarding = newPath.includes('/a/grafana-setupguide-app/onboarding-flow');
         const alreadyOpened = sessionStorage.getItem(sessionKey);
 
-        // If we've left onboarding and haven't auto-opened yet, do it now
-        if (!stillOnOnboarding && !alreadyOpened) {
-          sessionStorage.setItem(sessionKey, 'true');
-          sidebarState.setPendingOpenSource('auto_open_after_onboarding');
+        // Variant A always opens, others respect once-per-session
+        const shouldOpenAfterOnboarding = isVariantA || !alreadyOpened;
+
+        // If we've left onboarding and should open, do it now
+        if (!stillOnOnboarding && shouldOpenAfterOnboarding) {
+          if (!isVariantA) {
+            sessionStorage.setItem(sessionKey, 'true');
+          }
+          sidebarState.setPendingOpenSource(
+            isVariantA ? 'experiment_variant_a_after_onboarding' : 'auto_open_after_onboarding'
+          );
           attemptAutoOpen(500); // Slightly longer delay after navigation
         }
       };
@@ -179,118 +217,124 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
 export { plugin };
 
-plugin.addComponent({
-  targets: `grafana/extension-sidebar/v0-alpha`,
-  title: 'Interactive learning',
-  description: 'Opens Interactive learning',
-  component: function ContextSidebar() {
-    // Get plugin configuration
-    const pluginContext = usePluginContext();
-    const config = useMemo(() => {
-      const rawJsonData = pluginContext?.meta?.jsonData || {};
-      const configWithDefaults = getConfigWithDefaults(rawJsonData);
+// Only register sidebar and command palette links for variant "a" (treatment group)
+// Variant "b" users get Grafana's native help dropdown (TopNavBarMenu)
+if (experimentVariant !== 'b') {
+  plugin.addComponent({
+    targets: `grafana/extension-sidebar/v0-alpha`,
+    title: 'Interactive learning',
+    description: 'Opens Interactive learning',
+    component: function ContextSidebar() {
+      // Get plugin configuration
+      const pluginContext = usePluginContext();
+      const config = useMemo(() => {
+        const rawJsonData = pluginContext?.meta?.jsonData || {};
+        const configWithDefaults = getConfigWithDefaults(rawJsonData);
 
-      return configWithDefaults;
-    }, [pluginContext?.meta?.jsonData]);
+        return configWithDefaults;
+      }, [pluginContext?.meta?.jsonData]);
 
-    // Set global config for utility functions (including auto-open logic)
-    useEffect(() => {
-      (window as any).__pathfinderPluginConfig = config;
-    }, [config]);
+      // Set global config for utility functions (including auto-open logic)
+      useEffect(() => {
+        (window as any).__pathfinderPluginConfig = config;
+      }, [config]);
 
-    // Process queued docs links when sidebar mounts
-    useEffect(() => {
-      sidebarState.setIsSidebarMounted(true);
+      // Process queued docs links when sidebar mounts
+      useEffect(() => {
+        sidebarState.setIsSidebarMounted(true);
 
-      // Track sidebar open via component mount
-      // consumePendingOpenSource() returns the source set before opening, or 'sidebar_toggle' as default
-      const openSource = sidebarState.consumePendingOpenSource();
-      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-        action: 'open',
-        source: openSource,
-        timestamp: Date.now(),
-      });
-
-      // Fire custom event when sidebar component mounts
-      const mountEvent = new CustomEvent('pathfinder-sidebar-mounted', {
-        detail: {
-          timestamp: Date.now(),
-        },
-      });
-      window.dispatchEvent(mountEvent);
-
-      return () => {
-        sidebarState.setIsSidebarMounted(false);
-
-        // Track sidebar close via component unmount
+        // Track sidebar open via component mount
+        // consumePendingOpenSource() returns the source set before opening, or 'sidebar_toggle' as default
+        const openSource = sidebarState.consumePendingOpenSource();
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-          action: 'close',
-          source: 'sidebar_toggle',
+          action: 'open',
+          source: openSource,
           timestamp: Date.now(),
         });
+
+        // Fire custom event when sidebar component mounts
+        const mountEvent = new CustomEvent('pathfinder-sidebar-mounted', {
+          detail: {
+            timestamp: Date.now(),
+          },
+        });
+        window.dispatchEvent(mountEvent);
+
+        return () => {
+          sidebarState.setIsSidebarMounted(false);
+
+          // Track sidebar close via component unmount
+          reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+            action: 'close',
+            source: 'sidebar_toggle',
+            timestamp: Date.now(),
+          });
+        };
+      }, []);
+
+      return (
+        <PathfinderFeatureProvider>
+          <Suspense fallback={<LoadingPlaceholder text="" />}>
+            <LazyMemoizedContextPanel />
+          </Suspense>
+        </PathfinderFeatureProvider>
+      );
+    },
+  });
+
+  plugin.addLink({
+    title: 'Open Interactive learning',
+    description: 'Open Interactive learning',
+    targets: [PluginExtensionPoints.CommandPalette],
+    onClick: () => {
+      sidebarState.setPendingOpenSource('command_palette');
+      sidebarState.openSidebar('Interactive learning', {
+        origin: 'command_palette',
+        timestamp: Date.now(),
+      });
+    },
+  });
+
+  plugin.addLink({
+    title: 'Need help?',
+    description: 'Get help with Grafana',
+    targets: [PluginExtensionPoints.CommandPalette],
+    onClick: () => {
+      sidebarState.setPendingOpenSource('command_palette_help');
+      sidebarState.openSidebar('Interactive learning', {
+        origin: 'command_palette_help',
+        timestamp: Date.now(),
+      });
+    },
+  });
+
+  plugin.addLink({
+    title: 'Learn Grafana',
+    description: 'Learn how to use Grafana',
+    targets: [PluginExtensionPoints.CommandPalette],
+    onClick: () => {
+      sidebarState.setPendingOpenSource('command_palette_learn');
+      sidebarState.openSidebar('Interactive learning', {
+        origin: 'command_palette_learn',
+        timestamp: Date.now(),
+      });
+    },
+  });
+
+  plugin.addLink({
+    targets: `grafana/extension-sidebar/v0-alpha`,
+    title: 'Documentation-Link',
+    description: 'Opens Interactive learning',
+    configure: () => {
+      return {
+        icon: 'question-circle',
+        description: 'Opens Interactive learning',
+        title: 'Interactive learning',
       };
-    }, []);
-
-    return (
-      <Suspense fallback={<LoadingPlaceholder text="" />}>
-        <LazyMemoizedContextPanel />
-      </Suspense>
-    );
-  },
-});
-
-plugin.addLink({
-  title: 'Open Interactive learning',
-  description: 'Open Interactive learning',
-  targets: [PluginExtensionPoints.CommandPalette],
-  onClick: () => {
-    sidebarState.setPendingOpenSource('command_palette');
-    sidebarState.openSidebar('Interactive learning', {
-      origin: 'command_palette',
-      timestamp: Date.now(),
-    });
-  },
-});
-
-plugin.addLink({
-  title: 'Need help?',
-  description: 'Get help with Grafana',
-  targets: [PluginExtensionPoints.CommandPalette],
-  onClick: () => {
-    sidebarState.setPendingOpenSource('command_palette_help');
-    sidebarState.openSidebar('Interactive learning', {
-      origin: 'command_palette_help',
-      timestamp: Date.now(),
-    });
-  },
-});
-
-plugin.addLink({
-  title: 'Learn Grafana',
-  description: 'Learn how to use Grafana',
-  targets: [PluginExtensionPoints.CommandPalette],
-  onClick: () => {
-    sidebarState.setPendingOpenSource('command_palette_learn');
-    sidebarState.openSidebar('Interactive learning', {
-      origin: 'command_palette_learn',
-      timestamp: Date.now(),
-    });
-  },
-});
-
-plugin.addLink({
-  targets: `grafana/extension-sidebar/v0-alpha`,
-  title: 'Documentation-Link',
-  description: 'Opens Interactive learning',
-  configure: () => {
-    return {
-      icon: 'question-circle',
-      description: 'Opens Interactive learning',
-      title: 'Interactive learning',
-    };
-  },
-  onClick: () => {},
-});
+    },
+    onClick: () => {},
+  });
+}
 
 interface DocPage {
   type: 'docs-page' | 'learning-journey';
