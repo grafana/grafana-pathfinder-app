@@ -36,7 +36,7 @@ import {
   ReactIntegration,
   getWebInstrumentations,
 } from '@grafana/faro-react';
-import { TracingInstrumentation } from '@grafana/faro-web-tracing';
+//import { TracingInstrumentation } from '@grafana/faro-web-tracing';
 import packageJson from '../../package.json';
 import { error as logError } from './logger';
 
@@ -109,9 +109,12 @@ export const initFaro = (): void => {
         environment,
       },
       isolate: true,
+      // Use custom transport to silently handle errors
+      // This prevents Faro from logging to console.error when transport fails,
+      // which would otherwise be captured by other plugins' Faro instances
       instrumentations: [
         ...getWebInstrumentations(),
-        new TracingInstrumentation(),
+        //new TracingInstrumentation(), // Causing issues with other plugins do not enable until fixed
         new ReactIntegration({
           router: createReactRouterV6DataOptions({
             matchRoutes,
