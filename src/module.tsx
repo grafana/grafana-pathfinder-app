@@ -140,13 +140,15 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   }
 
   // Check if auto-open is enabled
-  // For variant "a" (treatment): always auto-open to provide full Pathfinder experience
+  // DEBUG: Only force auto-open when URL param explicitly sets variant 'a' (for testing)
+  // Otherwise use normal behavior (respect sessionStorage and config settings)
   // For variant "b" (control): no sidebar is registered, skip auto-open entirely
   const featureFlagEnabled = getFeatureFlagValue(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH, false);
-  const isVariantA = experimentVariant === 'a';
-  const shouldAutoOpen = isVariantA || (experimentVariant !== 'b' && (featureFlagEnabled || config.openPanelOnLaunch));
+  const isDebugVariantA = debugVariantOverride === 'a';
+  const shouldAutoOpen =
+    experimentVariant !== 'b' && (isDebugVariantA || featureFlagEnabled || config.openPanelOnLaunch);
 
-  // Auto-open panel if enabled (once per session per instance, unless variant A which always opens)
+  // Auto-open panel if enabled (once per session per instance, unless debug variant A which always opens)
   if (shouldAutoOpen) {
     // Include hostname to make this unique per Grafana instance
     // This ensures each Cloud instance (e.g., company1.grafana.net, company2.grafana.net)
@@ -160,15 +162,15 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     const isOnboardingFlow = currentPath.includes('/a/grafana-setupguide-app/onboarding-flow');
     const hasAutoOpened = sessionStorage.getItem(sessionKey);
 
-    // Variant A always auto-opens (ignores sessionStorage), others respect once-per-session
-    const shouldOpenNow = isVariantA || !hasAutoOpened;
+    // Debug variant A always auto-opens (ignores sessionStorage), others respect once-per-session
+    const shouldOpenNow = isDebugVariantA || !hasAutoOpened;
 
     // Auto-open immediately if not on onboarding flow
     if (shouldOpenNow && !isOnboardingFlow) {
-      if (!isVariantA) {
+      if (!isDebugVariantA) {
         sessionStorage.setItem(sessionKey, 'true');
       }
-      sidebarState.setPendingOpenSource(isVariantA ? 'experiment_variant_a' : 'auto_open');
+      sidebarState.setPendingOpenSource(isDebugVariantA ? 'experiment_variant_a' : 'auto_open');
       attemptAutoOpen(200);
     }
 
@@ -181,16 +183,16 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         const stillOnOnboarding = newPath.includes('/a/grafana-setupguide-app/onboarding-flow');
         const alreadyOpened = sessionStorage.getItem(sessionKey);
 
-        // Variant A always opens, others respect once-per-session
-        const shouldOpenAfterOnboarding = isVariantA || !alreadyOpened;
+        // Debug variant A always opens, others respect once-per-session
+        const shouldOpenAfterOnboarding = isDebugVariantA || !alreadyOpened;
 
         // If we've left onboarding and should open, do it now
         if (!stillOnOnboarding && shouldOpenAfterOnboarding) {
-          if (!isVariantA) {
+          if (!isDebugVariantA) {
             sessionStorage.setItem(sessionKey, 'true');
           }
           sidebarState.setPendingOpenSource(
-            isVariantA ? 'experiment_variant_a_after_onboarding' : 'auto_open_after_onboarding'
+            isDebugVariantA ? 'experiment_variant_a_after_onboarding' : 'auto_open_after_onboarding'
           );
           attemptAutoOpen(500); // Slightly longer delay after navigation
         }

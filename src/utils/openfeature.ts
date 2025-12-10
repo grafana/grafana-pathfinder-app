@@ -148,7 +148,9 @@ export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): bo
 export const getStringFlagValue = (flagName: string, defaultValue: string): string => {
   try {
     const client = getFeatureFlagClient();
-    return client.getStringValue(flagName, defaultValue);
+    const value = client.getStringValue(flagName, defaultValue);
+    // Ensure we always return a valid string, falling back to default if empty/undefined
+    return value || defaultValue;
   } catch (error) {
     console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
     return defaultValue;
