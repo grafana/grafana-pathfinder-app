@@ -18,10 +18,6 @@ export const OPENFEATURE_DOMAIN = 'grafana-pathfinder-app';
  *
  * Naming convention: prefix with component name (e.g., pathfinder.feature-name)
  *
- * To add a new flag:
- * 1. Define the constant here
- * 2. Add flag definition in deployment_tools/.../feature-toggles/goff/
- * 3. Use useFeatureFlag() hook in React components or getFeatureFlagValue() elsewhere
  */
 export const FeatureFlags = {
   /**
