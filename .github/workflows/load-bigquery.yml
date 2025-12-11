@@ -2,9 +2,6 @@ name: Load BigQuery data
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - jdb/2025-12-automate-bigquery-loading
 
 permissions: {}
 
