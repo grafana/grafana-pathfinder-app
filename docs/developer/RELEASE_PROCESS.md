@@ -15,17 +15,7 @@ The project uses **three distinct GitHub Actions workflows** for different relea
   - Plugin signing is available but currently commented out
   - Creates GitHub release with built artifacts
 
-### 2. Continuous Deployment (`.github/workflows/push.yml`)
-
-- **Trigger**: Push to `main` branch
-- **Process**:
-  - Runs CI/CD pipeline on every push to main
-  - Deploys to `dev` environment automatically
-  - Adds git commit SHA as version suffix (e.g., `1.1.31+abcdef`)
-  - Uses Grafana's plugin CI workflows
-  - Triggers Argo Workflow for Grafana Cloud deployment
-
-### 3. Manual Publishing (`.github/workflows/publish.yml`)
+### 2. Manual Publishing (`.github/workflows/publish.yml`)
 
 - **Trigger**: Manual workflow dispatch
 - **Purpose**: Deploy to specific environments (dev/ops/prod)
