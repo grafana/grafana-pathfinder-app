@@ -26,6 +26,7 @@ const createMockOpenFeature = () => {
     getBooleanValue: jest.fn(),
     getStringValue: jest.fn(),
     getNumberValue: jest.fn(),
+    getObjectValue: jest.fn(),
   };
 
   const defaultProvider = { name: 'default' };
@@ -276,6 +277,139 @@ describe('openfeature', () => {
         );
 
         consoleSpy.mockRestore();
+      });
+    });
+  });
+
+  describe('getExperimentConfig', () => {
+    it('should return treatment config with pages from GOFF', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        mockOF.mockClient.getObjectValue.mockReturnValue({
+          variant: 'treatment',
+          pages: ['/a/grafana-synthetic-monitoring-app/checks/create'],
+        });
+        jest.doMock('@openfeature/react-sdk', () => mockOF);
+
+        const { getExperimentConfig, FeatureFlags } = require('./openfeature');
+        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+
+        expect(result).toEqual({
+          variant: 'treatment',
+          pages: ['/a/grafana-synthetic-monitoring-app/checks/create'],
+        });
+      });
+    });
+
+    it('should return control config with empty pages', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        mockOF.mockClient.getObjectValue.mockReturnValue({
+          variant: 'control',
+          pages: [],
+        });
+        jest.doMock('@openfeature/react-sdk', () => mockOF);
+
+        const { getExperimentConfig, FeatureFlags } = require('./openfeature');
+        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+
+        expect(result).toEqual({
+          variant: 'control',
+          pages: [],
+        });
+      });
+    });
+
+    it('should return excluded config (default) when not in experiment', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        mockOF.mockClient.getObjectValue.mockReturnValue({
+          variant: 'excluded',
+          pages: [],
+        });
+        jest.doMock('@openfeature/react-sdk', () => mockOF);
+
+        const { getExperimentConfig, FeatureFlags } = require('./openfeature');
+        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+
+        expect(result).toEqual({
+          variant: 'excluded',
+          pages: [],
+        });
+      });
+    });
+
+    it('should return DEFAULT_EXPERIMENT_CONFIG when response is invalid (missing pages)', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        // Return invalid response (missing pages)
+        mockOF.mockClient.getObjectValue.mockReturnValue({
+          variant: 'treatment',
+        });
+        jest.doMock('@openfeature/react-sdk', () => mockOF);
+
+        const { getExperimentConfig, FeatureFlags, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
+        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+
+        expect(result).toEqual(DEFAULT_EXPERIMENT_CONFIG);
+      });
+    });
+
+    it('should return DEFAULT_EXPERIMENT_CONFIG when response is invalid (pages not array)', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        mockOF.mockClient.getObjectValue.mockReturnValue({
+          variant: 'treatment',
+          pages: 'not-an-array',
+        });
+        jest.doMock('@openfeature/react-sdk', () => mockOF);
+
+        const { getExperimentConfig, FeatureFlags, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
+        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+
+        expect(result).toEqual(DEFAULT_EXPERIMENT_CONFIG);
+      });
+    });
+
+    it('should return DEFAULT_EXPERIMENT_CONFIG on error', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        mockOF.mockClient.getObjectValue.mockImplementation(() => {
+          throw new Error('Provider not ready');
+        });
+        jest.doMock('@openfeature/react-sdk', () => mockOF);
+
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+        const { getExperimentConfig, FeatureFlags, DEFAULT_EXPERIMENT_CONFIG } = require('./openfeature');
+        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+
+        expect(result).toEqual(DEFAULT_EXPERIMENT_CONFIG);
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining('[OpenFeature] Error evaluating flag'),
+          expect.any(Error)
+        );
+
+        consoleSpy.mockRestore();
+      });
+    });
+
+    it('should handle multiple target pages for IRM treatment', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        mockOF.mockClient.getObjectValue.mockReturnValue({
+          variant: 'treatment',
+          pages: ['/a/grafana-synthetic-monitoring-app/', '/a/grafana-irm-app/'],
+        });
+        jest.doMock('@openfeature/react-sdk', () => mockOF);
+
+        const { getExperimentConfig, FeatureFlags } = require('./openfeature');
+        const result = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+
+        expect(result.variant).toBe('treatment');
+        expect(result.pages).toHaveLength(2);
+        expect(result.pages).toContain('/a/grafana-synthetic-monitoring-app/');
+        expect(result.pages).toContain('/a/grafana-irm-app/');
       });
     });
   });

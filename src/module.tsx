@@ -11,7 +11,13 @@ import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { isGrafanaDocsUrl, isInteractiveLearningUrl } from './security';
-import { initializeOpenFeature, getFeatureFlagValue, getStringFlagValue, FeatureFlags } from './utils/openfeature';
+import {
+  initializeOpenFeature,
+  getFeatureFlagValue,
+  getExperimentConfig,
+  FeatureFlags,
+  ExperimentConfig,
+} from './utils/openfeature';
 import { PathfinderFeatureProvider } from './components/OpenFeatureProvider';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
@@ -31,17 +37,39 @@ try {
   console.error('[OpenFeature] Error initializing feature flags:', e);
 }
 
-// Evaluate A/B experiment variant at module load time
-// - Variant "a" (treatment): Register sidebar, auto-open enabled
-// - Variant "b" (control): Don't register sidebar, Grafana falls back to native help dropdown
-// DEBUG: URL parameter override for testing (e.g., ?pathfinder_variant=b)
-// TODO: Remove this debug override after experiment testing is complete
+// Evaluate A/B experiment config at module load time
+// GOFF returns an object with { variant, pages }:
+// - variant "excluded": Not in experiment, normal Pathfinder behavior (sidebar available)
+// - variant "control": In experiment, no sidebar (native Grafana help only)
+// - variant "treatment": In experiment, sidebar auto-opens on target pages
+// - pages: Array of page path prefixes where auto-open should trigger (treatment only)
+// DEBUG: URL parameter overrides for testing
+// - pathfinder_variant: excluded | control | treatment
+// - pathfinder_pages: comma-separated list of page path prefixes that trigger auto-open
+// TODO: Remove debug overrides after experiment testing is complete
 const debugUrlParams = new URLSearchParams(window.location.search);
 const debugVariantOverride = debugUrlParams.get('pathfinder_variant');
-const experimentVariant = debugVariantOverride || getStringFlagValue(FeatureFlags.EXPERIMENT_VARIANT, 'a');
+const debugTargetPages = debugUrlParams.get('pathfinder_pages')?.split(',').filter(Boolean) || [];
+
+// Get experiment config from GOFF (returns { variant, pages })
+// If debug URL params are set, use those instead
+const experimentConfig: ExperimentConfig = debugVariantOverride
+  ? { variant: debugVariantOverride as ExperimentConfig['variant'], pages: debugTargetPages }
+  : getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+
+const experimentVariant = experimentConfig.variant;
+// Use pages from debug URL param if provided, otherwise use pages from GOFF config
+const targetPages = debugTargetPages.length > 0 ? debugTargetPages : experimentConfig.pages;
 
 if (debugVariantOverride) {
   console.warn(`[Pathfinder] DEBUG: Using URL override for experiment variant: "${debugVariantOverride}"`);
+  if (debugTargetPages.length > 0) {
+    console.warn(`[Pathfinder] DEBUG: Target pages for auto-open: ${debugTargetPages.join(', ')}`);
+  }
+} else if (experimentConfig.variant !== 'excluded') {
+  console.log(
+    `[Pathfinder] Experiment config from GOFF: variant="${experimentConfig.variant}", pages=${JSON.stringify(experimentConfig.pages)}`
+  );
 }
 
 // Initialize translations
@@ -140,15 +168,27 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   }
 
   // Check if auto-open is enabled
-  // DEBUG: Only force auto-open when URL param explicitly sets variant 'a' (for testing)
-  // Otherwise use normal behavior (respect sessionStorage and config settings)
-  // For variant "b" (control): no sidebar is registered, skip auto-open entirely
+  // - treatment: auto-open on target pages from GOFF config (or all pages if no target specified)
+  // - excluded: use normal behavior (respect sessionStorage and config settings)
+  // - control: no sidebar is registered, skip auto-open entirely
   const featureFlagEnabled = getFeatureFlagValue(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH, false);
-  const isDebugVariantA = debugVariantOverride === 'a';
-  const shouldAutoOpen =
-    experimentVariant !== 'b' && (isDebugVariantA || featureFlagEnabled || config.openPanelOnLaunch);
+  const isTreatment = experimentVariant === 'treatment';
+  const isExcluded = experimentVariant === 'excluded';
 
-  // Auto-open panel if enabled (once per session per instance, unless debug variant A which always opens)
+  // Check if current page matches any target page from GOFF config (treatment only)
+  const location = locationService.getLocation();
+  const currentPath = location.pathname || window.location.pathname || '';
+  const isTargetPage =
+    targetPages.length === 0 || targetPages.some((targetPath) => currentPath.startsWith(targetPath.trim()));
+
+  // Determine if we should auto-open:
+  // - Treatment group: auto-open on target pages
+  // - Excluded group: use normal auto-open behavior (respects config/flags)
+  // - Control group: no sidebar, no auto-open
+  const shouldAutoOpen =
+    (isTreatment && isTargetPage) || (isExcluded && (featureFlagEnabled || config.openPanelOnLaunch));
+
+  // Auto-open panel if enabled
   if (shouldAutoOpen) {
     // Include hostname to make this unique per Grafana instance
     // This ensures each Cloud instance (e.g., company1.grafana.net, company2.grafana.net)
@@ -156,26 +196,25 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     const hostname = window.location.hostname;
     const sessionKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
 
-    // Check initial location
-    const location = locationService.getLocation();
-    const currentPath = location.pathname || window.location.pathname || '';
     const isOnboardingFlow = currentPath.includes('/a/grafana-setupguide-app/onboarding-flow');
     const hasAutoOpened = sessionStorage.getItem(sessionKey);
 
-    // Debug variant A always auto-opens (ignores sessionStorage), others respect once-per-session
-    const shouldOpenNow = isDebugVariantA || !hasAutoOpened;
+    // Treatment with debug URL always auto-opens (ignores sessionStorage)
+    // Treatment via GOFF also always auto-opens on target pages
+    // Excluded respects once-per-session
+    const shouldOpenNow = isTreatment || !hasAutoOpened;
 
     // Auto-open immediately if not on onboarding flow
     if (shouldOpenNow && !isOnboardingFlow) {
-      if (!isDebugVariantA) {
+      if (!isTreatment) {
         sessionStorage.setItem(sessionKey, 'true');
       }
-      sidebarState.setPendingOpenSource(isDebugVariantA ? 'experiment_variant_a' : 'auto_open');
+      sidebarState.setPendingOpenSource(isTreatment ? 'experiment_treatment' : 'auto_open');
       attemptAutoOpen(200);
     }
 
     // If user starts on onboarding flow, listen for navigation away from it
-    // This ensures the sidebar opens when they navigate to normal Grafana
+    // This ensures the sidebar opens when they navigate to normal Grafana (or target page for treatment)
     if (shouldOpenNow && isOnboardingFlow) {
       const checkLocationChange = () => {
         const newLocation = locationService.getLocation();
@@ -183,16 +222,20 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
         const stillOnOnboarding = newPath.includes('/a/grafana-setupguide-app/onboarding-flow');
         const alreadyOpened = sessionStorage.getItem(sessionKey);
 
-        // Debug variant A always opens, others respect once-per-session
-        const shouldOpenAfterOnboarding = isDebugVariantA || !alreadyOpened;
+        // Check if new path is a target page from GOFF config (for treatment)
+        const isNewPathTargetPage =
+          targetPages.length === 0 || targetPages.some((targetPath) => newPath.startsWith(targetPath.trim()));
+
+        // Treatment opens on target pages, excluded respects once-per-session
+        const shouldOpenAfterOnboarding = (isTreatment && isNewPathTargetPage) || (!isTreatment && !alreadyOpened);
 
         // If we've left onboarding and should open, do it now
         if (!stillOnOnboarding && shouldOpenAfterOnboarding) {
-          if (!isDebugVariantA) {
+          if (!isTreatment) {
             sessionStorage.setItem(sessionKey, 'true');
           }
           sidebarState.setPendingOpenSource(
-            isDebugVariantA ? 'experiment_variant_a_after_onboarding' : 'auto_open_after_onboarding'
+            isTreatment ? 'experiment_treatment_after_onboarding' : 'auto_open_after_onboarding'
           );
           attemptAutoOpen(500); // Slightly longer delay after navigation
         }
@@ -215,13 +258,46 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       }
     }
   }
+
+  // Treatment variant: If user starts on a non-target page, listen for navigation to target pages
+  // This ensures auto-open triggers when they navigate to a target page (e.g., from home to Synthetic Monitoring)
+  if (isTreatment && !isTargetPage && targetPages.length > 0) {
+    const checkNavigationToTargetPage = () => {
+      const newLocation = locationService.getLocation();
+      const newPath = newLocation.pathname || window.location.pathname || '';
+
+      // Check if new path matches any target page
+      const isNewPathTargetPage = targetPages.some((targetPath) => newPath.startsWith(targetPath.trim()));
+
+      if (isNewPathTargetPage) {
+        sidebarState.setPendingOpenSource('experiment_treatment_navigation');
+        attemptAutoOpen(300);
+      }
+    };
+
+    // Listen for Grafana location changes
+    document.addEventListener('grafana:location-changed', checkNavigationToTargetPage);
+
+    // Also listen via locationService history API
+    try {
+      const history = locationService.getHistory();
+      if (history) {
+        const unlisten = history.listen(checkNavigationToTargetPage);
+        (window as any).__pathfinderTreatmentNavUnlisten = unlisten;
+      }
+    } catch (error) {
+      window.addEventListener('popstate', checkNavigationToTargetPage);
+    }
+  }
 };
 
 export { plugin };
 
-// Only register sidebar and command palette links for variant "a" (treatment group)
-// Variant "b" users get Grafana's native help dropdown (TopNavBarMenu)
-if (experimentVariant !== 'b') {
+// Register sidebar for everyone EXCEPT control group
+// - excluded: normal behavior (sidebar available)
+// - control: no sidebar (native Grafana help only)
+// - treatment: sidebar + auto-open on target pages
+if (experimentVariant !== 'control') {
   plugin.addComponent({
     targets: `grafana/extension-sidebar/v0-alpha`,
     title: 'Interactive learning',

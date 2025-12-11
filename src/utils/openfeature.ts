@@ -28,13 +28,32 @@ export const FeatureFlags = {
   AUTO_OPEN_SIDEBAR_ON_LAUNCH: 'pathfinder.auto-open-sidebar',
 
   /**
-   * A/B experiment variant for testing pathfinder vs native help
-   * - "a" (treatment): Register sidebar, auto-open enabled
-   * - "b" (control): Don't register sidebar, Grafana falls back to native help dropdown
-   * Default: "a" to preserve existing behavior if flag not set
+   * A/B experiment variant for testing Pathfinder impact on onboarding
+   * - "excluded": Not in experiment, normal Pathfinder behavior (sidebar available)
+   * - "control": In experiment, no sidebar (native Grafana help only)
+   * - "treatment": In experiment, sidebar auto-opens on target pages
+   * Default: "excluded" to preserve normal behavior if flag not set
    */
   EXPERIMENT_VARIANT: 'pathfinder.experiment-variant',
 } as const;
+
+/**
+ * Experiment configuration returned by GOFF
+ * Contains both the variant assignment and target pages for auto-open
+ */
+export interface ExperimentConfig {
+  variant: 'excluded' | 'control' | 'treatment';
+  pages: string[];
+}
+
+/**
+ * Default experiment config when flag is not set or errors
+ * Defaults to 'excluded' to preserve normal Pathfinder behavior
+ */
+export const DEFAULT_EXPERIMENT_CONFIG: ExperimentConfig = {
+  variant: 'excluded',
+  pages: [],
+};
 
 /**
  * Track initialization state to prevent double initialization
@@ -148,12 +167,52 @@ export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): bo
 export const getStringFlagValue = (flagName: string, defaultValue: string): string => {
   try {
     const client = getFeatureFlagClient();
-    const value = client.getStringValue(flagName, defaultValue);
-    // Ensure we always return a valid string, falling back to default if empty/undefined
-    return value || defaultValue;
+    return client.getStringValue(flagName, defaultValue);
   } catch (error) {
     console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
     return defaultValue;
+  }
+};
+
+/**
+ * Get experiment configuration from a feature flag that returns a JSON object
+ *
+ * Use this for experiment flags that need to return both a variant and additional config.
+ * The flag should return an object with { variant: string, pages: string[] }
+ *
+ * @param flagName - The feature flag name (use FeatureFlags constants)
+ * @returns The experiment configuration or DEFAULT_EXPERIMENT_CONFIG on error
+ *
+ * @example
+ * const config = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+ * if (config.variant === 'treatment') {
+ *   // Auto-open on config.pages
+ * }
+ */
+export const getExperimentConfig = (flagName: string): ExperimentConfig => {
+  try {
+    const client = getFeatureFlagClient();
+    // OpenFeature returns JsonValue - cast default to match expected type
+    const value = client.getObjectValue(flagName, DEFAULT_EXPERIMENT_CONFIG as any);
+    // Validate the response has required fields before using
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      'variant' in value &&
+      typeof (value as Record<string, unknown>).variant === 'string' &&
+      'pages' in value &&
+      Array.isArray((value as Record<string, unknown>).pages)
+    ) {
+      return {
+        variant: (value as Record<string, unknown>).variant as ExperimentConfig['variant'],
+        pages: (value as Record<string, unknown>).pages as string[],
+      };
+    }
+    return DEFAULT_EXPERIMENT_CONFIG;
+  } catch (error) {
+    console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
+    return DEFAULT_EXPERIMENT_CONFIG;
   }
 };
 
