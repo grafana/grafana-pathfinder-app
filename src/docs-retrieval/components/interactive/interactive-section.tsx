@@ -1279,7 +1279,7 @@ export function InteractiveSection({
 
       {!isCollapsed && description && <div className="interactive-section-description">{description}</div>}
 
-      {!isCollapsed && <div className="interactive-section-content">{enhancedChildren}</div>}
+      {!isCollapsed && <ol className="interactive-section-content">{enhancedChildren}</ol>}
 
       <div className={`interactive-section-actions${isCollapsed ? ' collapsed' : ''}`}>
         {isCollapsed ? (
