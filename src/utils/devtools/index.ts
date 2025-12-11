@@ -13,6 +13,7 @@ export type { RecordedStep, MultistepGroup, ExportStep, ExportOptions } from './
 export {
   exportStepsToHTML,
   combineStepsIntoMultistep,
+  combineStepsIntoGuided,
   detectMultistepGroups,
   exportAsFullHTML,
 } from './tutorial-exporter';

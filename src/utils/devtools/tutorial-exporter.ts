@@ -176,6 +176,72 @@ function formatMultistepAsHTML(steps: RecordedStep[], description: string): stri
 }
 
 /**
+ * Convert selected steps into a guided structure (user-performed actions)
+ */
+export function combineStepsIntoGuided(
+  allSteps: RecordedStep[],
+  selectedIndices: number[],
+  description: string
+): RecordedStep[] {
+  if (selectedIndices.length < 2) {
+    return allSteps;
+  }
+
+  // Sort indices to maintain order
+  const sortedIndices = [...selectedIndices].sort((a, b) => a - b);
+
+  // Create the guided structure
+  const guidedHtml = formatGuidedAsHTML(
+    sortedIndices.map((i) => allSteps[i]),
+    description
+  );
+
+  // Build new steps array with guided in place
+  const newSteps: RecordedStep[] = [];
+
+  for (let i = 0; i < allSteps.length; i++) {
+    if (i === sortedIndices[0]) {
+      // Insert guided at first selected position
+      newSteps.push({
+        action: 'guided',
+        selector: guidedHtml,
+        description: description || 'Guided steps',
+        isUnique: true,
+      });
+    } else if (!sortedIndices.includes(i)) {
+      // Include non-selected steps
+      newSteps.push(allSteps[i]);
+    }
+  }
+
+  return newSteps;
+}
+
+/**
+ * Format multiple steps as a guided structure (user-performed)
+ */
+function formatGuidedAsHTML(steps: RecordedStep[], description: string): string {
+  let html = '<li class="interactive" data-targetaction="guided">\n';
+
+  for (const step of steps) {
+    html += `    <span class="interactive"\n`;
+    html += `          data-targetaction='${escapeAttribute(step.action)}'\n`;
+    html += `          data-reftarget='${escapeAttribute(step.selector)}'`;
+
+    if (step.value) {
+      html += `\n          data-targetvalue='${escapeAttribute(step.value)}'`;
+    }
+
+    html += `></span>\n`;
+  }
+
+  html += `    ${escapeHtml(description)}\n`;
+  html += `</li>`;
+
+  return html;
+}
+
+/**
  * Detect potential multistep groups based on timing and context
  * TODO: Implement when timestamp tracking is added to RecordedStep
  */

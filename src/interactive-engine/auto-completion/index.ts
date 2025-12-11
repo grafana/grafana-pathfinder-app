@@ -21,3 +21,7 @@ export type { StepActionConfig, DetectedActionEvent } from './action-matcher';
 
 // Action Monitor - Global singleton for monitoring user interactions
 export { ActionMonitor, getActionMonitor } from './action-monitor';
+
+// Auto-detection Hook - Shared hook for interactive elements
+export { useAutoDetection, useSingleActionDetection, resolveTargetElement } from './useAutoDetection';
+export type { ActionToDetect, MatchResult, UseAutoDetectionOptions } from './useAutoDetection';

@@ -21,9 +21,15 @@ import type { DetectedActionEvent } from './action-matcher';
 const MAX_QUEUE_SIZE = 10;
 
 /**
+ * Debounce delay in milliseconds to prevent duplicate completions
+ * from rapid interactions (e.g., double-clicks, fast typing)
+ */
+const DEBOUNCE_DELAY_MS = 50;
+
+/**
  * DOM event types to monitor for user actions
  */
-const MONITORED_EVENT_TYPES = ['click', 'input', 'change', 'mouseenter'] as const;
+const MONITORED_EVENT_TYPES = ['click', 'input', 'change', 'mouseenter', 'keydown'] as const;
 
 /**
  * Singleton class for monitoring user actions across the application
@@ -64,6 +70,15 @@ export class ActionMonitor {
   private listeners = new Map<string, EventListener>();
   private actionQueue: DetectedActionEvent[] = [];
 
+  // Reference counting for multi-section coordination
+  private referenceCount = 0;
+
+  // Force-disabled flag for section execution (overrides reference counting)
+  private forceDisabled = false;
+
+  // Debounce state to prevent duplicate completions
+  private lastEmittedAction: { element: HTMLElement; timestamp: number } | null = null;
+
   private constructor() {
     // Private constructor for singleton pattern
   }
@@ -79,44 +94,84 @@ export class ActionMonitor {
   }
 
   /**
-   * Enable action monitoring
+   * Enable action monitoring (reference counted)
    *
    * Registers global DOM event listeners for user interactions.
-   * Safe to call multiple times (idempotent).
+   * Uses reference counting to handle multiple sections safely.
+   * Each call to enable() should be paired with a call to disable().
    *
    * Note: The caller (InteractiveSection) should check the plugin config
    * before calling this method to respect user preferences.
    */
   enable(): void {
-    if (this.enabled) {
-      return; // Already enabled
-    }
+    this.referenceCount++;
 
-    this.enabled = true;
-    this.registerEventListeners();
+    // Only actually enable if this is the first reference and not force-disabled
+    if (!this.enabled && !this.forceDisabled) {
+      this.enabled = true;
+      this.registerEventListeners();
+    }
   }
 
   /**
-   * Disable action monitoring
+   * Disable action monitoring (reference counted)
    *
-   * Removes all DOM event listeners and clears action queue.
-   * Safe to call multiple times (idempotent).
+   * Decrements reference count and only actually disables when count reaches 0.
+   * Safe to call multiple times - tracks each enable/disable pair.
    */
   disable(): void {
-    if (!this.enabled) {
-      return; // Already disabled
-    }
+    this.referenceCount = Math.max(0, this.referenceCount - 1);
 
-    this.enabled = false;
-    this.unregisterEventListeners();
-    this.clearQueue();
+    // Only actually disable if no more references
+    if (this.referenceCount === 0 && this.enabled && !this.forceDisabled) {
+      this.enabled = false;
+      this.unregisterEventListeners();
+      this.clearQueue();
+    }
+  }
+
+  /**
+   * Force disable action monitoring (bypasses reference counting)
+   *
+   * Used during section execution to ensure no auto-completions occur.
+   * Must be paired with forceEnable() to restore normal operation.
+   */
+  forceDisable(): void {
+    this.forceDisabled = true;
+    if (this.enabled) {
+      this.enabled = false;
+      this.unregisterEventListeners();
+      this.clearQueue();
+    }
+  }
+
+  /**
+   * Force enable action monitoring (restores from force-disable)
+   *
+   * Re-enables monitoring if there are still active references.
+   * Should be called after forceDisable() when section execution completes.
+   */
+  forceEnable(): void {
+    this.forceDisabled = false;
+    // Re-enable if there are active references
+    if (this.referenceCount > 0 && !this.enabled) {
+      this.enabled = true;
+      this.registerEventListeners();
+    }
   }
 
   /**
    * Check if monitoring is currently enabled
    */
   isEnabled(): boolean {
-    return this.enabled;
+    return this.enabled && !this.forceDisabled;
+  }
+
+  /**
+   * Get current reference count (for debugging)
+   */
+  getReferenceCount(): number {
+    return this.referenceCount;
   }
 
   /**
@@ -146,17 +201,18 @@ export class ActionMonitor {
   }
 
   /**
-   * Clear action queue
+   * Clear action queue and debounce state
    */
   private clearQueue(): void {
     this.actionQueue = [];
+    this.lastEmittedAction = null;
   }
 
   /**
    * Check if element is genuinely interactive
    *
-   * Uses permissive matching to avoid over-filtering, but helps reduce
-   * noise from clicks on purely decorative elements.
+   * Filters out purely decorative elements to reduce noise and prevent
+   * spurious auto-completions from clicks on non-interactive content.
    */
   private isValidInteractiveElement(element: HTMLElement): boolean {
     const tag = element.tagName.toLowerCase();
@@ -167,37 +223,60 @@ export class ActionMonitor {
       return true;
     }
 
-    // Allow elements with interactive roles
+    // Allow elements with interactive ARIA roles
     if (
       role === 'button' ||
       role === 'link' ||
       role === 'tab' ||
       role === 'menuitem' ||
       role === 'checkbox' ||
-      role === 'radio'
+      role === 'radio' ||
+      role === 'option' ||
+      role === 'switch' ||
+      role === 'combobox' ||
+      role === 'listbox' ||
+      role === 'menu' ||
+      role === 'slider'
     ) {
       return true;
     }
 
     // Allow elements with explicit interactivity markers
-    if (
-      element.onclick !== null ||
-      element.hasAttribute('data-testid') ||
-      element.hasAttribute('aria-label') ||
-      element.classList.contains('clickable')
-    ) {
+    if (element.onclick !== null || element.classList.contains('clickable')) {
       return true;
     }
 
     // Allow child elements of interactive parents (e.g., icon in button)
-    const interactiveParent = element.closest('button, a, [role="button"], [role="link"], input, select, textarea');
+    const interactiveParent = element.closest(
+      'button, a, [role="button"], [role="link"], [role="tab"], [role="menuitem"], input, select, textarea'
+    );
     if (interactiveParent) {
       return true;
     }
 
-    // For permissive behavior, allow other elements by default
-    // This prevents over-filtering while still providing some noise reduction
-    return true;
+    // Allow elements that are focusable (have tabindex)
+    const tabindex = element.getAttribute('tabindex');
+    if (tabindex !== null && tabindex !== '-1') {
+      return true;
+    }
+
+    // Reject purely decorative elements (divs, spans, etc. without interactivity)
+    // This is the key fix - we now actually filter instead of allowing everything
+    return false;
+  }
+
+  /**
+   * Check if action should be debounced (same element clicked within debounce window)
+   */
+  private shouldDebounce(element: HTMLElement, timestamp: number): boolean {
+    if (!this.lastEmittedAction) {
+      return false;
+    }
+
+    const isSameElement = this.lastEmittedAction.element === element;
+    const withinDebounceWindow = timestamp - this.lastEmittedAction.timestamp < DEBOUNCE_DELAY_MS;
+
+    return isSameElement && withinDebounceWindow;
   }
 
   /**
@@ -205,8 +284,8 @@ export class ActionMonitor {
    */
   private createEventListener(eventType: string): EventListener {
     return (event: Event) => {
-      // Skip if monitoring is disabled (safety check)
-      if (!this.enabled) {
+      // Skip if monitoring is disabled or force-disabled (safety check)
+      if (!this.enabled || this.forceDisabled) {
         return;
       }
 
@@ -220,10 +299,25 @@ export class ActionMonitor {
         return;
       }
 
-      // Additional validation: prefer genuinely interactive elements
-      // Note: This is permissive and won't filter out most elements
+      // Additional validation: filter out non-interactive elements
       if (!this.isValidInteractiveElement(target)) {
         return;
+      }
+
+      // Handle keyboard events - only track Enter/Space for form submission
+      if (eventType === 'keydown') {
+        const keyEvent = event as KeyboardEvent;
+        // Only capture Enter key on form elements or buttons for submission detection
+        if (keyEvent.key !== 'Enter' && keyEvent.key !== ' ') {
+          return; // Only track Enter and Space keys
+        }
+        // Space only for buttons/checkboxes, not text inputs
+        if (keyEvent.key === ' ') {
+          const tag = target.tagName.toLowerCase();
+          if (tag === 'input' || tag === 'textarea') {
+            return; // Skip space in text inputs
+          }
+        }
       }
 
       // Detect action type based on element and event
@@ -232,14 +326,12 @@ export class ActionMonitor {
       // Filter: only emit hover actions from mouseenter events
       // This prevents hover events from triggering button/highlight/formfill completions
       if (eventType === 'mouseenter' && actionType !== 'hover') {
-        // console.log(`Skipping mouseenter event - detected as ${actionType}, not hover`);
         return; // Skip - mouseenter should only trigger for explicit hover actions
       }
 
       // Filter: only emit click-based actions from click events
       // This prevents premature completion from hover/focus events
       if (eventType === 'click' && actionType === 'hover') {
-        // console.log('Skipping click event - detected as hover action');
         return; // Skip - click events shouldn't trigger hover actions
       }
 
@@ -258,17 +350,27 @@ export class ActionMonitor {
         clientY = event.clientY;
       }
 
+      const timestamp = Date.now();
+
+      // Debounce: skip if same element was just actioned
+      if (this.shouldDebounce(target, timestamp)) {
+        return;
+      }
+
       // Create detected action event
       const detectedAction: DetectedActionEvent = {
         actionType,
         element: target,
         value,
-        timestamp: Date.now(),
+        timestamp,
         clientX,
         clientY,
       };
 
-      // Add to queue and emit immediately (no debounce)
+      // Track for debouncing
+      this.lastEmittedAction = { element: target, timestamp };
+
+      // Add to queue and emit
       this.addToQueueAndEmit(detectedAction);
     };
   }
@@ -324,6 +426,9 @@ export class ActionMonitor {
    */
   static reset(): void {
     if (ActionMonitor.instance) {
+      // Force cleanup all state
+      ActionMonitor.instance.forceDisabled = false;
+      ActionMonitor.instance.referenceCount = 0;
       ActionMonitor.instance.disable();
       ActionMonitor.instance = null;
     }
