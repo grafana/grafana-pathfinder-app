@@ -24,4 +24,4 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: grafana/plugin-actions/bundle-size@244c3bc9c6eb94bc1dd6458ade2462499bbf0f5b
+      - uses: grafana/plugin-actions/bundle-size@428421c007301a8584325e90c83e8c7f6459fbec
