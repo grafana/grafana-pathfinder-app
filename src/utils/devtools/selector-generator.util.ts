@@ -34,8 +34,8 @@ export interface SelectorGenerationResult {
  * ```typescript
  * const handleClick = (event: MouseEvent) => {
  *   const result = generateSelectorFromEvent(event.target as HTMLElement, event);
- *   console.log('Selector:', result.selector);
- *   console.log('Action:', result.action);
+ *   log('Selector:', result.selector);
+ *   log('Action:', result.action);
  * }
  * ```
  */

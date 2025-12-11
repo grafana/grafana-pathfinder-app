@@ -1,3 +1,4 @@
+import { error } from '../lib/logger';
 /**
  * Centralized timeout manager to prevent competing debounce mechanisms
  * Provides a single source of truth for all timeout-based operations
@@ -49,8 +50,8 @@ export class TimeoutManager {
     const timeoutId = setTimeout(async () => {
       try {
         await callback();
-      } catch (error) {
-        console.error(`Timeout callback error for key '${key}':`, error);
+      } catch (err) {
+        error(`Timeout callback error for key '${key}':`, err);
       } finally {
         // Clean up after execution
         this.timeouts.delete(key);
@@ -76,8 +77,8 @@ export class TimeoutManager {
     const timeoutId = setTimeout(async () => {
       try {
         await callback();
-      } catch (error) {
-        console.error(`Timeout callback error for key '${key}':`, error);
+      } catch (err) {
+        error(`Timeout callback error for key '${key}':`, err);
       } finally {
         this.timeouts.delete(key);
       }
@@ -125,8 +126,8 @@ export class TimeoutManager {
     const intervalId = setInterval(async () => {
       try {
         await callback();
-      } catch (error) {
-        console.error(`Interval callback error for key '${key}':`, error);
+      } catch (err) {
+        error(`Interval callback error for key '${key}':`, err);
       }
     }, delay);
 

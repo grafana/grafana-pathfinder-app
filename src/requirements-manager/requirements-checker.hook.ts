@@ -1,3 +1,4 @@
+import { error } from '../lib/logger';
 import { TimeoutManager } from '../utils/timeout-manager';
 
 /**
@@ -230,8 +231,8 @@ export class SequentialRequirementsManager {
           setTimeout(() => {
             try {
               checker();
-            } catch (error) {
-              console.error(`Error in selective step checker for ${stepId}:`, error);
+            } catch (err) {
+              error(`Error in selective step checker for ${stepId}:`, err);
             }
           }, 300); // Wait for DOM to settle after state changes
         }
@@ -252,8 +253,8 @@ export class SequentialRequirementsManager {
         requestAnimationFrame(() => {
           try {
             checker();
-          } catch (error) {
-            console.error(`Error in eligibility-triggered check for ${stepId}:`, error);
+          } catch (err) {
+            error(`Error in eligibility-triggered check for ${stepId}:`, err);
           }
         });
       }
@@ -333,8 +334,8 @@ export class SequentialRequirementsManager {
           if (checker) {
             try {
               checker();
-            } catch (error) {
-              console.error(`Error in context-triggered check for ${stepId}:`, error);
+            } catch (err) {
+              error(`Error in context-triggered check for ${stepId}:`, err);
             }
           }
         });
@@ -368,10 +369,10 @@ export class SequentialRequirementsManager {
           this.recheckNextSteps();
         });
       })
-      .catch((error) => {
+      .catch((err) => {
         // Only log if not cancelled
         if (!this.contextMonitoringCancelled) {
-          console.error('Failed to start context monitoring:', error);
+          error('Failed to start context monitoring:', err);
         }
       });
   }

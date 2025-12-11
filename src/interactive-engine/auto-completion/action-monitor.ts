@@ -47,7 +47,7 @@ const MONITORED_EVENT_TYPES = ['click', 'input', 'change', 'mouseenter'] as cons
  *
  * // Listen for detected actions
  * document.addEventListener('user-action-detected', (event: CustomEvent) => {
- *   console.log('User action:', event.detail);
+ *   log('User action:', event.detail);
  * });
  *
  * // Temporarily disable during section execution
@@ -232,14 +232,14 @@ export class ActionMonitor {
       // Filter: only emit hover actions from mouseenter events
       // This prevents hover events from triggering button/highlight/formfill completions
       if (eventType === 'mouseenter' && actionType !== 'hover') {
-        // console.log(`Skipping mouseenter event - detected as ${actionType}, not hover`);
+        // log(`Skipping mouseenter event - detected as ${actionType}, not hover`);
         return; // Skip - mouseenter should only trigger for explicit hover actions
       }
 
       // Filter: only emit click-based actions from click events
       // This prevents premature completion from hover/focus events
       if (eventType === 'click' && actionType === 'hover') {
-        // console.log('Skipping click event - detected as hover action');
+        // log('Skipping click event - detected as hover action');
         return; // Skip - click events shouldn't trigger hover actions
       }
 

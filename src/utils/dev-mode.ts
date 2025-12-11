@@ -1,3 +1,4 @@
+import { error } from '../lib/logger';
 /**
  * Dev mode utility for per-user developer features
  *
@@ -74,7 +75,7 @@ export const enableDevMode = async (currentUserId: number, currentUserIds: numbe
       },
     });
   } catch (e: any) {
-    console.error('Failed to enable dev mode:', e);
+    error('Failed to enable dev mode:', e);
     throw new Error('Failed to enable dev mode. You may need admin permissions to modify plugin settings.');
   }
 };
@@ -103,7 +104,7 @@ export const disableDevModeForUser = async (userId: number, currentUserIds: numb
       },
     });
   } catch (e: any) {
-    console.error('Failed to disable dev mode for user:', e);
+    error('Failed to disable dev mode for user:', e);
     throw new Error('Failed to disable dev mode. You may need admin permissions to modify plugin settings.');
   }
 };
@@ -124,7 +125,7 @@ export const disableDevMode = async (): Promise<void> => {
       },
     });
   } catch (e: any) {
-    console.error('Failed to disable dev mode:', e);
+    error('Failed to disable dev mode:', e);
     throw new Error('Failed to disable dev mode. You may need admin permissions to modify plugin settings.');
   }
 };

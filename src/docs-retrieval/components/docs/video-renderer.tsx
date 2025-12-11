@@ -1,3 +1,4 @@
+import { warn, error } from '../../../lib/logger';
 import React, { useMemo } from 'react';
 
 export interface VideoRendererProps {
@@ -11,11 +12,11 @@ export function VideoRenderer({ src, type, baseUrl, onClick, ...props }: VideoRe
   const resolvedSrc = useMemo(() => {
     const videoSrc = src;
     if (!videoSrc) {
-      console.error('VideoRenderer: No video source found', { src });
+      error('VideoRenderer: No video source found', { src });
       return undefined;
     }
     if (!baseUrl) {
-      console.warn('VideoRenderer: No baseUrl provided, using relative URL', {
+      warn('VideoRenderer: No baseUrl provided, using relative URL', {
         videoSrc,
       });
       return videoSrc;

@@ -262,7 +262,7 @@ export function validateAndCleanSelector(selector: string, action: ActionType): 
       if (matches.length === 0) {
         warnings.push(`WARNING: Selector matches 0 elements - may need manual review`);
       }
-    } catch (error) {
+    } catch (err) {
       // Selector might use custom pseudo-selectors - that's ok
       // The enhanced selector will handle it at runtime
     }

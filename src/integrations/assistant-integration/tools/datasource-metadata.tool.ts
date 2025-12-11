@@ -276,8 +276,8 @@ export const createDatasourceMetadataTool = (
         const displayText = formatMetadataForDisplay(dsSettings, metadata, summary);
 
         return [displayText, artifact];
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         return `Failed to fetch metadata from ${dsSettings.name}: ${errorMessage}`;
       }
     },

@@ -1,3 +1,4 @@
+import { error } from '../../lib/logger';
 import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { Button, Input, Badge, Icon, useStyles2, TextArea, Stack, Alert, Field } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive-engine';
@@ -58,11 +59,11 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       }
 
       window.location.reload();
-    } catch (error) {
-      console.error('Failed to disable dev mode:', error);
+    } catch (err) {
+      error('Failed to disable dev mode:', err);
 
       // Show user-friendly error message
-      const errorMessage = error instanceof Error ? error.message : 'Failed to disable dev mode. Please try again.';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to disable dev mode. Please try again.';
       alert(errorMessage);
     }
   }, []);
@@ -202,8 +203,8 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         setSelectorCopied(true);
         // Reset after 2 seconds
         setTimeout(() => setSelectorCopied(false), 2000);
-      } catch (error) {
-        console.error('Failed to copy selector:', error);
+      } catch (err) {
+        error('Failed to copy selector:', err);
       }
     }
   }, [capturedSelector]);
@@ -252,8 +253,8 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       setAllStepsCopied(true);
       // Reset after 2 seconds
       setTimeout(() => setAllStepsCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy steps:', error);
+    } catch (err) {
+      error('Failed to copy steps:', err);
     }
   }, [exportStepsFromRecorder]);
 
@@ -276,8 +277,8 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       await navigator.clipboard.writeText(html);
       setExportCopied(true);
       setTimeout(() => setExportCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy HTML:', error);
+    } catch (err) {
+      error('Failed to copy HTML:', err);
     }
   }, [exportStepsFromRecorder]);
 

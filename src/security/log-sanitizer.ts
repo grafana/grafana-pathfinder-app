@@ -20,7 +20,7 @@
  * @example
  * ```typescript
  * const userUrl = "https://evil.com\nFAKE LOG ENTRY";
- * console.log('URL:', sanitizeForLogging(userUrl));
+ * log('URL:', sanitizeForLogging(userUrl));
  * // Logs: URL: https://evil.com\nFAKE LOG ENTRY (newline is escaped)
  * ```
  */

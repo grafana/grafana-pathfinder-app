@@ -1,3 +1,4 @@
+import { warn } from '../../lib/logger';
 import { createAssistantContextItem, type ChatContextItem } from '@grafana/assistant';
 import { RawContent } from '../../docs-retrieval/content.types';
 
@@ -65,8 +66,8 @@ export const buildDocumentContext = (content: RawContent): ChatContextItem[] => 
     });
 
     contexts.push(structuredContext);
-  } catch (error) {
-    console.warn('[AssistantIntegration] Failed to build document context:', error);
+  } catch (err) {
+    warn('[AssistantIntegration] Failed to build document context:', err);
   }
 
   return contexts;

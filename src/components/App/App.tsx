@@ -9,6 +9,7 @@ import { docsPage } from '../../pages/docsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { onPluginStart } from '../../context-engine';
+import { error } from '../../lib/logger';
 
 /**
  * Error Boundary to catch render errors in the plugin tree (R6)
@@ -31,8 +32,8 @@ class PluginErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Pathfinder plugin error:', error, errorInfo);
+  componentDidCatch(err: Error, errorInfo: React.ErrorInfo) {
+    error('Pathfinder plugin error:', err, errorInfo);
     this.setState({ errorInfo });
 
     // TODO: Re-enable Faro once collector CORS is configured correctly

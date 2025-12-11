@@ -3,8 +3,8 @@ import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents, locationService } from '@grafana/runtime';
 import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
-// TODO: Re-enable Faro once collector CORS is configured correctly
-// import { initializeFaroMetrics } from './lib/faro';
+import { initFaro } from './lib/faro';
+import { error, warn } from './lib/logger';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
@@ -12,14 +12,14 @@ import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { isGrafanaDocsUrl, isInteractiveLearningUrl } from './security';
 
-// TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
+// Only initializes on Grafana Cloud environments
 // Wrapped in try-catch to prevent plugin load failure if Faro has issues
-// try {
-//   await initializeFaroMetrics();
-// } catch (e) {
-//   console.error('[Faro] Error initializing frontend metrics:', e);
-// }
+try {
+  initFaro();
+} catch (e) {
+  error('[Faro] Failed to initialize:', e);
+}
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
@@ -71,7 +71,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Warn if docsParam is present but no docsPage is found
   // This can happen for malformed params or unsupported URL formats
   if (docsParam && !docsPage) {
-    console.warn(
+    warn(
       'Could not parse doc param:',
       docsParam,
       '- Supported formats: bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
@@ -169,7 +169,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
           // Store unlisten function for potential cleanup (though plugin.init typically doesn't get cleaned up)
           (window as any).__pathfinderAutoOpenUnlisten = unlisten;
         }
-      } catch (error) {
+      } catch (err) {
         // Fallback to popstate if history API not available
         window.addEventListener('popstate', checkLocationChange);
       }
@@ -208,7 +208,7 @@ plugin.addComponent({
       reportAppInteraction(UserInteraction.DocsPanelInteraction, {
         action: 'open',
         source: openSource,
-        timestamp: Date.now(),
+        event_time: Date.now(),
       });
 
       // Fire custom event when sidebar component mounts
@@ -226,7 +226,7 @@ plugin.addComponent({
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
           action: 'close',
           source: 'sidebar_toggle',
-          timestamp: Date.now(),
+          event_time: Date.now(),
         });
       };
     }, []);
@@ -321,7 +321,7 @@ const findDocPage = function (param: string): DocPage | null {
         };
       }
     } catch (e) {
-      console.warn('Failed to load bundled interactives index', e);
+      warn('Failed to load bundled interactives index', e);
     }
   }
 
@@ -335,7 +335,7 @@ const findDocPage = function (param: string): DocPage | null {
 
     // SECURITY: Use validated interactive learning URL check
     if (!isInteractiveLearningUrl(url)) {
-      console.warn('Security: Rejected non-interactive-learning URL:', url);
+      warn('Security: Rejected non-interactive-learning URL:', url);
       return null;
     }
 
@@ -369,8 +369,8 @@ const findDocPage = function (param: string): DocPage | null {
         }
       }
     }
-  } catch (error) {
-    console.error('Failed to load static links:', error);
+  } catch (err) {
+    error('Failed to load static links:', err);
   }
 
   // Case 4: Any Grafana docs URL (fallback for non-curated content)
@@ -389,7 +389,7 @@ const findDocPage = function (param: string): DocPage | null {
     // 2. Protocol is https (prevents protocol injection)
     // 3. Path contains valid docs paths (prevents arbitrary URL injection)
     if (!isGrafanaDocsUrl(fullUrl)) {
-      console.warn('Security: Rejected non-Grafana docs URL:', fullUrl);
+      warn('Security: Rejected non-Grafana docs URL:', fullUrl);
       return null;
     }
 
@@ -441,8 +441,8 @@ const attemptAutoOpen = (delay = 200) => {
           componentTitle: 'Interactive learning',
         },
       });
-    } catch (error) {
-      console.error('Failed to auto-open Interactive learning panel:', error);
+    } catch (err) {
+      error('Failed to auto-open Interactive learning panel:', err);
     }
   }, delay);
 };

@@ -1,3 +1,4 @@
+import { error } from '../lib/logger';
 /**
  * Hook for exporting steps to website shortcode format
  */
@@ -48,8 +49,8 @@ export function useWebsiteExport(): UseWebsiteExportReturn {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
         return true;
-      } catch (error) {
-        console.error('Failed to copy website shortcodes:', error);
+      } catch (err) {
+        error('Failed to copy website shortcodes:', err);
         return false;
       }
     },
@@ -64,8 +65,8 @@ export function useWebsiteExport(): UseWebsiteExportReturn {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
         return true;
-      } catch (error) {
-        console.error('Failed to copy website shortcode:', error);
+      } catch (err) {
+        error('Failed to copy website shortcode:', err);
         return false;
       }
     },

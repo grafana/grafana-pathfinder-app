@@ -1,3 +1,4 @@
+import { warn } from '../../../lib/logger';
 /**
  * Grafana Context Tool
  *
@@ -100,8 +101,8 @@ const fetchDashboardInfo = async (
       };
     }
     return undefined;
-  } catch (error) {
-    console.warn('[GrafanaContextTool] Failed to fetch dashboard info:', error);
+  } catch (err) {
+    warn('[GrafanaContextTool] Failed to fetch dashboard info:', err);
     return undefined;
   }
 };
@@ -117,8 +118,8 @@ const getDatasourcesInfo = (): DatasourceInfo[] => {
       name: ds.name,
       type: ds.type,
     }));
-  } catch (error) {
-    console.warn('[GrafanaContextTool] Failed to get datasources:', error);
+  } catch (err) {
+    warn('[GrafanaContextTool] Failed to get datasources:', err);
     return [];
   }
 };

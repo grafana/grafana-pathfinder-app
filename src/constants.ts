@@ -1,5 +1,6 @@
 import pluginJson from './plugin.json';
 import { config } from '@grafana/runtime';
+import { warn } from './lib/logger';
 
 export const PLUGIN_BASE_URL = `/a/${pluginJson.id}`;
 
@@ -120,8 +121,8 @@ const getPlatformSpecificDefault = (): boolean => {
   try {
     const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
     return isCloud; // Cloud = true (enabled), OSS = false (disabled)
-  } catch (error) {
-    console.warn('Failed to detect platform, defaulting to disabled:', error);
+  } catch (err) {
+    warn('Failed to detect platform, defaulting to disabled:', err);
     return false; // Conservative default
   }
 };

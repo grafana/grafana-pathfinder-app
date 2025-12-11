@@ -1,3 +1,4 @@
+import { log, error as logError } from '../../lib/logger';
 /**
  * Presenter Controls for Live Sessions
  *
@@ -59,9 +60,9 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       };
 
       await createSession(config);
-      console.log('[PresenterControls] Session created successfully');
+      log('[PresenterControls] Session created successfully');
     } catch (err) {
-      console.error('[PresenterControls] Failed to create session:', err);
+      logError('[PresenterControls] Failed to create session:', err);
       setError('Failed to create session. Please try again.');
     } finally {
       setIsCreating(false);
@@ -76,8 +77,8 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       await navigator.clipboard.writeText(text);
       setCopied(type);
       setTimeout(() => setCopied(null), 2000);
-    } catch (error) {
-      console.error('[PresenterControls] Failed to copy:', error);
+    } catch (err) {
+      logError('[PresenterControls] Failed to copy:', err);
     }
   };
 

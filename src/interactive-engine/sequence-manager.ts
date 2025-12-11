@@ -1,3 +1,4 @@
+import { warn } from '../lib/logger';
 import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
@@ -53,8 +54,8 @@ export class SequenceManager {
         if (retryCount < this.MAX_RETRIES) {
           await this.sleep(this.RETRY_DELAY);
         }
-      } catch (error) {
-        this.stateManager.logError(errorContext, error as Error, context.data);
+      } catch (err) {
+        this.stateManager.logError(errorContext, err as Error, context.data);
         retryCount++;
         if (retryCount < this.MAX_RETRIES) {
           await this.sleep(this.RETRY_DELAY);
@@ -62,9 +63,7 @@ export class SequenceManager {
       }
     }
 
-    console.warn(
-      `${context.stepName} ${context.stepIndex + 1} failed after ${this.MAX_RETRIES} retries, stopping sequence`
-    );
+    warn(`${context.stepName} ${context.stepIndex + 1} failed after ${this.MAX_RETRIES} retries, stopping sequence`);
     return 'failed';
   }
 

@@ -31,7 +31,7 @@ class GlobalLinkInterceptionState {
       intercepted_url: docsLink.url,
       link_title: docsLink.title,
       sidebar_was_open: sidebarState.getIsSidebarMounted(),
-      timestamp: Date.now(),
+      event_time: Date.now(),
     });
 
     // if sidebar is mounted, auto-open the link

@@ -1,3 +1,4 @@
+import { warn, error } from '../lib/logger';
 /**
  * Unified hook for checking both tutorial-specific requirements and objectives
  * Combines and replaces useStepRequirements and useStepObjectives
@@ -151,7 +152,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
           // No more retries, return failure
           return result;
-        } catch (error) {
+        } catch (err) {
           // REACT: Check mounted before retry (R4)
           if (!isMountedRef.current) {
             return { requirements: requirements || '', pass: false, error: [] };
@@ -296,8 +297,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           fixType: fixableError?.fixType,
           targetHref: fixableError?.targetHref,
         };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : `Failed to check ${type}`;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : `Failed to check ${type}`;
         return { pass: false, error: errorMessage };
       }
     },
@@ -418,8 +419,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         safeSetState(enabledState);
       }
       updateManager(enabledState);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to check step conditions';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to check step conditions';
       const errorState = createErrorState(errorMessage, requirements, objectives, hints, skippable);
       safeSetState(errorState);
       updateManager(errorState);
@@ -447,7 +448,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         const success = await navigationManagerRef.current.expandParentNavigationSection(state.targetHref);
 
         if (!success) {
-          console.error('Failed to expand parent navigation section');
+          error('Failed to expand parent navigation section');
           safeSetState((prev) => ({
             ...prev,
             isChecking: false,
@@ -465,7 +466,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         // Only fix navigation requirements if no other specific fix type is available
         await fixNavigationRequirements();
       } else {
-        console.warn('Unknown fix type:', state.fixType);
+        warn('Unknown fix type:', state.fixType);
         safeSetState((prev) => ({
           ...prev,
           isChecking: false,
@@ -488,8 +489,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         )
       );
       await checkStep();
-    } catch (error) {
-      console.error('Failed to fix requirements:', error);
+    } catch (err) {
+      error('Failed to fix requirements:', err);
       safeSetState((prev) => ({
         ...prev,
         isChecking: false,

@@ -1,3 +1,4 @@
+import { warn } from '../logger';
 /**
  * Smart selector generation for DOM elements
  * Creates robust, human-readable selectors while avoiding auto-generated classes
@@ -755,10 +756,10 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
   try {
     const matches = querySelectorAllEnhanced(cleanedSelector);
     if (matches.elements.length === 0) {
-      console.warn(`Generated selector has 0 matches: "${cleanedSelector}"`);
+      warn(`Generated selector has 0 matches: "${cleanedSelector}"`);
     }
-  } catch (error) {
-    console.warn('Selector validation error:', error);
+  } catch (err) {
+    warn('Selector validation error:', err);
   }
 
   return cleanedSelector;
@@ -805,8 +806,8 @@ function buildContextualSelector(element: HTMLElement, baseSelector: string): st
     }
 
     return baseSelector;
-  } catch (error) {
-    console.warn(`Context validation failed for "${baseSelector}":`, error);
+  } catch (err) {
+    warn(`Context validation failed for "${baseSelector}":`, err);
     return baseSelector;
   }
 }
@@ -998,10 +999,10 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
  * @example
  * ```typescript
  * const info = getSelectorInfo(myElement);
- * console.warn(info.selector); // "button[data-testid='save']"
- * console.warn(info.method);   // "data-testid"
- * console.warn(info.isUnique); // true
- * console.warn(info.contextStrategy); // "child-has"
+ * warn(info.selector); // "button[data-testid='save']"
+ * warn(info.method);   // "data-testid"
+ * warn(info.isUnique); // true
+ * warn(info.contextStrategy); // "child-has"
  * ```
  */
 export function getSelectorInfo(element: HTMLElement): {
@@ -1056,7 +1057,7 @@ export function getSelectorInfo(element: HTMLElement): {
     } else {
       matchCount = document.querySelectorAll(selector).length;
     }
-  } catch (error) {
+  } catch (err) {
     matchCount = 0;
   }
 

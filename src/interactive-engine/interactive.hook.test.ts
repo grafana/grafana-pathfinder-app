@@ -646,7 +646,7 @@ describe('useInteractiveElements', () => {
         await result.current.executeInteractiveAction('unknown', 'test-target', undefined, 'do');
       });
 
-      expect(consoleWarnSpy).toHaveBeenCalledWith('Unknown interactive action: unknown');
+      expect(consoleWarnSpy).toHaveBeenCalledWith('[pathfinder]', 'Unknown interactive action: unknown');
     });
 
     it('should handle errors in executeInteractiveAction', async () => {

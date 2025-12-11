@@ -1,3 +1,4 @@
+import { log, warn, error } from '../lib/logger';
 // HTML Parser for React Component Tree Conversion
 // Converts raw HTML into structured data that can be rendered as React components
 // Implements fail-fast principle with proper error propagation
@@ -47,13 +48,13 @@ function isTrustedInteractiveSource(baseUrl?: string): boolean {
 
   // In dev mode, allow localhost URLs for local testing
   if (isDevModeEnabledGlobal() && isLocalhostUrl(baseUrl)) {
-    console.log('[DEV MODE] Allowing interactive content from localhost:', baseUrl);
+    log('[DEV MODE] Allowing interactive content from localhost:', baseUrl);
     return true;
   }
 
   // In dev mode, allow GitHub raw URLs for testing
   if (isDevModeEnabledGlobal() && isGitHubRawUrl(baseUrl)) {
-    console.log('[DEV MODE] Allowing interactive content from GitHub raw:', baseUrl);
+    log('[DEV MODE] Allowing interactive content from GitHub raw:', baseUrl);
     return true;
   }
 
@@ -166,23 +167,23 @@ function mapHtmlAttributesToReactProps(element: Element, errorCollector: Parsing
         } else {
           props[reactPropName] = attrValue;
         }
-      } catch (error) {
+      } catch (err) {
         errorCollector.addError(
           'attribute_mapping',
-          `Failed to process attribute '${attr.name}': ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `Failed to process attribute '${attr.name}': ${err instanceof Error ? err.message : 'Unknown error'}`,
           element.outerHTML,
           'mapHtmlAttributesToReactProps',
-          error instanceof Error ? error : undefined
+          err instanceof Error ? err : undefined
         );
       }
     }
-  } catch (error) {
+  } catch (err) {
     errorCollector.addError(
       'attribute_mapping',
-      `Failed to map attributes for element: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      `Failed to map attributes for element: ${err instanceof Error ? err.message : 'Unknown error'}`,
       element.outerHTML,
       'mapHtmlAttributesToReactProps',
-      error instanceof Error ? error : undefined
+      err instanceof Error ? err : undefined
     );
   }
 
@@ -219,7 +220,7 @@ export function parseHTMLToComponents(
         ? '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, localhost (dev mode), GitHub raw (dev mode), or interactive-learning.grafana.net. Source:'
         : '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, or interactive-learning.grafana.net. Source:';
 
-      console.error(errorMessage, baseUrl);
+      error(errorMessage, baseUrl);
       errorCollector.addError(
         'html_sanitization',
         'Interactive content from untrusted source rejected',
@@ -230,7 +231,7 @@ export function parseHTMLToComponents(
     }
   } else {
     // Testing mode: Source validation bypassed (dev panel only)
-    console.warn('[Parser] Source validation BYPASSED for testing. Source:', baseUrl);
+    warn('[Parser] Source validation BYPASSED for testing. Source:', baseUrl);
   }
 
   // SECURITY: Sanitize HTML before parsing - no fallback on failure
@@ -238,15 +239,15 @@ export function parseHTMLToComponents(
   let sanitizedHtml: string;
   try {
     sanitizedHtml = sanitizeDocumentationHTML(html);
-  } catch (error) {
+  } catch (err) {
     errorCollector.addError(
       'html_sanitization',
       `HTML sanitization failed - content rejected for security reasons: ${
-        error instanceof Error ? error.message : 'Unknown error'
+        err instanceof Error ? err.message : 'Unknown error'
       }`,
       html.substring(0, 200),
       'sanitizeDocumentationHTML',
-      error instanceof Error ? error : undefined
+      err instanceof Error ? err : undefined
     );
     return errorCollector.getResult<ParsedContent>();
   }
@@ -277,13 +278,13 @@ export function parseHTMLToComponents(
       errorCollector.addError('html_parsing', 'Failed to create document root element', html);
       return errorCollector.getResult<ParsedContent>();
     }
-  } catch (error) {
+  } catch (err) {
     errorCollector.addError(
       'html_parsing',
-      `Failed to parse HTML: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      `Failed to parse HTML: ${err instanceof Error ? err.message : 'Unknown error'}`,
       html.substring(0, 200),
       'DOMParser',
-      error instanceof Error ? error : undefined
+      err instanceof Error ? err : undefined
     );
     return errorCollector.getResult<ParsedContent>();
   }
@@ -483,17 +484,17 @@ export function parseHTMLToComponents(
               if (walked) {
                 children.push(walked);
               }
-            } catch (error) {
+            } catch (err) {
               errorCollector.addError(
                 'children_processing',
                 `Failed to process expandable table child ${index}: ${
-                  error instanceof Error ? error.message : 'Unknown error'
+                  err instanceof Error ? err.message : 'Unknown error'
                 }`,
                 child.nodeType === Node.ELEMENT_NODE
                   ? (child as Element).outerHTML
                   : child.textContent?.substring(0, 100),
                 `${currentPath}.expand-table-wrapper[${index}]`,
-                error instanceof Error ? error : undefined
+                err instanceof Error ? err : undefined
               );
             }
           });
@@ -599,17 +600,17 @@ export function parseHTMLToComponents(
                 if (walked) {
                   children.push(walked);
                 }
-              } catch (error) {
+              } catch (err) {
                 errorCollector.addError(
                   'children_processing',
                   `Failed to process collapse content child ${index}: ${
-                    error instanceof Error ? error.message : 'Unknown error'
+                    err instanceof Error ? err.message : 'Unknown error'
                   }`,
                   child.nodeType === Node.ELEMENT_NODE
                     ? (child as Element).outerHTML
                     : child.textContent?.substring(0, 100),
                   `${currentPath}.collapse-content[${index}]`,
-                  error instanceof Error ? error : undefined
+                  err instanceof Error ? err : undefined
                 );
               }
             });
@@ -643,15 +644,13 @@ export function parseHTMLToComponents(
               if (step && typeof step !== 'string') {
                 stepElements.push(step);
               }
-            } catch (error) {
+            } catch (err) {
               errorCollector.addError(
                 'children_processing',
-                `Failed to process interactive step ${index}: ${
-                  error instanceof Error ? error.message : 'Unknown error'
-                }`,
+                `Failed to process interactive step ${index}: ${err instanceof Error ? err.message : 'Unknown error'}`,
                 stepEl.outerHTML,
                 `${currentPath}.step[${index}]`,
-                error instanceof Error ? error : undefined
+                err instanceof Error ? err : undefined
               );
             }
           });
@@ -729,15 +728,15 @@ export function parseHTMLToComponents(
 
               // Remove the internal span since it's just metadata
               span.remove();
-            } catch (error) {
+            } catch (err) {
               errorCollector.addError(
                 'element_creation',
                 `Failed to process multi-step internal action ${index + 1}: ${
-                  error instanceof Error ? error.message : 'Unknown error'
+                  err instanceof Error ? err.message : 'Unknown error'
                 }`,
                 span.outerHTML,
                 `${currentPath}.multistep.action[${index}]`,
-                error instanceof Error ? error : undefined
+                err instanceof Error ? err : undefined
               );
             }
           });
@@ -759,17 +758,17 @@ export function parseHTMLToComponents(
               if (walked) {
                 children.push(walked);
               }
-            } catch (error) {
+            } catch (err) {
               errorCollector.addError(
                 'children_processing',
                 `Failed to process interactive multistep child ${index}: ${
-                  error instanceof Error ? error.message : 'Unknown error'
+                  err instanceof Error ? err.message : 'Unknown error'
                 }`,
                 child.nodeType === Node.ELEMENT_NODE
                   ? (child as Element).outerHTML
                   : child.textContent?.substring(0, 100),
                 `${currentPath}.interactive-multistep[${index}]`,
-                error instanceof Error ? error : undefined
+                err instanceof Error ? err : undefined
               );
             }
           });
@@ -864,15 +863,15 @@ export function parseHTMLToComponents(
 
               // Remove the internal span since it's just metadata
               span.remove();
-            } catch (error) {
+            } catch (err) {
               errorCollector.addError(
                 'element_creation',
                 `Failed to process guided internal action ${index + 1}: ${
-                  error instanceof Error ? error.message : 'Unknown error'
+                  err instanceof Error ? err.message : 'Unknown error'
                 }`,
                 span.outerHTML,
                 `${currentPath}.guided.action[${index}]`,
-                error instanceof Error ? error : undefined
+                err instanceof Error ? err : undefined
               );
             }
           });
@@ -894,17 +893,17 @@ export function parseHTMLToComponents(
               if (walked) {
                 children.push(walked);
               }
-            } catch (error) {
+            } catch (err) {
               errorCollector.addError(
                 'children_processing',
                 `Failed to process interactive guided child ${index}: ${
-                  error instanceof Error ? error.message : 'Unknown error'
+                  err instanceof Error ? err.message : 'Unknown error'
                 }`,
                 child.nodeType === Node.ELEMENT_NODE
                   ? (child as Element).outerHTML
                   : child.textContent?.substring(0, 100),
                 `${currentPath}.interactive-guided[${index}]`,
-                error instanceof Error ? error : undefined
+                err instanceof Error ? err : undefined
               );
             }
           });
@@ -974,17 +973,17 @@ export function parseHTMLToComponents(
               if (walked) {
                 children.push(walked);
               }
-            } catch (error) {
+            } catch (err) {
               errorCollector.addError(
                 'children_processing',
                 `Failed to process interactive step child ${index}: ${
-                  error instanceof Error ? error.message : 'Unknown error'
+                  err instanceof Error ? err.message : 'Unknown error'
                 }`,
                 child.nodeType === Node.ELEMENT_NODE
                   ? (child as Element).outerHTML
                   : child.textContent?.substring(0, 100),
                 `${currentPath}.interactive-step[${index}]`,
-                error instanceof Error ? error : undefined
+                err instanceof Error ? err : undefined
               );
             }
           });
@@ -1031,15 +1030,15 @@ export function parseHTMLToComponents(
             if (walked) {
               children.push(walked);
             }
-          } catch (error) {
+          } catch (err) {
             errorCollector.addError(
               'children_processing',
-              `Failed to process child ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              `Failed to process child ${index}: ${err instanceof Error ? err.message : 'Unknown error'}`,
               child.nodeType === Node.ELEMENT_NODE
                 ? (child as Element).outerHTML
                 : child.textContent?.substring(0, 100),
               `${currentPath}[${index}]`,
-              error instanceof Error ? error : undefined
+              err instanceof Error ? err : undefined
             );
           }
         });
@@ -1057,13 +1056,13 @@ export function parseHTMLToComponents(
       }
 
       return null;
-    } catch (error) {
+    } catch (err) {
       errorCollector.addError(
         'element_creation',
-        `Failed to process node: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to process node: ${err instanceof Error ? err.message : 'Unknown error'}`,
         node.nodeType === Node.ELEMENT_NODE ? (node as Element).outerHTML : node.textContent?.substring(0, 100),
         path,
-        error instanceof Error ? error : undefined
+        err instanceof Error ? err : undefined
       );
       return null;
     }
@@ -1077,23 +1076,23 @@ export function parseHTMLToComponents(
         if (res && typeof res !== 'string') {
           elements.push(res);
         }
-      } catch (error) {
+      } catch (err) {
         errorCollector.addError(
           'element_creation',
-          `Failed to process top-level element ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `Failed to process top-level element ${index}: ${err instanceof Error ? err.message : 'Unknown error'}`,
           child.nodeType === Node.ELEMENT_NODE ? (child as Element).outerHTML : child.textContent?.substring(0, 100),
           `root[${index}]`,
-          error instanceof Error ? error : undefined
+          err instanceof Error ? err : undefined
         );
       }
     });
-  } catch (error) {
+  } catch (err) {
     errorCollector.addError(
       'html_parsing',
-      `Failed to walk DOM tree: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      `Failed to walk DOM tree: ${err instanceof Error ? err.message : 'Unknown error'}`,
       root.outerHTML.substring(0, 200),
       'walk',
-      error instanceof Error ? error : undefined
+      err instanceof Error ? err : undefined
     );
   }
 

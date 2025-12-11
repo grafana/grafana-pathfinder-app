@@ -1,3 +1,4 @@
+import { log, warn, error } from '../../lib/logger';
 /**
  * Action Capture System for Collaborative Sessions
  *
@@ -30,13 +31,13 @@ export class ActionCaptureSystem {
    */
   startCapture(): void {
     if (this.isCapturing) {
-      console.warn('[ActionCapture] Already capturing');
+      warn('[ActionCapture] Already capturing');
       return;
     }
 
     this.isCapturing = true;
     this.setupCaptureHandlers();
-    console.log('[ActionCapture] Started capturing presenter actions');
+    log('[ActionCapture] Started capturing presenter actions');
   }
 
   /**
@@ -49,7 +50,7 @@ export class ActionCaptureSystem {
 
     this.isCapturing = false;
     this.restoreOriginalHandlers();
-    console.log('[ActionCapture] Stopped capturing');
+    log('[ActionCapture] Stopped capturing');
   }
 
   /**
@@ -59,7 +60,7 @@ export class ActionCaptureSystem {
     // Use event delegation on the document to capture all button clicks
     document.addEventListener('click', this.handleButtonClick, true);
 
-    console.log('[ActionCapture] Capture handlers set up');
+    log('[ActionCapture] Capture handlers set up');
   }
 
   /**
@@ -86,18 +87,18 @@ export class ActionCaptureSystem {
     // Get the interactive step element
     const stepElement = this.findInteractiveStepElement(button);
     if (!stepElement) {
-      console.warn('[ActionCapture] Could not find interactive step element');
+      warn('[ActionCapture] Could not find interactive step element');
       return;
     }
 
     // Extract action details
     const action = this.extractActionFromElement(stepElement);
     if (!action) {
-      console.warn('[ActionCapture] Could not extract action details');
+      warn('[ActionCapture] Could not extract action details');
       return;
     }
 
-    console.log('[ActionCapture] ✅ Extracted action:', {
+    log('[ActionCapture] ✅ Extracted action:', {
       targetAction: action.targetAction,
       refTarget: action.refTarget,
       targetValue: action.targetValue,
@@ -108,7 +109,7 @@ export class ActionCaptureSystem {
 
     // Check for duplicate events (debounce)
     if (this.isDuplicateEvent(buttonType, stepId)) {
-      console.log('[ActionCapture] Skipping duplicate event');
+      log('[ActionCapture] Skipping duplicate event');
       return;
     }
 
@@ -129,7 +130,7 @@ export class ActionCaptureSystem {
       coordinates,
     };
 
-    console.log(`[ActionCapture] 📡 Broadcasting ${buttonType} event:`, {
+    log(`[ActionCapture] 📡 Broadcasting ${buttonType} event:`, {
       stepId,
       actionType: action.targetAction,
       refTarget: action.refTarget,
@@ -138,7 +139,7 @@ export class ActionCaptureSystem {
     });
 
     this.sessionManager.broadcastToAttendees(sessionEvent);
-    console.log(`[ActionCapture] ✅ Event broadcasted to attendees successfully`);
+    log(`[ActionCapture] ✅ Event broadcasted to attendees successfully`);
 
     // Update last event for debouncing
     this.lastEvent = {
@@ -258,7 +259,7 @@ export class ActionCaptureSystem {
         try {
           action.internalActions = JSON.parse(internalActionsStr);
         } catch (err) {
-          console.error('[ActionCapture] Failed to parse internal actions:', err);
+          error('[ActionCapture] Failed to parse internal actions:', err);
         }
       }
     }

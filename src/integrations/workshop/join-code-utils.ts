@@ -1,3 +1,4 @@
+import { error } from '../../lib/logger';
 /**
  * Utilities for generating and parsing join codes for collaborative sessions
  *
@@ -17,8 +18,8 @@ export function generateJoinCode(offer: SessionOffer): string {
   try {
     const json = JSON.stringify(offer);
     return btoa(json);
-  } catch (error) {
-    console.error('Failed to generate join code:', error);
+  } catch (err) {
+    error('Failed to generate join code:', err);
     throw error;
   }
 }
@@ -69,8 +70,8 @@ export function parseJoinCode(code: string): SessionOffer {
     }
 
     throw new Error('Invalid join code format');
-  } catch (error) {
-    console.error('Failed to parse join code:', error);
+  } catch (err) {
+    error('Failed to parse join code:', err);
     const sessionError: SessionError = {
       code: 'INVALID_CODE',
       message: 'Invalid join code. Please check and try again.',
@@ -120,8 +121,8 @@ export function parseSessionFromUrl(): SessionOffer | null {
       name: sessionName || baseSession.name,
       tutorialUrl: tutorialUrl || baseSession.tutorialUrl,
     };
-  } catch (error) {
-    console.error('Failed to parse session from URL:', error);
+  } catch (err) {
+    error('Failed to parse session from URL:', err);
     return null;
   }
 }
@@ -147,8 +148,8 @@ export async function generateQRCode(offer: SessionOffer, baseUrl?: string): Pro
       },
     });
     return qrCode;
-  } catch (error) {
-    console.error('Failed to generate QR code:', error);
+  } catch (err) {
+    error('Failed to generate QR code:', err);
     throw error;
   }
 }
@@ -163,8 +164,8 @@ export function generateAnswerCode(answer: SessionAnswer): string {
   try {
     const json = JSON.stringify(answer);
     return btoa(json);
-  } catch (error) {
-    console.error('Failed to generate answer code:', error);
+  } catch (err) {
+    error('Failed to generate answer code:', err);
     throw error;
   }
 }
@@ -187,8 +188,8 @@ export function parseAnswerCode(code: string): SessionAnswer {
     }
 
     return answer;
-  } catch (error) {
-    console.error('Failed to parse answer code:', error);
+  } catch (err) {
+    error('Failed to parse answer code:', err);
     const sessionError: SessionError = {
       code: 'INVALID_CODE',
       message: 'Invalid or malformed answer code',

@@ -1,3 +1,4 @@
+import { warn } from '../../lib/logger';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
@@ -39,8 +40,8 @@ export class FocusHandler {
 
       await this.handleDoMode(targetElements);
       await this.markAsCompleted(data);
-    } catch (error) {
-      this.stateManager.handleError(error as Error, 'FocusHandler', data, false);
+    } catch (err) {
+      this.stateManager.handleError(err as Error, 'FocusHandler', data, false);
     }
   }
 
@@ -49,7 +50,7 @@ export class FocusHandler {
     for (const element of targetElements) {
       // Validate visibility before interaction
       if (!isElementVisible(element)) {
-        console.warn('Target element is not visible:', element);
+        warn('Target element is not visible:', element);
         // Continue anyway (non-breaking)
       }
 
@@ -67,7 +68,7 @@ export class FocusHandler {
     for (const element of targetElements) {
       // Validate visibility before interaction
       if (!isElementVisible(element)) {
-        console.warn('Target element is not visible:', element);
+        warn('Target element is not visible:', element);
         // Continue anyway (non-breaking)
       }
 

@@ -1,3 +1,4 @@
+import { warn } from '../logger';
 /**
  * Enhanced DOM selector engine with support for complex selectors
  * Provides fallback support for :has() and :contains() pseudo-selectors
@@ -49,7 +50,7 @@ export function querySelectorAllEnhanced(selector: string): SelectorResult {
     // If native selector failed (threw error), check if it's just a simple selector with no elements
     // Don't treat standard CSS selectors as "complex" just because they failed
     if (nativeResult === null && !isComplexSelector(selector)) {
-      console.warn(`Native selector failed for standard CSS selector: "${selector}"`);
+      warn(`Native selector failed for standard CSS selector: "${selector}"`);
       return {
         elements: [],
         usedFallback: false,
@@ -60,8 +61,8 @@ export function querySelectorAllEnhanced(selector: string): SelectorResult {
     // If native fails or it's a complex selector (including data-testid selectors we want to trace),
     // parse and handle complex selectors
     return handleComplexSelector(selector);
-  } catch (error) {
-    console.warn(`Enhanced selector failed for "${selector}":`, error);
+  } catch (err) {
+    warn(`Enhanced selector failed for "${selector}":`, err);
     return {
       elements: [],
       usedFallback: true,
@@ -94,7 +95,7 @@ function tryNativeSelector(selector: string): NodeListOf<Element> | null {
     // Test if browser supports this selector natively
     const testResult = document.querySelectorAll(selector);
     return testResult;
-  } catch (error) {
+  } catch (err) {
     return null;
   }
 }
@@ -132,9 +133,9 @@ function handleComplexSelector(selector: string): SelectorResult {
   // If no special handling needed but we got here, the native selector must have failed
   // This could be an invalid selector or just a selector with no matches
   // Log more details to help debug
-  console.warn(`Unsupported complex selector (no :contains, :has, :text, or :nth-match found): "${selector}"`);
-  console.warn('This selector was flagged as complex but has no recognized pseudo-selectors');
-  console.warn('It may be corrupted or invalid. Original length:', selector.length);
+  warn(`Unsupported complex selector (no :contains, :has, :text, or :nth-match found): "${selector}"`);
+  warn('This selector was flagged as complex but has no recognized pseudo-selectors');
+  warn('It may be corrupted or invalid. Original length:', selector.length);
 
   return {
     elements: [],
@@ -153,7 +154,7 @@ function handleContainsSelector(selector: string): SelectorResult {
   const containsMatch = selector.match(/^(.+?):contains\((['"]?)(.*?)\2\)(.*)$/);
 
   if (!containsMatch) {
-    console.warn(`Invalid :contains() syntax: ${selector}`);
+    warn(`Invalid :contains() syntax: ${selector}`);
     return {
       elements: [],
       usedFallback: true,
@@ -184,8 +185,8 @@ function handleContainsSelector(selector: string): SelectorResult {
       originalSelector: selector,
       effectiveSelector: `${baseSelector} (text contains "${searchText}")`,
     };
-  } catch (error) {
-    console.warn(`Error processing :contains() selector "${selector}":`, error);
+  } catch (err) {
+    warn(`Error processing :contains() selector "${selector}":`, err);
     return {
       elements: [],
       usedFallback: true,
@@ -252,7 +253,7 @@ function handleHasSelector(selector: string): SelectorResult {
         originalSelector: selector,
       };
     }
-  } catch (error) {
+  } catch (err) {
     // Native :has() not supported, use fallback
   }
 
@@ -261,7 +262,7 @@ function handleHasSelector(selector: string): SelectorResult {
   const hasMatch = parseHasSelector(selector);
 
   if (!hasMatch) {
-    console.warn(`Invalid :has() syntax: ${selector}`);
+    warn(`Invalid :has() syntax: ${selector}`);
     return {
       elements: [],
       usedFallback: true,
@@ -303,8 +304,8 @@ function handleHasSelector(selector: string): SelectorResult {
             hasDescendant = Array.from(descendants).some((desc) =>
               (desc.textContent || '').toLowerCase().includes(innerSearchText.toLowerCase())
             );
-          } catch (error) {
-            console.warn(`Error checking inner :contains() selector "${hasSelector}":`, error);
+          } catch (err) {
+            warn(`Error checking inner :contains() selector "${hasSelector}":`, err);
             continue;
           }
         } else {
@@ -319,8 +320,8 @@ function handleHasSelector(selector: string): SelectorResult {
         try {
           const descendants = element.querySelectorAll(hasSelector);
           hasDescendant = descendants.length > 0;
-        } catch (error) {
-          console.warn(`Error checking descendant selector "${hasSelector}":`, error);
+        } catch (err) {
+          warn(`Error checking descendant selector "${hasSelector}":`, err);
           continue;
         }
       }
@@ -356,8 +357,8 @@ function handleHasSelector(selector: string): SelectorResult {
               try {
                 const descendants = element.querySelectorAll(nextHasSelector);
                 alsoHasDescendant = descendants.length > 0;
-              } catch (error) {
-                console.warn(`Error checking descendant selector "${nextHasSelector}":`, error);
+              } catch (err) {
+                warn(`Error checking descendant selector "${nextHasSelector}":`, err);
               }
             }
 
@@ -404,7 +405,7 @@ function handleHasSelector(selector: string): SelectorResult {
           );
           nestedElements.push(...nestedInContainer);
         } catch (nestedError) {
-          console.warn(`Error applying nested selector "${afterHas}":`, nestedError);
+          warn(`Error applying nested selector "${afterHas}":`, nestedError);
         }
       }
       return {
@@ -421,8 +422,8 @@ function handleHasSelector(selector: string): SelectorResult {
       originalSelector: selector,
       effectiveSelector: `${baseSelector} (has descendant: ${hasSelector})`,
     };
-  } catch (error) {
-    console.warn(`Error processing :has() selector "${selector}":`, error);
+  } catch (err) {
+    warn(`Error processing :has() selector "${selector}":`, err);
     return {
       elements: [],
       usedFallback: true,
@@ -473,8 +474,8 @@ function handleTextSelector(selector: string): SelectorResult {
       originalSelector: selector,
       effectiveSelector: `${baseSelector} (direct text contains "${searchText}")`,
     };
-  } catch (error) {
-    console.warn(`Error processing :text() selector "${selector}":`, error);
+  } catch (err) {
+    warn(`Error processing :text() selector "${selector}":`, err);
     return {
       elements: [],
       usedFallback: true,
@@ -499,8 +500,8 @@ function handleTestIdSelector(selector: string): SelectorResult {
         originalSelector: selector,
       };
     }
-  } catch (error) {
-    console.warn(`Native selector failed for testid selector: "${selector}"`, error);
+  } catch (err) {
+    warn(`Native selector failed for testid selector: "${selector}"`, err);
   }
 
   // 2. Fallback: If selector uses strict child combinator (>), try relaxing to descendant (space)
@@ -573,7 +574,7 @@ function supportsHasSelector(): boolean {
     document.body.removeChild(testContainer);
 
     return !!result;
-  } catch (error) {
+  } catch (err) {
     return false;
   }
 }
@@ -605,7 +606,7 @@ function handleNthMatchSelector(selector: string): SelectorResult {
   const match = selector.match(nthMatchPattern);
 
   if (!match) {
-    console.warn(`Invalid :nth-match() syntax: ${selector}`);
+    warn(`Invalid :nth-match() syntax: ${selector}`);
     return {
       elements: [],
       usedFallback: true,
@@ -618,7 +619,7 @@ function handleNthMatchSelector(selector: string): SelectorResult {
   const index = parseInt(indexStr, 10);
 
   if (isNaN(index) || index < 1) {
-    console.warn(`Invalid :nth-match() index: ${indexStr}. Must be a positive integer.`);
+    warn(`Invalid :nth-match() index: ${indexStr}. Must be a positive integer.`);
     return {
       elements: [],
       usedFallback: true,
@@ -657,7 +658,7 @@ function handleNthMatchSelector(selector: string): SelectorResult {
           effectiveSelector: `${baseSelector} (${index}th match) ${afterMatch}`,
         };
       } catch (nestedError) {
-        console.warn(`Error applying nested selector "${afterMatch}":`, nestedError);
+        warn(`Error applying nested selector "${afterMatch}":`, nestedError);
         return {
           elements: [targetElement],
           usedFallback: true,
@@ -673,8 +674,8 @@ function handleNthMatchSelector(selector: string): SelectorResult {
       originalSelector: selector,
       effectiveSelector: `${baseSelector} (${index}th match)`,
     };
-  } catch (error) {
-    console.warn(`Error processing :nth-match() selector "${selector}":`, error);
+  } catch (err) {
+    warn(`Error processing :nth-match() selector "${selector}":`, err);
     return {
       elements: [],
       usedFallback: true,

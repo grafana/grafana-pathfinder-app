@@ -1,3 +1,4 @@
+import { log, error } from '../../lib/logger';
 /**
  * Session State Management for Collaborative Learning
  *
@@ -97,7 +98,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
     // Subscribe to real-time attendee list updates
     const cleanup = sessionManager.onAttendeeListUpdate((updatedAttendees) => {
-      console.log('[SessionState] Attendee list updated:', updatedAttendees.length);
+      log('[SessionState] Attendee list updated:', updatedAttendees.length);
       setAttendees(updatedAttendees);
     });
 
@@ -121,7 +122,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
     // Subscribe to real-time hand raise updates
     const cleanup = sessionManager.onHandRaiseUpdate((updatedHandRaises) => {
-      console.log('[SessionState] Hand raises updated:', updatedHandRaises.length);
+      log('[SessionState] Hand raises updated:', updatedHandRaises.length);
       setHandRaises(updatedHandRaises);
     });
 
@@ -148,8 +149,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
       eventCallbacks.forEach((callback) => {
         try {
           callback(event);
-        } catch (error) {
-          console.error('[SessionState] Error in event callback:', error);
+        } catch (err) {
+          error('[SessionState] Error in event callback:', err);
         }
       });
     });
@@ -164,7 +165,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     }
 
     const cleanup = sessionManager.onAttendeeJoin((attendee) => {
-      console.log('[SessionState] Attendee joined:', attendee);
+      log('[SessionState] Attendee joined:', attendee);
       setAttendees((prev) => [...prev, attendee]);
     });
 
@@ -182,8 +183,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
         setSessionInfo(info);
         setSessionRole('presenter');
         return info;
-      } catch (error) {
-        console.error('[SessionState] Failed to create session:', error);
+      } catch (err) {
+        error('[SessionState] Failed to create session:', err);
         throw error;
       }
     },
@@ -246,9 +247,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
         setSessionInfo(info);
         setSessionRole('attendee');
 
-        console.log('[SessionState] Successfully joined session:', info);
-      } catch (error) {
-        console.error('[SessionState] Failed to join session:', error);
+        log('[SessionState] Successfully joined session:', info);
+      } catch (err) {
+        error('[SessionState] Failed to join session:', err);
         throw error;
       }
     },
@@ -285,7 +286,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
    * Update attendee mode
    */
   const updateAttendeeMode = useCallback((mode: 'guided' | 'follow') => {
-    console.log(`[SessionState] Updating attendee mode to: ${mode}`);
+    log(`[SessionState] Updating attendee mode to: ${mode}`);
     setAttendeeMode(mode);
   }, []);
 

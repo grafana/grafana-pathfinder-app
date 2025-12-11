@@ -1,3 +1,4 @@
+import { warn } from '../../lib/logger';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
@@ -30,8 +31,8 @@ export class HoverHandler {
 
       await this.handleDoMode(targetElement);
       await this.markAsCompleted(data);
-    } catch (error) {
-      this.stateManager.handleError(error as Error, 'HoverHandler', data, false);
+    } catch (err) {
+      this.stateManager.handleError(err as Error, 'HoverHandler', data, false);
     }
   }
 
@@ -47,7 +48,7 @@ export class HoverHandler {
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
+      warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
     }
 
     return targetElements[0];
@@ -56,7 +57,7 @@ export class HoverHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      console.warn('Target element is not visible:', targetElement);
+      warn('Target element is not visible:', targetElement);
       // Continue anyway (non-breaking)
     }
 
@@ -90,7 +91,7 @@ export class HoverHandler {
     ) {
       try {
         targetElement.focus();
-      } catch (error) {
+      } catch (err) {
         // Ignore focus errors - element might not be focusable despite attributes
       }
     }

@@ -1,3 +1,4 @@
+import { error } from '../lib/logger';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { locationService } from '@grafana/runtime';
 import { usePluginContext } from '@grafana/data';
@@ -63,8 +64,8 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       setContextData((prev) => ({ ...prev, isLoading: true }));
       const newContextData = await ContextService.getContextData();
       setContextData(newContextData);
-    } catch (error) {
-      console.error('Failed to fetch context data:', error);
+    } catch (err) {
+      error('Failed to fetch context data:', err);
       setContextData((prev) => ({ ...prev, isLoading: false }));
     }
   }, []); // Empty dependency array - setContextData is stable
@@ -97,8 +98,8 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
           recommendationsErrorType: errorType,
           usingFallbackRecommendations,
         }));
-      } catch (error) {
-        console.error('Failed to fetch recommendations:', error);
+      } catch (err) {
+        error('Failed to fetch recommendations:', err);
         setContextData((prev) => ({
           ...prev,
           recommendationsError: 'Failed to fetch recommendations',
