@@ -53,6 +53,9 @@ export enum UserInteraction {
   AssistantRevertClick = 'assistant_revert_click',
   AssistantTextSelectionMade = 'assistant_text_selection_made',
   AssistantAskButtonClick = 'assistant_ask_button_click',
+
+  // A/B Experiment Tracking
+  ExperimentPageEntered = 'experiment_page_entered',
 }
 
 // ============================================================================
