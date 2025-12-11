@@ -40,9 +40,9 @@ describe('useWebsiteExport', () => {
 
       const output = result.current.exportSteps(steps);
 
-      expect(output).toContain('{{< sequence');
-      expect(output).toContain('{{< button');
-      expect(output).toContain('reftarget="button[data-testid=\\"save\\"]"');
+      expect(output).toContain('{{< interactive/sequence');
+      expect(output).toContain('{{< interactive/button');
+      expect(output).toContain(`reftarget="button[data-testid='save']"`);
       expect(output).toContain('Click save');
     });
 
@@ -63,8 +63,8 @@ describe('useWebsiteExport', () => {
         includeComments: false,
       });
 
-      expect(output).not.toContain('{{< sequence');
-      expect(output).toContain('{{< highlight');
+      expect(output).not.toContain('{{< interactive/sequence');
+      expect(output).toContain('{{< interactive/highlight');
     });
   });
 
@@ -74,8 +74,8 @@ describe('useWebsiteExport', () => {
 
       const output = result.current.exportSingleStep('formfill', 'input[name="query"]', 'prometheus', 'Enter query');
 
-      expect(output).toContain('{{< formfill');
-      expect(output).toContain('reftarget="input[name=\\"query\\"]"');
+      expect(output).toContain('{{< interactive/formfill');
+      expect(output).toContain(`reftarget="input[name='query']"`);
       expect(output).toContain('targetvalue="prometheus"');
       expect(output).toContain('Enter query');
     });

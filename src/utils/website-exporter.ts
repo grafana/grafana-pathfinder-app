@@ -17,17 +17,17 @@ export interface WebsiteExportOptions {
  * Map internal action names to shortcode names
  */
 const ACTION_TO_SHORTCODE: Record<string, string> = {
-  button: 'button',
-  highlight: 'highlight',
-  formfill: 'formfill',
-  navigate: 'navigate',
-  hover: 'hover',
-  comment: 'comment',
-  guided: 'guided',
-  multistep: 'multistep',
-  sequence: 'sequence',
-  noop: 'noop',
-  ignore: 'ignore',
+  button: 'interactive/button',
+  highlight: 'interactive/highlight',
+  formfill: 'interactive/formfill',
+  navigate: 'interactive/navigate',
+  hover: 'interactive/hover',
+  comment: 'interactive/comment',
+  guided: 'interactive/guided',
+  multistep: 'interactive/multistep',
+  sequence: 'interactive/sequence',
+  noop: 'interactive/noop',
+  ignore: 'interactive/ignore',
 };
 
 /**
@@ -44,7 +44,7 @@ export function exportStepsForWebsite(steps: RecordedStep[], options: WebsiteExp
   let output = '';
 
   if (wrapInSequence) {
-    output += `{{< sequence id="${sequenceId}" >}}\n\n`;
+    output += `{{< interactive/sequence id="${sequenceId}" >}}\n\n`;
   }
 
   for (const step of steps) {
@@ -52,7 +52,7 @@ export function exportStepsForWebsite(steps: RecordedStep[], options: WebsiteExp
   }
 
   if (wrapInSequence) {
-    output += `{{< /sequence >}}\n`;
+    output += `{{< /interactive/sequence >}}\n`;
   }
 
   return output;
@@ -77,10 +77,10 @@ function formatStepForWebsite(step: RecordedStep, includeComments: boolean, incl
 
   output += `{{< ${shortcodeName}`;
   if (step.selector && step.action !== 'comment' && step.action !== 'noop') {
-    output += ` reftarget="${escapeQuotes(step.selector)}"`;
+    output += ` reftarget="${convertToSingleQuotes(step.selector)}"`;
   }
   if (step.value && step.action === 'formfill') {
-    output += ` targetvalue="${escapeQuotes(step.value)}"`;
+    output += ` targetvalue="${convertToSingleQuotes(step.value)}"`;
   }
   if (includeHints && !step.isUnique && step.matchCount && step.matchCount > 1) {
     output += ` hint="This selector matches ${step.matchCount} elements. Make sure you're targeting the right one."`;
@@ -98,8 +98,9 @@ function formatStepForWebsite(step: RecordedStep, includeComments: boolean, incl
  */
 function formatMultistepForWebsite(step: RecordedStep, _includeComments: boolean): string {
   let output = '';
+  const multistepShortcode = ACTION_TO_SHORTCODE['multistep'];
 
-  output += `{{< multistep >}}\n`;
+  output += `{{< ${multistepShortcode} >}}\n`;
   output += `${step.description}\n`;
 
   if (step.selector) {
@@ -108,18 +109,19 @@ function formatMultistepForWebsite(step: RecordedStep, _includeComments: boolean
     for (const substep of substeps) {
       const shortcodeName = ACTION_TO_SHORTCODE[substep.action] || substep.action;
 
-      output += `  {{< ${shortcodeName}`;
+      output += `{{< ${shortcodeName}`;
       if (substep.selector) {
-        output += ` reftarget="${escapeQuotes(substep.selector)}"`;
+        output += ` reftarget="${convertToSingleQuotes(substep.selector)}"`;
       }
       if (substep.value) {
-        output += ` targetvalue="${escapeQuotes(substep.value)}"`;
+        output += ` targetvalue="${convertToSingleQuotes(substep.value)}"`;
       }
-      output += ' />}}\n';
+      output += ' >}}';
+      output += `{{< /${shortcodeName} >}}\n`;
     }
   }
 
-  output += `{{< /multistep >}}\n\n`;
+  output += `{{< /${multistepShortcode} >}}\n\n`;
 
   return output;
 }
@@ -175,10 +177,11 @@ function unescapeHtml(text: string): string {
 }
 
 /**
- * Escape double quotes for use in shortcode parameters
+ * Convert double quotes to single quotes for use in shortcode parameters.
+ * Since shortcode arguments are wrapped in double quotes, inner quotes must be single quotes.
  */
-function escapeQuotes(text: string): string {
-  return text.replace(/"/g, '\\"');
+function convertToSingleQuotes(text: string): string {
+  return text.replace(/"/g, "'");
 }
 
 /**

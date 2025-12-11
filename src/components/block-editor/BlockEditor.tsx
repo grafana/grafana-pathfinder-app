@@ -60,6 +60,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
 
   // Section recording state
   const [recordingIntoSection, setRecordingIntoSection] = useState<string | null>(null);
+  const [recordingStartUrl, setRecordingStartUrl] = useState<string | null>(null);
   const pendingSectionIdRef = useRef<string | null>(null);
 
   // Block selection mode state (for merging blocks)
@@ -450,11 +451,13 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
 
         actionRecorder.clearRecording();
         setRecordingIntoSection(null);
+        setRecordingStartUrl(null);
       } else {
         // Start recording into this section
         actionRecorder.clearRecording();
         actionRecorder.startRecording();
         setRecordingIntoSection(sectionId);
+        setRecordingStartUrl(window.location.href);
       }
     },
     [recordingIntoSection, actionRecorder, editor]
@@ -479,11 +482,13 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
 
       // Start recording into this section after a brief delay to allow UI to update
       pendingSectionIdRef.current = editorBlockId;
+      const capturedUrl = window.location.href;
       setTimeout(() => {
         if (pendingSectionIdRef.current) {
           actionRecorder.clearRecording();
           actionRecorder.startRecording();
           setRecordingIntoSection(pendingSectionIdRef.current);
+          setRecordingStartUrl(capturedUrl);
           pendingSectionIdRef.current = null;
         }
       }, 100);
@@ -780,6 +785,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
                 'Section')
               : 'Section'
           }
+          startingUrl={recordingStartUrl ?? undefined}
         />
       )}
     </div>

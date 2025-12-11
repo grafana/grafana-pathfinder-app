@@ -97,6 +97,7 @@ export function BlockFormModal({
   const [isPickerActive, setIsPickerActive] = useState(false);
   const [isRecordModeActive, setIsRecordModeActive] = useState(false);
   const [recordStepCount, setRecordStepCount] = useState(0);
+  const [recordStartUrl, setRecordStartUrl] = useState<string | null>(null);
 
   // Store a callback to receive the selected element
   const pickerCallbackRef = useRef<((selector: string) => void) | null>(null);
@@ -268,10 +269,12 @@ export function BlockFormModal({
         recordStopCallbackRef.current = options.onStop;
         recordGetStepCountRef.current = options.getStepCount;
         setRecordStepCount(options.getStepCount());
+        setRecordStartUrl(window.location.href);
       } else if (!isActive) {
         recordStopCallbackRef.current = null;
         recordGetStepCountRef.current = null;
         setRecordStepCount(0);
+        setRecordStartUrl(null);
       }
     },
     []
@@ -327,7 +330,13 @@ export function BlockFormModal({
       {isPickerActive && <ElementPicker onSelect={handleElementSelect} onCancel={handlePickerCancel} />}
 
       {/* Record mode overlay - rendered outside the modal so clicks propagate to the page */}
-      {isRecordModeActive && <RecordModeOverlay onStop={handleRecordStop} stepCount={recordStepCount} />}
+      {isRecordModeActive && (
+        <RecordModeOverlay
+          onStop={handleRecordStop}
+          stepCount={recordStepCount}
+          startingUrl={recordStartUrl ?? undefined}
+        />
+      )}
     </>
   );
 }
