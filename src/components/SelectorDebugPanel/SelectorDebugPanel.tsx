@@ -1,19 +1,22 @@
-import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useCallback, useEffect, lazy, Suspense, useRef } from 'react';
 import { Button, Input, Badge, Icon, useStyles2, TextArea, Stack, Alert, Field } from '@grafana/ui';
 import { useInteractiveElements } from '../../interactive-engine';
 import { getDebugPanelStyles } from './debug-panel.styles';
 import {
   combineStepsIntoMultistep,
+  combineStepsIntoGuided,
   useSelectorTester,
   useStepExecutor,
   useSelectorCapture,
   useActionRecorder,
   parseStepString,
+  type RecordedStep,
 } from '../../utils/devtools';
 import { UrlTester } from 'components/UrlTester';
 import { DomPathTooltip } from '../DomPathTooltip';
 import { useWebsiteExport } from '../../utils/use-website-export.hook';
 import { SkeletonLoader } from '../SkeletonLoader';
+import { StorageKeys } from '../../lib/user-storage';
 
 // Lazy load BlockEditor to keep it out of main bundle when not needed
 const BlockEditor = lazy(() =>
@@ -31,6 +34,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   const { executeInteractiveAction } = useInteractiveElements();
 
   // Section expansion state - priority sections expanded by default
+  const [blockEditorExpanded, setBlockEditorExpanded] = useState(false);
   const [recordExpanded, setRecordExpanded] = useState(true); // Priority: expanded by default
   const [UrlTesterExpanded, setUrlTesterExpanded] = useState(true); // Priority: expanded by default
   const [watchExpanded, setWatchExpanded] = useState(false);
@@ -141,6 +145,8 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
   // Record Mode
   const [allStepsCopied, setAllStepsCopied] = useState(false);
+  const [recordingStartUrl, setRecordingStartUrl] = useState<string | null>(null);
+  const hasRestoredFromStorage = useRef(false);
   const {
     recordingState,
     isPaused,
@@ -156,6 +162,49 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     domPath: recordDomPath,
     cursorPosition: recordCursorPosition,
   } = useActionRecorder();
+
+  // Restore recording state from sessionStorage on mount
+  useEffect(() => {
+    if (hasRestoredFromStorage.current) {
+      return;
+    }
+    hasRestoredFromStorage.current = true;
+
+    try {
+      const savedState = sessionStorage.getItem(StorageKeys.DEVTOOLS_RECORDING_STATE);
+      if (savedState) {
+        const parsed = JSON.parse(savedState) as {
+          recordedSteps: RecordedStep[];
+          recordingStartUrl: string | null;
+        };
+        if (parsed.recordedSteps && parsed.recordedSteps.length > 0) {
+          setRecordedSteps(parsed.recordedSteps);
+        }
+        if (parsed.recordingStartUrl) {
+          setRecordingStartUrl(parsed.recordingStartUrl);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to restore recording state from storage:', error);
+    }
+  }, [setRecordedSteps]);
+
+  // Persist recording state to sessionStorage when it changes
+  useEffect(() => {
+    if (!hasRestoredFromStorage.current) {
+      return; // Don't persist until we've attempted to restore
+    }
+
+    try {
+      const stateToSave = {
+        recordedSteps,
+        recordingStartUrl,
+      };
+      sessionStorage.setItem(StorageKeys.DEVTOOLS_RECORDING_STATE, JSON.stringify(stateToSave));
+    } catch (error) {
+      console.warn('Failed to persist recording state to storage:', error);
+    }
+  }, [recordedSteps, recordingStartUrl]);
 
   // Export State
   const [exportCopied, setExportCopied] = useState(false);
@@ -223,8 +272,15 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       resumeRecording();
     } else {
       startRecording();
+      setRecordingStartUrl(window.location.href);
     }
   }, [isPaused, startRecording, resumeRecording]);
+
+  const handleReturnToStart = useCallback(() => {
+    if (recordingStartUrl) {
+      window.location.href = recordingStartUrl;
+    }
+  }, [recordingStartUrl]);
 
   const handlePauseRecording = useCallback(() => {
     pauseRecording();
@@ -232,10 +288,18 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
   const handleStopRecording = useCallback(() => {
     stopRecording();
+    // Keep recordingStartUrl so user can return to start after stopping
   }, [stopRecording]);
 
   const handleClearRecording = useCallback(() => {
     clearRecording();
+    setRecordingStartUrl(null);
+    // Clear persisted state
+    try {
+      sessionStorage.removeItem(StorageKeys.DEVTOOLS_RECORDING_STATE);
+    } catch {
+      // Ignore storage errors
+    }
   }, [clearRecording]);
 
   const handleDeleteStep = useCallback(
@@ -285,7 +349,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
     await copyForWebsite(recordedSteps, {
       includeComments: true,
       includeHints: false,
-      wrapInSequence: true,
+      wrapInSequence: false,
       sequenceId: 'tutorial-section',
     });
   }, [recordedSteps, copyForWebsite]);
@@ -307,8 +371,29 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       return;
     }
 
-    const description = 'Combined steps';
-    const newSteps = combineStepsIntoMultistep(recordedSteps, Array.from(selectedSteps), description);
+    // Build description from selected steps' descriptions
+    const sortedIndices = Array.from(selectedSteps).sort((a, b) => a - b);
+    const descriptions = sortedIndices.map((i) => recordedSteps[i]?.description).filter((d): d is string => Boolean(d));
+    const description = descriptions.join('. ').replace(/\.\./g, '.') || 'Combined steps';
+
+    const newSteps = combineStepsIntoMultistep(recordedSteps, sortedIndices, description);
+
+    setRecordedSteps(newSteps);
+    setSelectedSteps(new Set());
+    setMultistepMode(false);
+  }, [selectedSteps, recordedSteps, setRecordedSteps]);
+
+  const handleCombineAsGuided = useCallback(() => {
+    if (selectedSteps.size < 2) {
+      return;
+    }
+
+    // Build description from selected steps' descriptions
+    const sortedIndices = Array.from(selectedSteps).sort((a, b) => a - b);
+    const descriptions = sortedIndices.map((i) => recordedSteps[i]?.description).filter((d): d is string => Boolean(d));
+    const description = descriptions.join('. ').replace(/\.\./g, '.') || 'Guided steps';
+
+    const newSteps = combineStepsIntoGuided(recordedSteps, sortedIndices, description);
 
     setRecordedSteps(newSteps);
     setSelectedSteps(new Set());
@@ -336,12 +421,21 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       </div>
 
       {/* Block Editor */}
-      <div className={styles.editorSection}>
-        <div className={styles.editorContent}>
-          <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-            <BlockEditor />
-          </Suspense>
+      <div className={styles.section}>
+        <div className={styles.sectionHeader} onClick={() => setBlockEditorExpanded(!blockEditorExpanded)}>
+          <Stack direction="row" gap={1} alignItems="center">
+            <Icon name="edit" />
+            <h4 className={styles.sectionTitle}>New guide</h4>
+          </Stack>
+          <Icon name={blockEditorExpanded ? 'angle-up' : 'angle-down'} />
         </div>
+        {blockEditorExpanded && (
+          <div className={styles.sectionContent}>
+            <Suspense fallback={<SkeletonLoader type="recommendations" />}>
+              <BlockEditor />
+            </Suspense>
+          </div>
+        )}
       </div>
 
       {/* PRIORITY SECTION 1: Record Mode - Capture Multi-Step Sequences */}
@@ -391,6 +485,23 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                   <Icon name="times" />
                   Stop
                 </Button>
+
+                {recordingStartUrl && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleReturnToStart}
+                    disabled={window.location.href === recordingStartUrl}
+                    title={
+                      window.location.href === recordingStartUrl
+                        ? 'Already at starting page'
+                        : 'Return to the page where recording started'
+                    }
+                  >
+                    <Icon name="arrow-left" />
+                    Return to start
+                  </Button>
+                )}
               </Stack>
 
               {recordingState === 'recording' && (
@@ -420,10 +531,16 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                     </Button>
 
                     {multistepMode && selectedSteps.size > 1 && (
-                      <Button variant="primary" size="sm" onClick={handleCombineSteps}>
-                        <Icon name="save" />
-                        Create multistep ({selectedSteps.size})
-                      </Button>
+                      <>
+                        <Button variant="primary" size="sm" onClick={handleCombineSteps}>
+                          <Icon name="save" />
+                          Multistep ({selectedSteps.size})
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={handleCombineAsGuided}>
+                          <Icon name="user" />
+                          Guided ({selectedSteps.size})
+                        </Button>
+                      </>
                     )}
 
                     <Button
@@ -442,7 +559,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
                       className={websiteCopied ? styles.copiedButton : ''}
                     >
                       <Icon name={websiteCopied ? 'check' : 'file-alt'} />
-                      {websiteCopied ? 'Copied!' : 'Export for Website'}
+                      {websiteCopied ? 'Copied!' : 'Export for website'}
                     </Button>
                   </Stack>
 
@@ -526,7 +643,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         <div className={styles.sectionHeader} onClick={() => setUrlTesterExpanded(!UrlTesterExpanded)}>
           <Stack direction="row" gap={1} alignItems="center">
             <Icon name="external-link-alt" />
-            <h4 className={styles.sectionTitle}>Url tester</h4>
+            <h4 className={styles.sectionTitle}>URL tester</h4>
           </Stack>
           <Icon name={UrlTesterExpanded ? 'angle-up' : 'angle-down'} />
         </div>
