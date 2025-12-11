@@ -275,10 +275,12 @@ function matchesButtonAction(element: HTMLElement, refTarget: string, targetElem
 }
 
 /**
- * Match form fill action by selector and optionally value
+ * Match form fill action by selector and value
  *
  * Form fields are matched by their test ID, name, or other selector attributes.
- * Optionally validates that the filled value matches expectations.
+ * When expectedValue is specified, the actual value MUST match exactly for
+ * auto-completion to trigger. This ensures users enter the correct values
+ * before a step is marked complete.
  */
 function matchesFormfillAction(
   element: HTMLElement,
@@ -297,8 +299,9 @@ function matchesFormfillAction(
     return false;
   }
 
-  // If target value specified, validate it matches
-  if (expectedValue !== undefined && actualValue !== undefined) {
+  // If target value specified, require exact match
+  if (expectedValue !== undefined) {
+    // Value must be captured and match exactly
     return actualValue === expectedValue;
   }
 

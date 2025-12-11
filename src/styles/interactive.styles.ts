@@ -448,6 +448,29 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     maxHeight: '10000px',
     overflow: 'hidden',
     transition: 'opacity 0.3s ease, max-height 0.3s ease',
+    margin: 0,
+    listStyle: 'none', // Hide default markers since we use CSS counters
+    counterReset: 'step-counter', // Initialize counter
+
+    // Increment counter for each step
+    '& > .interactive-step, & > .interactive-multistep, & > .interactive-guided': {
+      counterIncrement: 'step-counter',
+      position: 'relative',
+      paddingLeft: theme.spacing(4), // Space for the number
+
+      // Add the step number using ::before pseudo-element
+      '&::before': {
+        content: 'counter(step-counter) "."',
+        position: 'absolute',
+        left: 0,
+        top: theme.spacing(2), // Align with step content padding
+        color: theme.colors.text.secondary,
+        fontWeight: theme.typography.fontWeightMedium,
+        fontSize: theme.typography.body.fontSize,
+        width: theme.spacing(3),
+        textAlign: 'right',
+      },
+    },
 
     // Step status styles
     '& .step-status-pending': {

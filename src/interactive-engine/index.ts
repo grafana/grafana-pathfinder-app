@@ -40,5 +40,16 @@ export {
   ActionMatcher,
   ActionMonitor,
   getActionMonitor,
+  // Auto-detection hooks
+  useAutoDetection,
+  useSingleActionDetection,
+  resolveTargetElement,
 } from './auto-completion';
-export type { DetectedAction, StepActionConfig, DetectedActionEvent } from './auto-completion';
+export type {
+  DetectedAction,
+  StepActionConfig,
+  DetectedActionEvent,
+  ActionToDetect,
+  MatchResult,
+  UseAutoDetectionOptions,
+} from './auto-completion';

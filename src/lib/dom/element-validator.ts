@@ -21,6 +21,26 @@ function isBlockerOverlay(element: HTMLElement): boolean {
 }
 
 /**
+ * Check if an element is a hidden combobox/select input
+ *
+ * React-select and similar combobox components use an input with opacity: 0
+ * for keyboard capture while rendering a separate visual UI. These elements
+ * are intentionally "invisible" but still functionally active.
+ *
+ * @param element - The element to check
+ * @returns true if element is a hidden but active combobox input
+ */
+function isHiddenComboboxInput(element: HTMLElement): boolean {
+  // Check if it's an input with combobox role
+  const isInput = element.tagName.toLowerCase() === 'input';
+  const isCombobox = element.getAttribute('role') === 'combobox';
+  const hasAriaPopup = element.hasAttribute('aria-haspopup');
+
+  // These inputs are intentionally hidden with opacity: 0 but still functional
+  return isInput && (isCombobox || hasAriaPopup);
+}
+
+/**
  * Enhanced hidden element detection
  *
  * More sophisticated than simple display:none check - catches collapsed elements,
@@ -57,6 +77,7 @@ function isHidden(element: HTMLElement): boolean {
  * Check if element is actually visible (not just present in DOM)
  * Validates display, visibility, and opacity on element and all parents
  * Excludes global interaction blocker overlays from checks
+ * Handles special cases like combobox inputs that are intentionally hidden
  *
  * @param element - The element to check
  * @returns true if element is visible, false otherwise
@@ -73,6 +94,10 @@ export function isElementVisible(element: HTMLElement | null): boolean {
   if (!element) {
     return false;
   }
+
+  // Special case: combobox inputs are intentionally hidden with opacity: 0
+  // but are still functionally active for keyboard capture
+  const isComboboxInput = isHiddenComboboxInput(element);
 
   let current: HTMLElement | null = element;
 
@@ -95,9 +120,12 @@ export function isElementVisible(element: HTMLElement | null): boolean {
       return false;
     }
 
-    // Check opacity
+    // Check opacity - skip for combobox inputs which use opacity: 0 intentionally
     if (parseFloat(style.opacity) === 0) {
-      return false;
+      // Allow zero opacity only for the combobox input itself, not parents
+      if (!(isComboboxInput && current === element)) {
+        return false;
+      }
     }
 
     current = current.parentElement;

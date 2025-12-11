@@ -151,9 +151,9 @@
           "type": "interactive",
           "action": "formfill",
           "reftarget": "input[data-testid=\"data-testid Panel editor option pane field input Title\"]",
-          "targetvalue": "Jack and Jill Walk Altitude",
+          "targetvalue": "Jack and Jill walk altitude",
           "requirements": ["exists-reftarget"],
-          "content": "Give your panel a clear title: **Jack and Jill Walk Altitude**.",
+          "content": "Give your panel a clear title: **Jack and Jill walk altitude**.",
           "tooltip": "A good panel title transforms raw data into a story. Instead of generic names like \"Query A\" or \"Metric 1,\" use descriptive titles that immediately convey what the data represents. This is especially important when sharing dashboards with teammates who might not know the context. Your future self will thank you too!"
         },
         {
@@ -167,7 +167,7 @@
         },
         {
           "type": "multistep",
-          "content": "Click **Save Dashboard**, name it **Walking Adventure**, and click **Save**.",
+          "content": "Click **Save dashboard**, name it **Walking adventure**, and click **Save**.",
           "steps": [
             {
               "action": "button",
@@ -177,7 +177,7 @@
             {
               "action": "formfill",
               "reftarget": "input[aria-label=\"Save dashboard title field\"]",
-              "targetvalue": "Walking Adventure",
+              "targetvalue": "Walking adventure",
               "requirements": ["exists-reftarget"]
             },
             {

@@ -52,7 +52,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
   }),
-  stopButton: css({
+  bannerButton: css({
     padding: `${theme.spacing(0.25)} ${theme.spacing(1.5)}`,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     border: '1px solid rgba(255, 255, 255, 0.4)',
@@ -65,6 +65,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
 
     '&:hover': {
       backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    },
+
+    '&:disabled': {
+      opacity: 0.5,
+      cursor: 'not-allowed',
     },
   }),
   highlight: css({
@@ -86,16 +91,27 @@ export interface RecordModeOverlayProps {
   isRecording?: boolean;
   /** Name of section being recorded into (for section recording) */
   sectionName?: string;
+  /** URL where recording started - used for "Return to start" button */
+  startingUrl?: string;
 }
 
 /**
  * Record Mode Overlay - shows recording UI without blocking clicks
  */
-export function RecordModeOverlay({ onStop, stepCount, isRecording = true, sectionName }: RecordModeOverlayProps) {
+export function RecordModeOverlay({
+  onStop,
+  stepCount,
+  isRecording = true,
+  sectionName,
+  startingUrl,
+}: RecordModeOverlayProps) {
   const styles = useStyles2(getStyles);
   const [hoveredElement, setHoveredElement] = useState<HTMLElement | null>(null);
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
+
+  // Check if we're already at the starting URL
+  const isAtStartingUrl = startingUrl ? window.location.href === startingUrl : true;
 
   // Get the element under the cursor, ignoring our overlay UI and modal backdrop elements
   // BUT allowing dropdown menus and other legitimate portal content
@@ -181,6 +197,18 @@ export function RecordModeOverlay({ onStop, stepCount, isRecording = true, secti
     [onStop]
   );
 
+  // Handle return to start button click
+  const handleReturnToStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (startingUrl) {
+        window.location.href = startingUrl;
+      }
+    },
+    [startingUrl]
+  );
+
   // Set up event listeners - NOTE: we do NOT capture clicks, they propagate naturally
   useEffect(() => {
     document.addEventListener('mousemove', handleMouseMove, { passive: true });
@@ -224,7 +252,18 @@ export function RecordModeOverlay({ onStop, stepCount, isRecording = true, secti
           {stepCount} {sectionName ? 'block' : 'step'}
           {stepCount !== 1 ? 's' : ''}
         </span>
-        <button className={styles.stopButton} onClick={handleStopClick} type="button">
+        {startingUrl && (
+          <button
+            className={styles.bannerButton}
+            onClick={handleReturnToStart}
+            disabled={isAtStartingUrl}
+            type="button"
+            title={isAtStartingUrl ? 'Already at starting page' : 'Return to the page where recording started'}
+          >
+            Return to start
+          </button>
+        )}
+        <button className={styles.bannerButton} onClick={handleStopClick} type="button">
           Stop (Esc)
         </button>
       </div>

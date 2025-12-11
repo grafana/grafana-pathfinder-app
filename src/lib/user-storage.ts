@@ -55,6 +55,8 @@ export const StorageKeys = {
   FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
   FULLSCREEN_BUNDLING_ACTION: 'grafana-pathfinder-app-fullscreen-bundling-action',
   FULLSCREEN_SECTION_INFO: 'grafana-pathfinder-app-fullscreen-section-info',
+  // Dev tools recording state persistence
+  DEVTOOLS_RECORDING_STATE: 'grafana-pathfinder-app-devtools-recording-state',
 } as const;
 
 // Timestamp suffix for conflict resolution
