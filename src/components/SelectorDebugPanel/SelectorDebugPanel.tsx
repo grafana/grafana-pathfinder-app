@@ -10,13 +10,13 @@ import {
   useSelectorCapture,
   useActionRecorder,
   parseStepString,
+  type RecordedStep,
 } from '../../utils/devtools';
 import { UrlTester } from 'components/UrlTester';
 import { DomPathTooltip } from '../DomPathTooltip';
 import { useWebsiteExport } from '../../utils/use-website-export.hook';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { StorageKeys } from '../../lib/user-storage';
-import type { RecordedStep } from '../../utils/devtools';
 
 // Lazy load BlockEditor to keep it out of main bundle when not needed
 const BlockEditor = lazy(() =>
