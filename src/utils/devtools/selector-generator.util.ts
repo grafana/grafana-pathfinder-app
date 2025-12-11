@@ -101,3 +101,4 @@ export function generateSelectorFromEvent(target: HTMLElement, event: MouseEvent
     wasModified: validated.wasModified,
   };
 }
+
