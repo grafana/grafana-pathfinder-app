@@ -1,14 +1,15 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
-import { usePluginContext } from '@grafana/data';
 
-import { useInteractiveElements, matchesStepAction, type DetectedActionEvent } from '../../../interactive-engine';
+import {
+  useInteractiveElements,
+  useAutoDetection,
+  type DetectedActionEvent,
+  type MatchResult,
+} from '../../../interactive-engine';
 import { useStepChecker, validateInteractiveRequirements } from '../../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
-import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../../constants/interactive-config';
-import { getConfigWithDefaults } from '../../../constants';
-import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
-import { isCssSelector } from '../../../lib/dom/selector-detector';
+import { INTERACTIVE_CONFIG } from '../../../constants/interactive-config';
 import { InternalAction } from '../../../types/interactive-actions.types';
 import { testIds } from '../../../components/testIds';
 
@@ -160,13 +161,6 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
     // Track which internal actions have been auto-completed by user
     const [autoCompletedActions, setAutoCompletedActions] = useState<Set<number>>(new Set());
-
-    // Get plugin configuration for auto-detection settings
-    const pluginContext = usePluginContext();
-    const interactiveConfig = useMemo(() => {
-      const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-      return getInteractiveConfig(config);
-    }, [pluginContext?.meta?.jsonData]);
 
     // Use ref for cancellation to avoid closure issues
     const isCancelledRef = React.useRef(false);
@@ -446,100 +440,52 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       [executeStep]
     );
 
-    // Auto-detection: Listen for user actions and track completion of internal actions
-    useEffect(() => {
-      // Only enable auto-detection if:
-      // 1. Feature is enabled in config
-      // 2. Step is eligible and enabled
-      // 3. Step is not already completed
-      // 4. Step is not currently executing (avoid race conditions)
-      if (
-        !interactiveConfig.autoDetection.enabled ||
-        !checker.isEnabled ||
-        isCompletedWithObjectives ||
-        isCurrentlyExecuting ||
-        disabled
-      ) {
-        return;
-      }
+    // Convert internalActions to ActionToDetect format for the auto-detection hook
+    const actionsToDetect = useMemo(
+      () =>
+        internalActions.map((action) => ({
+          targetAction: action.targetAction,
+          refTarget: action.refTarget || '',
+          targetValue: action.targetValue,
+        })),
+      [internalActions]
+    );
 
-      const handleActionDetected = async (event: Event) => {
-        const customEvent = event as CustomEvent<DetectedActionEvent>;
-        const detectedAction = customEvent.detail;
+    // Handler for auto-detected actions - tracks completion of each internal action
+    const handleMultiStepActionDetected = useCallback(
+      (result: MatchResult, _detectedAction: DetectedActionEvent) => {
+        if (!result.matched) {
+          return;
+        }
 
-        // Check which internal action (if any) matches the detected action
-        let matchedActionIndex = -1;
-        for (let i = 0; i < internalActions.length; i++) {
-          const action = internalActions[i];
+        const matchedIndex = result.actionIndex;
 
-          // Try to find target element for coordinate-based matching
-          // Using synchronous resolution to avoid timing issues with dynamic menus/dropdowns
-          let targetElement: HTMLElement | null = null;
-          try {
-            const actionType = action.targetAction;
-            const selector = action.refTarget || '';
+        // Skip if this action was already completed
+        if (autoCompletedActions.has(matchedIndex)) {
+          return;
+        }
 
-            if (actionType === 'button') {
-              // Try selector first if it looks like CSS
-              if (isCssSelector(selector)) {
-                const result = querySelectorAllEnhanced(selector);
-                const buttons = result.elements.filter(
-                  (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
-                );
-                targetElement = buttons[0] || null;
-              }
-
-              // Fall back to text matching if selector didn't work
-              if (!targetElement) {
-                const buttons = findButtonByText(selector);
-                targetElement = buttons[0] || null;
-              }
-            } else if (actionType === 'highlight' || actionType === 'hover') {
-              // Use enhanced selector for other action types
-              const result = querySelectorAllEnhanced(selector);
-              targetElement = result.elements[0] || null;
-            }
-            // Note: formfill and navigate don't use coordinate matching
-          } catch (error) {
-            // Element resolution failed, fall back to selector-based matching
-            console.warn('Failed to resolve target element for coordinate matching:', error);
-          }
-
-          // Check if action matches (with coordinate support)
-          const matches = matchesStepAction(
-            detectedAction,
-            {
-              targetAction: action.targetAction as any,
-              refTarget: action.refTarget || '',
-              targetValue: action.targetValue,
-            },
-            targetElement
-          );
-
-          if (matches) {
-            matchedActionIndex = i;
-            break;
+        // For sequential multi-steps: if a later action is detected, assume earlier actions
+        // were also completed (e.g., dropdown menu was opened before clicking an option)
+        // This handles cases where earlier clicks happened before auto-detection was enabled
+        const indicesToMark: number[] = [];
+        for (let i = 0; i <= matchedIndex; i++) {
+          if (!autoCompletedActions.has(i)) {
+            indicesToMark.push(i);
           }
         }
 
-        if (matchedActionIndex === -1) {
-          return; // No match found
-        }
-
-        // Check if this action was already completed
-        if (autoCompletedActions.has(matchedActionIndex)) {
-          return; // Already counted
-        }
-
-        // Mark this action as completed
+        // Mark this action (and all preceding actions) as completed
         setAutoCompletedActions((prev) => {
           const newSet = new Set(prev);
-          newSet.add(matchedActionIndex);
+          for (const idx of indicesToMark) {
+            newSet.add(idx);
+          }
           return newSet;
         });
 
         // Check if all actions are now completed
-        const newCompletedCount = autoCompletedActions.size + 1;
+        const newCompletedCount = autoCompletedActions.size + indicesToMark.length;
         if (newCompletedCount >= internalActions.length) {
           // Mark entire multi-step as completed
           setIsLocallyCompleted(true);
@@ -569,28 +515,27 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             )
           );
         }
-      };
+      },
+      [
+        autoCompletedActions,
+        internalActions.length,
+        stepId,
+        onStepComplete,
+        onComplete,
+        renderedStepId,
+        analyticsStepMeta,
+      ]
+    );
 
-      // Subscribe to user-action-detected events
-      document.addEventListener('user-action-detected', handleActionDetected);
-
-      return () => {
-        document.removeEventListener('user-action-detected', handleActionDetected);
-      };
-    }, [
-      interactiveConfig.autoDetection.enabled,
-      checker.isEnabled,
-      isCompletedWithObjectives,
-      isCurrentlyExecuting,
+    // Use shared auto-detection hook for tracking user actions
+    useAutoDetection({
+      actions: actionsToDetect,
+      isEnabled: checker.isEnabled,
+      isCompleted: isCompletedWithObjectives,
+      isExecuting: isCurrentlyExecuting,
       disabled,
-      internalActions,
-      autoCompletedActions,
-      stepId,
-      onStepComplete,
-      onComplete,
-      renderedStepId,
-      analyticsStepMeta,
-    ]);
+      onActionDetected: handleMultiStepActionDetected,
+    });
 
     // Handle "Do it" button click
     const handleDoAction = useCallback(async () => {
