@@ -548,8 +548,9 @@ export const InteractiveStep = forwardRef<
 
         <div className="interactive-step-actions">
           <div className="interactive-step-action-buttons">
-            {/* Only show "Show me" button when showMe prop is true AND step is enabled */}
-            {showMe && !isCompletedWithObjectives && finalIsEnabled && (
+            {/* Only show "Show me" button when showMe prop is true AND step is enabled AND not a navigate action */}
+            {/* Navigate actions don't have a sensible "show me" behavior - it's "go there" or nothing */}
+            {showMe && targetAction !== 'navigate' && !isCompletedWithObjectives && finalIsEnabled && (
               <Button
                 onClick={handleShowAction}
                 disabled={disabled || isAnyActionRunning}
@@ -591,7 +592,10 @@ export const InteractiveStep = forwardRef<
                     ? checker.isRetrying
                       ? `Checking requirements... (${checker.retryCount}/${checker.maxRetries})`
                       : 'Checking requirements...'
-                    : hints || `Do it: ${getActionDescription()}`
+                    : hints ||
+                      (targetAction === 'navigate'
+                        ? `Go there: ${getActionDescription()}`
+                        : `Do it: ${getActionDescription()}`)
                 }
               >
                 {checker.isChecking
@@ -599,8 +603,12 @@ export const InteractiveStep = forwardRef<
                     ? `Checking... (${checker.retryCount}/${checker.maxRetries})`
                     : 'Checking...'
                   : isDoRunning || isCurrentlyExecuting
-                    ? 'Executing...'
-                    : 'Do it'}
+                    ? targetAction === 'navigate'
+                      ? 'Going...'
+                      : 'Executing...'
+                    : targetAction === 'navigate'
+                      ? 'Go there'
+                      : 'Do it'}
               </Button>
             )}
 

@@ -20,6 +20,45 @@ describe('InteractiveStep: showMeText label override', () => {
   });
 });
 
+describe('InteractiveStep: navigate action type', () => {
+  it('renders "Go there" button instead of "Do it" for navigate actions', () => {
+    render(
+      <InteractiveStep targetAction="navigate" refTarget="/d/qD-rVv6Mz/state-timeline">
+        Navigate to the dashboard
+      </InteractiveStep>
+    );
+
+    expect(screen.getByRole('button', { name: 'Go there' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /do it/i })).not.toBeInTheDocument();
+  });
+
+  it('does not render "Show me" button for navigate actions', () => {
+    render(
+      <InteractiveStep targetAction="navigate" refTarget="/d/qD-rVv6Mz/state-timeline" showMe={true}>
+        Navigate to the dashboard
+      </InteractiveStep>
+    );
+
+    // Even with showMe={true}, navigate actions should not show "Show me" button
+    expect(screen.queryByRole('button', { name: /show me/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Go there' })).toBeInTheDocument();
+  });
+
+  it('renders correct content for navigate action', () => {
+    render(
+      <InteractiveStep targetAction="navigate" refTarget="/d/qD-rVv6Mz/state-timeline" stepId="section-1-step-1">
+        <strong>State Timeline</strong> — Dashboard for tracking service status
+      </InteractiveStep>
+    );
+
+    expect(screen.getByText(/State Timeline/)).toBeInTheDocument();
+
+    const stepContainer = screen.getByText(/State Timeline/).closest('.interactive-step');
+    expect(stepContainer).toBeInTheDocument();
+    expect(stepContainer).toHaveAttribute('data-targetaction', 'navigate');
+  });
+});
+
 describe('InteractiveStep: noop action type', () => {
   it('renders no buttons when both showMe and doIt are false (noop behavior)', () => {
     render(
