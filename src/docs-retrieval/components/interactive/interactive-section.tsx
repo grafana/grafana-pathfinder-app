@@ -630,9 +630,10 @@ export function InteractiveSection({
       '[Section] Starting section run, reset userScrolled=false, isProgrammatic=TRUE (will stay true during execution)'
     );
 
-    // Disable action monitor during section execution to prevent auto-completion conflicts
+    // Force-disable action monitor during section execution to prevent auto-completion conflicts
+    // Using forceDisable() to bypass reference counting during automated execution
     const actionMonitor = ActionMonitor.getInstance();
-    actionMonitor.disable();
+    actionMonitor.forceDisable();
 
     // Clear any existing highlights before starting section execution
     const { NavigationManager } = await import('../../../interactive-engine');
@@ -689,27 +690,27 @@ export function InteractiveSection({
               if (!sectionRecheckResult.pass) {
                 // Section requirements still not met after fix attempt
                 console.warn('Section requirements could not be fixed, stopping execution');
-                ActionMonitor.getInstance().enable(); // Re-enable monitor
+                ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
                 setIsRunning(false);
                 return;
               }
             } catch (fixError) {
               console.warn('Failed to fix section requirements:', fixError);
-              ActionMonitor.getInstance().enable(); // Re-enable monitor
+              ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
               setIsRunning(false);
               return;
             }
           } else {
             // No fix available for section requirements
             console.warn('Section requirements not met and no fix available, stopping execution');
-            ActionMonitor.getInstance().enable(); // Re-enable monitor
+            ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
             setIsRunning(false);
             return;
           }
         }
       } catch (error) {
         console.warn('Section requirements check failed:', error);
-        ActionMonitor.getInstance().enable(); // Re-enable monitor
+        ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
         setIsRunning(false);
         return;
       }
@@ -743,7 +744,7 @@ export function InteractiveSection({
         // User must manually click the guided step's "Do it" button
         // Once complete, they can click "Resume" to continue
         if (stepInfo.isGuided) {
-          ActionMonitor.getInstance().enable(); // Re-enable monitor for guided mode
+          ActionMonitor.getInstance().forceEnable(); // Re-enable monitor for guided mode
           setCurrentStepIndex(i); // Mark where we stopped
           setIsRunning(false); // Stop the automated loop
           stopSectionBlocking(sectionId); // Remove blocking overlay
@@ -948,7 +949,7 @@ export function InteractiveSection({
       console.error('Error running section sequence:', error);
     } finally {
       // Re-enable action monitor after section execution completes
-      ActionMonitor.getInstance().enable();
+      ActionMonitor.getInstance().forceEnable();
 
       // Stop section-level blocking
       stopSectionBlocking(sectionId);
