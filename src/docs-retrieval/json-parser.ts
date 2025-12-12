@@ -7,6 +7,9 @@
 
 import { ContentParseResult, ParsedContent, ParsedElement, ParseError } from './content.types';
 import { parseHTMLToComponents } from './html-parser';
+import { validateGuide } from '../validation';
+import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
+import DOMPurify from 'dompurify';
 import type {
   JsonGuide,
   JsonBlock,
@@ -22,6 +25,53 @@ import type {
   JsonAssistantBlock,
   JsonStep,
 } from '../types/json-guide.types';
+
+const MARKDOWN_ALLOWED_TAGS = [
+  'div',
+  'span',
+  'p',
+  'ul',
+  'ol',
+  'li',
+  'strong',
+  'em',
+  'code',
+  'pre',
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'th',
+  'td',
+  'img',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'blockquote',
+  'br',
+  'hr',
+  'a',
+];
+
+const MARKDOWN_ALLOWED_ATTR = [
+  'href',
+  'title',
+  'target',
+  'rel',
+  'src',
+  'alt',
+  'colspan',
+  'rowspan',
+  'class',
+  'id',
+  'width',
+  'height',
+];
+
+const HTML_TAG_PATTERN = /<\s*\/?\s*[a-zA-Z][^>]*>/;
 
 /**
  * Parse a JSON guide into ContentParseResult.
@@ -47,29 +97,22 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
     return { isValid: false, errors, warnings };
   }
 
-  // Validate required fields
-  if (!guide.id || typeof guide.id !== 'string') {
-    errors.push({
-      type: 'html_parsing',
-      message: 'Guide missing required "id" field',
-    });
-  }
-  if (!guide.title || typeof guide.title !== 'string') {
-    errors.push({
-      type: 'html_parsing',
-      message: 'Guide missing required "title" field',
-    });
-  }
-  if (!Array.isArray(guide.blocks)) {
-    errors.push({
-      type: 'html_parsing',
-      message: 'Guide missing required "blocks" array',
-    });
+  // Zod validation replaces manual checks
+  const validationResult = validateGuide(guide);
+  if (!validationResult.isValid) {
+    return {
+      isValid: false,
+      errors: validationResult.errors.map((e) => ({
+        type: 'schema_validation',
+        message: e.message,
+        location: e.path.join('.'),
+      })),
+      warnings: validationResult.warnings.map((w) => w.message),
+    };
   }
 
-  if (errors.length > 0) {
-    return { isValid: false, errors, warnings };
-  }
+  // Preserve validation warnings (e.g., unknown fields, invalid condition syntax)
+  warnings.push(...validationResult.warnings.map((w) => w.message));
 
   // Convert blocks to ParsedElements
   const elements: ParsedElement[] = [];
@@ -178,10 +221,27 @@ function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: s
 /**
  * Convert markdown content to ParsedElement children.
  * Handles basic markdown syntax: headings, bold, italic, code, links, lists, code blocks, tables.
+ * SECURITY: Input is sanitized with a safe allowlist of structural tags before parsing (F1, F4).
+ * We allow basic content tags (div, span, headings, lists, tables, code) while stripping scripts/events.
  */
 function parseMarkdownToElements(content: string): ParsedElement[] {
+  // SECURITY: Sanitize with a safe allowlist so basic HTML content survives while stripping dangerous markup
+  const sanitizedContent = DOMPurify.sanitize(content, {
+    ALLOWED_TAGS: MARKDOWN_ALLOWED_TAGS,
+    ALLOWED_ATTR: MARKDOWN_ALLOWED_ATTR,
+    KEEP_CONTENT: true,
+  });
+
+  // If the content includes HTML tags after sanitization, try parsing as HTML to preserve allowed structure
+  if (HTML_TAG_PATTERN.test(sanitizedContent)) {
+    const htmlResult = parseHTMLToComponents(sanitizeDocumentationHTML(sanitizedContent));
+    if (htmlResult.isValid && htmlResult.data?.elements?.length) {
+      return htmlResult.data.elements;
+    }
+  }
+
   const elements: ParsedElement[] = [];
-  const lines = content.split('\n');
+  const lines = sanitizedContent.split('\n');
   let currentList: ParsedElement | null = null;
   let currentListItems: ParsedElement[] = [];
   let inCodeBlock = false;
@@ -413,21 +473,32 @@ function parseMarkdownToElements(content: string): ParsedElement[] {
 /**
  * Convert inline markdown to HTML string.
  * Used for targetComment which expects HTML.
+ * SECURITY: Output is sanitized with DOMPurify to prevent XSS attacks (F1, F4).
  */
 function markdownToHtml(text: string): string {
-  return (
-    text
-      // Bold: **text** or __text__
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/__(.+?)__/g, '<strong>$1</strong>')
-      // Italic: *text* or _text_ (but not inside words)
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>')
-      // Inline code: `code`
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      // Links: [text](url)
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-  );
+  // SECURITY: Sanitize input with the same allowlist used for markdown parsing
+  const sanitizedInput = DOMPurify.sanitize(text, {
+    ALLOWED_TAGS: MARKDOWN_ALLOWED_TAGS,
+    ALLOWED_ATTR: MARKDOWN_ALLOWED_ATTR,
+    KEEP_CONTENT: true,
+  });
+
+  const html = sanitizedInput
+    // Bold: **text** or __text__
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // Italic: *text* or _text_ (but not inside words)
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>')
+    // Inline code: `code`
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Links: [text](url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+  // SECURITY: Sanitize HTML output to prevent XSS attacks (F1, F4)
+  // This is defense-in-depth - targetComment is also sanitized at render time,
+  // but sanitizing here ensures safety at the source
+  return sanitizeDocumentationHTML(html);
 }
 
 /**

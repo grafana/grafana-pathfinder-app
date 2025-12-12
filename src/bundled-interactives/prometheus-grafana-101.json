@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "1.0.0",
   "id": "prometheus-grafana-101",
   "title": "Prometheus & Grafana 101",
   "blocks": [

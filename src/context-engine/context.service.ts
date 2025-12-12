@@ -1210,16 +1210,6 @@ export class ContextService {
   ): Recommendation[] {
     const bundledRecommendations: Recommendation[] = [];
 
-    // Dev mode - add extra recommendations for debugging
-    if (isDevModeEnabledGlobal()) {
-      bundledRecommendations.push({
-        title: 'Components',
-        url: 'https://grafana.com/components/',
-        type: 'docs-page',
-        summary: 'Components page',
-      });
-    }
-
     try {
       // Load the index.json file that contains metadata for all bundled interactives
       const indexData: BundledInteractivesIndex = require('../bundled-interactives/index.json');

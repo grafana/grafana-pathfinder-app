@@ -117,6 +117,15 @@ Multiple requirements can be combined:
 </button>
 ```
 
+### Static Validation
+
+The CLI validates condition strings (requirements and objectives) at build time. When adding new requirement types:
+
+1. Add to `FixedRequirementType` or `ParameterizedRequirementPrefix` in `src/types/requirements.types.ts`
+2. Add handler in `src/requirements-manager/requirements-checker.utils.ts`
+3. The validator automatically recognizes new types via enum imports
+4. Add test coverage in `src/validation/condition-validator.test.ts` (coupling test will fail otherwise)
+
 ## Guide-Specific Objectives
 
 An objective statement for a guide step is a statement of what an interactive step will make

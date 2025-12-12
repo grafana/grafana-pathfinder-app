@@ -62,3 +62,4 @@ export function removeHoverHighlight(highlight: HTMLElement | null): void {
     existing.remove();
   }
 }
+

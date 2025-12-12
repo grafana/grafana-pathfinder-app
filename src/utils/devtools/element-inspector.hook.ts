@@ -256,3 +256,4 @@ export function useElementInspector(options: UseElementInspectorOptions): UseEle
     [hoveredElement, domPath, cursorPosition]
   );
 }
+

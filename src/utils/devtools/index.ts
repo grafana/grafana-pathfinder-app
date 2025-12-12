@@ -59,3 +59,4 @@ export { executeStepSequence } from './step-executor.util';
 
 // Hover highlight utilities
 export { createHoverHighlight, updateHoverHighlight, removeHoverHighlight } from './hover-highlight.util';
+
