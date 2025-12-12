@@ -9,6 +9,7 @@ import { docsPage } from '../../pages/docsPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
 import { getConfigWithDefaults } from '../../constants';
 import { onPluginStart } from '../../context-engine';
+import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 
 /**
  * Error Boundary to catch render errors in the plugin tree (R6)
@@ -148,11 +149,13 @@ function App(props: AppRootProps) {
   }, []);
 
   return (
-    <PluginPropsContext.Provider value={props}>
-      <PluginErrorBoundary>
-        <scene.Component model={scene} />
-      </PluginErrorBoundary>
-    </PluginPropsContext.Provider>
+    <PathfinderFeatureProvider>
+      <PluginPropsContext.Provider value={props}>
+        <PluginErrorBoundary>
+          <scene.Component model={scene} />
+        </PluginErrorBoundary>
+      </PluginPropsContext.Provider>
+    </PathfinderFeatureProvider>
   );
 }
 
