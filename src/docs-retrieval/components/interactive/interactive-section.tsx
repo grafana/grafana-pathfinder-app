@@ -500,12 +500,19 @@ export function InteractiveSection({
         const allStepsCompleted = newCompletedSteps.size >= stepComponents.length;
         if (allStepsCompleted) {
           onComplete?.();
+
+          // Emit section completed event for guide-level tracking
+          window.dispatchEvent(
+            new CustomEvent('interactive-section-completed', {
+              detail: { sectionId },
+            })
+          );
         }
       } else {
         setCurrentlyExecutingStep(null);
       }
     },
-    [completedSteps, stepComponents, onComplete, persistCompletedSteps]
+    [completedSteps, stepComponents, onComplete, persistCompletedSteps, sectionId]
   );
 
   /**
@@ -1252,6 +1259,7 @@ export function InteractiveSection({
         isCollapsed ? ' collapsed' : ''
       }`}
       data-testid={testIds.interactive.section(sectionId)}
+      data-interactive-section="true"
     >
       <div className={`interactive-section-header${isCollapsed ? ' collapsed' : ''}`}>
         {isCompleted && (

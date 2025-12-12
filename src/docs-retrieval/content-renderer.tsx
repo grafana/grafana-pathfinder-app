@@ -125,6 +125,7 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
 interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
+  onGuideComplete?: () => void;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement>;
 }
@@ -142,17 +143,66 @@ const hideSelectionStyle = css`
 export const ContentRenderer = React.memo(function ContentRenderer({
   content,
   onContentReady,
+  onGuideComplete,
   className,
   containerRef,
 }: ContentRendererProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
+  const guideCompleteCalledRef = useRef(false);
 
   // Text selection tracking for assistant integration
   const selectionState = useTextSelection(activeRef);
 
   // Build document context for assistant
   const documentContext = React.useMemo(() => buildDocumentContext(content), [content]);
+
+  // Reset guideCompleteCalled when content changes
+  useEffect(() => {
+    guideCompleteCalledRef.current = false;
+  }, [content?.url]);
+
+  // Track interactive section completions for guide-level completion
+  useEffect(() => {
+    if (!onGuideComplete) {
+      return;
+    }
+
+    const completedSections = new Set<string>();
+
+    // Count interactive sections from the DOM
+    const countSections = (): number => {
+      const container = activeRef.current;
+      if (!container) {
+        return 0;
+      }
+      const sections = container.querySelectorAll('[data-interactive-section="true"]');
+      return sections.length;
+    };
+
+    const handleSectionComplete = (event: Event) => {
+      const { sectionId } = (event as CustomEvent).detail;
+      completedSections.add(sectionId);
+
+      // Count sections at the time of completion to ensure accurate count
+      const totalSections = countSections();
+
+      // Check if all sections complete - trigger immediately
+      if (totalSections > 0 && completedSections.size >= totalSections) {
+        if (!guideCompleteCalledRef.current) {
+          guideCompleteCalledRef.current = true;
+          // Call immediately, no delay
+          onGuideComplete();
+        }
+      }
+    };
+
+    window.addEventListener('interactive-section-completed', handleSectionComplete);
+
+    return () => {
+      window.removeEventListener('interactive-section-completed', handleSectionComplete);
+    };
+  }, [onGuideComplete, activeRef, content?.url]);
 
   // Expose current content key globally for interactive persistence
   useEffect(() => {

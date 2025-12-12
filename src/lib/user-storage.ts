@@ -38,6 +38,9 @@
 import { usePluginUserStorage } from '@grafana/runtime';
 import { useCallback, useRef, useEffect } from 'react';
 
+import type { LearningProgress, EarnedBadgeRecord } from '../types/learning-paths.types';
+import { reportAppInteraction, UserInteraction } from './analytics';
+
 // ============================================================================
 // STORAGE KEYS
 // ============================================================================
@@ -55,6 +58,8 @@ export const StorageKeys = {
   FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
   FULLSCREEN_BUNDLING_ACTION: 'grafana-pathfinder-app-fullscreen-bundling-action',
   FULLSCREEN_SECTION_INFO: 'grafana-pathfinder-app-fullscreen-section-info',
+  // Learning paths and badges progress
+  LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
 } as const;
 
 // Timestamp suffix for conflict resolution
@@ -308,7 +313,12 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
 async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
   try {
     // Get all our storage keys
-    const keysToSync = [StorageKeys.JOURNEY_COMPLETION, StorageKeys.TABS, StorageKeys.ACTIVE_TAB];
+    const keysToSync = [
+      StorageKeys.JOURNEY_COMPLETION,
+      StorageKeys.TABS,
+      StorageKeys.ACTIVE_TAB,
+      StorageKeys.LEARNING_PROGRESS,
+    ];
 
     for (const key of keysToSync) {
       try {
@@ -357,17 +367,22 @@ async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
             }
           }
           // If timestamps are equal, they're in sync
-        } else if (hasGrafanaTimestamp) {
-          // Only Grafana has timestamp
+        } else if (hasGrafanaTimestamp && !hasLocalData) {
+          // Only Grafana has timestamp AND localStorage is empty
           if (hasGrafanaData) {
             // Grafana has data - use it
             localStorage.setItem(key, grafanaValue);
             localStorage.setItem(getTimestampKey(key), grafanaTimestampStr);
-          } else {
-            // Grafana has deletion - apply it
-            localStorage.removeItem(key);
-            localStorage.setItem(getTimestampKey(key), grafanaTimestampStr);
           }
+          // Don't apply Grafana deletions if localStorage never had data
+        } else if (hasGrafanaTimestamp && hasLocalData) {
+          // Grafana has timestamp but localStorage has un-timestamped data
+          // PRESERVE localStorage data - it was likely written before hybrid storage was set up
+          // Assign it a timestamp and sync to Grafana
+          const nowTimestamp = Date.now().toString();
+          localStorage.setItem(getTimestampKey(key), nowTimestamp);
+          await grafanaStorage.setItem(key, localValue);
+          await grafanaStorage.setItem(getTimestampKey(key), nowTimestamp);
         } else if (hasLocalTimestamp) {
           // Only localStorage has timestamp
           if (hasLocalData) {
@@ -379,8 +394,14 @@ async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
             await grafanaStorage.setItem(key, '');
             await grafanaStorage.setItem(getTimestampKey(key), localTimestampStr);
           }
+        } else if (hasLocalData) {
+          // localStorage has data but no timestamp - assign one and sync to Grafana
+          const nowTimestamp = Date.now().toString();
+          localStorage.setItem(getTimestampKey(key), nowTimestamp);
+          await grafanaStorage.setItem(key, localValue);
+          await grafanaStorage.setItem(getTimestampKey(key), nowTimestamp);
         }
-        // If neither has timestamp, nothing to sync
+        // If neither has data, nothing to sync
       } catch (error) {
         console.warn(`Failed to sync key from Grafana storage: ${key}`, error);
       }
@@ -916,6 +937,200 @@ export const fullScreenModeStorage = {
       ]);
     } catch (error) {
       console.warn('Failed to clear full screen mode state:', error);
+    }
+  },
+};
+
+// ============================================================================
+// LEARNING PROGRESS STORAGE
+// ============================================================================
+
+/**
+ * Learning progress storage operations
+ *
+ * Manages learning paths progress, earned badges, and streak tracking.
+ * Designed for future migration to Grafana user storage.
+ */
+export const learningProgressStorage = {
+  /**
+   * Gets the current learning progress
+   */
+  async get(): Promise<LearningProgress> {
+    try {
+      const storage = createUserStorage();
+      const progress = await storage.getItem<LearningProgress>(StorageKeys.LEARNING_PROGRESS);
+      return progress || {
+        completedGuides: [],
+        earnedBadges: [],
+        streakDays: 0,
+        lastActivityDate: '',
+        pendingCelebrations: [],
+      };
+    } catch {
+      return {
+        completedGuides: [],
+        earnedBadges: [],
+        streakDays: 0,
+        lastActivityDate: '',
+        pendingCelebrations: [],
+      };
+    }
+  },
+
+  /**
+   * Updates learning progress with partial data
+   */
+  async update(updates: Partial<LearningProgress>): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const current = await learningProgressStorage.get();
+      const updated = { ...current, ...updates };
+      await storage.setItem(StorageKeys.LEARNING_PROGRESS, updated);
+    } catch (error) {
+      console.warn('Failed to update learning progress:', error);
+    }
+  },
+
+  /**
+   * Marks a guide as completed and checks for badge awards
+   * Does not add duplicates
+   * Dispatches events to notify listeners
+   */
+  async markGuideCompleted(guideId: string): Promise<void> {
+    try {
+      const progress = await learningProgressStorage.get();
+      if (!progress.completedGuides.includes(guideId)) {
+        progress.completedGuides.push(guideId);
+        // Update last activity date for streak tracking
+        progress.lastActivityDate = new Date().toISOString().split('T')[0];
+
+        // Check for "first-steps" badge (first guide completed)
+        if (progress.completedGuides.length === 1) {
+          const firstStepsBadgeId = 'first-steps';
+          if (!progress.earnedBadges.some((b) => b.id === firstStepsBadgeId)) {
+            progress.earnedBadges.push({ id: firstStepsBadgeId, earnedAt: Date.now() });
+            if (!progress.pendingCelebrations.includes(firstStepsBadgeId)) {
+              progress.pendingCelebrations.push(firstStepsBadgeId);
+            }
+
+            // Track badge unlock analytics
+            reportAppInteraction(UserInteraction.BadgeUnlocked, {
+              badge_id: firstStepsBadgeId,
+              badge_title: 'First Steps',
+              trigger_type: 'guide-completed',
+            });
+          }
+        }
+
+        await learningProgressStorage.update(progress);
+
+        // Notify listeners that progress has changed - include full progress for immediate use
+        window.dispatchEvent(
+          new CustomEvent('learning-progress-updated', {
+            detail: {
+              type: 'guide-completed',
+              guideId,
+              newBadges: progress.pendingCelebrations,
+              progress: { ...progress }, // Clone to prevent mutation issues
+            },
+          })
+        );
+      }
+    } catch (error) {
+      console.warn('Failed to mark guide as completed:', error);
+    }
+  },
+
+  /**
+   * Awards a badge to the user
+   * Does not add duplicates, adds to pending celebrations
+   */
+  async awardBadge(badgeId: string): Promise<boolean> {
+    try {
+      const progress = await learningProgressStorage.get();
+      const alreadyEarned = progress.earnedBadges.some((b) => b.id === badgeId);
+
+      if (!alreadyEarned) {
+        const record: EarnedBadgeRecord = {
+          id: badgeId,
+          earnedAt: Date.now(),
+        };
+        progress.earnedBadges.push(record);
+        progress.pendingCelebrations.push(badgeId);
+        await learningProgressStorage.update(progress);
+        return true; // Badge was newly awarded
+      }
+      return false; // Badge already earned
+    } catch (error) {
+      console.warn('Failed to award badge:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Removes a badge from pending celebrations (after showing toast)
+   */
+  async dismissCelebration(badgeId: string): Promise<void> {
+    try {
+      const progress = await learningProgressStorage.get();
+      progress.pendingCelebrations = progress.pendingCelebrations.filter((id) => id !== badgeId);
+      await learningProgressStorage.update(progress);
+    } catch (error) {
+      console.warn('Failed to dismiss celebration:', error);
+    }
+  },
+
+  /**
+   * Updates streak information
+   */
+  async updateStreak(streakDays: number, lastActivityDate: string): Promise<void> {
+    try {
+      await learningProgressStorage.update({ streakDays, lastActivityDate });
+    } catch (error) {
+      console.warn('Failed to update streak:', error);
+    }
+  },
+
+  /**
+   * Checks if a badge has been earned
+   */
+  async hasBadge(badgeId: string): Promise<boolean> {
+    try {
+      const progress = await learningProgressStorage.get();
+      return progress.earnedBadges.some((b) => b.id === badgeId);
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Checks if a guide has been completed
+   */
+  async hasCompletedGuide(guideId: string): Promise<boolean> {
+    try {
+      const progress = await learningProgressStorage.get();
+      return progress.completedGuides.includes(guideId);
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Clears all learning progress (for testing/reset)
+   */
+  async clear(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(StorageKeys.LEARNING_PROGRESS);
+
+      // Notify listeners that progress has been reset
+      window.dispatchEvent(
+        new CustomEvent('learning-progress-updated', {
+          detail: { type: 'reset' },
+        })
+      );
+    } catch (error) {
+      console.warn('Failed to clear learning progress:', error);
     }
   },
 };

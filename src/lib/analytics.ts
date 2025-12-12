@@ -52,6 +52,10 @@ export enum UserInteraction {
   AssistantRevertClick = 'assistant_revert_click',
   AssistantTextSelectionMade = 'assistant_text_selection_made',
   AssistantAskButtonClick = 'assistant_ask_button_click',
+
+  // Learning Paths & Gamification
+  LearningPathProgress = 'learning_path_progress',
+  BadgeUnlocked = 'badge_unlocked',
 }
 
 // ============================================================================

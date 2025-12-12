@@ -23,7 +23,7 @@ import { isDevModeEnabledGlobal, isDevModeEnabled } from '../../utils/dev-mode';
 import { parseUrlSafely, isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../security';
 
 import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { tabStorage, useUserStorage } from '../../lib/user-storage';
+import { tabStorage, useUserStorage, learningProgressStorage } from '../../lib/user-storage';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
@@ -39,6 +39,8 @@ import {
 import { getJourneyProgress, setJourneyCompletionPercentage } from '../../docs-retrieval/learning-journey-helpers';
 
 import { ContextPanel } from './context-panel';
+import { MyLearningTab, BadgeUnlockedToast } from '../LearningPaths';
+import { getBadgeById } from '../../learning-paths';
 
 import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../styles/docs-panel.styles';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
@@ -71,6 +73,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       {
         id: 'recommendations',
         title: 'Recommendations',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+      },
+      {
+        id: 'my-learning',
+        title: 'My learning',
         baseUrl: '',
         currentUrl: '',
         content: null,
@@ -241,7 +252,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   private async saveTabsToStorage(): Promise<void> {
     try {
       const tabsToSave: PersistedTabData[] = this.state.tabs
-        .filter((tab) => tab.id !== 'recommendations')
+        .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning')
         .map((tab) => ({
           id: tab.id,
           title: tab.title,
@@ -638,6 +649,47 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const [isHandRaised, setIsHandRaised] = React.useState(false);
   const [showHandRaiseQueue, setShowHandRaiseQueue] = React.useState(false);
   const handRaiseIndicatorRef = React.useRef<HTMLDivElement>(null);
+
+  // Global badge celebration state - shows toast even when not on My Learning tab
+  const [celebrationBadgeId, setCelebrationBadgeId] = React.useState<string | null>(null);
+  const celebrationBadgeIdRef = React.useRef<string | null>(null);
+
+  // Keep ref in sync with state (for use in event handlers)
+  React.useEffect(() => {
+    celebrationBadgeIdRef.current = celebrationBadgeId;
+  }, [celebrationBadgeId]);
+
+  // Listen for badge award events globally (only set up once)
+  React.useEffect(() => {
+    const handleProgressUpdate = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      // Only show toast if we're not already showing one
+      if (celebrationBadgeIdRef.current) {
+        return;
+      }
+      // Check for new badges immediately after guide completion
+      if (detail?.type === 'guide-completed' && detail?.newBadges?.length > 0) {
+        setCelebrationBadgeId(detail.newBadges[0]);
+      }
+    };
+
+    window.addEventListener('learning-progress-updated', handleProgressUpdate);
+
+    return () => {
+      window.removeEventListener('learning-progress-updated', handleProgressUpdate);
+    };
+  }, []);
+
+  // Handle dismissing the global badge celebration
+  const handleDismissGlobalCelebration = React.useCallback(async () => {
+    const badgeId = celebrationBadgeIdRef.current;
+    if (badgeId) {
+      // Clear state first to prevent re-showing
+      setCelebrationBadgeId(null);
+      // Then persist to storage
+      await learningProgressStorage.dismissCelebration(badgeId);
+    }
+  }, []);
   const {
     isActive: isSessionActive,
     sessionRole,
@@ -1384,7 +1436,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     <div className={styles.tabContent}>
                       {tab.id !== 'recommendations' && (
                         <Icon
-                          name={tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
+                          name={tab.id === 'my-learning' ? 'book-open' : tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
                           size="xs"
                           className={styles.tabIcon}
                         />
@@ -1399,7 +1451,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           getTranslatedTitle(tab.title)
                         )}
                       </span>
-                      {tab.id !== 'recommendations' && (
+                      {tab.id !== 'recommendations' && tab.id !== 'my-learning' && (
                         <IconButton
                           name="times"
                           size="sm"
@@ -1497,7 +1549,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       <div className={styles.dropdownItemContent}>
                         {tab.id !== 'recommendations' && (
                           <Icon
-                            name={tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
+                            name={tab.id === 'my-learning' ? 'book-open' : tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
                             size="xs"
                             className={styles.dropdownItemIcon}
                           />
@@ -1512,7 +1564,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             getTranslatedTitle(tab.title)
                           )}
                         </span>
-                        {tab.id !== 'recommendations' && (
+                        {tab.id !== 'recommendations' && tab.id !== 'my-learning' && (
                           <IconButton
                             name="times"
                             size="sm"
@@ -1553,6 +1605,17 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           // Show recommendations tab
           if (isRecommendationsTab) {
             return <contextPanel.Component model={contextPanel} />;
+          }
+
+          // Show my learning tab
+          if (activeTabId === 'my-learning') {
+            return (
+              <MyLearningTab
+                onOpenGuide={(url, title) => {
+                  model.openLearningJourney(url, title);
+                }}
+              />
+            );
           }
 
           // Show dev tools tab
@@ -1883,6 +1946,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         // Restore scroll position after content is ready
                         restoreScrollPosition();
                       }}
+                      onGuideComplete={() => {
+                        // Mark bundled guides as 100% complete when all interactive sections finish
+                        const baseUrl = activeTab?.baseUrl || stableContent.url;
+                        if (baseUrl?.startsWith('bundled:')) {
+                          setJourneyCompletionPercentage(baseUrl, 100);
+                        }
+                      }}
                     />
                   )}
                 </div>
@@ -2003,6 +2073,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             setShowPresenterControls(false);
             setShowAttendeeJoin(false);
           }}
+        />
+      )}
+
+      {/* Global Badge Celebration Toast - shows when any badge is earned */}
+      {celebrationBadgeId && getBadgeById(celebrationBadgeId) && (
+        <BadgeUnlockedToast
+          badge={getBadgeById(celebrationBadgeId)!}
+          onDismiss={handleDismissGlobalCelebration}
         />
       )}
     </div>
