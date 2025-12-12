@@ -650,27 +650,38 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const [showHandRaiseQueue, setShowHandRaiseQueue] = React.useState(false);
   const handRaiseIndicatorRef = React.useRef<HTMLDivElement>(null);
 
-  // Global badge celebration state - shows toast even when not on My Learning tab
-  const [celebrationBadgeId, setCelebrationBadgeId] = React.useState<string | null>(null);
-  const celebrationBadgeIdRef = React.useRef<string | null>(null);
+  // Global badge celebration queue - shows toasts sequentially when badges are earned
+  const [badgeCelebrationQueue, setBadgeCelebrationQueue] = React.useState<string[]>([]);
+  const [currentCelebrationBadge, setCurrentCelebrationBadge] = React.useState<string | null>(null);
+  const isProcessingQueueRef = React.useRef(false);
 
-  // Keep ref in sync with state (for use in event handlers)
+  // Process the badge queue - show next badge toast
   React.useEffect(() => {
-    celebrationBadgeIdRef.current = celebrationBadgeId;
-  }, [celebrationBadgeId]);
+    if (badgeCelebrationQueue.length > 0 && !currentCelebrationBadge && !isProcessingQueueRef.current) {
+      isProcessingQueueRef.current = true;
+      // Small delay before showing next toast for better UX
+      const timer = setTimeout(() => {
+        const [nextBadge, ...remaining] = badgeCelebrationQueue;
+        setBadgeCelebrationQueue(remaining);
+        setCurrentCelebrationBadge(nextBadge);
+        isProcessingQueueRef.current = false;
+      }, currentCelebrationBadge === null ? 0 : 500); // No delay for first, 500ms between subsequent
+
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [badgeCelebrationQueue, currentCelebrationBadge]);
 
   // Listen for badge award events globally (only set up once)
   React.useEffect(() => {
     const handleProgressUpdate = (event: Event) => {
       const detail = (event as CustomEvent).detail;
 
-      // Only show toast if we're not already showing one
-      if (celebrationBadgeIdRef.current) {
-        return;
-      }
       // Check for new badges from guide completion
       if (detail?.type === 'guide-completed' && detail?.newBadges?.length > 0) {
-        setCelebrationBadgeId(detail.newBadges[0]);
+        // Add all new badges to the queue (cap at 3 to avoid overwhelming)
+        const newBadges = detail.newBadges.slice(0, 3) as string[];
+        setBadgeCelebrationQueue((prev) => [...prev, ...newBadges]);
       }
     };
 
@@ -681,16 +692,16 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     };
   }, []);
 
-  // Handle dismissing the global badge celebration
+  // Handle dismissing the current badge celebration
   const handleDismissGlobalCelebration = React.useCallback(async () => {
-    const badgeId = celebrationBadgeIdRef.current;
+    const badgeId = currentCelebrationBadge;
     if (badgeId) {
-      // Clear state first to prevent re-showing
-      setCelebrationBadgeId(null);
-      // Then persist to storage
+      // Clear current badge to trigger showing next in queue
+      setCurrentCelebrationBadge(null);
+      // Then persist dismissal to storage
       await learningProgressStorage.dismissCelebration(badgeId);
     }
-  }, []);
+  }, [currentCelebrationBadge]);
   const {
     isActive: isSessionActive,
     sessionRole,
@@ -2077,11 +2088,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         />
       )}
 
-      {/* Global Badge Celebration Toast - shows when any badge is earned */}
-      {celebrationBadgeId && getBadgeById(celebrationBadgeId) && (
+      {/* Global Badge Celebration Toast - shows queued toasts sequentially */}
+      {currentCelebrationBadge && getBadgeById(currentCelebrationBadge) && (
         <BadgeUnlockedToast
-          badge={getBadgeById(celebrationBadgeId)!}
+          badge={getBadgeById(currentCelebrationBadge)!}
           onDismiss={handleDismissGlobalCelebration}
+          queueCount={badgeCelebrationQueue.length}
         />
       )}
     </div>

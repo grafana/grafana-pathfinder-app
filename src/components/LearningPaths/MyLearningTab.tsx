@@ -11,7 +11,7 @@ import { css, keyframes } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { t } from '@grafana/i18n';
 
-import { useLearningPaths, getStreakMessage, BADGES } from '../../learning-paths';
+import { useLearningPaths, BADGES } from '../../learning-paths';
 import { LearningPathCard } from './LearningPathCard';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -284,8 +284,41 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const totalBadgesEarned = progress.earnedBadges.length;
   const totalBadges = badgesWithStatus.length;
 
+  // Sort badges: unearned first (by progress %), then earned (most recent first)
+  const sortedBadges = useMemo(() => {
+    const pathsForProgress = paths.map((p) => ({ id: p.id, guides: p.guides }));
+
+    return [...badgesWithStatus].sort((a, b) => {
+      const aEarned = !!a.earnedAt;
+      const bEarned = !!b.earnedAt;
+
+      // Unearned badges come first
+      if (aEarned !== bEarned) {
+        return aEarned ? 1 : -1;
+      }
+
+      // Both earned: sort by earnedAt (most recent first)
+      if (aEarned && bEarned) {
+        return (b.earnedAt || 0) - (a.earnedAt || 0);
+      }
+
+      // Both unearned: sort by progress percentage (highest first)
+      const baseBadgeA = BADGES.find((badge) => badge.id === a.id);
+      const baseBadgeB = BADGES.find((badge) => badge.id === b.id);
+
+      const progressA = baseBadgeA
+        ? getBadgeProgress(baseBadgeA, progress.completedGuides, progress.streakDays, pathsForProgress)?.percentage || 0
+        : 0;
+      const progressB = baseBadgeB
+        ? getBadgeProgress(baseBadgeB, progress.completedGuides, progress.streakDays, pathsForProgress)?.percentage || 0
+        : 0;
+
+      return progressB - progressA;
+    });
+  }, [badgesWithStatus, progress.completedGuides, progress.streakDays, paths]);
+
   // Badges to display (4 preview or all)
-  const displayedBadges = showAllBadges ? badgesWithStatus : badgesWithStatus.slice(0, 4);
+  const displayedBadges = showAllBadges ? sortedBadges : sortedBadges.slice(0, 4);
 
   if (isLoading) {
     return (
@@ -439,23 +472,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           })}
         </div>
       </div>
-
-      {/* Streak Section (if active) */}
-      {(streakInfo.days > 0 || streakInfo.isAtRisk) && (
-        <div className={styles.streakSection}>
-          <div className={styles.streakContent}>
-            <span className={styles.streakFire}>🔥</span>
-            <div className={styles.streakInfo}>
-              <div className={styles.streakDays}>
-                {streakInfo.days} {streakInfo.days === 1 ? 'day' : 'days'}
-              </div>
-              <div className={styles.streakMessage}>
-                {getStreakMessage(streakInfo)}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Footer */}
       <div className={styles.footer}>

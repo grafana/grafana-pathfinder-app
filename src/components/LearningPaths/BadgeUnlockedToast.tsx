@@ -35,7 +35,7 @@ const CONFETTI_COLORS = ['#22C55E', '#16A34A', '#4ADE80', '#86EFAC', '#4ECDC4', 
 /**
  * Celebratory toast for badge unlock
  */
-export function BadgeUnlockedToast({ badge, onDismiss }: BadgeUnlockedToastProps) {
+export function BadgeUnlockedToast({ badge, onDismiss, queueCount = 0 }: BadgeUnlockedToastProps) {
   const styles = useStyles2(getBadgeUnlockedToastStyles);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -92,7 +92,7 @@ export function BadgeUnlockedToast({ badge, onDismiss }: BadgeUnlockedToastProps
         {/* Header */}
         <div className={styles.header}>
           <Icon name="star" />
-          <span>Badge unlocked!</span>
+          <span>Badge unlocked!{queueCount > 0 && ` (+${queueCount} more)`}</span>
         </div>
 
         {/* Auto-dismiss progress bar - uses pure CSS animation for smooth performance */}

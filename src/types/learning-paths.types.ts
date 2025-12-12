@@ -179,6 +179,8 @@ export interface BadgeUnlockedToastProps {
   badge: Badge;
   /** Callback when toast is dismissed */
   onDismiss: () => void;
+  /** Number of additional badges waiting in queue (optional) */
+  queueCount?: number;
 }
 
 // ============================================================================

@@ -1008,8 +1008,12 @@ export const learningProgressStorage = {
       const progress = await learningProgressStorage.get();
       if (!progress.completedGuides.includes(guideId)) {
         progress.completedGuides.push(guideId);
-        // Update last activity date for streak tracking
-        progress.lastActivityDate = new Date().toISOString().split('T')[0];
+
+        // Calculate and update streak before changing lastActivityDate
+        const { calculateUpdatedStreak } = await import('../learning-paths/streak-tracker');
+        const today = new Date().toISOString().split('T')[0];
+        progress.streakDays = calculateUpdatedStreak(progress.streakDays, progress.lastActivityDate);
+        progress.lastActivityDate = today;
 
         // Track badges awarded in THIS call only
         const newlyAwardedBadges: string[] = [];
