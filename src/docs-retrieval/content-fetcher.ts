@@ -459,7 +459,8 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
         const content = await response.text();
         if (content && content.trim()) {
           // SECURITY: Validate the final URL is trusted
-          const finalUrl = response.url;
+          // Fallback to urlVariation if response.url is null (Faro instrumentation bug)
+          const finalUrl = response.url || urlVariation;
           const isDevMode = isDevModeEnabledGlobal();
           const isFinalUrlTrusted =
             isAllowedContentUrl(finalUrl) ||
@@ -543,7 +544,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
       const html = await response.text();
       if (html && html.trim()) {
         // SECURITY: Validate redirect target is still trusted
-        const finalUrl = response.url;
+        // Fallback to original url if response.url is null (Faro instrumentation bug)
+        const finalUrl = response.url || url;
         const isDevMode = isDevModeEnabledGlobal();
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
@@ -581,7 +583,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         const shouldFetchContent = isGrafanaDocsUrl(finalUrl) || (isDevModeEnabledGlobal() && isLocalhostUrl(finalUrl));
 
         if (shouldFetchContent) {
-          const { jsonUrl, htmlUrl } = getContentUrls(response.url);
+          // Fallback to original url if response.url is null (Faro instrumentation bug)
+          const { jsonUrl, htmlUrl } = getContentUrls(response.url || url);
 
           // Determine fetch order based on domain:
           // - grafana.com/docs and grafana.com/tutorials: HTML first (JSON not yet available)
@@ -593,13 +596,18 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           const primaryIsJson = !preferHtmlFirst;
 
           // Try primary format first
-          if (primaryUrl !== response.url) {
+          if (primaryUrl !== (response.url || url)) {
             try {
               const primaryResponse = await fetch(primaryUrl, fetchOptions);
               if (primaryResponse.ok) {
                 const primaryContent = await primaryResponse.text();
                 if (primaryContent && primaryContent.trim()) {
-                  return { html: primaryContent, finalUrl: primaryResponse.url, isNativeJson: primaryIsJson };
+                  // Fallback to primaryUrl if response.url is null (Faro instrumentation bug)
+                  return {
+                    html: primaryContent,
+                    finalUrl: primaryResponse.url || primaryUrl,
+                    isNativeJson: primaryIsJson,
+                  };
                 }
               }
             } catch {
@@ -608,17 +616,23 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           }
 
           // Fall back to secondary format
-          if (fallbackUrl !== response.url) {
+          if (fallbackUrl !== (response.url || url)) {
             try {
               const fallbackResponse = await fetch(fallbackUrl, fetchOptions);
               if (fallbackResponse.ok) {
                 const fallbackContent = await fallbackResponse.text();
                 if (fallbackContent && fallbackContent.trim()) {
-                  return { html: fallbackContent, finalUrl: fallbackResponse.url, isNativeJson: !primaryIsJson };
+                  // Fallback to fallbackUrl if response.url is null (Faro instrumentation bug)
+                  return {
+                    html: fallbackContent,
+                    finalUrl: fallbackResponse.url || fallbackUrl,
+                    isNativeJson: !primaryIsJson,
+                  };
                 }
               }
               lastError = {
-                message: `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${response.url}`,
+                // Fallback to original url if response.url is null (Faro instrumentation bug)
+                message: `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${response.url || url}`,
                 errorType: fallbackResponse.status === 404 ? 'not-found' : 'other',
                 statusCode: fallbackResponse.status,
               };
@@ -636,8 +650,10 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         }
 
         // Content fetched successfully
-        const isNativeJson = isJsonContentUrl(response.url) || isJsonContentUrl(url);
-        return { html, finalUrl: response.url, isNativeJson };
+        // Fallback to original url if response.url is null (Faro instrumentation bug)
+        const effectiveUrl = response.url || url;
+        const isNativeJson = isJsonContentUrl(effectiveUrl) || isJsonContentUrl(url);
+        return { html, finalUrl: effectiveUrl, isNativeJson };
       }
     } else if (response.status >= 300 && response.status < 400) {
       // Handle manual redirect cases
@@ -679,8 +695,10 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
                 if (redirectResponse.ok) {
                   const html = await redirectResponse.text();
                   if (html && html.trim()) {
-                    const isNativeJson = isJsonContentUrl(redirectResponse.url) || isJsonContentUrl(redirectUrl.href);
-                    return { html, finalUrl: redirectResponse.url, isNativeJson };
+                    // Fallback to redirectUrl.href if response.url is null (Faro instrumentation bug)
+                    const effectiveRedirectUrl = redirectResponse.url || redirectUrl.href;
+                    const isNativeJson = isJsonContentUrl(effectiveRedirectUrl) || isJsonContentUrl(redirectUrl.href);
+                    return { html, finalUrl: effectiveRedirectUrl, isNativeJson };
                   }
                 }
               }
