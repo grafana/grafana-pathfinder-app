@@ -239,7 +239,7 @@ export const InteractiveStep = forwardRef<
 
         return true;
       } catch (error) {
-        console.error(`Step execution failed: ${stepId}`, error);
+        console.error('[pathfinder]', `Step execution failed: ${stepId}`, error);
         setPostVerifyError(error instanceof Error ? error.message : 'Execution failed');
         return false;
       }
@@ -414,7 +414,7 @@ export const InteractiveStep = forwardRef<
           }
         }
       } catch (error) {
-        console.error('Interactive show action failed:', error);
+        console.error('[pathfinder]', 'Interactive show action failed:', error);
       } finally {
         setIsShowRunning(false);
       }
@@ -459,7 +459,7 @@ export const InteractiveStep = forwardRef<
       try {
         await executeStep();
       } catch (error) {
-        console.error('Interactive do action failed:', error);
+        console.error('[pathfinder]', 'Interactive do action failed:', error);
       } finally {
         setIsDoRunning(false);
       }

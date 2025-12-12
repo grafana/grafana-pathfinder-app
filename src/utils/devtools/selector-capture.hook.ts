@@ -41,7 +41,7 @@ export interface UseSelectorCaptureReturn {
  * ```typescript
  * const { isActive, capturedSelector, startCapture, stopCapture } = useSelectorCapture({
  *   excludeSelectors: ['.my-container'],
- *   onCapture: (selector, info) => console.log('Captured:', selector),
+ *   onCapture: (selector, info) => console.log('[pathfinder]', 'Captured:', selector),
  *   autoDisable: true
  * });
  *
@@ -110,7 +110,7 @@ export function useSelectorCapture(options: UseSelectorCaptureOptions = {}): Use
       const result = generateSelectorFromEvent(target, event);
 
       if (result.warnings.length > 0) {
-        console.warn('Watch mode selector validation warnings:', result.warnings);
+        console.warn('[pathfinder]', 'Watch mode selector validation warnings:', result.warnings);
       }
 
       const selectorInfoData: SelectorInfo = result.selectorInfo;

@@ -447,7 +447,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         const success = await navigationManagerRef.current.expandParentNavigationSection(state.targetHref);
 
         if (!success) {
-          console.error('Failed to expand parent navigation section');
+          console.error('[pathfinder]', 'Failed to expand parent navigation section');
           safeSetState((prev) => ({
             ...prev,
             isChecking: false,
@@ -465,7 +465,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         // Only fix navigation requirements if no other specific fix type is available
         await fixNavigationRequirements();
       } else {
-        console.warn('Unknown fix type:', state.fixType);
+        console.warn('[pathfinder]', 'Unknown fix type:', state.fixType);
         safeSetState((prev) => ({
           ...prev,
           isChecking: false,
@@ -489,7 +489,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       );
       await checkStep();
     } catch (error) {
-      console.error('Failed to fix requirements:', error);
+      console.error('[pathfinder]', 'Failed to fix requirements:', error);
       safeSetState((prev) => ({
         ...prev,
         isChecking: false,

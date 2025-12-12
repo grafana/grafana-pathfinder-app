@@ -33,7 +33,7 @@ class PluginErrorBoundary extends Component<{ children: ReactNode }, ErrorBounda
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Pathfinder plugin error:', error, errorInfo);
+    console.error('[pathfinder]', 'Pathfinder plugin error:', error, errorInfo);
     this.setState({ errorInfo });
 
     // TODO: Re-enable Faro once collector CORS is configured correctly

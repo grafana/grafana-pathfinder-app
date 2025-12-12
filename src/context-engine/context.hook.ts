@@ -64,7 +64,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
       const newContextData = await ContextService.getContextData();
       setContextData(newContextData);
     } catch (error) {
-      console.error('Failed to fetch context data:', error);
+      console.error('[pathfinder]', 'Failed to fetch context data:', error);
       setContextData((prev) => ({ ...prev, isLoading: false }));
     }
   }, []); // Empty dependency array - setContextData is stable
@@ -98,7 +98,7 @@ export function useContextPanel(options: UseContextPanelOptions = {}): UseContex
           usingFallbackRecommendations,
         }));
       } catch (error) {
-        console.error('Failed to fetch recommendations:', error);
+        console.error('[pathfinder]', 'Failed to fetch recommendations:', error);
         setContextData((prev) => ({
           ...prev,
           recommendationsError: 'Failed to fetch recommendations',

@@ -53,7 +53,7 @@ export class ContextPanel extends SceneObjectBase<ContextPanelState> {
     if (this.state.onOpenDocsPage) {
       this.state.onOpenDocsPage(url, title);
     } else {
-      console.warn('No onOpenDocsPage callback available');
+      console.warn('[pathfinder]', 'No onOpenDocsPage callback available');
     }
   }
 

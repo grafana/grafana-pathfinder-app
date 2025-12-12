@@ -148,7 +148,7 @@ export interface UseActionRecorderReturn {
  * @example
  * ```typescript
  * const { isRecording, recordedSteps, startRecording, pauseRecording, resumeRecording, stopRecording, exportSteps } = useActionRecorder({
- *   onStepRecorded: (step) => console.log('Recorded:', step)
+ *   onStepRecorded: (step) => console.log('[pathfinder]', 'Recorded:', step)
  * });
  *
  * // Start recording
@@ -430,7 +430,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
       // Log validation warnings for debugging
       if (result.warnings.length > 0) {
-        console.warn('Selector validation warnings:', result.warnings);
+        console.warn('[pathfinder]', 'Selector validation warnings:', result.warnings);
       }
 
       const description = getActionDescription(action, target);
@@ -463,7 +463,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
           // Check for duplicate in pending group
           const lastPendingStep = pendingGroupSteps.length > 0 ? pendingGroupSteps[pendingGroupSteps.length - 1] : null;
           if (lastPendingStep && lastPendingStep.selector === selector && lastPendingStep.action === action) {
-            console.warn('Skipping duplicate selector in modal:', selector);
+            console.warn('[pathfinder]', 'Skipping duplicate selector in modal:', selector);
             return;
           }
           setPendingGroupSteps((prev) => [...prev, newStep]);
@@ -524,7 +524,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
       setRecordedSteps((prev) => {
         const lastStep = prev.length > 0 ? prev[prev.length - 1] : null;
         if (lastStep && lastStep.selector === selector && lastStep.action === action) {
-          console.warn('Skipping duplicate selector:', selector);
+          console.warn('[pathfinder]', 'Skipping duplicate selector:', selector);
           return prev;
         }
 
@@ -591,7 +591,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
 
         // Log validation warnings for debugging
         if (result.warnings.length > 0) {
-          console.warn('Selector validation warnings:', result.warnings);
+          console.warn('[pathfinder]', 'Selector validation warnings:', result.warnings);
         }
 
         const description = getActionDescription(action, target);
@@ -617,7 +617,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
             lastPendingStep.action === action &&
             lastPendingStep.value === tracked.value
           ) {
-            console.warn('Skipping duplicate formfill in modal:', selector);
+            console.warn('[pathfinder]', 'Skipping duplicate formfill in modal:', selector);
             return;
           }
           setPendingGroupSteps((prev) => [...prev, newStep]);
@@ -633,7 +633,7 @@ export function useActionRecorder(options: UseActionRecorderOptions = {}): UseAc
             lastStep.action === action &&
             lastStep.value === tracked.value
           ) {
-            console.warn('Skipping duplicate formfill:', selector);
+            console.warn('[pathfinder]', 'Skipping duplicate formfill:', selector);
             return prev; // Skip duplicate
           }
 

@@ -43,7 +43,7 @@ export class FormFillHandler {
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${resolvedSelector}`);
+      console.warn('[pathfinder]', `Multiple elements found matching selector: ${resolvedSelector}`);
     }
 
     const targetElement = targetElements[0];
@@ -53,7 +53,7 @@ export class FormFillHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      console.warn('Target element is not visible:', targetElement);
+      console.warn('[pathfinder]', 'Target element is not visible:', targetElement);
       // Continue anyway (non-breaking)
     }
 
@@ -253,7 +253,7 @@ export class FormFillHandler {
 
     // SECURITY: Prevent ReDoS attacks with length limit
     if (fullValue.length > 1000) {
-      console.warn('Input too long for combobox, truncating to 1000 chars');
+      console.warn('[pathfinder]', 'Input too long for combobox, truncating to 1000 chars');
       fullValue = fullValue.substring(0, 1000);
     }
 

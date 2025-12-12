@@ -144,7 +144,7 @@ function createLocalStorage(): UserStorage {
           return value as unknown as T;
         }
       } catch (error) {
-        console.warn(`Failed to get item from localStorage: ${key}`, error);
+        console.warn('[pathfinder]', `Failed to get item from localStorage: ${key}`, error);
         return null;
       }
     },
@@ -156,10 +156,10 @@ function createLocalStorage(): UserStorage {
       } catch (error) {
         // SECURITY: Handle QuotaExceededError
         if (error instanceof Error && error.name === 'QuotaExceededError') {
-          console.warn('localStorage quota exceeded', error);
+          console.warn('[pathfinder]', 'localStorage quota exceeded', error);
           throw error;
         }
-        console.error(`Failed to set item in localStorage: ${key}`, error);
+        console.error('[pathfinder]', `Failed to set item in localStorage: ${key}`, error);
         throw error;
       }
     },
@@ -168,7 +168,7 @@ function createLocalStorage(): UserStorage {
       try {
         localStorage.removeItem(key);
       } catch (error) {
-        console.warn(`Failed to remove item from localStorage: ${key}`, error);
+        console.warn('[pathfinder]', `Failed to remove item from localStorage: ${key}`, error);
       }
     },
 
@@ -184,7 +184,7 @@ function createLocalStorage(): UserStorage {
         }
         keys.forEach((key) => localStorage.removeItem(key));
       } catch (error) {
-        console.warn('Failed to clear localStorage', error);
+        console.warn('[pathfinder]', 'Failed to clear localStorage', error);
       }
     },
   };
@@ -224,7 +224,7 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
         try {
           await grafanaStorage.setItem(item.key, item.value);
         } catch (error) {
-          console.warn(`Failed to sync to Grafana storage: ${item.key}`, error);
+          console.warn('[pathfinder]', `Failed to sync to Grafana storage: ${item.key}`, error);
           // Don't retry - localStorage is the immediate source of truth
         }
       }
@@ -255,18 +255,18 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
 
         // Process queue in background (don't await - we don't want to block)
         processQueue().catch((error) => {
-          console.warn('Error processing Grafana storage queue:', error);
+          console.warn('[pathfinder]', 'Error processing Grafana storage queue:', error);
         });
       } catch (error) {
         // If localStorage fails, at least try Grafana storage
-        console.warn(`Failed to write to localStorage: ${key}, trying Grafana storage`, error);
+        console.warn('[pathfinder]', `Failed to write to localStorage: ${key}, trying Grafana storage`, error);
         try {
           const serialized = JSON.stringify(value);
           const timestamp = Date.now().toString();
           await grafanaStorage.setItem(key, serialized);
           await grafanaStorage.setItem(getTimestampKey(key), timestamp);
         } catch (grafanaError) {
-          console.error(`Failed to write to both storages: ${key}`, grafanaError);
+          console.error('[pathfinder]', `Failed to write to both storages: ${key}`, grafanaError);
           throw grafanaError;
         }
       }
@@ -284,7 +284,7 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
       writeQueue.push({ key, value: '' });
       writeQueue.push({ key: getTimestampKey(key), value: timestamp });
       processQueue().catch((error) => {
-        console.warn('Error processing Grafana storage queue:', error);
+        console.warn('[pathfinder]', 'Error processing Grafana storage queue:', error);
       });
     },
 
@@ -293,7 +293,7 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
       await localStorage.clear();
 
       // Note: Grafana storage doesn't support bulk clear
-      console.warn('Clear operation not fully supported for Grafana user storage');
+      console.warn('[pathfinder]', 'Clear operation not fully supported for Grafana user storage');
     },
   };
 }
@@ -384,11 +384,11 @@ async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
         }
         // If neither has timestamp, nothing to sync
       } catch (error) {
-        console.warn(`Failed to sync key from Grafana storage: ${key}`, error);
+        console.warn('[pathfinder]', `Failed to sync key from Grafana storage: ${key}`, error);
       }
     }
   } catch (error) {
-    console.warn('Failed to sync from Grafana storage:', error);
+    console.warn('[pathfinder]', 'Failed to sync from Grafana storage:', error);
   }
 }
 
@@ -411,7 +411,7 @@ async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
  *
  *   useEffect(() => {
  *     storage.getItem('my-key').then(value => {
- *       console.log('Stored value:', value);
+ *       console.log('[pathfinder]', 'Stored value:', value);
  *     });
  *   }, [storage]);
  *
@@ -446,7 +446,7 @@ export function useUserStorage(): UserStorage {
         // Sync from Grafana storage to localStorage on init
         // Grafana storage is the source of truth across devices/sessions
         syncFromGrafanaStorage(grafanaStorage).catch((error) => {
-          console.warn('Failed initial sync from Grafana storage:', error);
+          console.warn('[pathfinder]', 'Failed initial sync from Grafana storage:', error);
         });
       } else {
         // Fall back to localStorage only
@@ -542,12 +542,12 @@ export const journeyCompletionStorage = {
     } catch (error) {
       // SECURITY: Handle QuotaExceededError gracefully
       if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('Storage quota exceeded, clearing old journey data');
+        console.warn('[pathfinder]', 'Storage quota exceeded, clearing old journey data');
         await journeyCompletionStorage.cleanup();
         // Retry after cleanup
         await journeyCompletionStorage.set(journeyBaseUrl, percentage);
       } else {
-        console.warn('Failed to save journey completion percentage:', error);
+        console.warn('[pathfinder]', 'Failed to save journey completion percentage:', error);
       }
     }
   },
@@ -562,7 +562,7 @@ export const journeyCompletionStorage = {
       delete completionData[journeyBaseUrl];
       await storage.setItem(StorageKeys.JOURNEY_COMPLETION, completionData);
     } catch (error) {
-      console.warn('Failed to clear journey completion:', error);
+      console.warn('[pathfinder]', 'Failed to clear journey completion:', error);
     }
   },
 
@@ -592,7 +592,7 @@ export const journeyCompletionStorage = {
         await storage.setItem(StorageKeys.JOURNEY_COMPLETION, reduced);
       }
     } catch (error) {
-      console.warn('Failed to cleanup journey completions:', error);
+      console.warn('[pathfinder]', 'Failed to cleanup journey completions:', error);
     }
   },
 };
@@ -629,13 +629,13 @@ export const tabStorage = {
     } catch (error) {
       // SECURITY: Handle QuotaExceededError
       if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('Storage quota exceeded, reducing number of tabs');
+        console.warn('[pathfinder]', 'Storage quota exceeded, reducing number of tabs');
         // Save only the most recent 25 tabs
         const reducedTabs = tabs.slice(-25);
         const storage = createUserStorage();
         await storage.setItem(StorageKeys.TABS, reducedTabs);
       } else {
-        console.warn('Failed to save tabs:', error);
+        console.warn('[pathfinder]', 'Failed to save tabs:', error);
       }
     }
   },
@@ -660,7 +660,7 @@ export const tabStorage = {
       const storage = createUserStorage();
       await storage.setItem(StorageKeys.ACTIVE_TAB, tabId);
     } catch (error) {
-      console.warn('Failed to save active tab:', error);
+      console.warn('[pathfinder]', 'Failed to save active tab:', error);
     }
   },
 
@@ -673,7 +673,7 @@ export const tabStorage = {
       await storage.removeItem(StorageKeys.TABS);
       await storage.removeItem(StorageKeys.ACTIVE_TAB);
     } catch (error) {
-      console.warn('Failed to clear tab data:', error);
+      console.warn('[pathfinder]', 'Failed to clear tab data:', error);
     }
   },
 };
@@ -705,7 +705,7 @@ export const interactiveStepStorage = {
       const key = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
       await storage.setItem(key, Array.from(completedIds));
     } catch (error) {
-      console.warn('Failed to save completed steps:', error);
+      console.warn('[pathfinder]', 'Failed to save completed steps:', error);
     }
   },
 
@@ -718,7 +718,7 @@ export const interactiveStepStorage = {
       const key = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
       await storage.removeItem(key);
     } catch (error) {
-      console.warn('Failed to clear completed steps:', error);
+      console.warn('[pathfinder]', 'Failed to clear completed steps:', error);
     }
   },
 };
@@ -750,7 +750,7 @@ export const sectionCollapseStorage = {
       const key = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-${sectionId}`;
       await storage.setItem(key, isCollapsed);
     } catch (error) {
-      console.warn('Failed to save section collapse state:', error);
+      console.warn('[pathfinder]', 'Failed to save section collapse state:', error);
     }
   },
 
@@ -763,7 +763,7 @@ export const sectionCollapseStorage = {
       const key = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-${sectionId}`;
       await storage.removeItem(key);
     } catch (error) {
-      console.warn('Failed to clear section collapse state:', error);
+      console.warn('[pathfinder]', 'Failed to clear section collapse state:', error);
     }
   },
 };
@@ -820,7 +820,7 @@ export const fullScreenModeStorage = {
       const storage = createUserStorage();
       await storage.setItem(StorageKeys.FULLSCREEN_MODE_STATE, state);
     } catch (error) {
-      console.warn('Failed to save full screen mode state:', error);
+      console.warn('[pathfinder]', 'Failed to save full screen mode state:', error);
     }
   },
 
@@ -844,7 +844,7 @@ export const fullScreenModeStorage = {
       const storage = createUserStorage();
       await storage.setItem(StorageKeys.FULLSCREEN_BUNDLED_STEPS, steps);
     } catch (error) {
-      console.warn('Failed to save bundled steps:', error);
+      console.warn('[pathfinder]', 'Failed to save bundled steps:', error);
     }
   },
 
@@ -872,7 +872,7 @@ export const fullScreenModeStorage = {
         await storage.setItem(StorageKeys.FULLSCREEN_BUNDLING_ACTION, action);
       }
     } catch (error) {
-      console.warn('Failed to save bundling action:', error);
+      console.warn('[pathfinder]', 'Failed to save bundling action:', error);
     }
   },
 
@@ -900,7 +900,7 @@ export const fullScreenModeStorage = {
         await storage.setItem(StorageKeys.FULLSCREEN_SECTION_INFO, info);
       }
     } catch (error) {
-      console.warn('Failed to save section info:', error);
+      console.warn('[pathfinder]', 'Failed to save section info:', error);
     }
   },
 
@@ -917,7 +917,7 @@ export const fullScreenModeStorage = {
         storage.removeItem(StorageKeys.FULLSCREEN_SECTION_INFO),
       ]);
     } catch (error) {
-      console.warn('Failed to clear full screen mode state:', error);
+      console.warn('[pathfinder]', 'Failed to clear full screen mode state:', error);
     }
   },
 };

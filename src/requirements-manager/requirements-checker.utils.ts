@@ -58,6 +58,7 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
   // Type-safe validation with helpful developer feedback
   if (!isValidRequirement(check)) {
     console.warn(
+      '[pathfinder]',
       `Unknown requirement type: '${check}'. Check the requirement syntax and ensure it's supported. Allowing step to proceed.`
     );
 
@@ -145,6 +146,7 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
 
   // This should never be reached due to type validation above, but keeping as fallback
   console.error(
+    '[pathfinder]',
     `Unexpected requirement type reached end of router: '${check}'. This indicates a bug in the type validation.`
   );
 
@@ -1309,7 +1311,7 @@ export function validateInteractiveRequirements(
       );
     }
 
-    console.error(errorMessage.join('\n'));
+    console.error('[pathfinder]', errorMessage.join('\n'));
 
     return false;
   }

@@ -56,10 +56,10 @@ const fetchLabelNames = async (ds: LokiDatasource): Promise<string[]> => {
       return await lp.fetchLabels();
     }
 
-    console.warn('[LokiUtils] No suitable method found to fetch label names');
+    console.warn('[pathfinder]', '[LokiUtils] No suitable method found to fetch label names');
     return [];
   } catch (error) {
-    console.warn('[LokiUtils] Failed to fetch label names:', error);
+    console.warn('[pathfinder]', '[LokiUtils] Failed to fetch label names:', error);
     return [];
   }
 };
@@ -82,10 +82,10 @@ const fetchLabelValues = async (ds: LokiDatasource, labelName: string, limit = M
       return Array.isArray(values) ? values.slice(0, limit) : [];
     }
 
-    console.warn('[LokiUtils] No suitable method found to fetch label values');
+    console.warn('[pathfinder]', '[LokiUtils] No suitable method found to fetch label values');
     return [];
   } catch (error) {
-    console.warn(`[LokiUtils] Failed to fetch values for label ${labelName}:`, error);
+    console.warn('[pathfinder]', `[LokiUtils] Failed to fetch values for label ${labelName}:`, error);
     return [];
   }
 };

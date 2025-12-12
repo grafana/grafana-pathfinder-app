@@ -90,7 +90,7 @@ export const initializeOpenFeature = (): void => {
     const namespace = config.namespace;
 
     if (!namespace) {
-      console.warn('[OpenFeature] config.namespace not available, skipping initialization');
+      console.warn('[pathfinder]', '[OpenFeature] config.namespace not available, skipping initialization');
       return;
     }
 
@@ -110,7 +110,7 @@ export const initializeOpenFeature = (): void => {
 
     isInitialized = true;
   } catch (error) {
-    console.error('[OpenFeature] Failed to initialize provider:', error);
+    console.error('[pathfinder]', '[OpenFeature] Failed to initialize provider:', error);
   }
 };
 
@@ -146,7 +146,7 @@ export const getFeatureFlagValue = (flagName: string, defaultValue: boolean): bo
     const client = getFeatureFlagClient();
     return client.getBooleanValue(flagName, defaultValue);
   } catch (error) {
-    console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
+    console.error('[pathfinder]', `[OpenFeature] Error evaluating flag '${flagName}':`, error);
     return defaultValue;
   }
 };
@@ -169,7 +169,7 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
     const client = getFeatureFlagClient();
     return client.getStringValue(flagName, defaultValue);
   } catch (error) {
-    console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
+    console.error('[pathfinder]', `[OpenFeature] Error evaluating flag '${flagName}':`, error);
     return defaultValue;
   }
 };
@@ -211,7 +211,7 @@ export const getExperimentConfig = (flagName: string): ExperimentConfig => {
     }
     return DEFAULT_EXPERIMENT_CONFIG;
   } catch (error) {
-    console.error(`[OpenFeature] Error evaluating flag '${flagName}':`, error);
+    console.error('[pathfinder]', `[OpenFeature] Error evaluating flag '${flagName}':`, error);
     return DEFAULT_EXPERIMENT_CONFIG;
   }
 };

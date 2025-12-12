@@ -59,9 +59,9 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       };
 
       await createSession(config);
-      console.log('[PresenterControls] Session created successfully');
+      console.log('[pathfinder]', '[PresenterControls] Session created successfully');
     } catch (err) {
-      console.error('[PresenterControls] Failed to create session:', err);
+      console.error('[pathfinder]', '[PresenterControls] Failed to create session:', err);
       setError('Failed to create session. Please try again.');
     } finally {
       setIsCreating(false);
@@ -77,7 +77,7 @@ export function PresenterControls({ tutorialUrl }: PresenterControlsProps) {
       setCopied(type);
       setTimeout(() => setCopied(null), 2000);
     } catch (error) {
-      console.error('[PresenterControls] Failed to copy:', error);
+      console.error('[pathfinder]', '[PresenterControls] Failed to copy:', error);
     }
   };
 

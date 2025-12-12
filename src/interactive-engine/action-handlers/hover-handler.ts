@@ -47,7 +47,10 @@ export class HoverHandler {
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
+      console.warn(
+        '[pathfinder]',
+        `Multiple elements found matching selector: ${resolvedSelector}, using first element`
+      );
     }
 
     return targetElements[0];
@@ -56,7 +59,7 @@ export class HoverHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      console.warn('Target element is not visible:', targetElement);
+      console.warn('[pathfinder]', 'Target element is not visible:', targetElement);
       // Continue anyway (non-breaking)
     }
 

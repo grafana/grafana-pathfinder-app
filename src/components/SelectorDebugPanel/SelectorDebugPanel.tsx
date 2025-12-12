@@ -63,7 +63,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
 
       window.location.reload();
     } catch (error) {
-      console.error('Failed to disable dev mode:', error);
+      console.error('[pathfinder]', 'Failed to disable dev mode:', error);
 
       // Show user-friendly error message
       const errorMessage = error instanceof Error ? error.message : 'Failed to disable dev mode. Please try again.';
@@ -185,7 +185,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         }
       }
     } catch (error) {
-      console.warn('Failed to restore recording state from storage:', error);
+      console.warn('[pathfinder]', 'Failed to restore recording state from storage:', error);
     }
   }, [setRecordedSteps]);
 
@@ -202,7 +202,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       };
       sessionStorage.setItem(StorageKeys.DEVTOOLS_RECORDING_STATE, JSON.stringify(stateToSave));
     } catch (error) {
-      console.warn('Failed to persist recording state to storage:', error);
+      console.warn('[pathfinder]', 'Failed to persist recording state to storage:', error);
     }
   }, [recordedSteps, recordingStartUrl]);
 
@@ -252,7 +252,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         // Reset after 2 seconds
         setTimeout(() => setSelectorCopied(false), 2000);
       } catch (error) {
-        console.error('Failed to copy selector:', error);
+        console.error('[pathfinder]', 'Failed to copy selector:', error);
       }
     }
   }, [capturedSelector]);
@@ -317,7 +317,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       // Reset after 2 seconds
       setTimeout(() => setAllStepsCopied(false), 2000);
     } catch (error) {
-      console.error('Failed to copy steps:', error);
+      console.error('[pathfinder]', 'Failed to copy steps:', error);
     }
   }, [exportStepsFromRecorder]);
 
@@ -341,7 +341,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
       setExportCopied(true);
       setTimeout(() => setExportCopied(false), 2000);
     } catch (error) {
-      console.error('Failed to copy HTML:', error);
+      console.error('[pathfinder]', 'Failed to copy HTML:', error);
     }
   }, [exportStepsFromRecorder]);
 

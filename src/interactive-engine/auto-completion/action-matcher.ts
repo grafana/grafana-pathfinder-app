@@ -463,7 +463,7 @@ export class ActionMatcher {
           targetElement = elementResolver();
         } catch (error) {
           // Element resolution failed, fall back to selector-based matching
-          console.warn(`Element resolver failed for step ${stepId}:`, error);
+          console.warn('[pathfinder]', `Element resolver failed for step ${stepId}:`, error);
         }
       }
 

@@ -319,7 +319,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
         return true;
       } catch (error) {
-        console.error(`Guided execution failed: ${stepId}`, error);
+        console.error('[pathfinder]', `Guided execution failed: ${stepId}`, error);
         const errorMessage = error instanceof Error ? error.message : 'Guided execution failed';
         setExecutionError(errorMessage);
         return false;
@@ -403,7 +403,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           }
         } catch (error) {
           // Element resolution failed, fall back to selector-based matching
-          console.warn('Failed to resolve target element for coordinate matching:', error);
+          console.warn('[pathfinder]', 'Failed to resolve target element for coordinate matching:', error);
         }
 
         // Check if action matches (with coordinate support)

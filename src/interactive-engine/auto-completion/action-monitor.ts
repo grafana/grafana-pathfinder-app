@@ -53,7 +53,7 @@ const MONITORED_EVENT_TYPES = ['click', 'input', 'change', 'mouseenter', 'keydow
  *
  * // Listen for detected actions
  * document.addEventListener('user-action-detected', (event: CustomEvent) => {
- *   console.log('User action:', event.detail);
+ *   console.log('[pathfinder]', 'User action:', event.detail);
  * });
  *
  * // Temporarily disable during section execution

@@ -129,13 +129,13 @@ export function parseGuideJson(json: string): JsonGuide | null {
     const validation = validateGuide(parsed);
 
     if (!validation.isValid) {
-      console.error('Invalid guide JSON:', validation.errors);
+      console.error('[pathfinder]', 'Invalid guide JSON:', validation.errors);
       return null;
     }
 
     return parsed as JsonGuide;
   } catch (e) {
-    console.error('Failed to parse guide JSON:', e);
+    console.error('[pathfinder]', 'Failed to parse guide JSON:', e);
     return null;
   }
 }

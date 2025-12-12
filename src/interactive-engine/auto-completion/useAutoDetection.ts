@@ -104,7 +104,7 @@ export function resolveTargetElement(action: ActionToDetect): HTMLElement | null
     }
     // Note: navigate doesn't use coordinate matching
   } catch (error) {
-    console.warn('Failed to resolve target element for coordinate matching:', error);
+    console.warn('[pathfinder]', 'Failed to resolve target element for coordinate matching:', error);
   }
 
   return null;

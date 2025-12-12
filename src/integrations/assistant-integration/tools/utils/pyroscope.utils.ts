@@ -49,7 +49,7 @@ const fetchProfileTypes = async (ds: PyroscopeDatasource): Promise<string[]> => 
 
     return [];
   } catch (error) {
-    console.warn('[PyroscopeUtils] Failed to fetch profile types:', error);
+    console.warn('[pathfinder]', '[PyroscopeUtils] Failed to fetch profile types:', error);
     return [];
   }
 };
@@ -68,7 +68,7 @@ const fetchLabels = async (ds: PyroscopeDatasource): Promise<string[]> => {
 
     return [];
   } catch (error) {
-    console.warn('[PyroscopeUtils] Failed to fetch labels:', error);
+    console.warn('[pathfinder]', '[PyroscopeUtils] Failed to fetch labels:', error);
     return [];
   }
 };
@@ -88,7 +88,7 @@ const fetchLabelValues = async (ds: PyroscopeDatasource, labelName: string): Pro
 
     return [];
   } catch (error) {
-    console.warn(`[PyroscopeUtils] Failed to fetch values for label ${labelName}:`, error);
+    console.warn('[pathfinder]', `[PyroscopeUtils] Failed to fetch values for label ${labelName}:`, error);
     return [];
   }
 };

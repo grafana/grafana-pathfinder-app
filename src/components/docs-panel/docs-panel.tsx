@@ -190,7 +190,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         const isValidCurrent = !data.currentUrl || validateUrl(data.currentUrl);
 
         if (!isValidBase || !isValidCurrent) {
-          console.warn('Rejected potentially unsafe URL from storage:', {
+          console.warn('[pathfinder]', 'Rejected potentially unsafe URL from storage:', {
             baseUrl: data.baseUrl,
             currentUrl: data.currentUrl,
             isValidBase,
@@ -213,7 +213,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
 
       return tabs;
     } catch (error) {
-      console.error('Failed to restore tabs from storage:', error);
+      console.error('[pathfinder]', 'Failed to restore tabs from storage:', error);
       return [
         {
           id: 'recommendations',
@@ -237,7 +237,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         return tabExists ? activeTabId : 'recommendations';
       }
     } catch (error) {
-      console.error('Failed to restore active tab from storage:', error);
+      console.error('[pathfinder]', 'Failed to restore active tab from storage:', error);
     }
 
     return 'recommendations';
@@ -258,7 +258,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       // Save both tabs and active tab
       await Promise.all([tabStorage.setTabs(tabsToSave), tabStorage.setActiveTab(this.state.activeTabId)]);
     } catch (error) {
-      console.error('Failed to save tabs to storage:', error);
+      console.error('[pathfinder]', 'Failed to save tabs to storage:', error);
     }
   }
 
@@ -266,7 +266,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
     try {
       await tabStorage.clear();
     } catch (error) {
-      console.error('Failed to clear persisted tabs:', error);
+      console.error('[pathfinder]', 'Failed to clear persisted tabs:', error);
     }
   }
 
@@ -362,7 +362,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         this.saveTabsToStorage();
       }
     } catch (error) {
-      console.error(`Failed to load journey content for tab ${tabId}:`, error);
+      console.error('[pathfinder]', `Failed to load journey content for tab ${tabId}:`, error);
 
       const errorUpdatedTabs = this.state.tabs.map((t) =>
         t.id === tabId
@@ -592,7 +592,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
         this.saveTabsToStorage();
       }
     } catch (error) {
-      console.error(`Failed to load docs content for tab ${tabId}:`, error);
+      console.error('[pathfinder]', `Failed to load docs content for tab ${tabId}:`, error);
 
       const errorUpdatedTabs = this.state.tabs.map((t) =>
         t.id === tabId
@@ -706,7 +706,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         isRaised,
       });
 
-      console.log(`[DocsPanel] Hand ${isRaised ? 'raised' : 'lowered'} by ${attendeeName}`);
+      console.log('[pathfinder]', `[DocsPanel] Hand ${isRaised ? 'raised' : 'lowered'} by ${attendeeName}`);
     },
     [sessionManager, sessionInfo, attendeeName]
   );
@@ -717,15 +717,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       return;
     }
 
-    console.log('[DocsPanel] Setting up hand raise event listener for presenter');
+    console.log('[pathfinder]', '[DocsPanel] Setting up hand raise event listener for presenter');
 
     const cleanup = onEvent((event) => {
-      console.log('[DocsPanel] Presenter received event:', event.type, event);
+      console.log('[pathfinder]', '[DocsPanel] Presenter received event:', event.type, event);
 
       if (event.type === 'hand_raise') {
         if (event.isRaised) {
           // Show toast notification when someone raises their hand
-          console.log('[DocsPanel] Showing toast for hand raise:', event.attendeeName);
+          console.log('[pathfinder]', '[DocsPanel] Showing toast for hand raise:', event.attendeeName);
           getAppEvents().publish({
             type: 'alert-success',
             payload: ['Live session', `${event.attendeeName} has raised their hand`],
@@ -997,14 +997,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Initialize ActionCaptureSystem when creating session as presenter
   useEffect(() => {
     if (sessionRole === 'presenter' && sessionManager && sessionInfo && !actionCaptureRef.current) {
-      console.log('[DocsPanel] Initializing ActionCaptureSystem for presenter');
+      console.log('[pathfinder]', '[DocsPanel] Initializing ActionCaptureSystem for presenter');
       actionCaptureRef.current = new ActionCaptureSystem(sessionManager, sessionInfo.sessionId);
       actionCaptureRef.current.startCapture();
     }
 
     // Cleanup when ending session
     if (sessionRole !== 'presenter' && actionCaptureRef.current) {
-      console.log('[DocsPanel] Cleaning up ActionCaptureSystem');
+      console.log('[pathfinder]', '[DocsPanel] Cleaning up ActionCaptureSystem');
       actionCaptureRef.current.stopCapture();
       actionCaptureRef.current = null;
     }
@@ -1017,19 +1017,19 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Initialize ActionReplaySystem when joining as attendee
   useEffect(() => {
     if (sessionRole === 'attendee' && navigationManagerRef.current && attendeeMode && !actionReplayRef.current) {
-      console.log(`[DocsPanel] Initializing ActionReplaySystem for attendee in ${attendeeMode} mode`);
+      console.log('[pathfinder]', `[DocsPanel] Initializing ActionReplaySystem for attendee in ${attendeeMode} mode`);
       actionReplayRef.current = new ActionReplaySystem(attendeeMode, navigationManagerRef.current);
     }
 
     // Update mode if it changes
     if (sessionRole === 'attendee' && actionReplayRef.current && attendeeMode) {
       actionReplayRef.current.setMode(attendeeMode);
-      console.log(`[DocsPanel] Updated ActionReplaySystem mode to ${attendeeMode}`);
+      console.log('[pathfinder]', `[DocsPanel] Updated ActionReplaySystem mode to ${attendeeMode}`);
     }
 
     // Cleanup when leaving session
     if (sessionRole !== 'attendee' && actionReplayRef.current) {
-      console.log('[DocsPanel] Cleaning up ActionReplaySystem');
+      console.log('[pathfinder]', '[DocsPanel] Cleaning up ActionReplaySystem');
       actionReplayRef.current = null;
     }
   }, [sessionRole, attendeeMode]);
@@ -1040,14 +1040,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       return;
     }
 
-    console.log('[DocsPanel] Setting up event listener for attendee');
+    console.log('[pathfinder]', '[DocsPanel] Setting up event listener for attendee');
 
     const cleanup = onEvent((event) => {
-      console.log('[DocsPanel] Received event:', event.type);
+      console.log('[pathfinder]', '[DocsPanel] Received event:', event.type);
 
       // Handle session end
       if (event.type === 'session_end') {
-        console.log('[DocsPanel] Presenter ended the session');
+        console.log('[pathfinder]', '[DocsPanel] Presenter ended the session');
         endSession();
 
         // Show notification to attendee
@@ -1069,7 +1069,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Auto-open tutorial when joining session as attendee
   useEffect(() => {
     if (sessionRole === 'attendee' && sessionInfo?.config.tutorialUrl) {
-      console.log('[DocsPanel] Auto-opening tutorial:', sessionInfo.config.tutorialUrl);
+      console.log('[pathfinder]', '[DocsPanel] Auto-opening tutorial:', sessionInfo.config.tutorialUrl);
 
       const url = sessionInfo.config.tutorialUrl;
       const title = sessionInfo.config.name;
@@ -1298,7 +1298,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                               mode: newMode,
                             } as any);
                           }
-                          console.log('[DocsPanel] Switched to Guided mode');
+                          console.log('[pathfinder]', '[DocsPanel] Switched to Guided mode');
                         }
                       }}
                       tooltip="Only see highlights when presenter clicks Show Me"
@@ -1327,7 +1327,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                               mode: newMode,
                             } as any);
                           }
-                          console.log('[DocsPanel] Switched to Follow mode');
+                          console.log('[pathfinder]', '[DocsPanel] Switched to Follow mode');
                         }
                       }}
                       tooltip="Execute actions automatically when presenter clicks Do It"

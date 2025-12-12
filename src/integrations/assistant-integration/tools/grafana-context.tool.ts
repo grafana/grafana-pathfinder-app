@@ -101,7 +101,7 @@ const fetchDashboardInfo = async (
     }
     return undefined;
   } catch (error) {
-    console.warn('[GrafanaContextTool] Failed to fetch dashboard info:', error);
+    console.warn('[pathfinder]', '[GrafanaContextTool] Failed to fetch dashboard info:', error);
     return undefined;
   }
 };
@@ -118,7 +118,7 @@ const getDatasourcesInfo = (): DatasourceInfo[] => {
       type: ds.type,
     }));
   } catch (error) {
-    console.warn('[GrafanaContextTool] Failed to get datasources:', error);
+    console.warn('[pathfinder]', '[GrafanaContextTool] Failed to get datasources:', error);
     return [];
   }
 };

@@ -34,7 +34,7 @@ export function CodeBlock({ code, language, showCopy = true, inline = false, cla
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
-      console.warn('Failed to copy code:', error);
+      console.warn('[pathfinder]', 'Failed to copy code:', error);
     }
   }, [code]);
 
@@ -44,7 +44,7 @@ export function CodeBlock({ code, language, showCopy = true, inline = false, cla
       try {
         Prism.highlightElement(codeRef.current);
       } catch (error) {
-        console.warn('Failed to highlight code with Prism:', error);
+        console.warn('[pathfinder]', 'Failed to highlight code with Prism:', error);
       }
     }
   }, [code, language]);

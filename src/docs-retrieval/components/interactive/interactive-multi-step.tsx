@@ -96,7 +96,7 @@ async function checkActionRequirements(
       };
     }
   } catch (error) {
-    console.error(`Requirements check failed for action ${actionIndex + 1}:`, error);
+    console.error('[pathfinder]', `Requirements check failed for action ${actionIndex + 1}:`, error);
     return {
       pass: false,
       explanation: `Step ${actionIndex + 1} requirements check failed: ${
@@ -311,6 +311,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             const requirementsResult = await checkActionRequirements(action, i, checkRequirementsFromData);
             if (!requirementsResult.pass) {
               console.error(
+                '[pathfinder]',
                 `Multi-step ${stepId}: Internal action ${i + 1} requirements failed`,
                 requirementsResult.explanation
               );
@@ -366,7 +367,11 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               }
             }
           } catch (actionError) {
-            console.error(`Multi-step ${stepId}: Internal action ${i + 1} execution failed`, actionError);
+            console.error(
+              '[pathfinder]',
+              `Multi-step ${stepId}: Internal action ${i + 1} execution failed`,
+              actionError
+            );
             const errorMessage = actionError instanceof Error ? actionError.message : 'Action execution failed';
             setFailedStepIndex(i);
             setExecutionError(`Step ${i + 1} failed: ${errorMessage}`);
@@ -397,7 +402,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
 
         return true;
       } catch (error) {
-        console.error(`Multi-step execution failed: ${stepId}`, error);
+        console.error('[pathfinder]', `Multi-step execution failed: ${stepId}`, error);
         const errorMessage = error instanceof Error ? error.message : 'Multi-step execution failed';
         setExecutionError(errorMessage);
         return false;

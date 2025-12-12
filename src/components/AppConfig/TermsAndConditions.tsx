@@ -53,14 +53,14 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
         try {
           window.location.reload();
         } catch (e) {
-          console.error('Failed to reload page after saving settings', e);
+          console.error('[pathfinder]', 'Failed to reload page after saving settings', e);
         }
       }, 100);
 
       // Reset saving state - let Grafana's plugin context system handle the refresh
       setIsSaving(false);
     } catch (error) {
-      console.error('Error saving Terms and Conditions:', error);
+      console.error('[pathfinder]', 'Error saving Terms and Conditions:', error);
       setIsSaving(false);
       // Re-throw to let user know something went wrong
       throw error;

@@ -49,7 +49,7 @@ export class FocusHandler {
     for (const element of targetElements) {
       // Validate visibility before interaction
       if (!isElementVisible(element)) {
-        console.warn('Target element is not visible:', element);
+        console.warn('[pathfinder]', 'Target element is not visible:', element);
         // Continue anyway (non-breaking)
       }
 
@@ -67,7 +67,7 @@ export class FocusHandler {
     for (const element of targetElements) {
       // Validate visibility before interaction
       if (!isElementVisible(element)) {
-        console.warn('Target element is not visible:', element);
+        console.warn('[pathfinder]', 'Target element is not visible:', element);
         // Continue anyway (non-breaking)
       }
 

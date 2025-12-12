@@ -85,7 +85,7 @@ export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSele
         isValid: true,
       });
     } catch (error) {
-      console.warn('[useTextSelection] Error handling selection change:', error);
+      console.warn('[pathfinder]', '[useTextSelection] Error handling selection change:', error);
       setSelectionState({
         selectedText: '',
         position: null,

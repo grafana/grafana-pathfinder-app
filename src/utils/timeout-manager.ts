@@ -50,7 +50,7 @@ export class TimeoutManager {
       try {
         await callback();
       } catch (error) {
-        console.error(`Timeout callback error for key '${key}':`, error);
+        console.error('[pathfinder]', `Timeout callback error for key '${key}':`, error);
       } finally {
         // Clean up after execution
         this.timeouts.delete(key);
@@ -77,7 +77,7 @@ export class TimeoutManager {
       try {
         await callback();
       } catch (error) {
-        console.error(`Timeout callback error for key '${key}':`, error);
+        console.error('[pathfinder]', `Timeout callback error for key '${key}':`, error);
       } finally {
         this.timeouts.delete(key);
       }
@@ -126,7 +126,7 @@ export class TimeoutManager {
       try {
         await callback();
       } catch (error) {
-        console.error(`Interval callback error for key '${key}':`, error);
+        console.error('[pathfinder]', `Interval callback error for key '${key}':`, error);
       }
     }, delay);
 

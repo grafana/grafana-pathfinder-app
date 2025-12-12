@@ -112,7 +112,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         window.location.reload();
       }, 500);
     } catch (error) {
-      console.error('Failed to toggle dev mode:', error);
+      console.error('[pathfinder]', 'Failed to toggle dev mode:', error);
 
       // Show user-friendly error message
       const errorMessage =
@@ -142,7 +142,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         window.location.reload();
       }, 500);
     } catch (error) {
-      console.error('Failed to toggle assistant dev mode:', error);
+      console.error('[pathfinder]', 'Failed to toggle assistant dev mode:', error);
 
       const errorMessage =
         error instanceof Error ? error.message : 'Failed to toggle assistant dev mode. You may need admin permissions.';
@@ -224,11 +224,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         try {
           window.location.reload();
         } catch (e) {
-          console.error('Failed to reload page after saving configuration', e);
+          console.error('[pathfinder]', 'Failed to reload page after saving configuration', e);
         }
       }, 100);
     } catch (error) {
-      console.error('Error saving configuration:', error);
+      console.error('[pathfinder]', 'Error saving configuration:', error);
       setIsSaving(false);
       // Re-throw to let user know something went wrong
       throw error;

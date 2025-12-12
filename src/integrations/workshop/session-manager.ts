@@ -97,8 +97,11 @@ export class SessionManager {
       // Create a new peer with a simple readable ID
       const peerId = this.generateReadableId();
 
-      console.log(`[SessionManager] Creating presenter peer: ${peerId}`);
-      console.log(`[SessionManager] Using PeerJS server: ${peerConfig.host}:${peerConfig.port}/pathfinder`);
+      console.log('[pathfinder]', `[SessionManager] Creating presenter peer: ${peerId}`);
+      console.log(
+        '[pathfinder]',
+        `[SessionManager] Using PeerJS server: ${peerConfig.host}:${peerConfig.port}/pathfinder`
+      );
 
       // Create peer connection to configured PeerJS server
       this.peer = new Peer(peerId, {
@@ -117,13 +120,13 @@ export class SessionManager {
         }
 
         this.peer.on('open', (id) => {
-          console.log(`[SessionManager] Peer ready with ID: ${id}`);
+          console.log('[pathfinder]', `[SessionManager] Peer ready with ID: ${id}`);
           this.sessionId = id;
           resolve();
         });
 
         this.peer.on('error', (err) => {
-          console.error('[SessionManager] Peer error:', err);
+          console.error('[pathfinder]', '[SessionManager] Peer error:', err);
           reject(err);
         });
 
@@ -150,11 +153,11 @@ export class SessionManager {
           errorCorrectionLevel: 'M',
         });
       } catch (error) {
-        console.error('[SessionManager] Failed to generate QR code:', error);
+        console.error('[pathfinder]', '[SessionManager] Failed to generate QR code:', error);
         // Non-fatal - continue without QR code
       }
 
-      console.log(`[SessionManager] Session created: ${peerId}`);
+      console.log('[pathfinder]', `[SessionManager] Session created: ${peerId}`);
 
       // Create a join code that includes session metadata
       const joinCodeData = {
@@ -172,7 +175,7 @@ export class SessionManager {
         config,
       };
     } catch (error) {
-      console.error('[SessionManager] Failed to create session:', error);
+      console.error('[pathfinder]', '[SessionManager] Failed to create session:', error);
       this.handleError({
         code: 'CONNECTION_FAILED',
         message: 'Failed to create session',
@@ -191,11 +194,11 @@ export class SessionManager {
     }
 
     this.peer.on('connection', (conn: DataConnection) => {
-      console.log(`[SessionManager] Attendee connecting: ${conn.peer}`);
+      console.log('[pathfinder]', `[SessionManager] Attendee connecting: ${conn.peer}`);
 
       // Wait for connection to open
       conn.on('open', () => {
-        console.log(`[SessionManager] Attendee connected: ${conn.peer}`);
+        console.log('[pathfinder]', `[SessionManager] Attendee connected: ${conn.peer}`);
 
         // Store connection
         this.connections.set(conn.peer, conn);
@@ -234,7 +237,7 @@ export class SessionManager {
             // Handle mode change from attendee
             const attendee = this.attendees.get(conn.peer);
             if (attendee) {
-              console.log(`[SessionManager] Attendee ${conn.peer} changed mode to ${data.mode}`);
+              console.log('[pathfinder]', `[SessionManager] Attendee ${conn.peer} changed mode to ${data.mode}`);
               // Create new object to trigger React re-render
               const updatedAttendee: AttendeeInfo = {
                 ...attendee,
@@ -245,7 +248,7 @@ export class SessionManager {
               // Notify attendee list update
               this.notifyAttendeeListUpdate();
             } else {
-              console.warn(`[SessionManager] Received mode_change for unknown attendee: ${conn.peer}`);
+              console.warn('[pathfinder]', `[SessionManager] Received mode_change for unknown attendee: ${conn.peer}`);
             }
             // Forward event to handlers
             this.eventHandlers.forEach((handler) => handler(data));
@@ -253,7 +256,7 @@ export class SessionManager {
             // Handle hand raise from attendee
             if (data.isRaised) {
               // Add to hand raises
-              console.log(`[SessionManager] Attendee ${data.attendeeName} raised their hand`);
+              console.log('[pathfinder]', `[SessionManager] Attendee ${data.attendeeName} raised their hand`);
               this.handRaises.set(conn.peer, {
                 attendeeId: conn.peer,
                 attendeeName: data.attendeeName,
@@ -261,7 +264,7 @@ export class SessionManager {
               });
             } else {
               // Remove from hand raises
-              console.log(`[SessionManager] Attendee ${data.attendeeName} lowered their hand`);
+              console.log('[pathfinder]', `[SessionManager] Attendee ${data.attendeeName} lowered their hand`);
               this.handRaises.delete(conn.peer);
             }
             // Notify hand raise update
@@ -270,7 +273,7 @@ export class SessionManager {
             this.eventHandlers.forEach((handler) => handler(data));
           } else if (data.type === 'attendee_leave') {
             // Handle intentional attendee leave - remove immediately (no grace period)
-            console.log(`[SessionManager] Attendee ${conn.peer} leaving intentionally`);
+            console.log('[pathfinder]', `[SessionManager] Attendee ${conn.peer} leaving intentionally`);
             this.attendees.delete(conn.peer);
             this.connectionStates.delete(conn.peer);
             this.lastHeartbeat.delete(conn.peer);
@@ -325,7 +328,7 @@ export class SessionManager {
 
         // Handle disconnection
         conn.on('close', () => {
-          console.log(`[SessionManager] Attendee disconnected: ${conn.peer}`);
+          console.log('[pathfinder]', `[SessionManager] Attendee disconnected: ${conn.peer}`);
           this.connectionStates.set(conn.peer, 'disconnected');
 
           // Update attendee state
@@ -346,7 +349,7 @@ export class SessionManager {
           setTimeout(() => {
             // Only delete if still disconnected after 30 seconds
             if (this.connectionStates.get(conn.peer) === 'disconnected') {
-              console.log(`[SessionManager] Removing attendee after grace period: ${conn.peer}`);
+              console.log('[pathfinder]', `[SessionManager] Removing attendee after grace period: ${conn.peer}`);
               this.attendees.delete(conn.peer);
               this.connectionStates.delete(conn.peer);
               this.lastHeartbeat.delete(conn.peer);
@@ -365,7 +368,7 @@ export class SessionManager {
         });
 
         conn.on('error', (err) => {
-          console.error(`[SessionManager] Connection error with ${conn.peer}:`, err);
+          console.error('[pathfinder]', `[SessionManager] Connection error with ${conn.peer}:`, err);
           this.connectionStates.set(conn.peer, 'failed');
 
           // Update attendee state
@@ -411,8 +414,11 @@ export class SessionManager {
       const peerConfig = peerjsConfig || { host: 'localhost', port: 9000, key: 'pathfinder' };
       this.peerjsConfig = peerConfig;
 
-      console.log(`[SessionManager] Joining session: ${sessionId}`);
-      console.log(`[SessionManager] Using PeerJS server: ${peerConfig.host}:${peerConfig.port}/pathfinder`);
+      console.log('[pathfinder]', `[SessionManager] Joining session: ${sessionId}`);
+      console.log(
+        '[pathfinder]',
+        `[SessionManager] Using PeerJS server: ${peerConfig.host}:${peerConfig.port}/pathfinder`
+      );
 
       // Create a peer for this attendee
       this.peer = new Peer({
@@ -431,12 +437,12 @@ export class SessionManager {
         }
 
         this.peer.on('open', (id) => {
-          console.log(`[SessionManager] Attendee peer ready: ${id}`);
+          console.log('[pathfinder]', `[SessionManager] Attendee peer ready: ${id}`);
           resolve();
         });
 
         this.peer.on('error', (err) => {
-          console.error('[SessionManager] Peer error:', err);
+          console.error('[pathfinder]', '[SessionManager] Peer error:', err);
           reject(err);
         });
 
@@ -451,7 +457,7 @@ export class SessionManager {
       // Wait for connection to open
       await new Promise<void>((resolve, reject) => {
         conn.on('open', () => {
-          console.log(`[SessionManager] Connected to presenter: ${sessionId}`);
+          console.log('[pathfinder]', `[SessionManager] Connected to presenter: ${sessionId}`);
 
           // Send join message
           conn.send({
@@ -466,7 +472,7 @@ export class SessionManager {
 
           // Set up event handler
           conn.on('data', (data: any) => {
-            console.log('[SessionManager] Received event from presenter:', data);
+            console.log('[pathfinder]', '[SessionManager] Received event from presenter:', data);
 
             // Respond to heartbeats
             if (data.type === 'heartbeat') {
@@ -488,7 +494,7 @@ export class SessionManager {
           });
 
           conn.on('close', () => {
-            console.log('[SessionManager] Disconnected from presenter');
+            console.log('[pathfinder]', '[SessionManager] Disconnected from presenter');
             this.handleError({
               code: 'CONNECTION_FAILED',
               message: 'Connection to presenter lost',
@@ -497,7 +503,7 @@ export class SessionManager {
           });
 
           conn.on('error', (err) => {
-            console.error('[SessionManager] Connection error:', err);
+            console.error('[pathfinder]', '[SessionManager] Connection error:', err);
             this.handleError({
               code: 'CONNECTION_FAILED',
               message: 'Connection error',
@@ -509,16 +515,16 @@ export class SessionManager {
         });
 
         conn.on('error', (err) => {
-          console.error('[SessionManager] Failed to connect:', err);
+          console.error('[pathfinder]', '[SessionManager] Failed to connect:', err);
           reject(err);
         });
 
         setTimeout(() => reject(new Error('Connection timeout')), 10000);
       });
 
-      console.log(`[SessionManager] Successfully joined session`);
+      console.log('[pathfinder]', `[SessionManager] Successfully joined session`);
     } catch (error) {
-      console.error('[SessionManager] Failed to join session:', error);
+      console.error('[pathfinder]', '[SessionManager] Failed to join session:', error);
       this.handleError({
         code: 'CONNECTION_FAILED',
         message: 'Failed to join session',
@@ -539,21 +545,21 @@ export class SessionManager {
    */
   broadcastToAttendees(event: AnySessionEvent): void {
     if (this.role !== 'presenter') {
-      console.warn('[SessionManager] Only presenter can broadcast to attendees');
+      console.warn('[pathfinder]', '[SessionManager] Only presenter can broadcast to attendees');
       return;
     }
 
-    console.log(`[SessionManager] Broadcasting event to ${this.connections.size} attendees:`, event);
+    console.log('[pathfinder]', `[SessionManager] Broadcasting event to ${this.connections.size} attendees:`, event);
 
     this.connections.forEach((conn, peerId) => {
       try {
         if (conn.open) {
           conn.send(event);
         } else {
-          console.warn(`[SessionManager] Connection to ${peerId} is not open`);
+          console.warn('[pathfinder]', `[SessionManager] Connection to ${peerId} is not open`);
         }
       } catch (error) {
-        console.error(`[SessionManager] Failed to send to ${peerId}:`, error);
+        console.error('[pathfinder]', `[SessionManager] Failed to send to ${peerId}:`, error);
       }
     });
   }
@@ -565,7 +571,7 @@ export class SessionManager {
    */
   sendToPresenter(event: AnySessionEvent): void {
     if (this.role !== 'attendee' || !this.sessionId) {
-      console.warn('[SessionManager] Can only send to presenter as attendee');
+      console.warn('[pathfinder]', '[SessionManager] Can only send to presenter as attendee');
       return;
     }
 
@@ -573,7 +579,7 @@ export class SessionManager {
     if (conn && conn.open) {
       conn.send(event);
     } else {
-      console.error('[SessionManager] No connection to presenter');
+      console.error('[pathfinder]', '[SessionManager] No connection to presenter');
     }
   }
 
@@ -624,13 +630,13 @@ export class SessionManager {
    */
   private notifyAttendeeListUpdate(): void {
     const attendeeList = Array.from(this.attendees.values());
-    console.log(`[SessionManager] Notifying attendee list update (${attendeeList.length} attendees)`);
+    console.log('[pathfinder]', `[SessionManager] Notifying attendee list update (${attendeeList.length} attendees)`);
 
     this.attendeeUpdateHandlers.forEach((handler) => {
       try {
         handler(attendeeList);
       } catch (error) {
-        console.error('[SessionManager] Error in attendee update handler:', error);
+        console.error('[pathfinder]', '[SessionManager] Error in attendee update handler:', error);
       }
     });
   }
@@ -640,8 +646,8 @@ export class SessionManager {
    */
   getAttendees(): AttendeeInfo[] {
     const attendeeList = Array.from(this.attendees.values());
-    console.log('[SessionManager] getAttendees() called, returning:', attendeeList);
-    console.log('[SessionManager] Internal attendees Map size:', this.attendees.size);
+    console.log('[pathfinder]', '[SessionManager] getAttendees() called, returning:', attendeeList);
+    console.log('[pathfinder]', '[SessionManager] Internal attendees Map size:', this.attendees.size);
     return attendeeList;
   }
 
@@ -671,7 +677,7 @@ export class SessionManager {
       try {
         handler(handRaiseList);
       } catch (error) {
-        console.error('[SessionManager] Error in hand raise update handler:', error);
+        console.error('[pathfinder]', '[SessionManager] Error in hand raise update handler:', error);
       }
     });
   }
@@ -684,14 +690,14 @@ export class SessionManager {
    * End the session and close all connections
    */
   endSession(): void {
-    console.log(`[SessionManager] Ending session (role: ${this.role})`);
+    console.log('[pathfinder]', `[SessionManager] Ending session (role: ${this.role})`);
 
     // If attendee, send leave event to presenter before disconnecting
     if (this.role === 'attendee' && this.sessionId) {
       const presenterConn = this.connections.get(this.sessionId);
       if (presenterConn && presenterConn.open) {
         try {
-          console.log('[SessionManager] Attendee sending leave event to presenter');
+          console.log('[pathfinder]', '[SessionManager] Attendee sending leave event to presenter');
           presenterConn.send({
             type: 'attendee_leave',
             sessionId: this.sessionId,
@@ -703,7 +709,7 @@ export class SessionManager {
             presenterConn.close();
           }, 100);
         } catch (error) {
-          console.error('[SessionManager] Error sending leave event:', error);
+          console.error('[pathfinder]', '[SessionManager] Error sending leave event:', error);
           presenterConn.close();
         }
       }
@@ -722,7 +728,7 @@ export class SessionManager {
           }
           conn.close();
         } catch (error) {
-          console.error(`[SessionManager] Error closing connection to ${peerId}:`, error);
+          console.error('[pathfinder]', `[SessionManager] Error closing connection to ${peerId}:`, error);
         }
       });
     }
@@ -767,7 +773,7 @@ export class SessionManager {
       return;
     }
 
-    console.log('[SessionManager] Starting heartbeat mechanism');
+    console.log('[pathfinder]', '[SessionManager] Starting heartbeat mechanism');
 
     // Send heartbeat every 5 seconds
     this.heartbeatInterval = setInterval(() => {
@@ -793,7 +799,10 @@ export class SessionManager {
             const timeSinceLastHeartbeat = now - lastHeartbeat;
 
             if (timeSinceLastHeartbeat > 15000) {
-              console.warn(`[SessionManager] No heartbeat from ${peerId} for ${timeSinceLastHeartbeat}ms`);
+              console.warn(
+                '[pathfinder]',
+                `[SessionManager] No heartbeat from ${peerId} for ${timeSinceLastHeartbeat}ms`
+              );
 
               // Update connection state to disconnected if no response
               const currentState = this.connectionStates.get(peerId);
@@ -812,7 +821,7 @@ export class SessionManager {
               }
             }
           } catch (error) {
-            console.error(`[SessionManager] Failed to send heartbeat to ${peerId}:`, error);
+            console.error('[pathfinder]', `[SessionManager] Failed to send heartbeat to ${peerId}:`, error);
           }
         }
       });
@@ -824,7 +833,7 @@ export class SessionManager {
    */
   private stopHeartbeat(): void {
     if (this.heartbeatInterval) {
-      console.log('[SessionManager] Stopping heartbeat mechanism');
+      console.log('[pathfinder]', '[SessionManager] Stopping heartbeat mechanism');
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
     }
@@ -885,7 +894,7 @@ export class SessionManager {
    * Handle errors
    */
   private handleError(error: SessionError): void {
-    console.error('[SessionManager] Error:', error);
+    console.error('[pathfinder]', '[SessionManager] Error:', error);
     this.errorHandlers.forEach((handler) => handler(error));
   }
 }

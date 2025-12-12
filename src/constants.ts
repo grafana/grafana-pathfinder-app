@@ -121,7 +121,7 @@ const getPlatformSpecificDefault = (): boolean => {
     const isCloud = config.bootData.settings.buildInfo.versionString.startsWith('Grafana Cloud');
     return isCloud; // Cloud = true (enabled), OSS = false (disabled)
   } catch (error) {
-    console.warn('Failed to detect platform, defaulting to disabled:', error);
+    console.warn('[pathfinder]', 'Failed to detect platform, defaulting to disabled:', error);
     return false; // Conservative default
   }
 };

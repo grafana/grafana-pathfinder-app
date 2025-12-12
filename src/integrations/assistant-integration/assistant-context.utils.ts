@@ -66,7 +66,7 @@ export const buildDocumentContext = (content: RawContent): ChatContextItem[] => 
 
     contexts.push(structuredContext);
   } catch (error) {
-    console.warn('[AssistantIntegration] Failed to build document context:', error);
+    console.warn('[pathfinder]', '[AssistantIntegration] Failed to build document context:', error);
   }
 
   return contexts;

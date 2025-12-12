@@ -13,7 +13,7 @@
  * gen.generate({
  *   prompt: 'Customize this query using real data from my environment',
  *   tools: [
- *     createDatasourceMetadataTool((artifact) => console.log(artifact)),
+ *     createDatasourceMetadataTool((artifact) => console.log('[pathfinder]', artifact)),
  *     createGrafanaContextTool(),
  *   ],
  * });
