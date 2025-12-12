@@ -30,13 +30,13 @@ export class ActionCaptureSystem {
    */
   startCapture(): void {
     if (this.isCapturing) {
-      console.warn('[ActionCapture] Already capturing');
+      console.warn('[pathfinder]', '[ActionCapture] Already capturing');
       return;
     }
 
     this.isCapturing = true;
     this.setupCaptureHandlers();
-    console.log('[ActionCapture] Started capturing presenter actions');
+    console.log('[pathfinder]', '[ActionCapture] Started capturing presenter actions');
   }
 
   /**
@@ -49,7 +49,7 @@ export class ActionCaptureSystem {
 
     this.isCapturing = false;
     this.restoreOriginalHandlers();
-    console.log('[ActionCapture] Stopped capturing');
+    console.log('[pathfinder]', '[ActionCapture] Stopped capturing');
   }
 
   /**
@@ -59,7 +59,7 @@ export class ActionCaptureSystem {
     // Use event delegation on the document to capture all button clicks
     document.addEventListener('click', this.handleButtonClick, true);
 
-    console.log('[ActionCapture] Capture handlers set up');
+    console.log('[pathfinder]', '[ActionCapture] Capture handlers set up');
   }
 
   /**
@@ -86,18 +86,18 @@ export class ActionCaptureSystem {
     // Get the interactive step element
     const stepElement = this.findInteractiveStepElement(button);
     if (!stepElement) {
-      console.warn('[ActionCapture] Could not find interactive step element');
+      console.warn('[pathfinder]', '[ActionCapture] Could not find interactive step element');
       return;
     }
 
     // Extract action details
     const action = this.extractActionFromElement(stepElement);
     if (!action) {
-      console.warn('[ActionCapture] Could not extract action details');
+      console.warn('[pathfinder]', '[ActionCapture] Could not extract action details');
       return;
     }
 
-    console.log('[ActionCapture] ✅ Extracted action:', {
+    console.log('[pathfinder]', '[ActionCapture] ✅ Extracted action:', {
       targetAction: action.targetAction,
       refTarget: action.refTarget,
       targetValue: action.targetValue,
@@ -108,7 +108,7 @@ export class ActionCaptureSystem {
 
     // Check for duplicate events (debounce)
     if (this.isDuplicateEvent(buttonType, stepId)) {
-      console.log('[ActionCapture] Skipping duplicate event');
+      console.log('[pathfinder]', '[ActionCapture] Skipping duplicate event');
       return;
     }
 
@@ -129,7 +129,7 @@ export class ActionCaptureSystem {
       coordinates,
     };
 
-    console.log(`[ActionCapture] 📡 Broadcasting ${buttonType} event:`, {
+    console.log('[pathfinder]', `[ActionCapture] 📡 Broadcasting ${buttonType} event:`, {
       stepId,
       actionType: action.targetAction,
       refTarget: action.refTarget,
@@ -138,7 +138,7 @@ export class ActionCaptureSystem {
     });
 
     this.sessionManager.broadcastToAttendees(sessionEvent);
-    console.log(`[ActionCapture] ✅ Event broadcasted to attendees successfully`);
+    console.log('[pathfinder]', `[ActionCapture] ✅ Event broadcasted to attendees successfully`);
 
     // Update last event for debouncing
     this.lastEvent = {
@@ -258,7 +258,7 @@ export class ActionCaptureSystem {
         try {
           action.internalActions = JSON.parse(internalActionsStr);
         } catch (err) {
-          console.error('[ActionCapture] Failed to parse internal actions:', err);
+          console.error('[pathfinder]', '[ActionCapture] Failed to parse internal actions:', err);
         }
       }
     }

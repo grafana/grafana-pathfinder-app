@@ -44,12 +44,12 @@ const getMockOpenAssistant = (props: {
   context?: ChatContextItem[];
   autoSend?: boolean;
 }): void => {
-  console.warn('=== Assistant Dev Mode ===');
-  console.warn('Origin:', props.origin);
-  console.warn('Prompt:', props.prompt || '(no prompt)');
-  console.warn('AutoSend:', props.autoSend ?? true);
-  console.warn('Context:', props.context);
-  console.warn('=========================');
+  console.warn('[pathfinder]', '=== Assistant Dev Mode ===');
+  console.warn('[pathfinder]', 'Origin:', props.origin);
+  console.warn('[pathfinder]', 'Prompt:', props.prompt || '(no prompt)');
+  console.warn('[pathfinder]', 'AutoSend:', props.autoSend ?? true);
+  console.warn('[pathfinder]', 'Context:', props.context);
+  console.warn('[pathfinder]', '=========================');
 };
 
 /**
@@ -94,11 +94,11 @@ export const useMockInlineAssistant = (): InlineAssistantResult => {
   const [error, setError] = useState<Error | null>(null);
 
   const generate = useCallback(async (options: InlineAssistantOptions) => {
-    console.warn('=== Inline Assistant Dev Mode ===');
-    console.warn('Origin:', options.origin);
-    console.warn('Prompt:', options.prompt);
-    console.warn('System Prompt:', options.systemPrompt || '(none)');
-    console.warn('=====================================');
+    console.warn('[pathfinder]', '=== Inline Assistant Dev Mode ===');
+    console.warn('[pathfinder]', 'Origin:', options.origin);
+    console.warn('[pathfinder]', 'Prompt:', options.prompt);
+    console.warn('[pathfinder]', 'System Prompt:', options.systemPrompt || '(none)');
+    console.warn('[pathfinder]', '=====================================');
 
     // Set isGenerating to true at the start
     setIsGenerating(true);
@@ -132,12 +132,12 @@ export const useMockInlineAssistant = (): InlineAssistantResult => {
   }, []);
 
   const cancel = useCallback(() => {
-    console.warn('[Dev Mode] Cancel called');
+    console.warn('[pathfinder]', '[Dev Mode] Cancel called');
     setIsGenerating(false);
   }, []);
 
   const reset = useCallback(() => {
-    console.warn('[Dev Mode] Reset called');
+    console.warn('[pathfinder]', '[Dev Mode] Reset called');
     setIsGenerating(false);
     setContent('');
     setError(null);

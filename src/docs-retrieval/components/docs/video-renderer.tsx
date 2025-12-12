@@ -11,11 +11,11 @@ export function VideoRenderer({ src, type, baseUrl, onClick, ...props }: VideoRe
   const resolvedSrc = useMemo(() => {
     const videoSrc = src;
     if (!videoSrc) {
-      console.error('VideoRenderer: No video source found', { src });
+      console.error('[pathfinder]', 'VideoRenderer: No video source found', { src });
       return undefined;
     }
     if (!baseUrl) {
-      console.warn('VideoRenderer: No baseUrl provided, using relative URL', {
+      console.warn('[pathfinder]', 'VideoRenderer: No baseUrl provided, using relative URL', {
         videoSrc,
       });
       return videoSrc;

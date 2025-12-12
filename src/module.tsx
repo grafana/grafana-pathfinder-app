@@ -4,7 +4,7 @@ import { getAppEvents, locationService } from '@grafana/runtime';
 import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 // TODO: Re-enable Faro once collector CORS is configured correctly
-// import { initializeFaroMetrics } from './lib/faro';
+import { initFaro } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
 import { getConfigWithDefaults, DocsPluginConfig } from './constants';
@@ -21,21 +21,21 @@ import {
 } from './utils/openfeature';
 import { PathfinderFeatureProvider } from './components/OpenFeatureProvider';
 
-// TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
+// Only initializes on Grafana Cloud environments
 // Wrapped in try-catch to prevent plugin load failure if Faro has issues
-// try {
-//   await initializeFaroMetrics();
-// } catch (e) {
-//   console.error('[Faro] Error initializing frontend metrics:', e);
-// }
+try {
+  initFaro();
+} catch (e) {
+  console.error('[pathfinder]', '[Faro] Failed to initialize:', e);
+}
 
 // Initialize OpenFeature provider for dynamic feature flag evaluation
 // This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
 try {
   initializeOpenFeature();
 } catch (e) {
-  console.error('[OpenFeature] Error initializing feature flags:', e);
+  console.error('[pathfinder]', '[OpenFeature] Error initializing feature flags:', e);
 }
 
 // Evaluate A/B experiment config at module load time
@@ -63,12 +63,16 @@ const experimentVariant = experimentConfig.variant;
 const targetPages = debugTargetPages.length > 0 ? debugTargetPages : experimentConfig.pages;
 
 if (debugVariantOverride) {
-  console.warn(`[Pathfinder] DEBUG: Using URL override for experiment variant: "${debugVariantOverride}"`);
+  console.warn(
+    '[pathfinder]',
+    `[Pathfinder] DEBUG: Using URL override for experiment variant: "${debugVariantOverride}"`
+  );
   if (debugTargetPages.length > 0) {
-    console.warn(`[Pathfinder] DEBUG: Target pages for auto-open: ${debugTargetPages.join(', ')}`);
+    console.warn('[pathfinder]', `[Pathfinder] DEBUG: Target pages for auto-open: ${debugTargetPages.join(', ')}`);
   }
 } else if (experimentConfig.variant !== 'excluded') {
   console.log(
+    '[pathfinder]',
     `[Pathfinder] Experiment config from GOFF: variant="${experimentConfig.variant}", pages=${JSON.stringify(experimentConfig.pages)}`
   );
 }
@@ -167,6 +171,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // This can happen for malformed params or unsupported URL formats
   if (docsParam && !docsPage) {
     console.warn(
+      '[pathfinder]',
       'Could not parse doc param:',
       docsParam,
       '- Supported formats: bundled:<id>, interactive-learning.grafana.net/..., /docs/..., https://grafana.com/docs/...'
@@ -485,7 +490,7 @@ const findDocPage = function (param: string): DocPage | null {
         };
       }
     } catch (e) {
-      console.warn('Failed to load bundled interactives index', e);
+      console.warn('[pathfinder]', 'Failed to load bundled interactives index', e);
     }
   }
 
@@ -499,7 +504,7 @@ const findDocPage = function (param: string): DocPage | null {
 
     // SECURITY: Use validated interactive learning URL check
     if (!isInteractiveLearningUrl(url)) {
-      console.warn('Security: Rejected non-interactive-learning URL:', url);
+      console.warn('[pathfinder]', 'Security: Rejected non-interactive-learning URL:', url);
       return null;
     }
 
@@ -534,7 +539,7 @@ const findDocPage = function (param: string): DocPage | null {
       }
     }
   } catch (error) {
-    console.error('Failed to load static links:', error);
+    console.error('[pathfinder]', 'Failed to load static links:', error);
   }
 
   // Case 4: Any Grafana docs URL (fallback for non-curated content)
@@ -553,7 +558,7 @@ const findDocPage = function (param: string): DocPage | null {
     // 2. Protocol is https (prevents protocol injection)
     // 3. Path contains valid docs paths (prevents arbitrary URL injection)
     if (!isGrafanaDocsUrl(fullUrl)) {
-      console.warn('Security: Rejected non-Grafana docs URL:', fullUrl);
+      console.warn('[pathfinder]', 'Security: Rejected non-Grafana docs URL:', fullUrl);
       return null;
     }
 
@@ -606,7 +611,7 @@ const attemptAutoOpen = (delay = 200) => {
         },
       });
     } catch (error) {
-      console.error('Failed to auto-open Interactive learning panel:', error);
+      console.error('[pathfinder]', 'Failed to auto-open Interactive learning panel:', error);
     }
   }, delay);
 };

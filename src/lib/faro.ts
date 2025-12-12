@@ -4,149 +4,182 @@
  * This module initializes Faro for capturing errors, performance metrics,
  * traces, and console logs from the pathfinder plugin.
  *
- * Faro telemetry is ONLY enabled for Grafana Cloud users. OSS/self-hosted
- * users do not send any telemetry data to Grafana.
+ * Faro telemetry is ONLY enabled for Grafana Cloud environments.
+ * OSS/self-hosted/local instances do not send any telemetry data.
  *
- * In development mode or OSS environments, a minimal Faro instance is created
- * that doesn't send any events but prevents crashes in error boundaries.
+ * Environment is automatically determined from the domain:
+ * - *.grafana-dev.net → dev
+ * - *.grafana-ops.net → ops
+ * - *.grafana.net or *.grafana.com → prod
  *
- * In Grafana Cloud production, full instrumentation is enabled with error
- * filtering to only capture events originating from this plugin.
+ * Usage:
+ *   import { initFaro, isFaroEnabled, pauseFaroBeforeReload } from './lib/faro';
+ *
+ *   // Initialize Faro (call once at app startup)
+ *   initFaro();
+ *
+ *   // Check if Faro is enabled before running Faro-specific code
+ *   if (isFaroEnabled()) {
+ *     // ... Faro-related operations
+ *   }
+ *
+ *   // Before page reload, pause Faro to prevent race conditions
+ *   pauseFaroBeforeReload();
+ *   window.location.reload();
  */
 
-import type { APIEvent, ExceptionEvent, TransportItem } from '@grafana/faro-react';
-import { config } from '@grafana/runtime';
-import pluginJson from '../plugin.json';
+import { matchRoutes } from 'react-router-dom';
+import {
+  initializeFaro,
+  faro,
+  createReactRouterV6DataOptions,
+  ReactIntegration,
+  getWebInstrumentations,
+} from '@grafana/faro-react';
+//import { TracingInstrumentation } from '@grafana/faro-web-tracing';
+import packageJson from '../../package.json';
 
-const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/a81c4a455fd66a459225762586e121f2';
-const VERSION = pluginJson.info.version ?? '0.0.0';
-const FARO_GLOBAL_OBJECT_KEY = 'grafanaPathfinderApp';
+const COLLECTOR_URL = 'https://faro-collector-ops-eu-south-0.grafana-ops.net/collect/d6ec87b657b65de6e363de05623d9c57';
+const VERSION = packageJson.version ?? '0.0.0';
+const NAME = packageJson.name ?? 'grafana-pathfinder-app';
+
+// Set to true to enable Faro locally for testing
+const ENABLE_FARO_LOCALLY = false;
+
+type Environment = 'dev' | 'ops' | 'prod' | 'local';
+
+// Track initialization state
+let faroInitialized = false;
 
 /**
- * Check if running in Grafana Cloud
- * Uses the same detection pattern as the rest of the codebase
+ * Determines the Grafana Cloud environment from the hostname.
+ * Returns null if not running on a Grafana Cloud domain (unless local testing is enabled).
  */
-const isGrafanaCloud = (): boolean => {
-  try {
-    return config.bootData?.settings?.buildInfo?.versionString?.startsWith('Grafana Cloud') ?? false;
-  } catch {
-    return false;
+const getEnvironment = (): Environment | null => {
+  const hostname = window.location.hostname;
+
+  if (hostname.endsWith('.grafana-dev.net')) {
+    return 'dev';
   }
+  if (hostname.endsWith('.grafana-ops.net')) {
+    return 'ops';
+  }
+  if (hostname.endsWith('.grafana.net') || hostname.endsWith('.grafana.com')) {
+    return 'prod';
+  }
+
+  if (ENABLE_FARO_LOCALLY) {
+    return 'local';
+  }
+
+  return null;
 };
 
 /**
- * Initialize Faro metrics collection
- *
- * Uses dynamic imports to keep the main bundle small and allows
- * conditional loading of tracing instrumentation only in production.
- *
- * Telemetry is only sent for Grafana Cloud users - OSS users get a
- * minimal no-op instance to prevent error boundary crashes.
+ * Check if Faro is enabled for the current environment.
+ * Use this to conditionally run Faro-related code.
  */
-export const initializeFaroMetrics = async (): Promise<void> => {
-  const isDevelopment = config.buildInfo.env === 'development';
-  const isCloud = isGrafanaCloud();
+export const isFaroEnabled = (): boolean => {
+  return getEnvironment() !== null;
+};
 
-  // Skip sending events in development mode or OSS environments
-  if (isDevelopment || !isCloud) {
-    const reason = isDevelopment ? 'local development' : 'OSS environment';
-    console.log(`[Faro] skipping frontend metrics initialization (${reason})`);
-
-    // Dynamically import Faro modules
-    const { initializeFaro, ReactIntegration } = await import('@grafana/faro-react');
-
-    // Initialize minimal Faro to prevent crashes in error boundaries
-    initializeFaro({
-      url: 'http://localhost:12345', // dummy URL that won't be used
-      globalObjectKey: FARO_GLOBAL_OBJECT_KEY,
-      app: {
-        name: 'grafana-pathfinder-dev',
-        version: VERSION,
-        environment: isDevelopment ? 'development' : 'oss',
-      },
-      isolate: true,
-      instrumentations: [
-        // Minimal setup - just React integration for error boundary compatibility
-        new ReactIntegration(),
-      ],
-      beforeSend: () => null, // Don't send any events
-    });
+/**
+ * Initialize Faro metrics collection.
+ * Call this once at app startup. Safe to call multiple times (will no-op after first init).
+ * Errors are caught internally to prevent plugin crashes.
+ */
+export const initFaro = (): void => {
+  if (faroInitialized) {
     return;
   }
 
-  // Grafana Cloud Production: Full Faro initialization with v2 features
-  const { initializeFaro, getWebInstrumentations, ReactIntegration } = await import('@grafana/faro-react');
-  const { TracingInstrumentation } = await import('@grafana/faro-web-tracing');
+  const environment = getEnvironment();
 
-  initializeFaro({
-    url: COLLECTOR_URL,
-    globalObjectKey: FARO_GLOBAL_OBJECT_KEY,
-    app: {
-      name: 'grafana-pathfinder',
-      version: VERSION,
-      environment: config.buildInfo.env,
-    },
-    // Isolate from Grafana's own telemetry
-    isolate: true,
-    instrumentations: [
-      ...getWebInstrumentations({
-        captureConsole: true,
-        enablePerformanceInstrumentation: true,
-      }),
-      // Tracing for HTTP request visibility
-      new TracingInstrumentation(),
-      // React integration for component-level insights
-      new ReactIntegration(),
-    ],
-    // v2: Web Vitals attribution is now always collected (no config needed)
-    // v2: Uses session.id automatically (no migration needed for default setup)
-    beforeSend: (event: TransportItem<APIEvent>) => {
-      return filterPathfinderErrors(event);
-    },
-  });
+  if (environment === null) {
+    return;
+  }
 
-  console.log(`[Faro] successfully initialized frontend metrics (v2)`);
+  try {
+    initializeFaro({
+      url: COLLECTOR_URL,
+      app: {
+        name: NAME,
+        version: VERSION,
+        environment,
+      },
+      isolate: true,
+      // Use custom transport to silently handle errors
+      // This prevents Faro from logging to console.error when transport fails,
+      // which would otherwise be captured by other plugins' Faro instances
+      instrumentations: [
+        ...getWebInstrumentations(),
+        //new TracingInstrumentation(), // Causing issues with other plugins do not enable until fixed
+        new ReactIntegration({
+          router: createReactRouterV6DataOptions({
+            matchRoutes,
+          }),
+        }),
+      ],
+      // Ignore URLs that we fetch for content - TracingInstrumentation breaks response.url on these
+      ignoreUrls: [
+        /interactive-learning\.grafana\.net/,
+        /interactive-learning\.grafana-dev\.net/,
+        /interactive-learning\.grafana-ops\.net/,
+        /grafana\.com\/docs/,
+        /grafana\.com\/tutorials/,
+        /grafana\.com\/learning-journeys/,
+      ],
+      // Filter events to only capture Pathfinder-related logs and errors
+      // This is a whitelist approach - much cleaner than maintaining a long ignoreErrors list
+      beforeSend: (item) => {
+        // For logs, only send those with our [pathfinder] prefix
+        if (item.type === 'log') {
+          const message = String((item.payload as { message?: string })?.message || '');
+          if (!message.includes('[pathfinder]')) {
+            return null;
+          }
+        }
+
+        // For exceptions, check stack trace for our plugin code
+        if (item.type === 'exception') {
+          const payload = item.payload as { stacktrace?: { frames?: Array<{ filename?: string }> } };
+          const frames = payload?.stacktrace?.frames || [];
+          const isFromPathfinder = frames.some(
+            (frame) => frame.filename?.includes('grafana-pathfinder-app') || frame.filename?.includes('/pathfinder/')
+          );
+          if (!isFromPathfinder) {
+            return null;
+          }
+        }
+
+        return item;
+      },
+      sessionTracking: {
+        enabled: true,
+        persistent: true,
+      },
+    });
+
+    faroInitialized = true;
+  } catch (err) {
+    console.error('[pathfinder]', '[Faro] Failed to initialize:', err);
+  }
 };
 
 /**
- * Typeguard to check if an event is an exception event
+ * Pause Faro before page reload to prevent "Failed to fetch" errors.
+ * Call this before triggering window.location.reload() to gracefully
+ * stop Faro from attempting to send data during page unload.
  */
-function isExceptionEvent(event: TransportItem<APIEvent>): event is TransportItem<ExceptionEvent> {
-  return event.type === 'exception';
-}
-
-/**
- * Filter errors to only include those originating from the pathfinder plugin
- *
- * This prevents noise from other Grafana errors appearing in our Faro dashboard.
- * The filter checks if the error stack trace includes the plugin's file paths.
- *
- * @param event - The Faro transport item to evaluate
- * @returns The event if it's from pathfinder, null otherwise
- */
-export function filterPathfinderErrors(event: TransportItem<APIEvent>): TransportItem<APIEvent> | null {
-  // In development we want to see all errors (if faro is enabled)
-  if (config.buildInfo.env === 'development') {
-    return event;
+export const pauseFaroBeforeReload = (): void => {
+  if (!faroInitialized) {
+    return;
   }
 
-  /**
-   * Filter out errors not from the pathfinder plugin.
-   * Check if the error stack trace contains the plugin's file paths.
-   */
-  if (isExceptionEvent(event) && event.payload.type === 'Error') {
-    const trace = event.payload.stacktrace;
-    if (trace) {
-      const isPathfinderError = trace.frames.some(
-        (frame) => typeof frame.filename === 'string' && frame.filename.includes('/grafana-pathfinder-app/./')
-      );
-
-      // Discard anything not from the pathfinder plugin
-      if (!isPathfinderError) {
-        return null;
-      }
-    }
+  try {
+    // Pause Faro to stop all instrumentations and prevent pending requests
+    faro.pause();
+  } catch (err) {
+    // Silently ignore - we're about to reload anyway
   }
-
-  return event;
-}
+};

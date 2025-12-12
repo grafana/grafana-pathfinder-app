@@ -214,7 +214,7 @@ export function AttendeeJoin({ isOpen, onClose, onJoined }: AttendeeJoinProps) {
       onJoined();
       onClose();
     } catch (err) {
-      console.error('[AttendeeJoin] Failed to join session:', err);
+      console.error('[pathfinder]', '[AttendeeJoin] Failed to join session:', err);
       setError(err); // Store the actual error for better guidance
       setIsJoining(false);
     }

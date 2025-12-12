@@ -59,7 +59,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
 
   // Basic validation: Check if reftarget looks suspicious (only warn on obvious issues)
   if (reftarget && textContent && reftarget === textContent && reftarget.length > 5) {
-    console.warn(`reftarget "${reftarget}" matches element text - check data-reftarget attribute`);
+    console.warn('[pathfinder]', `reftarget "${reftarget}" matches element text - check data-reftarget attribute`);
   }
 
   return {
@@ -324,7 +324,7 @@ export async function sectionCompletedCheck(check: string): Promise<{
       context: { sectionId, found: !!sectionElement, hasCompletedClass: isCompleted },
     };
   } catch (error) {
-    console.error('Section completion check error:', error);
+    console.error('[pathfinder]', 'Section completion check error:', error);
     return {
       requirement: check,
       pass: false,

@@ -109,13 +109,13 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
         try {
           window.location.reload();
         } catch (e) {
-          console.error('Failed to reload page after saving settings', e);
+          console.error('[pathfinder]', 'Failed to reload page after saving settings', e);
         }
       }, 100);
 
       setIsSaving(false);
     } catch (error) {
-      console.error('Error saving Interactive Features:', error);
+      console.error('[pathfinder]', 'Error saving Interactive Features:', error);
       setIsSaving(false);
       throw error;
     }

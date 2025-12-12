@@ -63,7 +63,7 @@ export class ButtonHandler {
       // Filter to only button elements
       return result.elements.filter((el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button');
     } catch (error) {
-      console.warn(`Button selector matching failed for "${selector}":`, error);
+      console.warn('[pathfinder]', `Button selector matching failed for "${selector}":`, error);
       return [];
     }
   }
@@ -73,7 +73,7 @@ export class ButtonHandler {
     for (const button of buttons) {
       // Validate visibility before interaction
       if (!isElementVisible(button)) {
-        console.warn('Target button is not visible:', button);
+        console.warn('[pathfinder]', 'Target button is not visible:', button);
         // Continue anyway (non-breaking)
       }
 
@@ -91,7 +91,7 @@ export class ButtonHandler {
     for (const button of buttons) {
       // Validate visibility before interaction
       if (!isElementVisible(button)) {
-        console.warn('Target button is not visible:', button);
+        console.warn('[pathfinder]', 'Target button is not visible:', button);
         // Continue anyway (non-breaking)
       }
 

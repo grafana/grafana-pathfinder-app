@@ -94,7 +94,7 @@ class GlobalInteractionBlocker {
     const header = document.querySelector('header') as HTMLElement;
 
     if (!header) {
-      console.warn('No header element found for overlay creation');
+      console.warn('[pathfinder]', 'No header element found for overlay creation');
       return;
     }
 

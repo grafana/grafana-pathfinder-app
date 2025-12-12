@@ -57,7 +57,7 @@ export function resolveSelector(reftarget: string): string {
     try {
       return toGrafanaSelector(selectorPath, selectorId);
     } catch (error) {
-      console.error(`Failed to resolve Grafana selector: ${reftarget}`, error);
+      console.error('[pathfinder]', `Failed to resolve Grafana selector: ${reftarget}`, error);
       // Return original selector as fallback
       return reftarget;
     }

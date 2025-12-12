@@ -47,13 +47,13 @@ function isTrustedInteractiveSource(baseUrl?: string): boolean {
 
   // In dev mode, allow localhost URLs for local testing
   if (isDevModeEnabledGlobal() && isLocalhostUrl(baseUrl)) {
-    console.log('[DEV MODE] Allowing interactive content from localhost:', baseUrl);
+    console.log('[pathfinder]', '[DEV MODE] Allowing interactive content from localhost:', baseUrl);
     return true;
   }
 
   // In dev mode, allow GitHub raw URLs for testing
   if (isDevModeEnabledGlobal() && isGitHubRawUrl(baseUrl)) {
-    console.log('[DEV MODE] Allowing interactive content from GitHub raw:', baseUrl);
+    console.log('[pathfinder]', '[DEV MODE] Allowing interactive content from GitHub raw:', baseUrl);
     return true;
   }
 
@@ -219,7 +219,7 @@ export function parseHTMLToComponents(
         ? '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, localhost (dev mode), GitHub raw (dev mode), or interactive-learning.grafana.net. Source:'
         : '[SECURITY] Interactive content detected from untrusted source. Source must be grafana.com, bundled:, or interactive-learning.grafana.net. Source:';
 
-      console.error(errorMessage, baseUrl);
+      console.error('[pathfinder]', errorMessage, baseUrl);
       errorCollector.addError(
         'html_sanitization',
         'Interactive content from untrusted source rejected',
@@ -230,7 +230,7 @@ export function parseHTMLToComponents(
     }
   } else {
     // Testing mode: Source validation bypassed (dev panel only)
-    console.warn('[Parser] Source validation BYPASSED for testing. Source:', baseUrl);
+    console.warn('[pathfinder]', '[Parser] Source validation BYPASSED for testing. Source:', baseUrl);
   }
 
   // SECURITY: Sanitize HTML before parsing - no fallback on failure

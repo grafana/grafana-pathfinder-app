@@ -63,6 +63,7 @@ export class SequenceManager {
     }
 
     console.warn(
+      '[pathfinder]',
       `${context.stepName} ${context.stepIndex + 1} failed after ${this.MAX_RETRIES} retries, stopping sequence`
     );
     return 'failed';

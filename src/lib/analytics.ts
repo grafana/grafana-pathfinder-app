@@ -121,7 +121,7 @@ export function reportAppInteraction(
 
     reportInteraction(interactionName, enrichedProperties);
   } catch (error) {
-    console.warn('Analytics reporting failed:', error);
+    console.warn('[pathfinder]', 'Analytics reporting failed:', error);
   }
 }
 

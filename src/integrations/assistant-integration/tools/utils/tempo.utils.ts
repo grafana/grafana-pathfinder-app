@@ -57,7 +57,7 @@ const fetchTags = async (ds: TempoDatasource): Promise<string[]> => {
 
     return [];
   } catch (error) {
-    console.warn('[TempoUtils] Failed to fetch tags:', error);
+    console.warn('[pathfinder]', '[TempoUtils] Failed to fetch tags:', error);
     return [];
   }
 };
@@ -77,7 +77,7 @@ const fetchTagValues = async (ds: TempoDatasource, tagName: string): Promise<str
 
     return [];
   } catch (error) {
-    console.warn(`[TempoUtils] Failed to fetch values for tag ${tagName}:`, error);
+    console.warn('[pathfinder]', `[TempoUtils] Failed to fetch values for tag ${tagName}:`, error);
     return [];
   }
 };

@@ -410,7 +410,7 @@ export class NavigationManager {
   async ensureElementVisible(element: HTMLElement): Promise<void> {
     // 1. Check if element is visible in DOM (not hidden by CSS)
     if (!isElementVisible(element)) {
-      console.warn('Element is hidden or not visible:', element);
+      console.warn('[pathfinder]', 'Element is hidden or not visible:', element);
       // Continue anyway - element might become visible during interaction
     }
 
@@ -562,7 +562,7 @@ export class NavigationManager {
 
     if (isAtOrigin || hasNoDimensions) {
       // Element is in invalid state - don't show highlight
-      console.warn('Cannot highlight element: invalid position or dimensions', {
+      console.warn('[pathfinder]', 'Cannot highlight element: invalid position or dimensions', {
         rect,
         scrollTop,
         scrollLeft,
@@ -940,7 +940,7 @@ export class NavigationManager {
 
       return true;
     } catch (error) {
-      console.error('Failed to expand parent navigation section:', error);
+      console.error('[pathfinder]', 'Failed to expand parent navigation section:', error);
       return false;
     }
   }
@@ -1070,7 +1070,7 @@ export class NavigationManager {
 
       return true;
     } catch (error) {
-      console.error('Failed to expand all navigation sections:', error);
+      console.error('[pathfinder]', 'Failed to expand all navigation sections:', error);
       return false;
     }
   }
@@ -1100,7 +1100,10 @@ export class NavigationManager {
     const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;
     if (!megaMenuToggle) {
       if (logWarnings) {
-        console.warn('Mega menu toggle button not found - navigation may already be open or use different structure');
+        console.warn(
+          '[pathfinder]',
+          'Mega menu toggle button not found - navigation may already be open or use different structure'
+        );
       }
       return;
     }
@@ -1122,7 +1125,7 @@ export class NavigationManager {
         return;
       } else {
         if (logWarnings) {
-          console.warn('Dock menu button not found, navigation will remain in modal mode');
+          console.warn('[pathfinder]', 'Dock menu button not found, navigation will remain in modal mode');
         }
         return;
       }

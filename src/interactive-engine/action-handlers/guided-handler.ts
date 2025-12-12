@@ -138,7 +138,7 @@ export class GuidedHandler {
 
       return result;
     } catch (error) {
-      console.error(`Guided step ${stepIndex + 1} failed:`, error);
+      console.error('[pathfinder]', `Guided step ${stepIndex + 1} failed:`, error);
       // Clean up abort controller and listeners on error to prevent resource leaks
       this.cancel();
       return 'cancelled';
@@ -319,7 +319,7 @@ export class GuidedHandler {
         const remaining = timeout - elapsed;
 
         if (remaining <= 0) {
-          console.error(`Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
+          console.error('[pathfinder]', `Element not found after ${attemptCount} attempts (${elapsed}ms): ${selector}`);
           throw error;
         }
         // Wait before retrying, but don't exceed timeout
@@ -355,12 +355,19 @@ export class GuidedHandler {
 
           if (targetElements.length > 0) {
             if (targetElements.length > 1) {
-              console.warn(`Multiple buttons found matching selector: ${resolvedSelector}, using first button`);
+              console.warn(
+                '[pathfinder]',
+                `Multiple buttons found matching selector: ${resolvedSelector}, using first button`
+              );
             }
             return targetElements[0];
           }
         } catch (error) {
-          console.warn(`Button selector matching failed for "${resolvedSelector}", trying text match:`, error);
+          console.warn(
+            '[pathfinder]',
+            `Button selector matching failed for "${resolvedSelector}", trying text match:`,
+            error
+          );
         }
       }
 
@@ -369,13 +376,20 @@ export class GuidedHandler {
         targetElements = findButtonByText(resolvedSelector);
         if (targetElements.length > 0) {
           if (targetElements.length > 1) {
-            console.warn(`Multiple buttons found matching text: ${resolvedSelector}, using first button`);
+            console.warn(
+              '[pathfinder]',
+              `Multiple buttons found matching text: ${resolvedSelector}, using first button`
+            );
           }
           return targetElements[0];
         }
       } catch (error) {
         // Fall through to enhanced selector as last resort
-        console.warn(`findButtonByText failed for "${resolvedSelector}", trying enhanced selector:`, error);
+        console.warn(
+          '[pathfinder]',
+          `findButtonByText failed for "${resolvedSelector}", trying enhanced selector:`,
+          error
+        );
       }
     }
 
@@ -388,7 +402,10 @@ export class GuidedHandler {
     }
 
     if (targetElements.length > 1) {
-      console.warn(`Multiple elements found matching selector: ${resolvedSelector}, using first element`);
+      console.warn(
+        '[pathfinder]',
+        `Multiple elements found matching selector: ${resolvedSelector}, using first element`
+      );
     }
 
     return targetElements[0];
@@ -400,7 +417,7 @@ export class GuidedHandler {
   private async prepareElement(targetElement: HTMLElement): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
-      console.warn('Target element is not visible:', targetElement);
+      console.warn('[pathfinder]', 'Target element is not visible:', targetElement);
       // Continue anyway (non-breaking)
     }
 

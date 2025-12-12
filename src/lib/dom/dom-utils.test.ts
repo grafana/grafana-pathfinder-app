@@ -154,6 +154,7 @@ describe('extractInteractiveDataFromElement', () => {
     extractInteractiveDataFromElement(element);
 
     expect(console.warn).toHaveBeenCalledWith(
+      '[pathfinder]',
       expect.stringContaining('reftarget "This is a very long suspicious value" matches element text')
     );
   });

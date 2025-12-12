@@ -412,7 +412,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
             break;
 
           default:
-            console.warn(`Unknown interactive action: ${targetAction}`);
+            console.warn('[pathfinder]', `Unknown interactive action: ${targetAction}`);
         }
       } catch (error) {
         stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);

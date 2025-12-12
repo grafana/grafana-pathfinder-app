@@ -207,7 +207,7 @@ export function AssistantBlockWrapper({
           : null,
       };
     } catch (error) {
-      console.warn('[AssistantBlockWrapper] Failed to fetch datasources:', error);
+      console.warn('[pathfinder]', '[AssistantBlockWrapper] Failed to fetch datasources:', error);
       return { dataSources: [], currentDatasource: null };
     }
   }, [setPageContext]);
@@ -222,7 +222,7 @@ export function AssistantBlockWrapper({
     const dsContext = await getDatasourceContext();
 
     if (!dsContext.currentDatasource) {
-      console.error('[AssistantBlockWrapper] No datasource available');
+      console.error('[pathfinder]', '[AssistantBlockWrapper] No datasource available');
       return;
     }
 
@@ -313,12 +313,12 @@ Output only the content - no markdown, no explanation.`;
               })
             );
           } catch (error) {
-            console.warn('[AssistantBlockWrapper] Failed to save to localStorage:', error);
+            console.warn('[pathfinder]', '[AssistantBlockWrapper] Failed to save to localStorage:', error);
           }
         }
       },
       onError: (err) => {
-        console.error('[AssistantBlockWrapper] Generation failed:', err);
+        console.error('[pathfinder]', '[AssistantBlockWrapper] Generation failed:', err);
 
         reportAppInteraction(
           UserInteraction.AssistantCustomizeError,
@@ -358,7 +358,7 @@ Output only the content - no markdown, no explanation.`;
         })
       );
     } catch (error) {
-      console.warn('[AssistantBlockWrapper] Failed to revert:', error);
+      console.warn('[pathfinder]', '[AssistantBlockWrapper] Failed to revert:', error);
     }
   }, [getStorageKey, reset, getAnalyticsContext, blockType]);
 

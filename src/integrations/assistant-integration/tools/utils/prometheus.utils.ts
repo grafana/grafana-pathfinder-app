@@ -56,7 +56,7 @@ const fetchLabelNames = async (ds: PrometheusDatasource, timeRange: TimeRange): 
     // Filter out internal labels (starting with __)
     return labels.filter((label) => !label.startsWith('__'));
   } catch (error) {
-    console.warn('[PrometheusUtils] Failed to fetch label names:', error);
+    console.warn('[pathfinder]', '[PrometheusUtils] Failed to fetch label names:', error);
     return [];
   }
 };
@@ -74,7 +74,7 @@ const fetchLabelValues = async (
     const values = await ds.languageProvider.queryLabelValues(timeRange, labelName);
     return Array.isArray(values) ? values.slice(0, limit) : [];
   } catch (error) {
-    console.warn(`[PrometheusUtils] Failed to fetch values for label ${labelName}:`, error);
+    console.warn('[pathfinder]', `[PrometheusUtils] Failed to fetch values for label ${labelName}:`, error);
     return [];
   }
 };

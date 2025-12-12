@@ -33,7 +33,7 @@ type ExecuteActionFunction = (action: string, selector: string, value?: string, 
  * const result = await executeStepSequence(
  *   [{ action: 'highlight', selector: 'button[data-testid="save"]' }],
  *   executeInteractiveAction,
- *   { mode: 'auto', onProgress: (p) => console.log(p) }
+ *   { mode: 'auto', onProgress: (p) => console.log('[pathfinder]', p) }
  * );
  * ```
  */

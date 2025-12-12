@@ -37,7 +37,7 @@ export class ActionReplaySystem {
    */
   setMode(mode: AttendeeMode): void {
     if (this.mode !== mode) {
-      console.log(`[ActionReplay] Mode changed: ${this.mode} → ${mode}`);
+      console.log('[pathfinder]', `[ActionReplay] Mode changed: ${this.mode} → ${mode}`);
       this.mode = mode;
     }
   }
@@ -54,7 +54,7 @@ export class ActionReplaySystem {
    */
   async handleEvent(event: AnySessionEvent): Promise<void> {
     try {
-      console.log(`[ActionReplay] 📨 Received event:`, {
+      console.log('[pathfinder]', `[ActionReplay] 📨 Received event:`, {
         type: event.type,
         mode: this.mode,
         sessionId: event.sessionId,
@@ -64,7 +64,7 @@ export class ActionReplaySystem {
       // Log detailed info for interactive events
       if (event.type === 'show_me' || event.type === 'do_it') {
         const stepEvent = event as InteractiveStepEvent;
-        console.log(`[ActionReplay] 🎯 Interactive event details:`, {
+        console.log('[pathfinder]', `[ActionReplay] 🎯 Interactive event details:`, {
           stepId: stepEvent.stepId,
           actionType: stepEvent.action?.targetAction,
           refTarget: stepEvent.action?.refTarget,
@@ -86,15 +86,15 @@ export class ActionReplaySystem {
           break;
 
         case 'session_end':
-          console.log('[ActionReplay] Session ended by presenter');
+          console.log('[pathfinder]', '[ActionReplay] Session ended by presenter');
           // Session end is handled at the UI level, just log it here
           break;
 
         default:
-          console.log(`[ActionReplay] Unhandled event type: ${event.type}`);
+          console.log('[pathfinder]', `[ActionReplay] Unhandled event type: ${event.type}`);
       }
     } catch (error) {
-      console.error(`[ActionReplay] Error handling ${event.type}:`, error);
+      console.error('[pathfinder]', `[ActionReplay] Error handling ${event.type}:`, error);
       // Don't throw - gracefully handle errors
     }
   }
@@ -105,7 +105,7 @@ export class ActionReplaySystem {
   private async handleShowMe(event: InteractiveStepEvent): Promise<void> {
     // Check for duplicate
     if (this.isDuplicateEvent('show_me', event.stepId, event.timestamp)) {
-      console.log('[ActionReplay] Skipping duplicate show_me event');
+      console.log('[pathfinder]', '[ActionReplay] Skipping duplicate show_me event');
       return;
     }
 
@@ -123,33 +123,33 @@ export class ActionReplaySystem {
    * Handle Do It event (behavior depends on mode)
    */
   private async handleDoIt(event: InteractiveStepEvent): Promise<void> {
-    console.log(`[ActionReplay] handleDoIt called - Current mode: ${this.mode}`);
+    console.log('[pathfinder]', `[ActionReplay] handleDoIt called - Current mode: ${this.mode}`);
 
     // Check for duplicate
     if (this.isDuplicateEvent('do_it', event.stepId, event.timestamp)) {
-      console.log('[ActionReplay] Skipping duplicate do_it event');
+      console.log('[pathfinder]', '[ActionReplay] Skipping duplicate do_it event');
       return;
     }
 
     if (this.mode === 'guided') {
       // In Guided mode: Handle multistep actions specially
       if (event.action?.targetAction === 'multistep') {
-        console.log('[ActionReplay] Guided mode: Multistep action detected');
+        console.log('[pathfinder]', '[ActionReplay] Guided mode: Multistep action detected');
         this.showNotification(
           'The presenter is performing a multi-step action. You can follow along manually or click "Do It" yourself when ready.',
           'success'
         );
       } else {
         // For non-multistep: Show highlight
-        console.log('[ActionReplay] Guided mode: Showing highlight only for Do It');
+        console.log('[pathfinder]', '[ActionReplay] Guided mode: Showing highlight only for Do It');
         await this.showHighlight(event);
       }
     } else if (this.mode === 'follow') {
       // In Follow mode: Execute the action
-      console.log('[ActionReplay] Follow mode: Executing action');
+      console.log('[pathfinder]', '[ActionReplay] Follow mode: Executing action');
       await this.executeAction(event);
     } else {
-      console.warn(`[ActionReplay] Unknown mode: ${this.mode}`);
+      console.warn('[pathfinder]', `[ActionReplay] Unknown mode: ${this.mode}`);
     }
 
     // Update last event
@@ -164,13 +164,13 @@ export class ActionReplaySystem {
    * Handle navigation event
    */
   private async handleNavigation(event: NavigationEvent): Promise<void> {
-    console.log(`[ActionReplay] Navigation to: ${event.tutorialUrl}`);
+    console.log('[pathfinder]', `[ActionReplay] Navigation to: ${event.tutorialUrl}`);
 
     // TODO: Implement tutorial navigation
     // This will sync attendees to the same tutorial/step as presenter
     // For now, just log
 
-    console.log(`[ActionReplay] TODO: Navigate to ${event.tutorialUrl}, step ${event.stepNumber}`);
+    console.log('[pathfinder]', `[ActionReplay] TODO: Navigate to ${event.tutorialUrl}, step ${event.stepNumber}`);
   }
 
   /**
@@ -184,7 +184,7 @@ export class ActionReplaySystem {
       const elements = this.findElements(action.refTarget, action.targetAction);
 
       if (elements.length === 0) {
-        console.warn(`[ActionReplay] Element not found: ${action.refTarget}`);
+        console.warn('[pathfinder]', `[ActionReplay] Element not found: ${action.refTarget}`);
         this.showNotification(`Element not found: ${action.refTarget}`, 'warning');
         return;
       }
@@ -200,9 +200,9 @@ export class ActionReplaySystem {
         false // Keep highlight persistent
       );
 
-      console.log(`[ActionReplay] Highlighted element: ${action.refTarget}`);
+      console.log('[pathfinder]', `[ActionReplay] Highlighted element: ${action.refTarget}`);
     } catch (error) {
-      console.error('[ActionReplay] Error showing highlight:', error);
+      console.error('[pathfinder]', '[ActionReplay] Error showing highlight:', error);
       this.showNotification('Failed to show highlight', 'error');
     }
   }
@@ -214,7 +214,7 @@ export class ActionReplaySystem {
     try {
       const { action } = event;
 
-      console.log(`[ActionReplay] ⚡ Starting execution:`, {
+      console.log('[pathfinder]', `[ActionReplay] ⚡ Starting execution:`, {
         targetAction: action.targetAction,
         refTarget: action.refTarget,
         targetValue: action.targetValue,
@@ -225,12 +225,12 @@ export class ActionReplaySystem {
       const stepElement = this.findStepElement(event.stepId, action);
 
       if (!stepElement) {
-        console.error('[ActionReplay] ❌ Step element not found:', {
+        console.error('[pathfinder]', '[ActionReplay] ❌ Step element not found:', {
           stepId: event.stepId,
           actionType: action.targetAction,
           refTarget: action.refTarget,
         });
-        console.warn('[ActionReplay] Attendee may be on different page');
+        console.warn('[pathfinder]', '[ActionReplay] Attendee may be on different page');
         this.showNotification(
           'Unable to execute action - please ensure you are on the same page as presenter',
           'warning'
@@ -238,11 +238,14 @@ export class ActionReplaySystem {
         return;
       }
 
-      console.log('[ActionReplay] ✅ Found step element:', stepElement);
+      console.log('[pathfinder]', '[ActionReplay] ✅ Found step element:', stepElement);
 
       // Special handling for multistep actions
       if (action.targetAction === 'multistep') {
-        console.log(`[ActionReplay] Executing multistep with ${action.internalActions?.length || 0} internal actions`);
+        console.log(
+          '[pathfinder]',
+          `[ActionReplay] Executing multistep with ${action.internalActions?.length || 0} internal actions`
+        );
       }
 
       // Find and click the "Do It" button - this triggers the normal interactive flow
@@ -250,15 +253,15 @@ export class ActionReplaySystem {
       const doItButton = this.findDoItButton(stepElement);
 
       if (doItButton) {
-        console.log('[ActionReplay] 🖱️ Clicking Do It button');
+        console.log('[pathfinder]', '[ActionReplay] 🖱️ Clicking Do It button');
         doItButton.click();
-        console.log('[ActionReplay] ✅ Do It button clicked');
+        console.log('[pathfinder]', '[ActionReplay] ✅ Do It button clicked');
       } else {
         // Fallback: should rarely happen
-        console.warn('[ActionReplay] ❌ Do It button not found');
+        console.warn('[pathfinder]', '[ActionReplay] ❌ Do It button not found');
       }
     } catch (error) {
-      console.error('[ActionReplay] Error executing action:', error);
+      console.error('[pathfinder]', '[ActionReplay] Error executing action:', error);
       this.showNotification('Failed to execute action', 'error');
     }
   }
@@ -321,7 +324,7 @@ export class ActionReplaySystem {
         return Array.from(elements);
       }
     } catch (error) {
-      console.error(`[ActionReplay] Error finding elements:`, error);
+      console.error('[pathfinder]', `[ActionReplay] Error finding elements:`, error);
       return [];
     }
   }

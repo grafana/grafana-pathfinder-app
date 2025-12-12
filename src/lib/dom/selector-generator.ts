@@ -755,10 +755,10 @@ export function generateBestSelector(element: HTMLElement, options?: { clickX?: 
   try {
     const matches = querySelectorAllEnhanced(cleanedSelector);
     if (matches.elements.length === 0) {
-      console.warn(`Generated selector has 0 matches: "${cleanedSelector}"`);
+      console.warn('[pathfinder]', `Generated selector has 0 matches: "${cleanedSelector}"`);
     }
   } catch (error) {
-    console.warn('Selector validation error:', error);
+    console.warn('[pathfinder]', 'Selector validation error:', error);
   }
 
   return cleanedSelector;
@@ -806,7 +806,7 @@ function buildContextualSelector(element: HTMLElement, baseSelector: string): st
 
     return baseSelector;
   } catch (error) {
-    console.warn(`Context validation failed for "${baseSelector}":`, error);
+    console.warn('[pathfinder]', `Context validation failed for "${baseSelector}":`, error);
     return baseSelector;
   }
 }
@@ -998,10 +998,10 @@ function buildCompoundSelectorWithContext(element: HTMLElement): string {
  * @example
  * ```typescript
  * const info = getSelectorInfo(myElement);
- * console.warn(info.selector); // "button[data-testid='save']"
- * console.warn(info.method);   // "data-testid"
- * console.warn(info.isUnique); // true
- * console.warn(info.contextStrategy); // "child-has"
+ * console.warn('[pathfinder]', info.selector); // "button[data-testid='save']"
+ * console.warn('[pathfinder]', info.method);   // "data-testid"
+ * console.warn('[pathfinder]', info.isUnique); // true
+ * console.warn('[pathfinder]', info.contextStrategy); // "child-has"
  * ```
  */
 export function getSelectorInfo(element: HTMLElement): {

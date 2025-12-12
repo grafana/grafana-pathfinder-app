@@ -54,47 +54,47 @@ function validateGuides(guides: LoadedGuide[], options: ValidateOptions): Valida
 }
 
 function formatTextOutput(summary: ValidationSummary, options: ValidateOptions): void {
-  console.log('\n📋 Validation Results');
-  console.log('═'.repeat(50));
-  console.log(`Total files:    ${summary.totalFiles}`);
-  console.log(`Valid:          ${summary.validFiles}`);
-  console.log(`Invalid:        ${summary.invalidFiles}`);
+  console.log('[pathfinder]', '\n📋 Validation Results');
+  console.log('[pathfinder]', '═'.repeat(50));
+  console.log('[pathfinder]', `Total files:    ${summary.totalFiles}`);
+  console.log('[pathfinder]', `Valid:          ${summary.validFiles}`);
+  console.log('[pathfinder]', `Invalid:        ${summary.invalidFiles}`);
   if (!options.strict) {
-    console.log(`With warnings:  ${summary.filesWithWarnings}`);
+    console.log('[pathfinder]', `With warnings:  ${summary.filesWithWarnings}`);
   }
-  console.log('═'.repeat(50));
+  console.log('[pathfinder]', '═'.repeat(50));
 
   if (summary.errors.length > 0) {
-    console.log('\n❌ Errors:\n');
+    console.log('[pathfinder]', '\n❌ Errors:\n');
     for (const { file, errors } of summary.errors) {
-      console.log(`  ${file}:`);
+      console.log('[pathfinder]', `  ${file}:`);
       for (const error of errors) {
-        console.log(`    - ${error}`);
+        console.log('[pathfinder]', `    - ${error}`);
       }
-      console.log();
+      console.log('[pathfinder]');
     }
   }
 
   if (!options.strict && summary.warnings.length > 0) {
-    console.log('\n⚠️  Warnings:\n');
+    console.log('[pathfinder]', '\n⚠️  Warnings:\n');
     for (const { file, warnings } of summary.warnings) {
-      console.log(`  ${file}:`);
+      console.log('[pathfinder]', `  ${file}:`);
       for (const warning of warnings) {
-        console.log(`    - ${warning}`);
+        console.log('[pathfinder]', `    - ${warning}`);
       }
-      console.log();
+      console.log('[pathfinder]');
     }
   }
 
   if (summary.invalidFiles === 0) {
-    console.log('\n✅ All guides valid!\n');
+    console.log('[pathfinder]', '\n✅ All guides valid!\n');
   } else {
-    console.log(`\n❌ ${summary.invalidFiles} guide(s) failed validation.\n`);
+    console.log('[pathfinder]', `\n❌ ${summary.invalidFiles} guide(s) failed validation.\n`);
   }
 }
 
 function formatJsonOutput(summary: ValidationSummary): void {
-  console.log(JSON.stringify(summary, null, 2));
+  console.log('[pathfinder]', JSON.stringify(summary, null, 2));
 }
 
 export const validateCommand = new Command('validate')
@@ -110,17 +110,17 @@ export const validateCommand = new Command('validate')
       if (options.bundled) {
         guides = loadBundledGuides();
         if (guides.length === 0) {
-          console.error('No bundled guides found in src/bundled-interactives/');
+          console.error('[pathfinder]', 'No bundled guides found in src/bundled-interactives/');
           process.exit(1);
         }
       } else if (files.length > 0) {
         guides = loadGuideFiles(files);
         if (guides.length === 0) {
-          console.error('No valid JSON guide files found in the specified paths');
+          console.error('[pathfinder]', 'No valid JSON guide files found in the specified paths');
           process.exit(1);
         }
       } else {
-        console.error('Please specify files to validate or use --bundled flag');
+        console.error('[pathfinder]', 'Please specify files to validate or use --bundled flag');
         process.exit(1);
       }
 
@@ -137,7 +137,7 @@ export const validateCommand = new Command('validate')
         process.exit(1);
       }
     } catch (error) {
-      console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('[pathfinder]', 'Error:', error instanceof Error ? error.message : 'Unknown error');
       process.exit(1);
     }
   });

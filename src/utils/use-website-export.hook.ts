@@ -49,7 +49,7 @@ export function useWebsiteExport(): UseWebsiteExportReturn {
         setTimeout(() => setCopied(false), 2000);
         return true;
       } catch (error) {
-        console.error('Failed to copy website shortcodes:', error);
+        console.error('[pathfinder]', 'Failed to copy website shortcodes:', error);
         return false;
       }
     },
@@ -65,7 +65,7 @@ export function useWebsiteExport(): UseWebsiteExportReturn {
         setTimeout(() => setCopied(false), 2000);
         return true;
       } catch (error) {
-        console.error('Failed to copy website shortcode:', error);
+        console.error('[pathfinder]', 'Failed to copy website shortcode:', error);
         return false;
       }
     },

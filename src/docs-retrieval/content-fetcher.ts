@@ -79,7 +79,7 @@ function enforceHttps(url: string): boolean {
   // Parse URL safely
   const parsedUrl = parseUrlSafely(url);
   if (!parsedUrl) {
-    console.error('Invalid URL format:');
+    console.error('[pathfinder]', 'Invalid URL format:');
     return false;
   }
 
@@ -90,7 +90,7 @@ function enforceHttps(url: string): boolean {
 
   // Require HTTPS for all other URLs
   if (parsedUrl.protocol !== 'https:') {
-    console.error('Only HTTPS URLs are allowed');
+    console.error('[pathfinder]', 'Only HTTPS URLs are allowed');
     return false;
   }
 
@@ -105,7 +105,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
   try {
     // Validate URL
     if (!url || typeof url !== 'string' || url.trim() === '') {
-      console.error('fetchContent called with invalid URL:', url);
+      console.error('[pathfinder]', 'fetchContent called with invalid URL:', url);
       return { content: null, error: 'Invalid URL provided', errorType: 'other' };
     }
 
@@ -193,7 +193,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         jsonContent = fetchResult.html; // Valid JSON guide
       } catch {
         // Invalid JSON - treat as HTML and wrap
-        console.warn('Failed to parse native JSON, treating as HTML');
+        console.warn('[pathfinder]', 'Failed to parse native JSON, treating as HTML');
         jsonContent = wrapContentAsJsonGuide(fetchResult.html, finalUrl, metadata.title);
       }
     } else {
@@ -224,7 +224,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
 
     return { content: rawContent };
   } catch (error) {
-    console.error(`Failed to fetch content from ${url}:`, error);
+    console.error('[pathfinder]', `Failed to fetch content from ${url}:`, error);
     return {
       content: null,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -300,7 +300,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
 
       return { content: rawContent };
     } catch (error) {
-      console.error('Failed to load WYSIWYG preview:', error);
+      console.error('[pathfinder]', 'Failed to load WYSIWYG preview:', error);
       return {
         content: null,
         error: `Failed to load preview: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -350,7 +350,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
 
     return { content: rawContent };
   } catch (error) {
-    console.error(`Failed to load bundled interactive ${contentId}:`, error);
+    console.error('[pathfinder]', `Failed to load bundled interactive ${contentId}:`, error);
     return {
       content: null,
       error: `Failed to load bundled interactive: ${contentId}. Error: ${
@@ -367,7 +367,7 @@ async function fetchBundledInteractive(url: string): Promise<ContentFetchResult>
 function determineContentType(url: string): ContentType {
   // Handle undefined or empty URL
   if (!url || typeof url !== 'string') {
-    console.warn('determineContentType called with invalid URL:', url);
+    console.warn('[pathfinder]', 'determineContentType called with invalid URL:', url);
     return 'single-doc';
   }
 
@@ -459,7 +459,8 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
         const content = await response.text();
         if (content && content.trim()) {
           // SECURITY: Validate the final URL is trusted
-          const finalUrl = response.url;
+          // Fallback to urlVariation if response.url is null (Faro instrumentation bug)
+          const finalUrl = response.url || urlVariation;
           const isDevMode = isDevModeEnabledGlobal();
           const isFinalUrlTrusted =
             isAllowedContentUrl(finalUrl) ||
@@ -467,7 +468,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
             (isDevMode && isGitHubRawUrl(finalUrl));
 
           if (!isFinalUrlTrusted) {
-            console.warn(`URL variation ${urlVariation} redirected to untrusted URL: ${finalUrl}`);
+            console.warn('[pathfinder]', `URL variation ${urlVariation} redirected to untrusted URL: ${finalUrl}`);
             continue; // Try next variation
           }
 
@@ -506,7 +507,7 @@ async function tryUrlVariations(urls: string[], options: ContentFetchOptions): P
 
   // All variations failed
   if (lastError) {
-    console.error(`Failed to fetch from any URL variation. Last error: ${lastError.message}`);
+    console.error('[pathfinder]', `Failed to fetch from any URL variation. Last error: ${lastError.message}`);
   }
   return { html: null, error: lastError || { message: 'No content found', errorType: 'not-found' } };
 }
@@ -543,7 +544,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
       const html = await response.text();
       if (html && html.trim()) {
         // SECURITY: Validate redirect target is still trusted
-        const finalUrl = response.url;
+        // Fallback to original url if response.url is null (Faro instrumentation bug)
+        const finalUrl = response.url || url;
         const isDevMode = isDevModeEnabledGlobal();
         const isFinalUrlTrusted =
           isAllowedContentUrl(finalUrl) ||
@@ -552,6 +554,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
 
         if (!isFinalUrlTrusted) {
           console.warn(
+            '[pathfinder]',
             `Redirect target not in trusted domain list.\n` +
               `Original URL: ${url}\n` +
               `Final URL: ${finalUrl}\n` +
@@ -580,7 +583,8 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         const shouldFetchContent = isGrafanaDocsUrl(finalUrl) || (isDevModeEnabledGlobal() && isLocalhostUrl(finalUrl));
 
         if (shouldFetchContent) {
-          const { jsonUrl, htmlUrl } = getContentUrls(response.url);
+          // Fallback to original url if response.url is null (Faro instrumentation bug)
+          const { jsonUrl, htmlUrl } = getContentUrls(response.url || url);
 
           // Determine fetch order based on domain:
           // - grafana.com/docs and grafana.com/tutorials: HTML first (JSON not yet available)
@@ -592,13 +596,18 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           const primaryIsJson = !preferHtmlFirst;
 
           // Try primary format first
-          if (primaryUrl !== response.url) {
+          if (primaryUrl !== (response.url || url)) {
             try {
               const primaryResponse = await fetch(primaryUrl, fetchOptions);
               if (primaryResponse.ok) {
                 const primaryContent = await primaryResponse.text();
                 if (primaryContent && primaryContent.trim()) {
-                  return { html: primaryContent, finalUrl: primaryResponse.url, isNativeJson: primaryIsJson };
+                  // Fallback to primaryUrl if response.url is null (Faro instrumentation bug)
+                  return {
+                    html: primaryContent,
+                    finalUrl: primaryResponse.url || primaryUrl,
+                    isNativeJson: primaryIsJson,
+                  };
                 }
               }
             } catch {
@@ -607,17 +616,23 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           }
 
           // Fall back to secondary format
-          if (fallbackUrl !== response.url) {
+          if (fallbackUrl !== (response.url || url)) {
             try {
               const fallbackResponse = await fetch(fallbackUrl, fetchOptions);
               if (fallbackResponse.ok) {
                 const fallbackContent = await fallbackResponse.text();
                 if (fallbackContent && fallbackContent.trim()) {
-                  return { html: fallbackContent, finalUrl: fallbackResponse.url, isNativeJson: !primaryIsJson };
+                  // Fallback to fallbackUrl if response.url is null (Faro instrumentation bug)
+                  return {
+                    html: fallbackContent,
+                    finalUrl: fallbackResponse.url || fallbackUrl,
+                    isNativeJson: !primaryIsJson,
+                  };
                 }
               }
               lastError = {
-                message: `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${response.url}`,
+                // Fallback to original url if response.url is null (Faro instrumentation bug)
+                message: `Cannot load Grafana content. Neither content.json nor unstyled.html found at: ${response.url || url}`,
                 errorType: fallbackResponse.status === 404 ? 'not-found' : 'other',
                 statusCode: fallbackResponse.status,
               };
@@ -635,8 +650,10 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         }
 
         // Content fetched successfully
-        const isNativeJson = isJsonContentUrl(response.url) || isJsonContentUrl(url);
-        return { html, finalUrl: response.url, isNativeJson };
+        // Fallback to original url if response.url is null (Faro instrumentation bug)
+        const effectiveUrl = response.url || url;
+        const isNativeJson = isJsonContentUrl(effectiveUrl) || isJsonContentUrl(url);
+        return { html, finalUrl: effectiveUrl, isNativeJson };
       }
     } else if (response.status >= 300 && response.status < 400) {
       // Handle manual redirect cases
@@ -647,7 +664,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
           errorType: 'other',
           statusCode: response.status,
         };
-        console.warn(`Manual redirect detected from ${url}:`, lastError.message);
+        console.warn('[pathfinder]', `Manual redirect detected from ${url}:`, lastError.message);
 
         if (location.startsWith('/')) {
           try {
@@ -655,7 +672,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
             const redirectUrl = new URL(location, originalUrl.origin);
 
             if (redirectUrl.origin !== originalUrl.origin) {
-              console.warn(`Blocked redirect to different origin: ${redirectUrl.origin}`);
+              console.warn('[pathfinder]', `Blocked redirect to different origin: ${redirectUrl.origin}`);
               lastError = {
                 message: `Cross-origin redirect blocked for security: ${redirectUrl.origin}`,
                 errorType: 'other',
@@ -668,7 +685,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
                 (isDevMode && isGitHubRawUrl(redirectUrl.href));
 
               if (!isRedirectTrusted) {
-                console.warn(`Redirect target not in trusted domain list: ${redirectUrl.href}`);
+                console.warn('[pathfinder]', `Redirect target not in trusted domain list: ${redirectUrl.href}`);
                 lastError = {
                   message: 'Redirect target is not in trusted domain list',
                   errorType: 'other',
@@ -678,14 +695,16 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
                 if (redirectResponse.ok) {
                   const html = await redirectResponse.text();
                   if (html && html.trim()) {
-                    const isNativeJson = isJsonContentUrl(redirectResponse.url) || isJsonContentUrl(redirectUrl.href);
-                    return { html, finalUrl: redirectResponse.url, isNativeJson };
+                    // Fallback to redirectUrl.href if response.url is null (Faro instrumentation bug)
+                    const effectiveRedirectUrl = redirectResponse.url || redirectUrl.href;
+                    const isNativeJson = isJsonContentUrl(effectiveRedirectUrl) || isJsonContentUrl(redirectUrl.href);
+                    return { html, finalUrl: effectiveRedirectUrl, isNativeJson };
                   }
                 }
               }
             }
           } catch (redirectError) {
-            console.warn(`Failed to fetch redirect target:`, redirectError);
+            console.warn('[pathfinder]', `Failed to fetch redirect target:`, redirectError);
             lastError = {
               message: redirectError instanceof Error ? redirectError.message : 'Redirect failed',
               errorType: 'other',
@@ -706,7 +725,7 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
         errorType,
         statusCode: response.status,
       };
-      console.warn(`Failed to fetch from ${url}: ${lastError.message}`);
+      console.warn('[pathfinder]', `Failed to fetch from ${url}: ${lastError.message}`);
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -721,11 +740,11 @@ async function fetchRawHtml(url: string, options: ContentFetchOptions): Promise<
       message: errorMessage,
       errorType: isTimeout ? 'timeout' : isNetwork ? 'network' : 'other',
     };
-    console.warn(`Failed to fetch from ${url}:`, error);
+    console.warn('[pathfinder]', `Failed to fetch from ${url}:`, error);
   }
 
   if (lastError) {
-    console.error(`Failed to fetch content from ${url}. Last error: ${lastError.message}`);
+    console.error('[pathfinder]', `Failed to fetch content from ${url}. Last error: ${lastError.message}`);
   }
 
   return { html: null, error: lastError };
@@ -991,10 +1010,10 @@ async function fetchLearningJourneyMetadataFromJson(baseUrl: string): Promise<Mi
         return milestones; // Already in sequential order, no need to sort
       }
     } else {
-      console.warn(`Failed to fetch metadata (${response.status}): ${indexJsonUrl}`);
+      console.warn('[pathfinder]', `Failed to fetch metadata (${response.status}): ${indexJsonUrl}`);
     }
   } catch (error) {
-    console.warn(`Failed to fetch learning journey metadata from ${baseUrl}/index.json:`, error);
+    console.warn('[pathfinder]', `Failed to fetch learning journey metadata from ${baseUrl}/index.json:`, error);
   }
 
   return [];

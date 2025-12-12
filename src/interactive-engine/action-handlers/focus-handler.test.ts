@@ -150,7 +150,7 @@ describe('FocusHandler', () => {
 
       await focusHandler.execute(mockData, false);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target element is not visible:', mockElements[0]);
+      expect(mockConsoleWarn).toHaveBeenCalledWith('[pathfinder]', 'Target element is not visible:', mockElements[0]);
       expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalled();
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalled();
     });
@@ -160,7 +160,7 @@ describe('FocusHandler', () => {
 
       await focusHandler.execute(mockData, true);
 
-      expect(mockConsoleWarn).toHaveBeenCalledWith('Target element is not visible:', mockElements[0]);
+      expect(mockConsoleWarn).toHaveBeenCalledWith('[pathfinder]', 'Target element is not visible:', mockElements[0]);
       expect(mockElements[0].click).toHaveBeenCalled();
       expect(mockStateManager.setState).toHaveBeenCalledWith(mockData, 'completed');
     });

@@ -84,14 +84,14 @@ export class ReconnectionManager {
     onAttempt?: (attempt: number, maxAttempts: number, delay: number) => void
   ): Promise<boolean> {
     if (this.reconnecting) {
-      console.warn('[ReconnectionManager] Reconnection already in progress');
+      console.warn('[pathfinder]', '[ReconnectionManager] Reconnection already in progress');
       return false;
     }
 
     this.reconnecting = true;
     this.attempts = 0;
 
-    console.log(`[ReconnectionManager] Starting reconnection (max ${this.maxAttempts} attempts)`);
+    console.log('[pathfinder]', `[ReconnectionManager] Starting reconnection (max ${this.maxAttempts} attempts)`);
 
     while (this.attempts < this.maxAttempts) {
       const delay = this.calculateDelay();
@@ -103,28 +103,32 @@ export class ReconnectionManager {
 
       // Wait before attempting (skip delay on first attempt)
       if (this.attempts > 0) {
-        console.log(`[ReconnectionManager] Waiting ${delay}ms before attempt ${this.attempts + 1}`);
+        console.log('[pathfinder]', `[ReconnectionManager] Waiting ${delay}ms before attempt ${this.attempts + 1}`);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
 
       try {
-        console.log(`[ReconnectionManager] Reconnection attempt ${this.attempts + 1}/${this.maxAttempts}`);
+        console.log(
+          '[pathfinder]',
+          `[ReconnectionManager] Reconnection attempt ${this.attempts + 1}/${this.maxAttempts}`
+        );
         await reconnectFn();
 
         // Success!
-        console.log('[ReconnectionManager] Reconnection successful');
+        console.log('[pathfinder]', '[ReconnectionManager] Reconnection successful');
         this.reset();
         return true;
       } catch (err) {
         this.attempts++;
         console.warn(
+          '[pathfinder]',
           `[ReconnectionManager] Attempt ${this.attempts}/${this.maxAttempts} failed:`,
           err instanceof Error ? err.message : err
         );
 
         // If we've exhausted all attempts, give up
         if (this.attempts >= this.maxAttempts) {
-          console.error('[ReconnectionManager] All reconnection attempts exhausted');
+          console.error('[pathfinder]', '[ReconnectionManager] All reconnection attempts exhausted');
           this.reconnecting = false;
           return false;
         }
@@ -140,7 +144,7 @@ export class ReconnectionManager {
    */
   cancel(): void {
     if (this.reconnecting) {
-      console.log('[ReconnectionManager] Reconnection cancelled');
+      console.log('[pathfinder]', '[ReconnectionManager] Reconnection cancelled');
       this.reset();
     }
   }

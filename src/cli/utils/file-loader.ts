@@ -34,19 +34,23 @@ function loadGuideFile(filePath: string): LoadedGuide | null {
     const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
 
     if (!fs.existsSync(absolutePath)) {
-      console.warn(`File not found: ${filePath}`);
+      console.warn('[pathfinder]', `File not found: ${filePath}`);
       return null;
     }
 
     if (!filePath.endsWith('.json')) {
-      console.warn(`Skipping non-JSON file: ${filePath}`);
+      console.warn('[pathfinder]', `Skipping non-JSON file: ${filePath}`);
       return null;
     }
 
     const content = fs.readFileSync(absolutePath, 'utf-8');
     return { path: filePath, content };
   } catch (error) {
-    console.warn(`Error reading file ${filePath}:`, error instanceof Error ? error.message : 'Unknown error');
+    console.warn(
+      '[pathfinder]',
+      `Error reading file ${filePath}:`,
+      error instanceof Error ? error.message : 'Unknown error'
+    );
     return null;
   }
 }

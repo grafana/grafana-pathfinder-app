@@ -170,15 +170,16 @@ export function InteractiveSection({
     // Target the docs panel scrollable container directly (inner-docs-content)
     const scrollContainer = document.getElementById('inner-docs-content');
 
-    console.warn('[Section] Setting up scroll listener, container found:', !!scrollContainer);
+    console.warn('[pathfinder]', '[Section] Setting up scroll listener, container found:', !!scrollContainer);
 
     if (!scrollContainer) {
-      console.warn('[Section] No scroll container found!');
+      console.warn('[pathfinder]', '[Section] No scroll container found!');
       return;
     }
 
     const handleScroll = () => {
       console.warn(
+        '[pathfinder]',
         '[Section] Scroll event fired, isProgrammatic:',
         isProgrammaticScrollRef.current,
         'userScrolled:',
@@ -186,10 +187,10 @@ export function InteractiveSection({
       );
       // Ignore programmatic scrolls (our own auto-scroll)
       if (isProgrammaticScrollRef.current) {
-        console.warn('[Section] Ignoring programmatic scroll');
+        console.warn('[pathfinder]', '[Section] Ignoring programmatic scroll');
         return;
       }
-      console.warn('[Section] USER SCROLLED - disabling auto-scroll');
+      console.warn('[pathfinder]', '[Section] USER SCROLLED - disabling auto-scroll');
       userScrolledRef.current = true; // Permanently disable for this section run
     };
 
@@ -202,15 +203,21 @@ export function InteractiveSection({
 
   // Auto-scroll to current executing step
   const scrollToStep = useCallback((stepId: string) => {
-    console.warn('[Section] scrollToStep called for:', stepId, 'userScrolled:', userScrolledRef.current);
+    console.warn(
+      '[pathfinder]',
+      '[Section] scrollToStep called for:',
+      stepId,
+      'userScrolled:',
+      userScrolledRef.current
+    );
     if (userScrolledRef.current) {
-      console.warn('[Section] Skipping scroll - user has scrolled');
+      console.warn('[pathfinder]', '[Section] Skipping scroll - user has scrolled');
       return; // User has scrolled, don't fight them
     }
 
     // Find the step element by data-step-id
     const stepElement = document.querySelector(`[data-step-id="${stepId}"]`);
-    console.warn('[Section] Step element found:', !!stepElement);
+    console.warn('[pathfinder]', '[Section] Step element found:', !!stepElement);
     if (stepElement) {
       // isProgrammaticScrollRef is already true during section execution
       // so we don't need to set/reset it here
@@ -560,11 +567,11 @@ export function InteractiveSection({
           try {
             return await multiStepRef.executeStep();
           } catch (error) {
-            console.error(`Multi-step execution failed: ${stepInfo.stepId}`, error);
+            console.error('[pathfinder]', `Multi-step execution failed: ${stepInfo.stepId}`, error);
             return false;
           }
         } else {
-          console.error(`Multi-step ref not found for: ${stepInfo.stepId}`);
+          console.error('[pathfinder]', `Multi-step ref not found for: ${stepInfo.stepId}`);
           return false;
         }
       }
@@ -591,14 +598,14 @@ export function InteractiveSection({
             stepInfo.stepId
           );
           if (!result.pass) {
-            console.warn(`Post-verify failed for ${stepInfo.stepId}:`, result.error);
+            console.warn('[pathfinder]', `Post-verify failed for ${stepInfo.stepId}:`, result.error);
             return false;
           }
         }
 
         return true;
       } catch (error) {
-        console.error(`Step execution failed: ${stepInfo.stepId}`, error);
+        console.error('[pathfinder]', `Step execution failed: ${stepInfo.stepId}`, error);
         return false;
       }
     },
@@ -628,6 +635,7 @@ export function InteractiveSection({
     // This prevents step execution (button clicks, etc.) from triggering the cancel
     isProgrammaticScrollRef.current = true;
     console.warn(
+      '[pathfinder]',
       '[Section] Starting section run, reset userScrolled=false, isProgrammatic=TRUE (will stay true during execution)'
     );
 
@@ -690,27 +698,27 @@ export function InteractiveSection({
 
               if (!sectionRecheckResult.pass) {
                 // Section requirements still not met after fix attempt
-                console.warn('Section requirements could not be fixed, stopping execution');
+                console.warn('[pathfinder]', 'Section requirements could not be fixed, stopping execution');
                 ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
                 setIsRunning(false);
                 return;
               }
             } catch (fixError) {
-              console.warn('Failed to fix section requirements:', fixError);
+              console.warn('[pathfinder]', 'Failed to fix section requirements:', fixError);
               ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
               setIsRunning(false);
               return;
             }
           } else {
             // No fix available for section requirements
-            console.warn('Section requirements not met and no fix available, stopping execution');
+            console.warn('[pathfinder]', 'Section requirements not met and no fix available, stopping execution');
             ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
             setIsRunning(false);
             return;
           }
         }
       } catch (error) {
-        console.warn('Section requirements check failed:', error);
+        console.warn('[pathfinder]', 'Section requirements check failed:', error);
         ActionMonitor.getInstance().forceEnable(); // Re-enable monitor
         setIsRunning(false);
         return;
@@ -818,7 +826,7 @@ export function InteractiveSection({
                   }
                   // If recheck passed, continue with normal execution below
                 } catch (fixError) {
-                  console.warn(`Failed to fix requirements for step ${i + 1}:`, fixError);
+                  console.warn('[pathfinder]', `Failed to fix requirements for step ${i + 1}:`, fixError);
 
                   // Fix failed - check if step is skippable
                   if (stepInfo.skippable) {
@@ -856,7 +864,7 @@ export function InteractiveSection({
               }
             }
           } catch (error) {
-            console.warn(`Step ${i + 1} requirements check failed, stopping section execution:`, error);
+            console.warn('[pathfinder]', `Step ${i + 1} requirements check failed, stopping section execution:`, error);
             setCurrentStepIndex(i);
             stoppedDueToRequirements = true;
             break;
@@ -947,7 +955,7 @@ export function InteractiveSection({
         }, 100);
       }
     } catch (error) {
-      console.error('Error running section sequence:', error);
+      console.error('[pathfinder]', 'Error running section sequence:', error);
     } finally {
       // Re-enable action monitor after section execution completes
       ActionMonitor.getInstance().forceEnable();
@@ -959,7 +967,7 @@ export function InteractiveSection({
       setExecutingStepNumber(0);
       // Reset programmatic scroll flag now that section is done
       isProgrammaticScrollRef.current = false;
-      console.warn('[Section] Section finished, isProgrammaticScroll = false');
+      console.warn('[pathfinder]', '[Section] Section finished, isProgrammaticScroll = false');
       // Keep isCancelled state for UI feedback, will be reset on next run
     }
   }, [
