@@ -663,11 +663,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   React.useEffect(() => {
     const handleProgressUpdate = (event: Event) => {
       const detail = (event as CustomEvent).detail;
+
       // Only show toast if we're not already showing one
       if (celebrationBadgeIdRef.current) {
         return;
       }
-      // Check for new badges immediately after guide completion
+      // Check for new badges from guide completion
       if (detail?.type === 'guide-completed' && detail?.newBadges?.length > 0) {
         setCelebrationBadgeId(detail.newBadges[0]);
       }

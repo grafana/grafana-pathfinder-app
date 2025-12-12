@@ -998,39 +998,53 @@ export const learningProgressStorage = {
    */
   async markGuideCompleted(guideId: string): Promise<void> {
     try {
+      // Import badge checking utilities dynamically to avoid circular deps
+      const { getBadgesToAward, getBadgeById } = await import('../learning-paths/badges');
+      const pathsData = await import('../learning-paths/paths.json');
+      // Cast paths to correct type (JSON import has string literals, we need the union type)
+      type LearningPath = import('../types/learning-paths.types').LearningPath;
+      const paths = pathsData.paths as unknown as LearningPath[];
+
       const progress = await learningProgressStorage.get();
       if (!progress.completedGuides.includes(guideId)) {
         progress.completedGuides.push(guideId);
         // Update last activity date for streak tracking
         progress.lastActivityDate = new Date().toISOString().split('T')[0];
 
-        // Check for "first-steps" badge (first guide completed)
-        if (progress.completedGuides.length === 1) {
-          const firstStepsBadgeId = 'first-steps';
-          if (!progress.earnedBadges.some((b) => b.id === firstStepsBadgeId)) {
-            progress.earnedBadges.push({ id: firstStepsBadgeId, earnedAt: Date.now() });
-            if (!progress.pendingCelebrations.includes(firstStepsBadgeId)) {
-              progress.pendingCelebrations.push(firstStepsBadgeId);
+        // Track badges awarded in THIS call only
+        const newlyAwardedBadges: string[] = [];
+
+        // Check for ALL badges that should be awarded (including path completion)
+        const badgesToAward = getBadgesToAward(progress, paths);
+
+        for (const badgeId of badgesToAward) {
+          if (!progress.earnedBadges.some((b) => b.id === badgeId)) {
+            progress.earnedBadges.push({ id: badgeId, earnedAt: Date.now() });
+            if (!progress.pendingCelebrations.includes(badgeId)) {
+              progress.pendingCelebrations.push(badgeId);
             }
+            newlyAwardedBadges.push(badgeId);
 
             // Track badge unlock analytics
+            const badge = getBadgeById(badgeId);
             reportAppInteraction(UserInteraction.BadgeUnlocked, {
-              badge_id: firstStepsBadgeId,
-              badge_title: 'First Steps',
-              trigger_type: 'guide-completed',
+              badge_id: badgeId,
+              badge_title: badge?.title || badgeId,
+              trigger_type: badge?.trigger?.type || 'unknown',
             });
           }
         }
 
         await learningProgressStorage.update(progress);
 
-        // Notify listeners that progress has changed - include full progress for immediate use
+        // Notify listeners that progress has changed
+        // Only include badges awarded in THIS call, not all pending celebrations
         window.dispatchEvent(
           new CustomEvent('learning-progress-updated', {
             detail: {
               type: 'guide-completed',
               guideId,
-              newBadges: progress.pendingCelebrations,
+              newBadges: newlyAwardedBadges,
               progress: { ...progress }, // Clone to prevent mutation issues
             },
           })

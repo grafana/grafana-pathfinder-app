@@ -151,7 +151,7 @@ export const getProgressRingStyles = (theme: GrafanaTheme2) => {
       fontVariantNumeric: 'tabular-nums',
     }),
     completed: css({
-      animation: `${badgeGlow} 2s ease-in-out infinite`,
+      // No animation - the gradient on the stroke is enough
     }),
   };
 };

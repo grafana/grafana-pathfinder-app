@@ -52,6 +52,27 @@
       "summary": "Learn to create a dashboard in Grafana Cloud. Covering features such as Explore, dashboard creation, visualizations and more",
       "filename": "first-dashboard-cloud.json",
       "url": ["/a/grafana-setupguide-app/home"]
+    },
+    {
+      "id": "test-guide-1",
+      "title": "[TEST] Quick guide 1",
+      "summary": "⚠️ TEST ONLY - Delete after testing! A 2-step guide for testing path completion.",
+      "filename": "test-guide-1.json",
+      "url": ["/"]
+    },
+    {
+      "id": "test-guide-2",
+      "title": "[TEST] Quick guide 2",
+      "summary": "⚠️ TEST ONLY - Delete after testing! A 2-step guide for testing path completion.",
+      "filename": "test-guide-2.json",
+      "url": ["/"]
+    },
+    {
+      "id": "test-guide-3",
+      "title": "[TEST] Quick guide 3",
+      "summary": "⚠️ TEST ONLY - Delete after testing! A 1-step guide for testing cross-path progression.",
+      "filename": "test-guide-3.json",
+      "url": ["/"]
     }
   ]
 }

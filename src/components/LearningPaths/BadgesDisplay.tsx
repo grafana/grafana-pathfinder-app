@@ -13,7 +13,7 @@ import type { BadgesDisplayProps, EarnedBadge } from '../../types/learning-paths
 import { getBadgesDisplayStyles } from './learning-paths.styles';
 
 /**
- * Grid display of all achievement badges
+ * Grid display of all badges
  */
 export function BadgesDisplay({ badges, onBadgeClick }: BadgesDisplayProps) {
   const styles = useStyles2(getBadgesDisplayStyles);
@@ -26,7 +26,7 @@ export function BadgesDisplay({ badges, onBadgeClick }: BadgesDisplayProps) {
       {/* Header */}
       <div className={styles.header}>
         <Icon name="star" size="md" className={styles.headerIcon} />
-        <h4 className={styles.headerTitle}>Achievements</h4>
+        <h4 className={styles.headerTitle}>Badges</h4>
         <span className={styles.headerCount}>
           {earnedCount}/{totalCount}
         </span>

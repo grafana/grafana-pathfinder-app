@@ -15,6 +15,21 @@ import type { Badge, BadgeTrigger, LearningProgress, LearningPath } from '../typ
  * All available badges in the system
  */
 export const BADGES: Badge[] = [
+  // ⚠️ TEST BADGES - Delete after testing!
+  {
+    id: 'test-badge',
+    title: '[TEST] Path Tester',
+    description: '⚠️ TEST ONLY - Complete the test learning path',
+    icon: 'bug',
+    trigger: { type: 'path-completed', pathId: 'test-path' },
+  },
+  {
+    id: 'test-badge-2',
+    title: '[TEST] Cross-Path Tester',
+    description: '⚠️ TEST ONLY - Complete the cross-path test',
+    icon: 'bug',
+    trigger: { type: 'path-completed', pathId: 'test-path-2' },
+  },
   {
     id: 'first-steps',
     title: 'First steps',

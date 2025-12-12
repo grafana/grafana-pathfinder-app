@@ -420,6 +420,16 @@ export function InteractiveSection({
     };
   }, [interactiveConfig.autoDetection.enabled]); // Re-run if config changes
 
+  // Track if we've emitted the guide-level completion event for this section
+  const hasEmittedGuideCompletionRef = useRef(false);
+
+  // Reset the emission flag when section becomes incomplete (e.g., after reset)
+  useEffect(() => {
+    if (!isCompleted) {
+      hasEmittedGuideCompletionRef.current = false;
+    }
+  }, [isCompleted]);
+
   // Trigger reactive checks when section completion status changes
   useEffect(() => {
     if (isCompleted && stepComponents.length > 0) {
@@ -428,6 +438,17 @@ export function InteractiveSection({
         detail: { sectionId },
       });
       document.dispatchEvent(completionEvent);
+
+      // Emit guide-level completion event (for ContentRenderer tracking)
+      // Only emit once per completion to avoid duplicate triggers
+      if (!hasEmittedGuideCompletionRef.current) {
+        hasEmittedGuideCompletionRef.current = true;
+        window.dispatchEvent(
+          new CustomEvent('interactive-section-completed', {
+            detail: { sectionId },
+          })
+        );
+      }
 
       // Trigger global reactive check to enable next eligible steps
       // Also trigger watchNextStep to help the next step unlock if it has requirements
@@ -496,17 +517,15 @@ export function InteractiveSection({
         // useSyncExternalStore ensures manager state stays in sync with React renders
         // No manual synchronization needed!
 
+        // Emit step completion event for fallback guide completion tracking
+        window.dispatchEvent(new CustomEvent('interactive-step-completed', { detail: { stepId, sectionId } }));
+
         // Check if all steps are completed
         const allStepsCompleted = newCompletedSteps.size >= stepComponents.length;
         if (allStepsCompleted) {
           onComplete?.();
-
-          // Emit section completed event for guide-level tracking
-          window.dispatchEvent(
-            new CustomEvent('interactive-section-completed', {
-              detail: { sectionId },
-            })
-          );
+          // Note: guide-level completion event is emitted by the useEffect
+          // that watches isCompleted state to avoid duplicate emissions
         }
       } else {
         setCurrentlyExecutingStep(null);

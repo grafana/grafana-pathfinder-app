@@ -2,7 +2,7 @@
  * Learning Paths Module
  *
  * Exports for the gamified learning system with structured paths,
- * progress tracking, and achievement badges.
+ * progress tracking, and badges.
  */
 
 // Main hook

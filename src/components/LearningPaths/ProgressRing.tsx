@@ -28,25 +28,26 @@ export function ProgressRing({
   const checkmarkStyles = useStyles2(getCheckmarkStyles);
 
   // Calculate SVG parameters
-  const { radius, circumference, dashOffset, gradientId } = useMemo(() => {
+  const { radius, circumference, dashOffset, gradientId, completedGradientId } = useMemo(() => {
     const r = (size - strokeWidth) / 2;
     const c = 2 * Math.PI * r;
     const clampedProgress = Math.max(0, Math.min(100, progress));
     const offset = c - (clampedProgress / 100) * c;
-    const id = `progress-gradient-${Math.random().toString(36).substr(2, 9)}`;
+    const uniqueId = Math.random().toString(36).substr(2, 9);
 
     return {
       radius: r,
       circumference: c,
       dashOffset: offset,
-      gradientId: id,
+      gradientId: `progress-gradient-${uniqueId}`,
+      completedGradientId: `completed-gradient-${uniqueId}`,
     };
   }, [size, strokeWidth, progress]);
 
   const center = size / 2;
 
-  // Determine stroke color based on completion
-  const strokeColor = isCompleted ? colors.success : `url(#${gradientId})`;
+  // Use gradient for both in-progress and completed states
+  const strokeColor = isCompleted ? `url(#${completedGradientId})` : `url(#${gradientId})`;
 
   return (
     <div
@@ -54,11 +55,18 @@ export function ProgressRing({
       style={{ width: size, height: size }}
     >
       <svg className={styles.svg} width={size} height={size}>
-        {/* Gradient definition */}
+        {/* Gradient definitions */}
         <defs>
+          {/* In-progress gradient */}
           <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor={colors.pathAccent} />
-            <stop offset="100%" stopColor={isCompleted ? colors.success : '#4ECDC4'} />
+            <stop offset="100%" stopColor="#4ECDC4" />
+          </linearGradient>
+          {/* Completed gradient - green tones */}
+          <linearGradient id={completedGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#10B981" />
+            <stop offset="50%" stopColor={colors.success} />
+            <stop offset="100%" stopColor="#059669" />
           </linearGradient>
         </defs>
 

@@ -157,19 +157,25 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   // Build document context for assistant
   const documentContext = React.useMemo(() => buildDocumentContext(content), [content]);
 
-  // Reset guideCompleteCalled when content changes
+  // Store completedSections in a ref so it persists across effect re-runs
+  // (inline callbacks in parent cause effect to re-mount - R12 anti-pattern protection)
+  const completedSectionsRef = useRef<Set<string>>(new Set());
+
+  // Store onGuideComplete in a ref so we can use the latest version without it
+  // causing the event listener effect to re-mount (which would lose tracked sections)
+  const onGuideCompleteRef = useRef(onGuideComplete);
+  useEffect(() => {
+    onGuideCompleteRef.current = onGuideComplete;
+  }, [onGuideComplete]);
+
+  // Reset tracking state when content changes (new guide = fresh start)
   useEffect(() => {
     guideCompleteCalledRef.current = false;
+    completedSectionsRef.current = new Set();
   }, [content?.url]);
 
   // Track interactive section completions for guide-level completion
   useEffect(() => {
-    if (!onGuideComplete) {
-      return;
-    }
-
-    const completedSections = new Set<string>();
-
     // Count interactive sections from the DOM
     const countSections = (): number => {
       const container = activeRef.current;
@@ -182,27 +188,51 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 
     const handleSectionComplete = (event: Event) => {
       const { sectionId } = (event as CustomEvent).detail;
-      completedSections.add(sectionId);
+      completedSectionsRef.current.add(sectionId);
 
       // Count sections at the time of completion to ensure accurate count
       const totalSections = countSections();
 
       // Check if all sections complete - trigger immediately
-      if (totalSections > 0 && completedSections.size >= totalSections) {
-        if (!guideCompleteCalledRef.current) {
+      if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
+        if (!guideCompleteCalledRef.current && onGuideCompleteRef.current) {
           guideCompleteCalledRef.current = true;
-          // Call immediately, no delay
-          onGuideComplete();
+          onGuideCompleteRef.current();
         }
       }
     };
 
+    // Fallback: also check completion state when individual steps complete
+    // This catches edge cases where section completion events aren't fired properly
+    const handleStepComplete = () => {
+      // Check if all sections are now completed by examining DOM state
+      const container = activeRef.current;
+      if (!container || guideCompleteCalledRef.current) {
+        return;
+      }
+
+      const sections = container.querySelectorAll('[data-interactive-section="true"]');
+      if (sections.length === 0) {
+        return;
+      }
+
+      // Check each section's completion state via CSS class
+      const allComplete = Array.from(sections).every((section) => section.classList.contains('completed'));
+
+      if (allComplete) {
+        guideCompleteCalledRef.current = true;
+        onGuideCompleteRef.current?.();
+      }
+    };
+
     window.addEventListener('interactive-section-completed', handleSectionComplete);
+    window.addEventListener('interactive-step-completed', handleStepComplete);
 
     return () => {
       window.removeEventListener('interactive-section-completed', handleSectionComplete);
+      window.removeEventListener('interactive-step-completed', handleStepComplete);
     };
-  }, [onGuideComplete, activeRef, content?.url]);
+  }, [activeRef, content?.url]); // Removed onGuideComplete - using ref instead
 
   // Expose current content key globally for interactive persistence
   useEffect(() => {

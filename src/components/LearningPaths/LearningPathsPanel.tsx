@@ -111,7 +111,7 @@ export function LearningPathsPanel({ onOpenGuide }: LearningPathsPanelProps) {
 
       {/* Badges modal */}
       <Modal
-        title="Your achievements"
+        title="Your badges"
         isOpen={showBadgesModal}
         onDismiss={() => setShowBadgesModal(false)}
       >

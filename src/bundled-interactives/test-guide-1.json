@@ -1,0 +1,34 @@
+{
+  "id": "test-guide-1",
+  "title": "[TEST] Quick guide 1",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# [TEST] Quick guide 1\n\n⚠️ **This is a test guide - delete after testing!**\n\nThis guide has only 2 steps to quickly test the learning path completion flow."
+    },
+    {
+      "type": "section",
+      "id": "test-section-1",
+      "title": "Two quick steps",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/']",
+          "requirements": ["navmenu-open"],
+          "content": "**Step 1:** Click the Home link in the navigation menu."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+          "content": "**Step 2:** Click the Dashboards link."
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "## ✅ Done!\n\nYou completed test guide 1!"
+    }
+  ]
+}

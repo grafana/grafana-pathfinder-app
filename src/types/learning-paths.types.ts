@@ -2,7 +2,7 @@
  * Learning Paths and Badges Type Definitions
  *
  * Types for the gamified learning system with structured paths,
- * progress tracking, and achievement badges.
+ * progress tracking, and badges.
  */
 
 // ============================================================================
@@ -59,7 +59,7 @@ export type BadgeTrigger =
   | { type: 'streak'; days: number }; // Maintain streak for N days
 
 /**
- * Represents an achievement badge that users can earn
+ * Represents a badge that users can earn
  */
 export interface Badge {
   /** Unique identifier for the badge */

@@ -18,12 +18,8 @@ import type {
 } from '../types/learning-paths.types';
 
 import { learningProgressStorage } from '../lib/user-storage';
-import { BADGES, getBadgesToAward } from './badges';
-import {
-  calculateUpdatedStreak,
-  getStreakInfo,
-  getTodayDateString,
-} from './streak-tracker';
+import { BADGES } from './badges';
+import { getStreakInfo } from './streak-tracker';
 
 // Import path definitions
 import pathsData from './paths.json';
@@ -97,50 +93,14 @@ export function useLearningPaths(): UseLearningPathsReturn {
     return filterPathsByPlatform(pathsData.paths as LearningPath[]);
   }, []);
 
-  // Load progress and check for badges - extracted for reuse
-  const loadAndCheckProgress = useCallback(async (mounted: { current: boolean }) => {
+  // Load progress from storage
+  // Badge awarding is now handled in user-storage.ts when guides complete
+  const loadProgress = useCallback(async (mounted: { current: boolean }) => {
     try {
       const stored = await learningProgressStorage.get();
 
-      if (!mounted.current) {
-        return;
-      }
-
-      // Check for any badges that should be awarded (e.g., from guide completion via storage)
-      const badgesToAward = getBadgesToAward(stored, paths);
-      let updatedProgress = stored;
-      let needsUpdate = false;
-
-      if (badgesToAward.length > 0) {
-        // Award any pending badges
-        for (const badgeId of badgesToAward) {
-          const alreadyEarned = updatedProgress.earnedBadges.some((b) => b.id === badgeId);
-          const alreadyPending = updatedProgress.pendingCelebrations.includes(badgeId);
-
-          if (!alreadyEarned) {
-            updatedProgress = {
-              ...updatedProgress,
-              earnedBadges: [
-                ...updatedProgress.earnedBadges,
-                { id: badgeId, earnedAt: Date.now() },
-              ],
-              // Only add to pending if not already there
-              pendingCelebrations: alreadyPending
-                ? updatedProgress.pendingCelebrations
-                : [...updatedProgress.pendingCelebrations, badgeId],
-            };
-            needsUpdate = true;
-          }
-        }
-
-        // Persist the updated progress with newly awarded badges
-        if (needsUpdate) {
-          await learningProgressStorage.update(updatedProgress);
-        }
-      }
-
       if (mounted.current) {
-        setProgress(updatedProgress);
+        setProgress(stored);
         setIsLoading(false);
       }
     } catch (error) {
@@ -149,14 +109,14 @@ export function useLearningPaths(): UseLearningPathsReturn {
         setIsLoading(false);
       }
     }
-  }, [paths]);
+  }, []);
 
   // Load progress on mount - use IIFE to handle async properly
   useEffect(() => {
     const mounted = { current: true };
     // Load immediately on mount
     void (async () => {
-      await loadAndCheckProgress(mounted);
+      await loadProgress(mounted);
     })();
     return () => {
       mounted.current = false;
@@ -165,17 +125,23 @@ export function useLearningPaths(): UseLearningPathsReturn {
   }, []);
 
   // Listen for progress updates from other parts of the app (e.g., guide completion)
+  // Badge awarding is now handled in user-storage.ts, so we just need to sync state
   useEffect(() => {
     const mounted = { current: true };
 
     const handleProgressUpdate = (event: Event) => {
       const detail = (event as CustomEvent).detail;
-      // If event includes progress data, use it directly for faster update
-      if (detail?.progress && mounted.current) {
-        setProgress(detail.progress);
+
+      if (!mounted.current) {
+        return;
+      }
+
+      // If event includes progress data, use it directly
+      if (detail?.progress) {
+        setProgress(detail.progress as LearningProgress);
       } else {
         // Fallback: re-load progress from storage
-        loadAndCheckProgress(mounted);
+        loadProgress(mounted);
       }
     };
 
@@ -185,7 +151,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
       mounted.current = false;
       window.removeEventListener('learning-progress-updated', handleProgressUpdate);
     };
-  }, [loadAndCheckProgress]);
+  }, [loadProgress]);
 
   // Get badges with earned status
   const badgesWithStatus = useMemo((): EarnedBadge[] => {
@@ -257,7 +223,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [getPathProgress]
   );
 
-  // Mark a guide as completed and check for badges
+  // Mark a guide as completed
+  // Badge awarding is handled in user-storage.ts, state is updated via event listener
   const markGuideCompleted = useCallback(
     async (guideId: string): Promise<void> => {
       // Skip if already completed
@@ -265,41 +232,10 @@ export function useLearningPaths(): UseLearningPathsReturn {
         return;
       }
 
-      // Update completed guides
-      const newCompletedGuides = [...progress.completedGuides, guideId];
-
-      // Update streak
-      const newStreak = calculateUpdatedStreak(progress.streakDays, progress.lastActivityDate);
-      const today = getTodayDateString();
-
-      // Create updated progress
-      const updatedProgress: LearningProgress = {
-        ...progress,
-        completedGuides: newCompletedGuides,
-        streakDays: newStreak,
-        lastActivityDate: today,
-      };
-
-      // Check for new badges to award
-      const badgesToAward = getBadgesToAward(updatedProgress, paths);
-
-      // Award new badges
-      for (const badgeId of badgesToAward) {
-        const alreadyEarned = updatedProgress.earnedBadges.some((b) => b.id === badgeId);
-        if (!alreadyEarned) {
-          updatedProgress.earnedBadges.push({
-            id: badgeId,
-            earnedAt: Date.now(),
-          });
-          updatedProgress.pendingCelebrations.push(badgeId);
-        }
-      }
-
-      // Update state and storage
-      setProgress(updatedProgress);
-      await learningProgressStorage.update(updatedProgress);
+      // Delegate to storage - it handles badge awarding and dispatches events
+      await learningProgressStorage.markGuideCompleted(guideId);
     },
-    [progress, paths]
+    [progress.completedGuides]
   );
 
   // Dismiss a pending celebration

@@ -373,7 +373,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         <div className={styles.sectionHeader}>
           <Icon name="star" size="md" className={styles.sectionIcon} />
           <h2 className={styles.sectionTitle}>
-            {t('myLearning.achievements', 'Achievements')}
+            {t('myLearning.badges', 'Badges')}
           </h2>
           <button
             className={styles.expandButton}

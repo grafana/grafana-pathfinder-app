@@ -110,7 +110,7 @@ export function BadgeUnlockedToast({ badge, onDismiss }: BadgeUnlockedToastProps
         {/* Header */}
         <div className={styles.header}>
           <Icon name="star" />
-          <span>Achievement unlocked!</span>
+          <span>Badge unlocked!</span>
         </div>
 
         {/* Badge icon */}
