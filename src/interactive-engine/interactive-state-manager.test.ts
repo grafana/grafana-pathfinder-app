@@ -46,7 +46,7 @@ describe('InteractiveStateManager', () => {
 
   it('should log error with logError', () => {
     manager.logError('context', 'error message', data);
-    expect(consoleErrorSpy).toHaveBeenCalledWith('context: error message', data);
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[pathfinder]', 'context: error message', data);
   });
 
   it('should call setState and throw on handleError with shouldThrow', () => {

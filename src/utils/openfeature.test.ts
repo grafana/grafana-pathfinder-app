@@ -167,6 +167,7 @@ describe('openfeature', () => {
         initializeOpenFeature();
 
         expect(consoleSpy).toHaveBeenCalledWith(
+          '[pathfinder]',
           '[OpenFeature] config.namespace not available, skipping initialization'
         );
         expect(mockOF.OpenFeature.setProvider).not.toHaveBeenCalled();
@@ -220,6 +221,7 @@ describe('openfeature', () => {
 
         expect(result).toBe(true);
         expect(consoleSpy).toHaveBeenCalledWith(
+          '[pathfinder]',
           expect.stringContaining("[OpenFeature] Error evaluating flag 'some-flag'"),
           expect.any(Error)
         );
@@ -272,6 +274,7 @@ describe('openfeature', () => {
 
         expect(result).toBe('default-variant');
         expect(consoleSpy).toHaveBeenCalledWith(
+          '[pathfinder]',
           expect.stringContaining("[OpenFeature] Error evaluating flag 'experiment-flag'"),
           expect.any(Error)
         );
@@ -386,6 +389,7 @@ describe('openfeature', () => {
 
         expect(result).toEqual(DEFAULT_EXPERIMENT_CONFIG);
         expect(consoleSpy).toHaveBeenCalledWith(
+          '[pathfinder]',
           expect.stringContaining('[OpenFeature] Error evaluating flag'),
           expect.any(Error)
         );
