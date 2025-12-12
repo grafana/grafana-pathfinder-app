@@ -17,6 +17,7 @@ import {
   getExperimentConfig,
   FeatureFlags,
   ExperimentConfig,
+  matchPathPattern,
 } from './utils/openfeature';
 import { PathfinderFeatureProvider } from './components/OpenFeatureProvider';
 
@@ -78,7 +79,7 @@ if (debugVariantOverride) {
 if ((experimentVariant === 'control' || experimentVariant === 'treatment') && targetPages.length > 0) {
   // Check initial page load
   const initialPath = locationService.getLocation().pathname || window.location.pathname || '';
-  const isOnTargetPage = targetPages.some((targetPath) => initialPath.startsWith(targetPath.trim()));
+  const isOnTargetPage = targetPages.some((targetPath) => matchPathPattern(targetPath, initialPath));
 
   if (isOnTargetPage) {
     reportAppInteraction(UserInteraction.ExperimentPageEntered, {
@@ -90,7 +91,7 @@ if ((experimentVariant === 'control' || experimentVariant === 'treatment') && ta
   // Set up navigation listener for SPA navigation to target pages
   const trackExperimentNavigation = () => {
     const newPath = locationService.getLocation().pathname || window.location.pathname || '';
-    const isNewPathTarget = targetPages.some((targetPath) => newPath.startsWith(targetPath.trim()));
+    const isNewPathTarget = targetPages.some((targetPath) => matchPathPattern(targetPath, newPath));
 
     if (isNewPathTarget) {
       reportAppInteraction(UserInteraction.ExperimentPageEntered, {
@@ -222,7 +223,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const location = locationService.getLocation();
   const currentPath = location.pathname || window.location.pathname || '';
   const isTargetPage =
-    targetPages.length === 0 || targetPages.some((targetPath) => currentPath.startsWith(targetPath.trim()));
+    targetPages.length === 0 || targetPages.some((targetPath) => matchPathPattern(targetPath, currentPath));
 
   // Determine if we should auto-open:
   // - Treatment group: auto-open on target pages
@@ -267,7 +268,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
         // Check if new path is a target page from GOFF config (for treatment)
         const isNewPathTargetPage =
-          targetPages.length === 0 || targetPages.some((targetPath) => newPath.startsWith(targetPath.trim()));
+          targetPages.length === 0 || targetPages.some((targetPath) => matchPathPattern(targetPath, newPath));
 
         // Treatment opens on target pages, excluded respects once-per-session
         const shouldOpenAfterOnboarding = (isTreatment && isNewPathTargetPage) || (!isTreatment && !alreadyOpened);
@@ -310,7 +311,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       const newPath = newLocation.pathname || window.location.pathname || '';
 
       // Check if new path matches any target page
-      const isNewPathTargetPage = targetPages.some((targetPath) => newPath.startsWith(targetPath.trim()));
+      const isNewPathTargetPage = targetPages.some((targetPath) => matchPathPattern(targetPath, newPath));
 
       if (isNewPathTargetPage) {
         sidebarState.setPendingOpenSource('experiment_treatment_navigation');

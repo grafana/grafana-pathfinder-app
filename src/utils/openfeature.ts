@@ -217,6 +217,43 @@ export const getExperimentConfig = (flagName: string): ExperimentConfig => {
 };
 
 /**
+ * Match a URL path against a pattern with optional wildcard support
+ *
+ * Supports two matching modes:
+ * - Pattern ending with `*`: matches path and all children (prefix match)
+ * - Pattern without `*`: exact match with trailing slash normalization
+ *
+ * @param pattern - The pattern to match against (e.g., "/a/app/schedules*" or "/a/app/schedules")
+ * @param path - The current URL path to check
+ * @returns True if the path matches the pattern
+ *
+ * @example
+ * // Wildcard matching
+ * matchPathPattern('/a/app/schedules*', '/a/app/schedules');      // true
+ * matchPathPattern('/a/app/schedules*', '/a/app/schedules/123');  // true
+ * matchPathPattern('/a/app/schedules*', '/a/app/schedule');       // false
+ *
+ * // Exact matching (with trailing slash normalization)
+ * matchPathPattern('/a/app/schedules', '/a/app/schedules');       // true
+ * matchPathPattern('/a/app/schedules', '/a/app/schedules/');      // true
+ * matchPathPattern('/a/app/schedules', '/a/app/schedules/123');   // false
+ */
+export const matchPathPattern = (pattern: string, path: string): boolean => {
+  const trimmedPattern = pattern.trim();
+  const normalizedPath = path.endsWith('/') ? path.slice(0, -1) : path;
+
+  if (trimmedPattern.endsWith('*')) {
+    // Wildcard: match prefix
+    const prefix = trimmedPattern.slice(0, -1);
+    return path.startsWith(prefix);
+  }
+
+  // Exact match with trailing slash normalization
+  const normalizedPattern = trimmedPattern.endsWith('/') ? trimmedPattern.slice(0, -1) : trimmedPattern;
+  return normalizedPath === normalizedPattern;
+};
+
+/**
  * React hooks for feature flag evaluation
  *
  * These hooks automatically update when flag values change and handle
