@@ -191,6 +191,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
       return {
         step_id: stepId,
+        content_type: 'interactive_guide',
         quiz_question: truncatedQuestion,
         quiz_selected_answer: truncatedSelected,
         quiz_correct_answer: truncatedCorrect,

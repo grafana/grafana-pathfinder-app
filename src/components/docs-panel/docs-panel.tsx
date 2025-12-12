@@ -22,7 +22,12 @@ import { useLinkClickHandler } from '../../utils/link-handler.hook';
 import { isDevModeEnabledGlobal, isDevModeEnabled } from '../../utils/dev-mode';
 import { parseUrlSafely, isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../security';
 
-import { setupScrollTracking, reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import {
+  setupScrollTracking,
+  reportAppInteraction,
+  UserInteraction,
+  getContentTypeForAnalytics,
+} from '../../lib/analytics';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -1137,7 +1142,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       reportAppInteraction(UserInteraction.OpenResourceClick, {
         content_title: title,
         content_url: url,
-        content_type: type === 'docs-page' ? 'docs' : 'learning-journey',
+        content_type: getContentTypeForAnalytics(url, type === 'docs-page' ? 'docs' : 'learning-journey'),
         trigger_source: 'auto_launch_tutorial',
         interaction_location: 'docs_panel',
         ...(type === 'learning-journey' && {
@@ -1409,7 +1414,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           onClick={(e) => {
                             e.stopPropagation();
                             reportAppInteraction(UserInteraction.CloseTabClick, {
-                              content_type: tab.type || 'learning-journey',
+                              content_type: getContentTypeForAnalytics(
+                                tab.currentUrl || tab.baseUrl,
+                                tab.type || 'learning-journey'
+                              ),
                               tab_title: tab.title,
                               content_url: tab.currentUrl || tab.baseUrl,
                               interaction_location: 'tab_button',
@@ -1522,7 +1530,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             onClick={(e) => {
                               e.stopPropagation();
                               reportAppInteraction(UserInteraction.CloseTabClick, {
-                                content_type: tab.type || 'learning-journey',
+                                content_type: getContentTypeForAnalytics(
+                                  tab.currentUrl || tab.baseUrl,
+                                  tab.type || 'learning-journey'
+                                ),
                                 tab_title: tab.title,
                                 content_url: tab.currentUrl || tab.baseUrl,
                                 close_location: 'dropdown',
@@ -1705,7 +1716,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                               onClick={() => {
                                 reportAppInteraction(UserInteraction.OpenExtraResource, {
                                   content_url: cleanUrl,
-                                  content_type: activeTab.type || 'docs',
+                                  content_type: getContentTypeForAnalytics(cleanUrl, activeTab.type || 'docs'),
                                   link_text: activeTab.title,
                                   source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
                                   link_type: 'external_browser',
@@ -1838,7 +1849,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
                           reportAppInteraction(UserInteraction.OpenExtraResource, {
                             content_url: cleanUrl,
-                            content_type: activeTab.type || 'learning-journey',
+                            content_type: getContentTypeForAnalytics(cleanUrl, activeTab.type || 'learning-journey'),
                             link_text: activeTab.title,
                             source_page: activeTab.content?.url || activeTab.baseUrl || 'unknown',
                             link_type: 'external_browser',

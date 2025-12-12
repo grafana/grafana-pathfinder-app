@@ -91,10 +91,10 @@ describe('KNOWN_FIELDS sync', () => {
   };
 
   // Helper for schemas with .refine() - access the inner schema via Zod 4 API
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const verifyFieldsFromEffects = (schema: z.ZodType<any>, typeName: string) => {
     // Zod 4: effects schemas expose innerType via _zod.def
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const innerSchema = (schema as any)._zod?.def?.innerType;
     if (innerSchema && 'shape' in innerSchema) {
       const schemaKeys = Object.keys(innerSchema.shape);
