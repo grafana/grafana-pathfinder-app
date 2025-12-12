@@ -615,6 +615,7 @@ export function InteractiveSection({
     const docInfo = getSourceDocument(sectionId);
     reportAppInteraction(UserInteraction.DoSectionButtonClick, {
       ...docInfo,
+      content_type: 'interactive_guide',
       section_title: title,
       total_steps: stepComponents.length,
       interaction_location: 'interactive_section',

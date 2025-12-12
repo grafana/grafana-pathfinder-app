@@ -7,6 +7,7 @@ jest.mock('../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   enrichWithJourneyContext: jest.fn((props, _content) => props), // Pass through
   enrichWithStepContext: jest.fn((props) => props), // Pass through
+  getContentTypeForAnalytics: jest.fn((url, fallback) => fallback), // Pass through fallback
   UserInteraction: {
     StartLearningJourneyClick: 'start_learning_journey_click',
     OpenExtraResource: 'open_extra_resource',

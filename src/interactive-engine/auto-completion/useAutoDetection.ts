@@ -304,4 +304,3 @@ export function useSingleActionDetection(options: {
     onActionDetected: handleActionDetected,
   });
 }
-

@@ -6,7 +6,8 @@
  */
 
 import { reportInteraction } from '@grafana/runtime';
-import pluginJson from '../plugin.json';
+import packageJson from '../../package.json';
+import { isInteractiveLearningUrl } from '../security';
 
 // ============================================================================
 // USER INTERACTION TYPES
@@ -67,6 +68,33 @@ const createInteractionName = (type: UserInteraction): string => {
 };
 
 /**
+ * Determines the appropriate content_type for analytics based on URL
+ *
+ * If the URL is from the interactive-learning CDN (interactive-learning.grafana.net
+ * or interactive-learning.grafana-dev.net), returns 'interactive_guide'.
+ * Otherwise returns the provided fallback type.
+ *
+ * @param url - The content URL to check
+ * @param fallbackType - The type to use if URL is not from interactive-learning CDN
+ * @returns 'interactive_guide' for CDN content, otherwise the fallback type
+ *
+ * @example
+ * ```typescript
+ * // Returns 'interactive_guide' for CDN URLs
+ * getContentTypeForAnalytics('https://interactive-learning.grafana.net/guide/', 'docs')
+ *
+ * // Returns 'learning-journey' for non-CDN URLs
+ * getContentTypeForAnalytics('https://grafana.com/docs/tutorial/', 'learning-journey')
+ * ```
+ */
+export function getContentTypeForAnalytics(url: string | undefined | null, fallbackType = 'docs'): string {
+  if (url && isInteractiveLearningUrl(url)) {
+    return 'interactive_guide';
+  }
+  return fallbackType;
+}
+
+/**
  * Reports a user interaction event to Grafana analytics (Rudder Stack)
  *
  * All events automatically include:
@@ -84,7 +112,7 @@ export function reportAppInteraction(
 
     // Add global attributes to all events
     const enrichedProperties = {
-      plugin_version: pluginJson.info.version,
+      plugin_version: packageJson.version,
       ...properties,
     };
 
@@ -433,6 +461,7 @@ export function buildInteractiveStepProperties(
   return {
     ...docInfo,
     ...baseProperties,
+    content_type: 'interactive_guide',
     ...(stepIndex !== undefined && { current_step: stepIndex + 1 }), // 1-indexed for analytics
     ...(totalSteps !== undefined && { total_document_steps: totalSteps }),
     ...(completionPercentage !== undefined && { completion_percentage: completionPercentage }),

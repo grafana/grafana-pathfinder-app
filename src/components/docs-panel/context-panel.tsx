@@ -13,7 +13,7 @@ import { locationService, config } from '@grafana/runtime';
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
 import { useContextPanel, Recommendation } from '../../context-engine';
-import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { reportAppInteraction, UserInteraction, getContentTypeForAnalytics } from '../../lib/analytics';
 import { getConfigWithDefaults } from '../../constants';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../testIds';
@@ -191,7 +191,10 @@ const RecommendationsSection = memo(function RecommendationsSection({
                             reportAppInteraction(UserInteraction.OpenResourceClick, {
                               content_title: recommendation.title,
                               content_url: recommendation.url,
-                              content_type: recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
+                              content_type: getContentTypeForAnalytics(
+                                recommendation.url,
+                                recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
+                              ),
                               interaction_location: 'featured_card_button',
                               match_accuracy: recommendation.matchAccuracy || 0,
                               ...(recommendation.type !== 'docs-page' && {
@@ -228,7 +231,10 @@ const RecommendationsSection = memo(function RecommendationsSection({
                                 reportAppInteraction(UserInteraction.SummaryClick, {
                                   content_title: recommendation.title,
                                   content_url: recommendation.url,
-                                  content_type: recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
+                                  content_type: getContentTypeForAnalytics(
+                                    recommendation.url,
+                                    recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
+                                  ),
                                   action: recommendation.summaryExpanded ? 'collapse' : 'expand',
                                   match_accuracy: recommendation.matchAccuracy || 0,
                                   ...(recommendation.type !== 'docs-page' && {
@@ -318,7 +324,10 @@ const RecommendationsSection = memo(function RecommendationsSection({
                                   reportAppInteraction(UserInteraction.OpenResourceClick, {
                                     content_title: recommendation.title,
                                     content_url: recommendation.url,
-                                    content_type: recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
+                                    content_type: getContentTypeForAnalytics(
+                                      recommendation.url,
+                                      recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
+                                    ),
                                     interaction_location: 'featured_summary_cta_button',
                                     match_accuracy: recommendation.matchAccuracy || 0,
                                     ...(recommendation.type !== 'docs-page' && {
@@ -389,7 +398,10 @@ const RecommendationsSection = memo(function RecommendationsSection({
                           reportAppInteraction(UserInteraction.OpenResourceClick, {
                             content_title: recommendation.title,
                             content_url: recommendation.url,
-                            content_type: recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
+                            content_type: getContentTypeForAnalytics(
+                              recommendation.url,
+                              recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
+                            ),
                             interaction_location: 'main_card_button',
                             match_accuracy: recommendation.matchAccuracy || 0,
                             ...(recommendation.type !== 'docs-page' && {
@@ -427,7 +439,10 @@ const RecommendationsSection = memo(function RecommendationsSection({
                               reportAppInteraction(UserInteraction.SummaryClick, {
                                 content_title: recommendation.title,
                                 content_url: recommendation.url,
-                                content_type: recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
+                                content_type: getContentTypeForAnalytics(
+                                  recommendation.url,
+                                  recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
+                                ),
                                 action: recommendation.summaryExpanded ? 'collapse' : 'expand',
                                 match_accuracy: recommendation.matchAccuracy || 0,
                                 ...(recommendation.type !== 'docs-page' && {
@@ -528,7 +543,10 @@ const RecommendationsSection = memo(function RecommendationsSection({
                                 reportAppInteraction(UserInteraction.OpenResourceClick, {
                                   content_title: recommendation.title,
                                   content_url: recommendation.url,
-                                  content_type: recommendation.type === 'docs-page' ? 'docs' : 'learning-journey',
+                                  content_type: getContentTypeForAnalytics(
+                                    recommendation.url,
+                                    recommendation.type === 'docs-page' ? 'docs' : 'learning-journey'
+                                  ),
                                   interaction_location: 'summary_cta_button',
                                   match_accuracy: recommendation.matchAccuracy || 0,
                                   ...(recommendation.type !== 'docs-page' && {
@@ -600,7 +618,10 @@ const RecommendationsSection = memo(function RecommendationsSection({
                             reportAppInteraction(UserInteraction.OpenResourceClick, {
                               content_title: item.title,
                               content_url: item.url,
-                              content_type: item.type === 'docs-page' ? 'docs' : 'learning-journey',
+                              content_type: getContentTypeForAnalytics(
+                                item.url,
+                                item.type === 'docs-page' ? 'docs' : 'learning-journey'
+                              ),
                               interaction_location: 'other_docs_list',
                               match_accuracy: item.matchAccuracy || 0,
                               ...(item.type !== 'docs-page' && {
