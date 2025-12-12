@@ -76,4 +76,3 @@ export function extractSelectorStrings(steps: RecordedStep[]): string[] {
 export function filterStepsByAction(steps: RecordedStep[], action: string): RecordedStep[] {
   return steps.filter((step) => step.action === action);
 }
-

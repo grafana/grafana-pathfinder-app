@@ -65,4 +65,3 @@ jobs:
           else
             echo "❌ Some guides failed validation - see job output for details" >> $GITHUB_STEP_SUMMARY
           fi
-
