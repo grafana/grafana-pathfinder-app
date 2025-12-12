@@ -11,7 +11,7 @@ export const DEFAULT_TUTORIAL_URL = '';
 export const TERMS_VERSION = '1.0.0';
 
 // Interactive Features defaults
-export const DEFAULT_ENABLE_AUTO_DETECTION = false; // Opt-in feature
+export const DEFAULT_ENABLE_AUTO_DETECTION = true; // Enabled by default
 export const DEFAULT_REQUIREMENTS_CHECK_TIMEOUT = 3000; // ms
 export const DEFAULT_GUIDED_STEP_TIMEOUT = 30000; // ms (30 seconds)
 

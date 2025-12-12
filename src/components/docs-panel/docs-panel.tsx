@@ -1204,7 +1204,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               reportAppInteraction(UserInteraction.DocsPanelInteraction, {
                 action: 'navigate_to_config',
                 source: 'header_settings_button',
-                timestamp: Date.now(),
               });
               locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
             }}
@@ -1220,7 +1219,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               reportAppInteraction(UserInteraction.DocsPanelInteraction, {
                 action: 'close_sidebar',
                 source: 'header_close_button',
-                timestamp: Date.now(),
               });
               // Close the extension sidebar
               const appEvents = getAppEvents();

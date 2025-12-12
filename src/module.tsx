@@ -370,7 +370,6 @@ if (experimentVariant !== 'control') {
         reportAppInteraction(UserInteraction.DocsPanelInteraction, {
           action: 'open',
           source: openSource,
-          timestamp: Date.now(),
         });
 
         // Fire custom event when sidebar component mounts
@@ -388,7 +387,6 @@ if (experimentVariant !== 'control') {
           reportAppInteraction(UserInteraction.DocsPanelInteraction, {
             action: 'close',
             source: 'sidebar_toggle',
-            timestamp: Date.now(),
           });
         };
       }, []);
