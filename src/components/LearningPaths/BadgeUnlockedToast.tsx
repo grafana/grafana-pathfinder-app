@@ -2,70 +2,55 @@
  * Badge Unlocked Toast Component
  *
  * Celebratory modal that appears when a badge is earned.
- * Features confetti animation, golden glow, and auto-dismiss.
+ * Features confetti animation, glow effects, and auto-dismiss.
+ * Uses CSS animations for smooth performance.
  */
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
 
 import type { BadgeUnlockedToastProps } from '../../types/learning-paths.types';
-import { getBadgeUnlockedToastStyles, getColorPalette } from './learning-paths.styles';
+import { getBadgeUnlockedToastStyles } from './learning-paths.styles';
 
 // Auto-dismiss duration in milliseconds
 const AUTO_DISMISS_DURATION = 5000;
+
+// Static confetti config - pre-computed for performance (no random on each render)
+const CONFETTI_PARTICLES = [
+  { left: '10%', delay: '0s', color: 0 },
+  { left: '25%', delay: '0.1s', color: 1 },
+  { left: '40%', delay: '0.2s', color: 2 },
+  { left: '55%', delay: '0.15s', color: 3 },
+  { left: '70%', delay: '0.25s', color: 4 },
+  { left: '85%', delay: '0.05s', color: 5 },
+  { left: '15%', delay: '0.3s', color: 2 },
+  { left: '50%', delay: '0.1s', color: 0 },
+  { left: '75%', delay: '0.2s', color: 1 },
+  { left: '30%', delay: '0.15s', color: 3 },
+];
+
+// Confetti uses vibrant greens and accent colors matching our success theme (#22C55E)
+const CONFETTI_COLORS = ['#22C55E', '#16A34A', '#4ADE80', '#86EFAC', '#4ECDC4', '#A3E635'];
 
 /**
  * Celebratory toast for badge unlock
  */
 export function BadgeUnlockedToast({ badge, onDismiss }: BadgeUnlockedToastProps) {
   const styles = useStyles2(getBadgeUnlockedToastStyles);
-  const colors = useStyles2(getColorPalette);
-  const [progress, setProgress] = useState(100);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-dismiss timer with progress bar
+  // Auto-dismiss timer - simple timeout, no state updates during animation
   useEffect(() => {
-    const startTime = Date.now();
-    const endTime = startTime + AUTO_DISMISS_DURATION;
-
-    const updateProgress = () => {
-      const now = Date.now();
-      const remaining = endTime - now;
-      const newProgress = (remaining / AUTO_DISMISS_DURATION) * 100;
-
-      if (newProgress <= 0) {
-        onDismiss();
-      } else {
-        setProgress(newProgress);
-        requestAnimationFrame(updateProgress);
-      }
-    };
-
-    const animationId = requestAnimationFrame(updateProgress);
+    timerRef.current = setTimeout(() => {
+      onDismiss();
+    }, AUTO_DISMISS_DURATION);
 
     return () => {
-      cancelAnimationFrame(animationId);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
     };
   }, [onDismiss]);
-
-  // Generate confetti particles
-  const confettiParticles = useMemo(() => {
-    const confettiColors = [
-      colors.badgeGold,
-      '#FF6B6B',
-      '#4ECDC4',
-      '#45B7D1',
-      '#96CEB4',
-      '#FFEAA7',
-    ];
-
-    return Array.from({ length: 20 }, (_, i) => ({
-      id: i,
-      color: confettiColors[i % confettiColors.length],
-      left: `${Math.random() * 100}%`,
-      delay: `${Math.random() * 0.5}s`,
-      size: 6 + Math.random() * 6,
-    }));
-  }, [colors.badgeGold]);
 
   // Handle click outside to dismiss
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -89,19 +74,16 @@ export function BadgeUnlockedToast({ badge, onDismiss }: BadgeUnlockedToastProps
   return (
     <div className={styles.overlay} onClick={handleOverlayClick}>
       <div className={styles.toast} role="dialog" aria-labelledby="badge-title">
-        {/* Confetti particles */}
+        {/* Confetti particles - static config, pure CSS animation */}
         <div className={styles.confettiContainer}>
-          {confettiParticles.map((particle) => (
+          {CONFETTI_PARTICLES.map((particle, i) => (
             <div
-              key={particle.id}
+              key={i}
               className={styles.confetti}
               style={{
                 left: particle.left,
-                backgroundColor: particle.color,
-                width: particle.size,
-                height: particle.size,
+                backgroundColor: CONFETTI_COLORS[particle.color],
                 animationDelay: particle.delay,
-                top: '100%',
               }}
             />
           ))}
@@ -111,6 +93,11 @@ export function BadgeUnlockedToast({ badge, onDismiss }: BadgeUnlockedToastProps
         <div className={styles.header}>
           <Icon name="star" />
           <span>Badge unlocked!</span>
+        </div>
+
+        {/* Auto-dismiss progress bar - uses pure CSS animation for smooth performance */}
+        <div className={styles.progressBar}>
+          <div className={styles.progressFill} />
         </div>
 
         {/* Badge icon */}
@@ -130,14 +117,6 @@ export function BadgeUnlockedToast({ badge, onDismiss }: BadgeUnlockedToastProps
         <button className={styles.dismissButton} onClick={onDismiss}>
           Nice!
         </button>
-
-        {/* Auto-dismiss progress bar */}
-        <div className={styles.progressBar}>
-          <div
-            className={styles.progressFill}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
       </div>
     </div>
   );

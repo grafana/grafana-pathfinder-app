@@ -18,17 +18,16 @@ import { GrafanaTheme2 } from '@grafana/data';
 export function getColorPalette(theme: GrafanaTheme2) {
   const isDark = theme.isDark;
 
+  // Vibrant success green - brighter and more celebratory than theme default
+  const successGreen = '#22C55E';
+  const successGreenDark = '#16A34A';
+
   return {
     // Path accent colors
     pathAccent: isDark ? '#8B7CF6' : '#6C63FF',
     pathAccentLight: isDark ? 'rgba(139, 124, 246, 0.15)' : 'rgba(108, 99, 255, 0.12)',
     pathAccentMedium: isDark ? 'rgba(139, 124, 246, 0.3)' : 'rgba(108, 99, 255, 0.25)',
     pathGlow: isDark ? 'rgba(139, 124, 246, 0.4)' : 'rgba(108, 99, 255, 0.3)',
-
-    // Badge gold colors
-    badgeGold: isDark ? '#FFC107' : '#FFD700',
-    badgeGoldLight: isDark ? 'rgba(255, 193, 7, 0.15)' : 'rgba(255, 215, 0, 0.12)',
-    badgeGoldGlow: isDark ? 'rgba(255, 193, 7, 0.5)' : 'rgba(255, 215, 0, 0.4)',
 
     // Streak fire colors
     streakFire: isDark ? '#FF8C5A' : '#FF6B35',
@@ -37,9 +36,11 @@ export function getColorPalette(theme: GrafanaTheme2) {
     // Progress track
     progressTrack: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
 
-    // Success (completion)
-    success: theme.colors.success.main,
-    successLight: isDark ? 'rgba(115, 191, 105, 0.15)' : 'rgba(86, 166, 75, 0.12)',
+    // Vibrant success colors for badges and completion
+    success: successGreen,
+    successDark: successGreenDark,
+    successLight: isDark ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.15)',
+    successGlow: isDark ? 'rgba(34, 197, 94, 0.5)' : 'rgba(34, 197, 94, 0.4)',
   };
 }
 
@@ -115,6 +116,12 @@ const celebrationEntry = keyframes`
     opacity: 1;
     transform: scale(1);
   }
+`;
+
+// Progress bar countdown animation - 5 seconds to match AUTO_DISMISS_DURATION
+const progressCountdown = keyframes`
+  0% { width: 100%; }
+  100% { width: 0%; }
 `;
 
 // ============================================================================
@@ -204,7 +211,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       lineHeight: 1.3,
     }),
     titleCompleted: css({
-      background: `linear-gradient(90deg, ${colors.success}, ${theme.colors.success.shade})`,
+      background: `linear-gradient(90deg, ${colors.success}, ${colors.successDark})`,
       WebkitBackgroundClip: 'text',
       WebkitTextFillColor: 'transparent',
       backgroundClip: 'text',
@@ -241,7 +248,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       animation: `${progressShimmer} 2s linear infinite`,
     }),
     progressFillCompleted: css({
-      background: `linear-gradient(90deg, ${colors.success} 0%, ${theme.colors.success.shade} 100%)`,
+      background: `linear-gradient(90deg, ${colors.success} 0%, ${colors.successDark} 100%)`,
     }),
     guideList: css({
       display: 'flex',
@@ -306,7 +313,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       backgroundColor: colors.success,
 
       '&:hover': {
-        backgroundColor: theme.colors.success.shade,
+        backgroundColor: colors.successDark,
       },
     }),
   };
@@ -333,7 +340,7 @@ export const getBadgesDisplayStyles = (theme: GrafanaTheme2) => {
       marginBottom: theme.spacing(1.5),
     }),
     headerIcon: css({
-      color: colors.badgeGold,
+      color: colors.success,
     }),
     headerTitle: css({
       margin: 0,
@@ -369,11 +376,11 @@ export const getBadgesDisplayStyles = (theme: GrafanaTheme2) => {
       },
     }),
     badgeEarned: css({
-      borderColor: colors.badgeGold,
-      boxShadow: `0 0 8px ${colors.badgeGoldLight}`,
+      borderColor: colors.success,
+      boxShadow: `0 0 8px ${colors.successGlow}`,
 
       '&:hover': {
-        boxShadow: `0 0 12px ${colors.badgeGoldGlow}`,
+        boxShadow: `0 0 16px ${colors.successGlow}`,
       },
     }),
     badgeLocked: css({
@@ -387,7 +394,7 @@ export const getBadgesDisplayStyles = (theme: GrafanaTheme2) => {
     }),
     badgeNew: css({
       animation: `${badgeGlow} 1.5s ease-in-out infinite, ${badgeShimmer} 2s linear infinite`,
-      background: `linear-gradient(90deg, ${colors.badgeGoldLight}, transparent, ${colors.badgeGoldLight})`,
+      background: `linear-gradient(90deg, ${colors.successLight}, transparent, ${colors.successLight})`,
       backgroundSize: '200% 100%',
     }),
     badgeIcon: css({
@@ -395,7 +402,7 @@ export const getBadgesDisplayStyles = (theme: GrafanaTheme2) => {
       lineHeight: 1,
     }),
     badgeIconEarned: css({
-      color: colors.badgeGold,
+      color: colors.success,
     }),
     badgeIconLocked: css({
       color: theme.colors.text.disabled,
@@ -424,6 +431,12 @@ export const getBadgesDisplayStyles = (theme: GrafanaTheme2) => {
 export const getBadgeUnlockedToastStyles = (theme: GrafanaTheme2) => {
   const colors = getColorPalette(theme);
 
+  // Use vibrant success colors for celebration
+  const celebrationGreen = colors.success;
+  const celebrationGreenDark = colors.successDark;
+  const celebrationGreenLight = colors.successLight;
+  const celebrationGreenGlow = colors.successGlow;
+
   return {
     overlay: css({
       position: 'fixed',
@@ -447,11 +460,12 @@ export const getBadgeUnlockedToastStyles = (theme: GrafanaTheme2) => {
       padding: theme.spacing(3),
       borderRadius: 16,
       backgroundColor: theme.colors.background.primary,
-      border: `2px solid ${colors.badgeGold}`,
-      boxShadow: `0 8px 32px rgba(0, 0, 0, 0.3), 0 0 24px ${colors.badgeGoldGlow}`,
+      border: `2px solid ${celebrationGreen}`,
+      boxShadow: `0 8px 32px rgba(0, 0, 0, 0.3), 0 0 24px ${celebrationGreenGlow}`,
       minWidth: 280,
       maxWidth: 320,
       animation: `${celebrationEntry} 0.4s ease-out`,
+      overflow: 'hidden',
     }),
     confettiContainer: css({
       position: 'absolute',
@@ -464,19 +478,21 @@ export const getBadgeUnlockedToastStyles = (theme: GrafanaTheme2) => {
     }),
     confetti: css({
       position: 'absolute',
+      top: '100%',
       width: 8,
       height: 8,
       borderRadius: 2,
-      animation: `${confettiFloat} 2s ease-out forwards`,
+      willChange: 'transform',
+      animation: `${confettiFloat} 1.5s ease-out forwards`,
     }),
     header: css({
       display: 'flex',
       alignItems: 'center',
       gap: theme.spacing(0.5),
-      marginBottom: theme.spacing(2),
+      marginBottom: theme.spacing(1),
       fontSize: theme.typography.body.fontSize,
       fontWeight: theme.typography.fontWeightMedium,
-      color: colors.badgeGold,
+      color: celebrationGreen,
     }),
     badgeContainer: css({
       display: 'flex',
@@ -485,14 +501,14 @@ export const getBadgeUnlockedToastStyles = (theme: GrafanaTheme2) => {
       width: 96,
       height: 96,
       borderRadius: '50%',
-      backgroundColor: colors.badgeGoldLight,
-      border: `3px solid ${colors.badgeGold}`,
+      backgroundColor: celebrationGreenLight,
+      border: `3px solid ${celebrationGreen}`,
       marginBottom: theme.spacing(2),
-      animation: `${badgeGlow} 2s ease-in-out infinite`,
+      boxShadow: `0 0 16px ${celebrationGreenGlow}`,
     }),
     badgeIcon: css({
-      color: colors.badgeGold,
-      filter: `drop-shadow(0 0 10px ${colors.badgeGold})`,
+      color: celebrationGreen,
+      filter: `drop-shadow(0 0 8px ${celebrationGreen})`,
     }),
     badgeTitle: css({
       margin: 0,
@@ -512,8 +528,8 @@ export const getBadgeUnlockedToastStyles = (theme: GrafanaTheme2) => {
     dismissButton: css({
       padding: `${theme.spacing(1)} ${theme.spacing(3)}`,
       borderRadius: theme.shape.radius.default,
-      backgroundColor: colors.badgeGold,
-      color: '#000',
+      backgroundColor: celebrationGreen,
+      color: '#fff',
       fontSize: theme.typography.body.fontSize,
       fontWeight: theme.typography.fontWeightMedium,
       border: 'none',
@@ -521,26 +537,25 @@ export const getBadgeUnlockedToastStyles = (theme: GrafanaTheme2) => {
       transition: 'all 0.2s ease',
 
       '&:hover': {
-        backgroundColor: '#FFE066',
+        backgroundColor: celebrationGreenDark,
         transform: 'scale(1.05)',
       },
     }),
     progressBar: css({
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      height: 4,
-      backgroundColor: 'transparent',
-      borderBottomLeftRadius: 16,
-      borderBottomRightRadius: 16,
+      width: '100%',
+      height: 3,
+      backgroundColor: celebrationGreenLight,
+      borderRadius: 2,
       overflow: 'hidden',
+      marginBottom: theme.spacing(2),
     }),
     progressFill: css({
       height: '100%',
-      backgroundColor: colors.badgeGold,
-      transition: 'width 0.1s linear',
-      boxShadow: `0 0 8px ${colors.badgeGoldGlow}`,
+      width: '100%',
+      backgroundColor: celebrationGreen,
+      borderRadius: 2,
+      boxShadow: `0 0 6px ${celebrationGreenGlow}`,
+      animation: `${progressCountdown} 5s linear forwards`,
     }),
   };
 };

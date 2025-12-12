@@ -62,11 +62,10 @@ export function ProgressRing({
             <stop offset="0%" stopColor={colors.pathAccent} />
             <stop offset="100%" stopColor="#4ECDC4" />
           </linearGradient>
-          {/* Completed gradient - green tones */}
+          {/* Completed gradient - vibrant success gradient */}
           <linearGradient id={completedGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#10B981" />
-            <stop offset="50%" stopColor={colors.success} />
-            <stop offset="100%" stopColor="#059669" />
+            <stop offset="0%" stopColor={colors.success} />
+            <stop offset="100%" stopColor={colors.successDark} />
           </linearGradient>
         </defs>
 

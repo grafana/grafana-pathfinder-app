@@ -488,17 +488,14 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
 const getBadgeDetailStyles = (theme: GrafanaTheme2) => {
   const isDark = theme.isDark;
-  const goldColor = isDark ? '#FFC107' : '#FFD700';
+  // Vibrant success green for earned badges
+  const successColor = '#22C55E';
+  const successGlow = isDark ? 'rgba(34, 197, 94, 0.5)' : 'rgba(34, 197, 94, 0.4)';
   const accentColor = isDark ? '#8B7CF6' : '#6C63FF';
 
   const shimmer = keyframes`
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
-  `;
-
-  const pulseGlow = keyframes`
-    0%, 100% { box-shadow: 0 0 20px ${goldColor}40, 0 0 40px ${goldColor}20; }
-    50% { box-shadow: 0 0 30px ${goldColor}60, 0 0 60px ${goldColor}30; }
   `;
 
   const slideIn = keyframes`
@@ -571,11 +568,13 @@ const getBadgeDetailStyles = (theme: GrafanaTheme2) => {
       borderRadius: '50%',
     }),
     iconEarned: css({
-      background: `linear-gradient(135deg, ${goldColor}30 0%, ${goldColor}10 100%)`,
-      animation: `${pulseGlow} 2s ease-in-out infinite`,
+      background: `linear-gradient(135deg, ${successColor}40 0%, ${successColor}15 100%)`,
+      // Vibrant glow effect
+      boxShadow: `0 0 24px ${successGlow}, 0 0 48px ${successGlow}`,
+      border: `2px solid ${successColor}`,
       '& svg': {
-        color: goldColor,
-        filter: `drop-shadow(0 0 8px ${goldColor})`,
+        color: successColor,
+        filter: `drop-shadow(0 0 10px ${successColor})`,
       },
     }),
     iconLocked: css({
@@ -587,9 +586,9 @@ const getBadgeDetailStyles = (theme: GrafanaTheme2) => {
     }),
     iconGlow: css({
       position: 'absolute',
-      inset: -4,
+      inset: -6,
       borderRadius: '50%',
-      background: `radial-gradient(circle, ${goldColor}20 0%, transparent 70%)`,
+      background: `radial-gradient(circle, ${successGlow} 0%, transparent 60%)`,
     }),
     checkmark: css({
       position: 'absolute',
@@ -598,12 +597,13 @@ const getBadgeDetailStyles = (theme: GrafanaTheme2) => {
       width: 24,
       height: 24,
       borderRadius: '50%',
-      backgroundColor: theme.colors.success.main,
+      backgroundColor: successColor,
       color: 'white',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       border: `2px solid ${theme.colors.background.primary}`,
+      boxShadow: `0 0 8px ${successGlow}`,
     }),
     title: css({
       margin: 0,
@@ -621,8 +621,8 @@ const getBadgeDetailStyles = (theme: GrafanaTheme2) => {
       marginBottom: theme.spacing(1.5),
     }),
     statusEarned: css({
-      backgroundColor: `${goldColor}20`,
-      color: goldColor,
+      backgroundColor: `${successColor}20`,
+      color: successColor,
     }),
     statusLocked: css({
       backgroundColor: theme.colors.background.secondary,
@@ -724,8 +724,10 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
   const isDark = theme.isDark;
   const accentColor = isDark ? '#8B7CF6' : '#6C63FF';
   const accentLight = isDark ? 'rgba(139, 124, 246, 0.15)' : 'rgba(108, 99, 255, 0.12)';
-  const goldColor = isDark ? '#FFC107' : '#FFD700';
-  const goldLight = isDark ? 'rgba(255, 193, 7, 0.2)' : 'rgba(255, 215, 0, 0.15)';
+
+  // Vibrant success green for earned badges
+  const successGreen = '#22C55E';
+  const successGreenGlow = isDark ? 'rgba(34, 197, 94, 0.5)' : 'rgba(34, 197, 94, 0.4)';
 
   const badgeFadeIn = keyframes`
     from { 
@@ -738,9 +740,9 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
     }
   `;
 
-  const goldGlow = keyframes`
-    0%, 100% { box-shadow: 0 0 8px ${goldLight}; }
-    50% { box-shadow: 0 0 16px ${goldLight}; }
+  const successGlow = keyframes`
+    0%, 100% { box-shadow: 0 0 8px ${successGreenGlow}; }
+    50% { box-shadow: 0 0 16px ${successGreenGlow}; }
   `;
 
   return {
@@ -906,10 +908,10 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
       },
     }),
     badgeItemEarned: css({
-      borderColor: goldColor,
-      animation: `${badgeFadeIn} 0.3s ease-out forwards, ${goldGlow} 3s ease-in-out infinite`,
+      borderColor: successGreen,
+      animation: `${badgeFadeIn} 0.3s ease-out forwards, ${successGlow} 3s ease-in-out infinite`,
       '& svg': {
-        color: goldColor,
+        color: successGreen,
       },
     }),
     badgeItemLocked: css({
@@ -932,7 +934,7 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
       width: 16,
       height: 16,
       borderRadius: '50%',
-      backgroundColor: theme.colors.success.main,
+      backgroundColor: successGreen,
       color: 'white',
       display: 'flex',
       alignItems: 'center',
