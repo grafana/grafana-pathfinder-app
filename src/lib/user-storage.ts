@@ -37,9 +37,35 @@
 
 import { usePluginUserStorage } from '@grafana/runtime';
 import { useCallback, useRef, useEffect } from 'react';
+import { z } from 'zod';
 
 import type { LearningProgress, EarnedBadgeRecord } from '../types/learning-paths.types';
 import { reportAppInteraction, UserInteraction } from './analytics';
+
+// ============================================================================
+// LEARNING PROGRESS SCHEMA (for defense-in-depth validation)
+// ============================================================================
+
+const EarnedBadgeRecordSchema = z.object({
+  id: z.string(),
+  earnedAt: z.number(),
+});
+
+const LearningProgressSchema = z.object({
+  completedGuides: z.array(z.string()),
+  earnedBadges: z.array(EarnedBadgeRecordSchema),
+  streakDays: z.number(),
+  lastActivityDate: z.string(),
+  pendingCelebrations: z.array(z.string()),
+});
+
+const DEFAULT_PROGRESS: LearningProgress = {
+  completedGuides: [],
+  earnedBadges: [],
+  streakDays: 0,
+  lastActivityDate: '',
+  pendingCelebrations: [],
+};
 
 // ============================================================================
 // STORAGE KEYS
@@ -955,29 +981,29 @@ export const fullScreenModeStorage = {
  */
 export const learningProgressStorage = {
   /**
-   * Gets the current learning progress
+   * Gets the current learning progress with Zod validation for defense-in-depth
+   * against corrupted localStorage data
    */
   async get(): Promise<LearningProgress> {
     try {
       const storage = createUserStorage();
-      const progress = await storage.getItem<LearningProgress>(StorageKeys.LEARNING_PROGRESS);
-      return (
-        progress || {
-          completedGuides: [],
-          earnedBadges: [],
-          streakDays: 0,
-          lastActivityDate: '',
-          pendingCelebrations: [],
-        }
-      );
+      const stored = await storage.getItem<unknown>(StorageKeys.LEARNING_PROGRESS);
+
+      if (!stored) {
+        return DEFAULT_PROGRESS;
+      }
+
+      // Validate stored data against schema to protect against corruption
+      const parsed = LearningProgressSchema.safeParse(stored);
+      if (parsed.success) {
+        return parsed.data;
+      }
+
+      // Log validation failure for debugging but return defaults gracefully
+      console.warn('Learning progress validation failed, using defaults:', parsed.error.issues);
+      return DEFAULT_PROGRESS;
     } catch {
-      return {
-        completedGuides: [],
-        earnedBadges: [],
-        streakDays: 0,
-        lastActivityDate: '',
-        pendingCelebrations: [],
-      };
+      return DEFAULT_PROGRESS;
     }
   },
 
@@ -999,6 +1025,7 @@ export const learningProgressStorage = {
    * Marks a guide as completed and checks for badge awards
    * Does not add duplicates
    * Dispatches events to notify listeners
+   * REACT: handle errors explicitly (R10)
    */
   async markGuideCompleted(guideId: string): Promise<void> {
     try {
@@ -1059,7 +1086,18 @@ export const learningProgressStorage = {
         );
       }
     } catch (error) {
-      console.warn('Failed to mark guide as completed:', error);
+      console.error('Failed to mark guide as completed:', error);
+      // Still dispatch event so UI doesn't hang waiting for completion
+      window.dispatchEvent(
+        new CustomEvent('learning-progress-updated', {
+          detail: {
+            type: 'guide-completed',
+            guideId,
+            newBadges: [],
+            error: true,
+          },
+        })
+      );
     }
   },
 

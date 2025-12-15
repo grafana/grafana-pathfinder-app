@@ -1,7 +1,7 @@
 // Combined Learning Journey and Docs Panel
 // Post-refactoring unified component using new content system only
 
-import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy, Component, ReactNode } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
 
@@ -57,6 +57,39 @@ import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } 
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { testIds } from '../testIds';
+
+// REACT: Error boundary for MyLearningTab to prevent panel crashes (R6)
+interface MyLearningErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class MyLearningErrorBoundary extends Component<{ children: ReactNode }, MyLearningErrorBoundaryState> {
+  state: MyLearningErrorBoundaryState = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error): MyLearningErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('MyLearningTab error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 16, textAlign: 'center' }}>
+          <Icon name="exclamation-triangle" size="xl" />
+          <p style={{ marginTop: 8 }}>Unable to load learning progress</p>
+          <Button size="sm" variant="secondary" onClick={() => this.setState({ hasError: false, error: null })}>
+            Try again
+          </Button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -1415,7 +1448,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             title={t('docsPanel.recommendations', 'Recommendations')}
             data-testid={testIds.docsPanel.recommendationsTab}
           >
-            <Icon name="lightbulb" size="md" />
+            <Icon name="document-info" size="md" />
           </button>
           <button
             className={`${styles.iconTab} ${activeTabId === 'my-learning' ? styles.iconTabActive : ''}`}
@@ -1652,14 +1685,16 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             return <contextPanel.Component model={contextPanel} />;
           }
 
-          // Show my learning tab
+          // Show my learning tab (wrapped in error boundary - R6)
           if (activeTabId === 'my-learning') {
             return (
-              <MyLearningTab
-                onOpenGuide={(url, title) => {
-                  model.openLearningJourney(url, title);
-                }}
-              />
+              <MyLearningErrorBoundary>
+                <MyLearningTab
+                  onOpenGuide={(url, title) => {
+                    model.openLearningJourney(url, title);
+                  }}
+                />
+              </MyLearningErrorBoundary>
             );
           }
 

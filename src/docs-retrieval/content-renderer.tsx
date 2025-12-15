@@ -175,7 +175,10 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   }, [content?.url]);
 
   // Track interactive section completions for guide-level completion
+  // Use debounced check to ensure DOM is stable before counting sections
   useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     // Count interactive sections from the DOM
     const countSections = (): number => {
       const container = activeRef.current;
@@ -186,6 +189,23 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       return sections.length;
     };
 
+    // Debounced completion check to ensure DOM is fully rendered
+    const debouncedCompletionCheck = () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      debounceTimer = setTimeout(() => {
+        if (guideCompleteCalledRef.current) {
+          return;
+        }
+        const totalSections = countSections();
+        if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
+          guideCompleteCalledRef.current = true;
+          onGuideCompleteRef.current?.();
+        }
+      }, 100); // Small delay to ensure DOM is stable
+    };
+
     const handleSectionComplete = (event: Event) => {
       const { sectionId } = (event as CustomEvent).detail;
       completedSectionsRef.current.add(sectionId);
@@ -193,12 +213,15 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       // Count sections at the time of completion to ensure accurate count
       const totalSections = countSections();
 
-      // Check if all sections complete - trigger immediately
+      // Check if all sections complete - trigger immediately if count is accurate
       if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
         if (!guideCompleteCalledRef.current && onGuideCompleteRef.current) {
           guideCompleteCalledRef.current = true;
           onGuideCompleteRef.current();
         }
+      } else {
+        // If count seems off, use debounced check as fallback
+        debouncedCompletionCheck();
       }
     };
 
@@ -231,6 +254,9 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     return () => {
       window.removeEventListener('interactive-section-completed', handleSectionComplete);
       window.removeEventListener('interactive-step-completed', handleStepComplete);
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
     };
   }, [activeRef, content?.url]); // Removed onGuideComplete - using ref instead
 
