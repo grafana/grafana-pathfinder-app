@@ -25,7 +25,6 @@ export const testIds = {
   // Docs Panel - Main container and shell elements
   docsPanel: {
     container: 'docs-panel-container',
-    headerBar: 'docs-panel-header-bar',
     settingsButton: 'docs-panel-settings-button',
     closeButton: 'docs-panel-close-button',
     tabBar: 'docs-panel-tab-bar',

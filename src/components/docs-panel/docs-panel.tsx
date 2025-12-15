@@ -52,7 +52,6 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import logoSvg from '../../img/logo.svg';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import type { AttendeeMode } from '../../types/collaboration.types';
@@ -1267,48 +1266,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       data-pathfinder-content="true"
       data-testid={testIds.docsPanel.container}
     >
-      <div className={styles.headerBar} data-testid={testIds.docsPanel.headerBar}>
-        <img src={logoSvg} alt="" width={20} height={20} />
-        <div className={styles.headerRight}>
-          <IconButton
-            name="cog"
-            size="sm"
-            tooltip={t('docsPanel.settings', 'Plugin settings')}
-            onClick={() => {
-              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                action: 'navigate_to_config',
-                source: 'header_settings_button',
-              });
-              locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
-            }}
-            aria-label={t('docsPanel.settings', 'Plugin settings')}
-            data-testid={testIds.docsPanel.settingsButton}
-          />
-          <div className={styles.headerDivider} />
-          <IconButton
-            name="times"
-            size="sm"
-            tooltip={t('docsPanel.closeSidebar', 'Close sidebar')}
-            onClick={() => {
-              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                action: 'close_sidebar',
-                source: 'header_close_button',
-              });
-              // Close the extension sidebar
-              const appEvents = getAppEvents();
-              appEvents.publish({
-                type: 'close-extension-sidebar',
-                payload: {},
-              });
-            }}
-            aria-label="Close sidebar"
-            data-testid={testIds.docsPanel.closeButton}
-          />
-        </div>
-      </div>
-      <div className={styles.topBar}>
-        <div className={styles.liveSessionButtons}>
-          {!isSessionActive && isLiveSessionsEnabled && (
+      {/* Live session controls - only render when there's session content */}
+      {(isLiveSessionsEnabled || isSessionActive) && (
+        <div className={styles.topBar}>
+          <div className={styles.liveSessionButtons}>
+            {!isSessionActive && isLiveSessionsEnabled && (
             <>
               <Button
                 size="sm"
@@ -1427,9 +1389,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               </div>
             </Alert>
           )}
+          </div>
         </div>
-        {/* Tab bar - always show permanent tabs, show guide tabs when open */}
-        <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
+      )}
+
+      {/* Tab bar - always show permanent tabs, show guide tabs when open */}
+      <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
           {/* Permanent icon-only tabs */}
           <div className={styles.permanentTabs}>
             <button
@@ -1479,11 +1444,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     data-testid={testIds.docsPanel.tab(tab.id)}
                   >
                     <div className={styles.tabContent}>
-                      <Icon
-                        name={tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
-                        size="xs"
-                        className={styles.tabIcon}
-                      />
+                      {tab.type === 'devtools' && (
+                        <Icon name="bug" size="xs" className={styles.tabIcon} />
+                      )}
                       <span className={styles.tabTitle}>
                         {tab.isLoading ? (
                           <>
@@ -1590,11 +1553,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
                     >
                       <div className={styles.dropdownItemContent}>
-                        <Icon
-                          name={tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
-                          size="xs"
-                          className={styles.dropdownItemIcon}
-                        />
+                        {tab.type === 'devtools' && (
+                          <Icon name="bug" size="xs" className={styles.dropdownItemIcon} />
+                        )}
                         <span className={styles.dropdownItemTitle}>
                           {tab.isLoading ? (
                             <>
@@ -1638,8 +1599,47 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 })}
             </div>
           )}
+
+          {/* Spacer to push actions to the right */}
+          <div className={styles.tabBarSpacer} />
+
+          {/* Settings and close actions */}
+          <div className={styles.tabBarActions}>
+            <IconButton
+              name="cog"
+              size="sm"
+              tooltip={t('docsPanel.settings', 'Plugin settings')}
+              onClick={() => {
+                reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                  action: 'navigate_to_config',
+                  source: 'header_settings_button',
+                });
+                locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
+              }}
+              aria-label={t('docsPanel.settings', 'Plugin settings')}
+              data-testid={testIds.docsPanel.settingsButton}
+            />
+            <IconButton
+              name="times"
+              size="sm"
+              tooltip={t('docsPanel.closeSidebar', 'Close sidebar')}
+              onClick={() => {
+                reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                  action: 'close_sidebar',
+                  source: 'header_close_button',
+                });
+                // Close the extension sidebar
+                const appEvents = getAppEvents();
+                appEvents.publish({
+                  type: 'close-extension-sidebar',
+                  payload: {},
+                });
+              }}
+              aria-label="Close sidebar"
+              data-testid={testIds.docsPanel.closeButton}
+            />
+          </div>
         </div>
-      </div>
 
       <div className={styles.content} data-testid={testIds.docsPanel.content}>
         {(() => {
@@ -2004,8 +2004,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           return null;
         })()}
       </div>
-      {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement */}
-      {!isRecommendationsTab && activeTab?.type !== 'docs' && (
+      {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement, my-learning has its own */}
+      {!isRecommendationsTab && activeTabId !== 'my-learning' && activeTab?.type !== 'docs' && (
         <>
           <FeedbackButton
             contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}

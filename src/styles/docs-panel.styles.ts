@@ -151,7 +151,10 @@ export const getTopBarStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'column',
     gap: theme.spacing(1),
     padding: theme.spacing(1),
-    backgroundColor: theme.colors.background.canvas,
+    // Only show when has content (controlled by :empty or conditional rendering)
+    '&:empty': {
+      display: 'none',
+    },
   }),
 
   liveSessionButtons: css({
@@ -211,27 +214,11 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
-    padding: theme.spacing(0.5, 1),
-    backgroundColor: theme.colors.background.canvas,
+    padding: theme.spacing(0.25, 0.5), // Reduced padding for tighter header
     borderBottom: `1px solid ${theme.colors.border.weak}`,
     overflow: 'visible', // Allow dropdown to extend below tab bar
     position: 'relative', // Positioning context for absolute dropdown
-    flex: 1, // Take full width of parent container
-    minWidth: 0, // Allow shrinking
-    // Smooth slide-down animation when tab bar appears
-    animation: 'slideDown 0.3s ease-out',
-    '@keyframes slideDown': {
-      from: {
-        maxHeight: 0,
-        opacity: 0,
-        transform: 'translateY(-8px)',
-      },
-      to: {
-        maxHeight: '60px',
-        opacity: 1,
-        transform: 'translateY(0)',
-      },
-    },
+    flexShrink: 0, // Don't shrink, stay compact
   }),
   tabList: css({
     label: 'combined-journey-tab-list',
@@ -298,6 +285,19 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: theme.colors.border.weak,
     margin: `0 ${theme.spacing(0.5)}`,
     flexShrink: 0,
+  }),
+  tabBarSpacer: css({
+    label: 'combined-journey-tab-bar-spacer',
+    flex: 1,
+    minWidth: theme.spacing(1),
+  }),
+  tabBarActions: css({
+    label: 'combined-journey-tab-bar-actions',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    flexShrink: 0,
+    marginLeft: 'auto',
   }),
   tab: css({
     label: 'combined-journey-tab',
@@ -754,36 +754,11 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-export const getHeaderBarStyles = (theme: GrafanaTheme2) => ({
-  headerBar: css({
-    label: 'docs-panel-header-bar',
-    display: 'flex',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: theme.spacing(1, 1.5),
-    backgroundColor: theme.colors.background.canvas,
-    borderBottom: `1px solid ${theme.colors.border.weak}`,
-  }),
-  headerRight: css({
-    label: 'docs-panel-header-right',
-    display: 'flex',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-  }),
-  headerDivider: css({
-    label: 'docs-panel-header-divider',
-    width: '1px',
-    height: '20px',
-    backgroundColor: theme.colors.border.weak,
-  }),
-});
+// Header bar styles removed - now integrated into tab bar
 
 // Combine all styles
 export const getStyles = (theme: GrafanaTheme2) => ({
   ...getContainerStyles(theme),
-  ...getHeaderBarStyles(theme),
   ...getTopBarStyles(theme),
   ...getTabStyles(theme),
   ...getContentStyles(theme),
