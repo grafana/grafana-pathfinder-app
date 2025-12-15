@@ -243,6 +243,62 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     flex: 1,
     minWidth: 0, // Allow flex shrinking
   }),
+  // Permanent icon-only tabs (Recommendations, My Learning)
+  permanentTabs: css({
+    label: 'combined-journey-permanent-tabs',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    flexShrink: 0,
+  }),
+  iconTab: css({
+    label: 'combined-journey-icon-tab',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+    height: 32,
+    padding: 0,
+    borderRadius: theme.shape.radius.default,
+    backgroundColor: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    color: theme.colors.text.secondary,
+    transition: 'all 0.2s ease',
+    position: 'relative',
+    '&:hover': {
+      backgroundColor: theme.colors.action.hover,
+      color: theme.colors.text.primary,
+    },
+    '& svg': {
+      width: 18,
+      height: 18,
+    },
+  }),
+  iconTabActive: css({
+    label: 'combined-journey-icon-tab-active',
+    backgroundColor: theme.colors.action.selected,
+    color: theme.colors.text.primary,
+    // Active indicator bar at bottom
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      left: 4,
+      right: 4,
+      bottom: 0,
+      height: '2px',
+      borderRadius: theme.shape.radius.default,
+      backgroundImage: theme.colors.gradients.brandHorizontal,
+    },
+  }),
+  tabDivider: css({
+    label: 'combined-journey-tab-divider',
+    width: 1,
+    height: 20,
+    backgroundColor: theme.colors.border.weak,
+    margin: `0 ${theme.spacing(0.5)}`,
+    flexShrink: 0,
+  }),
   tab: css({
     label: 'combined-journey-tab',
     display: 'flex',

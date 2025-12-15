@@ -866,17 +866,21 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const [containerWidth, setContainerWidth] = useState<number>(0);
 
   // Dynamic tab visibility calculation based on container width
+  // Note: Permanent tabs (recommendations, my-learning) are now rendered separately as icon tabs
   const calculateTabVisibility = useCallback(() => {
-    if (tabs.length === 0) {
-      setVisibleTabs([]);
+    // Filter out permanent tabs - they're rendered separately as icons
+    const guideTabs = tabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning');
+
+    if (guideTabs.length === 0) {
+      setVisibleTabs(tabs); // Keep all tabs in state for reference
       setOverflowedTabs([]);
       return;
     }
 
     // If we don't have container width yet, show minimal tabs
     if (containerWidth === 0) {
-      setVisibleTabs(tabs.slice(0, 1)); // Just Recommendations
-      setOverflowedTabs(tabs.slice(1));
+      setVisibleTabs(tabs);
+      setOverflowedTabs([]);
       return;
     }
 
@@ -887,37 +891,43 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     // With flex layout, tabs will grow to fill available space proportionally
     const minTabWidth = 100; // Minimum readable width per tab
 
-    // The containerWidth already has chevron space reserved
-    const availableWidth = containerWidth;
+    // Account for permanent tabs space (2 icon tabs + divider = ~80px)
+    const permanentTabsWidth = 80;
+    const availableWidth = Math.max(0, containerWidth - permanentTabsWidth);
 
-    // Determine how many tabs can fit
-    let maxVisibleTabs = 1; // Always show at least Recommendations
-    let widthUsed = minTabWidth; // Start with first tab (Recommendations)
+    // Determine how many guide tabs can fit
+    let maxVisibleGuideTabs = 0;
+    let widthUsed = 0;
 
-    // Try to fit additional tabs
-    for (let i = 1; i < tabs.length; i++) {
+    // Try to fit guide tabs
+    for (let i = 0; i < guideTabs.length; i++) {
       const tabWidth = minTabWidth + tabSpacing;
       const spaceNeeded = widthUsed + tabWidth;
 
       if (spaceNeeded <= availableWidth) {
-        maxVisibleTabs++;
+        maxVisibleGuideTabs++;
         widthUsed += tabWidth;
       } else {
         break;
       }
     }
 
-    // Ensure active tab is visible if possible
-    const activeTabIndex = tabs.findIndex((t) => t.id === activeTabId);
-    if (activeTabIndex >= maxVisibleTabs && maxVisibleTabs > 1) {
+    // Ensure active tab is visible if possible (only for guide tabs)
+    const activeGuideTabIndex = guideTabs.findIndex((t) => t.id === activeTabId);
+    if (activeGuideTabIndex >= maxVisibleGuideTabs && maxVisibleGuideTabs > 0) {
       // Swap active tab into visible range
-      const visibleTabsArray = [...tabs.slice(0, maxVisibleTabs - 1), tabs[activeTabIndex]];
-      const overflowTabsArray = [...tabs.slice(maxVisibleTabs - 1, activeTabIndex), ...tabs.slice(activeTabIndex + 1)];
-      setVisibleTabs(visibleTabsArray);
-      setOverflowedTabs(overflowTabsArray);
+      const visibleGuideTabsArray = [...guideTabs.slice(0, maxVisibleGuideTabs - 1), guideTabs[activeGuideTabIndex]];
+      const overflowGuideTabsArray = [
+        ...guideTabs.slice(maxVisibleGuideTabs - 1, activeGuideTabIndex),
+        ...guideTabs.slice(activeGuideTabIndex + 1),
+      ];
+      // Include permanent tabs in visibleTabs for completeness
+      setVisibleTabs([...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'), ...visibleGuideTabsArray]);
+      setOverflowedTabs(overflowGuideTabsArray);
     } else {
-      setVisibleTabs(tabs.slice(0, maxVisibleTabs));
-      setOverflowedTabs(tabs.slice(maxVisibleTabs));
+      // Include permanent tabs in visibleTabs for completeness
+      setVisibleTabs([...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'), ...guideTabs.slice(0, maxVisibleGuideTabs)]);
+      setOverflowedTabs(guideTabs.slice(maxVisibleGuideTabs));
     }
   }, [tabs, containerWidth, activeTabId]);
 
@@ -1415,15 +1425,39 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             </Alert>
           )}
         </div>
-        {/* Only show tab bar if there are multiple tabs (more than just Recommendations) */}
-        {tabs.length > 1 && (
-          <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
-            <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
-              {visibleTabs.map((tab) => {
+        {/* Tab bar - always show permanent tabs, show guide tabs when open */}
+        <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
+          {/* Permanent icon-only tabs */}
+          <div className={styles.permanentTabs}>
+            <button
+              className={`${styles.iconTab} ${activeTabId === 'recommendations' ? styles.iconTabActive : ''}`}
+              onClick={() => model.setActiveTab('recommendations')}
+              title={t('docsPanel.recommendations', 'Recommendations')}
+              data-testid={testIds.docsPanel.recommendationsTab}
+            >
+              <Icon name="compass" size="md" />
+            </button>
+            <button
+              className={`${styles.iconTab} ${activeTabId === 'my-learning' ? styles.iconTabActive : ''}`}
+              onClick={() => model.setActiveTab('my-learning')}
+              title={t('docsPanel.myLearning', 'My learning')}
+              data-testid={testIds.docsPanel.tab('my-learning')}
+            >
+              <Icon name="book-open" size="md" />
+            </button>
+          </div>
+
+          {/* Divider - only show when there are guide tabs */}
+          {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
+            <div className={styles.tabDivider} />
+          )}
+
+          {/* Guide tabs with titles */}
+          <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
+            {visibleTabs
+              .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning')
+              .map((tab) => {
                 const getTranslatedTitle = (title: string) => {
-                  if (title === 'Recommendations') {
-                    return t('docsPanel.recommendations', 'Recommendations');
-                  }
                   if (title === 'Learning journey') {
                     return t('docsPanel.learningJourney', 'Learning journey');
                   }
@@ -1439,20 +1473,14 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                     className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
                     onClick={() => model.setActiveTab(tab.id)}
                     title={getTranslatedTitle(tab.title)}
-                    data-testid={
-                      tab.id === 'recommendations'
-                        ? testIds.docsPanel.recommendationsTab
-                        : testIds.docsPanel.tab(tab.id)
-                    }
+                    data-testid={testIds.docsPanel.tab(tab.id)}
                   >
                     <div className={styles.tabContent}>
-                      {tab.id !== 'recommendations' && (
-                        <Icon
-                          name={tab.id === 'my-learning' ? 'book-open' : tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
-                          size="xs"
-                          className={styles.tabIcon}
-                        />
-                      )}
+                      <Icon
+                        name={tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
+                        size="xs"
+                        className={styles.tabIcon}
+                      />
                       <span className={styles.tabTitle}>
                         {tab.isLoading ? (
                           <>
@@ -1463,78 +1491,75 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                           getTranslatedTitle(tab.title)
                         )}
                       </span>
-                      {tab.id !== 'recommendations' && tab.id !== 'my-learning' && (
-                        <IconButton
-                          name="times"
-                          size="sm"
-                          aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
-                            title: getTranslatedTitle(tab.title),
-                          })}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            reportAppInteraction(UserInteraction.CloseTabClick, {
-                              content_type: tab.type || 'learning-journey',
-                              tab_title: tab.title,
-                              content_url: tab.currentUrl || tab.baseUrl,
-                              interaction_location: 'tab_button',
-                              ...(tab.type === 'learning-journey' &&
-                                tab.content && {
-                                  completion_percentage: getJourneyProgress(tab.content),
-                                  current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                                  total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                                }),
-                            });
-                            model.closeTab(tab.id);
-                          }}
-                          className={styles.closeButton}
-                          data-testid={testIds.docsPanel.tabCloseButton(tab.id)}
-                        />
-                      )}
+                      <IconButton
+                        name="times"
+                        size="sm"
+                        aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
+                          title: getTranslatedTitle(tab.title),
+                        })}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          reportAppInteraction(UserInteraction.CloseTabClick, {
+                            content_type: tab.type || 'learning-journey',
+                            tab_title: tab.title,
+                            content_url: tab.currentUrl || tab.baseUrl,
+                            interaction_location: 'tab_button',
+                            ...(tab.type === 'learning-journey' &&
+                              tab.content && {
+                                completion_percentage: getJourneyProgress(tab.content),
+                                current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
+                                total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
+                              }),
+                          });
+                          model.closeTab(tab.id);
+                        }}
+                        className={styles.closeButton}
+                        data-testid={testIds.docsPanel.tabCloseButton(tab.id)}
+                      />
                     </div>
                   </button>
                 );
               })}
-            </div>
+          </div>
 
-            {overflowedTabs.length > 0 && (
-              <div className={styles.tabOverflow}>
-                <button
-                  ref={chevronButtonRef}
-                  className={`${styles.tab} ${styles.chevronTab}`}
-                  onClick={() => {
-                    if (!isDropdownOpen) {
-                      dropdownOpenTimeRef.current = Date.now();
-                    }
-                    setIsDropdownOpen(!isDropdownOpen);
-                  }}
-                  aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', { count: overflowedTabs.length })}
-                  aria-expanded={isDropdownOpen}
-                  aria-haspopup="true"
-                  data-testid={testIds.docsPanel.tabOverflowButton}
-                >
-                  <div className={styles.tabContent}>
-                    <Icon name="angle-right" size="sm" className={styles.chevronIcon} />
-                    <span className={styles.tabTitle}>
-                      {t('docsPanel.moreTabs', '{{count}} more', { count: overflowedTabs.length })}
-                    </span>
-                  </div>
-                </button>
-              </div>
-            )}
-
-            {isDropdownOpen && overflowedTabs.length > 0 && (
-              <div
-                ref={dropdownRef}
-                className={styles.tabDropdown}
-                role="menu"
-                aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
-                data-testid={testIds.docsPanel.tabDropdown}
+          {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
+            <div className={styles.tabOverflow}>
+              <button
+                ref={chevronButtonRef}
+                className={`${styles.tab} ${styles.chevronTab}`}
+                onClick={() => {
+                  if (!isDropdownOpen) {
+                    dropdownOpenTimeRef.current = Date.now();
+                  }
+                  setIsDropdownOpen(!isDropdownOpen);
+                }}
+                aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', { count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length })}
+                aria-expanded={isDropdownOpen}
+                aria-haspopup="true"
+                data-testid={testIds.docsPanel.tabOverflowButton}
               >
-                {overflowedTabs.map((tab) => {
+                <div className={styles.tabContent}>
+                  <Icon name="angle-right" size="sm" className={styles.chevronIcon} />
+                  <span className={styles.tabTitle}>
+                    {t('docsPanel.moreTabs', '{{count}} more', { count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length })}
+                  </span>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {isDropdownOpen && overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
+            <div
+              ref={dropdownRef}
+              className={styles.tabDropdown}
+              role="menu"
+              aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
+              data-testid={testIds.docsPanel.tabDropdown}
+            >
+              {overflowedTabs
+                .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning')
+                .map((tab) => {
                   const getTranslatedTitle = (title: string) => {
-                    if (title === 'Recommendations') {
-                      return t('docsPanel.recommendations', 'Recommendations');
-                    }
                     if (title === 'Learning Journey') {
                       return t('docsPanel.learningJourney', 'Learning Journey');
                     }
@@ -1559,13 +1584,11 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
                     >
                       <div className={styles.dropdownItemContent}>
-                        {tab.id !== 'recommendations' && (
-                          <Icon
-                            name={tab.id === 'my-learning' ? 'book-open' : tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
-                            size="xs"
-                            className={styles.dropdownItemIcon}
-                          />
-                        )}
+                        <Icon
+                          name={tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
+                          size="xs"
+                          className={styles.dropdownItemIcon}
+                        />
                         <span className={styles.dropdownItemTitle}>
                           {tab.isLoading ? (
                             <>
@@ -1576,40 +1599,37 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             getTranslatedTitle(tab.title)
                           )}
                         </span>
-                        {tab.id !== 'recommendations' && tab.id !== 'my-learning' && (
-                          <IconButton
-                            name="times"
-                            size="sm"
-                            aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
-                              title: getTranslatedTitle(tab.title),
-                            })}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              reportAppInteraction(UserInteraction.CloseTabClick, {
-                                content_type: tab.type || 'learning-journey',
-                                tab_title: tab.title,
-                                content_url: tab.currentUrl || tab.baseUrl,
-                                close_location: 'dropdown',
-                                ...(tab.type === 'learning-journey' &&
-                                  tab.content && {
-                                    completion_percentage: getJourneyProgress(tab.content),
-                                    current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                                    total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                                  }),
-                              });
-                              model.closeTab(tab.id);
-                            }}
-                            className={styles.dropdownItemClose}
-                          />
-                        )}
+                        <IconButton
+                          name="times"
+                          size="sm"
+                          aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
+                            title: getTranslatedTitle(tab.title),
+                          })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            reportAppInteraction(UserInteraction.CloseTabClick, {
+                              content_type: tab.type || 'learning-journey',
+                              tab_title: tab.title,
+                              content_url: tab.currentUrl || tab.baseUrl,
+                              close_location: 'dropdown',
+                              ...(tab.type === 'learning-journey' &&
+                                tab.content && {
+                                  completion_percentage: getJourneyProgress(tab.content),
+                                  current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
+                                  total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
+                                }),
+                            });
+                            model.closeTab(tab.id);
+                          }}
+                          className={styles.dropdownItemClose}
+                        />
                       </div>
                     </button>
                   );
                 })}
-              </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className={styles.content} data-testid={testIds.docsPanel.content}>
