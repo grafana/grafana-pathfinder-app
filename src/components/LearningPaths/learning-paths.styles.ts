@@ -48,11 +48,6 @@ export function getColorPalette(theme: GrafanaTheme2) {
 // KEYFRAME ANIMATIONS
 // ============================================================================
 
-const progressShimmer = keyframes`
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-`;
-
 const badgeGlow = keyframes`
   0%, 100% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.4); }
   50% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.8); }
@@ -77,34 +72,6 @@ const confettiFloat = keyframes`
 const fireBounce = keyframes`
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.15); }
-`;
-
-const pulseGlow = keyframes`
-  0%, 100% { 
-    opacity: 0.6;
-    transform: scale(1);
-  }
-  50% { 
-    opacity: 1;
-    transform: scale(1.05);
-  }
-`;
-
-const checkPop = keyframes`
-  0% { transform: scale(0); }
-  50% { transform: scale(1.2); }
-  100% { transform: scale(1); }
-`;
-
-const slideIn = keyframes`
-  0% { 
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  100% { 
-    opacity: 1;
-    transform: translateY(0);
-  }
 `;
 
 const celebrationEntry = keyframes`
@@ -172,89 +139,140 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
 
   return {
     card: css({
-      position: 'relative',
-      padding: theme.spacing(2),
       borderRadius: theme.shape.radius.default,
-      background: `linear-gradient(135deg, ${colors.pathAccentLight} 0%, ${theme.colors.background.primary} 100%)`,
-      border: `1px solid ${theme.colors.border.weak}`,
+      background: `linear-gradient(135deg, ${colors.pathAccentLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      border: `1px solid ${colors.pathAccentMedium}`,
       transition: 'all 0.2s ease',
-      animation: `${slideIn} 0.3s ease-out`,
+      overflow: 'hidden',
 
       '&:hover': {
-        transform: 'translateY(-2px)',
-        boxShadow: `0 4px 12px ${colors.pathGlow}`,
         borderColor: colors.pathAccent,
+        boxShadow: `0 2px 8px ${colors.pathGlow}`,
       },
     }),
     cardCompleted: css({
-      background: `linear-gradient(135deg, ${colors.successLight} 0%, ${theme.colors.background.primary} 100%)`,
-      borderColor: colors.success,
+      background: `linear-gradient(135deg, ${colors.successLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      borderColor: `${colors.success}50`,
+
+      '&:hover': {
+        borderColor: colors.success,
+        boxShadow: `0 2px 8px ${colors.successGlow}`,
+      },
     }),
     header: css({
       display: 'flex',
       alignItems: 'flex-start',
       gap: theme.spacing(1.5),
-      marginBottom: theme.spacing(1.5),
+      padding: theme.spacing(1.5),
+      cursor: 'pointer',
+      userSelect: 'none',
     }),
-    titleSection: css({
+    content: css({
       flex: 1,
       minWidth: 0,
+      paddingTop: theme.spacing(0.25),
     }),
     title: css({
       margin: 0,
-      fontSize: theme.typography.h6.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      background: `linear-gradient(90deg, ${colors.pathAccent}, ${theme.colors.primary.main})`,
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip: 'text',
+      fontSize: theme.typography.body.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
       lineHeight: 1.3,
     }),
     titleCompleted: css({
-      background: `linear-gradient(90deg, ${colors.success}, ${colors.successDark})`,
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip: 'text',
+      color: colors.success,
     }),
     meta: css({
       display: 'flex',
       alignItems: 'center',
-      gap: theme.spacing(1),
+      gap: theme.spacing(0.75),
       marginTop: theme.spacing(0.5),
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
     }),
     metaDot: css({
-      width: 3,
-      height: 3,
-      borderRadius: '50%',
-      backgroundColor: theme.colors.text.disabled,
+      color: theme.colors.text.disabled,
     }),
-    progressBar: css({
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: colors.progressTrack,
+    nextHint: css({
+      marginTop: theme.spacing(0.75),
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.secondary,
       overflow: 'hidden',
-      marginBottom: theme.spacing(1.5),
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
     }),
-    progressFill: css({
-      height: '100%',
-      borderRadius: 3,
-      background: `linear-gradient(90deg, ${colors.pathAccent} 0%, ${theme.colors.primary.main} 100%)`,
-      backgroundSize: '200% 100%',
-      transition: 'width 0.5s ease-out',
+    actions: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      flexShrink: 0,
+      marginTop: theme.spacing(0.25),
     }),
-    progressFillActive: css({
-      animation: `${progressShimmer} 2s linear infinite`,
+    actionButton: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
+      borderRadius: theme.shape.radius.default,
+      backgroundColor: colors.pathAccent,
+      color: '#fff',
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      border: 'none',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      whiteSpace: 'nowrap',
+
+      '&:hover': {
+        backgroundColor: theme.colors.primary.shade,
+      },
     }),
-    progressFillCompleted: css({
-      background: `linear-gradient(90deg, ${colors.success} 0%, ${colors.successDark} 100%)`,
+    expandChevron: css({
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 28,
+      height: 28,
+      padding: 0,
+      border: 'none',
+      borderRadius: theme.shape.radius.default,
+      background: 'transparent',
+      color: theme.colors.text.secondary,
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+
+      '&:hover': {
+        backgroundColor: theme.colors.action.hover,
+        color: theme.colors.text.primary,
+      },
+    }),
+    expandChevronRotated: css({
+      transform: 'rotate(180deg)',
+    }),
+    expandable: css({
+      maxHeight: 0,
+      overflow: 'hidden',
+      transition: 'max-height 0.3s ease-out, opacity 0.2s ease-out',
+      opacity: 0,
+    }),
+    expandableOpen: css({
+      maxHeight: 500,
+      opacity: 1,
+    }),
+    description: css({
+      margin: 0,
+      padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1)}`,
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.secondary,
+      lineHeight: 1.5,
+      borderTop: `1px solid ${theme.colors.border.weak}`,
+      paddingTop: theme.spacing(1),
     }),
     guideList: css({
       display: 'flex',
       flexDirection: 'column',
-      gap: theme.spacing(0.75),
-      marginBottom: theme.spacing(1.5),
+      gap: theme.spacing(0.5),
+      padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
     }),
     guideItem: css({
       display: 'flex',
@@ -277,44 +295,17 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
     }),
     guideIconCompleted: css({
       color: colors.success,
-      animation: `${checkPop} 0.3s ease-out`,
     }),
     guideIconCurrent: css({
       color: colors.pathAccent,
-      animation: `${pulseGlow} 2s ease-in-out infinite`,
     }),
     guideIconPending: css({
       color: theme.colors.text.disabled,
     }),
-    footer: css({
-      display: 'flex',
-      justifyContent: 'flex-end',
-    }),
-    continueButton: css({
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(0.5),
-      padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
-      borderRadius: theme.shape.radius.default,
-      backgroundColor: colors.pathAccent,
-      color: '#fff',
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      border: 'none',
-      cursor: 'pointer',
-      transition: 'all 0.2s ease',
-
-      '&:hover': {
-        backgroundColor: theme.colors.primary.shade,
-        transform: 'translateX(2px)',
-      },
-    }),
-    continueButtonCompleted: css({
-      backgroundColor: colors.success,
-
-      '&:hover': {
-        backgroundColor: colors.successDark,
-      },
+    guideTitle: css({
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
     }),
   };
 };
@@ -324,6 +315,7 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
 // ============================================================================
 
 export const getBadgesDisplayStyles = (theme: GrafanaTheme2) => {
+  const isDark = theme.isDark;
   const colors = getColorPalette(theme);
 
   return {
@@ -396,6 +388,20 @@ export const getBadgesDisplayStyles = (theme: GrafanaTheme2) => {
       animation: `${badgeGlow} 1.5s ease-in-out infinite, ${badgeShimmer} 2s linear infinite`,
       background: `linear-gradient(90deg, ${colors.successLight}, transparent, ${colors.successLight})`,
       backgroundSize: '200% 100%',
+    }),
+    badgeLegacy: css({
+      // Muted/sepia style for badges earned in previous versions
+      borderColor: isDark ? 'rgba(161, 136, 107, 0.5)' : 'rgba(139, 119, 101, 0.5)',
+      backgroundColor: isDark ? 'rgba(161, 136, 107, 0.1)' : 'rgba(139, 119, 101, 0.1)',
+      filter: 'sepia(30%)',
+
+      '&:hover': {
+        borderColor: isDark ? 'rgba(161, 136, 107, 0.7)' : 'rgba(139, 119, 101, 0.7)',
+        boxShadow: `0 0 8px ${isDark ? 'rgba(161, 136, 107, 0.3)' : 'rgba(139, 119, 101, 0.3)'}`,
+      },
+    }),
+    badgeIconLegacy: css({
+      color: isDark ? '#A1886B' : '#8B7765',
     }),
     badgeIcon: css({
       fontSize: 24,

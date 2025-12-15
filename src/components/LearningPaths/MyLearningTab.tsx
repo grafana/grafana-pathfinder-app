@@ -124,7 +124,17 @@ interface BadgeDetailCardProps {
 function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
   const styles = useStyles2(getBadgeDetailStyles);
   const isEarned = !!badge.earnedAt;
-  const requirementText = getBadgeRequirementText(badge);
+  const isLegacy = badge.isLegacy;
+  const requirementText = isLegacy
+    ? 'This badge was earned in a previous version of Pathfinder'
+    : getBadgeRequirementText(badge);
+
+  // Determine icon wrapper class based on badge state
+  const iconWrapperClass = isLegacy
+    ? `${styles.iconWrapper} ${styles.iconLegacy}`
+    : isEarned
+      ? `${styles.iconWrapper} ${styles.iconEarned}`
+      : `${styles.iconWrapper} ${styles.iconLocked}`;
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -135,18 +145,19 @@ function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
         </button>
 
         {/* Badge Icon with glow effect */}
-        <div className={`${styles.iconWrapper} ${isEarned ? styles.iconEarned : styles.iconLocked}`}>
-          <div className={styles.iconGlow} />
+        <div className={iconWrapperClass}>
+          {!isLegacy && <div className={styles.iconGlow} />}
           <Icon name={badge.icon as any} size="xxxl" />
-          {isEarned && <div className={styles.checkmark}><Icon name="check" size="sm" /></div>}
+          {isEarned && !isLegacy && <div className={styles.checkmark}><Icon name="check" size="sm" /></div>}
+          {isLegacy && <div className={styles.legacyIndicator}><Icon name="history" size="sm" /></div>}
         </div>
 
         {/* Title */}
         <h3 className={styles.title}>{badge.title}</h3>
 
         {/* Status badge */}
-        <div className={`${styles.statusBadge} ${isEarned ? styles.statusEarned : styles.statusLocked}`}>
-          {isEarned ? '✨ Unlocked' : '🔒 Locked'}
+        <div className={`${styles.statusBadge} ${isLegacy ? styles.statusLegacy : isEarned ? styles.statusEarned : styles.statusLocked}`}>
+          {isLegacy ? '📜 Legacy' : isEarned ? '✨ Unlocked' : '🔒 Locked'}
         </div>
 
         {/* Earned date or requirement */}
@@ -158,20 +169,20 @@ function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
               year: 'numeric',
             })}
           </p>
-        ) : (
+        ) : !isLegacy ? (
           <p className={styles.description}>{badge.description}</p>
-        )}
+        ) : null}
 
         {/* Requirement section */}
         <div className={styles.requirementSection}>
           <div className={styles.requirementLabel}>
-            {isEarned ? 'Completed' : 'Requirement'}
+            {isLegacy ? 'Note' : isEarned ? 'Completed' : 'Requirement'}
           </div>
           <div className={styles.requirementText}>{requirementText}</div>
         </div>
 
-        {/* Progress section (only for locked badges) */}
-        {!isEarned && progress && progress.total > 0 && (
+        {/* Progress section (only for locked badges that aren't legacy) */}
+        {!isEarned && !isLegacy && progress && progress.total > 0 && (
           <div className={styles.progressSection}>
             <div className={styles.progressHeader}>
               <span className={styles.progressLabel}>Progress</span>
@@ -205,6 +216,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const styles = useStyles2(getMyLearningStyles);
   const [showAllBadges, setShowAllBadges] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
+  const [hideCompletedPaths, setHideCompletedPaths] = useState(false);
 
   const {
     paths,
@@ -216,6 +228,49 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     streakInfo,
     isLoading,
   } = useLearningPaths();
+
+  // Sort and filter paths: in-progress first, then not-started, then completed
+  const sortedPaths = useMemo(() => {
+    const sorted = [...paths].sort((a, b) => {
+      const aProgress = getPathProgress(a.id);
+      const bProgress = getPathProgress(b.id);
+      const aCompleted = isPathCompleted(a.id);
+      const bCompleted = isPathCompleted(b.id);
+
+      // Completed paths go last
+      if (aCompleted !== bCompleted) {
+        return aCompleted ? 1 : -1;
+      }
+
+      // In-progress (has some progress but not complete) goes first
+      const aInProgress = aProgress > 0 && !aCompleted;
+      const bInProgress = bProgress > 0 && !bCompleted;
+      if (aInProgress !== bInProgress) {
+        return aInProgress ? -1 : 1;
+      }
+
+      // Among in-progress, sort by progress (higher first)
+      if (aInProgress && bInProgress) {
+        return bProgress - aProgress;
+      }
+
+      // Keep original order for others
+      return 0;
+    });
+
+    // Filter out completed if toggle is on
+    if (hideCompletedPaths) {
+      return sorted.filter((path) => !isPathCompleted(path.id));
+    }
+
+    return sorted;
+  }, [paths, getPathProgress, isPathCompleted, hideCompletedPaths]);
+
+  // Count completed paths for the toggle label
+  const completedPathsCount = useMemo(
+    () => paths.filter((path) => isPathCompleted(path.id)).length,
+    [paths, isPathCompleted]
+  );
 
   // Calculate progress for selected badge
   const selectedBadgeProgress = useMemo(() => {
@@ -373,6 +428,12 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
             </>
           )}
         </div>
+
+        {/* Preview Notice */}
+        <div className={styles.previewNotice}>
+          <Icon name="info-circle" size="sm" />
+          <span>Learning paths and badges are in preview. Content may change as we refine the experience.</span>
+        </div>
       </div>
 
       {/* Learning Paths Section */}
@@ -382,22 +443,50 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           <h2 className={styles.sectionTitle}>
             {t('myLearning.learningPaths', 'Learning paths')}
           </h2>
+          {/* Hide completed toggle */}
+          {completedPathsCount > 0 && (
+            <label className={styles.hideCompletedToggle}>
+              <input
+                type="checkbox"
+                checked={hideCompletedPaths}
+                onChange={(e) => setHideCompletedPaths(e.target.checked)}
+                className={styles.hideCompletedCheckbox}
+              />
+              <span className={styles.hideCompletedLabel}>
+                Hide completed ({completedPathsCount})
+              </span>
+            </label>
+          )}
         </div>
         <p className={styles.sectionDescription}>
           {t('myLearning.pathsDescription', 'Structured guides to help you master Grafana step by step')}
         </p>
 
         <div className={styles.pathsGrid}>
-          {paths.map((path) => (
-            <LearningPathCard
-              key={path.id}
-              path={path}
-              guides={getPathGuides(path.id)}
-              progress={getPathProgress(path.id)}
-              isCompleted={isPathCompleted(path.id)}
-              onContinue={handleOpenGuide}
-            />
-          ))}
+          {sortedPaths.map((path, index) => {
+            const pathProgress = getPathProgress(path.id);
+            const pathCompleted = isPathCompleted(path.id);
+            // Expand the first in-progress path by default
+            const isFirstInProgress = index === 0 && pathProgress > 0 && !pathCompleted;
+
+            return (
+              <LearningPathCard
+                key={path.id}
+                path={path}
+                guides={getPathGuides(path.id)}
+                progress={pathProgress}
+                isCompleted={pathCompleted}
+                onContinue={handleOpenGuide}
+                defaultExpanded={isFirstInProgress}
+              />
+            );
+          })}
+          {sortedPaths.length === 0 && hideCompletedPaths && (
+            <div className={styles.emptyPathsMessage}>
+              <Icon name="check-circle" size="xl" className={styles.emptyPathsIcon} />
+              <p>All paths completed! Uncheck &ldquo;Hide completed&rdquo; to review them.</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -424,6 +513,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         <div className={`${styles.badgesGrid} ${showAllBadges ? styles.badgesGridExpanded : ''}`}>
           {displayedBadges.map((badge, index) => {
             const isEarned = !!badge.earnedAt;
+            const isLegacy = badge.isLegacy;
             const baseBadge = BADGES.find((b) => b.id === badge.id);
             const badgeProgress = baseBadge
               ? getBadgeProgress(
@@ -434,26 +524,39 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
                 )
               : null;
 
+            // Determine the badge item class based on state
+            const badgeItemClass = isLegacy
+              ? `${styles.badgeItem} ${styles.badgeItemLegacy}`
+              : isEarned
+                ? `${styles.badgeItem} ${styles.badgeItemEarned}`
+                : `${styles.badgeItem} ${styles.badgeItemLocked}`;
+
             return (
               <button
                 key={badge.id}
-                className={`${styles.badgeItem} ${isEarned ? styles.badgeItemEarned : styles.badgeItemLocked}`}
+                className={badgeItemClass}
                 onClick={() => setSelectedBadge(badge)}
                 style={{ animationDelay: `${index * 50}ms` }}
+                title={isLegacy ? 'This badge was earned in a previous version' : undefined}
               >
                 <div className={styles.badgeIconWrapper}>
                   <Icon name={badge.icon as any} size="xl" />
-                  {isEarned && (
+                  {isEarned && !isLegacy && (
                     <div className={styles.badgeCheckmark}>
                       <Icon name="check" size="xs" />
                     </div>
                   )}
+                  {isLegacy && (
+                    <div className={styles.badgeLegacyIndicator}>
+                      <Icon name="history" size="xs" />
+                    </div>
+                  )}
                 </div>
                 <div className={styles.badgeInfo}>
-                  <span className={`${styles.badgeTitle} ${!isEarned ? styles.badgeTitleLocked : ''}`}>
+                  <span className={`${styles.badgeTitle} ${!isEarned && !isLegacy ? styles.badgeTitleLocked : ''} ${isLegacy ? styles.badgeTitleLegacy : ''}`}>
                     {badge.title}
                   </span>
-                  {!isEarned && badgeProgress && (
+                  {!isEarned && !isLegacy && badgeProgress && (
                     <div className={styles.badgeMiniProgress}>
                       <div className={styles.badgeMiniProgressTrack}>
                         <div
@@ -600,6 +703,14 @@ const getBadgeDetailStyles = (theme: GrafanaTheme2) => {
         color: theme.colors.text.disabled,
       },
     }),
+    iconLegacy: css({
+      background: isDark ? 'rgba(161, 136, 107, 0.2)' : 'rgba(139, 119, 101, 0.15)',
+      border: `2px solid ${isDark ? 'rgba(161, 136, 107, 0.6)' : 'rgba(139, 119, 101, 0.5)'}`,
+      filter: 'sepia(20%)',
+      '& svg': {
+        color: isDark ? '#A1886B' : '#8B7765',
+      },
+    }),
     iconGlow: css({
       position: 'absolute',
       inset: -6,
@@ -620,6 +731,20 @@ const getBadgeDetailStyles = (theme: GrafanaTheme2) => {
       justifyContent: 'center',
       border: `2px solid ${theme.colors.background.primary}`,
       boxShadow: `0 0 8px ${successGlow}`,
+    }),
+    legacyIndicator: css({
+      position: 'absolute',
+      bottom: -2,
+      right: -2,
+      width: 24,
+      height: 24,
+      borderRadius: '50%',
+      backgroundColor: isDark ? '#A1886B' : '#8B7765',
+      color: 'white',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      border: `2px solid ${theme.colors.background.primary}`,
     }),
     title: css({
       margin: 0,
@@ -644,6 +769,11 @@ const getBadgeDetailStyles = (theme: GrafanaTheme2) => {
       backgroundColor: theme.colors.background.secondary,
       color: theme.colors.text.secondary,
       border: `1px solid ${theme.colors.border.weak}`,
+    }),
+    statusLegacy: css({
+      backgroundColor: isDark ? 'rgba(161, 136, 107, 0.2)' : 'rgba(139, 119, 101, 0.15)',
+      color: isDark ? '#A1886B' : '#8B7765',
+      border: `1px solid ${isDark ? 'rgba(161, 136, 107, 0.4)' : 'rgba(139, 119, 101, 0.4)'}`,
     }),
     earnedDate: css({
       margin: 0,
@@ -782,9 +912,24 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
       textAlign: 'center',
       marginBottom: theme.spacing(2),
     }),
+    previewNotice: css({
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: theme.spacing(0.75),
+      marginTop: theme.spacing(1.5),
+      padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
+      borderRadius: theme.shape.radius.default,
+      backgroundColor: isDark ? 'rgba(140, 140, 140, 0.1)' : 'rgba(0, 0, 0, 0.04)',
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.secondary,
+      '& svg': {
+        color: theme.colors.text.disabled,
+        flexShrink: 0,
+      },
+    }),
     heroTitle: css({
       margin: 0,
-      marginBottom: theme.spacing(0.5),
       fontSize: theme.typography.h4.fontSize,
       fontWeight: theme.typography.fontWeightBold,
       background: `linear-gradient(90deg, ${accentColor}, ${theme.colors.primary.main})`,
@@ -868,6 +1013,37 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
     }),
+    hideCompletedToggle: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.75),
+      cursor: 'pointer',
+      marginLeft: 'auto',
+      userSelect: 'none',
+    }),
+    hideCompletedCheckbox: css({
+      width: 14,
+      height: 14,
+      cursor: 'pointer',
+      accentColor: successGreen,
+    }),
+    hideCompletedLabel: css({
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.secondary,
+    }),
+    emptyPathsMessage: css({
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: theme.spacing(4),
+      textAlign: 'center',
+      color: theme.colors.text.secondary,
+      gap: theme.spacing(1),
+    }),
+    emptyPathsIcon: css({
+      color: successGreen,
+    }),
     expandButton: css({
       display: 'flex',
       alignItems: 'center',
@@ -939,6 +1115,19 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
         opacity: 0.5,
       },
     }),
+    badgeItemLegacy: css({
+      // Muted/sepia style for badges earned in previous versions
+      borderColor: isDark ? 'rgba(161, 136, 107, 0.5)' : 'rgba(139, 119, 101, 0.5)',
+      backgroundColor: isDark ? 'rgba(161, 136, 107, 0.15)' : 'rgba(139, 119, 101, 0.1)',
+      filter: 'sepia(20%)',
+      '& svg': {
+        color: isDark ? '#A1886B' : '#8B7765',
+      },
+      '&:hover': {
+        borderColor: isDark ? 'rgba(161, 136, 107, 0.7)' : 'rgba(139, 119, 101, 0.7)',
+        boxShadow: `0 0 8px ${isDark ? 'rgba(161, 136, 107, 0.3)' : 'rgba(139, 119, 101, 0.3)'}`,
+      },
+    }),
     badgeIconWrapper: css({
       position: 'relative',
       flexShrink: 0,
@@ -957,6 +1146,25 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
       justifyContent: 'center',
       border: `2px solid ${theme.colors.background.primary}`,
     }),
+    badgeLegacyIndicator: css({
+      position: 'absolute',
+      bottom: -4,
+      right: -4,
+      width: 16,
+      height: 16,
+      borderRadius: '50%',
+      backgroundColor: isDark ? '#A1886B' : '#8B7765',
+      color: 'white',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      border: `2px solid ${theme.colors.background.primary}`,
+      '& svg': {
+        color: 'white !important',
+        filter: 'none !important',
+        opacity: '1 !important',
+      },
+    }),
     badgeInfo: css({
       flex: 1,
       minWidth: 0,
@@ -972,6 +1180,10 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
     }),
     badgeTitleLocked: css({
       color: theme.colors.text.secondary,
+    }),
+    badgeTitleLegacy: css({
+      color: isDark ? '#A1886B' : '#8B7765',
+      fontStyle: 'italic',
     }),
     badgeMiniProgress: css({
       display: 'flex',

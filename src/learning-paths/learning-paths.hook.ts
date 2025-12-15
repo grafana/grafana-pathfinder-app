@@ -64,6 +64,17 @@ function getGuideMetadata(guideId: string): { title: string; estimatedMinutes: n
 }
 
 /**
+ * Formats a legacy badge ID into a readable title
+ * Converts kebab-case to Title Case (e.g., "test-badge" -> "Test Badge")
+ */
+function formatLegacyBadgeTitle(badgeId: string): string {
+  return badgeId
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
  * Calculates path completion percentage
  */
 function calculatePathProgress(path: LearningPath, completedGuides: string[]): number {
@@ -153,9 +164,10 @@ export function useLearningPaths(): UseLearningPathsReturn {
     };
   }, [loadProgress]);
 
-  // Get badges with earned status
+  // Get badges with earned status (including legacy badges from previous versions)
   const badgesWithStatus = useMemo((): EarnedBadge[] => {
-    return BADGES.map((badge) => {
+    // Start with all currently defined badges
+    const definedBadges = BADGES.map((badge) => {
       const earned = progress.earnedBadges.find((b) => b.id === badge.id);
       const isNew = progress.pendingCelebrations.includes(badge.id);
 
@@ -163,8 +175,26 @@ export function useLearningPaths(): UseLearningPathsReturn {
         ...badge,
         earnedAt: earned?.earnedAt,
         isNew,
+        isLegacy: false,
       };
     });
+
+    // Add any earned badges that are no longer defined (legacy/removed)
+    // This ensures users don't lose badges they earned in previous versions
+    const legacyBadges: EarnedBadge[] = progress.earnedBadges
+      .filter((earned) => !BADGES.find((b) => b.id === earned.id))
+      .map((earned) => ({
+        id: earned.id,
+        title: formatLegacyBadgeTitle(earned.id),
+        description: 'This badge was earned in a previous version',
+        icon: 'history',
+        trigger: { type: 'guide-completed' as const },
+        earnedAt: earned.earnedAt,
+        isNew: false,
+        isLegacy: true,
+      }));
+
+    return [...definedBadges, ...legacyBadges];
   }, [progress.earnedBadges, progress.pendingCelebrations]);
 
   // Calculate streak info

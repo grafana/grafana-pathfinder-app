@@ -1,32 +1,6 @@
 {
   "paths": [
     {
-      "id": "test-path",
-      "title": "[TEST] Quick test path",
-      "description": "⚠️ TEST ONLY - Delete after testing! Two 2-step guides to test path completion and badge awarding.",
-      "guides": [
-        "test-guide-1",
-        "test-guide-2"
-      ],
-      "badgeId": "test-badge",
-      "targetPlatform": "oss",
-      "estimatedMinutes": 2,
-      "icon": "bug"
-    },
-    {
-      "id": "test-path-2",
-      "title": "[TEST] Cross-path test",
-      "description": "⚠️ TEST ONLY - Delete after testing! Tests cross-path progression with shared guide.",
-      "guides": [
-        "test-guide-2",
-        "test-guide-3"
-      ],
-      "badgeId": "test-badge-2",
-      "targetPlatform": "oss",
-      "estimatedMinutes": 1,
-      "icon": "bug"
-    },
-    {
       "id": "getting-started",
       "title": "Getting started with Grafana",
       "description": "Learn the essentials: navigate the UI, connect your first data source, and build your first dashboard.",
@@ -56,18 +30,6 @@
     }
   ],
   "guideMetadata": {
-    "test-guide-1": {
-      "title": "[TEST] Quick guide 1",
-      "estimatedMinutes": 1
-    },
-    "test-guide-2": {
-      "title": "[TEST] Quick guide 2",
-      "estimatedMinutes": 1
-    },
-    "test-guide-3": {
-      "title": "[TEST] Quick guide 3",
-      "estimatedMinutes": 1
-    },
     "welcome-to-grafana": {
       "title": "Welcome to Grafana",
       "estimatedMinutes": 5

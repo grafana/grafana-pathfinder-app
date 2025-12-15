@@ -82,6 +82,8 @@ export interface EarnedBadge extends Badge {
   earnedAt?: number;
   /** Whether this badge was recently earned (for animations) */
   isNew?: boolean;
+  /** Whether this badge is from a previous version and no longer available */
+  isLegacy?: boolean;
 }
 
 // ============================================================================
