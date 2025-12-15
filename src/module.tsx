@@ -20,6 +20,12 @@ import {
   matchPathPattern,
 } from './utils/openfeature';
 import { PathfinderFeatureProvider } from './components/OpenFeatureProvider';
+import {
+  createExperimentDebugger,
+  logExperimentConfig,
+  shouldAutoOpenForPath,
+  markPageAutoOpened,
+} from './utils/experiment-debug';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
@@ -48,6 +54,9 @@ try {
 // - resetCache: When toggled true, clears session storage to allow sidebar to auto-open again
 const experimentConfig: ExperimentConfig = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
 const experimentVariant = experimentConfig.variant;
+
+// Expose experiment debugging utilities on window.__pathfinderExperiment
+createExperimentDebugger(experimentConfig);
 
 // Check for manual pop-open reset via resetCache field in experiment config
 // This allows operators to clear the "Clippy protection" sessionStorage via GOFF
@@ -78,11 +87,8 @@ if (experimentConfig.resetCache) {
 }
 const targetPages = experimentConfig.pages;
 
-if (experimentConfig.variant !== 'excluded') {
-  console.log(
-    `[Pathfinder] Experiment config from GOFF: variant="${experimentConfig.variant}", pages=${JSON.stringify(experimentConfig.pages)}`
-  );
-}
+// Log experiment config for debugging (warning level so it's visible)
+logExperimentConfig(experimentConfig);
 
 // Track experiment entry for BOTH control and treatment variants
 // This fires when users visit target pages, enabling experiment measurement
@@ -246,26 +252,23 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Auto-open panel if enabled
   if (shouldAutoOpen) {
     // Include hostname to make this unique per Grafana instance
-    // This ensures each Cloud instance (e.g., company1.grafana.net, company2.grafana.net)
-    // tracks its own auto-open state independently
     const hostname = window.location.hostname;
+    // Global session key for excluded variant (once per session globally)
     const sessionKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
-    // Separate session key for experiment treatment to track once-per-session behavior
-    const treatmentSessionKey = `grafana-pathfinder-experiment-treatment-opened-${hostname}`;
 
     const isOnboardingFlow = currentPath.includes('/a/grafana-setupguide-app/onboarding-flow');
     const hasAutoOpened = sessionStorage.getItem(sessionKey);
-    const hasTreatmentOpened = sessionStorage.getItem(treatmentSessionKey);
 
-    // Both treatment and excluded respect once-per-session to avoid being "Clippy"
-    // Treatment uses its own session key so it doesn't interfere with normal auto-open
-    const shouldOpenNow = isTreatment ? !hasTreatmentOpened : !hasAutoOpened;
+    // For treatment: check per-page (once per target page pattern)
+    // For excluded: check global (once per session)
+    const matchingPattern = isTreatment ? shouldAutoOpenForPath(hostname, targetPages, currentPath) : null;
+    const shouldOpenNow = isTreatment ? matchingPattern !== null : !hasAutoOpened;
 
     // Auto-open immediately if not on onboarding flow
     if (shouldOpenNow && !isOnboardingFlow) {
-      if (isTreatment) {
-        sessionStorage.setItem(treatmentSessionKey, 'true');
-      } else {
+      if (isTreatment && matchingPattern) {
+        markPageAutoOpened(hostname, matchingPattern);
+      } else if (!isTreatment) {
         sessionStorage.setItem(sessionKey, 'true');
       }
       sidebarState.setPendingOpenSource(isTreatment ? 'experiment_treatment' : 'auto_open');
@@ -273,49 +276,41 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
     }
 
     // If user starts on onboarding flow, listen for navigation away from it
-    // This ensures the sidebar opens when they navigate to normal Grafana (or target page for treatment)
-    if (shouldOpenNow && isOnboardingFlow) {
+    if ((isTreatment || !hasAutoOpened) && isOnboardingFlow) {
       const checkLocationChange = () => {
         const newLocation = locationService.getLocation();
         const newPath = newLocation.pathname || window.location.pathname || '';
         const stillOnOnboarding = newPath.includes('/a/grafana-setupguide-app/onboarding-flow');
         const alreadyOpened = sessionStorage.getItem(sessionKey);
-        const treatmentAlreadyOpened = sessionStorage.getItem(treatmentSessionKey);
 
-        // Check if new path is a target page from GOFF config (for treatment)
-        const isNewPathTargetPage =
-          targetPages.length === 0 || targetPages.some((targetPath) => matchPathPattern(targetPath, newPath));
-
-        // Both treatment and excluded respect once-per-session
-        const shouldOpenAfterOnboarding = isTreatment ? isNewPathTargetPage && !treatmentAlreadyOpened : !alreadyOpened;
+        // For treatment: check per-page tracking
+        // For excluded: check global tracking
+        const newMatchingPattern = isTreatment ? shouldAutoOpenForPath(hostname, targetPages, newPath) : null;
+        const shouldOpenAfterOnboarding = isTreatment ? newMatchingPattern !== null : !alreadyOpened;
 
         // If we've left onboarding and should open, do it now
         if (!stillOnOnboarding && shouldOpenAfterOnboarding) {
-          if (isTreatment) {
-            sessionStorage.setItem(treatmentSessionKey, 'true');
-          } else {
+          if (isTreatment && newMatchingPattern) {
+            markPageAutoOpened(hostname, newMatchingPattern);
+          } else if (!isTreatment) {
             sessionStorage.setItem(sessionKey, 'true');
           }
           sidebarState.setPendingOpenSource(
             isTreatment ? 'experiment_treatment_after_onboarding' : 'auto_open_after_onboarding'
           );
-          attemptAutoOpen(500); // Slightly longer delay after navigation
+          attemptAutoOpen(500);
         }
       };
 
-      // Listen for Grafana location changes (works across SPA navigation)
       document.addEventListener('grafana:location-changed', checkLocationChange);
 
-      // Also listen via locationService history API (more reliable for some navigation types)
       try {
         const history = locationService.getHistory();
         if (history) {
           const unlisten = history.listen(checkLocationChange);
-          // Store unlisten function for potential cleanup (though plugin.init typically doesn't get cleaned up)
           (window as any).__pathfinderAutoOpenUnlisten = unlisten;
         }
       } catch (error) {
-        // Fallback to popstate if history API not available
         window.addEventListener('popstate', checkLocationChange);
       }
     }
@@ -323,26 +318,19 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // Treatment variant: If user starts on a non-target page, listen for navigation to target pages
   // This ensures auto-open triggers when they navigate to a target page (e.g., from home to Synthetic Monitoring)
-  // But only if we haven't already opened this session (once-per-session behavior)
+  // Uses per-page tracking: auto-opens once per target page pattern, not globally
   if (isTreatment && !isTargetPage && targetPages.length > 0) {
     const hostname = window.location.hostname;
-    const treatmentSessionKey = `grafana-pathfinder-experiment-treatment-opened-${hostname}`;
 
     const checkNavigationToTargetPage = () => {
-      // Check if treatment has already triggered this session
-      const treatmentAlreadyOpened = sessionStorage.getItem(treatmentSessionKey);
-      if (treatmentAlreadyOpened) {
-        return; // Already opened once this session, don't be Clippy
-      }
-
       const newLocation = locationService.getLocation();
       const newPath = newLocation.pathname || window.location.pathname || '';
 
-      // Check if new path matches any target page
-      const isNewPathTargetPage = targetPages.some((targetPath) => matchPathPattern(targetPath, newPath));
+      // Check if new path matches a target page that hasn't auto-opened yet
+      const matchingPattern = shouldAutoOpenForPath(hostname, targetPages, newPath);
 
-      if (isNewPathTargetPage) {
-        sessionStorage.setItem(treatmentSessionKey, 'true');
+      if (matchingPattern) {
+        markPageAutoOpened(hostname, matchingPattern);
         sidebarState.setPendingOpenSource('experiment_treatment_navigation');
         attemptAutoOpen(300);
       }
