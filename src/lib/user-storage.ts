@@ -961,13 +961,15 @@ export const learningProgressStorage = {
     try {
       const storage = createUserStorage();
       const progress = await storage.getItem<LearningProgress>(StorageKeys.LEARNING_PROGRESS);
-      return progress || {
-        completedGuides: [],
-        earnedBadges: [],
-        streakDays: 0,
-        lastActivityDate: '',
-        pendingCelebrations: [],
-      };
+      return (
+        progress || {
+          completedGuides: [],
+          earnedBadges: [],
+          streakDays: 0,
+          lastActivityDate: '',
+          pendingCelebrations: [],
+        }
+      );
     } catch {
       return {
         completedGuides: [],

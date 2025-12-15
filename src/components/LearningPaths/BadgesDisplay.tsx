@@ -35,11 +35,7 @@ export function BadgesDisplay({ badges, onBadgeClick }: BadgesDisplayProps) {
       {/* Badges grid */}
       <div className={styles.grid}>
         {badges.map((badge) => (
-          <BadgeItem
-            key={badge.id}
-            badge={badge}
-            onClick={onBadgeClick}
-          />
+          <BadgeItem key={badge.id} badge={badge} onClick={onBadgeClick} />
         ))}
       </div>
     </div>
@@ -92,23 +88,10 @@ function BadgeItem({ badge, onClick }: BadgeItemProps) {
         role={isEarned ? 'button' : undefined}
         tabIndex={isEarned ? 0 : undefined}
       >
-        <span
-          className={cx(
-            styles.badgeIcon,
-            isEarned && styles.badgeIconEarned,
-            !isEarned && styles.badgeIconLocked
-          )}
-        >
+        <span className={cx(styles.badgeIcon, isEarned && styles.badgeIconEarned, !isEarned && styles.badgeIconLocked)}>
           <Icon name={badge.icon as any} size="xl" />
         </span>
-        <span
-          className={cx(
-            styles.badgeTitle,
-            isEarned && styles.badgeTitleEarned
-          )}
-        >
-          {badge.title}
-        </span>
+        <span className={cx(styles.badgeTitle, isEarned && styles.badgeTitleEarned)}>{badge.title}</span>
       </div>
     </Tooltip>
   );
@@ -142,11 +125,7 @@ export function CompactBadgesDisplay({ badges, maxVisible = 4 }: CompactBadgesDi
           </span>
         </Tooltip>
       ))}
-      {remainingCount > 0 && (
-        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-          +{remainingCount}
-        </span>
-      )}
+      {remainingCount > 0 && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>+{remainingCount}</span>}
     </div>
   );
 }

@@ -4,11 +4,7 @@
       "id": "getting-started",
       "title": "Getting started with Grafana",
       "description": "Learn the essentials: navigate the UI, connect your first data source, and build your first dashboard.",
-      "guides": [
-        "welcome-to-grafana",
-        "prometheus-grafana-101",
-        "first-dashboard"
-      ],
+      "guides": ["welcome-to-grafana", "prometheus-grafana-101", "first-dashboard"],
       "badgeId": "grafana-fundamentals",
       "targetPlatform": "oss",
       "estimatedMinutes": 25,
@@ -18,11 +14,7 @@
       "id": "observability-basics",
       "title": "Observability basics",
       "description": "Go beyond metrics: add logs with Loki and master advanced PromQL queries.",
-      "guides": [
-        "prometheus-grafana-101",
-        "loki-grafana-101",
-        "prometheus-advanced-queries"
-      ],
+      "guides": ["prometheus-grafana-101", "loki-grafana-101", "prometheus-advanced-queries"],
       "badgeId": "observability-pioneer",
       "targetPlatform": "oss",
       "estimatedMinutes": 35,

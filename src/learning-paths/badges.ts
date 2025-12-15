@@ -64,11 +64,7 @@ export const BADGES: Badge[] = [
  * @param paths - Available learning paths (for path completion checks)
  * @returns true if the badge should be awarded
  */
-export function shouldAwardBadge(
-  badge: Badge,
-  progress: LearningProgress,
-  paths: LearningPath[]
-): boolean {
+export function shouldAwardBadge(badge: Badge, progress: LearningProgress, paths: LearningPath[]): boolean {
   // Already earned - don't award again
   if (progress.earnedBadges.some((b) => b.id === badge.id)) {
     return false;
@@ -80,11 +76,7 @@ export function shouldAwardBadge(
 /**
  * Checks if a trigger condition is met
  */
-function checkTrigger(
-  trigger: BadgeTrigger,
-  progress: LearningProgress,
-  paths: LearningPath[]
-): boolean {
+function checkTrigger(trigger: BadgeTrigger, progress: LearningProgress, paths: LearningPath[]): boolean {
   switch (trigger.type) {
     case 'guide-completed':
       // Any guide completed, or specific guide if specified
@@ -107,11 +99,7 @@ function checkTrigger(
 /**
  * Checks if a learning path is fully completed
  */
-function isPathCompleted(
-  pathId: string,
-  progress: LearningProgress,
-  paths: LearningPath[]
-): boolean {
+function isPathCompleted(pathId: string, progress: LearningProgress, paths: LearningPath[]): boolean {
   const path = paths.find((p) => p.id === pathId);
   if (!path) {
     return false;
@@ -127,10 +115,7 @@ function isPathCompleted(
  * @param paths - Available learning paths
  * @returns Array of badge IDs that should be awarded
  */
-export function getBadgesToAward(
-  progress: LearningProgress,
-  paths: LearningPath[]
-): string[] {
+export function getBadgesToAward(progress: LearningProgress, paths: LearningPath[]): string[] {
   return BADGES.filter((badge) => shouldAwardBadge(badge, progress, paths)).map((badge) => badge.id);
 }
 
@@ -169,10 +154,7 @@ export function getTotalBadgeCount(): number {
 /**
  * Sorts badges with earned first, then by unlock order
  */
-export function sortBadgesForDisplay(
-  badges: Badge[],
-  earnedBadgeIds: string[]
-): Badge[] {
+export function sortBadgesForDisplay(badges: Badge[], earnedBadgeIds: string[]): Badge[] {
   return [...badges].sort((a, b) => {
     const aEarned = earnedBadgeIds.includes(a.id);
     const bEarned = earnedBadgeIds.includes(b.id);

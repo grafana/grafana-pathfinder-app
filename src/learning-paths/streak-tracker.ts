@@ -62,10 +62,7 @@ function getDaysDifference(date1: string, date2: string): number {
  * @param lastActivityDate - Last activity date in YYYY-MM-DD format
  * @returns Updated streak count
  */
-export function calculateUpdatedStreak(
-  currentStreak: number,
-  lastActivityDate: string
-): number {
+export function calculateUpdatedStreak(currentStreak: number, lastActivityDate: string): number {
   const today = getTodayDateString();
   const yesterday = getYesterdayDateString();
 
@@ -96,10 +93,7 @@ export function calculateUpdatedStreak(
  * @param lastActivityDate - Last activity date in YYYY-MM-DD format
  * @returns StreakInfo with current status
  */
-export function getStreakInfo(
-  currentStreak: number,
-  lastActivityDate: string
-): StreakInfo {
+export function getStreakInfo(currentStreak: number, lastActivityDate: string): StreakInfo {
   const today = getTodayDateString();
   const yesterday = getYesterdayDateString();
 
@@ -176,10 +170,7 @@ export const STREAK_MILESTONES = [3, 7, 14, 30] as const;
  * @param newStreak - Streak after update
  * @returns The milestone reached, or null if none
  */
-export function checkStreakMilestone(
-  previousStreak: number,
-  newStreak: number
-): number | null {
+export function checkStreakMilestone(previousStreak: number, newStreak: number): number | null {
   for (const milestone of STREAK_MILESTONES) {
     if (previousStreak < milestone && newStreak >= milestone) {
       return milestone;

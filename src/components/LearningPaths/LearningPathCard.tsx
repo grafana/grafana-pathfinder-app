@@ -45,7 +45,9 @@ export function LearningPathCard({
   };
 
   const getButtonText = () => {
-    if (progress === 0) return 'Start';
+    if (progress === 0) {
+      return 'Start';
+    }
     return 'Continue';
   };
 
@@ -62,21 +64,15 @@ export function LearningPathCard({
         onKeyDown={(e) => e.key === 'Enter' && handleToggleExpand()}
         aria-expanded={isExpanded}
       >
-        <ProgressRing
-          progress={progress}
-          size={40}
-          strokeWidth={3}
-          isCompleted={isCompleted}
-          showPercentage={true}
-        />
+        <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={isCompleted} showPercentage={true} />
 
         <div className={styles.content}>
-          <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>
-            {path.title}
-          </h3>
+          <h3 className={cx(styles.title, isCompleted && styles.titleCompleted)}>{path.title}</h3>
 
           <div className={styles.meta}>
-            <span>{completedCount}/{guides.length} guides</span>
+            <span>
+              {completedCount}/{guides.length} guides
+            </span>
             {path.estimatedMinutes && (
               <>
                 <span className={styles.metaDot}>·</span>
@@ -87,21 +83,16 @@ export function LearningPathCard({
 
           {/* Next guide hint - only show for in-progress paths when collapsed */}
           {!isCompleted && progress > 0 && nextGuide && !isExpanded && (
-            <div className={styles.nextHint}>
-              Next: {nextGuide.title}
-            </div>
+            <div className={styles.nextHint}>Next: {nextGuide.title}</div>
           )}
         </div>
 
         {/* Actions - fixed position at end */}
         <div className={styles.actions}>
           {!isCompleted && (
-            <button
-              className={styles.actionButton}
-              onClick={handleContinue}
-            >
+            <button className={styles.actionButton} onClick={handleContinue}>
+              <Icon name="play" size="sm" />
               {getButtonText()}
-              <Icon name="arrow-right" size="sm" />
             </button>
           )}
           <button
@@ -119,16 +110,11 @@ export function LearningPathCard({
 
       {/* Expandable guide list */}
       <div className={cx(styles.expandable, isExpanded && styles.expandableOpen)}>
-        {path.description && (
-          <p className={styles.description}>{path.description}</p>
-        )}
+        {path.description && <p className={styles.description}>{path.description}</p>}
 
         <div className={styles.guideList}>
           {guides.map((guide) => (
-            <div
-              key={guide.id}
-              className={cx(styles.guideItem, guide.isCurrent && styles.guideItemCurrent)}
-            >
+            <div key={guide.id} className={cx(styles.guideItem, guide.isCurrent && styles.guideItemCurrent)}>
               <span
                 className={cx(
                   styles.guideIcon,
@@ -137,11 +123,7 @@ export function LearningPathCard({
                   !guide.completed && !guide.isCurrent && styles.guideIconPending
                 )}
               >
-                {guide.completed ? (
-                  <Icon name="check" size="sm" />
-                ) : (
-                  <Icon name="circle" size="sm" />
-                )}
+                {guide.completed ? <Icon name="check" size="sm" /> : <Icon name="circle" size="sm" />}
               </span>
               <span className={styles.guideTitle}>{guide.title}</span>
             </div>

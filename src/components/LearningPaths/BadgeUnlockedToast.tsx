@@ -109,9 +109,7 @@ export function BadgeUnlockedToast({ badge, onDismiss, queueCount = 0 }: BadgeUn
         <h2 id="badge-title" className={styles.badgeTitle}>
           {badge.title}
         </h2>
-        <p className={styles.badgeDescription}>
-          {badge.description}
-        </p>
+        <p className={styles.badgeDescription}>{badge.description}</p>
 
         {/* Dismiss button */}
         <button className={styles.dismissButton} onClick={onDismiss}>

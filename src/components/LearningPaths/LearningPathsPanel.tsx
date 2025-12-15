@@ -60,9 +60,7 @@ export function LearningPathsPanel({ onOpenGuide }: LearningPathsPanelProps) {
   }, [progress.pendingCelebrations, dismissCelebration]);
 
   // Get the badge to celebrate (if any)
-  const celebrationBadge = progress.pendingCelebrations[0]
-    ? getBadgeById(progress.pendingCelebrations[0])
-    : null;
+  const celebrationBadge = progress.pendingCelebrations[0] ? getBadgeById(progress.pendingCelebrations[0]) : null;
 
   if (isLoading) {
     return (
@@ -110,21 +108,12 @@ export function LearningPathsPanel({ onOpenGuide }: LearningPathsPanelProps) {
       </div>
 
       {/* Badges modal */}
-      <Modal
-        title="Your badges"
-        isOpen={showBadgesModal}
-        onDismiss={() => setShowBadgesModal(false)}
-      >
+      <Modal title="Your badges" isOpen={showBadgesModal} onDismiss={() => setShowBadgesModal(false)}>
         <BadgesDisplay badges={badgesWithStatus} />
       </Modal>
 
       {/* Badge celebration toast */}
-      {celebrationBadge && (
-        <BadgeUnlockedToast
-          badge={celebrationBadge}
-          onDismiss={handleDismissCelebration}
-        />
-      )}
+      {celebrationBadge && <BadgeUnlockedToast badge={celebrationBadge} onDismiss={handleDismissCelebration} />}
     </div>
   );
 }

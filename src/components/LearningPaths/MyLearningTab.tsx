@@ -97,12 +97,11 @@ function getBadgeRequirementText(badge: Badge): string {
 
   switch (trigger.type) {
     case 'guide-completed':
-      return trigger.guideId
-        ? `Complete the "${trigger.guideId}" guide`
-        : 'Complete any learning guide';
+      return trigger.guideId ? `Complete the "${trigger.guideId}" guide` : 'Complete any learning guide';
     case 'path-completed':
-      const pathTitle = (pathsData.paths as Array<{ id: string; title: string }>)
-        .find((p) => p.id === trigger.pathId)?.title || trigger.pathId;
+      const pathTitle =
+        (pathsData.paths as Array<{ id: string; title: string }>).find((p) => p.id === trigger.pathId)?.title ||
+        trigger.pathId;
       return `Complete all guides in the "${pathTitle}" learning path`;
     case 'streak':
       return `Maintain a ${trigger.days}-day learning streak`;
@@ -148,22 +147,33 @@ function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
         <div className={iconWrapperClass}>
           {!isLegacy && <div className={styles.iconGlow} />}
           <Icon name={badge.icon as any} size="xxxl" />
-          {isEarned && !isLegacy && <div className={styles.checkmark}><Icon name="check" size="sm" /></div>}
-          {isLegacy && <div className={styles.legacyIndicator}><Icon name="history" size="sm" /></div>}
+          {isEarned && !isLegacy && (
+            <div className={styles.checkmark}>
+              <Icon name="check" size="sm" />
+            </div>
+          )}
+          {isLegacy && (
+            <div className={styles.legacyIndicator}>
+              <Icon name="history" size="sm" />
+            </div>
+          )}
         </div>
 
         {/* Title */}
         <h3 className={styles.title}>{badge.title}</h3>
 
         {/* Status badge */}
-        <div className={`${styles.statusBadge} ${isLegacy ? styles.statusLegacy : isEarned ? styles.statusEarned : styles.statusLocked}`}>
+        <div
+          className={`${styles.statusBadge} ${isLegacy ? styles.statusLegacy : isEarned ? styles.statusEarned : styles.statusLocked}`}
+        >
           {isLegacy ? '📜 Legacy' : isEarned ? '✨ Unlocked' : '🔒 Locked'}
         </div>
 
         {/* Earned date or requirement */}
         {isEarned && badge.earnedAt ? (
           <p className={styles.earnedDate}>
-            Earned on {new Date(badge.earnedAt).toLocaleDateString('en-US', {
+            Earned on{' '}
+            {new Date(badge.earnedAt).toLocaleDateString('en-US', {
               month: 'long',
               day: 'numeric',
               year: 'numeric',
@@ -175,9 +185,7 @@ function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
 
         {/* Requirement section */}
         <div className={styles.requirementSection}>
-          <div className={styles.requirementLabel}>
-            {isLegacy ? 'Note' : isEarned ? 'Completed' : 'Requirement'}
-          </div>
+          <div className={styles.requirementLabel}>{isLegacy ? 'Note' : isEarned ? 'Completed' : 'Requirement'}</div>
           <div className={styles.requirementText}>{requirementText}</div>
         </div>
 
@@ -191,14 +199,8 @@ function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
               </span>
             </div>
             <div className={styles.progressBarOuter}>
-              <div
-                className={styles.progressBarInner}
-                style={{ width: `${progress.percentage}%` }}
-              />
-              <div
-                className={styles.progressBarShimmer}
-                style={{ width: `${progress.percentage}%` }}
-              />
+              <div className={styles.progressBarInner} style={{ width: `${progress.percentage}%` }} />
+              <div className={styles.progressBarShimmer} style={{ width: `${progress.percentage}%` }} />
             </div>
             <div className={styles.progressPercentage}>{progress.percentage}%</div>
           </div>
@@ -218,16 +220,8 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
   const [hideCompletedPaths, setHideCompletedPaths] = useState(false);
 
-  const {
-    paths,
-    badgesWithStatus,
-    progress,
-    getPathGuides,
-    getPathProgress,
-    isPathCompleted,
-    streakInfo,
-    isLoading,
-  } = useLearningPaths();
+  const { paths, badgesWithStatus, progress, getPathGuides, getPathProgress, isPathCompleted, streakInfo, isLoading } =
+    useLearningPaths();
 
   // Sort and filter paths: in-progress first, then not-started, then completed
   const sortedPaths = useMemo(() => {
@@ -388,9 +382,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       {/* Hero Section */}
       <div className={styles.heroSection}>
         <div className={styles.heroContent}>
-          <h1 className={styles.heroTitle}>
-            {t('myLearning.title', 'My learning')}
-          </h1>
+          <h1 className={styles.heroTitle}>{t('myLearning.title', 'My learning')}</h1>
           <p className={styles.heroSubtitle}>
             {t('myLearning.subtitle', 'Track your progress, earn badges, and master Grafana')}
           </p>
@@ -400,18 +392,14 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         <div className={styles.statsRow}>
           <div className={styles.statItem}>
             <div className={styles.statValue}>{totalGuidesCompleted}</div>
-            <div className={styles.statLabel}>
-              {t('myLearning.guidesCompleted', 'Guides completed')}
-            </div>
+            <div className={styles.statLabel}>{t('myLearning.guidesCompleted', 'Guides completed')}</div>
           </div>
           <div className={styles.statDivider} />
           <div className={styles.statItem}>
             <div className={styles.statValue}>
               {totalBadgesEarned}/{totalBadges}
             </div>
-            <div className={styles.statLabel}>
-              {t('myLearning.badgesEarned', 'Badges earned')}
-            </div>
+            <div className={styles.statLabel}>{t('myLearning.badgesEarned', 'Badges earned')}</div>
           </div>
           {streakInfo.days > 0 && (
             <>
@@ -421,9 +409,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
                   <span className={styles.fireEmoji}>🔥</span>
                   {streakInfo.days}
                 </div>
-                <div className={styles.statLabel}>
-                  {t('myLearning.dayStreak', 'Day streak')}
-                </div>
+                <div className={styles.statLabel}>{t('myLearning.dayStreak', 'Day streak')}</div>
               </div>
             </>
           )}
@@ -440,9 +426,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
           <Icon name="book-open" size="md" className={styles.sectionIcon} />
-          <h2 className={styles.sectionTitle}>
-            {t('myLearning.learningPaths', 'Learning paths')}
-          </h2>
+          <h2 className={styles.sectionTitle}>{t('myLearning.learningPaths', 'Learning paths')}</h2>
           {/* Hide completed toggle */}
           {completedPathsCount > 0 && (
             <label className={styles.hideCompletedToggle}>
@@ -452,9 +436,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
                 onChange={(e) => setHideCompletedPaths(e.target.checked)}
                 className={styles.hideCompletedCheckbox}
               />
-              <span className={styles.hideCompletedLabel}>
-                Hide completed ({completedPathsCount})
-              </span>
+              <span className={styles.hideCompletedLabel}>Hide completed ({completedPathsCount})</span>
             </label>
           )}
         </div>
@@ -494,13 +476,8 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
           <Icon name="star" size="md" className={styles.sectionIcon} />
-          <h2 className={styles.sectionTitle}>
-            {t('myLearning.badges', 'Badges')}
-          </h2>
-          <button
-            className={styles.expandButton}
-            onClick={() => setShowAllBadges(!showAllBadges)}
-          >
+          <h2 className={styles.sectionTitle}>{t('myLearning.badges', 'Badges')}</h2>
+          <button className={styles.expandButton} onClick={() => setShowAllBadges(!showAllBadges)}>
             {showAllBadges ? 'Show less' : `View all (${totalBadges})`}
             <Icon name={showAllBadges ? 'angle-up' : 'angle-down'} size="sm" />
           </button>
@@ -553,7 +530,9 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
                   )}
                 </div>
                 <div className={styles.badgeInfo}>
-                  <span className={`${styles.badgeTitle} ${!isEarned && !isLegacy ? styles.badgeTitleLocked : ''} ${isLegacy ? styles.badgeTitleLegacy : ''}`}>
+                  <span
+                    className={`${styles.badgeTitle} ${!isEarned && !isLegacy ? styles.badgeTitleLocked : ''} ${isLegacy ? styles.badgeTitleLegacy : ''}`}
+                  >
                     {badge.title}
                   </span>
                   {!isEarned && !isLegacy && badgeProgress && (
@@ -596,7 +575,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           onClose={() => setSelectedBadge(null)}
         />
       )}
-
     </div>
   );
 }

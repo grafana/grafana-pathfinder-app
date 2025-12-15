@@ -5,7 +5,7 @@
  * Shows completion percentage in the center, or a checkmark when complete.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useId } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
 import { cx, css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -27,13 +27,15 @@ export function ProgressRing({
   const colors = useStyles2(getColorPalette);
   const checkmarkStyles = useStyles2(getCheckmarkStyles);
 
+  // Stable unique ID for SVG gradients
+  const uniqueId = useId();
+
   // Calculate SVG parameters
   const { radius, circumference, dashOffset, gradientId, completedGradientId } = useMemo(() => {
     const r = (size - strokeWidth) / 2;
     const c = 2 * Math.PI * r;
     const clampedProgress = Math.max(0, Math.min(100, progress));
     const offset = c - (clampedProgress / 100) * c;
-    const uniqueId = Math.random().toString(36).substr(2, 9);
 
     return {
       radius: r,
@@ -42,7 +44,7 @@ export function ProgressRing({
       gradientId: `progress-gradient-${uniqueId}`,
       completedGradientId: `completed-gradient-${uniqueId}`,
     };
-  }, [size, strokeWidth, progress]);
+  }, [size, strokeWidth, progress, uniqueId]);
 
   const center = size / 2;
 
@@ -50,10 +52,7 @@ export function ProgressRing({
   const strokeColor = isCompleted ? `url(#${completedGradientId})` : `url(#${gradientId})`;
 
   return (
-    <div
-      className={cx(styles.container, isCompleted && styles.completed)}
-      style={{ width: size, height: size }}
-    >
+    <div className={cx(styles.container, isCompleted && styles.completed)} style={{ width: size, height: size }}>
       <svg className={styles.svg} width={size} height={size}>
         {/* Gradient definitions */}
         <defs>
@@ -70,13 +69,7 @@ export function ProgressRing({
         </defs>
 
         {/* Background track */}
-        <circle
-          className={styles.track}
-          cx={center}
-          cy={center}
-          r={radius}
-          strokeWidth={strokeWidth}
-        />
+        <circle className={styles.track} cx={center} cy={center} r={radius} strokeWidth={strokeWidth} />
 
         {/* Progress arc */}
         <circle
@@ -92,17 +85,14 @@ export function ProgressRing({
       </svg>
 
       {/* Show checkmark when complete, percentage otherwise */}
-      {showPercentage && (
-        isCompleted ? (
+      {showPercentage &&
+        (isCompleted ? (
           <span className={checkmarkStyles.checkmark}>
             <Icon name="check" size="lg" />
           </span>
         ) : (
-          <span className={styles.percentage}>
-            {Math.round(progress)}%
-          </span>
-        )
-      )}
+          <span className={styles.percentage}>{Math.round(progress)}%</span>
+        ))}
     </div>
   );
 }

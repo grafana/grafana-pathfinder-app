@@ -39,22 +39,8 @@ export function StreakIndicator({ streakInfo }: StreakIndicatorProps) {
   return (
     <Tooltip content={tooltipContent} placement="bottom">
       <div className={styles.container}>
-        <span
-          className={cx(
-            styles.fireIcon,
-            !streakInfo.isActiveToday && styles.fireIconInactive
-          )}
-        >
-          🔥
-        </span>
-        <span
-          className={cx(
-            styles.text,
-            streakInfo.isAtRisk && styles.textAtRisk
-          )}
-        >
-          {streakInfo.days}
-        </span>
+        <span className={cx(styles.fireIcon, !streakInfo.isActiveToday && styles.fireIconInactive)}>🔥</span>
+        <span className={cx(styles.text, streakInfo.isAtRisk && styles.textAtRisk)}>{streakInfo.days}</span>
       </div>
     </Tooltip>
   );

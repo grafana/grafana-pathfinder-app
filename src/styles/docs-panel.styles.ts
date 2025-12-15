@@ -286,18 +286,14 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     margin: `0 ${theme.spacing(0.5)}`,
     flexShrink: 0,
   }),
-  tabBarSpacer: css({
-    label: 'combined-journey-tab-bar-spacer',
-    flex: 1,
-    minWidth: theme.spacing(1),
-  }),
   tabBarActions: css({
     label: 'combined-journey-tab-bar-actions',
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(0.5),
+    gap: theme.spacing(0.25),
     flexShrink: 0,
     marginLeft: 'auto',
+    paddingLeft: theme.spacing(0.5),
   }),
   tab: css({
     label: 'combined-journey-tab',
@@ -400,11 +396,13 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
   }),
   chevronTab: css({
     label: 'combined-journey-chevron-tab',
-    minWidth: '100px',
-    maxWidth: '120px',
+    minWidth: 'auto',
+    maxWidth: 'none',
+    padding: theme.spacing(0.25, 0.75),
     borderColor: theme.colors.border.medium,
     backgroundColor: theme.colors.background.secondary,
     color: theme.colors.text.primary,
+    gap: theme.spacing(0.25),
     '&:hover': {
       backgroundColor: theme.colors.action.hover,
       borderColor: theme.colors.border.strong,

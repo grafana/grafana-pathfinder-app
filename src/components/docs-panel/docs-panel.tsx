@@ -664,12 +664,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     if (badgeCelebrationQueue.length > 0 && !currentCelebrationBadge && !isProcessingQueueRef.current) {
       isProcessingQueueRef.current = true;
       // Small delay before showing next toast for better UX
-      const timer = setTimeout(() => {
-        const [nextBadge, ...remaining] = badgeCelebrationQueue;
-        setBadgeCelebrationQueue(remaining);
-        setCurrentCelebrationBadge(nextBadge);
-        isProcessingQueueRef.current = false;
-      }, currentCelebrationBadge === null ? 0 : 500); // No delay for first, 500ms between subsequent
+      const timer = setTimeout(
+        () => {
+          const [nextBadge, ...remaining] = badgeCelebrationQueue;
+          setBadgeCelebrationQueue(remaining);
+          setCurrentCelebrationBadge(nextBadge);
+          isProcessingQueueRef.current = false;
+        },
+        currentCelebrationBadge === null ? 0 : 500
+      ); // No delay for first, 500ms between subsequent
 
       return () => clearTimeout(timer);
     }
@@ -891,13 +894,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     // Note: chevron button width is already reserved in containerWidth calculation
     const tabSpacing = 4; // Gap between tabs (theme.spacing(0.5))
 
-    // Use a more practical minimum: each tab needs at least 100px to be readable
+    // Use a more practical minimum: each tab needs at least 80px to be readable
     // With flex layout, tabs will grow to fill available space proportionally
-    const minTabWidth = 100; // Minimum readable width per tab
+    const minTabWidth = 80; // Minimum readable width per tab
 
-    // Account for permanent tabs space (2 icon tabs + divider = ~80px)
-    const permanentTabsWidth = 80;
-    const availableWidth = Math.max(0, containerWidth - permanentTabsWidth);
+    // Account for: permanent tabs (~72px) + divider (~8px) + actions (~50px)
+    const reservedWidth = 130;
+    const availableWidth = Math.max(0, containerWidth - reservedWidth);
 
     // Determine how many guide tabs can fit
     let maxVisibleGuideTabs = 0;
@@ -916,21 +919,30 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       }
     }
 
-    // Ensure active tab is visible if possible (only for guide tabs)
+    // Always show at least 1 guide tab if any exist
+    maxVisibleGuideTabs = Math.max(maxVisibleGuideTabs, Math.min(1, guideTabs.length));
+
+    // Find the active guide tab (if any)
     const activeGuideTabIndex = guideTabs.findIndex((t) => t.id === activeTabId);
-    if (activeGuideTabIndex >= maxVisibleGuideTabs && maxVisibleGuideTabs > 0) {
-      // Swap active tab into visible range
+
+    if (activeGuideTabIndex >= maxVisibleGuideTabs) {
+      // Active guide tab is in overflow, swap it into visible range
       const visibleGuideTabsArray = [...guideTabs.slice(0, maxVisibleGuideTabs - 1), guideTabs[activeGuideTabIndex]];
       const overflowGuideTabsArray = [
         ...guideTabs.slice(maxVisibleGuideTabs - 1, activeGuideTabIndex),
         ...guideTabs.slice(activeGuideTabIndex + 1),
       ];
-      // Include permanent tabs in visibleTabs for completeness
-      setVisibleTabs([...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'), ...visibleGuideTabsArray]);
+      setVisibleTabs([
+        ...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'),
+        ...visibleGuideTabsArray,
+      ]);
       setOverflowedTabs(overflowGuideTabsArray);
     } else {
-      // Include permanent tabs in visibleTabs for completeness
-      setVisibleTabs([...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'), ...guideTabs.slice(0, maxVisibleGuideTabs)]);
+      // Normal case - show as many tabs as fit (at least 1 if any exist)
+      setVisibleTabs([
+        ...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'),
+        ...guideTabs.slice(0, maxVisibleGuideTabs),
+      ]);
       setOverflowedTabs(guideTabs.slice(maxVisibleGuideTabs));
     }
   }, [tabs, containerWidth, activeTabId]);
@@ -1271,253 +1283,250 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         <div className={styles.topBar}>
           <div className={styles.liveSessionButtons}>
             {!isSessionActive && isLiveSessionsEnabled && (
-            <>
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="users-alt"
-                onClick={() => setShowPresenterControls(true)}
-                tooltip="Start a live session to broadcast your actions to attendees"
-              >
-                Start live session
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="user"
-                onClick={() => setShowAttendeeJoin(true)}
-                tooltip="Join an existing live session"
-              >
-                Join live session
-              </Button>
-            </>
-          )}
-          {isSessionActive && sessionRole === 'presenter' && (
-            <>
-              <Button size="sm" variant="primary" icon="circle" onClick={() => setShowPresenterControls(true)}>
-                Session active
-              </Button>
-              <div ref={handRaiseIndicatorRef}>
-                <HandRaiseIndicator count={handRaises.length} onClick={() => setShowHandRaiseQueue(true)} />
-              </div>
-            </>
-          )}
-          {isSessionActive && sessionRole === 'attendee' && (
-            <Alert title="" severity="success" style={{ margin: 0, padding: '8px 12px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Icon name="check-circle" />
-                  <span style={{ fontWeight: 500 }}>Connected to: {sessionInfo?.config.name || 'Live session'}</span>
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="users-alt"
+                  onClick={() => setShowPresenterControls(true)}
+                  tooltip="Start a live session to broadcast your actions to attendees"
+                >
+                  Start live session
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="user"
+                  onClick={() => setShowAttendeeJoin(true)}
+                  tooltip="Join an existing live session"
+                >
+                  Join live session
+                </Button>
+              </>
+            )}
+            {isSessionActive && sessionRole === 'presenter' && (
+              <>
+                <Button size="sm" variant="primary" icon="circle" onClick={() => setShowPresenterControls(true)}>
+                  Session active
+                </Button>
+                <div ref={handRaiseIndicatorRef}>
+                  <HandRaiseIndicator count={handRaises.length} onClick={() => setShowHandRaiseQueue(true)} />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '12px', color: 'rgba(204, 204, 220, 0.85)' }}>Mode:</span>
-                  <ButtonGroup>
+              </>
+            )}
+            {isSessionActive && sessionRole === 'attendee' && (
+              <Alert title="" severity="success" style={{ margin: 0, padding: '8px 12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Icon name="check-circle" />
+                    <span style={{ fontWeight: 500 }}>Connected to: {sessionInfo?.config.name || 'Live session'}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '12px', color: 'rgba(204, 204, 220, 0.85)' }}>Mode:</span>
+                    <ButtonGroup>
+                      <Button
+                        size="sm"
+                        variant={attendeeMode === 'guided' ? 'primary' : 'secondary'}
+                        onClick={() => {
+                          if (attendeeMode !== 'guided') {
+                            const newMode: AttendeeMode = 'guided';
+                            // Update session state
+                            setAttendeeMode(newMode);
+                            // Update ActionReplaySystem
+                            if (actionReplayRef.current) {
+                              actionReplayRef.current.setMode(newMode);
+                            }
+                            // Send mode change to presenter
+                            if (sessionManager) {
+                              sessionManager.sendToPresenter({
+                                type: 'mode_change',
+                                sessionId: sessionInfo?.sessionId || '',
+                                timestamp: Date.now(),
+                                senderId: sessionManager.getRole() || 'attendee',
+                                mode: newMode,
+                              } as any);
+                            }
+                            console.log('[DocsPanel] Switched to Guided mode');
+                          }
+                        }}
+                        tooltip="Only see highlights when presenter clicks Show Me"
+                      >
+                        Guided
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={attendeeMode === 'follow' ? 'primary' : 'secondary'}
+                        onClick={() => {
+                          if (attendeeMode !== 'follow') {
+                            const newMode: AttendeeMode = 'follow';
+                            // Update session state
+                            setAttendeeMode(newMode);
+                            // Update ActionReplaySystem
+                            if (actionReplayRef.current) {
+                              actionReplayRef.current.setMode(newMode);
+                            }
+                            // Send mode change to presenter
+                            if (sessionManager) {
+                              sessionManager.sendToPresenter({
+                                type: 'mode_change',
+                                sessionId: sessionInfo?.sessionId || '',
+                                timestamp: Date.now(),
+                                senderId: sessionManager.getRole() || 'attendee',
+                                mode: newMode,
+                              } as any);
+                            }
+                            console.log('[DocsPanel] Switched to Follow mode');
+                          }
+                        }}
+                        tooltip="Execute actions automatically when presenter clicks Do It"
+                      >
+                        Follow
+                      </Button>
+                    </ButtonGroup>
+                    <HandRaiseButton isRaised={isHandRaised} onToggle={handleHandRaiseToggle} />
                     <Button
                       size="sm"
-                      variant={attendeeMode === 'guided' ? 'primary' : 'secondary'}
+                      variant="secondary"
+                      icon="times"
                       onClick={() => {
-                        if (attendeeMode !== 'guided') {
-                          const newMode: AttendeeMode = 'guided';
-                          // Update session state
-                          setAttendeeMode(newMode);
-                          // Update ActionReplaySystem
-                          if (actionReplayRef.current) {
-                            actionReplayRef.current.setMode(newMode);
-                          }
-                          // Send mode change to presenter
-                          if (sessionManager) {
-                            sessionManager.sendToPresenter({
-                              type: 'mode_change',
-                              sessionId: sessionInfo?.sessionId || '',
-                              timestamp: Date.now(),
-                              senderId: sessionManager.getRole() || 'attendee',
-                              mode: newMode,
-                            } as any);
-                          }
-                          console.log('[DocsPanel] Switched to Guided mode');
+                        if (confirm('Leave this live session?')) {
+                          endSession();
                         }
                       }}
-                      tooltip="Only see highlights when presenter clicks Show Me"
+                      tooltip="Leave the live session"
                     >
-                      Guided
+                      Leave
                     </Button>
-                    <Button
-                      size="sm"
-                      variant={attendeeMode === 'follow' ? 'primary' : 'secondary'}
-                      onClick={() => {
-                        if (attendeeMode !== 'follow') {
-                          const newMode: AttendeeMode = 'follow';
-                          // Update session state
-                          setAttendeeMode(newMode);
-                          // Update ActionReplaySystem
-                          if (actionReplayRef.current) {
-                            actionReplayRef.current.setMode(newMode);
-                          }
-                          // Send mode change to presenter
-                          if (sessionManager) {
-                            sessionManager.sendToPresenter({
-                              type: 'mode_change',
-                              sessionId: sessionInfo?.sessionId || '',
-                              timestamp: Date.now(),
-                              senderId: sessionManager.getRole() || 'attendee',
-                              mode: newMode,
-                            } as any);
-                          }
-                          console.log('[DocsPanel] Switched to Follow mode');
-                        }
-                      }}
-                      tooltip="Execute actions automatically when presenter clicks Do It"
-                    >
-                      Follow
-                    </Button>
-                  </ButtonGroup>
-                  <HandRaiseButton isRaised={isHandRaised} onToggle={handleHandRaiseToggle} />
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon="times"
-                    onClick={() => {
-                      if (confirm('Leave this live session?')) {
-                        endSession();
-                      }
-                    }}
-                    tooltip="Leave the live session"
-                  >
-                    Leave
-                  </Button>
+                  </div>
                 </div>
-              </div>
-            </Alert>
-          )}
+              </Alert>
+            )}
           </div>
         </div>
       )}
 
       {/* Tab bar - always show permanent tabs, show guide tabs when open */}
       <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
-          {/* Permanent icon-only tabs */}
-          <div className={styles.permanentTabs}>
-            <button
-              className={`${styles.iconTab} ${activeTabId === 'recommendations' ? styles.iconTabActive : ''}`}
-              onClick={() => model.setActiveTab('recommendations')}
-              title={t('docsPanel.recommendations', 'Recommendations')}
-              data-testid={testIds.docsPanel.recommendationsTab}
-            >
-              <Icon name="compass" size="md" />
-            </button>
-            <button
-              className={`${styles.iconTab} ${activeTabId === 'my-learning' ? styles.iconTabActive : ''}`}
-              onClick={() => model.setActiveTab('my-learning')}
-              title={t('docsPanel.myLearning', 'My learning')}
-              data-testid={testIds.docsPanel.tab('my-learning')}
-            >
-              <Icon name="book-open" size="md" />
-            </button>
-          </div>
+        {/* Permanent icon-only tabs */}
+        <div className={styles.permanentTabs}>
+          <button
+            className={`${styles.iconTab} ${activeTabId === 'recommendations' ? styles.iconTabActive : ''}`}
+            onClick={() => model.setActiveTab('recommendations')}
+            title={t('docsPanel.recommendations', 'Recommendations')}
+            data-testid={testIds.docsPanel.recommendationsTab}
+          >
+            <Icon name="lightbulb" size="md" />
+          </button>
+          <button
+            className={`${styles.iconTab} ${activeTabId === 'my-learning' ? styles.iconTabActive : ''}`}
+            onClick={() => model.setActiveTab('my-learning')}
+            title={t('docsPanel.myLearning', 'My learning')}
+            data-testid={testIds.docsPanel.tab('my-learning')}
+          >
+            <Icon name="book-open" size="md" />
+          </button>
+        </div>
 
-          {/* Divider - only show when there are guide tabs */}
-          {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
-            <div className={styles.tabDivider} />
-          )}
+        {/* Divider - only show when there are guide tabs */}
+        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
+          <div className={styles.tabDivider} />
+        )}
 
-          {/* Guide tabs with titles */}
-          <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
-            {visibleTabs
-              .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning')
-              .map((tab) => {
-                const getTranslatedTitle = (title: string) => {
-                  if (title === 'Learning journey') {
-                    return t('docsPanel.learningJourney', 'Learning journey');
-                  }
-                  if (title === 'Documentation') {
-                    return t('docsPanel.documentation', 'Documentation');
-                  }
-                  return title; // Custom titles stay as-is
-                };
+        {/* Guide tabs with titles */}
+        <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
+          {visibleTabs
+            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning')
+            .map((tab) => {
+              const getTranslatedTitle = (title: string) => {
+                if (title === 'Learning journey') {
+                  return t('docsPanel.learningJourney', 'Learning journey');
+                }
+                if (title === 'Documentation') {
+                  return t('docsPanel.documentation', 'Documentation');
+                }
+                return title; // Custom titles stay as-is
+              };
 
-                return (
-                  <button
-                    key={tab.id}
-                    className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
-                    onClick={() => model.setActiveTab(tab.id)}
-                    title={getTranslatedTitle(tab.title)}
-                    data-testid={testIds.docsPanel.tab(tab.id)}
-                  >
-                    <div className={styles.tabContent}>
-                      {tab.type === 'devtools' && (
-                        <Icon name="bug" size="xs" className={styles.tabIcon} />
+              return (
+                <button
+                  key={tab.id}
+                  className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
+                  onClick={() => model.setActiveTab(tab.id)}
+                  title={getTranslatedTitle(tab.title)}
+                  data-testid={testIds.docsPanel.tab(tab.id)}
+                >
+                  <div className={styles.tabContent}>
+                    {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.tabIcon} />}
+                    <span className={styles.tabTitle}>
+                      {tab.isLoading ? (
+                        <>
+                          <Icon name="sync" size="xs" />
+                          <span>{t('docsPanel.loading', 'Loading...')}</span>
+                        </>
+                      ) : (
+                        getTranslatedTitle(tab.title)
                       )}
-                      <span className={styles.tabTitle}>
-                        {tab.isLoading ? (
-                          <>
-                            <Icon name="sync" size="xs" />
-                            <span>{t('docsPanel.loading', 'Loading...')}</span>
-                          </>
-                        ) : (
-                          getTranslatedTitle(tab.title)
-                        )}
-                      </span>
-                      <IconButton
-                        name="times"
-                        size="sm"
-                        aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
-                          title: getTranslatedTitle(tab.title),
-                        })}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          reportAppInteraction(UserInteraction.CloseTabClick, {
-                            content_type: getContentTypeForAnalytics(
-                              tab.currentUrl || tab.baseUrl,
-                              tab.type || 'learning-journey'
-                            ),
-                            tab_title: tab.title,
-                            content_url: tab.currentUrl || tab.baseUrl,
-                            interaction_location: 'tab_button',
-                            ...(tab.type === 'learning-journey' &&
-                              tab.content && {
-                                completion_percentage: getJourneyProgress(tab.content),
-                                current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                                total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                              }),
-                          });
-                          model.closeTab(tab.id);
-                        }}
-                        className={styles.closeButton}
-                        data-testid={testIds.docsPanel.tabCloseButton(tab.id)}
-                      />
-                    </div>
-                  </button>
-                );
+                    </span>
+                    <IconButton
+                      name="times"
+                      size="sm"
+                      aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
+                        title: getTranslatedTitle(tab.title),
+                      })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        reportAppInteraction(UserInteraction.CloseTabClick, {
+                          content_type: getContentTypeForAnalytics(
+                            tab.currentUrl || tab.baseUrl,
+                            tab.type || 'learning-journey'
+                          ),
+                          tab_title: tab.title,
+                          content_url: tab.currentUrl || tab.baseUrl,
+                          interaction_location: 'tab_button',
+                          ...(tab.type === 'learning-journey' &&
+                            tab.content && {
+                              completion_percentage: getJourneyProgress(tab.content),
+                              current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
+                              total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
+                            }),
+                        });
+                        model.closeTab(tab.id);
+                      }}
+                      className={styles.closeButton}
+                      data-testid={testIds.docsPanel.tabCloseButton(tab.id)}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+        </div>
+
+        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
+          <div className={styles.tabOverflow}>
+            <button
+              ref={chevronButtonRef}
+              className={`${styles.tab} ${styles.chevronTab}`}
+              onClick={() => {
+                if (!isDropdownOpen) {
+                  dropdownOpenTimeRef.current = Date.now();
+                }
+                setIsDropdownOpen(!isDropdownOpen);
+              }}
+              aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', {
+                count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length,
               })}
+              aria-expanded={isDropdownOpen}
+              aria-haspopup="true"
+              data-testid={testIds.docsPanel.tabOverflowButton}
+            >
+              <Icon name="angle-down" size="sm" />
+              <span>+{overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length}</span>
+            </button>
           </div>
+        )}
 
-          {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
-            <div className={styles.tabOverflow}>
-              <button
-                ref={chevronButtonRef}
-                className={`${styles.tab} ${styles.chevronTab}`}
-                onClick={() => {
-                  if (!isDropdownOpen) {
-                    dropdownOpenTimeRef.current = Date.now();
-                  }
-                  setIsDropdownOpen(!isDropdownOpen);
-                }}
-                aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', { count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length })}
-                aria-expanded={isDropdownOpen}
-                aria-haspopup="true"
-                data-testid={testIds.docsPanel.tabOverflowButton}
-              >
-                <div className={styles.tabContent}>
-                  <Icon name="angle-right" size="sm" className={styles.chevronIcon} />
-                  <span className={styles.tabTitle}>
-                    {t('docsPanel.moreTabs', '{{count}} more', { count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length })}
-                  </span>
-                </div>
-              </button>
-            </div>
-          )}
-
-          {isDropdownOpen && overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
+        {isDropdownOpen &&
+          overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
             <div
               ref={dropdownRef}
               className={styles.tabDropdown}
@@ -1553,9 +1562,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
                     >
                       <div className={styles.dropdownItemContent}>
-                        {tab.type === 'devtools' && (
-                          <Icon name="bug" size="xs" className={styles.dropdownItemIcon} />
-                        )}
+                        {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.dropdownItemIcon} />}
                         <span className={styles.dropdownItemTitle}>
                           {tab.isLoading ? (
                             <>
@@ -1600,46 +1607,43 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             </div>
           )}
 
-          {/* Spacer to push actions to the right */}
-          <div className={styles.tabBarSpacer} />
-
-          {/* Settings and close actions */}
-          <div className={styles.tabBarActions}>
-            <IconButton
-              name="cog"
-              size="sm"
-              tooltip={t('docsPanel.settings', 'Plugin settings')}
-              onClick={() => {
-                reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                  action: 'navigate_to_config',
-                  source: 'header_settings_button',
-                });
-                locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
-              }}
-              aria-label={t('docsPanel.settings', 'Plugin settings')}
-              data-testid={testIds.docsPanel.settingsButton}
-            />
-            <IconButton
-              name="times"
-              size="sm"
-              tooltip={t('docsPanel.closeSidebar', 'Close sidebar')}
-              onClick={() => {
-                reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                  action: 'close_sidebar',
-                  source: 'header_close_button',
-                });
-                // Close the extension sidebar
-                const appEvents = getAppEvents();
-                appEvents.publish({
-                  type: 'close-extension-sidebar',
-                  payload: {},
-                });
-              }}
-              aria-label="Close sidebar"
-              data-testid={testIds.docsPanel.closeButton}
-            />
-          </div>
+        {/* Settings and close actions */}
+        <div className={styles.tabBarActions}>
+          <IconButton
+            name="cog"
+            size="sm"
+            tooltip={t('docsPanel.settings', 'Plugin settings')}
+            onClick={() => {
+              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                action: 'navigate_to_config',
+                source: 'header_settings_button',
+              });
+              locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
+            }}
+            aria-label={t('docsPanel.settings', 'Plugin settings')}
+            data-testid={testIds.docsPanel.settingsButton}
+          />
+          <IconButton
+            name="times"
+            size="sm"
+            tooltip={t('docsPanel.closeSidebar', 'Close sidebar')}
+            onClick={() => {
+              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                action: 'close_sidebar',
+                source: 'header_close_button',
+              });
+              // Close the extension sidebar
+              const appEvents = getAppEvents();
+              appEvents.publish({
+                type: 'close-extension-sidebar',
+                payload: {},
+              });
+            }}
+            aria-label="Close sidebar"
+            data-testid={testIds.docsPanel.closeButton}
+          />
         </div>
+      </div>
 
       <div className={styles.content} data-testid={testIds.docsPanel.content}>
         {(() => {
