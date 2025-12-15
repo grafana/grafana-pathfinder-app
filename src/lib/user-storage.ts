@@ -60,6 +60,8 @@ export const StorageKeys = {
   FULLSCREEN_SECTION_INFO: 'grafana-pathfinder-app-fullscreen-section-info',
   // Learning paths and badges progress
   LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
+  // Dev tools recording state persistence
+  DEVTOOLS_RECORDING_STATE: 'grafana-pathfinder-app-devtools-recording-state',
 } as const;
 
 // Timestamp suffix for conflict resolution

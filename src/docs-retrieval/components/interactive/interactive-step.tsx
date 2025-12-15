@@ -1,6 +1,5 @@
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
-import { usePluginContext } from '@grafana/data';
 
 import {
   waitForReactUpdates,
@@ -11,10 +10,11 @@ import {
 } from '../../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../../lib/analytics';
 import type { InteractiveStepProps } from '../../../types/component-props.types';
-import { matchesStepAction, type DetectedActionEvent, useInteractiveElements } from '../../../interactive-engine';
-import { getInteractiveConfig } from '../../../constants/interactive-config';
-import { getConfigWithDefaults } from '../../../constants';
-import { findButtonByText, querySelectorAllEnhanced } from '../../../lib/dom';
+import {
+  type DetectedActionEvent,
+  useInteractiveElements,
+  useSingleActionDetection,
+} from '../../../interactive-engine';
 import { testIds } from '../../../components/testIds';
 import { AssistantCustomizableProvider } from '../../../integrations/assistant-integration';
 
@@ -92,13 +92,6 @@ export const InteractiveStep = forwardRef<
     const updateTargetValue = useCallback((newValue: string) => {
       setCurrentTargetValue(newValue);
     }, []);
-
-    // Get plugin configuration for auto-detection settings
-    const pluginContext = usePluginContext();
-    const interactiveConfig = useMemo(() => {
-      const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-      return getInteractiveConfig(config);
-    }, [pluginContext?.meta?.jsonData]);
 
     // Combined completion state (parent takes precedence for coordination)
     const isCompleted = parentCompleted || isLocallyCompleted;
@@ -278,65 +271,10 @@ export const InteractiveStep = forwardRef<
       [executeStep, skippable, checker.markSkipped]
     );
 
-    // Auto-detection: Listen for user actions and complete step automatically
-    useEffect(() => {
-      // Only enable auto-detection if:
-      // 1. Feature is enabled in config
-      // 2. Step is eligible and enabled
-      // 3. Step is not already completed
-      // 4. Step is not currently executing (avoid race conditions with "Do Section")
-      if (
-        !interactiveConfig.autoDetection.enabled ||
-        !finalIsEnabled ||
-        isCompletedWithObjectives ||
-        isCurrentlyExecuting ||
-        disabled
-      ) {
-        return;
-      }
-
-      const handleActionDetected = async (event: Event) => {
-        const customEvent = event as CustomEvent<DetectedActionEvent>;
-        const detectedAction = customEvent.detail;
-
-        // Try to find target element for coordinate-based matching
-        // Using synchronous resolution to avoid timing issues with dynamic menus/dropdowns
-        let targetElement: HTMLElement | null = null;
-        try {
-          if (targetAction === 'button') {
-            // Use button-specific finder for text matching
-            const buttons = findButtonByText(refTarget);
-            targetElement = buttons[0] || null;
-          } else if (targetAction === 'highlight' || targetAction === 'hover') {
-            // Use enhanced selector for other action types
-            const result = querySelectorAllEnhanced(refTarget);
-            targetElement = result.elements[0] || null;
-          }
-          // Note: formfill and navigate don't use coordinate matching
-        } catch (error) {
-          // Element resolution failed, fall back to selector-based matching
-          console.warn('Failed to resolve target element for coordinate matching:', error);
-        }
-
-        // Check if detected action matches this step's configuration
-        // Now with coordinate-based matching support
-        const matches = matchesStepAction(
-          detectedAction,
-          {
-            targetAction,
-            refTarget,
-            targetValue: currentTargetValue,
-          },
-          targetElement
-        );
-
-        if (!matches) {
-          return; // Not a match for this step
-        }
-
-        // Wait a bit for DOM to settle after the action
-        await new Promise((resolve) => setTimeout(resolve, interactiveConfig.autoDetection.verificationDelay));
-
+    // Auto-detection: Use shared hook for detecting user actions
+    // Handler for auto-detected action match
+    const handleAutoDetectedMatch = useCallback(
+      async (detectedAction: DetectedActionEvent) => {
         // Run post-verification if specified (same as "Do it" button)
         if (postVerify && postVerify.trim() !== '') {
           try {
@@ -350,10 +288,36 @@ export const InteractiveStep = forwardRef<
 
             if (!result.pass) {
               // Verification failed - don't auto-complete
+              // Track failure in analytics
+              reportAppInteraction(
+                UserInteraction.StepAutoCompleteFailed,
+                buildInteractiveStepProperties(
+                  {
+                    target_action: targetAction,
+                    ref_target: refTarget,
+                    interaction_location: 'interactive_step_auto',
+                    failure_reason: 'post_verification_failed',
+                  },
+                  analyticsStepMeta
+                )
+              );
               return;
             }
           } catch (error) {
             // Verification error - don't auto-complete
+            // Track failure in analytics
+            reportAppInteraction(
+              UserInteraction.StepAutoCompleteFailed,
+              buildInteractiveStepProperties(
+                {
+                  target_action: targetAction,
+                  ref_target: refTarget,
+                  interaction_location: 'interactive_step_auto',
+                  failure_reason: 'post_verification_error',
+                },
+                analyticsStepMeta
+              )
+            );
             return;
           }
         }
@@ -385,35 +349,31 @@ export const InteractiveStep = forwardRef<
             analyticsStepMeta
           )
         );
-      };
+      },
+      [
+        postVerify,
+        targetAction,
+        refTarget,
+        currentTargetValue,
+        stepId,
+        renderedStepId,
+        onStepComplete,
+        onComplete,
+        analyticsStepMeta,
+      ]
+    );
 
-      // Subscribe to user-action-detected events
-      document.addEventListener('user-action-detected', handleActionDetected);
-
-      return () => {
-        document.removeEventListener('user-action-detected', handleActionDetected);
-      };
-    }, [
-      interactiveConfig.autoDetection.enabled,
-      interactiveConfig.autoDetection.verificationDelay,
-      finalIsEnabled,
-      isCompletedWithObjectives,
-      isCurrentlyExecuting,
-      disabled,
+    // Use the shared auto-detection hook
+    useSingleActionDetection({
       targetAction,
       refTarget,
-      currentTargetValue,
-      postVerify,
-      stepId,
-      onStepComplete,
-      onComplete,
-      stepIndex,
-      totalSteps,
-      sectionId,
-      sectionTitle,
-      renderedStepId,
-      analyticsStepMeta,
-    ]);
+      targetValue: currentTargetValue,
+      isEnabled: finalIsEnabled,
+      isCompleted: isCompletedWithObjectives,
+      isExecuting: isCurrentlyExecuting,
+      disabled,
+      onMatch: handleAutoDetectedMatch,
+    });
 
     // Handle individual "Show me" action
     const handleShowAction = useCallback(async () => {
@@ -588,8 +548,9 @@ export const InteractiveStep = forwardRef<
 
         <div className="interactive-step-actions">
           <div className="interactive-step-action-buttons">
-            {/* Only show "Show me" button when showMe prop is true AND step is enabled */}
-            {showMe && !isCompletedWithObjectives && finalIsEnabled && (
+            {/* Only show "Show me" button when showMe prop is true AND step is enabled AND not a navigate action */}
+            {/* Navigate actions don't have a sensible "show me" behavior - it's "go there" or nothing */}
+            {showMe && targetAction !== 'navigate' && !isCompletedWithObjectives && finalIsEnabled && (
               <Button
                 onClick={handleShowAction}
                 disabled={disabled || isAnyActionRunning}
@@ -631,7 +592,10 @@ export const InteractiveStep = forwardRef<
                     ? checker.isRetrying
                       ? `Checking requirements... (${checker.retryCount}/${checker.maxRetries})`
                       : 'Checking requirements...'
-                    : hints || `Do it: ${getActionDescription()}`
+                    : hints ||
+                      (targetAction === 'navigate'
+                        ? `Go there: ${getActionDescription()}`
+                        : `Do it: ${getActionDescription()}`)
                 }
               >
                 {checker.isChecking
@@ -639,8 +603,12 @@ export const InteractiveStep = forwardRef<
                     ? `Checking... (${checker.retryCount}/${checker.maxRetries})`
                     : 'Checking...'
                   : isDoRunning || isCurrentlyExecuting
-                    ? 'Executing...'
-                    : 'Do it'}
+                    ? targetAction === 'navigate'
+                      ? 'Going...'
+                      : 'Executing...'
+                    : targetAction === 'navigate'
+                      ? 'Go there'
+                      : 'Do it'}
               </Button>
             )}
 

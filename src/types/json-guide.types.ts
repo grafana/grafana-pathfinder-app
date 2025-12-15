@@ -9,8 +9,11 @@
 
 /**
  * Root structure for a JSON-based interactive guide.
+ * @coupling Zod schema: JsonGuideSchema in json-guide.schema.ts
  */
 export interface JsonGuide {
+  /** Schema version for forward compatibility (e.g., "1.0.0") */
+  schemaVersion?: '1.0.0' | string;
   /** Unique identifier for the guide */
   id: string;
   /** Display title for the guide */

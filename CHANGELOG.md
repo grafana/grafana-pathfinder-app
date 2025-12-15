@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.2.1
+
+### Added
+
+- **Navigate action type**: Handle `navigate` action type in InteractiveStep for URL navigation within guides (#429)
+- **Zod schema validation**: Runtime strict validation of interactive JSON guides with comprehensive schema checking (#417)
+  - Validates all guide loads on the frontend
+  - Added DOMPurify to markdown sanitization for security
+  - Defined schema version 1.0.0 for bundled guides
+  - CLI tool for validating guides
+- **OpenFeature experiment**: Added OpenFeature experiment integration with RudderStack (#421)
+- **Auto-detection**: Enabled auto-detection feature for interactive guides
+
+### Changed
+
+- **License update**: Updated license to AGPL-3.0 (#418)
+- **Improved follow mode**: Enhanced follow mode functionality for live sessions (#425)
+- **Interactive development experience**: Multiple improvements for content creators (#424)
+  - Updated shortcode names with namespacing
+  - Display steps as ordered list
+  - Option to export combined steps as guided action instead of multistep
+  - Persist recording mode state with option to return to start
+
+### Fixed
+
+- Fixed dashboard text styling to follow sentence case per Grafana Writers' Toolkit (#423)
+- Fixed RudderStack type issues (#432)
+- Fixed RudderStack and auto-detection initialization
+
+### Chore
+
+- Updated grafana/plugin-ci-workflows/ci-cd-workflows action to v4.3.0 (#415)
+- Updated grafana/plugin-actions digest to 428421c (#400)
+- Bump glob from 10.4.5 to 10.5.0 (#431)
+- Automated loading of BigQuery tables for analytics (#419)
+- Updated release workflow (#427)
+
 ## 1.1.85
 
 ### Added

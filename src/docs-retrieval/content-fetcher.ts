@@ -23,6 +23,7 @@ import {
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { StorageKeys } from '../lib/user-storage';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
+import { validateGuide } from '../validation';
 
 // Internal error structure for detailed error handling
 interface FetchError {
@@ -178,13 +179,18 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       // Validate it's a proper JSON guide structure
       try {
         const parsed = JSON.parse(fetchResult.html);
-        if (parsed.id && parsed.title && Array.isArray(parsed.blocks)) {
-          jsonContent = fetchResult.html; // Already valid JSON guide
-        } else {
-          // JSON but not a valid guide structure - wrap it
-          console.warn('JSON content does not match guide structure, wrapping as HTML');
-          jsonContent = wrapContentAsJsonGuide(fetchResult.html, finalUrl, metadata.title);
+        const validationResult = validateGuide(parsed);
+
+        if (!validationResult.isValid) {
+          // Use the first error message for the main error
+          const errorMessage = validationResult.errors[0]?.message || 'Schema validation failed';
+          return {
+            content: null,
+            error: `Invalid guide: ${errorMessage}`,
+            errorType: 'other',
+          };
         }
+        jsonContent = fetchResult.html; // Valid JSON guide
       } catch {
         // Invalid JSON - treat as HTML and wrap
         console.warn('Failed to parse native JSON, treating as HTML');

@@ -1,0 +1,67 @@
+name: Validate JSON Guides
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - 'src/bundled-interactives/**/*.json'
+      - 'src/types/json-guide.types.ts'
+      - 'src/types/json-guide.schema.ts'
+      - 'src/validation/**'
+      - 'src/cli/**'
+  pull_request:
+    branches:
+      - master
+      - main
+    paths:
+      - 'src/bundled-interactives/**/*.json'
+      - 'src/types/json-guide.types.ts'
+      - 'src/types/json-guide.schema.ts'
+      - 'src/validation/**'
+      - 'src/cli/**'
+
+concurrency:
+  group: validate-guides-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate bundled guides
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build CLI
+        run: npm run build:cli
+
+      - name: Validate bundled guides (strict mode)
+        run: npm run validate:strict
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Guide Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Ran \`pathfinder-cli validate --bundled --strict\` against all bundled JSON guides." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ $? -eq 0 ]; then
+            echo "✅ All guides passed validation" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Some guides failed validation - see job output for details" >> $GITHUB_STEP_SUMMARY
+          fi

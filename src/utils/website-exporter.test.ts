@@ -10,35 +10,35 @@ describe('website-exporter', () => {
     it('should export a button action', () => {
       const result = exportSingleStepForWebsite('button', 'button[data-testid="save"]', undefined, 'Click save');
 
-      expect(result).toContain('{{< button');
-      expect(result).toContain('reftarget="button[data-testid=\\"save\\"]"');
+      expect(result).toContain('{{< interactive/button');
+      expect(result).toContain(`reftarget="button[data-testid='save']" >}}`);
       expect(result).toContain('Click save');
-      expect(result).toContain('{{< /button >}}');
+      expect(result).toContain('{{< /interactive/button >}}');
     });
 
     it('should export a formfill action with value', () => {
       const result = exportSingleStepForWebsite('formfill', 'input[name="query"]', 'prometheus', 'Enter query');
 
-      expect(result).toContain('{{< formfill');
-      expect(result).toContain('reftarget="input[name=\\"query\\"]"');
-      expect(result).toContain('targetvalue="prometheus"');
+      expect(result).toContain('{{< interactive/formfill');
+      expect(result).toContain(`reftarget="input[name='query']"`);
+      expect(result).toContain('targetvalue="prometheus" >}}');
       expect(result).toContain('Enter query');
-      expect(result).toContain('{{< /formfill >}}');
+      expect(result).toContain('{{< /interactive/formfill >}}');
     });
 
     it('should export a highlight action', () => {
       const result = exportSingleStepForWebsite('highlight', 'div.panel', undefined, 'Highlight panel');
 
-      expect(result).toContain('{{< highlight');
-      expect(result).toContain('reftarget="div.panel"');
+      expect(result).toContain('{{< interactive/highlight');
+      expect(result).toContain('reftarget="div.panel" >}}');
       expect(result).toContain('Highlight panel');
-      expect(result).toContain('{{< /highlight >}}');
+      expect(result).toContain('{{< /interactive/highlight >}}');
     });
 
-    it('should escape quotes in selector', () => {
-      const result = exportSingleStepForWebsite('button', 'button[aria-label="My "Button""]');
+    it('should use single quotes in selector arguments to shortcodes', () => {
+      const result = exportSingleStepForWebsite('button', 'button[aria-label="My Button"]');
 
-      expect(result).toContain('reftarget="button[aria-label=\\"My \\"Button\\"\\"]"');
+      expect(result).toContain(`reftarget="button[aria-label='My Button']"`);
     });
   });
 
@@ -71,11 +71,11 @@ describe('website-exporter', () => {
         sequenceId: 'test-sequence',
       });
 
-      expect(result).toContain('{{< sequence id="test-sequence" >}}');
-      expect(result).toContain('{{< button');
-      expect(result).toContain('{{< formfill');
-      expect(result).toContain('targetvalue="Test Name"');
-      expect(result).toContain('{{< /sequence >}}');
+      expect(result).toContain('{{< interactive/sequence id="test-sequence" >}}');
+      expect(result).toContain(`{{< interactive/button reftarget="button[data-testid='add']" >}}`);
+      expect(result).toContain('{{< interactive/formfill');
+      expect(result).toContain(`targetvalue="Test Name" >}}`);
+      expect(result).toContain('{{< /interactive/sequence >}}');
     });
 
     it('should export steps without sequence wrapper', () => {
@@ -90,9 +90,9 @@ describe('website-exporter', () => {
 
       const result = exportStepsForWebsite(steps, { wrapInSequence: false });
 
-      expect(result).not.toContain('{{< sequence');
-      expect(result).toContain('{{< highlight');
-      expect(result).toContain('{{< /highlight >}}');
+      expect(result).not.toContain('{{< interactive/sequence');
+      expect(result).toContain('{{< interactive/highlight reftarget="div.panel" >}}');
+      expect(result).toContain('{{< /interactive/highlight >}}');
     });
 
     it('should include comments for non-unique selectors', () => {
@@ -128,18 +128,18 @@ describe('website-exporter', () => {
 
       const result = exportStepsForWebsite(steps, { wrapInSequence: false });
 
-      expect(result).toContain('{{< multistep >}}');
+      expect(result).toContain('{{< interactive/multistep >}}');
       expect(result).toContain('Perform multiple actions');
-      expect(result).toContain('{{< button reftarget="button[id=\\"first\\"]" />}}');
-      expect(result).toContain('{{< button reftarget="button[id=\\"second\\"]" />}}');
-      expect(result).toContain('{{< /multistep >}}');
+      expect(result).toContain(`{{< interactive/button reftarget="button[id='first']" >}}{{< /interactive/button >}}`);
+      expect(result).toContain(`{{< interactive/button reftarget="button[id='second']" >}}{{< /interactive/button >}}`);
+      expect(result).toContain('{{< /interactive/multistep >}}');
     });
 
     it('should handle empty steps array', () => {
       const result = exportStepsForWebsite([]);
 
-      expect(result).toContain('{{< sequence');
-      expect(result).toContain('{{< /sequence >}}');
+      expect(result).toContain('{{< interactive/sequence');
+      expect(result).toContain('{{< /interactive/sequence >}}');
     });
 
     it('should handle comment and noop actions without reftarget', () => {
@@ -160,10 +160,10 @@ describe('website-exporter', () => {
 
       const result = exportStepsForWebsite(steps, { wrapInSequence: false });
 
-      expect(result).toContain('{{< comment >}}');
+      expect(result).toContain('{{< interactive/comment >}}');
       expect(result).not.toContain('reftarget');
       expect(result).toContain('This is a comment');
-      expect(result).toContain('{{< noop >}}');
+      expect(result).toContain('{{< interactive/noop >}}');
       expect(result).toContain('No operation');
     });
   });

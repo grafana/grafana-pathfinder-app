@@ -11,6 +11,15 @@ import { getConfigWithDefaults, DocsPluginConfig } from './constants';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { isGrafanaDocsUrl, isInteractiveLearningUrl } from './security';
+import {
+  initializeOpenFeature,
+  getFeatureFlagValue,
+  getExperimentConfig,
+  FeatureFlags,
+  ExperimentConfig,
+  matchPathPattern,
+} from './utils/openfeature';
+import { PathfinderFeatureProvider } from './components/OpenFeatureProvider';
 
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // Initialize Faro metrics (before translations to capture early errors)
@@ -20,6 +29,103 @@ import { isGrafanaDocsUrl, isInteractiveLearningUrl } from './security';
 // } catch (e) {
 //   console.error('[Faro] Error initializing frontend metrics:', e);
 // }
+
+// Initialize OpenFeature provider for dynamic feature flag evaluation
+// This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
+// Uses top-level await to ensure flags are ready before evaluation
+try {
+  await initializeOpenFeature();
+} catch (e) {
+  console.error('[OpenFeature] Error initializing feature flags:', e);
+}
+
+// Evaluate A/B experiment config at module load time
+// GOFF returns an object with { variant, pages, resetCache }:
+// - variant "excluded": Not in experiment, normal Pathfinder behavior (sidebar available)
+// - variant "control": In experiment, no sidebar (native Grafana help only)
+// - variant "treatment": In experiment, sidebar auto-opens on target pages
+// - pages: Array of page path prefixes where auto-open should trigger (treatment only)
+// - resetCache: When toggled true, clears session storage to allow sidebar to auto-open again
+const experimentConfig: ExperimentConfig = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+const experimentVariant = experimentConfig.variant;
+
+// Check for manual pop-open reset via resetCache field in experiment config
+// This allows operators to clear the "Clippy protection" sessionStorage via GOFF
+// Uses localStorage to track if the reset has been processed (persists across sessions)
+// Only resets when resetCache transitions from false → true (not on every page load while true)
+const hostname = window.location.hostname;
+const resetProcessedKey = `grafana-pathfinder-pop-open-reset-processed-${hostname}`;
+const resetProcessed = localStorage.getItem(resetProcessedKey);
+
+if (experimentConfig.resetCache) {
+  // resetCache is true - check if we've already processed this reset
+  if (resetProcessed !== 'true') {
+    // First time seeing resetCache as true - clear the sessionStorage keys and mark as processed
+    const autoOpenSessionKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
+    const treatmentSessionKey = `grafana-pathfinder-experiment-treatment-opened-${hostname}`;
+
+    sessionStorage.removeItem(autoOpenSessionKey);
+    sessionStorage.removeItem(treatmentSessionKey);
+    localStorage.setItem(resetProcessedKey, 'true');
+
+    console.log('[Pathfinder] Pop-open reset triggered: cleared auto-open session tracking');
+  }
+} else {
+  // resetCache is false - reset the processed marker so next true triggers a reset
+  if (resetProcessed === 'true') {
+    localStorage.setItem(resetProcessedKey, 'false');
+  }
+}
+const targetPages = experimentConfig.pages;
+
+if (experimentConfig.variant !== 'excluded') {
+  console.log(
+    `[Pathfinder] Experiment config from GOFF: variant="${experimentConfig.variant}", pages=${JSON.stringify(experimentConfig.pages)}`
+  );
+}
+
+// Track experiment entry for BOTH control and treatment variants
+// This fires when users visit target pages, enabling experiment measurement
+// Control group users also get tracked even though they don't see Pathfinder
+if ((experimentVariant === 'control' || experimentVariant === 'treatment') && targetPages.length > 0) {
+  // Check initial page load
+  const initialPath = locationService.getLocation().pathname || window.location.pathname || '';
+  const isOnTargetPage = targetPages.some((targetPath) => matchPathPattern(targetPath, initialPath));
+
+  if (isOnTargetPage) {
+    reportAppInteraction(UserInteraction.ExperimentPageEntered, {
+      experiment_variant: experimentVariant,
+      target_page: initialPath,
+    });
+  }
+
+  // Set up navigation listener for SPA navigation to target pages
+  const trackExperimentNavigation = () => {
+    const newPath = locationService.getLocation().pathname || window.location.pathname || '';
+    const isNewPathTarget = targetPages.some((targetPath) => matchPathPattern(targetPath, newPath));
+
+    if (isNewPathTarget) {
+      reportAppInteraction(UserInteraction.ExperimentPageEntered, {
+        experiment_variant: experimentVariant,
+        target_page: newPath,
+      });
+    }
+  };
+
+  // Listen for Grafana location changes (works across SPA navigation)
+  document.addEventListener('grafana:location-changed', trackExperimentNavigation);
+
+  // Also listen via locationService history API (more reliable for some navigation types)
+  try {
+    const history = locationService.getHistory();
+    if (history) {
+      history.listen(trackExperimentNavigation);
+    }
+  } catch {
+    // Fallback to popstate if history API not available
+    window.addEventListener('popstate', trackExperimentNavigation);
+  }
+}
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
@@ -117,43 +223,82 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   }
 
   // Check if auto-open is enabled
-  // Feature toggle sets the default, but user config always takes precedence
-  const shouldAutoOpen = config.openPanelOnLaunch;
+  // - treatment: auto-open on target pages from GOFF config (or all pages if no target specified)
+  // - excluded: use normal behavior (respect sessionStorage and config settings)
+  // - control: no sidebar is registered, skip auto-open entirely
+  const featureFlagEnabled = getFeatureFlagValue(FeatureFlags.AUTO_OPEN_SIDEBAR_ON_LAUNCH, false);
+  const isTreatment = experimentVariant === 'treatment';
+  const isExcluded = experimentVariant === 'excluded';
 
-  // Auto-open panel if enabled (once per session per instance)
+  // Check if current page matches any target page from GOFF config (treatment only)
+  const location = locationService.getLocation();
+  const currentPath = location.pathname || window.location.pathname || '';
+  const isTargetPage =
+    targetPages.length === 0 || targetPages.some((targetPath) => matchPathPattern(targetPath, currentPath));
+
+  // Determine if we should auto-open:
+  // - Treatment group: auto-open on target pages
+  // - Excluded group: use normal auto-open behavior (respects config/flags)
+  // - Control group: no sidebar, no auto-open
+  const shouldAutoOpen =
+    (isTreatment && isTargetPage) || (isExcluded && (featureFlagEnabled || config.openPanelOnLaunch));
+
+  // Auto-open panel if enabled
   if (shouldAutoOpen) {
     // Include hostname to make this unique per Grafana instance
     // This ensures each Cloud instance (e.g., company1.grafana.net, company2.grafana.net)
     // tracks its own auto-open state independently
     const hostname = window.location.hostname;
     const sessionKey = `grafana-interactive-learning-panel-auto-opened-${hostname}`;
+    // Separate session key for experiment treatment to track once-per-session behavior
+    const treatmentSessionKey = `grafana-pathfinder-experiment-treatment-opened-${hostname}`;
 
-    // Check initial location
-    const location = locationService.getLocation();
-    const currentPath = location.pathname || window.location.pathname || '';
     const isOnboardingFlow = currentPath.includes('/a/grafana-setupguide-app/onboarding-flow');
     const hasAutoOpened = sessionStorage.getItem(sessionKey);
+    const hasTreatmentOpened = sessionStorage.getItem(treatmentSessionKey);
+
+    // Both treatment and excluded respect once-per-session to avoid being "Clippy"
+    // Treatment uses its own session key so it doesn't interfere with normal auto-open
+    const shouldOpenNow = isTreatment ? !hasTreatmentOpened : !hasAutoOpened;
 
     // Auto-open immediately if not on onboarding flow
-    if (!hasAutoOpened && !isOnboardingFlow) {
-      sessionStorage.setItem(sessionKey, 'true');
-      sidebarState.setPendingOpenSource('auto_open');
+    if (shouldOpenNow && !isOnboardingFlow) {
+      if (isTreatment) {
+        sessionStorage.setItem(treatmentSessionKey, 'true');
+      } else {
+        sessionStorage.setItem(sessionKey, 'true');
+      }
+      sidebarState.setPendingOpenSource(isTreatment ? 'experiment_treatment' : 'auto_open');
       attemptAutoOpen(200);
     }
 
     // If user starts on onboarding flow, listen for navigation away from it
-    // This ensures the sidebar opens when they navigate to normal Grafana
-    if (!hasAutoOpened && isOnboardingFlow) {
+    // This ensures the sidebar opens when they navigate to normal Grafana (or target page for treatment)
+    if (shouldOpenNow && isOnboardingFlow) {
       const checkLocationChange = () => {
         const newLocation = locationService.getLocation();
         const newPath = newLocation.pathname || window.location.pathname || '';
         const stillOnOnboarding = newPath.includes('/a/grafana-setupguide-app/onboarding-flow');
         const alreadyOpened = sessionStorage.getItem(sessionKey);
+        const treatmentAlreadyOpened = sessionStorage.getItem(treatmentSessionKey);
 
-        // If we've left onboarding and haven't auto-opened yet, do it now
-        if (!stillOnOnboarding && !alreadyOpened) {
-          sessionStorage.setItem(sessionKey, 'true');
-          sidebarState.setPendingOpenSource('auto_open_after_onboarding');
+        // Check if new path is a target page from GOFF config (for treatment)
+        const isNewPathTargetPage =
+          targetPages.length === 0 || targetPages.some((targetPath) => matchPathPattern(targetPath, newPath));
+
+        // Both treatment and excluded respect once-per-session
+        const shouldOpenAfterOnboarding = isTreatment ? isNewPathTargetPage && !treatmentAlreadyOpened : !alreadyOpened;
+
+        // If we've left onboarding and should open, do it now
+        if (!stillOnOnboarding && shouldOpenAfterOnboarding) {
+          if (isTreatment) {
+            sessionStorage.setItem(treatmentSessionKey, 'true');
+          } else {
+            sessionStorage.setItem(sessionKey, 'true');
+          }
+          sidebarState.setPendingOpenSource(
+            isTreatment ? 'experiment_treatment_after_onboarding' : 'auto_open_after_onboarding'
+          );
           attemptAutoOpen(500); // Slightly longer delay after navigation
         }
       };
@@ -175,122 +320,170 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       }
     }
   }
+
+  // Treatment variant: If user starts on a non-target page, listen for navigation to target pages
+  // This ensures auto-open triggers when they navigate to a target page (e.g., from home to Synthetic Monitoring)
+  // But only if we haven't already opened this session (once-per-session behavior)
+  if (isTreatment && !isTargetPage && targetPages.length > 0) {
+    const hostname = window.location.hostname;
+    const treatmentSessionKey = `grafana-pathfinder-experiment-treatment-opened-${hostname}`;
+
+    const checkNavigationToTargetPage = () => {
+      // Check if treatment has already triggered this session
+      const treatmentAlreadyOpened = sessionStorage.getItem(treatmentSessionKey);
+      if (treatmentAlreadyOpened) {
+        return; // Already opened once this session, don't be Clippy
+      }
+
+      const newLocation = locationService.getLocation();
+      const newPath = newLocation.pathname || window.location.pathname || '';
+
+      // Check if new path matches any target page
+      const isNewPathTargetPage = targetPages.some((targetPath) => matchPathPattern(targetPath, newPath));
+
+      if (isNewPathTargetPage) {
+        sessionStorage.setItem(treatmentSessionKey, 'true');
+        sidebarState.setPendingOpenSource('experiment_treatment_navigation');
+        attemptAutoOpen(300);
+      }
+    };
+
+    // Listen for Grafana location changes
+    document.addEventListener('grafana:location-changed', checkNavigationToTargetPage);
+
+    // Also listen via locationService history API
+    try {
+      const history = locationService.getHistory();
+      if (history) {
+        const unlisten = history.listen(checkNavigationToTargetPage);
+        (window as any).__pathfinderTreatmentNavUnlisten = unlisten;
+      }
+    } catch (error) {
+      window.addEventListener('popstate', checkNavigationToTargetPage);
+    }
+  }
 };
 
 export { plugin };
 
-plugin.addComponent({
-  targets: `grafana/extension-sidebar/v0-alpha`,
-  title: 'Interactive learning',
-  description: 'Opens Interactive learning',
-  component: function ContextSidebar() {
-    // Get plugin configuration
-    const pluginContext = usePluginContext();
-    const config = useMemo(() => {
-      const rawJsonData = pluginContext?.meta?.jsonData || {};
-      const configWithDefaults = getConfigWithDefaults(rawJsonData);
+// Register sidebar for everyone EXCEPT control group
+// - excluded: normal behavior (sidebar available)
+// - control: no sidebar (native Grafana help only)
+// - treatment: sidebar + auto-open on target pages
+if (experimentVariant !== 'control') {
+  plugin.addComponent({
+    targets: `grafana/extension-sidebar/v0-alpha`,
+    title: 'Interactive learning',
+    description: 'Opens Interactive learning',
+    component: function ContextSidebar() {
+      // Get plugin configuration
+      const pluginContext = usePluginContext();
+      const config = useMemo(() => {
+        const rawJsonData = pluginContext?.meta?.jsonData || {};
+        const configWithDefaults = getConfigWithDefaults(rawJsonData);
 
-      return configWithDefaults;
-    }, [pluginContext?.meta?.jsonData]);
+        return configWithDefaults;
+      }, [pluginContext?.meta?.jsonData]);
 
-    // Set global config for utility functions (including auto-open logic)
-    useEffect(() => {
-      (window as any).__pathfinderPluginConfig = config;
-    }, [config]);
+      // Set global config for utility functions (including auto-open logic)
+      useEffect(() => {
+        (window as any).__pathfinderPluginConfig = config;
+      }, [config]);
 
-    // Process queued docs links when sidebar mounts
-    useEffect(() => {
-      sidebarState.setIsSidebarMounted(true);
+      // Process queued docs links when sidebar mounts
+      useEffect(() => {
+        sidebarState.setIsSidebarMounted(true);
 
-      // Track sidebar open via component mount
-      // consumePendingOpenSource() returns the source set before opening, or 'sidebar_toggle' as default
-      const openSource = sidebarState.consumePendingOpenSource();
-      reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-        action: 'open',
-        source: openSource,
+        // Track sidebar open via component mount
+        // consumePendingOpenSource() returns the source set before opening, or 'sidebar_toggle' as default
+        const openSource = sidebarState.consumePendingOpenSource();
+        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+          action: 'open',
+          source: openSource,
+        });
+
+        // Fire custom event when sidebar component mounts
+        const mountEvent = new CustomEvent('pathfinder-sidebar-mounted', {
+          detail: {
+            timestamp: Date.now(),
+          },
+        });
+        window.dispatchEvent(mountEvent);
+
+        return () => {
+          sidebarState.setIsSidebarMounted(false);
+
+          // Track sidebar close via component unmount
+          reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+            action: 'close',
+            source: 'sidebar_toggle',
+          });
+        };
+      }, []);
+
+      return (
+        <PathfinderFeatureProvider>
+          <Suspense fallback={<LoadingPlaceholder text="" />}>
+            <LazyMemoizedContextPanel />
+          </Suspense>
+        </PathfinderFeatureProvider>
+      );
+    },
+  });
+
+  plugin.addLink({
+    title: 'Open Interactive learning',
+    description: 'Open Interactive learning',
+    targets: [PluginExtensionPoints.CommandPalette],
+    onClick: () => {
+      sidebarState.setPendingOpenSource('command_palette');
+      sidebarState.openSidebar('Interactive learning', {
+        origin: 'command_palette',
         timestamp: Date.now(),
       });
+    },
+  });
 
-      // Fire custom event when sidebar component mounts
-      const mountEvent = new CustomEvent('pathfinder-sidebar-mounted', {
-        detail: {
-          timestamp: Date.now(),
-        },
+  plugin.addLink({
+    title: 'Need help?',
+    description: 'Get help with Grafana',
+    targets: [PluginExtensionPoints.CommandPalette],
+    onClick: () => {
+      sidebarState.setPendingOpenSource('command_palette_help');
+      sidebarState.openSidebar('Interactive learning', {
+        origin: 'command_palette_help',
+        timestamp: Date.now(),
       });
-      window.dispatchEvent(mountEvent);
+    },
+  });
 
-      return () => {
-        sidebarState.setIsSidebarMounted(false);
+  plugin.addLink({
+    title: 'Learn Grafana',
+    description: 'Learn how to use Grafana',
+    targets: [PluginExtensionPoints.CommandPalette],
+    onClick: () => {
+      sidebarState.setPendingOpenSource('command_palette_learn');
+      sidebarState.openSidebar('Interactive learning', {
+        origin: 'command_palette_learn',
+        timestamp: Date.now(),
+      });
+    },
+  });
 
-        // Track sidebar close via component unmount
-        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-          action: 'close',
-          source: 'sidebar_toggle',
-          timestamp: Date.now(),
-        });
+  plugin.addLink({
+    targets: `grafana/extension-sidebar/v0-alpha`,
+    title: 'Documentation-Link',
+    description: 'Opens Interactive learning',
+    configure: () => {
+      return {
+        icon: 'question-circle',
+        description: 'Opens Interactive learning',
+        title: 'Interactive learning',
       };
-    }, []);
-
-    return (
-      <Suspense fallback={<LoadingPlaceholder text="" />}>
-        <LazyMemoizedContextPanel />
-      </Suspense>
-    );
-  },
-});
-
-plugin.addLink({
-  title: 'Open Interactive learning',
-  description: 'Open Interactive learning',
-  targets: [PluginExtensionPoints.CommandPalette],
-  onClick: () => {
-    sidebarState.setPendingOpenSource('command_palette');
-    sidebarState.openSidebar('Interactive learning', {
-      origin: 'command_palette',
-      timestamp: Date.now(),
-    });
-  },
-});
-
-plugin.addLink({
-  title: 'Need help?',
-  description: 'Get help with Grafana',
-  targets: [PluginExtensionPoints.CommandPalette],
-  onClick: () => {
-    sidebarState.setPendingOpenSource('command_palette_help');
-    sidebarState.openSidebar('Interactive learning', {
-      origin: 'command_palette_help',
-      timestamp: Date.now(),
-    });
-  },
-});
-
-plugin.addLink({
-  title: 'Learn Grafana',
-  description: 'Learn how to use Grafana',
-  targets: [PluginExtensionPoints.CommandPalette],
-  onClick: () => {
-    sidebarState.setPendingOpenSource('command_palette_learn');
-    sidebarState.openSidebar('Interactive learning', {
-      origin: 'command_palette_learn',
-      timestamp: Date.now(),
-    });
-  },
-});
-
-plugin.addLink({
-  targets: `grafana/extension-sidebar/v0-alpha`,
-  title: 'Documentation-Link',
-  description: 'Opens Interactive learning',
-  configure: () => {
-    return {
-      icon: 'question-circle',
-      description: 'Opens Interactive learning',
-      title: 'Interactive learning',
-    };
-  },
-  onClick: () => {},
-});
+    },
+    onClick: () => {},
+  });
+}
 
 interface DocPage {
   type: 'docs-page' | 'learning-journey';
