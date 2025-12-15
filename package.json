@@ -91,8 +91,9 @@
   "dependencies": {
     "@emotion/css": "11.13.5",
     "@grafana/assistant": "^0.1.7",
-    "@openfeature/ofrep-web-provider": "^0.3.3",
+    "@openfeature/ofrep-web-provider": "^0.3.5",
     "@openfeature/react-sdk": "^0.4.0",
+    "@openfeature/web-sdk": "^1.7.2",
     "@grafana/data": "^12.2.1",
     "@grafana/faro-react": "^2.0.2",
     "@grafana/faro-web-tracing": "^2.0.2",

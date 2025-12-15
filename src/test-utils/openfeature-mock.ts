@@ -19,13 +19,15 @@
  * });
  */
 
+import type { JsonValue } from '@openfeature/web-sdk';
+
 // Store for mock flag values
-const mockFlagValues: Record<string, boolean | string | number> = {};
+const mockFlagValues: Record<string, boolean | string | number | JsonValue> = {};
 
 /**
  * Set a mock feature flag value
  */
-export const setMockFeatureFlag = (flagName: string, value: boolean | string | number): void => {
+export const setMockFeatureFlag = (flagName: string, value: boolean | string | number | JsonValue): void => {
   mockFlagValues[flagName] = value;
 };
 
@@ -39,11 +41,66 @@ export const clearMockFeatureFlags = (): void => {
 /**
  * Get a mock feature flag value
  */
-export const getMockFeatureFlag = (
+export const getMockFeatureFlag = <T extends boolean | string | number | JsonValue>(
   flagName: string,
-  defaultValue: boolean | string | number
-): boolean | string | number => {
-  return flagName in mockFlagValues ? mockFlagValues[flagName] : defaultValue;
+  defaultValue: T
+): T => {
+  return (flagName in mockFlagValues ? mockFlagValues[flagName] : defaultValue) as T;
+};
+
+/**
+ * Mock ClientProviderStatus enum matching @openfeature/web-sdk
+ */
+export const MockClientProviderStatus = {
+  NOT_READY: 'NOT_READY',
+  READY: 'READY',
+  ERROR: 'ERROR',
+  STALE: 'STALE',
+} as const;
+
+/**
+ * Mock ProviderEvents enum matching @openfeature/web-sdk
+ */
+export const MockProviderEvents = {
+  Ready: 'PROVIDER_READY',
+  Error: 'PROVIDER_ERROR',
+  ConfigurationChanged: 'PROVIDER_CONFIGURATION_CHANGED',
+  Stale: 'PROVIDER_STALE',
+} as const;
+
+/**
+ * Create mock for @openfeature/web-sdk
+ *
+ * Use this in jest.mock() calls:
+ * @example
+ * jest.mock('@openfeature/web-sdk', () => require('../test-utils/openfeature-mock').createWebSdkMock());
+ */
+export const createWebSdkMock = () => {
+  const mockClient = {
+    getBooleanValue: jest.fn(
+      (flag: string, defaultValue: boolean) => getMockFeatureFlag(flag, defaultValue) as boolean
+    ),
+    getStringValue: jest.fn((flag: string, defaultValue: string) => getMockFeatureFlag(flag, defaultValue) as string),
+    getNumberValue: jest.fn((flag: string, defaultValue: number) => getMockFeatureFlag(flag, defaultValue) as number),
+    getObjectValue: jest.fn(
+      (flag: string, defaultValue: JsonValue) => getMockFeatureFlag(flag, defaultValue) as JsonValue
+    ),
+    addHooks: jest.fn(),
+    providerStatus: MockClientProviderStatus.READY,
+    addHandler: jest.fn(),
+  };
+
+  return {
+    OpenFeature: {
+      setProvider: jest.fn(),
+      setProviderAndWait: jest.fn().mockResolvedValue(undefined),
+      getProvider: jest.fn(() => ({ name: 'mock' })),
+      getClient: jest.fn(() => mockClient),
+    },
+    ClientProviderStatus: MockClientProviderStatus,
+    ProviderEvents: MockProviderEvents,
+    mockClient, // Export for direct access in tests
+  };
 };
 
 /**
@@ -51,23 +108,10 @@ export const getMockFeatureFlag = (
  *
  * Use this in jest.mock() calls:
  * @example
- * jest.mock('@openfeature/react-sdk', () => require('../test-utils/openfeature-mock').createOpenFeatureMock());
+ * jest.mock('@openfeature/react-sdk', () => require('../test-utils/openfeature-mock').createReactSdkMock());
  */
-export const createOpenFeatureMock = () => {
-  const mockClient = {
-    getBooleanValue: jest.fn(
-      (flag: string, defaultValue: boolean) => getMockFeatureFlag(flag, defaultValue) as boolean
-    ),
-    getStringValue: jest.fn((flag: string, defaultValue: string) => getMockFeatureFlag(flag, defaultValue) as string),
-    getNumberValue: jest.fn((flag: string, defaultValue: number) => getMockFeatureFlag(flag, defaultValue) as number),
-  };
-
+export const createReactSdkMock = () => {
   return {
-    OpenFeature: {
-      setProvider: jest.fn(),
-      getProvider: jest.fn(() => ({ name: 'mock' })),
-      getClient: jest.fn(() => mockClient),
-    },
     OpenFeatureProvider: ({ children }: { children: React.ReactNode }) => children,
     useBooleanFlagValue: jest.fn(
       (flag: string, defaultValue: boolean) => getMockFeatureFlag(flag, defaultValue) as boolean
@@ -78,6 +122,25 @@ export const createOpenFeatureMock = () => {
     useNumberFlagValue: jest.fn(
       (flag: string, defaultValue: number) => getMockFeatureFlag(flag, defaultValue) as number
     ),
+  };
+};
+
+/**
+ * Create mock for @openfeature/react-sdk (legacy alias)
+ *
+ * @deprecated Use createReactSdkMock() for React SDK hooks and createWebSdkMock() for OpenFeature core
+ *
+ * Use this in jest.mock() calls:
+ * @example
+ * jest.mock('@openfeature/react-sdk', () => require('../test-utils/openfeature-mock').createOpenFeatureMock());
+ */
+export const createOpenFeatureMock = () => {
+  const webSdkMock = createWebSdkMock();
+  const reactSdkMock = createReactSdkMock();
+
+  return {
+    ...webSdkMock,
+    ...reactSdkMock,
   };
 };
 
