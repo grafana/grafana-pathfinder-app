@@ -57,6 +57,9 @@ export enum UserInteraction {
 
   // A/B Experiment Tracking
   ExperimentPageEntered = 'experiment_page_entered',
+
+  // Feature Flag Tracking
+  FeatureFlagEvaluated = 'feature_flag_evaluated',
 }
 
 // ============================================================================
