@@ -125,6 +125,7 @@ function scrollToFragment(fragment: string, container: HTMLElement): void {
 interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
+  onGuideComplete?: () => void;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement>;
 }
@@ -142,17 +143,122 @@ const hideSelectionStyle = css`
 export const ContentRenderer = React.memo(function ContentRenderer({
   content,
   onContentReady,
+  onGuideComplete,
   className,
   containerRef,
 }: ContentRendererProps) {
   const internalRef = useRef<HTMLDivElement>(null);
   const activeRef = containerRef || internalRef;
+  const guideCompleteCalledRef = useRef(false);
 
   // Text selection tracking for assistant integration
   const selectionState = useTextSelection(activeRef);
 
   // Build document context for assistant
   const documentContext = React.useMemo(() => buildDocumentContext(content), [content]);
+
+  // Store completedSections in a ref so it persists across effect re-runs
+  // (inline callbacks in parent cause effect to re-mount - R12 anti-pattern protection)
+  const completedSectionsRef = useRef<Set<string>>(new Set());
+
+  // Store onGuideComplete in a ref so we can use the latest version without it
+  // causing the event listener effect to re-mount (which would lose tracked sections)
+  const onGuideCompleteRef = useRef(onGuideComplete);
+  useEffect(() => {
+    onGuideCompleteRef.current = onGuideComplete;
+  }, [onGuideComplete]);
+
+  // Reset tracking state when content changes (new guide = fresh start)
+  useEffect(() => {
+    guideCompleteCalledRef.current = false;
+    completedSectionsRef.current = new Set();
+  }, [content?.url]);
+
+  // Track interactive section completions for guide-level completion
+  // Use debounced check to ensure DOM is stable before counting sections
+  useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // Count interactive sections from the DOM
+    const countSections = (): number => {
+      const container = activeRef.current;
+      if (!container) {
+        return 0;
+      }
+      const sections = container.querySelectorAll('[data-interactive-section="true"]');
+      return sections.length;
+    };
+
+    // Debounced completion check to ensure DOM is fully rendered
+    const debouncedCompletionCheck = () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      debounceTimer = setTimeout(() => {
+        if (guideCompleteCalledRef.current) {
+          return;
+        }
+        const totalSections = countSections();
+        if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
+          guideCompleteCalledRef.current = true;
+          onGuideCompleteRef.current?.();
+        }
+      }, 100); // Small delay to ensure DOM is stable
+    };
+
+    const handleSectionComplete = (event: Event) => {
+      const { sectionId } = (event as CustomEvent).detail;
+      completedSectionsRef.current.add(sectionId);
+
+      // Count sections at the time of completion to ensure accurate count
+      const totalSections = countSections();
+
+      // Check if all sections complete - trigger immediately if count is accurate
+      if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
+        if (!guideCompleteCalledRef.current && onGuideCompleteRef.current) {
+          guideCompleteCalledRef.current = true;
+          onGuideCompleteRef.current();
+        }
+      } else {
+        // If count seems off, use debounced check as fallback
+        debouncedCompletionCheck();
+      }
+    };
+
+    // Fallback: also check completion state when individual steps complete
+    // This catches edge cases where section completion events aren't fired properly
+    const handleStepComplete = () => {
+      // Check if all sections are now completed by examining DOM state
+      const container = activeRef.current;
+      if (!container || guideCompleteCalledRef.current) {
+        return;
+      }
+
+      const sections = container.querySelectorAll('[data-interactive-section="true"]');
+      if (sections.length === 0) {
+        return;
+      }
+
+      // Check each section's completion state via CSS class
+      const allComplete = Array.from(sections).every((section) => section.classList.contains('completed'));
+
+      if (allComplete) {
+        guideCompleteCalledRef.current = true;
+        onGuideCompleteRef.current?.();
+      }
+    };
+
+    window.addEventListener('interactive-section-completed', handleSectionComplete);
+    window.addEventListener('interactive-step-completed', handleStepComplete);
+
+    return () => {
+      window.removeEventListener('interactive-section-completed', handleSectionComplete);
+      window.removeEventListener('interactive-step-completed', handleStepComplete);
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+    };
+  }, [activeRef, content?.url]); // Removed onGuideComplete - using ref instead
 
   // Expose current content key globally for interactive persistence
   useEffect(() => {

@@ -55,6 +55,10 @@ export enum UserInteraction {
   AssistantTextSelectionMade = 'assistant_text_selection_made',
   AssistantAskButtonClick = 'assistant_ask_button_click',
 
+  // Learning Paths & Gamification
+  LearningPathProgress = 'learning_path_progress',
+  BadgeUnlocked = 'badge_unlocked',
+
   // A/B Experiment Tracking
   ExperimentPageEntered = 'experiment_page_entered',
 

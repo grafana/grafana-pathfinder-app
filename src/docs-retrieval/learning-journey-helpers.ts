@@ -10,7 +10,7 @@ import {
   RelatedJourneys,
   ConclusionImage,
 } from './content.types';
-import { journeyCompletionStorage } from '../lib/user-storage';
+import { journeyCompletionStorage, learningProgressStorage } from '../lib/user-storage';
 
 /**
  * Navigation helpers - these work with metadata, not DOM
@@ -332,10 +332,23 @@ export async function getJourneyCompletionPercentageAsync(journeyBaseUrl: string
 export function setJourneyCompletionPercentage(journeyBaseUrl: string, percentage: number): void {
   // Fire and forget - storage handles errors internally
   journeyCompletionStorage.set(journeyBaseUrl, percentage);
+
+  // Update learning paths progress when a bundled guide reaches 100%
+  if (percentage >= 100 && journeyBaseUrl.startsWith('bundled:')) {
+    const guideId = journeyBaseUrl.replace('bundled:', '');
+    // Fire and forget - learning paths storage handles errors internally
+    learningProgressStorage.markGuideCompleted(guideId);
+  }
 }
 
 export async function setJourneyCompletionPercentageAsync(journeyBaseUrl: string, percentage: number): Promise<void> {
-  return journeyCompletionStorage.set(journeyBaseUrl, percentage);
+  await journeyCompletionStorage.set(journeyBaseUrl, percentage);
+
+  // Update learning paths progress when a bundled guide reaches 100%
+  if (percentage >= 100 && journeyBaseUrl.startsWith('bundled:')) {
+    const guideId = journeyBaseUrl.replace('bundled:', '');
+    await learningProgressStorage.markGuideCompleted(guideId);
+  }
 }
 
 export function clearJourneyCompletion(journeyBaseUrl: string): void {
