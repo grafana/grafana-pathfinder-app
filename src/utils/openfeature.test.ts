@@ -50,9 +50,13 @@ const createMockOpenFeature = () => {
   const defaultProvider = { name: 'default' };
   const domainProviders: Record<string, any> = {};
 
+  // API-level addHooks mock
+  const apiAddHooks = jest.fn();
+
   return {
     mockClient,
     domainProviders,
+    apiAddHooks,
     // Web SDK exports
     OpenFeature: {
       setProviderAndWait: jest.fn((domain: string, provider: any) => {
@@ -69,6 +73,7 @@ const createMockOpenFeature = () => {
         return defaultProvider;
       }),
       getClient: jest.fn(() => mockClient),
+      addHooks: apiAddHooks,
     },
     ClientProviderStatus: {
       NOT_READY: 'NOT_READY',
@@ -173,7 +178,7 @@ describe('openfeature', () => {
       });
     });
 
-    it('should add TrackingHook to client after provider is ready', async () => {
+    it('should add TrackingHook at API level after provider is ready', async () => {
       await jest.isolateModulesAsync(async () => {
         const mockOF = createMockOpenFeature();
         const mockReact = createMockReactSdk();
@@ -183,8 +188,8 @@ describe('openfeature', () => {
         const { initializeOpenFeature } = require('./openfeature');
         await initializeOpenFeature();
 
-        // TrackingHook should be added once during initialization
-        expect(mockOF.mockClient.addHooks).toHaveBeenCalledTimes(1);
+        // TrackingHook should be added at API level (not client level) during initialization
+        expect(mockOF.apiAddHooks).toHaveBeenCalledTimes(1);
       });
     });
 

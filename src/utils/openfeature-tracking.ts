@@ -20,10 +20,18 @@ export class TrackingHook implements Hook {
   /**
    * Called after a flag is successfully evaluated
    *
+   * Only processes flags with the 'pathfinder.' prefix to avoid intercepting
+   * other plugins' flag evaluations when using API-level hooks.
+   *
    * @param hookContext - Context about the flag evaluation
    * @param evaluationDetails - Details about the evaluated flag value
    */
   after(hookContext: HookContext, evaluationDetails: EvaluationDetails<JsonValue>): void {
+    // Only process pathfinder flags - ignore other plugins' flags
+    if (!hookContext.flagKey.startsWith('pathfinder.')) {
+      return;
+    }
+
     const flagKey = hookContext.flagKey as FeatureFlagName;
     const flagDef = pathfinderFeatureFlags[flagKey];
 
