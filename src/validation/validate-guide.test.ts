@@ -171,7 +171,9 @@ describe('JsonGuideSchema', () => {
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should reject formfill without targetvalue', () => {
+    it('should accept formfill without targetvalue when validateInput is not set', () => {
+      // With validateInput toggle, formfill without targetvalue is now valid
+      // (any non-empty input will complete the step)
       const guide = JSON.stringify({
         id: 'test',
         title: 'Test',
@@ -181,6 +183,24 @@ describe('JsonGuideSchema', () => {
             action: 'formfill',
             reftarget: '[data-testid="input"]',
             content: 'Fill this',
+          },
+        ],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject formfill with validateInput: true but no targetvalue', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'interactive',
+            action: 'formfill',
+            reftarget: '[data-testid="input"]',
+            content: 'Fill this',
+            validateInput: true,
           },
         ],
       });
