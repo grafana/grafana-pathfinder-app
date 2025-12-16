@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback } from 'react';
-import { Button, Field, Input, Modal, TagsInput, useStyles2 } from '@grafana/ui';
+import { Button, Field, Input, Modal, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import type { BlockEditorState } from './types';
@@ -61,30 +61,6 @@ export function GuideMetadataForm({ isOpen, guide, onUpdate, onClose }: GuideMet
     [onUpdate]
   );
 
-  const handleUrlPrefixChange = useCallback(
-    (tags: string[]) => {
-      onUpdate({
-        match: {
-          ...guide.match,
-          urlPrefix: tags,
-        },
-      });
-    },
-    [guide.match, onUpdate]
-  );
-
-  const handleTagsChange = useCallback(
-    (tags: string[]) => {
-      onUpdate({
-        match: {
-          ...guide.match,
-          tags,
-        },
-      });
-    },
-    [guide.match, onUpdate]
-  );
-
   return (
     <Modal title="Guide Settings" isOpen={isOpen} onDismiss={onClose}>
       <div className={styles.form}>
@@ -96,21 +72,6 @@ export function GuideMetadataForm({ isOpen, guide, onUpdate, onClose }: GuideMet
 
         <Field label="Title" description="Display title shown to users" required>
           <Input value={guide.title} onChange={handleTitleChange} placeholder="My Guide Title" />
-        </Field>
-
-        <Field
-          label="URL Prefixes"
-          description="URL paths where this guide should be recommended (e.g., /dashboards, /explore)"
-        >
-          <TagsInput
-            tags={guide.match?.urlPrefix ?? []}
-            onChange={handleUrlPrefixChange}
-            placeholder="Add URL prefix..."
-          />
-        </Field>
-
-        <Field label="Tags" description="Tags for categorization and filtering">
-          <TagsInput tags={guide.match?.tags ?? []} onChange={handleTagsChange} placeholder="Add tag..." />
         </Field>
 
         <div className={styles.footer}>

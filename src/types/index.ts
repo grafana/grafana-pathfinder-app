@@ -29,5 +29,8 @@ export * from './requirements.types';
 // JSON guide types
 export * from './json-guide.types';
 
+// Learning paths and badges types
+export * from './learning-paths.types';
+
 // Re-export content types from docs-retrieval for convenience
 export * from '../docs-retrieval/content.types';

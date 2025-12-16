@@ -14,7 +14,7 @@ import { validateGuide, formatFileSize } from './block-export';
 const GITHUB_REPO_OWNER = 'grafana';
 const GITHUB_REPO_NAME = 'interactive-tutorials';
 const GITHUB_BRANCH = 'main';
-const GUIDES_PATH = 'guides';
+const CONTENT_FILENAME = 'content.json';
 
 /**
  * Result of preparing a GitHub PR
@@ -26,6 +26,8 @@ export interface PRCreationResult {
   message: string;
   /** Data for creating the PR */
   data?: {
+    /** Sanitized guide ID (folder name in the repository) */
+    guideId: string;
     /** Filename for the guide */
     filename: string;
     /** Full path in the repository */
@@ -161,8 +163,9 @@ export async function prepareGitHubPR(guide: JsonGuide): Promise<PRCreationResul
     // 2. Prepare JSON and file info
     // Use pretty-printed JSON for clipboard so it's readable
     const json = JSON.stringify(guide, null, 2);
-    const filename = `${sanitizeFilename(guide.id)}.json`;
-    const filePath = `${GUIDES_PATH}/${filename}`;
+    const guideFolder = sanitizeFilename(guide.id);
+    const filename = CONTENT_FILENAME;
+    const filePath = `${guideFolder}/${filename}`;
     const byteSize = new Blob([json]).size;
     const formattedSize = formatFileSize(byteSize);
 
@@ -175,9 +178,10 @@ export async function prepareGitHubPR(guide: JsonGuide): Promise<PRCreationResul
     return {
       status: 'ready',
       message: copiedToClipboard
-        ? `Ready to create PR for "${filename}"`
-        : `Ready to create PR for "${filename}" (clipboard copy failed - copy manually)`,
+        ? `Ready to create PR for "${filePath}"`
+        : `Ready to create PR for "${filePath}" (clipboard copy failed - copy manually)`,
       data: {
+        guideId: guideFolder,
         filename,
         filePath,
         json,

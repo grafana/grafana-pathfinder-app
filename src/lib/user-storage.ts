@@ -37,6 +37,35 @@
 
 import { usePluginUserStorage } from '@grafana/runtime';
 import { useCallback, useRef, useEffect } from 'react';
+import { z } from 'zod';
+
+import type { LearningProgress, EarnedBadgeRecord } from '../types/learning-paths.types';
+import { reportAppInteraction, UserInteraction } from './analytics';
+
+// ============================================================================
+// LEARNING PROGRESS SCHEMA (for defense-in-depth validation)
+// ============================================================================
+
+const EarnedBadgeRecordSchema = z.object({
+  id: z.string(),
+  earnedAt: z.number(),
+});
+
+const LearningProgressSchema = z.object({
+  completedGuides: z.array(z.string()),
+  earnedBadges: z.array(EarnedBadgeRecordSchema),
+  streakDays: z.number(),
+  lastActivityDate: z.string(),
+  pendingCelebrations: z.array(z.string()),
+});
+
+const DEFAULT_PROGRESS: LearningProgress = {
+  completedGuides: [],
+  earnedBadges: [],
+  streakDays: 0,
+  lastActivityDate: '',
+  pendingCelebrations: [],
+};
 
 // ============================================================================
 // STORAGE KEYS
@@ -55,6 +84,8 @@ export const StorageKeys = {
   FULLSCREEN_BUNDLED_STEPS: 'grafana-pathfinder-app-fullscreen-bundled-steps',
   FULLSCREEN_BUNDLING_ACTION: 'grafana-pathfinder-app-fullscreen-bundling-action',
   FULLSCREEN_SECTION_INFO: 'grafana-pathfinder-app-fullscreen-section-info',
+  // Learning paths and badges progress
+  LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
   // Dev tools recording state persistence
   DEVTOOLS_RECORDING_STATE: 'grafana-pathfinder-app-devtools-recording-state',
 } as const;
@@ -310,7 +341,12 @@ function createHybridStorage(grafanaStorage: any): UserStorage {
 async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
   try {
     // Get all our storage keys
-    const keysToSync = [StorageKeys.JOURNEY_COMPLETION, StorageKeys.TABS, StorageKeys.ACTIVE_TAB];
+    const keysToSync = [
+      StorageKeys.JOURNEY_COMPLETION,
+      StorageKeys.TABS,
+      StorageKeys.ACTIVE_TAB,
+      StorageKeys.LEARNING_PROGRESS,
+    ];
 
     for (const key of keysToSync) {
       try {
@@ -359,17 +395,22 @@ async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
             }
           }
           // If timestamps are equal, they're in sync
-        } else if (hasGrafanaTimestamp) {
-          // Only Grafana has timestamp
+        } else if (hasGrafanaTimestamp && !hasLocalData) {
+          // Only Grafana has timestamp AND localStorage is empty
           if (hasGrafanaData) {
             // Grafana has data - use it
             localStorage.setItem(key, grafanaValue);
             localStorage.setItem(getTimestampKey(key), grafanaTimestampStr);
-          } else {
-            // Grafana has deletion - apply it
-            localStorage.removeItem(key);
-            localStorage.setItem(getTimestampKey(key), grafanaTimestampStr);
           }
+          // Don't apply Grafana deletions if localStorage never had data
+        } else if (hasGrafanaTimestamp && hasLocalData) {
+          // Grafana has timestamp but localStorage has un-timestamped data
+          // PRESERVE localStorage data - it was likely written before hybrid storage was set up
+          // Assign it a timestamp and sync to Grafana
+          const nowTimestamp = Date.now().toString();
+          localStorage.setItem(getTimestampKey(key), nowTimestamp);
+          await grafanaStorage.setItem(key, localValue);
+          await grafanaStorage.setItem(getTimestampKey(key), nowTimestamp);
         } else if (hasLocalTimestamp) {
           // Only localStorage has timestamp
           if (hasLocalData) {
@@ -381,8 +422,14 @@ async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
             await grafanaStorage.setItem(key, '');
             await grafanaStorage.setItem(getTimestampKey(key), localTimestampStr);
           }
+        } else if (hasLocalData) {
+          // localStorage has data but no timestamp - assign one and sync to Grafana
+          const nowTimestamp = Date.now().toString();
+          localStorage.setItem(getTimestampKey(key), nowTimestamp);
+          await grafanaStorage.setItem(key, localValue);
+          await grafanaStorage.setItem(getTimestampKey(key), nowTimestamp);
         }
-        // If neither has timestamp, nothing to sync
+        // If neither has data, nothing to sync
       } catch (error) {
         console.warn(`Failed to sync key from Grafana storage: ${key}`, error);
       }
@@ -918,6 +965,232 @@ export const fullScreenModeStorage = {
       ]);
     } catch (error) {
       console.warn('Failed to clear full screen mode state:', error);
+    }
+  },
+};
+
+// ============================================================================
+// LEARNING PROGRESS STORAGE
+// ============================================================================
+
+/**
+ * Learning progress storage operations
+ *
+ * Manages learning paths progress, earned badges, and streak tracking.
+ * Designed for future migration to Grafana user storage.
+ */
+export const learningProgressStorage = {
+  /**
+   * Gets the current learning progress with Zod validation for defense-in-depth
+   * against corrupted localStorage data
+   */
+  async get(): Promise<LearningProgress> {
+    try {
+      const storage = createUserStorage();
+      const stored = await storage.getItem<unknown>(StorageKeys.LEARNING_PROGRESS);
+
+      if (!stored) {
+        return DEFAULT_PROGRESS;
+      }
+
+      // Validate stored data against schema to protect against corruption
+      const parsed = LearningProgressSchema.safeParse(stored);
+      if (parsed.success) {
+        return parsed.data;
+      }
+
+      // Log validation failure for debugging but return defaults gracefully
+      console.warn('Learning progress validation failed, using defaults:', parsed.error.issues);
+      return DEFAULT_PROGRESS;
+    } catch {
+      return DEFAULT_PROGRESS;
+    }
+  },
+
+  /**
+   * Updates learning progress with partial data
+   */
+  async update(updates: Partial<LearningProgress>): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const current = await learningProgressStorage.get();
+      const updated = { ...current, ...updates };
+      await storage.setItem(StorageKeys.LEARNING_PROGRESS, updated);
+    } catch (error) {
+      console.warn('Failed to update learning progress:', error);
+    }
+  },
+
+  /**
+   * Marks a guide as completed and checks for badge awards
+   * Does not add duplicates
+   * Dispatches events to notify listeners
+   * REACT: handle errors explicitly (R10)
+   */
+  async markGuideCompleted(guideId: string): Promise<void> {
+    try {
+      // Import badge checking utilities dynamically to avoid circular deps
+      const { getBadgesToAward, getBadgeById } = await import('../learning-paths/badges');
+      const pathsData = await import('../learning-paths/paths.json');
+      // Cast paths to correct type (JSON import has string literals, we need the union type)
+      type LearningPath = import('../types/learning-paths.types').LearningPath;
+      const paths = pathsData.paths as unknown as LearningPath[];
+
+      const progress = await learningProgressStorage.get();
+      if (!progress.completedGuides.includes(guideId)) {
+        progress.completedGuides.push(guideId);
+
+        // Calculate and update streak before changing lastActivityDate
+        const { calculateUpdatedStreak } = await import('../learning-paths/streak-tracker');
+        const today = new Date().toISOString().split('T')[0];
+        progress.streakDays = calculateUpdatedStreak(progress.streakDays, progress.lastActivityDate);
+        progress.lastActivityDate = today;
+
+        // Track badges awarded in THIS call only
+        const newlyAwardedBadges: string[] = [];
+
+        // Check for ALL badges that should be awarded (including path completion)
+        const badgesToAward = getBadgesToAward(progress, paths);
+
+        for (const badgeId of badgesToAward) {
+          if (!progress.earnedBadges.some((b) => b.id === badgeId)) {
+            progress.earnedBadges.push({ id: badgeId, earnedAt: Date.now() });
+            if (!progress.pendingCelebrations.includes(badgeId)) {
+              progress.pendingCelebrations.push(badgeId);
+            }
+            newlyAwardedBadges.push(badgeId);
+
+            // Track badge unlock analytics
+            const badge = getBadgeById(badgeId);
+            reportAppInteraction(UserInteraction.BadgeUnlocked, {
+              badge_id: badgeId,
+              badge_title: badge?.title || badgeId,
+              trigger_type: badge?.trigger?.type || 'unknown',
+            });
+          }
+        }
+
+        await learningProgressStorage.update(progress);
+
+        // Notify listeners that progress has changed
+        // Only include badges awarded in THIS call, not all pending celebrations
+        window.dispatchEvent(
+          new CustomEvent('learning-progress-updated', {
+            detail: {
+              type: 'guide-completed',
+              guideId,
+              newBadges: newlyAwardedBadges,
+              progress: { ...progress }, // Clone to prevent mutation issues
+            },
+          })
+        );
+      }
+    } catch (error) {
+      console.error('Failed to mark guide as completed:', error);
+      // Still dispatch event so UI doesn't hang waiting for completion
+      window.dispatchEvent(
+        new CustomEvent('learning-progress-updated', {
+          detail: {
+            type: 'guide-completed',
+            guideId,
+            newBadges: [],
+            error: true,
+          },
+        })
+      );
+    }
+  },
+
+  /**
+   * Awards a badge to the user
+   * Does not add duplicates, adds to pending celebrations
+   */
+  async awardBadge(badgeId: string): Promise<boolean> {
+    try {
+      const progress = await learningProgressStorage.get();
+      const alreadyEarned = progress.earnedBadges.some((b) => b.id === badgeId);
+
+      if (!alreadyEarned) {
+        const record: EarnedBadgeRecord = {
+          id: badgeId,
+          earnedAt: Date.now(),
+        };
+        progress.earnedBadges.push(record);
+        progress.pendingCelebrations.push(badgeId);
+        await learningProgressStorage.update(progress);
+        return true; // Badge was newly awarded
+      }
+      return false; // Badge already earned
+    } catch (error) {
+      console.warn('Failed to award badge:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Removes a badge from pending celebrations (after showing toast)
+   */
+  async dismissCelebration(badgeId: string): Promise<void> {
+    try {
+      const progress = await learningProgressStorage.get();
+      progress.pendingCelebrations = progress.pendingCelebrations.filter((id) => id !== badgeId);
+      await learningProgressStorage.update(progress);
+    } catch (error) {
+      console.warn('Failed to dismiss celebration:', error);
+    }
+  },
+
+  /**
+   * Updates streak information
+   */
+  async updateStreak(streakDays: number, lastActivityDate: string): Promise<void> {
+    try {
+      await learningProgressStorage.update({ streakDays, lastActivityDate });
+    } catch (error) {
+      console.warn('Failed to update streak:', error);
+    }
+  },
+
+  /**
+   * Checks if a badge has been earned
+   */
+  async hasBadge(badgeId: string): Promise<boolean> {
+    try {
+      const progress = await learningProgressStorage.get();
+      return progress.earnedBadges.some((b) => b.id === badgeId);
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Checks if a guide has been completed
+   */
+  async hasCompletedGuide(guideId: string): Promise<boolean> {
+    try {
+      const progress = await learningProgressStorage.get();
+      return progress.completedGuides.includes(guideId);
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Clears all learning progress (for testing/reset)
+   */
+  async clear(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(StorageKeys.LEARNING_PROGRESS);
+
+      // Notify listeners that progress has been reset
+      window.dispatchEvent(
+        new CustomEvent('learning-progress-updated', {
+          detail: { type: 'reset' },
+        })
+      );
+    } catch (error) {
+      console.warn('Failed to clear learning progress:', error);
     }
   },
 };

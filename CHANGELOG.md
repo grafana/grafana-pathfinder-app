@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.3.0
+
+### Added
+
+- **My Learning tab**: New gamified learning experience with structured learning paths and achievement badges (#443)
+  - **Learning paths**: Curated sequences of guides that teach specific skills (e.g., "Getting started with Grafana", "Observability basics")
+  - **Progress tracking**: Visual progress rings show completion percentage for each learning path
+  - **Achievement badges**: Earn badges like "Grafana Fundamentals" and "Observability Pioneer" upon completing learning paths
+  - **Streak tracking**: Daily learning streaks to encourage consistent engagement
+  - **Badge unlocked toasts**: Celebratory notifications when you earn a new badge
+  - **Badges display**: View all earned badges and progress toward locked ones
+  - **Legacy support**: Existing guide completions are migrated to the new learning paths system
+- **Experiment tools**: Added experiment management tools to dev tools panel (#442)
+
+### Changed
+
+- **Improved tab bar UX**: Enhanced tab navigation with better visual design and interaction patterns
+
+### Fixed
+
+- Fixed security issue with guide handler
+
+## 1.2.2
+
+### Changed
+
+- **Improved OpenFeature implementation**: Enhanced feature flag integration for better experiment control (#441)
+
 ## 1.2.1
 
 ### Added

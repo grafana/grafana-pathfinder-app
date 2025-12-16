@@ -46,3 +46,34 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 4. `interactive-engine/interactive.hook.ts` (useInteractiveElements) → Handle "show me"/"do it" events, check requirements, highlight/automate UI elements
 5. `requirements-manager/step-checker.hook.ts` → Validate requirements and objectives
 6. Render in tab with progress tracking
+
+## Gamification System Architecture
+
+**Data Flow**:
+- Guide completion → `user-storage.ts:markGuideCompleted()` → Check badges → Update streak → Dispatch events
+- `useLearningPaths` hook → Subscribes to events → Updates React state
+- Badge toasts queued and shown sequentially
+
+**Key Components**:
+- `LearningPathCard` → Collapsible card with progress ring, expandable guide list
+- `BadgeUnlockedToast` → Celebratory modal with confetti, auto-dismiss with queue support
+- `ProgressRing` → SVG circular progress indicator with gradient stroke
+- `StreakIndicator` → Fire emoji with day count display
+
+**Badge Triggers**:
+- `guide-completed` → Any/specific guide completion
+- `path-completed` → All guides in a path finished
+- `streak` → Consecutive days of activity (3-day, 7-day milestones)
+
+**Learning Paths Critical Path**:
+1. `learning-paths/paths.json` → Define learning paths with ordered guide sequences
+2. `learning-paths/badges.ts` → Badge definitions and trigger conditions
+3. `learning-paths/streak-tracker.ts` → Daily streak calculation logic
+4. `learning-paths/learning-paths.hook.ts` → Main React hook for state management
+5. `lib/user-storage.ts:learningProgressStorage` → Persists progress in localStorage
+6. `components/LearningPaths/MyLearningTab.tsx` → Main UI for gamified experience
+7. Progress events dispatched via `learning-progress-updated` CustomEvent
+
+**Analytics Events**:
+- `learning_path_progress` → Tracks path interaction with completion %
+- `badge_unlocked` → Tracks badge awards with trigger type

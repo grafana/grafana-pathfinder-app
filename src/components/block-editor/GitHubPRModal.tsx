@@ -15,9 +15,8 @@ import { prepareGitHubPR, openGitHub, type PRCreationResult } from './utils/gith
 /**
  * Generate a PR description template with instructions for the reviewer
  */
-function getPRDescriptionTemplate(filename: string, guideTitle: string): string {
-  const guideId = filename.replace('.json', '');
-  const guideUrl = `https://interactive-learning.grafana.net/guides/${guideId}`;
+function getPRDescriptionTemplate(guideId: string, guideTitle: string): string {
+  const guideUrl = `https://interactive-learning.grafana.net/${guideId}/content.json`;
 
   return `## New interactive guide: ${guideTitle}
 
@@ -310,7 +309,7 @@ export function GitHubPRModal({ isOpen, guide, onClose }: GitHubPRModalProps) {
 
         <div className={styles.infoBox}>
           <span>
-            <span className={styles.infoValue}>{data.filename}</span>
+            <span className={styles.infoValue}>{data.filePath}</span>
           </span>
           <span>·</span>
           <span>{data.formattedSize}</span>
@@ -345,7 +344,7 @@ export function GitHubPRModal({ isOpen, guide, onClose }: GitHubPRModalProps) {
               variant="secondary"
               icon="copy"
               onClick={() => {
-                const template = getPRDescriptionTemplate(data.filename, guide.title);
+                const template = getPRDescriptionTemplate(data.guideId, guide.title);
                 navigator.clipboard.writeText(template);
               }}
               tooltip="Copy PR description"
@@ -353,7 +352,7 @@ export function GitHubPRModal({ isOpen, guide, onClose }: GitHubPRModalProps) {
               Copy
             </Button>
           </div>
-          <pre className={styles.prDescriptionPreview}>{getPRDescriptionTemplate(data.filename, guide.title)}</pre>
+          <pre className={styles.prDescriptionPreview}>{getPRDescriptionTemplate(data.guideId, guide.title)}</pre>
         </div>
       </>
     );

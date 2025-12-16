@@ -1,7 +1,7 @@
 // Combined Learning Journey and Docs Panel
 // Post-refactoring unified component using new content system only
 
-import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy, Component, ReactNode } from 'react';
 import { SceneObjectBase, SceneComponentProps } from '@grafana/scenes';
 import { IconButton, Alert, Icon, useStyles2, Button, ButtonGroup } from '@grafana/ui';
 
@@ -28,7 +28,7 @@ import {
   UserInteraction,
   getContentTypeForAnalytics,
 } from '../../lib/analytics';
-import { tabStorage, useUserStorage } from '../../lib/user-storage';
+import { tabStorage, useUserStorage, learningProgressStorage } from '../../lib/user-storage';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { SkeletonLoader } from '../SkeletonLoader';
 
@@ -44,18 +44,52 @@ import {
 import { getJourneyProgress, setJourneyCompletionPercentage } from '../../docs-retrieval/learning-journey-helpers';
 
 import { ContextPanel } from './context-panel';
+import { MyLearningTab, BadgeUnlockedToast } from '../LearningPaths';
+import { getBadgeById } from '../../learning-paths';
 
 import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../styles/docs-panel.styles';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import logoSvg from '../../img/logo.svg';
 import { PresenterControls, AttendeeJoin, HandRaiseButton, HandRaiseIndicator, HandRaiseQueue } from '../LiveSession';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import type { AttendeeMode } from '../../types/collaboration.types';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { testIds } from '../testIds';
+
+// REACT: Error boundary for MyLearningTab to prevent panel crashes (R6)
+interface MyLearningErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class MyLearningErrorBoundary extends Component<{ children: ReactNode }, MyLearningErrorBoundaryState> {
+  state: MyLearningErrorBoundaryState = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error): MyLearningErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('MyLearningTab error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 16, textAlign: 'center' }}>
+          <Icon name="exclamation-triangle" size="xl" />
+          <p style={{ marginTop: 8 }}>Unable to load learning progress</p>
+          <Button size="sm" variant="secondary" onClick={() => this.setState({ hasError: false, error: null })}>
+            Try again
+          </Button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Use the properly extracted styles
 const getStyles = getComponentStyles;
@@ -76,6 +110,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
       {
         id: 'recommendations',
         title: 'Recommendations',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+      },
+      {
+        id: 'my-learning',
+        title: 'My learning',
         baseUrl: '',
         currentUrl: '',
         content: null,
@@ -246,7 +289,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   private async saveTabsToStorage(): Promise<void> {
     try {
       const tabsToSave: PersistedTabData[] = this.state.tabs
-        .filter((tab) => tab.id !== 'recommendations')
+        .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning' && tab.id !== 'devtools')
         .map((tab) => ({
           id: tab.id,
           title: tab.title,
@@ -643,6 +686,62 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const [isHandRaised, setIsHandRaised] = React.useState(false);
   const [showHandRaiseQueue, setShowHandRaiseQueue] = React.useState(false);
   const handRaiseIndicatorRef = React.useRef<HTMLDivElement>(null);
+
+  // Global badge celebration queue - shows toasts sequentially when badges are earned
+  const [badgeCelebrationQueue, setBadgeCelebrationQueue] = React.useState<string[]>([]);
+  const [currentCelebrationBadge, setCurrentCelebrationBadge] = React.useState<string | null>(null);
+  const isProcessingQueueRef = React.useRef(false);
+
+  // Process the badge queue - show next badge toast
+  React.useEffect(() => {
+    if (badgeCelebrationQueue.length > 0 && !currentCelebrationBadge && !isProcessingQueueRef.current) {
+      isProcessingQueueRef.current = true;
+      // Small delay before showing next toast for better UX
+      const timer = setTimeout(
+        () => {
+          const [nextBadge, ...remaining] = badgeCelebrationQueue;
+          setBadgeCelebrationQueue(remaining);
+          setCurrentCelebrationBadge(nextBadge);
+          isProcessingQueueRef.current = false;
+        },
+        currentCelebrationBadge === null ? 0 : 500
+      ); // No delay for first, 500ms between subsequent
+
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [badgeCelebrationQueue, currentCelebrationBadge]);
+
+  // Listen for badge award events globally (only set up once)
+  React.useEffect(() => {
+    const handleProgressUpdate = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+
+      // Check for new badges from guide completion
+      if (detail?.type === 'guide-completed' && detail?.newBadges?.length > 0) {
+        // Add all new badges to the queue (cap at 3 to avoid overwhelming)
+        const newBadges = detail.newBadges.slice(0, 3) as string[];
+        setBadgeCelebrationQueue((prev) => [...prev, ...newBadges]);
+      }
+    };
+
+    window.addEventListener('learning-progress-updated', handleProgressUpdate);
+
+    return () => {
+      window.removeEventListener('learning-progress-updated', handleProgressUpdate);
+    };
+  }, []);
+
+  // Handle dismissing the current badge celebration
+  const handleDismissGlobalCelebration = React.useCallback(async () => {
+    const badgeId = currentCelebrationBadge;
+    if (badgeId) {
+      // Clear current badge to trigger showing next in queue
+      setCurrentCelebrationBadge(null);
+      // Then persist dismissal to storage
+      await learningProgressStorage.dismissCelebration(badgeId);
+    }
+  }, [currentCelebrationBadge]);
   const {
     isActive: isSessionActive,
     sessionRole,
@@ -746,6 +845,27 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only run once after mount, tabs checked at mount time
 
+  // Ensure devtools tab exists when dev mode is enabled (permanent tab)
+  React.useEffect(() => {
+    if (isDevMode) {
+      const hasDevToolsTab = tabs.some((t) => t.id === 'devtools');
+      if (!hasDevToolsTab) {
+        // Add devtools tab without switching to it
+        const devToolsTab: LearningJourneyTab = {
+          id: 'devtools',
+          title: 'Dev Tools',
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+          type: 'devtools',
+        };
+        model.setState({ tabs: [...tabs, devToolsTab] });
+      }
+    }
+  }, [isDevMode, tabs, model]);
+
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
   React.useEffect(() => {
@@ -807,58 +927,77 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   const [containerWidth, setContainerWidth] = useState<number>(0);
 
   // Dynamic tab visibility calculation based on container width
+  // Note: Permanent tabs (recommendations, my-learning) are now rendered separately as icon tabs
   const calculateTabVisibility = useCallback(() => {
-    if (tabs.length === 0) {
-      setVisibleTabs([]);
+    // Filter out permanent tabs - they're rendered separately as icons
+    const guideTabs = tabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools');
+
+    if (guideTabs.length === 0) {
+      setVisibleTabs(tabs); // Keep all tabs in state for reference
       setOverflowedTabs([]);
       return;
     }
 
     // If we don't have container width yet, show minimal tabs
     if (containerWidth === 0) {
-      setVisibleTabs(tabs.slice(0, 1)); // Just Recommendations
-      setOverflowedTabs(tabs.slice(1));
+      setVisibleTabs(tabs);
+      setOverflowedTabs([]);
       return;
     }
 
     // Note: chevron button width is already reserved in containerWidth calculation
     const tabSpacing = 4; // Gap between tabs (theme.spacing(0.5))
 
-    // Use a more practical minimum: each tab needs at least 100px to be readable
+    // Use a more practical minimum: each tab needs at least 80px to be readable
     // With flex layout, tabs will grow to fill available space proportionally
-    const minTabWidth = 100; // Minimum readable width per tab
+    const minTabWidth = 80; // Minimum readable width per tab
 
-    // The containerWidth already has chevron space reserved
-    const availableWidth = containerWidth;
+    // Account for: permanent tabs (~72px) + divider (~8px) + actions (~50px)
+    const reservedWidth = 130;
+    const availableWidth = Math.max(0, containerWidth - reservedWidth);
 
-    // Determine how many tabs can fit
-    let maxVisibleTabs = 1; // Always show at least Recommendations
-    let widthUsed = minTabWidth; // Start with first tab (Recommendations)
+    // Determine how many guide tabs can fit
+    let maxVisibleGuideTabs = 0;
+    let widthUsed = 0;
 
-    // Try to fit additional tabs
-    for (let i = 1; i < tabs.length; i++) {
+    // Try to fit guide tabs
+    for (let i = 0; i < guideTabs.length; i++) {
       const tabWidth = minTabWidth + tabSpacing;
       const spaceNeeded = widthUsed + tabWidth;
 
       if (spaceNeeded <= availableWidth) {
-        maxVisibleTabs++;
+        maxVisibleGuideTabs++;
         widthUsed += tabWidth;
       } else {
         break;
       }
     }
 
-    // Ensure active tab is visible if possible
-    const activeTabIndex = tabs.findIndex((t) => t.id === activeTabId);
-    if (activeTabIndex >= maxVisibleTabs && maxVisibleTabs > 1) {
-      // Swap active tab into visible range
-      const visibleTabsArray = [...tabs.slice(0, maxVisibleTabs - 1), tabs[activeTabIndex]];
-      const overflowTabsArray = [...tabs.slice(maxVisibleTabs - 1, activeTabIndex), ...tabs.slice(activeTabIndex + 1)];
-      setVisibleTabs(visibleTabsArray);
-      setOverflowedTabs(overflowTabsArray);
+    // Always show at least 1 guide tab if any exist
+    maxVisibleGuideTabs = Math.max(maxVisibleGuideTabs, Math.min(1, guideTabs.length));
+
+    // Find the active guide tab (if any)
+    const activeGuideTabIndex = guideTabs.findIndex((t) => t.id === activeTabId);
+
+    if (activeGuideTabIndex >= maxVisibleGuideTabs) {
+      // Active guide tab is in overflow, swap it into visible range
+      const visibleGuideTabsArray = [...guideTabs.slice(0, maxVisibleGuideTabs - 1), guideTabs[activeGuideTabIndex]];
+      const overflowGuideTabsArray = [
+        ...guideTabs.slice(maxVisibleGuideTabs - 1, activeGuideTabIndex),
+        ...guideTabs.slice(activeGuideTabIndex + 1),
+      ];
+      setVisibleTabs([
+        ...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'),
+        ...visibleGuideTabsArray,
+      ]);
+      setOverflowedTabs(overflowGuideTabsArray);
     } else {
-      setVisibleTabs(tabs.slice(0, maxVisibleTabs));
-      setOverflowedTabs(tabs.slice(maxVisibleTabs));
+      // Normal case - show as many tabs as fit (at least 1 if any exist)
+      setVisibleTabs([
+        ...tabs.filter((t) => t.id === 'recommendations' || t.id === 'my-learning'),
+        ...guideTabs.slice(0, maxVisibleGuideTabs),
+      ]);
+      setOverflowedTabs(guideTabs.slice(maxVisibleGuideTabs));
     }
   }, [tabs, containerWidth, activeTabId]);
 
@@ -1193,290 +1332,286 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       data-pathfinder-content="true"
       data-testid={testIds.docsPanel.container}
     >
-      <div className={styles.headerBar} data-testid={testIds.docsPanel.headerBar}>
-        <img src={logoSvg} alt="" width={20} height={20} />
-        <div className={styles.headerRight}>
-          <IconButton
-            name="cog"
-            size="sm"
-            tooltip={t('docsPanel.settings', 'Plugin settings')}
-            onClick={() => {
-              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                action: 'navigate_to_config',
-                source: 'header_settings_button',
-              });
-              locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
-            }}
-            aria-label={t('docsPanel.settings', 'Plugin settings')}
-            data-testid={testIds.docsPanel.settingsButton}
-          />
-          <div className={styles.headerDivider} />
-          <IconButton
-            name="times"
-            size="sm"
-            tooltip={t('docsPanel.closeSidebar', 'Close sidebar')}
-            onClick={() => {
-              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                action: 'close_sidebar',
-                source: 'header_close_button',
-              });
-              // Close the extension sidebar
-              const appEvents = getAppEvents();
-              appEvents.publish({
-                type: 'close-extension-sidebar',
-                payload: {},
-              });
-            }}
-            aria-label="Close sidebar"
-            data-testid={testIds.docsPanel.closeButton}
-          />
-        </div>
-      </div>
-      <div className={styles.topBar}>
-        <div className={styles.liveSessionButtons}>
-          {!isSessionActive && isLiveSessionsEnabled && (
-            <>
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="users-alt"
-                onClick={() => setShowPresenterControls(true)}
-                tooltip="Start a live session to broadcast your actions to attendees"
-              >
-                Start live session
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="user"
-                onClick={() => setShowAttendeeJoin(true)}
-                tooltip="Join an existing live session"
-              >
-                Join live session
-              </Button>
-            </>
-          )}
-          {isSessionActive && sessionRole === 'presenter' && (
-            <>
-              <Button size="sm" variant="primary" icon="circle" onClick={() => setShowPresenterControls(true)}>
-                Session active
-              </Button>
-              <div ref={handRaiseIndicatorRef}>
-                <HandRaiseIndicator count={handRaises.length} onClick={() => setShowHandRaiseQueue(true)} />
-              </div>
-            </>
-          )}
-          {isSessionActive && sessionRole === 'attendee' && (
-            <Alert title="" severity="success" style={{ margin: 0, padding: '8px 12px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Icon name="check-circle" />
-                  <span style={{ fontWeight: 500 }}>Connected to: {sessionInfo?.config.name || 'Live session'}</span>
+      {/* Live session controls - only render when there's session content */}
+      {(isLiveSessionsEnabled || isSessionActive) && (
+        <div className={styles.topBar}>
+          <div className={styles.liveSessionButtons}>
+            {!isSessionActive && isLiveSessionsEnabled && (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="users-alt"
+                  onClick={() => setShowPresenterControls(true)}
+                  tooltip="Start a live session to broadcast your actions to attendees"
+                >
+                  Start live session
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="user"
+                  onClick={() => setShowAttendeeJoin(true)}
+                  tooltip="Join an existing live session"
+                >
+                  Join live session
+                </Button>
+              </>
+            )}
+            {isSessionActive && sessionRole === 'presenter' && (
+              <>
+                <Button size="sm" variant="primary" icon="circle" onClick={() => setShowPresenterControls(true)}>
+                  Session active
+                </Button>
+                <div ref={handRaiseIndicatorRef}>
+                  <HandRaiseIndicator count={handRaises.length} onClick={() => setShowHandRaiseQueue(true)} />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '12px', color: 'rgba(204, 204, 220, 0.85)' }}>Mode:</span>
-                  <ButtonGroup>
+              </>
+            )}
+            {isSessionActive && sessionRole === 'attendee' && (
+              <Alert title="" severity="success" style={{ margin: 0, padding: '8px 12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Icon name="check-circle" />
+                    <span style={{ fontWeight: 500 }}>Connected to: {sessionInfo?.config.name || 'Live session'}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '12px', color: 'rgba(204, 204, 220, 0.85)' }}>Mode:</span>
+                    <ButtonGroup>
+                      <Button
+                        size="sm"
+                        variant={attendeeMode === 'guided' ? 'primary' : 'secondary'}
+                        onClick={() => {
+                          if (attendeeMode !== 'guided') {
+                            const newMode: AttendeeMode = 'guided';
+                            // Update session state
+                            setAttendeeMode(newMode);
+                            // Update ActionReplaySystem
+                            if (actionReplayRef.current) {
+                              actionReplayRef.current.setMode(newMode);
+                            }
+                            // Send mode change to presenter
+                            if (sessionManager) {
+                              sessionManager.sendToPresenter({
+                                type: 'mode_change',
+                                sessionId: sessionInfo?.sessionId || '',
+                                timestamp: Date.now(),
+                                senderId: sessionManager.getRole() || 'attendee',
+                                mode: newMode,
+                              } as any);
+                            }
+                            console.log('[DocsPanel] Switched to Guided mode');
+                          }
+                        }}
+                        tooltip="Only see highlights when presenter clicks Show Me"
+                      >
+                        Guided
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={attendeeMode === 'follow' ? 'primary' : 'secondary'}
+                        onClick={() => {
+                          if (attendeeMode !== 'follow') {
+                            const newMode: AttendeeMode = 'follow';
+                            // Update session state
+                            setAttendeeMode(newMode);
+                            // Update ActionReplaySystem
+                            if (actionReplayRef.current) {
+                              actionReplayRef.current.setMode(newMode);
+                            }
+                            // Send mode change to presenter
+                            if (sessionManager) {
+                              sessionManager.sendToPresenter({
+                                type: 'mode_change',
+                                sessionId: sessionInfo?.sessionId || '',
+                                timestamp: Date.now(),
+                                senderId: sessionManager.getRole() || 'attendee',
+                                mode: newMode,
+                              } as any);
+                            }
+                            console.log('[DocsPanel] Switched to Follow mode');
+                          }
+                        }}
+                        tooltip="Execute actions automatically when presenter clicks Do It"
+                      >
+                        Follow
+                      </Button>
+                    </ButtonGroup>
+                    <HandRaiseButton isRaised={isHandRaised} onToggle={handleHandRaiseToggle} />
                     <Button
                       size="sm"
-                      variant={attendeeMode === 'guided' ? 'primary' : 'secondary'}
+                      variant="secondary"
+                      icon="times"
                       onClick={() => {
-                        if (attendeeMode !== 'guided') {
-                          const newMode: AttendeeMode = 'guided';
-                          // Update session state
-                          setAttendeeMode(newMode);
-                          // Update ActionReplaySystem
-                          if (actionReplayRef.current) {
-                            actionReplayRef.current.setMode(newMode);
-                          }
-                          // Send mode change to presenter
-                          if (sessionManager) {
-                            sessionManager.sendToPresenter({
-                              type: 'mode_change',
-                              sessionId: sessionInfo?.sessionId || '',
-                              timestamp: Date.now(),
-                              senderId: sessionManager.getRole() || 'attendee',
-                              mode: newMode,
-                            } as any);
-                          }
-                          console.log('[DocsPanel] Switched to Guided mode');
+                        if (confirm('Leave this live session?')) {
+                          endSession();
                         }
                       }}
-                      tooltip="Only see highlights when presenter clicks Show Me"
+                      tooltip="Leave the live session"
                     >
-                      Guided
+                      Leave
                     </Button>
-                    <Button
-                      size="sm"
-                      variant={attendeeMode === 'follow' ? 'primary' : 'secondary'}
-                      onClick={() => {
-                        if (attendeeMode !== 'follow') {
-                          const newMode: AttendeeMode = 'follow';
-                          // Update session state
-                          setAttendeeMode(newMode);
-                          // Update ActionReplaySystem
-                          if (actionReplayRef.current) {
-                            actionReplayRef.current.setMode(newMode);
-                          }
-                          // Send mode change to presenter
-                          if (sessionManager) {
-                            sessionManager.sendToPresenter({
-                              type: 'mode_change',
-                              sessionId: sessionInfo?.sessionId || '',
-                              timestamp: Date.now(),
-                              senderId: sessionManager.getRole() || 'attendee',
-                              mode: newMode,
-                            } as any);
-                          }
-                          console.log('[DocsPanel] Switched to Follow mode');
-                        }
-                      }}
-                      tooltip="Execute actions automatically when presenter clicks Do It"
-                    >
-                      Follow
-                    </Button>
-                  </ButtonGroup>
-                  <HandRaiseButton isRaised={isHandRaised} onToggle={handleHandRaiseToggle} />
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon="times"
-                    onClick={() => {
-                      if (confirm('Leave this live session?')) {
-                        endSession();
-                      }
-                    }}
-                    tooltip="Leave the live session"
-                  >
-                    Leave
-                  </Button>
+                  </div>
                 </div>
-              </div>
-            </Alert>
+              </Alert>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab bar - always show permanent tabs, show guide tabs when open */}
+      <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
+        {/* Permanent icon-only tabs */}
+        <div className={styles.permanentTabs}>
+          <button
+            className={`${styles.iconTab} ${activeTabId === 'recommendations' ? styles.iconTabActive : ''}`}
+            onClick={() => model.setActiveTab('recommendations')}
+            title={t('docsPanel.recommendations', 'Recommendations')}
+            data-testid={testIds.docsPanel.recommendationsTab}
+          >
+            <Icon name="document-info" size="md" />
+          </button>
+          <button
+            className={`${styles.iconTab} ${activeTabId === 'my-learning' ? styles.iconTabActive : ''}`}
+            onClick={() => model.setActiveTab('my-learning')}
+            title={t('docsPanel.myLearning', 'My learning')}
+            data-testid={testIds.docsPanel.tab('my-learning')}
+          >
+            <Icon name="book-open" size="md" />
+          </button>
+          {isDevMode && (
+            <button
+              className={`${styles.iconTab} ${activeTabId === 'devtools' ? styles.iconTabActive : ''}`}
+              onClick={() => model.setActiveTab('devtools')}
+              title={t('docsPanel.devTools', 'Dev tools')}
+              data-testid={testIds.docsPanel.tab('devtools')}
+            >
+              <Icon name="bug" size="md" />
+            </button>
           )}
         </div>
-        {/* Only show tab bar if there are multiple tabs (more than just Recommendations) */}
-        {tabs.length > 1 && (
-          <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
-            <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
-              {visibleTabs.map((tab) => {
-                const getTranslatedTitle = (title: string) => {
-                  if (title === 'Recommendations') {
-                    return t('docsPanel.recommendations', 'Recommendations');
-                  }
-                  if (title === 'Learning journey') {
-                    return t('docsPanel.learningJourney', 'Learning journey');
-                  }
-                  if (title === 'Documentation') {
-                    return t('docsPanel.documentation', 'Documentation');
-                  }
-                  return title; // Custom titles stay as-is
-                };
 
-                return (
-                  <button
-                    key={tab.id}
-                    className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
-                    onClick={() => model.setActiveTab(tab.id)}
-                    title={getTranslatedTitle(tab.title)}
-                    data-testid={
-                      tab.id === 'recommendations'
-                        ? testIds.docsPanel.recommendationsTab
-                        : testIds.docsPanel.tab(tab.id)
-                    }
-                  >
-                    <div className={styles.tabContent}>
-                      {tab.id !== 'recommendations' && (
-                        <Icon
-                          name={tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
-                          size="xs"
-                          className={styles.tabIcon}
-                        />
-                      )}
-                      <span className={styles.tabTitle}>
-                        {tab.isLoading ? (
-                          <>
-                            <Icon name="sync" size="xs" />
-                            <span>{t('docsPanel.loading', 'Loading...')}</span>
-                          </>
-                        ) : (
-                          getTranslatedTitle(tab.title)
-                        )}
-                      </span>
-                      {tab.id !== 'recommendations' && (
-                        <IconButton
-                          name="times"
-                          size="sm"
-                          aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
-                            title: getTranslatedTitle(tab.title),
-                          })}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            reportAppInteraction(UserInteraction.CloseTabClick, {
-                              content_type: getContentTypeForAnalytics(
-                                tab.currentUrl || tab.baseUrl,
-                                tab.type || 'learning-journey'
-                              ),
-                              tab_title: tab.title,
-                              content_url: tab.currentUrl || tab.baseUrl,
-                              interaction_location: 'tab_button',
-                              ...(tab.type === 'learning-journey' &&
-                                tab.content && {
-                                  completion_percentage: getJourneyProgress(tab.content),
-                                  current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                                  total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                                }),
-                            });
-                            model.closeTab(tab.id);
-                          }}
-                          className={styles.closeButton}
-                          data-testid={testIds.docsPanel.tabCloseButton(tab.id)}
-                        />
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+        {/* Divider - only show when there are guide tabs */}
+        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools').length >
+          0 && <div className={styles.tabDivider} />}
 
-            {overflowedTabs.length > 0 && (
-              <div className={styles.tabOverflow}>
+        {/* Guide tabs with titles */}
+        <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
+          {visibleTabs
+            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning' && tab.id !== 'devtools')
+            .map((tab) => {
+              const getTranslatedTitle = (title: string) => {
+                if (title === 'Learning journey') {
+                  return t('docsPanel.learningJourney', 'Learning journey');
+                }
+                if (title === 'Documentation') {
+                  return t('docsPanel.documentation', 'Documentation');
+                }
+                return title; // Custom titles stay as-is
+              };
+
+              return (
                 <button
-                  ref={chevronButtonRef}
-                  className={`${styles.tab} ${styles.chevronTab}`}
-                  onClick={() => {
-                    if (!isDropdownOpen) {
-                      dropdownOpenTimeRef.current = Date.now();
-                    }
-                    setIsDropdownOpen(!isDropdownOpen);
-                  }}
-                  aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', { count: overflowedTabs.length })}
-                  aria-expanded={isDropdownOpen}
-                  aria-haspopup="true"
-                  data-testid={testIds.docsPanel.tabOverflowButton}
+                  key={tab.id}
+                  className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
+                  onClick={() => model.setActiveTab(tab.id)}
+                  title={getTranslatedTitle(tab.title)}
+                  data-testid={testIds.docsPanel.tab(tab.id)}
                 >
                   <div className={styles.tabContent}>
-                    <Icon name="angle-right" size="sm" className={styles.chevronIcon} />
+                    {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.tabIcon} />}
                     <span className={styles.tabTitle}>
-                      {t('docsPanel.moreTabs', '{{count}} more', { count: overflowedTabs.length })}
+                      {tab.isLoading ? (
+                        <>
+                          <Icon name="sync" size="xs" />
+                          <span>{t('docsPanel.loading', 'Loading...')}</span>
+                        </>
+                      ) : (
+                        getTranslatedTitle(tab.title)
+                      )}
                     </span>
+                    <IconButton
+                      name="times"
+                      size="sm"
+                      aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
+                        title: getTranslatedTitle(tab.title),
+                      })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        reportAppInteraction(UserInteraction.CloseTabClick, {
+                          content_type: getContentTypeForAnalytics(
+                            tab.currentUrl || tab.baseUrl,
+                            tab.type || 'learning-journey'
+                          ),
+                          tab_title: tab.title,
+                          content_url: tab.currentUrl || tab.baseUrl,
+                          interaction_location: 'tab_button',
+                          ...(tab.type === 'learning-journey' &&
+                            tab.content && {
+                              completion_percentage: getJourneyProgress(tab.content),
+                              current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
+                              total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
+                            }),
+                        });
+                        model.closeTab(tab.id);
+                      }}
+                      className={styles.closeButton}
+                      data-testid={testIds.docsPanel.tabCloseButton(tab.id)}
+                    />
                   </div>
                 </button>
-              </div>
-            )}
+              );
+            })}
+        </div>
 
-            {isDropdownOpen && overflowedTabs.length > 0 && (
-              <div
-                ref={dropdownRef}
-                className={styles.tabDropdown}
-                role="menu"
-                aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
-                data-testid={testIds.docsPanel.tabDropdown}
-              >
-                {overflowedTabs.map((tab) => {
+        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools')
+          .length > 0 && (
+          <div className={styles.tabOverflow}>
+            <button
+              ref={chevronButtonRef}
+              className={`${styles.tab} ${styles.chevronTab}`}
+              onClick={() => {
+                if (!isDropdownOpen) {
+                  dropdownOpenTimeRef.current = Date.now();
+                }
+                setIsDropdownOpen(!isDropdownOpen);
+              }}
+              aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', {
+                count: overflowedTabs.filter(
+                  (t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools'
+                ).length,
+              })}
+              aria-expanded={isDropdownOpen}
+              aria-haspopup="true"
+              data-testid={testIds.docsPanel.tabOverflowButton}
+            >
+              <Icon name="angle-down" size="sm" />
+              <span>
+                +
+                {
+                  overflowedTabs.filter(
+                    (t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools'
+                  ).length
+                }
+              </span>
+            </button>
+          </div>
+        )}
+
+        {isDropdownOpen &&
+          overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools')
+            .length > 0 && (
+            <div
+              ref={dropdownRef}
+              className={styles.tabDropdown}
+              role="menu"
+              aria-label={t('docsPanel.moreTabsMenu', 'More tabs')}
+              data-testid={testIds.docsPanel.tabDropdown}
+            >
+              {overflowedTabs
+                .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning' && tab.id !== 'devtools')
+                .map((tab) => {
                   const getTranslatedTitle = (title: string) => {
-                    if (title === 'Recommendations') {
-                      return t('docsPanel.recommendations', 'Recommendations');
-                    }
                     if (title === 'Learning Journey') {
                       return t('docsPanel.learningJourney', 'Learning Journey');
                     }
@@ -1501,13 +1636,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                       data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
                     >
                       <div className={styles.dropdownItemContent}>
-                        {tab.id !== 'recommendations' && (
-                          <Icon
-                            name={tab.type === 'devtools' ? 'bug' : tab.type === 'docs' ? 'file-alt' : 'book'}
-                            size="xs"
-                            className={styles.dropdownItemIcon}
-                          />
-                        )}
+                        {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.dropdownItemIcon} />}
                         <span className={styles.dropdownItemTitle}>
                           {tab.isLoading ? (
                             <>
@@ -1518,43 +1647,76 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                             getTranslatedTitle(tab.title)
                           )}
                         </span>
-                        {tab.id !== 'recommendations' && (
-                          <IconButton
-                            name="times"
-                            size="sm"
-                            aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
-                              title: getTranslatedTitle(tab.title),
-                            })}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              reportAppInteraction(UserInteraction.CloseTabClick, {
-                                content_type: getContentTypeForAnalytics(
-                                  tab.currentUrl || tab.baseUrl,
-                                  tab.type || 'learning-journey'
-                                ),
-                                tab_title: tab.title,
-                                content_url: tab.currentUrl || tab.baseUrl,
-                                close_location: 'dropdown',
-                                ...(tab.type === 'learning-journey' &&
-                                  tab.content && {
-                                    completion_percentage: getJourneyProgress(tab.content),
-                                    current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                                    total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                                  }),
-                              });
-                              model.closeTab(tab.id);
-                            }}
-                            className={styles.dropdownItemClose}
-                          />
-                        )}
+                        <IconButton
+                          name="times"
+                          size="sm"
+                          aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
+                            title: getTranslatedTitle(tab.title),
+                          })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            reportAppInteraction(UserInteraction.CloseTabClick, {
+                              content_type: getContentTypeForAnalytics(
+                                tab.currentUrl || tab.baseUrl,
+                                tab.type || 'learning-journey'
+                              ),
+                              tab_title: tab.title,
+                              content_url: tab.currentUrl || tab.baseUrl,
+                              close_location: 'dropdown',
+                              ...(tab.type === 'learning-journey' &&
+                                tab.content && {
+                                  completion_percentage: getJourneyProgress(tab.content),
+                                  current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
+                                  total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
+                                }),
+                            });
+                            model.closeTab(tab.id);
+                          }}
+                          className={styles.dropdownItemClose}
+                        />
                       </div>
                     </button>
                   );
                 })}
-              </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+
+        {/* Settings and close actions */}
+        <div className={styles.tabBarActions}>
+          <IconButton
+            name="cog"
+            size="sm"
+            tooltip={t('docsPanel.settings', 'Plugin settings')}
+            onClick={() => {
+              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                action: 'navigate_to_config',
+                source: 'header_settings_button',
+              });
+              locationService.push('/plugins/grafana-pathfinder-app?page=configuration');
+            }}
+            aria-label={t('docsPanel.settings', 'Plugin settings')}
+            data-testid={testIds.docsPanel.settingsButton}
+          />
+          <IconButton
+            name="times"
+            size="sm"
+            tooltip={t('docsPanel.closeSidebar', 'Close sidebar')}
+            onClick={() => {
+              reportAppInteraction(UserInteraction.DocsPanelInteraction, {
+                action: 'close_sidebar',
+                source: 'header_close_button',
+              });
+              // Close the extension sidebar
+              const appEvents = getAppEvents();
+              appEvents.publish({
+                type: 'close-extension-sidebar',
+                payload: {},
+              });
+            }}
+            aria-label="Close sidebar"
+            data-testid={testIds.docsPanel.closeButton}
+          />
+        </div>
       </div>
 
       <div className={styles.content} data-testid={testIds.docsPanel.content}>
@@ -1562,6 +1724,19 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           // Show recommendations tab
           if (isRecommendationsTab) {
             return <contextPanel.Component model={contextPanel} />;
+          }
+
+          // Show my learning tab (wrapped in error boundary - R6)
+          if (activeTabId === 'my-learning') {
+            return (
+              <MyLearningErrorBoundary>
+                <MyLearningTab
+                  onOpenGuide={(url, title) => {
+                    model.openLearningJourney(url, title);
+                  }}
+                />
+              </MyLearningErrorBoundary>
+            );
           }
 
           // Show dev tools tab
@@ -1892,6 +2067,13 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                         // Restore scroll position after content is ready
                         restoreScrollPosition();
                       }}
+                      onGuideComplete={() => {
+                        // Mark bundled guides as 100% complete when all interactive sections finish
+                        const baseUrl = activeTab?.baseUrl || stableContent.url;
+                        if (baseUrl?.startsWith('bundled:')) {
+                          setJourneyCompletionPercentage(baseUrl, 100);
+                        }
+                      }}
                     />
                   )}
                 </div>
@@ -1902,8 +2084,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           return null;
         })()}
       </div>
-      {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement */}
-      {!isRecommendationsTab && activeTab?.type !== 'docs' && (
+      {/* Feedback Button - only shown at bottom for non-docs views; docs uses header placement, my-learning has its own */}
+      {!isRecommendationsTab && activeTabId !== 'my-learning' && activeTab?.type !== 'docs' && (
         <>
           <FeedbackButton
             contentUrl={activeTab?.content?.url || activeTab?.baseUrl || ''}
@@ -2012,6 +2194,15 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             setShowPresenterControls(false);
             setShowAttendeeJoin(false);
           }}
+        />
+      )}
+
+      {/* Global Badge Celebration Toast - shows queued toasts sequentially */}
+      {currentCelebrationBadge && getBadgeById(currentCelebrationBadge) && (
+        <BadgeUnlockedToast
+          badge={getBadgeById(currentCelebrationBadge)!}
+          onDismiss={handleDismissGlobalCelebration}
+          queueCount={badgeCelebrationQueue.length}
         />
       )}
     </div>

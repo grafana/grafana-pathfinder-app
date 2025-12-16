@@ -33,10 +33,10 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
   const styles = useStyles2(getDebugPanelStyles);
   const { executeInteractiveAction } = useInteractiveElements();
 
-  // Section expansion state - priority sections expanded by default
-  const [blockEditorExpanded, setBlockEditorExpanded] = useState(false);
-  const [recordExpanded, setRecordExpanded] = useState(true); // Priority: expanded by default
-  const [UrlTesterExpanded, setUrlTesterExpanded] = useState(true); // Priority: expanded by default
+  // Section expansion state
+  const [blockEditorExpanded, setBlockEditorExpanded] = useState(true); // Main authoring tool - expanded by default
+  const [recordExpanded, setRecordExpanded] = useState(false);
+  const [UrlTesterExpanded, setUrlTesterExpanded] = useState(false);
   const [watchExpanded, setWatchExpanded] = useState(false);
   const [simpleExpanded, setSimpleExpanded] = useState(false);
   const [guidedExpanded, setGuidedExpanded] = useState(false);
@@ -425,7 +425,7 @@ export function SelectorDebugPanel({ onOpenDocsPage }: SelectorDebugPanelProps =
         <div className={styles.sectionHeader} onClick={() => setBlockEditorExpanded(!blockEditorExpanded)}>
           <Stack direction="row" gap={1} alignItems="center">
             <Icon name="edit" />
-            <h4 className={styles.sectionTitle}>New guide</h4>
+            <h4 className={styles.sectionTitle}>Interactive guide editor</h4>
           </Stack>
           <Icon name={blockEditorExpanded ? 'angle-up' : 'angle-down'} />
         </div>

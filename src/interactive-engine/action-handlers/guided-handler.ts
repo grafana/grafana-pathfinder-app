@@ -5,6 +5,7 @@ import { querySelectorAllEnhanced, findButtonByText, isElementVisible, resolveSe
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { GuidedAction } from '../../types/interactive-actions.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
+import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 
 type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped';
 
@@ -252,7 +253,8 @@ export class GuidedHandler {
 
     const textContainer = document.createElement('div');
     textContainer.className = 'interactive-comment-text';
-    textContainer.innerHTML = comment;
+    // SECURITY: sanitize HTML before injection (F5)
+    textContainer.innerHTML = sanitizeDocumentationHTML(comment);
 
     const contentWrapper = document.createElement('div');
     contentWrapper.className = 'interactive-comment-wrapper';
