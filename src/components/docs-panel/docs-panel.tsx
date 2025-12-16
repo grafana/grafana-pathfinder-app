@@ -1492,9 +1492,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         </div>
 
         {/* Divider - only show when there are guide tabs */}
-        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools').length > 0 && (
-          <div className={styles.tabDivider} />
-        )}
+        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools').length >
+          0 && <div className={styles.tabDivider} />}
 
         {/* Guide tabs with titles */}
         <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
@@ -1565,7 +1564,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             })}
         </div>
 
-        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools').length > 0 && (
+        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools')
+          .length > 0 && (
           <div className={styles.tabOverflow}>
             <button
               ref={chevronButtonRef}
@@ -1577,20 +1577,30 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 setIsDropdownOpen(!isDropdownOpen);
               }}
               aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', {
-                count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools').length,
+                count: overflowedTabs.filter(
+                  (t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools'
+                ).length,
               })}
               aria-expanded={isDropdownOpen}
               aria-haspopup="true"
               data-testid={testIds.docsPanel.tabOverflowButton}
             >
               <Icon name="angle-down" size="sm" />
-              <span>+{overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools').length}</span>
+              <span>
+                +
+                {
+                  overflowedTabs.filter(
+                    (t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools'
+                  ).length
+                }
+              </span>
             </button>
           </div>
         )}
 
         {isDropdownOpen &&
-          overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools').length > 0 && (
+          overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools')
+            .length > 0 && (
             <div
               ref={dropdownRef}
               className={styles.tabDropdown}
