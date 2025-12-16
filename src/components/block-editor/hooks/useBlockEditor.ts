@@ -9,6 +9,7 @@ import { useState, useCallback, useMemo } from 'react';
 import type { EditorBlock, BlockEditorState, JsonBlock, JsonGuide } from '../types';
 import type {
   JsonSectionBlock,
+  JsonConditionalBlock,
   JsonInteractiveBlock,
   JsonMultistepBlock,
   JsonGuidedBlock,
@@ -21,6 +22,13 @@ import { DEFAULT_GUIDE_METADATA } from '../constants';
  */
 const isSectionBlock = (block: JsonBlock): block is JsonSectionBlock => {
   return block.type === 'section';
+};
+
+/**
+ * Type guard for conditional blocks
+ */
+const isConditionalBlock = (block: JsonBlock): block is JsonConditionalBlock => {
+  return block.type === 'conditional';
 };
 
 /**
@@ -111,6 +119,24 @@ export interface UseBlockEditorReturn {
   mergeBlocksToMultistep: (blockIds: string[]) => void;
   /** Merge selected interactive blocks into a Guided block */
   mergeBlocksToGuided: (blockIds: string[]) => void;
+
+  // Conditional block branch operations
+  /** Add a block to a conditional branch */
+  addBlockToConditionalBranch: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', block: JsonBlock, index?: number) => string;
+  /** Update a block within a conditional branch */
+  updateConditionalBranchBlock: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number, block: JsonBlock) => void;
+  /** Delete a block from a conditional branch */
+  deleteConditionalBranchBlock: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number) => void;
+  /** Duplicate a block within a conditional branch */
+  duplicateConditionalBranchBlock: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number) => void;
+  /** Move a block within a conditional branch */
+  moveConditionalBranchBlock: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', fromIndex: number, toIndex: number) => void;
+  /** Nest a root block into a conditional branch */
+  nestBlockInConditional: (blockId: string, conditionalId: string, branch: 'whenTrue' | 'whenFalse', insertIndex?: number) => void;
+  /** Unnest a block from a conditional branch back to root level */
+  unnestBlockFromConditional: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number, insertAtRootIndex?: number) => void;
+  /** Move a block between conditional branches (true <-> false) */
+  moveBlockBetweenConditionalBranches: (conditionalId: string, fromBranch: 'whenTrue' | 'whenFalse', fromIndex: number, toBranch: 'whenTrue' | 'whenFalse', toIndex?: number) => void;
 }
 
 /**
@@ -612,6 +638,396 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     [notifyChange]
   );
 
+  // ============ Conditional branch operations ============
+
+  // Add a block to a conditional branch
+  const addBlockToConditionalBranch = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', block: JsonBlock, index?: number): string => {
+      const id = generateBlockId();
+
+      setState((prev) => {
+        const conditionalIndex = prev.blocks.findIndex((b) => b.id === conditionalId);
+        if (conditionalIndex === -1) {
+          return prev;
+        }
+
+        const conditionalEditorBlock = prev.blocks[conditionalIndex];
+        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+          return prev;
+        }
+
+        const branchBlocks = [...conditionalEditorBlock.block[branch]];
+        const idx = index ?? branchBlocks.length;
+        branchBlocks.splice(idx, 0, block);
+
+        const newBlocks = [...prev.blocks];
+        newBlocks[conditionalIndex] = {
+          ...conditionalEditorBlock,
+          block: {
+            ...conditionalEditorBlock.block,
+            [branch]: branchBlocks,
+          },
+        };
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+
+      return id;
+    },
+    [notifyChange]
+  );
+
+  // Update a block within a conditional branch
+  const updateConditionalBranchBlock = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number, block: JsonBlock) => {
+      setState((prev) => {
+        const conditionalIndex = prev.blocks.findIndex((b) => b.id === conditionalId);
+        if (conditionalIndex === -1) {
+          return prev;
+        }
+
+        const conditionalEditorBlock = prev.blocks[conditionalIndex];
+        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+          return prev;
+        }
+
+        const branchBlocks = [...conditionalEditorBlock.block[branch]];
+        if (nestedIndex < 0 || nestedIndex >= branchBlocks.length) {
+          return prev;
+        }
+
+        branchBlocks[nestedIndex] = block;
+
+        const newBlocks = [...prev.blocks];
+        newBlocks[conditionalIndex] = {
+          ...conditionalEditorBlock,
+          block: {
+            ...conditionalEditorBlock.block,
+            [branch]: branchBlocks,
+          },
+        };
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange]
+  );
+
+  // Delete a block from a conditional branch
+  const deleteConditionalBranchBlock = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number) => {
+      setState((prev) => {
+        const conditionalIndex = prev.blocks.findIndex((b) => b.id === conditionalId);
+        if (conditionalIndex === -1) {
+          return prev;
+        }
+
+        const conditionalEditorBlock = prev.blocks[conditionalIndex];
+        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+          return prev;
+        }
+
+        const branchBlocks = conditionalEditorBlock.block[branch].filter((_, i) => i !== nestedIndex);
+
+        const newBlocks = [...prev.blocks];
+        newBlocks[conditionalIndex] = {
+          ...conditionalEditorBlock,
+          block: {
+            ...conditionalEditorBlock.block,
+            [branch]: branchBlocks,
+          },
+        };
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange]
+  );
+
+  // Duplicate a block within a conditional branch
+  const duplicateConditionalBranchBlock = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number) => {
+      setState((prev) => {
+        const conditionalIndex = prev.blocks.findIndex((b) => b.id === conditionalId);
+        if (conditionalIndex === -1) {
+          return prev;
+        }
+
+        const conditionalEditorBlock = prev.blocks[conditionalIndex];
+        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+          return prev;
+        }
+
+        const branchBlocks = [...conditionalEditorBlock.block[branch]];
+        if (nestedIndex < 0 || nestedIndex >= branchBlocks.length) {
+          return prev;
+        }
+
+        const blockToDuplicate = branchBlocks[nestedIndex];
+        const duplicatedBlock = JSON.parse(JSON.stringify(blockToDuplicate));
+        branchBlocks.splice(nestedIndex + 1, 0, duplicatedBlock);
+
+        const newBlocks = [...prev.blocks];
+        newBlocks[conditionalIndex] = {
+          ...conditionalEditorBlock,
+          block: {
+            ...conditionalEditorBlock.block,
+            [branch]: branchBlocks,
+          },
+        };
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange]
+  );
+
+  // Move a block within a conditional branch
+  const moveConditionalBranchBlock = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', fromIndex: number, toIndex: number) => {
+      setState((prev) => {
+        const conditionalIndex = prev.blocks.findIndex((b) => b.id === conditionalId);
+        if (conditionalIndex === -1) {
+          return prev;
+        }
+
+        const conditionalEditorBlock = prev.blocks[conditionalIndex];
+        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+          return prev;
+        }
+
+        const branchBlocks = [...conditionalEditorBlock.block[branch]];
+        if (
+          fromIndex < 0 ||
+          fromIndex >= branchBlocks.length ||
+          toIndex < 0 ||
+          toIndex > branchBlocks.length || // Allow toIndex === length for moving to end
+          fromIndex === toIndex
+        ) {
+          return prev;
+        }
+
+        const [removed] = branchBlocks.splice(fromIndex, 1);
+        branchBlocks.splice(toIndex, 0, removed);
+
+        const newBlocks = [...prev.blocks];
+        newBlocks[conditionalIndex] = {
+          ...conditionalEditorBlock,
+          block: {
+            ...conditionalEditorBlock.block,
+            [branch]: branchBlocks,
+          },
+        };
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange]
+  );
+
+  // Nest a root block into a conditional branch
+  const nestBlockInConditional = useCallback(
+    (blockId: string, conditionalId: string, branch: 'whenTrue' | 'whenFalse', insertIndex?: number) => {
+      setState((prev) => {
+        // Find the block to nest
+        const blockIndex = prev.blocks.findIndex((b) => b.id === blockId);
+        if (blockIndex === -1) {
+          return prev;
+        }
+
+        const blockToNest = prev.blocks[blockIndex];
+
+        // Don't allow nesting sections or conditionals
+        if (blockToNest.block.type === 'section' || blockToNest.block.type === 'conditional') {
+          return prev;
+        }
+
+        // Find the conditional
+        const conditionalIndex = prev.blocks.findIndex((b) => b.id === conditionalId);
+        if (conditionalIndex === -1) {
+          return prev;
+        }
+
+        const conditionalEditorBlock = prev.blocks[conditionalIndex];
+        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+          return prev;
+        }
+
+        // Remove from root
+        const newBlocks = prev.blocks.filter((_, i) => i !== blockIndex);
+
+        // Adjust conditional index if needed
+        const adjustedConditionalIndex = blockIndex < conditionalIndex ? conditionalIndex - 1 : conditionalIndex;
+
+        // Add to conditional branch
+        const conditionalBlock = newBlocks[adjustedConditionalIndex].block as JsonConditionalBlock;
+        const branchBlocks = [...conditionalBlock[branch]];
+        const idx = insertIndex ?? branchBlocks.length;
+        branchBlocks.splice(idx, 0, blockToNest.block);
+
+        newBlocks[adjustedConditionalIndex] = {
+          ...newBlocks[adjustedConditionalIndex],
+          block: {
+            ...conditionalBlock,
+            [branch]: branchBlocks,
+          } as JsonConditionalBlock,
+        };
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange]
+  );
+
+  // Unnest a block from a conditional branch back to root level
+  const unnestBlockFromConditional = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number, insertAtRootIndex?: number) => {
+      setState((prev) => {
+        // Find the conditional
+        const conditionalIndex = prev.blocks.findIndex((b) => b.id === conditionalId);
+        if (conditionalIndex === -1) {
+          return prev;
+        }
+
+        const conditionalEditorBlock = prev.blocks[conditionalIndex];
+        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+          return prev;
+        }
+
+        const branchBlocks = conditionalEditorBlock.block[branch];
+        if (nestedIndex < 0 || nestedIndex >= branchBlocks.length) {
+          return prev;
+        }
+
+        // Get the block to unnest
+        const blockToUnnest = branchBlocks[nestedIndex];
+
+        // Remove from branch
+        const newBranchBlocks = branchBlocks.filter((_, i) => i !== nestedIndex);
+
+        // Update conditional
+        const newBlocks = [...prev.blocks];
+        newBlocks[conditionalIndex] = {
+          ...conditionalEditorBlock,
+          block: {
+            ...conditionalEditorBlock.block,
+            [branch]: newBranchBlocks,
+          },
+        };
+
+        // Add to root level at specified index, or after the conditional if not specified
+        const newEditorBlock: EditorBlock = {
+          id: generateBlockId(),
+          block: blockToUnnest,
+        };
+        const insertIndex = insertAtRootIndex ?? conditionalIndex + 1;
+        newBlocks.splice(insertIndex, 0, newEditorBlock);
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange]
+  );
+
+  // Move a block between conditional branches (true <-> false)
+  const moveBlockBetweenConditionalBranches = useCallback(
+    (conditionalId: string, fromBranch: 'whenTrue' | 'whenFalse', fromIndex: number, toBranch: 'whenTrue' | 'whenFalse', toIndex?: number) => {
+      if (fromBranch === toBranch) {
+        return; // Use moveConditionalBranchBlock for same-branch moves
+      }
+
+      setState((prev) => {
+        const conditionalIndex = prev.blocks.findIndex((b) => b.id === conditionalId);
+        if (conditionalIndex === -1) {
+          return prev;
+        }
+
+        const conditionalEditorBlock = prev.blocks[conditionalIndex];
+        if (!isConditionalBlock(conditionalEditorBlock.block)) {
+          return prev;
+        }
+
+        const fromBranchBlocks = conditionalEditorBlock.block[fromBranch];
+        if (fromIndex < 0 || fromIndex >= fromBranchBlocks.length) {
+          return prev;
+        }
+
+        // Get the block to move
+        const blockToMove = fromBranchBlocks[fromIndex];
+
+        // Remove from source branch
+        const newFromBranchBlocks = fromBranchBlocks.filter((_, i) => i !== fromIndex);
+
+        // Add to target branch
+        const newToBranchBlocks = [...conditionalEditorBlock.block[toBranch]];
+        const insertIdx = toIndex ?? newToBranchBlocks.length;
+        newToBranchBlocks.splice(insertIdx, 0, blockToMove);
+
+        // Update conditional with both branches
+        const newBlocks = [...prev.blocks];
+        newBlocks[conditionalIndex] = {
+          ...conditionalEditorBlock,
+          block: {
+            ...conditionalEditorBlock.block,
+            [fromBranch]: newFromBranchBlocks,
+            [toBranch]: newToBranchBlocks,
+          },
+        };
+
+        const newState = {
+          ...prev,
+          blocks: newBlocks,
+          isDirty: true,
+        };
+        notifyChange(newState);
+        return newState;
+      });
+    },
+    [notifyChange]
+  );
+
   // Toggle preview mode
   const togglePreviewMode = useCallback(() => {
     setState((prev) => ({
@@ -949,6 +1365,14 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       markSaved,
       mergeBlocksToMultistep,
       mergeBlocksToGuided,
+      addBlockToConditionalBranch,
+      updateConditionalBranchBlock,
+      deleteConditionalBranchBlock,
+      duplicateConditionalBranchBlock,
+      moveConditionalBranchBlock,
+      nestBlockInConditional,
+      unnestBlockFromConditional,
+      moveBlockBetweenConditionalBranches,
     }),
     [
       state,
@@ -973,6 +1397,14 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       markSaved,
       mergeBlocksToMultistep,
       mergeBlocksToGuided,
+      addBlockToConditionalBranch,
+      updateConditionalBranchBlock,
+      deleteConditionalBranchBlock,
+      duplicateConditionalBranchBlock,
+      moveConditionalBranchBlock,
+      nestBlockInConditional,
+      unnestBlockFromConditional,
+      moveBlockBetweenConditionalBranches,
     ]
   );
 }

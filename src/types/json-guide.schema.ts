@@ -244,6 +244,12 @@ const AssistantProps = {
   assistantType: z.enum(['query', 'config', 'code', 'text']).optional(),
 };
 
+const ConditionalProps = {
+  type: z.literal('conditional'),
+  conditions: z.array(z.string()).min(1, 'At least one condition is required'),
+  description: z.string().optional(),
+};
+
 const MAX_NESTING_DEPTH = 5;
 
 // Helper to create depth-limited block schema
@@ -264,6 +270,11 @@ function createBlockSchemaWithDepth(currentDepth: number): z.ZodSchema {
     z.object({
       ...AssistantProps,
       blocks: z.array(nestedBlockSchema),
+    }),
+    z.object({
+      ...ConditionalProps,
+      whenTrue: z.array(nestedBlockSchema),
+      whenFalse: z.array(nestedBlockSchema),
     }),
   ]);
 }
@@ -292,6 +303,17 @@ export const JsonSectionBlockSchema = z.object({
 export const JsonAssistantBlockSchema = z.object({
   ...AssistantProps,
   blocks: z.lazy(() => z.array(JsonBlockSchema)),
+});
+
+/**
+ * Schema for conditional block (contains nested blocks in two branches).
+ * Uses JsonBlockSchema which enforces depth limit globally.
+ * @coupling Type: JsonConditionalBlock
+ */
+export const JsonConditionalBlockSchema = z.object({
+  ...ConditionalProps,
+  whenTrue: z.lazy(() => z.array(JsonBlockSchema)),
+  whenFalse: z.lazy(() => z.array(JsonBlockSchema)),
 });
 
 // ============ ROOT GUIDE SCHEMA ============
@@ -384,6 +406,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'completeEarly',
   ]),
   section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives']),
+  conditional: new Set(['type', 'conditions', 'whenTrue', 'whenFalse', 'description']),
   quiz: new Set([
     'type',
     'question',
@@ -410,6 +433,7 @@ export const VALID_BLOCK_TYPES = new Set([
   'multistep',
   'guided',
   'section',
+  'conditional',
   'quiz',
   'assistant',
 ]);

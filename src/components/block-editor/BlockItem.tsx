@@ -19,6 +19,7 @@ import {
   isInteractiveBlock,
   isMultistepBlock,
   isGuidedBlock,
+  isConditionalBlock,
 } from '../../types/json-guide.types';
 
 export interface BlockItemProps {
@@ -78,6 +79,13 @@ function getBlockPreview(block: EditorBlock['block']): string {
   if (isGuidedBlock(block)) {
     return `${block.steps.length} guided steps`;
   }
+  if (isConditionalBlock(block)) {
+    // Show description if available, otherwise show conditions
+    if (block.description) {
+      return block.description;
+    }
+    return `If: ${block.conditions.join(', ')}`;
+  }
   return '';
 }
 
@@ -103,6 +111,7 @@ export function BlockItem({
   const preview = useMemo(() => getBlockPreview(block.block), [block.block]);
 
   const isSection = isSectionBlock(block.block);
+  const isConditional = isConditionalBlock(block.block);
   // Keep these for potential future use, suppress unused warnings
   void index;
   void totalBlocks;
@@ -148,7 +157,7 @@ export function BlockItem({
 
   const containerClass = [
     styles.container,
-    isSection && styles.sectionContainer,
+    (isSection || isConditional) && styles.sectionContainer,
     isSelected && styles.selectedContainer,
   ]
     .filter(Boolean)
@@ -184,6 +193,12 @@ export function BlockItem({
           )}
           {isSectionBlock(block.block) && block.block.title && (
             <span style={{ marginLeft: '8px', fontWeight: 500 }}>{block.block.title}</span>
+          )}
+          {isConditionalBlock(block.block) && (
+            <Badge
+              text={`${block.block.conditions.length} condition${block.block.conditions.length !== 1 ? 's' : ''}`}
+              color="orange"
+            />
           )}
         </div>
         {preview && (

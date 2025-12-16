@@ -265,6 +265,28 @@ export function validateBlockConditions(guide: JsonGuide): ConditionIssue[] {
         visitBlock(child, [...path, 'blocks', i]);
       });
     }
+
+    // Conditional blocks - validate conditions array and recurse into branches
+    if (block.type === 'conditional') {
+      // Validate the conditions array itself
+      if ('conditions' in block && Array.isArray(block.conditions)) {
+        issues.push(...validateConditions(block.conditions, [...path, 'conditions']));
+      }
+
+      // Recurse into whenTrue branch
+      if ('whenTrue' in block && Array.isArray(block.whenTrue)) {
+        block.whenTrue.forEach((child, i) => {
+          visitBlock(child, [...path, 'whenTrue', i]);
+        });
+      }
+
+      // Recurse into whenFalse branch
+      if ('whenFalse' in block && Array.isArray(block.whenFalse)) {
+        block.whenFalse.forEach((child, i) => {
+          visitBlock(child, [...path, 'whenFalse', i]);
+        });
+      }
+    }
   }
 
   // Visit all top-level blocks

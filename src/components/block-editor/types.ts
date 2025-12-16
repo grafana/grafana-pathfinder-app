@@ -9,7 +9,16 @@ import type { JsonBlock, JsonGuide, JsonStep, JsonInteractiveAction } from '../.
 /**
  * Block type identifiers
  */
-export type BlockType = 'markdown' | 'html' | 'image' | 'video' | 'section' | 'interactive' | 'multistep' | 'guided';
+export type BlockType =
+  | 'markdown'
+  | 'html'
+  | 'image'
+  | 'video'
+  | 'section'
+  | 'conditional'
+  | 'interactive'
+  | 'multistep'
+  | 'guided';
 
 /**
  * Block metadata for the palette

@@ -16,6 +16,7 @@ import type {
   JsonMarkdownBlock,
   JsonHtmlBlock,
   JsonSectionBlock,
+  JsonConditionalBlock,
   JsonInteractiveBlock,
   JsonMultistepBlock,
   JsonGuidedBlock,
@@ -196,6 +197,8 @@ function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: s
       return convertHtmlBlock(block, path, baseUrl);
     case 'section':
       return convertSectionBlock(block, path, baseUrl);
+    case 'conditional':
+      return convertConditionalBlock(block, path, baseUrl);
     case 'interactive':
       return convertInteractiveBlock(block, path);
     case 'multistep':
@@ -682,6 +685,47 @@ function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: st
         objectives,
       },
       children,
+    },
+    hasInteractive: true,
+  };
+}
+
+/**
+ * Convert a conditional block to a ParsedElement.
+ * Conditional blocks show different content based on whether conditions pass or fail.
+ */
+function convertConditionalBlock(block: JsonConditionalBlock, path: string, baseUrl?: string): ConversionResult {
+  // Convert whenTrue branch blocks
+  const whenTrueChildren: ParsedElement[] = [];
+  for (let i = 0; i < block.whenTrue.length; i++) {
+    const childBlock = block.whenTrue[i];
+    const result = convertBlockToParsedElement(childBlock, `${path}.whenTrue[${i}]`, baseUrl);
+    if (result.element) {
+      whenTrueChildren.push(result.element);
+    }
+  }
+
+  // Convert whenFalse branch blocks
+  const whenFalseChildren: ParsedElement[] = [];
+  for (let i = 0; i < block.whenFalse.length; i++) {
+    const childBlock = block.whenFalse[i];
+    const result = convertBlockToParsedElement(childBlock, `${path}.whenFalse[${i}]`, baseUrl);
+    if (result.element) {
+      whenFalseChildren.push(result.element);
+    }
+  }
+
+  return {
+    element: {
+      type: 'interactive-conditional',
+      props: {
+        conditions: block.conditions,
+        description: block.description,
+        // Store both branches in props - renderer will pick based on condition evaluation
+        whenTrueChildren,
+        whenFalseChildren,
+      },
+      children: [],
     },
     hasInteractive: true,
   };

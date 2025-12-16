@@ -44,6 +44,7 @@ export type JsonBlock =
   | JsonMarkdownBlock
   | JsonHtmlBlock
   | JsonSectionBlock
+  | JsonConditionalBlock
   | JsonInteractiveBlock
   | JsonMultistepBlock
   | JsonGuidedBlock
@@ -138,6 +139,25 @@ export interface JsonSectionBlock {
   requirements?: string[];
   /** Objectives tracked for completion of this section */
   objectives?: string[];
+}
+
+// ============ CONDITIONAL BLOCK ============
+
+/**
+ * Conditional block that shows different content based on conditions.
+ * Evaluates conditions at runtime and displays the appropriate branch.
+ * Uses the same condition syntax as requirements (e.g., has-datasource:prometheus).
+ */
+export interface JsonConditionalBlock {
+  type: 'conditional';
+  /** Conditions that determine which branch to show (uses requirement syntax) */
+  conditions: string[];
+  /** Blocks shown when ALL conditions pass */
+  whenTrue: JsonBlock[];
+  /** Blocks shown when ANY condition fails */
+  whenFalse: JsonBlock[];
+  /** Optional description for authors (not shown to users) */
+  description?: string;
 }
 
 // ============ INTERACTIVE BLOCKS ============
@@ -319,6 +339,13 @@ export function isHtmlBlock(block: JsonBlock): block is JsonHtmlBlock {
  */
 export function isSectionBlock(block: JsonBlock): block is JsonSectionBlock {
   return block.type === 'section';
+}
+
+/**
+ * Type guard for JsonConditionalBlock
+ */
+export function isConditionalBlock(block: JsonBlock): block is JsonConditionalBlock {
+  return block.type === 'conditional';
 }
 
 /**
