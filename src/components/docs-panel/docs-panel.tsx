@@ -289,7 +289,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> {
   private async saveTabsToStorage(): Promise<void> {
     try {
       const tabsToSave: PersistedTabData[] = this.state.tabs
-        .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning')
+        .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning' && tab.id !== 'devtools')
         .map((tab) => ({
           id: tab.id,
           title: tab.title,
@@ -845,6 +845,27 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only run once after mount, tabs checked at mount time
 
+  // Ensure devtools tab exists when dev mode is enabled (permanent tab)
+  React.useEffect(() => {
+    if (isDevMode) {
+      const hasDevToolsTab = tabs.some((t) => t.id === 'devtools');
+      if (!hasDevToolsTab) {
+        // Add devtools tab without switching to it
+        const devToolsTab: LearningJourneyTab = {
+          id: 'devtools',
+          title: 'Dev Tools',
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+          type: 'devtools',
+        };
+        model.setState({ tabs: [...tabs, devToolsTab] });
+      }
+    }
+  }, [isDevMode, tabs, model]);
+
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
   React.useEffect(() => {
@@ -909,7 +930,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Note: Permanent tabs (recommendations, my-learning) are now rendered separately as icon tabs
   const calculateTabVisibility = useCallback(() => {
     // Filter out permanent tabs - they're rendered separately as icons
-    const guideTabs = tabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning');
+    const guideTabs = tabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools');
 
     if (guideTabs.length === 0) {
       setVisibleTabs(tabs); // Keep all tabs in state for reference
@@ -1458,17 +1479,26 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
           >
             <Icon name="book-open" size="md" />
           </button>
+          {isDevMode && (
+            <button
+              className={`${styles.iconTab} ${activeTabId === 'devtools' ? styles.iconTabActive : ''}`}
+              onClick={() => model.setActiveTab('devtools')}
+              title={t('docsPanel.devTools', 'Dev tools')}
+              data-testid={testIds.docsPanel.tab('devtools')}
+            >
+              <Icon name="bug" size="md" />
+            </button>
+          )}
         </div>
 
         {/* Divider - only show when there are guide tabs */}
-        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
-          <div className={styles.tabDivider} />
-        )}
+        {visibleTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools').length >
+          0 && <div className={styles.tabDivider} />}
 
         {/* Guide tabs with titles */}
         <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
           {visibleTabs
-            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning')
+            .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning' && tab.id !== 'devtools')
             .map((tab) => {
               const getTranslatedTitle = (title: string) => {
                 if (title === 'Learning journey') {
@@ -1534,7 +1564,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
             })}
         </div>
 
-        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
+        {overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools')
+          .length > 0 && (
           <div className={styles.tabOverflow}>
             <button
               ref={chevronButtonRef}
@@ -1546,20 +1577,30 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
                 setIsDropdownOpen(!isDropdownOpen);
               }}
               aria-label={t('docsPanel.showMoreTabs', 'Show {{count}} more tabs', {
-                count: overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length,
+                count: overflowedTabs.filter(
+                  (t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools'
+                ).length,
               })}
               aria-expanded={isDropdownOpen}
               aria-haspopup="true"
               data-testid={testIds.docsPanel.tabOverflowButton}
             >
               <Icon name="angle-down" size="sm" />
-              <span>+{overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length}</span>
+              <span>
+                +
+                {
+                  overflowedTabs.filter(
+                    (t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools'
+                  ).length
+                }
+              </span>
             </button>
           </div>
         )}
 
         {isDropdownOpen &&
-          overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning').length > 0 && (
+          overflowedTabs.filter((t) => t.id !== 'recommendations' && t.id !== 'my-learning' && t.id !== 'devtools')
+            .length > 0 && (
             <div
               ref={dropdownRef}
               className={styles.tabDropdown}
@@ -1568,7 +1609,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
               data-testid={testIds.docsPanel.tabDropdown}
             >
               {overflowedTabs
-                .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning')
+                .filter((tab) => tab.id !== 'recommendations' && tab.id !== 'my-learning' && tab.id !== 'devtools')
                 .map((tab) => {
                   const getTranslatedTitle = (title: string) => {
                     if (title === 'Learning Journey') {

@@ -1,7 +1,7 @@
 import React, { memo, useEffect } from 'react';
 
 import { SceneComponentProps, SceneObjectBase, SceneObjectState } from '@grafana/scenes';
-import { Icon, useStyles2, Card, Badge, Alert, Button } from '@grafana/ui';
+import { Icon, useStyles2, Card, Badge, Alert } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -718,20 +718,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
                 'Based on your current context, here are some learning journeys and documentation that may be beneficial.'
               )}
             </p>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <FeedbackButton variant="secondary" interactionLocation="context_panel_feedback_button" />
-              {devModeEnabled && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  icon="bug"
-                  onClick={() => model.openDevTools()}
-                  tooltip={t('contextPanel.openDevTools', 'Open Dev Tools in a new tab')}
-                >
-                  {t('contextPanel.devTools', 'Dev Tools')}
-                </Button>
-              )}
-            </div>
+            <FeedbackButton variant="secondary" interactionLocation="context_panel_feedback_button" />
           </div>
 
           {/* Recommendations Section - Memoized to prevent unnecessary rerenders */}
