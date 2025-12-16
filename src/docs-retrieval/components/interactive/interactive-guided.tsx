@@ -105,7 +105,7 @@ interface InteractiveGuidedProps {
   sectionTitle?: string;
 
   // Guided-specific configuration
-  stepTimeout?: number; // Timeout per step in milliseconds (default: 30000ms = 30s)
+  stepTimeout?: number; // Timeout per step in milliseconds (default: 120000ms = 2min)
   resetTrigger?: number;
 }
 
@@ -129,7 +129,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       onComplete,
       skippable = false,
       completeEarly = false, // Default to false - only mark early if explicitly set
-      stepTimeout = 30000, // 30 second default timeout per step
+      stepTimeout = 120000, // 2 minute default timeout per step
       resetTrigger,
       stepIndex,
       totalSteps,
@@ -293,10 +293,14 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             // Brief visual feedback before moving to next step
             await new Promise((resolve) => setTimeout(resolve, 500));
           } else if (result === 'timeout') {
+            // Clear highlights when timeout occurs so user can interact with page
+            navManager.clearAllHighlights();
             setCurrentStepStatus('timeout');
             setExecutionError(`Step ${i + 1} timed out. Click "Skip" to continue or "Retry" to try again.`);
             return false;
           } else if (result === 'cancelled') {
+            // Clear highlights when cancelled
+            navManager.clearAllHighlights();
             return false;
           }
         }
@@ -400,6 +404,14 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             // Use enhanced selector for other action types
             const result = querySelectorAllEnhanced(selector);
             targetElement = result.elements[0] || null;
+          } else if (actionType === 'formfill') {
+            // Find form elements for formfill actions
+            const result = querySelectorAllEnhanced(selector);
+            const formElements = result.elements.filter((el) => {
+              const tag = el.tagName.toLowerCase();
+              return tag === 'input' || tag === 'textarea' || tag === 'select';
+            });
+            targetElement = formElements[0] || null;
           }
         } catch (error) {
           // Element resolution failed, fall back to selector-based matching
@@ -410,7 +422,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         const matches = matchesStepAction(
           detectedAction,
           {
-            targetAction: currentAction.targetAction as 'button' | 'highlight' | 'hover',
+            targetAction: currentAction.targetAction as 'button' | 'highlight' | 'hover' | 'formfill',
             refTarget: selector,
             targetValue: currentAction.targetValue,
           },
@@ -587,7 +599,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
     return (
       <div
-        className={`interactive-step interactive-guided${className ? ` ${className}` : ''} interactive-guided--${uiState}`}
+        className={`interactive-step interactive-guided${className ? ` ${className}` : ''}${uiState === 'completed' ? ' completed' : ''} interactive-guided--${uiState}`}
         data-step-id={stepId || renderedStepId}
         data-state={uiState}
         data-testid={testIds.interactive.step(renderedStepId)}

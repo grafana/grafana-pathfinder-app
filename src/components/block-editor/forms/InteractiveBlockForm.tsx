@@ -49,6 +49,7 @@ export function InteractiveBlockForm({
   const [objectives, setObjectives] = useState(initial?.objectives?.join(', ') ?? '');
   const [skippable, setSkippable] = useState(initial?.skippable ?? false);
   const [hint, setHint] = useState(initial?.hint ?? '');
+  const [formHint, setFormHint] = useState(initial?.formHint ?? '');
   const [showMe, setShowMe] = useState(initial?.showMe ?? true);
   const [doIt, setDoIt] = useState(initial?.doIt ?? true);
   const [completeEarly, setCompleteEarly] = useState(initial?.completeEarly ?? false);
@@ -90,6 +91,7 @@ export function InteractiveBlockForm({
         ...(objArray.length > 0 && { objectives: objArray }),
         ...(skippable && { skippable }),
         ...(hint.trim() && { hint: hint.trim() }),
+        ...(formHint.trim() && { formHint: formHint.trim() }),
         ...(!showMe && { showMe: false }),
         ...(!doIt && { doIt: false }),
         ...(completeEarly && { completeEarly }),
@@ -107,6 +109,7 @@ export function InteractiveBlockForm({
       objectives,
       skippable,
       hint,
+      formHint,
       showMe,
       doIt,
       completeEarly,
@@ -166,13 +169,27 @@ export function InteractiveBlockForm({
 
       {/* Target Value (for formfill) */}
       {showTargetValue && (
-        <Field label="Value to Fill" description="The value to enter into the form field" required>
-          <Input
-            value={targetvalue}
-            onChange={(e) => setTargetvalue(e.currentTarget.value)}
-            placeholder="e.g., my-dashboard-name"
-          />
-        </Field>
+        <>
+          <Field
+            label="Value to fill"
+            description="The value to enter into the form field. Supports regex patterns: ^pattern, pattern$, or /pattern/flags"
+            required
+          >
+            <Input
+              value={targetvalue}
+              onChange={(e) => setTargetvalue(e.currentTarget.value)}
+              placeholder="e.g., my-dashboard-name or ^https:// (regex)"
+            />
+          </Field>
+
+          <Field label="Validation hint" description="Hint shown when form validation fails (for regex patterns)">
+            <Input
+              value={formHint}
+              onChange={(e) => setFormHint(e.currentTarget.value)}
+              placeholder="e.g., URL must start with https://"
+            />
+          </Field>
+        </>
       )}
 
       {/* Content */}

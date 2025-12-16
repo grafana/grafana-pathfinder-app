@@ -36,6 +36,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   showMeText?: string; // Optional text override for the "Show me" button
   skippable?: boolean; // Whether this step can be skipped if requirements fail
   completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
+  formHint?: string; // Hint shown when form validation fails (for formfill with regex patterns)
   title?: string;
   description?: string;
   children?: React.ReactNode;

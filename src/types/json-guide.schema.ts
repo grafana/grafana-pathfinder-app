@@ -74,10 +74,19 @@ export const JsonStepSchema = z
     tooltip: z.string().optional(),
     description: z.string().optional(),
     skippable: z.boolean().optional(),
+    formHint: z.string().optional(),
+    validateInput: z.boolean().optional(),
   })
-  .refine((step) => step.action !== 'formfill' || (step.targetvalue !== undefined && step.targetvalue !== ''), {
-    error: "formfill action requires 'targetvalue'",
-  });
+  .refine(
+    (step) => {
+      // formfill with validateInput: true requires targetvalue
+      if (step.action === 'formfill' && step.validateInput === true) {
+        return step.targetvalue !== undefined && step.targetvalue !== '';
+      }
+      return true;
+    },
+    { error: "formfill with validateInput requires 'targetvalue'" }
+  );
 
 // ============ CONTENT BLOCK SCHEMAS ============
 
@@ -140,14 +149,23 @@ export const JsonInteractiveBlockSchema = z
     objectives: z.array(z.string()).optional(),
     skippable: z.boolean().optional(),
     hint: z.string().optional(),
+    formHint: z.string().optional(),
+    validateInput: z.boolean().optional(),
     showMe: z.boolean().optional(),
     doIt: z.boolean().optional(),
     completeEarly: z.boolean().optional(),
     verify: z.string().optional(),
   })
-  .refine((block) => block.action !== 'formfill' || (block.targetvalue !== undefined && block.targetvalue !== ''), {
-    error: "formfill action requires 'targetvalue'",
-  });
+  .refine(
+    (block) => {
+      // formfill with validateInput: true requires targetvalue
+      if (block.action === 'formfill' && block.validateInput === true) {
+        return block.targetvalue !== undefined && block.targetvalue !== '';
+      }
+      return true;
+    },
+    { error: "formfill with validateInput requires 'targetvalue'" }
+  );
 
 /**
  * Schema for multistep block.
@@ -322,7 +340,16 @@ export type InferredJsonQuizChoice = z.infer<typeof JsonQuizChoiceSchema>;
 export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   _guide: new Set(['schemaVersion', 'id', 'title', 'blocks', 'match']),
   _match: new Set(['urlPrefix', 'tags']),
-  _step: new Set(['action', 'reftarget', 'targetvalue', 'requirements', 'tooltip', 'description', 'skippable']),
+  _step: new Set([
+    'action',
+    'reftarget',
+    'targetvalue',
+    'requirements',
+    'tooltip',
+    'description',
+    'skippable',
+    'formHint',
+  ]),
   _choice: new Set(['id', 'text', 'correct', 'hint']),
   markdown: new Set(['type', 'content']),
   html: new Set(['type', 'content']),
@@ -339,6 +366,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'objectives',
     'skippable',
     'hint',
+    'formHint',
     'showMe',
     'doIt',
     'completeEarly',

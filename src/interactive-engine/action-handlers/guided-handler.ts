@@ -6,6 +6,7 @@ import { isCssSelector } from '../../lib/dom/selector-detector';
 import { GuidedAction } from '../../types/interactive-actions.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
+import { matchFormValue } from '../auto-completion/action-matcher';
 
 type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped';
 
@@ -80,9 +81,10 @@ export class GuidedHandler {
         return this.executeNoopStep(action, stepIndex, totalSteps, timeout);
       }
 
-      // At this point, action is not noop, so refTarget must exist and targetAction is hover/button/highlight
+      // At this point, action is not noop, so refTarget must exist
+      // targetAction can be hover/button/highlight/formfill
       const refTarget = action.refTarget;
-      const targetAction = action.targetAction as 'hover' | 'button' | 'highlight';
+      const targetAction = action.targetAction as 'hover' | 'button' | 'highlight' | 'formfill';
 
       if (!refTarget) {
         throw new Error(`Non-noop action ${targetAction} requires a refTarget`);
@@ -120,7 +122,8 @@ export class GuidedHandler {
         stepIndex,
         totalSteps,
         action.targetComment,
-        action.isSkippable
+        action.isSkippable,
+        action.formHint // Pass form hint for formfill validation feedback
       );
 
       // Wait for user to complete the action, skip, cancel, or timeout
@@ -304,7 +307,7 @@ export class GuidedHandler {
    */
   private async findTargetElementWithRetry(
     selector: string,
-    actionType: 'hover' | 'button' | 'highlight',
+    actionType: 'hover' | 'button' | 'highlight' | 'formfill',
     timeout: number,
     retryInterval: number
   ): Promise<HTMLElement> {
@@ -335,10 +338,11 @@ export class GuidedHandler {
   /**
    * Find target element using action-specific logic
    * Buttons support both CSS selectors and text matching with intelligent detection
+   * Formfill targets form elements (input, textarea, select)
    */
   private async findTargetElement(
     selector: string,
-    actionType: 'hover' | 'button' | 'highlight'
+    actionType: 'hover' | 'button' | 'highlight' | 'formfill'
   ): Promise<HTMLElement> {
     let targetElements: HTMLElement[];
 
@@ -381,6 +385,31 @@ export class GuidedHandler {
       }
     }
 
+    // For formfill actions, find form elements (input, textarea, select)
+    if (actionType === 'formfill') {
+      const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
+      const formElements = enhancedResult.elements.filter((el) => {
+        const tag = el.tagName.toLowerCase();
+        return tag === 'input' || tag === 'textarea' || tag === 'select';
+      });
+
+      if (formElements.length > 0) {
+        if (formElements.length > 1) {
+          console.warn(`Multiple form elements found matching selector: ${resolvedSelector}, using first element`);
+        }
+        return formElements[0];
+      }
+
+      // Try to find form element inside the matched element
+      const container = enhancedResult.elements[0];
+      if (container) {
+        const nestedInput = container.querySelector('input:not([type="hidden"]), textarea, select');
+        if (nestedInput instanceof HTMLElement) {
+          return nestedInput;
+        }
+      }
+    }
+
     // Fallback to enhanced selector for all action types
     const enhancedResult = querySelectorAllEnhanced(resolvedSelector);
     targetElements = enhancedResult.elements;
@@ -415,11 +444,12 @@ export class GuidedHandler {
    */
   private async highlightTarget(
     element: HTMLElement,
-    actionType: 'hover' | 'button' | 'highlight',
+    actionType: 'hover' | 'button' | 'highlight' | 'formfill',
     stepIndex: number,
     totalSteps: number,
     customComment?: string,
-    isSkippable?: boolean
+    isSkippable?: boolean,
+    formHint?: string // Hint for formfill validation
   ): Promise<void> {
     // Use custom comment if provided, otherwise generate default message
     const message = customComment || this.getActionMessage(actionType, stepIndex, totalSteps);
@@ -463,7 +493,7 @@ export class GuidedHandler {
    * Generate user-friendly message for each action type
    */
   private getActionMessage(
-    actionType: 'hover' | 'button' | 'highlight',
+    actionType: 'hover' | 'button' | 'highlight' | 'formfill',
     stepIndex: number,
     totalSteps: number
   ): string {
@@ -475,6 +505,8 @@ export class GuidedHandler {
         return 'Click this element';
       case 'highlight':
         return 'Click this element';
+      case 'formfill':
+        return 'Fill in this form field';
       default:
         return 'Interact with this element';
     }
@@ -495,8 +527,15 @@ export class GuidedHandler {
 
     // Create completion promise based on action type (listener attached immediately)
     // Note: This method is only called for non-noop actions, so we can safely narrow the type
-    const actionType = action.targetAction as 'hover' | 'button' | 'highlight';
-    const completionPromise = this.attachCompletionListener(actionType, targetElement, signal);
+    const actionType = action.targetAction as 'hover' | 'button' | 'highlight' | 'formfill';
+    const completionPromise = this.attachCompletionListener(
+      actionType,
+      targetElement,
+      signal,
+      action.targetValue,
+      action.formHint,
+      action.validateInput
+    );
 
     // Create timeout promise
     const timeoutPromise = new Promise<CompletionResult>((resolve) => {
@@ -556,9 +595,12 @@ export class GuidedHandler {
    * Attach completion listener based on action type
    */
   private async attachCompletionListener(
-    actionType: 'hover' | 'button' | 'highlight',
+    actionType: 'hover' | 'button' | 'highlight' | 'formfill',
     element: HTMLElement,
-    signal: AbortSignal
+    signal: AbortSignal,
+    targetValue?: string,
+    formHint?: string,
+    validateInput?: boolean
   ): Promise<CompletionResult> {
     switch (actionType) {
       case 'hover':
@@ -568,6 +610,9 @@ export class GuidedHandler {
         // For guided mode, ALWAYS let clicks pass through naturally
         // We just want to detect that the user clicked, not block the action
         return this.waitForClick(element, signal, false);
+      case 'formfill':
+        // For formfill, monitor input changes with debounced validation
+        return this.waitForFormfill(element, signal, targetValue, formHint, validateInput);
       default:
         throw new Error(`Unsupported guided action type: ${actionType}`);
     }
@@ -748,6 +793,227 @@ export class GuidedHandler {
         cleanup('cancelled');
       });
     });
+  }
+
+  /**
+   * Wait for user to fill a form field with valid content
+   * Uses debounced validation with 2-second delay and regex pattern support
+   *
+   * @param element - The form input element to monitor
+   * @param signal - AbortSignal for cancellation
+   * @param targetValue - Expected value (may be regex pattern)
+   * @param formHint - Hint to show when validation fails
+   * @param validateInput - Enable strict validation (require targetValue match)
+   */
+  private async waitForFormfill(
+    element: HTMLElement,
+    signal: AbortSignal,
+    targetValue?: string,
+    formHint?: string,
+    validateInput?: boolean
+  ): Promise<CompletionResult> {
+    return new Promise<CompletionResult>((resolve) => {
+      let isResolved = false;
+      let debounceTimer: NodeJS.Timeout | null = null;
+      const DEBOUNCE_DELAY = 2000; // 2 second debounce
+      const SUCCESS_ANIMATION_DELAY = 800; // Show success tick for 800ms
+
+      // Centralized cleanup function
+      const cleanup = (result: CompletionResult) => {
+        if (isResolved) {
+          return;
+        }
+        isResolved = true;
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+        resolve(result);
+      };
+
+      // Get element value
+      const getElementValue = (): string => {
+        if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+          return element.value;
+        }
+        if (element instanceof HTMLSelectElement) {
+          return element.value;
+        }
+        return element.textContent || '';
+      };
+
+      // Show success animation then complete
+      const showSuccessAndComplete = () => {
+        this.updateFormValidationFeedback(element, 'valid');
+        setTimeout(() => {
+          if (!isResolved) {
+            cleanup('completed');
+          }
+        }, SUCCESS_ANIMATION_DELAY);
+      };
+
+      // Validate current value against expected
+      const validateValue = () => {
+        const currentValue = getElementValue();
+
+        // Clear any previous feedback before checking
+        this.clearFormValidationFeedback();
+
+        // If validation is disabled (default), accept any non-empty value
+        if (validateInput !== true) {
+          if (currentValue.trim() !== '') {
+            showSuccessAndComplete();
+          }
+          return;
+        }
+
+        // Strict validation enabled - require targetValue match
+        // If no targetValue even with validation enabled, accept any non-empty
+        if (!targetValue || targetValue === '') {
+          if (currentValue.trim() !== '') {
+            showSuccessAndComplete();
+          }
+          return;
+        }
+
+        // Show checking state briefly while validating
+        this.updateFormValidationFeedback(element, 'checking');
+
+        // Use matchFormValue which supports regex patterns
+        const matchResult = matchFormValue(currentValue, targetValue);
+
+        if (matchResult.isMatch) {
+          // Show success animation before completing
+          showSuccessAndComplete();
+        } else {
+          // Validation failed - update comment box with hint
+          this.updateFormValidationFeedback(element, 'invalid', formHint || `Expected: ${matchResult.expectedPattern}`);
+        }
+      };
+
+      // Handle input events with debounce
+      const handleInput = () => {
+        if (isResolved) {
+          return;
+        }
+
+        // Clear existing timer
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+        }
+
+        // Show "Checking..." while user is typing to indicate we're watching
+        this.updateFormValidationFeedback(element, 'checking');
+
+        // Start debounce timer - validate after user stops typing
+        debounceTimer = setTimeout(() => {
+          if (!isResolved) {
+            validateValue();
+          }
+        }, DEBOUNCE_DELAY);
+      };
+
+      // Focus the element to help user start typing
+      element.focus();
+
+      // Check if initial value already matches (auto-complete without showing checking state)
+      const initialValue = getElementValue();
+      if (initialValue.trim() !== '') {
+        // If validation disabled, any non-empty initial value completes the step
+        if (validateInput !== true) {
+          showSuccessAndComplete();
+          return;
+        }
+        // Validation enabled - check if initial value matches targetValue
+        if (targetValue) {
+          const matchResult = matchFormValue(initialValue, targetValue);
+          if (matchResult.isMatch) {
+            showSuccessAndComplete();
+            return;
+          }
+        }
+        // Don't show any feedback for initial values - wait for user to type
+      }
+
+      // Attach input listeners
+      element.addEventListener('input', handleInput);
+      element.addEventListener('change', handleInput);
+
+      // Store for cleanup
+      this.activeListeners.push(
+        { target: element, type: 'input', handler: handleInput },
+        { target: element, type: 'change', handler: handleInput }
+      );
+
+      // Handle cancellation
+      signal.addEventListener('abort', () => {
+        cleanup('cancelled');
+      });
+    });
+  }
+
+  /**
+   * Clear the form validation feedback from comment box
+   */
+  private clearFormValidationFeedback(): void {
+    const commentBox = document.querySelector('.interactive-comment-box');
+    if (!commentBox) {
+      return;
+    }
+
+    const statusElement = commentBox.querySelector('.interactive-form-validation-status');
+    if (statusElement) {
+      statusElement.remove();
+    }
+  }
+
+  /**
+   * Update the comment box with form validation feedback
+   * Places the feedback inline with the Cancel button
+   */
+  private updateFormValidationFeedback(
+    element: HTMLElement,
+    state: 'checking' | 'invalid' | 'valid',
+    hint?: string
+  ): void {
+    // Find the comment box associated with this element
+    const commentBox = document.querySelector('.interactive-comment-box');
+    if (!commentBox) {
+      return;
+    }
+
+    // Find or create the validation status element - place it in the button container for inline display
+    let statusElement = commentBox.querySelector('.interactive-form-validation-status') as HTMLElement;
+    if (!statusElement) {
+      statusElement = document.createElement('div');
+      statusElement.className = 'interactive-form-validation-status';
+
+      // Find the button container to place status inline with Cancel
+      const buttonContainer = commentBox.querySelector('.interactive-comment-buttons');
+      if (buttonContainer) {
+        // Insert at the beginning of button container (before Cancel)
+        buttonContainer.insertBefore(statusElement, buttonContainer.firstChild);
+      } else {
+        // Fallback to content wrapper if no button container
+        const contentWrapper = commentBox.querySelector('.interactive-comment-wrapper');
+        if (contentWrapper) {
+          contentWrapper.appendChild(statusElement);
+        }
+      }
+    }
+
+    // Update status based on state
+    if (state === 'checking') {
+      statusElement.className = 'interactive-form-validation-status form-checking';
+      statusElement.innerHTML = '<span class="interactive-form-spinner">⟳</span> Checking...';
+    } else if (state === 'valid') {
+      statusElement.className = 'interactive-form-validation-status form-valid';
+      statusElement.innerHTML = '<span class="interactive-form-success-icon">✓</span> Looks good!';
+    } else if (state === 'invalid' && hint) {
+      statusElement.className = 'interactive-form-validation-status form-hint-warning';
+      // SECURITY: sanitize hint before display (F4)
+      statusElement.innerHTML = `<span class="interactive-form-warning-icon">⚠</span> ${sanitizeDocumentationHTML(hint)}`;
+    }
   }
 
   /**

@@ -917,7 +917,7 @@ export function parseHTMLToComponents(
             props: {
               // Core guided props
               internalActions,
-              stepTimeout: parseInt(el.getAttribute('data-step-timeout') || '30000', 10),
+              stepTimeout: parseInt(el.getAttribute('data-step-timeout') || '120000', 10),
               skippable: el.getAttribute('data-skippable') === 'true',
               completeEarly: el.getAttribute('data-complete-early') === 'true',
               title: undefined,

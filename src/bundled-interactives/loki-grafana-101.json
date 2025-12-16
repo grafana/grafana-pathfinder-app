@@ -53,21 +53,25 @@
           "content": "Click **Add new data source** to create your Loki connection."
         },
         {
-          "type": "interactive",
-          "action": "formfill",
-          "reftarget": "input[id='basic-settings-name']",
-          "targetvalue": "loki-datasource",
-          "requirements": ["exists-reftarget"],
-          "content": "Name your data source **loki-datasource** so you can easily find it later."
-        },
-        {
-          "type": "interactive",
-          "action": "formfill",
-          "reftarget": "input[id='connection-url']",
-          "targetvalue": "http://loki:3100",
-          "requirements": ["exists-reftarget"],
-          "content": "Set the **URL** to **http://loki:3100** to connect to your Loki server.",
-          "tooltip": "This URL `http://loki:3100` is the default endpoint for Loki servers. Port **3100** is the standard Loki port."
+          "type": "guided",
+          "content": "Configure the Loki data source with a **name** and **connection URL**.",
+          "steps": [
+            {
+              "action": "formfill",
+              "reftarget": "input[id='basic-settings-name']",
+              "targetvalue": "loki-datasource",
+              "requirements": ["exists-reftarget"],
+              "description": "Name your data source **loki-datasource**"
+            },
+            {
+              "action": "formfill",
+              "reftarget": "input[id='connection-url']",
+              "targetvalue": "http://loki:3100",
+              "requirements": ["exists-reftarget"],
+              "description": "Set the URL to **http://loki:3100**",
+              "tooltip": "This URL `http://loki:3100` is the default endpoint for Loki servers. Port **3100** is the standard Loki port."
+            }
+          ]
         },
         {
           "type": "interactive",
@@ -115,7 +119,8 @@
           "action": "highlight",
           "reftarget": "button[data-testid=\"data-testid Edit dashboard button\"]",
           "requirements": ["exists-reftarget"],
-          "content": "Click **Edit** to edit the dashboard."
+          "content": "Click **Edit** to edit the dashboard.",
+          "skippable": true
         },
         {
           "type": "multistep",
@@ -158,13 +163,17 @@
           "tooltip": "Code mode lets you write raw **LogQL** queries directly, similar to how PromQL works for Prometheus. This gives you full control over your log queries."
         },
         {
-          "type": "interactive",
-          "action": "formfill",
-          "reftarget": "textarea.inputarea",
-          "targetvalue": "{container=\"alloy\"}",
-          "requirements": ["exists-reftarget"],
+          "type": "guided",
           "content": "Enter this LogQL query:\n\n`{container=\"alloy\"}`",
-          "tooltip": "This is **LogQL** (Loki Query Language)! The query `{container=\"alloy\"}` filters logs from containers named \"alloy\". The curly braces `{}` are used for label matching in Loki."
+          "steps": [
+            {
+              "action": "formfill",
+              "reftarget": "textarea.inputarea",
+              "targetvalue": "{container=\"alloy\"}",
+              "requirements": ["exists-reftarget"],
+              "tooltip": "This is **LogQL** (Loki Query Language)! The query `{container=\"alloy\"}` filters logs from containers named \"alloy\". The curly braces `{}` are used for label matching in Loki."
+            }
+          ]
         },
         {
           "type": "interactive",
@@ -192,13 +201,18 @@
           ]
         },
         {
-          "type": "interactive",
-          "action": "formfill",
-          "reftarget": "input[data-testid=\"data-testid Panel editor option pane field input Title\"]",
-          "targetvalue": "Alloy Logs",
-          "requirements": ["exists-reftarget"],
-          "content": "In the panel options, change the **Title** to **Alloy Logs**.",
-          "tooltip": "The **Title** is the name of the panel. It helps identify what logs you're viewing in the dashboard."
+          "type": "guided",
+          "content": "In the panel options, give the panel a title that includes **Logs** (e.g., \"Alloy Logs\", \"Container Logs\").",
+          "steps": [
+            {
+              "action": "formfill",
+              "reftarget": "input[data-testid=\"data-testid Panel editor option pane field input Title\"]",
+              "targetvalue": "/logs/i",
+              "formHint": "Enter a title that contains the word \"Logs\" (e.g., \"Alloy Logs\", \"My Logs\", \"Container Logs\")",
+              "requirements": ["exists-reftarget"],
+              "tooltip": "The **Title** is the name of the panel. It helps identify what logs you're viewing in the dashboard."
+            }
+          ]
         },
         {
           "type": "multistep",

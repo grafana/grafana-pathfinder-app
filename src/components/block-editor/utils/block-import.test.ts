@@ -332,7 +332,9 @@ describe('parseAndValidateGuide', () => {
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should reject formfill action without targetvalue', () => {
+    it('should accept formfill action without targetvalue when validateInput is not set', () => {
+      // With validateInput toggle, formfill without targetvalue is now valid
+      // (any non-empty input will complete the step)
       const guide = JSON.stringify({
         id: 'test',
         title: 'Test',
@@ -342,6 +344,24 @@ describe('parseAndValidateGuide', () => {
             action: 'formfill',
             reftarget: '[data-testid="input"]',
             content: 'Fill this input',
+          },
+        ],
+      });
+      const result = parseAndValidateGuide(guide);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject formfill action with validateInput: true but no targetvalue', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'interactive',
+            action: 'formfill',
+            reftarget: '[data-testid="input"]',
+            content: 'Fill this input',
+            validateInput: true,
           },
         ],
       });

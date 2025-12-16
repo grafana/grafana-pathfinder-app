@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Button, Field, Input, Select, Badge, IconButton, useStyles2 } from '@grafana/ui';
+import { Button, Field, Input, Select, Badge, IconButton, Checkbox, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css } from '@emotion/css';
 import { INTERACTIVE_ACTIONS } from '../constants';
@@ -231,6 +231,8 @@ export function StepEditor({
   const [newTargetvalue, setNewTargetvalue] = useState('');
   const [newTooltip, setNewTooltip] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [newFormHint, setNewFormHint] = useState('');
+  const [newValidateInput, setNewValidateInput] = useState(false);
 
   // Edit step form state
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
@@ -239,6 +241,8 @@ export function StepEditor({
   const [editTargetvalue, setEditTargetvalue] = useState('');
   const [editTooltip, setEditTooltip] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editFormHint, setEditFormHint] = useState('');
+  const [editValidateInput, setEditValidateInput] = useState(false);
 
   // Drag/drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -275,6 +279,8 @@ export function StepEditor({
       setEditAction(step.action);
       setEditReftarget(step.reftarget);
       setEditTargetvalue(step.targetvalue ?? '');
+      setEditFormHint(step.formHint ?? '');
+      setEditValidateInput(step.validateInput ?? false);
       if (isGuided) {
         setEditDescription(step.description ?? '');
         setEditTooltip('');
@@ -298,6 +304,8 @@ export function StepEditor({
       action: editAction,
       reftarget: editReftarget.trim(),
       ...(editAction === 'formfill' && editTargetvalue.trim() && { targetvalue: editTargetvalue.trim() }),
+      ...(editAction === 'formfill' && editFormHint.trim() && { formHint: editFormHint.trim() }),
+      ...(editAction === 'formfill' && editValidateInput && { validateInput: true }),
       ...(isGuided
         ? editDescription.trim() && { description: editDescription.trim() }
         : editTooltip.trim() && { tooltip: editTooltip.trim() }),
@@ -313,6 +321,8 @@ export function StepEditor({
     editAction,
     editReftarget,
     editTargetvalue,
+    editFormHint,
+    editValidateInput,
     editTooltip,
     editDescription,
     isGuided,
@@ -349,6 +359,8 @@ export function StepEditor({
       action: newAction,
       reftarget: newReftarget.trim(),
       ...(newAction === 'formfill' && newTargetvalue.trim() && { targetvalue: newTargetvalue.trim() }),
+      ...(newAction === 'formfill' && newFormHint.trim() && { formHint: newFormHint.trim() }),
+      ...(newAction === 'formfill' && newValidateInput && { validateInput: true }),
       ...(isGuided
         ? newDescription.trim() && { description: newDescription.trim() }
         : newTooltip.trim() && { tooltip: newTooltip.trim() }),
@@ -359,8 +371,21 @@ export function StepEditor({
     setNewTargetvalue('');
     setNewTooltip('');
     setNewDescription('');
+    setNewFormHint('');
+    setNewValidateInput(false);
     setShowAddForm(false);
-  }, [newAction, newReftarget, newTargetvalue, newTooltip, newDescription, isGuided, steps, onChange]);
+  }, [
+    newAction,
+    newReftarget,
+    newTargetvalue,
+    newFormHint,
+    newValidateInput,
+    newTooltip,
+    newDescription,
+    isGuided,
+    steps,
+    onChange,
+  ]);
 
   // Handle removing a step
   const handleRemoveStep = useCallback(
@@ -508,13 +533,32 @@ export function StepEditor({
                   </div>
 
                   {editAction === 'formfill' && (
-                    <Field label="Value" style={{ marginBottom: 0 }}>
-                      <Input
-                        value={editTargetvalue}
-                        onChange={(e) => setEditTargetvalue(e.currentTarget.value)}
-                        placeholder="Value to fill"
+                    <>
+                      <Checkbox
+                        label="Validate input (require value/pattern match)"
+                        description="When enabled, user must enter a value matching the pattern. When disabled, any non-empty input completes the step."
+                        checked={editValidateInput}
+                        onChange={(e) => setEditValidateInput(e.currentTarget.checked)}
                       />
-                    </Field>
+                      {editValidateInput && (
+                        <>
+                          <Field label="Value (supports regex: ^pattern, /pattern/)" style={{ marginBottom: 0 }}>
+                            <Input
+                              value={editTargetvalue}
+                              onChange={(e) => setEditTargetvalue(e.currentTarget.value)}
+                              placeholder="Value to fill or regex pattern"
+                            />
+                          </Field>
+                          <Field label="Validation hint (optional)" style={{ marginBottom: 0 }}>
+                            <Input
+                              value={editFormHint}
+                              onChange={(e) => setEditFormHint(e.currentTarget.value)}
+                              placeholder="Hint when validation fails"
+                            />
+                          </Field>
+                        </>
+                      )}
+                    </>
                   )}
 
                   {isGuided ? (
@@ -646,13 +690,32 @@ export function StepEditor({
           </div>
 
           {newAction === 'formfill' && (
-            <Field label="Value" style={{ marginBottom: 0 }}>
-              <Input
-                value={newTargetvalue}
-                onChange={(e) => setNewTargetvalue(e.currentTarget.value)}
-                placeholder="Value to fill"
+            <>
+              <Checkbox
+                label="Validate input (require value/pattern match)"
+                description="When enabled, user must enter a value matching the pattern. When disabled, any non-empty input completes the step."
+                checked={newValidateInput}
+                onChange={(e) => setNewValidateInput(e.currentTarget.checked)}
               />
-            </Field>
+              {newValidateInput && (
+                <>
+                  <Field label="Value (supports regex: ^pattern, /pattern/)" style={{ marginBottom: 0 }}>
+                    <Input
+                      value={newTargetvalue}
+                      onChange={(e) => setNewTargetvalue(e.currentTarget.value)}
+                      placeholder="Value to fill or regex pattern"
+                    />
+                  </Field>
+                  <Field label="Validation hint (optional)" style={{ marginBottom: 0 }}>
+                    <Input
+                      value={newFormHint}
+                      onChange={(e) => setNewFormHint(e.currentTarget.value)}
+                      placeholder="Hint when validation fails"
+                    />
+                  </Field>
+                </>
+              )}
+            </>
           )}
 
           {isGuided ? (

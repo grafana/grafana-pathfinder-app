@@ -23,6 +23,8 @@ export interface ActionToDetect {
   targetAction: string;
   refTarget: string;
   targetValue?: string;
+  /** Hint to show when form validation fails (for formfill with regex patterns) */
+  formHint?: string;
 }
 
 /**
@@ -32,6 +34,8 @@ export interface MatchResult {
   matched: boolean;
   actionIndex: number;
   targetElement: HTMLElement | null;
+  /** Form hint for formfill actions (passed through from config) */
+  formHint?: string;
 }
 
 /**
@@ -233,12 +237,13 @@ export function useAutoDetection(options: UseAutoDetectionOptions): void {
             return;
           }
 
-          // Notify callback
+          // Notify callback (include formHint for formfill actions)
           onActionDetectedRef.current(
             {
               matched: true,
               actionIndex: index,
               targetElement,
+              formHint: action.formHint,
             },
             detectedAction
           );
