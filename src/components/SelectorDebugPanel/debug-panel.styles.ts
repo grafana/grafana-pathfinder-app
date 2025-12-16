@@ -6,7 +6,7 @@ export const getDebugPanelStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1.5),
-    padding: theme.spacing(2),
+    padding: theme.spacing(1), // Match other tabs' horizontal padding
   }),
 
   header: css({

@@ -414,12 +414,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
             </>
           )}
         </div>
-
-        {/* Preview Notice */}
-        <div className={styles.previewNotice}>
-          <Icon name="info-circle" size="sm" />
-          <span>Learning paths and badges are in preview. Content may change as we refine the experience.</span>
-        </div>
       </div>
 
       {/* Learning Paths Section */}
@@ -553,6 +547,12 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
             );
           })}
         </div>
+      </div>
+
+      {/* Preview Notice - at bottom to not distract from main content */}
+      <div className={styles.previewNotice}>
+        <Icon name="info-circle" size="sm" />
+        <span>Learning paths and badges are in preview. Content may change as we refine the experience.</span>
       </div>
 
       {/* Footer */}
@@ -874,7 +874,7 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
       display: 'flex',
       flexDirection: 'column',
       gap: theme.spacing(2),
-      padding: theme.spacing(2),
+      padding: theme.spacing(1), // Match recommendations tab horizontal padding
       height: '100%',
       overflowY: 'auto',
     }),
@@ -921,26 +921,26 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
       color: theme.colors.text.secondary,
     }),
 
-    // Stats Row
+    // Stats Row - compact to fit on single line at narrow widths
     statsRow: css({
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',
-      gap: theme.spacing(2),
+      gap: theme.spacing(1.5),
       flexWrap: 'wrap',
     }),
     statItem: css({
       textAlign: 'center',
-      minWidth: 80,
+      minWidth: 70,
     }),
     statValue: css({
-      fontSize: theme.typography.h4.fontSize,
+      fontSize: theme.typography.h5.fontSize,
       fontWeight: theme.typography.fontWeightBold,
       color: theme.colors.text.primary,
       fontVariantNumeric: 'tabular-nums',
     }),
     statValueStreak: css({
-      fontSize: theme.typography.h4.fontSize,
+      fontSize: theme.typography.h5.fontSize,
       fontWeight: theme.typography.fontWeightBold,
       color: isDark ? '#FF8C5A' : '#FF6B35',
       fontVariantNumeric: 'tabular-nums',
@@ -950,15 +950,15 @@ const getMyLearningStyles = (theme: GrafanaTheme2) => {
       gap: theme.spacing(0.5),
     }),
     fireEmoji: css({
-      fontSize: '1.2em',
+      fontSize: '1.1em',
     }),
     statLabel: css({
-      fontSize: theme.typography.bodySmall.fontSize,
+      fontSize: '11px',
       color: theme.colors.text.secondary,
     }),
     statDivider: css({
       width: 1,
-      height: 32,
+      height: 28,
       backgroundColor: theme.colors.border.weak,
     }),
 

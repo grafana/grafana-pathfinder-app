@@ -70,11 +70,11 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
 };
 
 /**
- * Ordered list of block types for the palette
+ * Ordered list of block types for the palette.
+ * Note: 'html' is intentionally excluded - it's only supported for legacy content.
  */
 export const BLOCK_TYPE_ORDER: BlockType[] = [
   'markdown',
-  'html',
   'image',
   'video',
   'section',
