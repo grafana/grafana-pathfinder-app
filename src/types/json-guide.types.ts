@@ -159,7 +159,7 @@ export interface JsonInteractiveBlock {
   action: JsonInteractiveAction;
   /** CSS selector or Grafana selector for the target element */
   reftarget: string;
-  /** Value for formfill actions */
+  /** Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/) */
   targetvalue?: string;
   /** Markdown description shown to the user */
   content: string;
@@ -173,6 +173,10 @@ export interface JsonInteractiveBlock {
   skippable?: boolean;
   /** Hint shown when step cannot be completed */
   hint?: string;
+  /** Hint shown when form validation fails (for formfill actions with regex patterns) */
+  formHint?: string;
+  /** Enable strict validation for formfill (require targetvalue match). Default: false (any non-empty input) */
+  validateInput?: boolean;
 
   // ---- Button Visibility ----
   /** Whether to show the "Show me" button (default: true) */
@@ -240,7 +244,7 @@ export interface JsonStep {
   action: JsonInteractiveAction;
   /** CSS selector or Grafana selector for the target element */
   reftarget: string;
-  /** Value for formfill actions */
+  /** Value for formfill actions (supports regex patterns starting with ^ or $ or enclosed in /pattern/) */
   targetvalue?: string;
   /** Requirements for this specific step */
   requirements?: string[];
@@ -250,6 +254,10 @@ export interface JsonStep {
   description?: string;
   /** Whether this step can be skipped (guided only) */
   skippable?: boolean;
+  /** Hint shown when form validation fails (for formfill actions with regex patterns) */
+  formHint?: string;
+  /** Enable strict validation for formfill (require targetvalue match). Default: false (any non-empty input) */
+  validateInput?: boolean;
 }
 
 // ============ QUIZ BLOCK ============

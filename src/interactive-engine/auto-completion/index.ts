@@ -16,8 +16,18 @@ export {
 export type { DetectedAction } from './action-detector';
 
 // Action Matcher - Matches detected actions against step configurations
-export { matchesStepAction, matchesElementBounds, isNonFocusableInteractive, ActionMatcher } from './action-matcher';
-export type { StepActionConfig, DetectedActionEvent } from './action-matcher';
+export {
+  matchesStepAction,
+  matchesElementBounds,
+  isNonFocusableInteractive,
+  ActionMatcher,
+  // Regex pattern matching utilities
+  isRegexPattern,
+  parseRegexPattern,
+  matchesRegexPattern,
+  matchFormValue,
+} from './action-matcher';
+export type { StepActionConfig, DetectedActionEvent, FormfillMatchResult } from './action-matcher';
 
 // Action Monitor - Global singleton for monitoring user interactions
 export { ActionMonitor, getActionMonitor } from './action-monitor';
@@ -25,3 +35,7 @@ export { ActionMonitor, getActionMonitor } from './action-monitor';
 // Auto-detection Hook - Shared hook for interactive elements
 export { useAutoDetection, useSingleActionDetection, resolveTargetElement } from './useAutoDetection';
 export type { ActionToDetect, MatchResult, UseAutoDetectionOptions } from './useAutoDetection';
+
+// Form Validation Hook - Debounced form validation with regex support
+export { useFormValidation, useFormElementValidation } from './useFormValidation';
+export type { FormValidationState, FormValidationResult, UseFormValidationOptions } from './useFormValidation';

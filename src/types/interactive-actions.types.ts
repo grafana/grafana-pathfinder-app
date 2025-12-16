@@ -21,10 +21,13 @@ export interface InternalAction {
  * Extends InternalAction with stricter types and additional fields
  */
 export interface GuidedAction extends InternalAction {
-  targetAction: 'hover' | 'button' | 'highlight' | 'noop';
-  refTarget?: string; // Required for hover/button/highlight, optional for noop
+  targetAction: 'hover' | 'button' | 'highlight' | 'noop' | 'formfill';
+  refTarget?: string; // Required for hover/button/highlight/formfill, optional for noop
+  targetValue?: string; // Value for formfill actions (supports regex patterns)
   targetComment?: string; // Optional comment to display in tooltip during this step
   isSkippable?: boolean; // Whether this specific step can be skipped
+  formHint?: string; // Hint shown when form validation fails (for formfill with regex)
+  validateInput?: boolean; // Enable strict validation for formfill (require targetValue match)
 }
 
 /**

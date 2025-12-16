@@ -779,6 +779,8 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string): ConversionRes
         ? markdownToHtml(step.tooltip)
         : undefined,
     isSkippable: step.skippable ?? false,
+    formHint: step.formHint, // Pass form hint for formfill validation feedback
+    validateInput: step.validateInput, // Pass validation toggle for formfill
   }));
 
   // Parse content as markdown for children
@@ -793,7 +795,7 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string): ConversionRes
       type: 'interactive-guided',
       props: {
         internalActions,
-        stepTimeout: block.stepTimeout ?? 30000,
+        stepTimeout: block.stepTimeout ?? 120000,
         requirements,
         objectives,
         skippable: block.skippable ?? false,

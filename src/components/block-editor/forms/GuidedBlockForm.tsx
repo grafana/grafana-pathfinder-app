@@ -38,7 +38,7 @@ export function GuidedBlockForm({
   const initial = initialData && isGuidedBlock(initialData) ? initialData : null;
   const [content, setContent] = useState(initial?.content ?? '');
   const [steps, setSteps] = useState<JsonStep[]>(initial?.steps ?? []);
-  const [stepTimeout, setStepTimeout] = useState(initial?.stepTimeout?.toString() ?? '30000');
+  const [stepTimeout, setStepTimeout] = useState(initial?.stepTimeout?.toString() ?? '120000');
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [objectives, setObjectives] = useState(initial?.objectives?.join(', ') ?? '');
   const [skippable, setSkippable] = useState(initial?.skippable ?? false);
@@ -66,7 +66,7 @@ export function GuidedBlockForm({
         type: 'guided',
         content: content.trim(),
         steps,
-        ...(stepTimeout && parseInt(stepTimeout, 10) !== 30000 && { stepTimeout: parseInt(stepTimeout, 10) }),
+        ...(stepTimeout && parseInt(stepTimeout, 10) !== 120000 && { stepTimeout: parseInt(stepTimeout, 10) }),
         ...(reqArray.length > 0 && { requirements: reqArray }),
         ...(objArray.length > 0 && { objectives: objArray }),
         ...(skippable && { skippable }),

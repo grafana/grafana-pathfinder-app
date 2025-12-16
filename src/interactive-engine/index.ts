@@ -44,6 +44,14 @@ export {
   useAutoDetection,
   useSingleActionDetection,
   resolveTargetElement,
+  // Regex pattern matching utilities
+  isRegexPattern,
+  parseRegexPattern,
+  matchesRegexPattern,
+  matchFormValue,
+  // Form validation hooks
+  useFormValidation,
+  useFormElementValidation,
 } from './auto-completion';
 export type {
   DetectedAction,
@@ -52,4 +60,8 @@ export type {
   ActionToDetect,
   MatchResult,
   UseAutoDetectionOptions,
+  FormfillMatchResult,
+  FormValidationState,
+  FormValidationResult,
+  UseFormValidationOptions,
 } from './auto-completion';

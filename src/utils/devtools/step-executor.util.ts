@@ -9,7 +9,7 @@ export interface ExecutionOptions {
   onProgress?: (progress: ProgressInfo) => void;
   mode: 'auto' | 'guided';
   abortSignal?: AbortSignal;
-  stepTimeout?: number; // For guided mode, timeout per step in ms (default: 30000)
+  stepTimeout?: number; // For guided mode, timeout per step in ms (default: 120000)
 }
 
 export interface ExecutionResult {
@@ -42,7 +42,7 @@ export async function executeStepSequence(
   executeAction: ExecuteActionFunction,
   options: ExecutionOptions
 ): Promise<ExecutionResult> {
-  const { onProgress, mode, abortSignal, stepTimeout = 30000 } = options;
+  const { onProgress, mode, abortSignal, stepTimeout = 120000 } = options;
 
   if (steps.length === 0) {
     return {

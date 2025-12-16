@@ -14,6 +14,8 @@ import {
   type DetectedActionEvent,
   useInteractiveElements,
   useSingleActionDetection,
+  useFormElementValidation,
+  resolveTargetElement,
 } from '../../../interactive-engine';
 import { testIds } from '../../../components/testIds';
 import { AssistantCustomizableProvider } from '../../../integrations/assistant-integration';
@@ -35,6 +37,7 @@ export const InteractiveStep = forwardRef<
       showMe = true, // Default to true - show "Show me" button unless explicitly disabled
       skippable = false, // Default to false - only skippable if explicitly set
       completeEarly = false, // Default to false - only mark early if explicitly set
+      formHint, // Hint shown when form validation fails (for formfill with regex patterns)
       showMeText,
       title,
       description,
@@ -150,6 +153,42 @@ export const InteractiveStep = forwardRef<
         ? 'Complete previous step'
         : checker.explanation
       : checker.explanation;
+
+    // ============================================================================
+    // FORM VALIDATION (for formfill actions with regex pattern support)
+    // ============================================================================
+
+    // Resolve the target element for monitoring
+    const formTargetElement = useMemo(() => {
+      if (targetAction !== 'formfill' || !refTarget) {
+        return null;
+      }
+      return resolveTargetElement({ targetAction, refTarget, targetValue: currentTargetValue });
+    }, [targetAction, refTarget, currentTargetValue]);
+
+    // Handle form validation completion
+    const handleFormValidationComplete = useCallback(() => {
+      // Mark as completed locally and notify parent
+      setIsLocallyCompleted(true);
+
+      // Notify parent if we have the callback (section coordination)
+      if (onStepComplete && stepId) {
+        onStepComplete(stepId);
+      }
+
+      // Call the original onComplete callback if provided
+      if (onComplete) {
+        onComplete();
+      }
+    }, [stepId, onStepComplete, onComplete]);
+
+    // Use form validation hook for formfill actions
+    const formValidation = useFormElementValidation(formTargetElement, {
+      expectedValue: currentTargetValue,
+      formHint,
+      enabled: targetAction === 'formfill' && finalIsEnabled && !isCompletedWithObjectives && !disabled,
+      onValid: handleFormValidationComplete,
+    });
 
     // Handle reset trigger from parent section
     useEffect(() => {
@@ -679,6 +718,33 @@ export const InteractiveStep = forwardRef<
           >
             {postVerifyError}
           </div>
+        )}
+
+        {/* Form validation feedback for formfill actions */}
+        {targetAction === 'formfill' && !isCompletedWithObjectives && finalIsEnabled && (
+          <>
+            {/* Checking indicator - shown while debouncing/validating */}
+            {formValidation.isChecking && (
+              <div
+                className="interactive-step-form-checking"
+                data-testid={testIds.interactive.formChecking(renderedStepId)}
+              >
+                <span className="interactive-form-spinner">⟳</span>
+                <span className="interactive-form-checking-text">Checking contents...</span>
+              </div>
+            )}
+
+            {/* Validation warning - shown when regex pattern doesn't match */}
+            {formValidation.isInvalid && formValidation.hint && (
+              <div
+                className="interactive-step-form-hint-warning"
+                data-testid={testIds.interactive.formHintWarning(renderedStepId)}
+              >
+                <span className="interactive-form-warning-icon">⚠</span>
+                <span className="interactive-form-hint-text">{formValidation.hint}</span>
+              </div>
+            )}
+          </>
         )}
 
         {/* Show explanation text when requirements aren't met, but objectives always win (clarification 2) */}

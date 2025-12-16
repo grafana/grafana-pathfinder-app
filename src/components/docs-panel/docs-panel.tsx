@@ -838,8 +838,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // Restore tabs after storage is initialized (fixes race condition)
   React.useEffect(() => {
-    // Only restore if we haven't loaded tabs yet (tabs length === 1 means only recommendations tab)
-    if (tabs.length === 1 && tabs[0].id === 'recommendations') {
+    // Only restore if we haven't loaded tabs yet
+    // Check if tabs only contain the default system tabs (recommendations and my-learning)
+    const hasOnlyDefaultTabs =
+      tabs.length === 2 && tabs.every((tab) => tab.id === 'recommendations' || tab.id === 'my-learning');
+
+    if (hasOnlyDefaultTabs) {
       model.restoreTabsAsync();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

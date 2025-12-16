@@ -774,6 +774,62 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // FORM VALIDATION STYLES - Checking indicator and validation hint warning
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Form checking indicator (shown during 2s debounce)
+  '.interactive-step-form-checking': {
+    marginTop: '12px',
+    padding: '10px 12px',
+    background: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: '6px',
+    fontSize: '0.875rem',
+    lineHeight: '1.5',
+    color: theme.colors.text.secondary,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+
+  '.interactive-form-spinner': {
+    fontSize: '0.9rem',
+    color: theme.colors.text.secondary,
+    animation: 'spin 1s linear infinite',
+  },
+
+  '.interactive-form-checking-text': {
+    color: theme.colors.text.secondary,
+  },
+
+  // Form validation hint warning (shown when regex pattern doesn't match)
+  '.interactive-step-form-hint-warning': {
+    marginTop: '12px',
+    padding: '10px 12px',
+    background: theme.colors.warning.transparent,
+    border: `1px solid ${theme.colors.warning.border}`,
+    borderRadius: '6px',
+    fontSize: '0.875rem',
+    lineHeight: '1.4',
+    color: theme.colors.warning.text,
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '8px',
+  },
+
+  '.interactive-form-warning-icon': {
+    fontSize: '1rem',
+    flexShrink: 0,
+    color: theme.colors.warning.main,
+  },
+
+  '.interactive-form-hint-text': {
+    flex: 1,
+    wordWrap: 'break-word' as const,
+    overflowWrap: 'break-word' as const,
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // GUIDED INTERACTION STYLES - Redesigned with clear state-based UI
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1561,8 +1617,17 @@ export const addGlobalInteractiveStyles = () => {
     /* Button container for skip and cancel buttons */
     .interactive-comment-buttons {
       display: flex;
+      flex-wrap: wrap;
+      align-items: center;
       gap: 8px;
       margin-top: 12px;
+    }
+
+    /* Form validation status when inline with buttons */
+    .interactive-comment-buttons .interactive-form-validation-status {
+      margin-top: 0;
+      flex: 1;
+      min-width: 120px;
     }
 
     /* Cancel button for comment boxes - always available during guided execution */
@@ -1773,6 +1838,62 @@ export const addGlobalInteractiveStyles = () => {
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
+    }
+
+    /* Form validation status in comment box (for guided formfill steps) */
+    .interactive-form-validation-status {
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .interactive-form-validation-status.form-checking {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .interactive-form-validation-status.form-hint-warning {
+      background: rgba(255, 193, 7, 0.2);
+      border: 1px solid rgba(255, 193, 7, 0.4);
+      color: rgba(255, 220, 150, 1);
+    }
+
+    .interactive-form-validation-status.form-valid {
+      background: rgba(115, 191, 105, 0.2);
+      border: 1px solid rgba(115, 191, 105, 0.4);
+      color: rgba(115, 191, 105, 1);
+    }
+
+    .interactive-form-validation-status .interactive-form-spinner {
+      animation: spin 1s linear infinite;
+    }
+
+    .interactive-form-validation-status .interactive-form-warning-icon {
+      flex-shrink: 0;
+    }
+
+    .interactive-form-validation-status .interactive-form-success-icon {
+      flex-shrink: 0;
+      animation: popIn 0.3s ease-out;
+    }
+
+    @keyframes popIn {
+      0% {
+        transform: scale(0);
+        opacity: 0;
+      }
+      50% {
+        transform: scale(1.2);
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
     }
   `;
   document.head.appendChild(style);
