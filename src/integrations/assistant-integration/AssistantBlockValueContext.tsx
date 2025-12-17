@@ -5,7 +5,7 @@
  * so it can render with proper styling while using the customized value.
  */
 
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, useContext, useMemo, ReactNode } from 'react';
 
 export interface AssistantBlockValueContextValue {
   /** The customized value from the assistant (null if not customized) */
@@ -39,11 +39,13 @@ export function AssistantBlockValueProvider({
   datasourceType = null,
   children,
 }: AssistantBlockValueProviderProps) {
-  return (
-    <AssistantBlockValueContext.Provider value={{ customizedValue, isGenerating, datasourceType }}>
-      {children}
-    </AssistantBlockValueContext.Provider>
+  // REACT: memoize context value to prevent unnecessary re-renders (R11)
+  const contextValue = useMemo(
+    () => ({ customizedValue, isGenerating, datasourceType }),
+    [customizedValue, isGenerating, datasourceType]
   );
+
+  return <AssistantBlockValueContext.Provider value={contextValue}>{children}</AssistantBlockValueContext.Provider>;
 }
 
 /**
