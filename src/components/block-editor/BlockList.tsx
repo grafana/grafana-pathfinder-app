@@ -197,6 +197,18 @@ const getConditionalStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     display: 'inline-block',
   }),
+  recordButton: css({
+    marginLeft: 'auto',
+    color: theme.colors.text.secondary,
+    '&:hover': {
+      color: theme.colors.error.text,
+    },
+  }),
+  recordingButton: css({
+    marginLeft: 'auto',
+    color: theme.colors.error.main,
+    animation: 'pulse 1s ease-in-out infinite',
+  }),
 });
 
 export interface BlockListProps {
@@ -230,6 +242,10 @@ export interface BlockListProps {
   onSectionRecord?: (sectionId: string) => void;
   /** ID of section currently being recorded into (if any) */
   recordingIntoSection?: string | null;
+  /** Called to start/stop recording into a conditional branch */
+  onConditionalBranchRecord?: (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => void;
+  /** Branch currently being recorded into (if any) */
+  recordingIntoConditionalBranch?: { conditionalId: string; branch: 'whenTrue' | 'whenFalse' } | null;
   /** Whether selection mode is active */
   isSelectionMode?: boolean;
   /** IDs of currently selected blocks */
@@ -512,6 +528,8 @@ export function BlockList({
   onNestedBlockMove,
   onSectionRecord,
   recordingIntoSection,
+  onConditionalBranchRecord,
+  recordingIntoConditionalBranch,
   isSelectionMode = false,
   selectedBlockIds = new Set(),
   onToggleBlockSelection,
@@ -847,6 +865,16 @@ export function BlockList({
                   <div className={`${conditionalStyles.branchHeader} ${conditionalStyles.branchHeaderTrue}`}>
                     <span className={conditionalStyles.branchIcon}>✓</span>
                     <span>When conditions pass</span>
+                    {onConditionalBranchRecord && (
+                      <IconButton
+                        name={recordingIntoConditionalBranch?.conditionalId === block.id && recordingIntoConditionalBranch?.branch === 'whenTrue' ? 'square-shape' : 'circle'}
+                        size="sm"
+                        aria-label={recordingIntoConditionalBranch?.conditionalId === block.id && recordingIntoConditionalBranch?.branch === 'whenTrue' ? 'Stop recording' : 'Record into branch'}
+                        onClick={() => onConditionalBranchRecord(block.id, 'whenTrue')}
+                        className={recordingIntoConditionalBranch?.conditionalId === block.id && recordingIntoConditionalBranch?.branch === 'whenTrue' ? conditionalStyles.recordingButton : conditionalStyles.recordButton}
+                        tooltip={recordingIntoConditionalBranch?.conditionalId === block.id && recordingIntoConditionalBranch?.branch === 'whenTrue' ? 'Stop recording' : 'Record into branch'}
+                      />
+                    )}
                   </div>
                   {(block.block as JsonConditionalBlock).whenTrue.length === 0 ? (
                     <div className={conditionalStyles.emptyBranch}>
@@ -991,6 +1019,16 @@ export function BlockList({
                   <div className={`${conditionalStyles.branchHeader} ${conditionalStyles.branchHeaderFalse}`}>
                     <span className={conditionalStyles.branchIcon}>✗</span>
                     <span>When conditions fail</span>
+                    {onConditionalBranchRecord && (
+                      <IconButton
+                        name={recordingIntoConditionalBranch?.conditionalId === block.id && recordingIntoConditionalBranch?.branch === 'whenFalse' ? 'square-shape' : 'circle'}
+                        size="sm"
+                        aria-label={recordingIntoConditionalBranch?.conditionalId === block.id && recordingIntoConditionalBranch?.branch === 'whenFalse' ? 'Stop recording' : 'Record into branch'}
+                        onClick={() => onConditionalBranchRecord(block.id, 'whenFalse')}
+                        className={recordingIntoConditionalBranch?.conditionalId === block.id && recordingIntoConditionalBranch?.branch === 'whenFalse' ? conditionalStyles.recordingButton : conditionalStyles.recordButton}
+                        tooltip={recordingIntoConditionalBranch?.conditionalId === block.id && recordingIntoConditionalBranch?.branch === 'whenFalse' ? 'Stop recording' : 'Record into branch'}
+                      />
+                    )}
                   </div>
                   {(block.block as JsonConditionalBlock).whenFalse.length === 0 ? (
                     <div className={conditionalStyles.emptyBranch}>
@@ -1272,7 +1310,7 @@ export function BlockList({
                   ) : (
                     <BlockPalette
                       onSelect={(type) => handleInsertInSection(type, block.id)}
-                      excludeTypes={['section']}
+                      excludeTypes={['section', 'conditional']}
                       embedded
                     />
                   )}

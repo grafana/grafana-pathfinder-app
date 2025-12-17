@@ -721,6 +721,10 @@ function convertConditionalBlock(block: JsonConditionalBlock, path: string, base
       props: {
         conditions: block.conditions,
         description: block.description,
+        display: block.display ?? 'inline',
+        // Per-branch section configs (each branch has its own title, requirements, objectives)
+        whenTrueSectionConfig: block.whenTrueSectionConfig,
+        whenFalseSectionConfig: block.whenFalseSectionConfig,
         // Store both branches in props - renderer will pick based on condition evaluation
         whenTrueChildren,
         whenFalseChildren,

@@ -195,10 +195,13 @@ export function BlockItem({
             <span style={{ marginLeft: '8px', fontWeight: 500 }}>{block.block.title}</span>
           )}
           {isConditionalBlock(block.block) && (
-            <Badge
-              text={`${block.block.conditions.length} condition${block.block.conditions.length !== 1 ? 's' : ''}`}
-              color="orange"
-            />
+            <>
+              <Badge
+                text={`${block.block.conditions.length} condition${block.block.conditions.length !== 1 ? 's' : ''}`}
+                color="orange"
+              />
+              {block.block.display === 'section' && <Badge text="Section" color="green" />}
+            </>
           )}
         </div>
         {preview && (

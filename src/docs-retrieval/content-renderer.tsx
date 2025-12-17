@@ -578,6 +578,9 @@ function renderParsedElement(
           key={key}
           conditions={element.props.conditions || []}
           description={element.props.description}
+          display={element.props.display || 'inline'}
+          whenTrueSectionConfig={element.props.whenTrueSectionConfig}
+          whenFalseSectionConfig={element.props.whenFalseSectionConfig}
           whenTrueChildren={element.props.whenTrueChildren || []}
           whenFalseChildren={element.props.whenFalseChildren || []}
           renderElement={(child: ParsedElement, childKey: string) =>

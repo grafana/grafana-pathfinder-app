@@ -63,6 +63,12 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   const [recordingStartUrl, setRecordingStartUrl] = useState<string | null>(null);
   const pendingSectionIdRef = useRef<string | null>(null);
 
+  // Conditional branch recording state
+  const [recordingIntoConditionalBranch, setRecordingIntoConditionalBranch] = useState<{
+    conditionalId: string;
+    branch: 'whenTrue' | 'whenFalse';
+  } | null>(null);
+
   // Block selection mode state (for merging blocks)
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(new Set());
@@ -547,7 +553,8 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         setRecordingIntoSection(null);
         setRecordingStartUrl(null);
       } else {
-        // Start recording into this section
+        // Start recording into this section (clear any conditional recording first)
+        setRecordingIntoConditionalBranch(null);
         actionRecorder.clearRecording();
         actionRecorder.startRecording();
         setRecordingIntoSection(sectionId);
@@ -557,12 +564,102 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     [recordingIntoSection, actionRecorder, editor]
   );
 
+  // Handle conditional branch recording toggle
+  const handleConditionalBranchRecord = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => {
+      const isRecording =
+        recordingIntoConditionalBranch?.conditionalId === conditionalId &&
+        recordingIntoConditionalBranch?.branch === branch;
+
+      if (isRecording) {
+        // Stop recording - convert recorded steps to blocks and add to conditional branch
+        actionRecorder.stopRecording();
+        const steps = actionRecorder.recordedSteps;
+
+        // Group consecutive steps with the same groupId into multisteps
+        const processedSteps: Array<
+          { type: 'single'; step: (typeof steps)[0] } | { type: 'group'; steps: typeof steps }
+        > = [];
+
+        let currentGroup: typeof steps = [];
+        let currentGroupId: string | undefined;
+
+        steps.forEach((step) => {
+          if (step.groupId) {
+            if (step.groupId === currentGroupId) {
+              currentGroup.push(step);
+            } else {
+              if (currentGroup.length > 0) {
+                processedSteps.push({ type: 'group', steps: currentGroup });
+              }
+              currentGroupId = step.groupId;
+              currentGroup = [step];
+            }
+          } else {
+            if (currentGroup.length > 0) {
+              processedSteps.push({ type: 'group', steps: currentGroup });
+              currentGroup = [];
+              currentGroupId = undefined;
+            }
+            processedSteps.push({ type: 'single', step });
+          }
+        });
+
+        if (currentGroup.length > 0) {
+          processedSteps.push({ type: 'group', steps: currentGroup });
+        }
+
+        // Convert to blocks and add to conditional branch
+        processedSteps.forEach((item) => {
+          if (item.type === 'single') {
+            const interactiveBlock: JsonInteractiveBlock = {
+              type: 'interactive',
+              action: item.step.action as JsonInteractiveBlock['action'],
+              reftarget: item.step.selector,
+              content: item.step.description || `${item.step.action} on element`,
+              ...(item.step.value && { targetvalue: item.step.value }),
+            };
+            editor.addBlockToConditionalBranch(conditionalId, branch, interactiveBlock);
+          } else {
+            const multistepSteps: JsonStep[] = item.steps.map((step) => ({
+              action: step.action as JsonStep['action'],
+              reftarget: step.selector,
+              ...(step.value && { targetvalue: step.value }),
+              tooltip: step.description || `${step.action} on element`,
+            }));
+
+            const multistepBlock: JsonMultistepBlock = {
+              type: 'multistep',
+              content: item.steps[0].description || 'Complete the following steps',
+              steps: multistepSteps,
+            };
+            editor.addBlockToConditionalBranch(conditionalId, branch, multistepBlock);
+          }
+        });
+
+        actionRecorder.clearRecording();
+        setRecordingIntoConditionalBranch(null);
+        setRecordingStartUrl(null);
+      } else {
+        // Start recording into this conditional branch (clear any section recording first)
+        setRecordingIntoSection(null);
+        actionRecorder.clearRecording();
+        actionRecorder.startRecording();
+        setRecordingIntoConditionalBranch({ conditionalId, branch });
+        setRecordingStartUrl(window.location.href);
+      }
+    },
+    [recordingIntoConditionalBranch, actionRecorder, editor]
+  );
+
   // Handle stop recording from overlay
   const handleStopRecording = useCallback(() => {
     if (recordingIntoSection) {
       handleSectionRecord(recordingIntoSection);
+    } else if (recordingIntoConditionalBranch) {
+      handleConditionalBranchRecord(recordingIntoConditionalBranch.conditionalId, recordingIntoConditionalBranch.branch);
     }
-  }, [recordingIntoSection, handleSectionRecord]);
+  }, [recordingIntoSection, handleSectionRecord, recordingIntoConditionalBranch, handleConditionalBranchRecord]);
 
   // Handle "Add and Start Recording" for new sections
   const handleSubmitAndStartRecording = useCallback(
@@ -579,6 +676,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       const capturedUrl = window.location.href;
       setTimeout(() => {
         if (pendingSectionIdRef.current) {
+          setRecordingIntoConditionalBranch(null); // Clear any conditional recording
           actionRecorder.clearRecording();
           actionRecorder.startRecording();
           setRecordingIntoSection(pendingSectionIdRef.current);
@@ -814,6 +912,8 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             onNestedBlockMove={handleNestedBlockMove}
             onSectionRecord={handleSectionRecord}
             recordingIntoSection={recordingIntoSection}
+            onConditionalBranchRecord={handleConditionalBranchRecord}
+            recordingIntoConditionalBranch={recordingIntoConditionalBranch}
             isSelectionMode={isSelectionMode}
             selectedBlockIds={selectedBlockIds}
             onToggleBlockSelection={handleToggleBlockSelection}
@@ -893,17 +993,19 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         onClose={() => setIsGitHubPRModalOpen(false)}
       />
 
-      {/* Record mode overlay for section recording */}
-      {recordingIntoSection && (
+      {/* Record mode overlay for section/conditional recording */}
+      {(recordingIntoSection || recordingIntoConditionalBranch) && (
         <RecordModeOverlay
           isRecording={actionRecorder.isRecording}
           stepCount={actionRecorder.recordedSteps.length}
           onStop={handleStopRecording}
           sectionName={
-            state.blocks.find((b) => b.id === recordingIntoSection)?.block.type === 'section'
-              ? ((state.blocks.find((b) => b.id === recordingIntoSection)?.block as { title?: string }).title ??
-                'Section')
-              : 'Section'
+            recordingIntoSection
+              ? (state.blocks.find((b) => b.id === recordingIntoSection)?.block.type === 'section'
+                ? ((state.blocks.find((b) => b.id === recordingIntoSection)?.block as { title?: string }).title ??
+                  'Section')
+                : 'Section')
+              : `Conditional branch (${recordingIntoConditionalBranch?.branch === 'whenTrue' ? 'pass' : 'fail'})`
           }
           startingUrl={recordingStartUrl ?? undefined}
         />

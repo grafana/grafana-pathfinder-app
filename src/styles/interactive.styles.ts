@@ -436,6 +436,39 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
+  // Interactive Conditional loading styles
+  '.interactive-conditional.loading': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: theme.spacing(3),
+    margin: `${theme.spacing(2)} 0`,
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.default,
+    minHeight: '80px',
+  },
+
+  '.interactive-conditional-loading': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1.5),
+    color: theme.colors.text.secondary,
+  },
+
+  '.interactive-conditional-spinner': {
+    fontSize: '18px',
+    color: theme.colors.primary.main,
+    '&.spinning': {
+      animation: 'spin 1s linear infinite',
+    },
+  },
+
+  '.interactive-conditional-loading-text': {
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+  },
+
   '.interactive-section-description': {
     padding: `0 ${theme.spacing(2)} ${theme.spacing(1.5)}`,
     color: theme.colors.text.secondary,
@@ -501,6 +534,32 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     borderRadius: theme.shape.radius.default,
     fontStyle: 'italic',
     lineHeight: '1.4',
+  },
+
+  // Section requirements banner (shown when section-level requirements are not met)
+  // Styled to match individual step requirements (interactive-guided-requirement-box)
+  '.interactive-section-requirements-banner': {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '8px',
+    margin: `${theme.spacing(1.5)} ${theme.spacing(2)} 0`,
+    padding: '10px 12px',
+    background: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: '6px',
+  },
+
+  '.interactive-section-requirements-icon': {
+    color: theme.colors.text.secondary,
+    fontSize: '1rem',
+    lineHeight: 1.4,
+    flexShrink: 0,
+  },
+
+  '.interactive-section-requirements-message': {
+    color: theme.colors.text.secondary,
+    fontSize: '0.875rem',
+    lineHeight: 1.4,
   },
 
   '.interactive-section-actions': {

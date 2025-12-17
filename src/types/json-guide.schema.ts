@@ -244,10 +244,24 @@ const AssistantProps = {
   assistantType: z.enum(['query', 'config', 'code', 'text']).optional(),
 };
 
+/**
+ * Schema for conditional section config.
+ * Each branch can have its own section configuration.
+ * @coupling Type: ConditionalSectionConfig
+ */
+const ConditionalSectionConfigSchema = z.object({
+  title: z.string().optional(),
+  requirements: z.array(z.string()).optional(),
+  objectives: z.array(z.string()).optional(),
+});
+
 const ConditionalProps = {
   type: z.literal('conditional'),
   conditions: z.array(z.string()).min(1, 'At least one condition is required'),
   description: z.string().optional(),
+  display: z.enum(['inline', 'section']).optional(),
+  whenTrueSectionConfig: ConditionalSectionConfigSchema.optional(),
+  whenFalseSectionConfig: ConditionalSectionConfigSchema.optional(),
 };
 
 const MAX_NESTING_DEPTH = 5;
@@ -406,7 +420,8 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'completeEarly',
   ]),
   section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives']),
-  conditional: new Set(['type', 'conditions', 'whenTrue', 'whenFalse', 'description']),
+  conditional: new Set(['type', 'conditions', 'whenTrue', 'whenFalse', 'description', 'display', 'whenTrueSectionConfig', 'whenFalseSectionConfig']),
+  _conditionalSectionConfig: new Set(['title', 'requirements', 'objectives']),
   quiz: new Set([
     'type',
     'question',
