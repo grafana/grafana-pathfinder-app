@@ -6,8 +6,8 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { Button, Field, IconButton, useStyles2, Menu, Dropdown } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
+import { Button, Field, IconButton, useStyles2, Menu, Dropdown, Switch, Select, Input } from '@grafana/ui';
+import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css } from '@emotion/css';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -15,6 +15,14 @@ import Link from '@tiptap/extension-link';
 import { getBlockFormStyles } from '../block-editor.styles';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonMarkdownBlock } from '../../../types/json-guide.types';
+
+/** Assistant content type options */
+const ASSISTANT_TYPE_OPTIONS: Array<SelectableValue<'query' | 'config' | 'code' | 'text'>> = [
+  { value: 'query', label: 'Query', description: 'PromQL, LogQL, or other query languages' },
+  { value: 'config', label: 'Configuration', description: 'Configuration values or settings' },
+  { value: 'code', label: 'Code', description: 'Code snippets' },
+  { value: 'text', label: 'Text', description: 'General text content' },
+];
 
 /**
  * Type guard for markdown blocks
@@ -732,6 +740,13 @@ export function MarkdownBlockForm({ initialData, onSubmit, onCancel, isEditing =
   // Track if content has been modified for validation
   const [hasContent, setHasContent] = useState(Boolean(initial?.content?.trim()));
 
+  // AI customization state
+  const [assistantEnabled, setAssistantEnabled] = useState(initial?.assistantEnabled ?? false);
+  const [assistantId, setAssistantId] = useState(initial?.assistantId ?? '');
+  const [assistantType, setAssistantType] = useState<'query' | 'config' | 'code' | 'text'>(
+    initial?.assistantType ?? 'text'
+  );
+
   // Force toolbar re-render on selection/transaction changes
   const [toolbarKey, setToolbarKey] = useState(0);
 
@@ -812,10 +827,14 @@ export function MarkdownBlockForm({ initialData, onSubmit, onCancel, isEditing =
       const block: JsonMarkdownBlock = {
         type: 'markdown',
         content: markdown,
+        // AI customization props
+        ...(assistantEnabled && { assistantEnabled }),
+        ...(assistantEnabled && assistantId.trim() && { assistantId: assistantId.trim() }),
+        ...(assistantEnabled && { assistantType }),
       };
       onSubmit(block);
     },
-    [editor, editMode, rawContent, onSubmit]
+    [editor, editMode, rawContent, assistantEnabled, assistantId, assistantType, onSubmit]
   );
 
   return (
@@ -870,6 +889,40 @@ code block
           )}
         </div>
       </Field>
+
+      {/* AI Customization Section */}
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>AI Customization</div>
+        <Field
+          label="Enable AI customization"
+          description="Allow users to customize this content using Grafana Assistant"
+        >
+          <Switch value={assistantEnabled} onChange={(e) => setAssistantEnabled(e.currentTarget.checked)} />
+        </Field>
+
+        {assistantEnabled && (
+          <>
+            <Field
+              label="Assistant ID"
+              description="Unique identifier for storing customizations (auto-generated if empty)"
+            >
+              <Input
+                value={assistantId}
+                onChange={(e) => setAssistantId(e.currentTarget.value)}
+                placeholder="e.g., my-custom-content"
+              />
+            </Field>
+
+            <Field label="Content type" description="Type of content being customized (affects AI prompts)">
+              <Select
+                options={ASSISTANT_TYPE_OPTIONS}
+                value={ASSISTANT_TYPE_OPTIONS.find((o) => o.value === assistantType)}
+                onChange={(option) => option.value && setAssistantType(option.value)}
+              />
+            </Field>
+          </>
+        )}
+      </div>
 
       <div className={styles.footer}>
         <Button variant="secondary" onClick={onCancel} type="button">

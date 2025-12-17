@@ -5,13 +5,21 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { Button, Field, Input, TextArea, Select, Checkbox, Badge, useStyles2, Stack } from '@grafana/ui';
+import { Button, Field, Input, TextArea, Select, Checkbox, Badge, useStyles2, Stack, Switch } from '@grafana/ui';
 import { SelectableValue } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import type { BlockFormProps, JsonBlock, JsonInteractiveAction } from '../types';
 import type { JsonInteractiveBlock } from '../../../types/json-guide.types';
+
+/** Assistant content type options */
+const ASSISTANT_TYPE_OPTIONS: Array<SelectableValue<'query' | 'config' | 'code' | 'text'>> = [
+  { value: 'query', label: 'Query', description: 'PromQL, LogQL, or other query languages' },
+  { value: 'config', label: 'Configuration', description: 'Configuration values or settings' },
+  { value: 'code', label: 'Code', description: 'Code snippets' },
+  { value: 'text', label: 'Text', description: 'General text content' },
+];
 
 /**
  * Type guard for interactive blocks
@@ -55,6 +63,13 @@ export function InteractiveBlockForm({
   const [completeEarly, setCompleteEarly] = useState(initial?.completeEarly ?? false);
   const [verify, setVerify] = useState(initial?.verify ?? '');
 
+  // AI customization state
+  const [assistantEnabled, setAssistantEnabled] = useState(initial?.assistantEnabled ?? false);
+  const [assistantId, setAssistantId] = useState(initial?.assistantId ?? '');
+  const [assistantType, setAssistantType] = useState<'query' | 'config' | 'code' | 'text'>(
+    initial?.assistantType ?? 'query'
+  );
+
   // Start element picker - pass callback to receive selected element
   const startPicker = useCallback(() => {
     onPickerModeChange?.(true, (selector: string) => {
@@ -96,6 +111,10 @@ export function InteractiveBlockForm({
         ...(!doIt && { doIt: false }),
         ...(completeEarly && { completeEarly }),
         ...(verify.trim() && { verify: verify.trim() }),
+        // AI customization props
+        ...(assistantEnabled && { assistantEnabled }),
+        ...(assistantEnabled && assistantId.trim() && { assistantId: assistantId.trim() }),
+        ...(assistantEnabled && { assistantType }),
       };
       onSubmit(block);
     },
@@ -114,6 +133,9 @@ export function InteractiveBlockForm({
       doIt,
       completeEarly,
       verify,
+      assistantEnabled,
+      assistantId,
+      assistantType,
       onSubmit,
     ]
   );
@@ -288,6 +310,40 @@ export function InteractiveBlockForm({
           placeholder="e.g., created-dashboard, saved-changes"
         />
       </Field>
+
+      {/* AI Customization Section */}
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>AI Customization</div>
+        <Field
+          label="Enable AI customization"
+          description="Allow users to customize this content using Grafana Assistant"
+        >
+          <Switch value={assistantEnabled} onChange={(e) => setAssistantEnabled(e.currentTarget.checked)} />
+        </Field>
+
+        {assistantEnabled && (
+          <>
+            <Field
+              label="Assistant ID"
+              description="Unique identifier for storing customizations (auto-generated if empty)"
+            >
+              <Input
+                value={assistantId}
+                onChange={(e) => setAssistantId(e.currentTarget.value)}
+                placeholder="e.g., my-custom-query"
+              />
+            </Field>
+
+            <Field label="Content type" description="Type of content being customized (affects AI prompts)">
+              <Select
+                options={ASSISTANT_TYPE_OPTIONS}
+                value={ASSISTANT_TYPE_OPTIONS.find((o) => o.value === assistantType)}
+                onChange={(option) => option.value && setAssistantType(option.value)}
+              />
+            </Field>
+          </>
+        )}
+      </div>
 
       <div className={styles.footer}>
         <Button variant="secondary" onClick={onCancel} type="button">

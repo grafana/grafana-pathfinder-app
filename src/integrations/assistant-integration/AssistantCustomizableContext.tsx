@@ -5,7 +5,7 @@
  * without DOM manipulation, using proper React patterns.
  */
 
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, useContext, useMemo, ReactNode } from 'react';
 
 export interface AssistantCustomizableContextValue {
   /** Update the parent interactive step's target value */
@@ -26,11 +26,10 @@ export interface AssistantCustomizableProviderProps {
  * Used by InteractiveStep to provide update capability to child AssistantCustomizable components
  */
 export function AssistantCustomizableProvider({ updateTargetValue, children }: AssistantCustomizableProviderProps) {
-  return (
-    <AssistantCustomizableContext.Provider value={{ updateTargetValue }}>
-      {children}
-    </AssistantCustomizableContext.Provider>
-  );
+  // REACT: memoize context value to prevent unnecessary re-renders (R11)
+  const contextValue = useMemo(() => ({ updateTargetValue }), [updateTargetValue]);
+
+  return <AssistantCustomizableContext.Provider value={contextValue}>{children}</AssistantCustomizableContext.Provider>;
 }
 
 /**

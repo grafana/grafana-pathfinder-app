@@ -18,7 +18,29 @@ import {
   resolveTargetElement,
 } from '../../../interactive-engine';
 import { testIds } from '../../../components/testIds';
-import { AssistantCustomizableProvider } from '../../../integrations/assistant-integration';
+import { AssistantCustomizableProvider, useAssistantBlockValue } from '../../../integrations/assistant-integration';
+import { CodeBlock } from '../docs/code-block';
+
+/**
+ * Map datasource type to syntax highlighting language
+ */
+const mapDatasourceTypeToLanguage = (datasourceType: string | null): string => {
+  if (!datasourceType) {
+    return 'promql'; // Default fallback
+  }
+
+  const typeMapping: Record<string, string> = {
+    prometheus: 'promql',
+    loki: 'logql',
+    tempo: 'traceql',
+    pyroscope: 'text', // No specific language for Pyroscope
+    // Add Amazon Managed variants
+    'amazon-managed-prometheus': 'promql',
+    'grafana-amazonprometheus-datasource': 'promql',
+  };
+
+  return typeMapping[datasourceType.toLowerCase()] || 'promql';
+};
 
 let anonymousStepCounter = 0;
 
@@ -38,6 +60,7 @@ export const InteractiveStep = forwardRef<
       skippable = false, // Default to false - only skippable if explicitly set
       completeEarly = false, // Default to false - only mark early if explicitly set
       formHint, // Hint shown when form validation fails (for formfill with regex patterns)
+      validateInput = false, // Default to false - only validate form input if explicitly enabled
       showMeText,
       title,
       description,
@@ -88,8 +111,22 @@ export const InteractiveStep = forwardRef<
     const [isDoRunning, setIsDoRunning] = useState(false);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
 
+    // Check for customized value from parent AssistantBlockWrapper context
+    const assistantBlockValue = useAssistantBlockValue();
+
     // Manage targetValue as state to support assistant customization
-    const [currentTargetValue, setCurrentTargetValue] = useState(targetValue);
+    // Use customized value from block wrapper context if available, otherwise use prop
+    const [currentTargetValue, setCurrentTargetValue] = useState(assistantBlockValue?.customizedValue ?? targetValue);
+
+    // Update currentTargetValue when assistant block value changes
+    useEffect(() => {
+      if (assistantBlockValue?.customizedValue !== null && assistantBlockValue?.customizedValue !== undefined) {
+        setCurrentTargetValue(assistantBlockValue.customizedValue);
+      } else if (assistantBlockValue?.customizedValue === null) {
+        // Revert to original value when customization is cleared
+        setCurrentTargetValue(targetValue);
+      }
+    }, [assistantBlockValue?.customizedValue, targetValue]);
 
     // Update targetValue callback for AssistantCustomizable children
     const updateTargetValue = useCallback((newValue: string) => {
@@ -182,11 +219,26 @@ export const InteractiveStep = forwardRef<
       }
     }, [stepId, onStepComplete, onComplete]);
 
+    // Strip @@CLEAR@@ prefix from expected value for form validation
+    // This prefix is a command to clear the form before filling, not part of the expected value
+    const expectedValueForValidation = useMemo(() => {
+      if (!currentTargetValue) {
+        return currentTargetValue;
+      }
+      return currentTargetValue.replace(/^@@CLEAR@@\s*/, '');
+    }, [currentTargetValue]);
+
     // Use form validation hook for formfill actions
+    // Only enabled when validateInput is explicitly set to true
     const formValidation = useFormElementValidation(formTargetElement, {
-      expectedValue: currentTargetValue,
+      expectedValue: expectedValueForValidation,
       formHint,
-      enabled: targetAction === 'formfill' && finalIsEnabled && !isCompletedWithObjectives && !disabled,
+      enabled:
+        targetAction === 'formfill' &&
+        validateInput === true &&
+        finalIsEnabled &&
+        !isCompletedWithObjectives &&
+        !disabled,
       onValid: handleFormValidationComplete,
     });
 
@@ -580,9 +632,20 @@ export const InteractiveStep = forwardRef<
         <div className="interactive-step-content">
           {title && <div className="interactive-step-title">{title}</div>}
           {description && <div className="interactive-step-description">{description}</div>}
-          <AssistantCustomizableProvider updateTargetValue={updateTargetValue}>
-            {children}
-          </AssistantCustomizableProvider>
+          {/* When assistant has customized the value, show the customized query instead of original children */}
+          {assistantBlockValue?.customizedValue ? (
+            <div className="interactive-step-customized-content">
+              <CodeBlock
+                code={assistantBlockValue.customizedValue.replace(/^@@CLEAR@@\s*/, '')}
+                language={mapDatasourceTypeToLanguage(assistantBlockValue.datasourceType)}
+                showCopy={true}
+              />
+            </div>
+          ) : (
+            <AssistantCustomizableProvider updateTargetValue={updateTargetValue}>
+              {children}
+            </AssistantCustomizableProvider>
+          )}
         </div>
 
         <div className="interactive-step-actions">

@@ -3,6 +3,7 @@ import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents, locationService } from '@grafana/runtime';
 import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
+
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // import { initializeFaroMetrics } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';

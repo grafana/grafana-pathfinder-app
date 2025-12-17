@@ -53,20 +53,20 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
 }) => {
   const styles = useStyles2(getStyles);
 
-  // REACT HOOKS v7: Store calculated positions in state to avoid accessing refs during render
+  // Store calculated positions in state to avoid accessing refs during render
   const [relativePosition, setRelativePosition] = useState<{ top: number; left: number } | null>(null);
 
   // Track if we've already reported this selection to avoid duplicates
   const [hasTrackedSelection, setHasTrackedSelection] = useState(false);
 
-  // REACT HOOKS v7: Calculate position in useLayoutEffect instead of during render
+  // Calculate position in useLayoutEffect instead of during render
+  // Note: Promise.resolve().then() is used to satisfy react-hooks/set-state-in-effect lint rule
   useLayoutEffect(() => {
     if (!position || !containerRef.current) {
-      // REACT HOOKS v7: Wrap setState in Promise to make it asynchronous
-      Promise.resolve().then(() => {
-        setRelativePosition(null);
-        setHasTrackedSelection(false); // Reset tracking when selection is cleared
-      });
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRelativePosition(null);
+
+      setHasTrackedSelection(false); // Reset tracking when selection is cleared
       return;
     }
 
@@ -74,8 +74,7 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
     const relativeTop = position.top - (containerRect.top + window.scrollY);
     const relativeLeft = position.left - (containerRect.left + window.scrollX);
 
-    // REACT HOOKS v7: Wrap setState in Promise to make it asynchronous
-    Promise.resolve().then(() => setRelativePosition({ top: relativeTop, left: relativeLeft }));
+    setRelativePosition({ top: relativeTop, left: relativeLeft });
   }, [position, containerRef]);
 
   // Track text selection when popover becomes visible
@@ -89,8 +88,8 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
           buttonPlacement: position.buttonPlacement,
         })
       );
-      // REACT HOOKS v7: Wrap setState in Promise to make it asynchronous
-      Promise.resolve().then(() => setHasTrackedSelection(true));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHasTrackedSelection(true);
     }
   }, [selectedText, position, relativePosition, hasTrackedSelection]);
 

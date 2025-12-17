@@ -726,6 +726,7 @@ function renderParsedElement(
           defaultValue={element.props.defaultValue}
           blockType={element.props.blockType}
           contentKey={contentKey || ''}
+          surroundingContext={element.props.surroundingContext}
         >
           {element.children.map((child: ParsedElement | string, childIndex: number) =>
             typeof child === 'string' ? child : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey)
