@@ -65,7 +65,7 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
     if (!position || !containerRef.current) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setRelativePosition(null);
-       
+
       setHasTrackedSelection(false); // Reset tracking when selection is cleared
       return;
     }
@@ -74,7 +74,6 @@ const AssistantSelectionPopoverComponent: React.FC<AssistantSelectionPopoverProp
     const relativeTop = position.top - (containerRect.top + window.scrollY);
     const relativeLeft = position.left - (containerRect.left + window.scrollX);
 
-     
     setRelativePosition({ top: relativeTop, left: relativeLeft });
   }, [position, containerRef]);
 
