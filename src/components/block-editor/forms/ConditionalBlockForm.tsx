@@ -113,37 +113,37 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
   const whenTrueBlocks = useRef<JsonBlock[]>(initial?.whenTrue ?? []);
   const whenFalseBlocks = useRef<JsonBlock[]>(initial?.whenFalse ?? []);
 
-  // Helper to parse comma-separated string to array
-  const parseArray = (str: string): string[] =>
-    str
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-
-  // Helper to build section config from state
-  const buildSectionConfig = (
-    title: string,
-    requirements: string,
-    objectives: string
-  ): ConditionalSectionConfig | undefined => {
-    const config: ConditionalSectionConfig = {};
-    if (title.trim()) {
-      config.title = title.trim();
-    }
-    const reqArray = parseArray(requirements);
-    if (reqArray.length > 0) {
-      config.requirements = reqArray;
-    }
-    const objArray = parseArray(objectives);
-    if (objArray.length > 0) {
-      config.objectives = objArray;
-    }
-    // Only return config if it has any properties
-    return Object.keys(config).length > 0 ? config : undefined;
-  };
-
   // Build the conditional block from current form state
   const buildBlock = useCallback((): JsonConditionalBlock => {
+    // Helper to parse comma-separated string to array
+    const parseArray = (str: string): string[] =>
+      str
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+    // Helper to build section config from state
+    const buildSectionConfig = (
+      title: string,
+      requirements: string,
+      objectives: string
+    ): ConditionalSectionConfig | undefined => {
+      const config: ConditionalSectionConfig = {};
+      if (title.trim()) {
+        config.title = title.trim();
+      }
+      const reqArray = parseArray(requirements);
+      if (reqArray.length > 0) {
+        config.requirements = reqArray;
+      }
+      const objArray = parseArray(objectives);
+      if (objArray.length > 0) {
+        config.objectives = objArray;
+      }
+      // Only return config if it has any properties
+      return Object.keys(config).length > 0 ? config : undefined;
+    };
+
     const conditionsArray = parseArray(conditions);
 
     const block: JsonConditionalBlock = {

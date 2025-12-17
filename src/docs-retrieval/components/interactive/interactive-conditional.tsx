@@ -119,13 +119,13 @@ export function InteractiveConditional({
     }
   }, [requirementsString, checkRequirementsFromData, description]);
 
-  // Initial evaluation
+  // Evaluate on mount and re-evaluate when relevant events occur
   useEffect(() => {
-    evaluateConditions();
-  }, [evaluateConditions]);
+    // Initial evaluation (deferred to avoid synchronous setState in effect)
+    const initialCheckTimeout = setTimeout(() => {
+      evaluateConditions();
+    }, 0);
 
-  // Re-evaluate when relevant events occur
-  useEffect(() => {
     // Listen for events that might change condition results
     const handleDataSourcesChanged = () => {
       evaluateConditions();
@@ -144,17 +144,12 @@ export function InteractiveConditional({
     window.addEventListener('plugins-changed', handlePluginsChanged);
     window.addEventListener('popstate', handleLocationChanged);
 
-    // Also re-evaluate periodically to catch other state changes
-    const intervalId = setInterval(() => {
-      evaluateConditions();
-    }, 5000); // Re-check every 5 seconds
-
     // REACT: cleanup subscriptions (R1)
     return () => {
+      clearTimeout(initialCheckTimeout);
       window.removeEventListener('datasources-changed', handleDataSourcesChanged);
       window.removeEventListener('plugins-changed', handlePluginsChanged);
       window.removeEventListener('popstate', handleLocationChanged);
-      clearInterval(intervalId);
     };
   }, [evaluateConditions]);
 

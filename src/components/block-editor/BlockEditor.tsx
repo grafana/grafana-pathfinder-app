@@ -58,6 +58,14 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     block: JsonBlock;
   } | null>(null);
 
+  // State for editing conditional branch blocks
+  const [editingConditionalBranchBlock, setEditingConditionalBranchBlock] = useState<{
+    conditionalId: string;
+    branch: 'whenTrue' | 'whenFalse';
+    nestedIndex: number;
+    block: JsonBlock;
+  } | null>(null);
+
   // Section recording state
   const [recordingIntoSection, setRecordingIntoSection] = useState<string | null>(null);
   const [recordingStartUrl, setRecordingStartUrl] = useState<string | null>(null);
@@ -386,14 +394,6 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
   );
 
   // ============ Conditional branch handlers ============
-
-  // State for editing conditional branch blocks
-  const [editingConditionalBranchBlock, setEditingConditionalBranchBlock] = useState<{
-    conditionalId: string;
-    branch: 'whenTrue' | 'whenFalse';
-    nestedIndex: number;
-    block: JsonBlock;
-  } | null>(null);
 
   // Handle inserting a block into a conditional branch
   const handleInsertBlockInConditional = useCallback(

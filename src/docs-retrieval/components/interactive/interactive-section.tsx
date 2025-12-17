@@ -1354,6 +1354,7 @@ export function InteractiveSection({
     resetTrigger,
     sectionId,
     title,
+    sectionRequirementsStatus.passed, // Section requirements gate child steps
   ]);
 
   return (
