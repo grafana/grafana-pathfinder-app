@@ -29,7 +29,24 @@ export type { AssistantBlockWrapperProps } from './AssistantBlockWrapper';
 export { AssistantCustomizableProvider, useAssistantCustomizableContext } from './AssistantCustomizableContext';
 export type { AssistantCustomizableContextValue } from './AssistantCustomizableContext';
 
+export { AssistantBlockValueProvider, useAssistantBlockValue } from './AssistantBlockValueContext';
+export type { AssistantBlockValueContextValue } from './AssistantBlockValueContext';
+
 export { buildAssistantPrompt, buildDocumentContext, isValidSelection } from './assistant-context.utils';
+
+// Shared assistant generation hook and utilities
+export {
+  useAssistantGeneration,
+  cleanAssistantResponse,
+  extractQueryFromResponse,
+  buildQuerySystemPrompt,
+  buildContentSystemPrompt,
+} from './useAssistantGeneration.hook';
+export type {
+  UseAssistantGenerationOptions,
+  UseAssistantGenerationReturn,
+  DatasourceContext,
+} from './useAssistantGeneration.hook';
 
 export {
   getIsAssistantAvailable,

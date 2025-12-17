@@ -138,7 +138,11 @@ export function AssistantCustomizable({
   // In dev mode, use mock implementation; otherwise use real hook
   const realInlineAssistant = useInlineAssistant();
   const mockInlineAssistant = useMockInlineAssistant();
-  const { generate, isGenerating, reset } = devModeEnabled ? mockInlineAssistant : realInlineAssistant;
+  const { generate, isGenerating, content, reset } = devModeEnabled ? mockInlineAssistant : realInlineAssistant;
+
+  // Track previous isGenerating state to detect completion (workaround for SDK v0.1.8 bug)
+  const wasGeneratingRef = useRef(false);
+  const generationContextRef = useRef<{ datasourceType: string } | null>(null);
 
   // Generate localStorage key
   const getStorageKey = useCallback((): string => {
@@ -203,6 +207,72 @@ export function AssistantCustomizable({
       subscription.unsubscribe();
     };
   }, []);
+
+  // WORKAROUND: SDK v0.1.8 bug where onComplete is not called when tools are used
+  // Detect completion by watching isGenerating transition from true to false
+  useEffect(() => {
+    const wasGenerating = wasGeneratingRef.current;
+    wasGeneratingRef.current = isGenerating;
+
+    // Detect completion: was generating, now not generating, and we have content
+    if (wasGenerating && !isGenerating && content && generationContextRef.current) {
+      // Clean up the response (remove markdown code blocks if present)
+      let customized = content.trim();
+      customized = customized.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/, '');
+      customized = customized.trim();
+
+      if (customized && customized !== defaultValue) {
+        // Use the existing saveCustomizedValue function
+        try {
+          const storageKey = getStorageKey();
+          localStorage.setItem(storageKey, customized);
+          // Intentional: Sync React state with external SDK completion state
+          // This is a workaround for SDK v0.1.8 onComplete callback bug
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setCurrentValue(customized);
+
+          setIsCustomized(true);
+
+          setIsPinned(false);
+
+          // Update parent context if available
+          if (customizableContext) {
+            customizableContext.updateTargetValue(customized);
+          }
+
+          // Track successful customization
+          const ctx = generationContextRef.current;
+          reportAppInteraction(
+            UserInteraction.AssistantCustomizeSuccess,
+            buildAssistantCustomizableProperties(
+              { assistantId, assistantType, contentKey, inline },
+              {
+                datasource_type: ctx.datasourceType,
+                original_length: defaultValue.length,
+                customized_length: customized.length,
+                used_workaround: true,
+              }
+            )
+          );
+        } catch (error) {
+          console.warn('[AssistantCustomizable] Failed to save (workaround):', error);
+        }
+      }
+
+      // Clear context after handling
+      generationContextRef.current = null;
+    }
+  }, [
+    isGenerating,
+    content,
+    defaultValue,
+    getStorageKey,
+    customizableContext,
+    assistantId,
+    assistantType,
+    contentKey,
+    inline,
+  ]);
 
   // Save customized value to localStorage
   // Note: This function is available for future use when assistant API callback is implemented
@@ -314,6 +384,9 @@ export function AssistantCustomizable({
     const datasourceType = dsContext.currentDatasource.type;
     const hasSupportedDatasource = isSupportedDatasourceType(datasourceType);
 
+    // Store context for workaround (SDK v0.1.8 onComplete bug)
+    generationContextRef.current = { datasourceType };
+
     // Track customize button click
     reportAppInteraction(
       UserInteraction.AssistantCustomizeClick,
@@ -369,6 +442,8 @@ Output only the content - no markdown, no explanation.`;
       systemPrompt,
       tools,
       onComplete: (text) => {
+        // Clear workaround context since SDK callback worked
+        generationContextRef.current = null;
         // Clean up the response (remove markdown code blocks if present)
         let customized = text.trim();
         customized = customized.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/, '');
