@@ -583,9 +583,7 @@ function renderParsedElement(
           whenFalseSectionConfig={element.props.whenFalseSectionConfig}
           whenTrueChildren={element.props.whenTrueChildren || []}
           whenFalseChildren={element.props.whenFalseChildren || []}
-          renderElement={(child: ParsedElement, childKey: string) =>
-            renderParsedElement(child, childKey, contentKey)
-          }
+          renderElement={(child: ParsedElement, childKey: string) => renderParsedElement(child, childKey, contentKey)}
           keyPrefix={String(key)}
         />
       );

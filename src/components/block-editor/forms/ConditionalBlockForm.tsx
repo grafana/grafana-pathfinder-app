@@ -13,7 +13,11 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import type { BlockFormProps, JsonBlock } from '../types';
-import type { JsonConditionalBlock, ConditionalDisplayMode, ConditionalSectionConfig } from '../../../types/json-guide.types';
+import type {
+  JsonConditionalBlock,
+  ConditionalDisplayMode,
+  ConditionalSectionConfig,
+} from '../../../types/json-guide.types';
 
 /** Options for display mode radio buttons */
 const DISPLAY_MODE_OPTIONS = [
@@ -83,15 +87,23 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
   const [conditions, setConditions] = useState(initial?.conditions?.join(', ') ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [displayMode, setDisplayMode] = useState<ConditionalDisplayMode>(initial?.display ?? 'inline');
-  
+
   // Per-branch section config state
   const [whenTrueTitle, setWhenTrueTitle] = useState(initial?.whenTrueSectionConfig?.title ?? '');
-  const [whenTrueRequirements, setWhenTrueRequirements] = useState(initial?.whenTrueSectionConfig?.requirements?.join(', ') ?? '');
-  const [whenTrueObjectives, setWhenTrueObjectives] = useState(initial?.whenTrueSectionConfig?.objectives?.join(', ') ?? '');
-  
+  const [whenTrueRequirements, setWhenTrueRequirements] = useState(
+    initial?.whenTrueSectionConfig?.requirements?.join(', ') ?? ''
+  );
+  const [whenTrueObjectives, setWhenTrueObjectives] = useState(
+    initial?.whenTrueSectionConfig?.objectives?.join(', ') ?? ''
+  );
+
   const [whenFalseTitle, setWhenFalseTitle] = useState(initial?.whenFalseSectionConfig?.title ?? '');
-  const [whenFalseRequirements, setWhenFalseRequirements] = useState(initial?.whenFalseSectionConfig?.requirements?.join(', ') ?? '');
-  const [whenFalseObjectives, setWhenFalseObjectives] = useState(initial?.whenFalseSectionConfig?.objectives?.join(', ') ?? '');
+  const [whenFalseRequirements, setWhenFalseRequirements] = useState(
+    initial?.whenFalseSectionConfig?.requirements?.join(', ') ?? ''
+  );
+  const [whenFalseObjectives, setWhenFalseObjectives] = useState(
+    initial?.whenFalseSectionConfig?.objectives?.join(', ') ?? ''
+  );
 
   // Collapse state for branch sections
   const [passExpanded, setPassExpanded] = useState(true);
@@ -103,7 +115,10 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
 
   // Helper to parse comma-separated string to array
   const parseArray = (str: string): string[] =>
-    str.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+    str
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
 
   // Helper to build section config from state
   const buildSectionConfig = (
@@ -157,7 +172,17 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
     }
 
     return block;
-  }, [conditions, description, displayMode, whenTrueTitle, whenTrueRequirements, whenTrueObjectives, whenFalseTitle, whenFalseRequirements, whenFalseObjectives]);
+  }, [
+    conditions,
+    description,
+    displayMode,
+    whenTrueTitle,
+    whenTrueRequirements,
+    whenTrueObjectives,
+    whenFalseTitle,
+    whenFalseRequirements,
+    whenFalseObjectives,
+  ]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -183,9 +208,9 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
       <Alert title="Conditional blocks" severity="info">
-        Conditional blocks show different content based on whether conditions pass or fail. Add blocks to each branch
-        by dragging them into the &quot;When conditions pass&quot; or &quot;When conditions fail&quot; areas in the
-        main editor.
+        Conditional blocks show different content based on whether conditions pass or fail. Add blocks to each branch by
+        dragging them into the &quot;When conditions pass&quot; or &quot;When conditions fail&quot; areas in the main
+        editor.
       </Alert>
 
       {/* Conditions */}
@@ -227,10 +252,7 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
       </Field>
 
       {/* Display mode */}
-      <Field
-        label="Display mode"
-        description="Choose how the conditional content is displayed to users"
-      >
+      <Field label="Display mode" description="Choose how the conditional content is displayed to users">
         <RadioButtonGroup
           options={DISPLAY_MODE_OPTIONS}
           value={displayMode}
@@ -243,14 +265,16 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
         <>
           {/* Pass branch configuration */}
           <div className={`${branchStyles.branchSection} ${branchStyles.passSection}`}>
-            <div 
+            <div
               className={branchStyles.branchHeader}
               onClick={() => setPassExpanded(!passExpanded)}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => e.key === 'Enter' && setPassExpanded(!passExpanded)}
             >
-              <span className={`${branchStyles.branchIcon} ${passExpanded ? branchStyles.branchIconExpanded : ''}`}>▶</span>
+              <span className={`${branchStyles.branchIcon} ${passExpanded ? branchStyles.branchIconExpanded : ''}`}>
+                ▶
+              </span>
               <span className={branchStyles.branchTitle}>✓ When conditions pass</span>
             </div>
             {passExpanded && (
@@ -284,14 +308,16 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
 
           {/* Fail branch configuration */}
           <div className={`${branchStyles.branchSection} ${branchStyles.failSection}`}>
-            <div 
+            <div
               className={branchStyles.branchHeader}
               onClick={() => setFailExpanded(!failExpanded)}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => e.key === 'Enter' && setFailExpanded(!failExpanded)}
             >
-              <span className={`${branchStyles.branchIcon} ${failExpanded ? branchStyles.branchIconExpanded : ''}`}>▶</span>
+              <span className={`${branchStyles.branchIcon} ${failExpanded ? branchStyles.branchIconExpanded : ''}`}>
+                ▶
+              </span>
               <span className={branchStyles.branchTitle}>✗ When conditions fail</span>
             </div>
             {failExpanded && (

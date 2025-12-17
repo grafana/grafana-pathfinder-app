@@ -1453,7 +1453,9 @@ export function InteractiveSection({
         ) : (
           <Button
             onClick={stepsCompleted && !isCompletedByObjectives ? handleResetSection : handleDoSection}
-            disabled={disabled || !sectionRequirementsStatus.passed || stepComponents.length === 0 || isCompletedByObjectives}
+            disabled={
+              disabled || !sectionRequirementsStatus.passed || stepComponents.length === 0 || isCompletedByObjectives
+            }
             size="md"
             variant={isCompleted ? 'secondary' : 'primary'}
             className="interactive-section-do-button"

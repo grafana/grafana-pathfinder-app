@@ -122,21 +122,56 @@ export interface UseBlockEditorReturn {
 
   // Conditional block branch operations
   /** Add a block to a conditional branch */
-  addBlockToConditionalBranch: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', block: JsonBlock, index?: number) => string;
+  addBlockToConditionalBranch: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    block: JsonBlock,
+    index?: number
+  ) => string;
   /** Update a block within a conditional branch */
-  updateConditionalBranchBlock: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number, block: JsonBlock) => void;
+  updateConditionalBranchBlock: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    nestedIndex: number,
+    block: JsonBlock
+  ) => void;
   /** Delete a block from a conditional branch */
   deleteConditionalBranchBlock: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number) => void;
   /** Duplicate a block within a conditional branch */
-  duplicateConditionalBranchBlock: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number) => void;
+  duplicateConditionalBranchBlock: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    nestedIndex: number
+  ) => void;
   /** Move a block within a conditional branch */
-  moveConditionalBranchBlock: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', fromIndex: number, toIndex: number) => void;
+  moveConditionalBranchBlock: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    fromIndex: number,
+    toIndex: number
+  ) => void;
   /** Nest a root block into a conditional branch */
-  nestBlockInConditional: (blockId: string, conditionalId: string, branch: 'whenTrue' | 'whenFalse', insertIndex?: number) => void;
+  nestBlockInConditional: (
+    blockId: string,
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    insertIndex?: number
+  ) => void;
   /** Unnest a block from a conditional branch back to root level */
-  unnestBlockFromConditional: (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number, insertAtRootIndex?: number) => void;
+  unnestBlockFromConditional: (
+    conditionalId: string,
+    branch: 'whenTrue' | 'whenFalse',
+    nestedIndex: number,
+    insertAtRootIndex?: number
+  ) => void;
   /** Move a block between conditional branches (true <-> false) */
-  moveBlockBetweenConditionalBranches: (conditionalId: string, fromBranch: 'whenTrue' | 'whenFalse', fromIndex: number, toBranch: 'whenTrue' | 'whenFalse', toIndex?: number) => void;
+  moveBlockBetweenConditionalBranches: (
+    conditionalId: string,
+    fromBranch: 'whenTrue' | 'whenFalse',
+    fromIndex: number,
+    toBranch: 'whenTrue' | 'whenFalse',
+    toIndex?: number
+  ) => void;
 }
 
 /**
@@ -973,7 +1008,13 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
   // Move a block between conditional branches (true <-> false)
   const moveBlockBetweenConditionalBranches = useCallback(
-    (conditionalId: string, fromBranch: 'whenTrue' | 'whenFalse', fromIndex: number, toBranch: 'whenTrue' | 'whenFalse', toIndex?: number) => {
+    (
+      conditionalId: string,
+      fromBranch: 'whenTrue' | 'whenFalse',
+      fromIndex: number,
+      toBranch: 'whenTrue' | 'whenFalse',
+      toIndex?: number
+    ) => {
       if (fromBranch === toBranch) {
         return; // Use moveConditionalBranchBlock for same-branch moves
       }

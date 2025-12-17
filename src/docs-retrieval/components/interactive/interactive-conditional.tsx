@@ -63,7 +63,11 @@ export function InteractiveConditional({
 
   // Generate a stable ID for this conditional
   const conditionalId = useMemo(
-    () => conditions.join('-').replace(/[^a-zA-Z0-9-]/g, '').slice(0, 50) || 'unknown',
+    () =>
+      conditions
+        .join('-')
+        .replace(/[^a-zA-Z0-9-]/g, '')
+        .slice(0, 50) || 'unknown',
     [conditions]
   );
 

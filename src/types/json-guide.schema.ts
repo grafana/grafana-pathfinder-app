@@ -420,7 +420,16 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'completeEarly',
   ]),
   section: new Set(['type', 'id', 'title', 'blocks', 'requirements', 'objectives']),
-  conditional: new Set(['type', 'conditions', 'whenTrue', 'whenFalse', 'description', 'display', 'whenTrueSectionConfig', 'whenFalseSectionConfig']),
+  conditional: new Set([
+    'type',
+    'conditions',
+    'whenTrue',
+    'whenFalse',
+    'description',
+    'display',
+    'whenTrueSectionConfig',
+    'whenFalseSectionConfig',
+  ]),
   _conditionalSectionConfig: new Set(['title', 'requirements', 'objectives']),
   quiz: new Set([
     'type',
