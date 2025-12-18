@@ -563,6 +563,35 @@ export const getBlockFormStyles = (theme: GrafanaTheme2) => ({
       fontWeight: 600,
     },
   }),
+
+  // Preview section for displaying parsed values
+  previewSection: css({
+    marginTop: theme.spacing(1),
+    padding: theme.spacing(1),
+    backgroundColor: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.border.weak}`,
+  }),
+
+  previewLabel: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    marginBottom: theme.spacing(0.5),
+    display: 'block',
+  }),
+
+  previewList: css({
+    margin: 0,
+    paddingLeft: theme.spacing(2),
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.primary,
+
+    '& li': {
+      marginBottom: theme.spacing(0.25),
+      fontFamily: theme.typography.fontFamilyMonospace,
+    },
+  }),
 });
 
 /**

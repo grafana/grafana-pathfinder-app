@@ -12,6 +12,7 @@ import {
   InteractiveMultiStep,
   InteractiveGuided,
   InteractiveQuiz,
+  InteractiveConditional,
   InputBlock,
   CodeBlock,
   ExpandableTable,
@@ -661,6 +662,21 @@ function renderParsedElement(
         >
           {renderChildren(element.children)}
         </InteractiveSection>
+      );
+    case 'interactive-conditional':
+      return (
+        <InteractiveConditional
+          key={key}
+          conditions={element.props.conditions || []}
+          description={element.props.description}
+          display={element.props.display || 'inline'}
+          whenTrueSectionConfig={element.props.whenTrueSectionConfig}
+          whenFalseSectionConfig={element.props.whenFalseSectionConfig}
+          whenTrueChildren={element.props.whenTrueChildren || []}
+          whenFalseChildren={element.props.whenFalseChildren || []}
+          renderElement={(child: ParsedElement, childKey: string) => renderParsedElement(child, childKey, contentKey)}
+          keyPrefix={String(key)}
+        />
       );
     case 'interactive-step':
       return (

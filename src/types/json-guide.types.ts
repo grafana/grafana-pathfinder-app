@@ -44,6 +44,7 @@ export type JsonBlock =
   | JsonMarkdownBlock
   | JsonHtmlBlock
   | JsonSectionBlock
+  | JsonConditionalBlock
   | JsonInteractiveBlock
   | JsonMultistepBlock
   | JsonGuidedBlock
@@ -156,6 +157,51 @@ export interface JsonSectionBlock {
   requirements?: string[];
   /** Objectives tracked for completion of this section */
   objectives?: string[];
+}
+
+// ============ CONDITIONAL BLOCK ============
+
+/**
+ * Display mode for conditional blocks.
+ * - 'inline': Content renders directly without wrapper (default)
+ * - 'section': Content wrapped with section styling, collapse controls, and "Do" button
+ */
+export type ConditionalDisplayMode = 'inline' | 'section';
+
+/**
+ * Configuration for a conditional section branch.
+ * Each branch (pass/fail) can have its own section configuration.
+ */
+export interface ConditionalSectionConfig {
+  /** Section title for this branch */
+  title?: string;
+  /** Requirements that must be met before this section is accessible */
+  requirements?: string[];
+  /** Objectives tracked for completion of this section */
+  objectives?: string[];
+}
+
+/**
+ * Conditional block that shows different content based on conditions.
+ * Evaluates conditions at runtime and displays the appropriate branch.
+ * Uses the same condition syntax as requirements (e.g., has-datasource:prometheus).
+ */
+export interface JsonConditionalBlock {
+  type: 'conditional';
+  /** Conditions that determine which branch to show (uses requirement syntax) */
+  conditions: string[];
+  /** Blocks shown when ALL conditions pass */
+  whenTrue: JsonBlock[];
+  /** Blocks shown when ANY condition fails */
+  whenFalse: JsonBlock[];
+  /** Optional description for authors (not shown to users) */
+  description?: string;
+  /** Display mode: 'inline' (default) or 'section' for section-styled rendering */
+  display?: ConditionalDisplayMode;
+  /** Section config for the 'pass' branch (only used when display is 'section') */
+  whenTrueSectionConfig?: ConditionalSectionConfig;
+  /** Section config for the 'fail' branch (only used when display is 'section') */
+  whenFalseSectionConfig?: ConditionalSectionConfig;
 }
 
 // ============ INTERACTIVE BLOCKS ============
@@ -373,6 +419,13 @@ export function isHtmlBlock(block: JsonBlock): block is JsonHtmlBlock {
  */
 export function isSectionBlock(block: JsonBlock): block is JsonSectionBlock {
   return block.type === 'section';
+}
+
+/**
+ * Type guard for JsonConditionalBlock
+ */
+export function isConditionalBlock(block: JsonBlock): block is JsonConditionalBlock {
+  return block.type === 'conditional';
 }
 
 /**

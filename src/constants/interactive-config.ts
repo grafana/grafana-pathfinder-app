@@ -305,14 +305,29 @@ export function isFirstStep(stepId: string | undefined): boolean {
 
 /**
  * Common requirement options available across interactive elements
+ * @see https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/interactive-examples/requirements-reference.md
  */
 export const COMMON_REQUIREMENTS = [
+  // Navigation and UI State
   'exists-reftarget',
   'navmenu-open',
   'on-page:',
+  // User Authentication and Permissions
   'is-admin',
+  'has-role:',
+  'has-permission:',
+  // Data Source Requirements
+  'has-datasources',
   'has-datasource:',
+  // Plugin and Extension Requirements
   'has-plugin:',
+  // Dashboard and Content Requirements
+  'has-dashboard-named:',
+  // System and Environment Requirements
+  'has-feature:',
+  'in-environment:',
+  'min-version:',
+  // Sequential Dependencies
   'section-completed:',
 ] as const;
 

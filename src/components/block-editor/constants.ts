@@ -46,6 +46,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Section',
     description: 'Container for grouped interactive steps',
   },
+  conditional: {
+    type: 'conditional',
+    icon: '🔀',
+    grafanaIcon: 'code-branch',
+    name: 'Conditional',
+    description: 'Show different content based on conditions',
+  },
   interactive: {
     type: 'interactive',
     icon: '⚡',
@@ -92,6 +99,7 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
   'image',
   'video',
   'section',
+  'conditional',
   'interactive',
   'multistep',
   'guided',

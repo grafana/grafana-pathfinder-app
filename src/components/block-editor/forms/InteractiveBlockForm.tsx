@@ -244,7 +244,7 @@ export function InteractiveBlockForm({
       <div className={styles.requirementsContainer}>
         <span className={styles.requirementsLabel}>Quick add:</span>
         <div className={styles.requirementsChips}>
-          {COMMON_REQUIREMENTS.slice(0, 6).map((req) => (
+          {COMMON_REQUIREMENTS.map((req) => (
             <Badge
               key={req}
               text={req}

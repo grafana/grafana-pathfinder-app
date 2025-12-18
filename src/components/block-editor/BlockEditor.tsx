@@ -58,10 +58,24 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     block: JsonBlock;
   } | null>(null);
 
+  // State for editing conditional branch blocks
+  const [editingConditionalBranchBlock, setEditingConditionalBranchBlock] = useState<{
+    conditionalId: string;
+    branch: 'whenTrue' | 'whenFalse';
+    nestedIndex: number;
+    block: JsonBlock;
+  } | null>(null);
+
   // Section recording state
   const [recordingIntoSection, setRecordingIntoSection] = useState<string | null>(null);
   const [recordingStartUrl, setRecordingStartUrl] = useState<string | null>(null);
   const pendingSectionIdRef = useRef<string | null>(null);
+
+  // Conditional branch recording state
+  const [recordingIntoConditionalBranch, setRecordingIntoConditionalBranch] = useState<{
+    conditionalId: string;
+    branch: 'whenTrue' | 'whenFalse';
+  } | null>(null);
 
   // Block selection mode state (for merging blocks)
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -136,10 +150,17 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     setEditingBlockType(null);
     setEditingBlock(null);
     setEditingNestedBlock(null);
+    setEditingConditionalBranchBlock(null);
     setInsertAtIndex(undefined);
     // Clear any section context
     delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } })
       .__blockEditorSectionContext;
+    // Clear any conditional context
+    delete (
+      window as unknown as {
+        __blockEditorConditionalContext?: { conditionalId: string; branch: 'whenTrue' | 'whenFalse'; index?: number };
+      }
+    ).__blockEditorConditionalContext;
   }, []);
 
   // Handle split multistep/guided into individual interactive blocks
@@ -372,6 +393,96 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     [editor]
   );
 
+  // ============ Conditional branch handlers ============
+
+  // Handle inserting a block into a conditional branch
+  const handleInsertBlockInConditional = useCallback(
+    (type: BlockType, conditionalId: string, branch: 'whenTrue' | 'whenFalse', index?: number) => {
+      setEditingBlockType(type);
+      setEditingBlock(null);
+      setInsertAtIndex(undefined);
+      setIsBlockFormOpen(true);
+
+      // Store conditional context for insertion
+      (
+        window as unknown as {
+          __blockEditorConditionalContext?: { conditionalId: string; branch: 'whenTrue' | 'whenFalse'; index?: number };
+        }
+      ).__blockEditorConditionalContext = {
+        conditionalId,
+        branch,
+        index,
+      };
+    },
+    []
+  );
+
+  // Handle editing a block within a conditional branch
+  const handleConditionalBranchBlockEdit = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number, block: JsonBlock) => {
+      setEditingBlockType(block.type as BlockType);
+      setEditingBlock(null);
+      setEditingConditionalBranchBlock({ conditionalId, branch, nestedIndex, block });
+      setInsertAtIndex(undefined);
+      setIsBlockFormOpen(true);
+    },
+    []
+  );
+
+  // Handle deleting a block from a conditional branch
+  const handleConditionalBranchBlockDelete = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number) => {
+      editor.deleteConditionalBranchBlock(conditionalId, branch, nestedIndex);
+    },
+    [editor]
+  );
+
+  // Handle duplicating a block within a conditional branch
+  const handleConditionalBranchBlockDuplicate = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number) => {
+      editor.duplicateConditionalBranchBlock(conditionalId, branch, nestedIndex);
+    },
+    [editor]
+  );
+
+  // Handle moving a block within a conditional branch
+  const handleConditionalBranchBlockMove = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', fromIndex: number, toIndex: number) => {
+      editor.moveConditionalBranchBlock(conditionalId, branch, fromIndex, toIndex);
+    },
+    [editor]
+  );
+
+  // Handle nesting a root block into a conditional branch
+  const handleNestBlockInConditional = useCallback(
+    (blockId: string, conditionalId: string, branch: 'whenTrue' | 'whenFalse', insertIndex?: number) => {
+      editor.nestBlockInConditional(blockId, conditionalId, branch, insertIndex);
+    },
+    [editor]
+  );
+
+  // Handle unnesting a block from a conditional branch
+  const handleUnnestBlockFromConditional = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse', nestedIndex: number, insertAtRootIndex?: number) => {
+      editor.unnestBlockFromConditional(conditionalId, branch, nestedIndex, insertAtRootIndex);
+    },
+    [editor]
+  );
+
+  // Handle moving a block between conditional branches
+  const handleMoveBlockBetweenConditionalBranches = useCallback(
+    (
+      conditionalId: string,
+      fromBranch: 'whenTrue' | 'whenFalse',
+      fromIndex: number,
+      toBranch: 'whenTrue' | 'whenFalse',
+      toIndex?: number
+    ) => {
+      editor.moveBlockBetweenConditionalBranches(conditionalId, fromBranch, fromIndex, toBranch, toIndex);
+    },
+    [editor]
+  );
+
   // Handle section recording toggle
   const handleSectionRecord = useCallback(
     (sectionId: string) => {
@@ -453,7 +564,8 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         setRecordingIntoSection(null);
         setRecordingStartUrl(null);
       } else {
-        // Start recording into this section
+        // Start recording into this section (clear any conditional recording first)
+        setRecordingIntoConditionalBranch(null);
         actionRecorder.clearRecording();
         actionRecorder.startRecording();
         setRecordingIntoSection(sectionId);
@@ -463,12 +575,105 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     [recordingIntoSection, actionRecorder, editor]
   );
 
+  // Handle conditional branch recording toggle
+  const handleConditionalBranchRecord = useCallback(
+    (conditionalId: string, branch: 'whenTrue' | 'whenFalse') => {
+      const isRecording =
+        recordingIntoConditionalBranch?.conditionalId === conditionalId &&
+        recordingIntoConditionalBranch?.branch === branch;
+
+      if (isRecording) {
+        // Stop recording - convert recorded steps to blocks and add to conditional branch
+        actionRecorder.stopRecording();
+        const steps = actionRecorder.recordedSteps;
+
+        // Group consecutive steps with the same groupId into multisteps
+        const processedSteps: Array<
+          { type: 'single'; step: (typeof steps)[0] } | { type: 'group'; steps: typeof steps }
+        > = [];
+
+        let currentGroup: typeof steps = [];
+        let currentGroupId: string | undefined;
+
+        steps.forEach((step) => {
+          if (step.groupId) {
+            if (step.groupId === currentGroupId) {
+              currentGroup.push(step);
+            } else {
+              if (currentGroup.length > 0) {
+                processedSteps.push({ type: 'group', steps: currentGroup });
+              }
+              currentGroupId = step.groupId;
+              currentGroup = [step];
+            }
+          } else {
+            if (currentGroup.length > 0) {
+              processedSteps.push({ type: 'group', steps: currentGroup });
+              currentGroup = [];
+              currentGroupId = undefined;
+            }
+            processedSteps.push({ type: 'single', step });
+          }
+        });
+
+        if (currentGroup.length > 0) {
+          processedSteps.push({ type: 'group', steps: currentGroup });
+        }
+
+        // Convert to blocks and add to conditional branch
+        processedSteps.forEach((item) => {
+          if (item.type === 'single') {
+            const interactiveBlock: JsonInteractiveBlock = {
+              type: 'interactive',
+              action: item.step.action as JsonInteractiveBlock['action'],
+              reftarget: item.step.selector,
+              content: item.step.description || `${item.step.action} on element`,
+              ...(item.step.value && { targetvalue: item.step.value }),
+            };
+            editor.addBlockToConditionalBranch(conditionalId, branch, interactiveBlock);
+          } else {
+            const multistepSteps: JsonStep[] = item.steps.map((step) => ({
+              action: step.action as JsonStep['action'],
+              reftarget: step.selector,
+              ...(step.value && { targetvalue: step.value }),
+              tooltip: step.description || `${step.action} on element`,
+            }));
+
+            const multistepBlock: JsonMultistepBlock = {
+              type: 'multistep',
+              content: item.steps[0].description || 'Complete the following steps',
+              steps: multistepSteps,
+            };
+            editor.addBlockToConditionalBranch(conditionalId, branch, multistepBlock);
+          }
+        });
+
+        actionRecorder.clearRecording();
+        setRecordingIntoConditionalBranch(null);
+        setRecordingStartUrl(null);
+      } else {
+        // Start recording into this conditional branch (clear any section recording first)
+        setRecordingIntoSection(null);
+        actionRecorder.clearRecording();
+        actionRecorder.startRecording();
+        setRecordingIntoConditionalBranch({ conditionalId, branch });
+        setRecordingStartUrl(window.location.href);
+      }
+    },
+    [recordingIntoConditionalBranch, actionRecorder, editor]
+  );
+
   // Handle stop recording from overlay
   const handleStopRecording = useCallback(() => {
     if (recordingIntoSection) {
       handleSectionRecord(recordingIntoSection);
+    } else if (recordingIntoConditionalBranch) {
+      handleConditionalBranchRecord(
+        recordingIntoConditionalBranch.conditionalId,
+        recordingIntoConditionalBranch.branch
+      );
     }
-  }, [recordingIntoSection, handleSectionRecord]);
+  }, [recordingIntoSection, handleSectionRecord, recordingIntoConditionalBranch, handleConditionalBranchRecord]);
 
   // Handle "Add and Start Recording" for new sections
   const handleSubmitAndStartRecording = useCallback(
@@ -485,6 +690,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       const capturedUrl = window.location.href;
       setTimeout(() => {
         if (pendingSectionIdRef.current) {
+          setRecordingIntoConditionalBranch(null); // Clear any conditional recording
           actionRecorder.clearRecording();
           actionRecorder.startRecording();
           setRecordingIntoSection(pendingSectionIdRef.current);
@@ -542,19 +748,51 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
     setIsSelectionMode(false);
   }, [selectedBlockIds, editor]);
 
-  // Modified form submit to handle section insertions and nested block edits
+  // Modified form submit to handle section insertions, nested block edits, and conditional branch blocks
   const handleBlockFormSubmitWithSection = useCallback(
     (block: JsonBlock) => {
       const sectionContext = (
         window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } }
       ).__blockEditorSectionContext;
 
-      if (editingNestedBlock) {
-        // Editing a nested block
+      const conditionalContext = (
+        window as unknown as {
+          __blockEditorConditionalContext?: { conditionalId: string; branch: 'whenTrue' | 'whenFalse'; index?: number };
+        }
+      ).__blockEditorConditionalContext;
+
+      if (editingConditionalBranchBlock) {
+        // Editing a block within a conditional branch
+        editor.updateConditionalBranchBlock(
+          editingConditionalBranchBlock.conditionalId,
+          editingConditionalBranchBlock.branch,
+          editingConditionalBranchBlock.nestedIndex,
+          block
+        );
+        setEditingConditionalBranchBlock(null);
+      } else if (editingNestedBlock) {
+        // Editing a nested block in a section
         editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, block);
         setEditingNestedBlock(null);
       } else if (editingBlock) {
         editor.updateBlock(editingBlock.id, block);
+      } else if (conditionalContext) {
+        // Adding block to a conditional branch
+        editor.addBlockToConditionalBranch(
+          conditionalContext.conditionalId,
+          conditionalContext.branch,
+          block,
+          conditionalContext.index
+        );
+        delete (
+          window as unknown as {
+            __blockEditorConditionalContext?: {
+              conditionalId: string;
+              branch: 'whenTrue' | 'whenFalse';
+              index?: number;
+            };
+          }
+        ).__blockEditorConditionalContext;
       } else if (sectionContext) {
         editor.addBlockToSection(block, sectionContext.sectionId, sectionContext.index);
         delete (window as unknown as { __blockEditorSectionContext?: { sectionId: string; index?: number } })
@@ -567,7 +805,7 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       setEditingBlock(null);
       setInsertAtIndex(undefined);
     },
-    [editor, editingBlock, editingNestedBlock, insertAtIndex]
+    [editor, editingBlock, editingNestedBlock, editingConditionalBranchBlock, insertAtIndex]
   );
 
   const { state } = editor;
@@ -702,9 +940,19 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
             onNestedBlockMove={handleNestedBlockMove}
             onSectionRecord={handleSectionRecord}
             recordingIntoSection={recordingIntoSection}
+            onConditionalBranchRecord={handleConditionalBranchRecord}
+            recordingIntoConditionalBranch={recordingIntoConditionalBranch}
             isSelectionMode={isSelectionMode}
             selectedBlockIds={selectedBlockIds}
             onToggleBlockSelection={handleToggleBlockSelection}
+            onInsertBlockInConditional={handleInsertBlockInConditional}
+            onConditionalBranchBlockEdit={handleConditionalBranchBlockEdit}
+            onConditionalBranchBlockDelete={handleConditionalBranchBlockDelete}
+            onConditionalBranchBlockDuplicate={handleConditionalBranchBlockDuplicate}
+            onConditionalBranchBlockMove={handleConditionalBranchBlockMove}
+            onNestBlockInConditional={handleNestBlockInConditional}
+            onUnnestBlockFromConditional={handleUnnestBlockFromConditional}
+            onMoveBlockBetweenConditionalBranches={handleMoveBlockBetweenConditionalBranches}
           />
         ) : (
           <div className={styles.emptyState}>
@@ -732,18 +980,20 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
       {isBlockFormOpen && editingBlockType && (
         <BlockFormModal
           blockType={editingBlockType}
-          initialData={editingNestedBlock?.block ?? editingBlock?.block}
+          initialData={editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block}
           onSubmit={handleBlockFormSubmitWithSection}
           onSubmitAndRecord={editingBlockType === 'section' ? handleSubmitAndStartRecording : undefined}
           onCancel={handleBlockFormCancel}
-          isEditing={!!editingBlock || !!editingNestedBlock}
+          isEditing={!!editingBlock || !!editingNestedBlock || !!editingConditionalBranchBlock}
           onSplitToBlocks={
-            (editingBlockType === 'multistep' || editingBlockType === 'guided') && (editingBlock || editingNestedBlock)
+            (editingBlockType === 'multistep' || editingBlockType === 'guided') &&
+            (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
               ? handleSplitToBlocks
               : undefined
           }
           onConvertType={
-            (editingBlockType === 'multistep' || editingBlockType === 'guided') && (editingBlock || editingNestedBlock)
+            (editingBlockType === 'multistep' || editingBlockType === 'guided') &&
+            (editingBlock || editingNestedBlock || editingConditionalBranchBlock)
               ? handleConvertType
               : undefined
           }
@@ -773,17 +1023,19 @@ export function BlockEditor({ initialGuide, onChange, onCopy, onDownload }: Bloc
         onClose={() => setIsGitHubPRModalOpen(false)}
       />
 
-      {/* Record mode overlay for section recording */}
-      {recordingIntoSection && (
+      {/* Record mode overlay for section/conditional recording */}
+      {(recordingIntoSection || recordingIntoConditionalBranch) && (
         <RecordModeOverlay
           isRecording={actionRecorder.isRecording}
           stepCount={actionRecorder.recordedSteps.length}
           onStop={handleStopRecording}
           sectionName={
-            state.blocks.find((b) => b.id === recordingIntoSection)?.block.type === 'section'
-              ? ((state.blocks.find((b) => b.id === recordingIntoSection)?.block as { title?: string }).title ??
-                'Section')
-              : 'Section'
+            recordingIntoSection
+              ? state.blocks.find((b) => b.id === recordingIntoSection)?.block.type === 'section'
+                ? ((state.blocks.find((b) => b.id === recordingIntoSection)?.block as { title?: string }).title ??
+                  'Section')
+                : 'Section'
+              : `Conditional branch (${recordingIntoConditionalBranch?.branch === 'whenTrue' ? 'pass' : 'fail'})`
           }
           startingUrl={recordingStartUrl ?? undefined}
         />

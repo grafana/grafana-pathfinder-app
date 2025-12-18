@@ -100,6 +100,7 @@ export const testIds = {
     quiz: (quizId: string) => `interactive-quiz-${quizId}`,
     quizChoice: (quizId: string, choiceId: string) => `interactive-quiz-${quizId}-choice-${choiceId}`,
     quizCheckButton: (quizId: string) => `interactive-quiz-check-${quizId}`,
+    conditional: (conditionalId: string) => `interactive-conditional-${conditionalId}`,
   },
 
   // App Configuration
