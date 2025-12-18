@@ -10,6 +10,7 @@ import { css } from '@emotion/css';
 import { Button, Input, Checkbox, Field, useStyles2, Alert, Icon } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useGuideResponsesOptional } from '../../../lib/GuideResponseContext';
+import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 
 /** Props for the InputBlock component */
 export interface InputBlockProps {
@@ -190,16 +191,32 @@ export function InputBlock({
         return;
       }
       if (responseContext) {
+        const wasAlreadySaved = isSaved;
         responseContext.setResponse(variableName, textValue.trim());
         setIsSaved(true);
+
+        // Track submission (no input values captured for privacy)
+        reportAppInteraction(UserInteraction.InputBlockSubmit, {
+          input_type: inputType,
+          variable_name: variableName,
+          is_update: wasAlreadySaved,
+        });
       }
     } else {
       if (responseContext) {
+        const wasAlreadySaved = isSaved;
         responseContext.setResponse(variableName, boolValue);
         setIsSaved(true);
+
+        // Track submission (no input values captured for privacy)
+        reportAppInteraction(UserInteraction.InputBlockSubmit, {
+          input_type: inputType,
+          variable_name: variableName,
+          is_update: wasAlreadySaved,
+        });
       }
     }
-  }, [inputType, textValue, boolValue, validateTextInput, responseContext, variableName]);
+  }, [inputType, textValue, boolValue, validateTextInput, responseContext, variableName, isSaved]);
 
   // Handle skip
   const handleSkip = useCallback(() => {

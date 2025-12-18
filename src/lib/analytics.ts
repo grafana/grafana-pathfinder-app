@@ -62,6 +62,9 @@ export enum UserInteraction {
 
   // Feature Flag Tracking
   FeatureFlagEvaluated = 'feature_flag_evaluated',
+
+  // Input Block Interactions
+  InputBlockSubmit = 'input_block_submit',
 }
 
 // ============================================================================
