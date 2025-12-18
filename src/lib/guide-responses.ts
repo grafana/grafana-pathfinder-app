@@ -172,4 +172,3 @@ export const guideResponseStore = {
 export function getStoragePrefix(): string {
   return STORAGE_PREFIX;
 }
-

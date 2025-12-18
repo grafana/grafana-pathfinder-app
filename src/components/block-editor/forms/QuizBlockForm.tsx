@@ -203,9 +203,7 @@ export function QuizBlockForm({ initialData, onSubmit, onCancel, isEditing = fal
 
   // Update choice hint - store raw value, trim only on submit
   const handleChoiceHintChange = useCallback((id: string, hint: string) => {
-    setChoices((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, hint } : c))
-    );
+    setChoices((prev) => prev.map((c) => (c.id === id ? { ...c, hint } : c)));
   }, []);
 
   // Toggle correct answer (single select mode)
@@ -503,4 +501,3 @@ export function QuizBlockForm({ initialData, onSubmit, onCancel, isEditing = fal
 
 // Add display name for debugging
 QuizBlockForm.displayName = 'QuizBlockForm';
-

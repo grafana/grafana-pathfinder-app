@@ -162,14 +162,11 @@ export function InputBlock({
   }, []);
 
   // Handle checkbox change - just update local state, save on button click
-  const handleBoolChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const newValue = e.target.checked;
-      setBoolValue(newValue);
-      setIsSaved(false); // Mark as unsaved when changed
-    },
-    []
-  );
+  const handleBoolChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.checked;
+    setBoolValue(newValue);
+    setIsSaved(false); // Mark as unsaved when changed
+  }, []);
 
   // Handle reset/clear
   const handleReset = useCallback(() => {
@@ -209,19 +206,37 @@ export function InputBlock({
     setIsSaved(true);
   }, []);
 
-  // Sync with external changes to the response
+  // Sync with external changes to the response (e.g., reset from another component)
+  // Uses event subscription pattern to avoid lint warning about setState in effects
   useEffect(() => {
-    const savedValue = responseContext?.getResponse(variableName);
-    if (savedValue !== undefined) {
-      if (inputType === 'text' && typeof savedValue === 'string') {
+    const handleResponseChange = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      // Only react to changes for this variable or wildcard (clear all)
+      if (detail.variableName !== variableName && detail.variableName !== '*') {
+        return;
+      }
+
+      const savedValue = responseContext?.getResponse(variableName);
+      if (savedValue === undefined) {
+        // Response was cleared - reset to defaults
+        if (inputType === 'text') {
+          setTextValue(typeof defaultValue === 'string' ? defaultValue : '');
+        } else {
+          setBoolValue(typeof defaultValue === 'boolean' ? defaultValue : false);
+        }
+        setIsSaved(false);
+      } else if (inputType === 'text' && typeof savedValue === 'string') {
         setTextValue(savedValue);
         setIsSaved(true);
       } else if (inputType === 'boolean' && typeof savedValue === 'boolean') {
         setBoolValue(savedValue);
         setIsSaved(true);
       }
-    }
-  }, [responseContext, variableName, inputType]);
+    };
+
+    window.addEventListener('guide-response-changed', handleResponseChange);
+    return () => window.removeEventListener('guide-response-changed', handleResponseChange);
+  }, [responseContext, variableName, inputType, defaultValue]);
 
   // If no context provider, show error
   if (!responseContext) {
@@ -235,32 +250,18 @@ export function InputBlock({
   return (
     <div className={styles.container}>
       {/* Prompt/Question */}
-      <div className={styles.promptContainer}>
-        {children}
-      </div>
+      <div className={styles.promptContainer}>{children}</div>
 
       {/* Input field based on type */}
       {inputType === 'text' ? (
         <div className={styles.inputContainer}>
-          <Field
-            label=""
-            invalid={!!validationError}
-            error={validationError}
-          >
-            <Input
-              value={textValue}
-              onChange={handleTextChange}
-              placeholder={placeholder}
-            />
+          <Field label="" invalid={!!validationError} error={validationError}>
+            <Input value={textValue} onChange={handleTextChange} placeholder={placeholder} />
           </Field>
         </div>
       ) : (
         <div className={styles.checkboxContainer}>
-          <Checkbox
-            label={checkboxLabel || 'Yes'}
-            checked={boolValue}
-            onChange={handleBoolChange}
-          />
+          <Checkbox label={checkboxLabel || 'Yes'} checked={boolValue} onChange={handleBoolChange} />
         </div>
       )}
 
@@ -271,7 +272,7 @@ export function InputBlock({
             Skip
           </Button>
         )}
-        
+
         {isSaved && (
           <span className={styles.savedIndicator}>
             <Icon name="check" />
@@ -285,11 +286,7 @@ export function InputBlock({
           </Button>
         )}
 
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleSave}
-        >
+        <Button variant="primary" size="sm" onClick={handleSave}>
           {isSaved ? 'Update' : 'Save'}
         </Button>
       </div>
@@ -299,4 +296,3 @@ export function InputBlock({
 
 // Add display name for debugging
 InputBlock.displayName = 'InputBlock';
-

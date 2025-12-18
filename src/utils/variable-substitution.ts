@@ -102,14 +102,9 @@ export function extractVariables(content: string): string[] {
  * @param responses - Object mapping variable names to their values
  * @returns Array of variable names that are used but not defined
  */
-export function findMissingVariables(
-  content: string,
-  responses: Record<string, ResponseValue>
-): string[] {
+export function findMissingVariables(content: string, responses: Record<string, ResponseValue>): string[] {
   const usedVariables = extractVariables(content);
-  return usedVariables.filter(
-    (varName) => responses[varName] === undefined || responses[varName] === null
-  );
+  return usedVariables.filter((varName) => responses[varName] === undefined || responses[varName] === null);
 }
 
 /**
@@ -127,4 +122,3 @@ export function substituteVariablesInMany(
 ): string[] {
   return contents.map((content) => substituteVariables(content, responses, options));
 }
-

@@ -57,7 +57,7 @@ export function GuideResponseProvider({ guideId, children }: GuideResponseProvid
     (variableName: string, value: ResponseValue) => {
       guideResponseStore.setResponse(guideId, variableName, value);
       setResponses((prev) => ({ ...prev, [variableName]: value }));
-      
+
       // Dispatch event to trigger requirements re-evaluation
       window.dispatchEvent(
         new CustomEvent('guide-response-changed', {
@@ -93,7 +93,7 @@ export function GuideResponseProvider({ guideId, children }: GuideResponseProvid
         delete next[variableName];
         return next;
       });
-      
+
       // Dispatch event to trigger requirements re-evaluation
       window.dispatchEvent(
         new CustomEvent('guide-response-changed', {
@@ -172,4 +172,3 @@ export function useHasGuideResponseContext(): boolean {
 export function useGuideResponsesOptional(): GuideResponseContextValue | null {
   return useContext(GuideResponseContext);
 }
-

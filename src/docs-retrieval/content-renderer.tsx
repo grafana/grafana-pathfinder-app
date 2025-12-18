@@ -492,7 +492,9 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
 
   return (
     <div ref={ref}>
-      {parsedContent.elements.map((element, index) => renderParsedElement(element, `element-${index}`, baseUrl, responses))}
+      {parsedContent.elements.map((element, index) =>
+        renderParsedElement(element, `element-${index}`, baseUrl, responses)
+      )}
     </div>
   );
 }
@@ -623,7 +625,7 @@ function renderParsedElement(
   };
 
   // Helper to substitute in string children
-  const renderChildren = (children: (ParsedElement | string)[]) =>
+  const renderChildren = (children: Array<ParsedElement | string>) =>
     children.map((child: ParsedElement | string, childIndex: number) =>
       typeof child === 'string'
         ? sub(child)

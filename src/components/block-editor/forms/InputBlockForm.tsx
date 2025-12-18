@@ -81,7 +81,9 @@ export function InputBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
         variableName: variableName.trim(),
         ...(inputType === 'text' && placeholder.trim() && { placeholder: placeholder.trim() }),
         ...(inputType === 'boolean' && checkboxLabel.trim() && { checkboxLabel: checkboxLabel.trim() }),
-        ...(inputType === 'text' && typeof defaultValue === 'string' && defaultValue.trim() && { defaultValue: defaultValue.trim() }),
+        ...(inputType === 'text' &&
+          typeof defaultValue === 'string' &&
+          defaultValue.trim() && { defaultValue: defaultValue.trim() }),
         ...(inputType === 'boolean' && typeof defaultValue === 'boolean' && { defaultValue }),
         ...(required && { required }),
         ...(inputType === 'text' && pattern.trim() && { pattern: pattern.trim() }),
@@ -92,7 +94,20 @@ export function InputBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
 
       onSubmit(block);
     },
-    [prompt, inputType, variableName, placeholder, checkboxLabel, defaultValue, required, pattern, validationMessage, requirements, skippable, onSubmit]
+    [
+      prompt,
+      inputType,
+      variableName,
+      placeholder,
+      checkboxLabel,
+      defaultValue,
+      required,
+      pattern,
+      validationMessage,
+      requirements,
+      skippable,
+      onSubmit,
+    ]
   );
 
   // Validation
@@ -128,7 +143,11 @@ export function InputBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
         description="Identifier for referencing this response (letters, numbers, underscores)"
         required
         invalid={variableName.length > 0 && !isValidVariableName(variableName)}
-        error={variableName.length > 0 && !isValidVariableName(variableName) ? 'Must start with letter/underscore, contain only letters, numbers, underscores' : undefined}
+        error={
+          variableName.length > 0 && !isValidVariableName(variableName)
+            ? 'Must start with letter/underscore, contain only letters, numbers, underscores'
+            : undefined
+        }
       >
         <Input
           value={variableName}
@@ -240,10 +259,16 @@ export function InputBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Usage examples</div>
           <div className={styles.codePreview}>
-            <div>In content: <code>{`{{${variableName.trim()}}}`}</code></div>
-            <div>As requirement: <code>{`var-${variableName.trim()}:*`}</code> (any value)</div>
+            <div>
+              In content: <code>{`{{${variableName.trim()}}}`}</code>
+            </div>
+            <div>
+              As requirement: <code>{`var-${variableName.trim()}:*`}</code> (any value)
+            </div>
             {inputType === 'boolean' && (
-              <div>Boolean check: <code>{`var-${variableName.trim()}:true`}</code></div>
+              <div>
+                Boolean check: <code>{`var-${variableName.trim()}:true`}</code>
+              </div>
             )}
           </div>
         </div>
@@ -263,4 +288,3 @@ export function InputBlockForm({ initialData, onSubmit, onCancel, isEditing = fa
 
 // Add display name for debugging
 InputBlockForm.displayName = 'InputBlockForm';
-
