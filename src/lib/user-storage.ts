@@ -68,6 +68,24 @@ const DEFAULT_PROGRESS: LearningProgress = {
 };
 
 // ============================================================================
+// GUIDE RESPONSES SCHEMA (for input block variable storage)
+// ============================================================================
+
+/** Supported response value types from input blocks */
+export type GuideResponseValue = string | boolean | number;
+
+/** Schema for individual response values */
+const GuideResponseValueSchema = z.union([z.string(), z.boolean(), z.number()]);
+
+/** Schema for all responses (guideId -> variableName -> value) */
+const GuideResponsesSchema = z.record(z.string(), z.record(z.string(), GuideResponseValueSchema));
+
+/** Type for all guide responses */
+export type GuideResponses = z.infer<typeof GuideResponsesSchema>;
+
+const DEFAULT_GUIDE_RESPONSES: GuideResponses = {};
+
+// ============================================================================
 // STORAGE KEYS
 // ============================================================================
 
@@ -88,6 +106,8 @@ export const StorageKeys = {
   LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
   // Dev tools recording state persistence
   DEVTOOLS_RECORDING_STATE: 'grafana-pathfinder-app-devtools-recording-state',
+  // Guide responses from input blocks (user-entered values for variables)
+  GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
 } as const;
 
 // Timestamp suffix for conflict resolution
@@ -346,6 +366,7 @@ async function syncFromGrafanaStorage(grafanaStorage: any): Promise<void> {
       StorageKeys.TABS,
       StorageKeys.ACTIVE_TAB,
       StorageKeys.LEARNING_PROGRESS,
+      StorageKeys.GUIDE_RESPONSES,
     ];
 
     for (const key of keysToSync) {
@@ -1191,6 +1212,171 @@ export const learningProgressStorage = {
       );
     } catch (error) {
       console.warn('Failed to clear learning progress:', error);
+    }
+  },
+};
+
+// ============================================================================
+// GUIDE RESPONSE STORAGE
+// ============================================================================
+
+/**
+ * Storage interface for guide responses from input blocks.
+ *
+ * Responses are stored per-guide with variable names as keys.
+ * Uses the same hybrid storage pattern as learning progress for cross-device sync.
+ *
+ * Data structure:
+ * {
+ *   "guide-id-1": { "datasourceName": "prometheus", "policyAccepted": true },
+ *   "guide-id-2": { "region": "us-east-1" }
+ * }
+ */
+export const guideResponseStorage = {
+  /**
+   * Gets all responses with Zod validation for defense-in-depth
+   */
+  async getAll(): Promise<GuideResponses> {
+    try {
+      const storage = createUserStorage();
+      const stored = await storage.getItem<unknown>(StorageKeys.GUIDE_RESPONSES);
+
+      if (!stored) {
+        return DEFAULT_GUIDE_RESPONSES;
+      }
+
+      // Validate stored data against schema to protect against corruption
+      const parsed = GuideResponsesSchema.safeParse(stored);
+      if (parsed.success) {
+        return parsed.data;
+      }
+
+      console.warn('Guide responses validation failed, using defaults:', parsed.error);
+      return DEFAULT_GUIDE_RESPONSES;
+    } catch (error) {
+      console.warn('Failed to get guide responses:', error);
+      return DEFAULT_GUIDE_RESPONSES;
+    }
+  },
+
+  /**
+   * Gets all responses for a specific guide
+   */
+  async getForGuide(guideId: string): Promise<Record<string, GuideResponseValue>> {
+    const all = await guideResponseStorage.getAll();
+    return all[guideId] || {};
+  },
+
+  /**
+   * Gets a single response value
+   */
+  async getResponse(guideId: string, variableName: string): Promise<GuideResponseValue | undefined> {
+    const guideResponses = await guideResponseStorage.getForGuide(guideId);
+    return guideResponses[variableName];
+  },
+
+  /**
+   * Checks if a response exists
+   */
+  async hasResponse(guideId: string, variableName: string): Promise<boolean> {
+    const value = await guideResponseStorage.getResponse(guideId, variableName);
+    return value !== undefined;
+  },
+
+  /**
+   * Sets a response value and dispatches event for reactive updates
+   */
+  async setResponse(guideId: string, variableName: string, value: GuideResponseValue): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const all = await guideResponseStorage.getAll();
+
+      // Update the nested structure
+      if (!all[guideId]) {
+        all[guideId] = {};
+      }
+      all[guideId][variableName] = value;
+
+      await storage.setItem(StorageKeys.GUIDE_RESPONSES, all);
+
+      // Dispatch event to notify listeners (for requirements re-evaluation)
+      window.dispatchEvent(
+        new CustomEvent('guide-response-changed', {
+          detail: { guideId, variableName, value },
+        })
+      );
+    } catch (error) {
+      console.warn('Failed to set guide response:', error);
+    }
+  },
+
+  /**
+   * Deletes a response and dispatches event
+   */
+  async deleteResponse(guideId: string, variableName: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const all = await guideResponseStorage.getAll();
+
+      if (all[guideId]) {
+        delete all[guideId][variableName];
+
+        // Clean up empty guide entries
+        if (Object.keys(all[guideId]).length === 0) {
+          delete all[guideId];
+        }
+
+        await storage.setItem(StorageKeys.GUIDE_RESPONSES, all);
+      }
+
+      // Dispatch event to notify listeners
+      window.dispatchEvent(
+        new CustomEvent('guide-response-changed', {
+          detail: { guideId, variableName, value: undefined },
+        })
+      );
+    } catch (error) {
+      console.warn('Failed to delete guide response:', error);
+    }
+  },
+
+  /**
+   * Clears all responses for a specific guide
+   */
+  async clearForGuide(guideId: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      const all = await guideResponseStorage.getAll();
+
+      delete all[guideId];
+      await storage.setItem(StorageKeys.GUIDE_RESPONSES, all);
+
+      // Dispatch event to notify listeners
+      window.dispatchEvent(
+        new CustomEvent('guide-response-changed', {
+          detail: { guideId, variableName: '*', value: undefined },
+        })
+      );
+    } catch (error) {
+      console.warn('Failed to clear guide responses:', error);
+    }
+  },
+
+  /**
+   * Clears all guide responses (for testing/reset)
+   */
+  async clearAll(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(StorageKeys.GUIDE_RESPONSES);
+
+      window.dispatchEvent(
+        new CustomEvent('guide-response-changed', {
+          detail: { guideId: '*', variableName: '*', value: undefined },
+        })
+      );
+    } catch (error) {
+      console.warn('Failed to clear all guide responses:', error);
     }
   },
 };

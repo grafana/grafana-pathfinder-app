@@ -2,28 +2,30 @@
  * Guide Response Context
  *
  * React context for reactive access to guide responses.
- * Wraps the guideResponseStore with React state for automatic re-renders.
+ * Uses the unified user-storage system for cross-device sync via Grafana user storage.
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react';
-import { guideResponseStore, ResponseValue } from './guide-responses';
+import { guideResponseStorage, GuideResponseValue } from './user-storage';
 
 /** Context value shape */
 interface GuideResponseContextValue {
   /** Current guide ID */
   guideId: string;
   /** All responses for the current guide */
-  responses: Record<string, ResponseValue>;
+  responses: Record<string, GuideResponseValue>;
   /** Set a response value */
-  setResponse: (variableName: string, value: ResponseValue) => void;
+  setResponse: (variableName: string, value: GuideResponseValue) => void;
   /** Get a response value */
-  getResponse: (variableName: string) => ResponseValue | undefined;
+  getResponse: (variableName: string) => GuideResponseValue | undefined;
   /** Check if a response exists */
   hasResponse: (variableName: string) => boolean;
   /** Delete a response */
   deleteResponse: (variableName: string) => void;
   /** Clear all responses for this guide */
   clearResponses: () => void;
+  /** Whether responses are still loading */
+  isLoading: boolean;
 }
 
 /** Context instance */
@@ -40,37 +42,55 @@ interface GuideResponseProviderProps {
 /**
  * Provider component for guide responses.
  * Loads existing responses on mount and provides reactive updates.
+ * Uses async storage that syncs to Grafana user storage for cross-device persistence.
  */
 export function GuideResponseProvider({ guideId, children }: GuideResponseProviderProps) {
   // State to trigger re-renders when responses change
-  const [responses, setResponses] = useState<Record<string, ResponseValue>>(() =>
-    guideResponseStore.getAllResponses(guideId)
-  );
+  const [responses, setResponses] = useState<Record<string, GuideResponseValue>>({});
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Reload responses when guideId changes
+  // Load responses when guideId changes (async)
+  // Uses async/await with AbortController pattern to satisfy lint rules
   useEffect(() => {
-    setResponses(guideResponseStore.getAllResponses(guideId));
+    const controller = new AbortController();
+
+    async function loadResponses() {
+      try {
+        const loaded = await guideResponseStorage.getForGuide(guideId);
+        if (!controller.signal.aborted) {
+          setResponses(loaded);
+          setIsLoading(false);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadResponses();
+
+    return () => {
+      controller.abort();
+    };
   }, [guideId]);
 
-  // Set a response - updates both storage and state, dispatches event for requirements re-check
+  // Set a response - updates state optimistically, then persists async
+  // Storage dispatches event internally for requirements re-evaluation
   const setResponse = useCallback(
-    (variableName: string, value: ResponseValue) => {
-      guideResponseStore.setResponse(guideId, variableName, value);
+    (variableName: string, value: GuideResponseValue) => {
+      // Optimistic update for immediate UI feedback
       setResponses((prev) => ({ ...prev, [variableName]: value }));
 
-      // Dispatch event to trigger requirements re-evaluation
-      window.dispatchEvent(
-        new CustomEvent('guide-response-changed', {
-          detail: { guideId, variableName, value },
-        })
-      );
+      // Persist to storage (async, handles event dispatch)
+      guideResponseStorage.setResponse(guideId, variableName, value);
     },
     [guideId]
   );
 
   // Get a response from current state
   const getResponse = useCallback(
-    (variableName: string): ResponseValue | undefined => {
+    (variableName: string): GuideResponseValue | undefined => {
       return responses[variableName];
     },
     [responses]
@@ -84,37 +104,31 @@ export function GuideResponseProvider({ guideId, children }: GuideResponseProvid
     [responses]
   );
 
-  // Delete a response - dispatches event for requirements re-check
+  // Delete a response - updates state optimistically, then persists async
+  // Storage dispatches event internally for requirements re-evaluation
   const deleteResponse = useCallback(
     (variableName: string) => {
-      guideResponseStore.deleteResponse(guideId, variableName);
+      // Optimistic update
       setResponses((prev) => {
         const next = { ...prev };
         delete next[variableName];
         return next;
       });
 
-      // Dispatch event to trigger requirements re-evaluation
-      window.dispatchEvent(
-        new CustomEvent('guide-response-changed', {
-          detail: { guideId, variableName, value: undefined },
-        })
-      );
+      // Persist to storage (async, handles event dispatch)
+      guideResponseStorage.deleteResponse(guideId, variableName);
     },
     [guideId]
   );
 
-  // Clear all responses - dispatches event for requirements re-evaluation
+  // Clear all responses - updates state optimistically, then persists async
+  // Storage dispatches event internally for requirements re-evaluation
   const clearResponses = useCallback(() => {
-    guideResponseStore.clearResponses(guideId);
+    // Optimistic update
     setResponses({});
 
-    // Dispatch event to trigger requirements re-evaluation
-    window.dispatchEvent(
-      new CustomEvent('guide-response-changed', {
-        detail: { guideId, variableName: '*', value: undefined },
-      })
-    );
+    // Persist to storage (async, handles event dispatch)
+    guideResponseStorage.clearForGuide(guideId);
   }, [guideId]);
 
   // Memoize context value to prevent unnecessary re-renders
@@ -127,8 +141,9 @@ export function GuideResponseProvider({ guideId, children }: GuideResponseProvid
       hasResponse,
       deleteResponse,
       clearResponses,
+      isLoading,
     }),
-    [guideId, responses, setResponse, getResponse, hasResponse, deleteResponse, clearResponses]
+    [guideId, responses, setResponse, getResponse, hasResponse, deleteResponse, clearResponses, isLoading]
   );
 
   return <GuideResponseContext.Provider value={value}>{children}</GuideResponseContext.Provider>;
@@ -150,7 +165,7 @@ export function useGuideResponses(): GuideResponseContextValue {
  * Hook to get a specific response value.
  * Returns undefined if no provider is present (graceful degradation).
  */
-export function useGuideResponse(variableName: string): ResponseValue | undefined {
+export function useGuideResponse(variableName: string): GuideResponseValue | undefined {
   const context = useContext(GuideResponseContext);
   return context?.responses[variableName];
 }

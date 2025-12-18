@@ -12,7 +12,7 @@ import { reftargetExistsCheck, navmenuOpenCheck, sectionCompletedCheck, formVali
 import { isValidRequirement } from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { TimeoutManager } from '../utils/timeout-manager';
-import { guideResponseStore } from '../lib/guide-responses';
+import { guideResponseStorage } from '../lib/user-storage';
 
 // Re-export types for convenience
 export interface RequirementsCheckResult {
@@ -1277,7 +1277,7 @@ async function datasourceConfiguredCheck(check: string): Promise<CheckResultErro
  *
  * How it works:
  * - Parses requirement format: var-{variableName}:{expectedValue}
- * - Looks up stored response from guideResponseStore
+ * - Looks up stored response from guideResponseStorage (async, syncs across devices)
  * - Supports wildcard (*) for any non-empty value
  * - Supports boolean string comparison (true/false)
  * - Supports exact string matching
@@ -1309,7 +1309,7 @@ async function guideVariableCheck(check: string): Promise<CheckResultError> {
     // Get current guide ID from URL or use default
     // TODO: In a full implementation, pass guideId through context
     const guideId = getCurrentGuideId();
-    const actualValue = guideResponseStore.getResponse(guideId, variableName);
+    const actualValue = await guideResponseStorage.getResponse(guideId, variableName);
 
     // Check for wildcard (any non-empty value)
     if (expectedValue === '*') {

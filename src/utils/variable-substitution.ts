@@ -5,7 +5,7 @@
  * Used for dynamic content that adapts based on user input from input blocks.
  */
 
-import { ResponseValue } from '../lib/guide-responses';
+import { GuideResponseValue } from '../lib/user-storage';
 
 /**
  * Create a fresh variable pattern regex.
@@ -43,7 +43,7 @@ export interface SubstitutionOptions {
  */
 export function substituteVariables(
   content: string,
-  responses: Record<string, ResponseValue>,
+  responses: Record<string, GuideResponseValue>,
   options: SubstitutionOptions = {}
 ): string {
   const { fallback = '[not set]', preserveUnmatched = false } = options;
@@ -102,7 +102,7 @@ export function extractVariables(content: string): string[] {
  * @param responses - Object mapping variable names to their values
  * @returns Array of variable names that are used but not defined
  */
-export function findMissingVariables(content: string, responses: Record<string, ResponseValue>): string[] {
+export function findMissingVariables(content: string, responses: Record<string, GuideResponseValue>): string[] {
   const usedVariables = extractVariables(content);
   return usedVariables.filter((varName) => responses[varName] === undefined || responses[varName] === null);
 }
@@ -117,7 +117,7 @@ export function findMissingVariables(content: string, responses: Record<string, 
  */
 export function substituteVariablesInMany(
   contents: string[],
-  responses: Record<string, ResponseValue>,
+  responses: Record<string, GuideResponseValue>,
   options: SubstitutionOptions = {}
 ): string[] {
   return contents.map((content) => substituteVariables(content, responses, options));

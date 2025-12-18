@@ -223,19 +223,24 @@ export function InputBlock({
     setIsSaved(true);
   }, []);
 
-  // Sync with external changes to the response (e.g., reset from another component)
-  // Uses event subscription pattern to avoid lint warning about setState in effects
+  // Sync with external changes to the response (e.g., reset, initial load, cross-device sync)
+  // Uses event subscription pattern to satisfy lint rules about setState in effects
+  // Also handles initial sync when context finishes loading via a custom event
   useEffect(() => {
+    // Handler for response changes (including initial load completion)
     const handleResponseChange = (event: Event) => {
       const detail = (event as CustomEvent).detail;
-      // Only react to changes for this variable or wildcard (clear all)
-      if (detail.variableName !== variableName && detail.variableName !== '*') {
+      // Only react to changes for this variable, wildcard (clear all), or initial load
+      const isRelevant =
+        detail.variableName === variableName || detail.variableName === '*' || detail.type === 'initial-load';
+
+      if (!isRelevant) {
         return;
       }
 
       const savedValue = responseContext?.getResponse(variableName);
       if (savedValue === undefined) {
-        // Response was cleared - reset to defaults
+        // Response was cleared or doesn't exist - reset to defaults
         if (inputType === 'text') {
           setTextValue(typeof defaultValue === 'string' ? defaultValue : '');
         } else {
@@ -252,8 +257,23 @@ export function InputBlock({
     };
 
     window.addEventListener('guide-response-changed', handleResponseChange);
+
+    // If context is already loaded, trigger a sync now
+    // This handles the case where the input mounts after context has finished loading
+    if (responseContext && !responseContext.isLoading) {
+      const savedValue = responseContext.getResponse(variableName);
+      if (savedValue !== undefined) {
+        // Dispatch a synthetic event to trigger the handler
+        window.dispatchEvent(
+          new CustomEvent('guide-response-changed', {
+            detail: { type: 'initial-load', variableName, value: savedValue },
+          })
+        );
+      }
+    }
+
     return () => window.removeEventListener('guide-response-changed', handleResponseChange);
-  }, [responseContext, variableName, inputType, defaultValue]);
+  }, [responseContext, responseContext?.isLoading, variableName, inputType, defaultValue]);
 
   // If no context provider, show error
   if (!responseContext) {
