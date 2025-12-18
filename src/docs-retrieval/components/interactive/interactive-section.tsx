@@ -277,7 +277,7 @@ export function InteractiveSection({
         setSectionRequirementsStatus({
           checking: false,
           passed: result.pass,
-          error: result.error?.[0]?.message || (result.pass ? undefined : 'Requirements not met'),
+          error: result.error?.[0]?.error || (result.pass ? undefined : 'Requirements not met'),
         });
       }
     } catch (error) {

@@ -32,6 +32,15 @@ function isConditionalBlock(block: JsonBlock): block is JsonConditionalBlock {
   return block.type === 'conditional';
 }
 
+/**
+ * Parse a comma-separated string into an array of trimmed, non-empty strings
+ */
+const parseArray = (str: string): string[] =>
+  str
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
 /** Styles for branch config sections */
 const getBranchConfigStyles = (theme: GrafanaTheme2) => ({
   branchSection: css`
@@ -115,13 +124,6 @@ export function ConditionalBlockForm({ initialData, onSubmit, onCancel, isEditin
 
   // Build the conditional block from current form state
   const buildBlock = useCallback((): JsonConditionalBlock => {
-    // Helper to parse comma-separated string to array
-    const parseArray = (str: string): string[] =>
-      str
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-
     // Helper to build section config from state
     const buildSectionConfig = (
       title: string,
