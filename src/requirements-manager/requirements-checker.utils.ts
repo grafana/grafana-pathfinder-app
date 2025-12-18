@@ -12,6 +12,7 @@ import { reftargetExistsCheck, navmenuOpenCheck, sectionCompletedCheck, formVali
 import { isValidRequirement } from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { TimeoutManager } from '../utils/timeout-manager';
+import { guideResponseStorage } from '../lib/user-storage';
 
 // Re-export types for convenience
 export interface RequirementsCheckResult {
@@ -141,6 +142,11 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
   // UI state checks
   if (check === 'form-valid') {
     return formValidCheck(check);
+  }
+
+  // Guide response variable checks (e.g., var-policyAccepted:true)
+  if (check.startsWith('var-')) {
+    return guideVariableCheck(check);
   }
 
   // This should never be reached due to type validation above, but keeping as fallback
@@ -1257,6 +1263,118 @@ async function datasourceConfiguredCheck(check: string): Promise<CheckResultErro
       error: `Data source configuration check failed: ${error}`,
       context: { error },
     };
+  }
+}
+
+/**
+ * Guide response variable checking - verifies a stored response matches expected value
+ *
+ * Use cases:
+ * - Gating sections based on user input (e.g., policy acceptance)
+ * - Conditional content based on previous answers
+ * - Workflow enforcement based on collected data
+ * - Required field validation before proceeding
+ *
+ * How it works:
+ * - Parses requirement format: var-{variableName}:{expectedValue}
+ * - Looks up stored response from guideResponseStorage (async, syncs across devices)
+ * - Supports wildcard (*) for any non-empty value
+ * - Supports boolean string comparison (true/false)
+ * - Supports exact string matching
+ *
+ * Example usage:
+ * - var-policyAccepted:true - boolean must be true
+ * - var-datasourceName:* - any non-empty value
+ * - var-datasourceName:prometheus - exact match
+ * - var-region:us-east-1 - exact string match
+ *
+ * Note: Currently uses a default guide ID. In a full implementation,
+ * the guide ID should be passed through the check context.
+ */
+async function guideVariableCheck(check: string): Promise<CheckResultError> {
+  try {
+    // Parse the requirement format: var-{variableName}:{expectedValue}
+    const match = check.match(/^var-([^:]+):(.+)$/);
+    if (!match) {
+      return {
+        requirement: check,
+        pass: false,
+        error: `Invalid variable requirement format: ${check}. Expected: var-{variableName}:{expectedValue}`,
+        context: { format: 'var-{variableName}:{expectedValue}' },
+      };
+    }
+
+    const [, variableName, expectedValue] = match;
+
+    // Get current guide ID from URL or use default
+    // TODO: In a full implementation, pass guideId through context
+    const guideId = getCurrentGuideId();
+    const actualValue = await guideResponseStorage.getResponse(guideId, variableName);
+
+    // Check for wildcard (any non-empty value)
+    if (expectedValue === '*') {
+      const hasValue = actualValue !== undefined && actualValue !== '' && actualValue !== null;
+      return {
+        requirement: check,
+        pass: hasValue,
+        error: hasValue ? undefined : `Variable '${variableName}' has no value set`,
+        context: { variableName, expectedValue, actualValue, guideId },
+      };
+    }
+
+    // Check for boolean values
+    if (expectedValue === 'true') {
+      const isTrue = actualValue === true || actualValue === 'true';
+      return {
+        requirement: check,
+        pass: isTrue,
+        error: isTrue ? undefined : `Variable '${variableName}' is not true (got: ${actualValue})`,
+        context: { variableName, expectedValue, actualValue, guideId },
+      };
+    }
+
+    if (expectedValue === 'false') {
+      const isFalse = actualValue === false || actualValue === 'false';
+      return {
+        requirement: check,
+        pass: isFalse,
+        error: isFalse ? undefined : `Variable '${variableName}' is not false (got: ${actualValue})`,
+        context: { variableName, expectedValue, actualValue, guideId },
+      };
+    }
+
+    // Exact string match
+    const matches = String(actualValue) === expectedValue;
+    return {
+      requirement: check,
+      pass: matches,
+      error: matches ? undefined : `Variable '${variableName}' does not match '${expectedValue}' (got: ${actualValue})`,
+      context: { variableName, expectedValue, actualValue, guideId },
+    };
+  } catch (error) {
+    return {
+      requirement: check,
+      pass: false,
+      error: `Variable check failed: ${error}`,
+      context: { error: String(error) },
+    };
+  }
+}
+
+/**
+ * Get the current guide ID from the global context set by ContentRenderer.
+ * Falls back to 'default' if not available.
+ */
+function getCurrentGuideId(): string {
+  try {
+    // Use the guide ID set by ContentRenderer
+    const guideId = (window as any).__DocsPluginGuideId;
+    if (guideId && typeof guideId === 'string') {
+      return guideId;
+    }
+    return 'default';
+  } catch {
+    return 'default';
   }
 }
 

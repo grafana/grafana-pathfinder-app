@@ -227,6 +227,28 @@ export const JsonQuizBlockSchema = z.object({
   skippable: z.boolean().optional(),
 });
 
+/**
+ * Schema for input block (collects user responses).
+ * @coupling Type: JsonInputBlock
+ */
+export const JsonInputBlockSchema = z.object({
+  type: z.literal('input'),
+  prompt: z.string().min(1, 'Input prompt is required'),
+  inputType: z.enum(['text', 'boolean']),
+  variableName: z
+    .string()
+    .min(1, 'Variable name is required')
+    .regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'Variable name must be a valid identifier'),
+  placeholder: z.string().optional(),
+  checkboxLabel: z.string().optional(),
+  defaultValue: z.union([z.string(), z.boolean()]).optional(),
+  required: z.boolean().optional(),
+  pattern: z.string().optional(),
+  validationMessage: z.string().optional(),
+  requirements: z.array(z.string()).optional(),
+  skippable: z.boolean().optional(),
+});
+
 // ============ BLOCK UNION (Non-recursive blocks) ============
 
 /**
@@ -242,6 +264,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonMultistepBlockSchema,
   JsonGuidedBlockSchema,
   JsonQuizBlockSchema,
+  JsonInputBlockSchema,
 ]);
 
 // ============ RECURSIVE BLOCK SCHEMAS ============
@@ -463,6 +486,20 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'requirements',
     'skippable',
   ]),
+  input: new Set([
+    'type',
+    'prompt',
+    'inputType',
+    'variableName',
+    'placeholder',
+    'checkboxLabel',
+    'defaultValue',
+    'required',
+    'pattern',
+    'validationMessage',
+    'requirements',
+    'skippable',
+  ]),
   assistant: new Set(['type', 'assistantId', 'assistantType', 'blocks']),
 };
 
@@ -481,5 +518,6 @@ export const VALID_BLOCK_TYPES = new Set([
   'section',
   'conditional',
   'quiz',
+  'input',
   'assistant',
 ]);

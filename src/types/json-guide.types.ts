@@ -51,7 +51,8 @@ export type JsonBlock =
   | JsonImageBlock
   | JsonVideoBlock
   | JsonQuizBlock
-  | JsonAssistantBlock;
+  | JsonAssistantBlock
+  | JsonInputBlock;
 
 // ============ ASSISTANT CUSTOMIZATION PROPS ============
 
@@ -362,6 +363,41 @@ export interface JsonQuizChoice {
   hint?: string;
 }
 
+// ============ INPUT BLOCK ============
+
+/**
+ * Input block for collecting user responses.
+ * Responses can be stored and used as variables elsewhere in the guide:
+ * - As requirements (e.g., "var-policyAccepted:true")
+ * - As variable substitution in content (e.g., "{{datasourceName}}")
+ * - As targetvalue in interactive blocks
+ */
+export interface JsonInputBlock {
+  type: 'input';
+  /** The prompt/question text (supports markdown) */
+  prompt: string;
+  /** Input type determines the UI */
+  inputType: 'text' | 'boolean';
+  /** Variable name for storing/referencing the response */
+  variableName: string;
+  /** Placeholder text (for text input) */
+  placeholder?: string;
+  /** Label for boolean checkbox */
+  checkboxLabel?: string;
+  /** Default value */
+  defaultValue?: string | boolean;
+  /** Whether a response is required to proceed */
+  required?: boolean;
+  /** Regex pattern for text validation */
+  pattern?: string;
+  /** Message shown when validation fails */
+  validationMessage?: string;
+  /** Requirements that must be met for this input */
+  requirements?: string[];
+  /** Whether this input can be skipped */
+  skippable?: boolean;
+}
+
 // ============ TYPE GUARDS ============
 
 /**
@@ -439,6 +475,13 @@ export function isQuizBlock(block: JsonBlock): block is JsonQuizBlock {
  */
 export function isAssistantBlock(block: JsonBlock): block is JsonAssistantBlock {
   return block.type === 'assistant';
+}
+
+/**
+ * Type guard for JsonInputBlock
+ */
+export function isInputBlock(block: JsonBlock): block is JsonInputBlock {
+  return block.type === 'input';
 }
 
 /**

@@ -18,7 +18,9 @@ export type BlockType =
   | 'conditional'
   | 'interactive'
   | 'multistep'
-  | 'guided';
+  | 'guided'
+  | 'quiz'
+  | 'input';
 
 /**
  * Block metadata for the palette

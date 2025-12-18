@@ -655,26 +655,14 @@ export const InteractiveStep = forwardRef<
             {showMe && targetAction !== 'navigate' && !isCompletedWithObjectives && finalIsEnabled && (
               <Button
                 onClick={handleShowAction}
-                disabled={disabled || isAnyActionRunning}
+                disabled={disabled || isAnyActionRunning || checker.isChecking}
                 size="sm"
                 variant="secondary"
                 className="interactive-step-show-btn"
                 data-testid={testIds.interactive.showMeButton(renderedStepId)}
-                title={
-                  checker.isChecking
-                    ? checker.isRetrying
-                      ? `Checking requirements... (${checker.retryCount}/${checker.maxRetries})`
-                      : 'Checking requirements...'
-                    : hints || `${showMeText ? `${showMeText}:` : 'Show me:'} ${getActionDescription()}`
-                }
+                title={hints || `${showMeText ? `${showMeText}:` : 'Show me:'} ${getActionDescription()}`}
               >
-                {checker.isChecking
-                  ? checker.isRetrying
-                    ? `Checking... (${checker.retryCount}/${checker.maxRetries})`
-                    : 'Checking...'
-                  : isShowRunning
-                    ? 'Showing...'
-                    : showMeText || 'Show me'}
+                {isShowRunning ? 'Showing...' : showMeText || 'Show me'}
               </Button>
             )}
 
@@ -683,34 +671,29 @@ export const InteractiveStep = forwardRef<
               <Button
                 onClick={handleDoAction}
                 disabled={
-                  disabled || isAnyActionRunning || (!finalIsEnabled && checker.completionReason !== 'objectives')
+                  disabled ||
+                  isAnyActionRunning ||
+                  checker.isChecking ||
+                  (!finalIsEnabled && checker.completionReason !== 'objectives')
                 }
                 size="sm"
                 variant="primary"
                 className="interactive-step-do-btn"
                 data-testid={testIds.interactive.doItButton(renderedStepId)}
                 title={
-                  checker.isChecking
-                    ? checker.isRetrying
-                      ? `Checking requirements... (${checker.retryCount}/${checker.maxRetries})`
-                      : 'Checking requirements...'
-                    : hints ||
-                      (targetAction === 'navigate'
-                        ? `Go there: ${getActionDescription()}`
-                        : `Do it: ${getActionDescription()}`)
+                  hints ||
+                  (targetAction === 'navigate'
+                    ? `Go there: ${getActionDescription()}`
+                    : `Do it: ${getActionDescription()}`)
                 }
               >
-                {checker.isChecking
-                  ? checker.isRetrying
-                    ? `Checking... (${checker.retryCount}/${checker.maxRetries})`
-                    : 'Checking...'
-                  : isDoRunning || isCurrentlyExecuting
-                    ? targetAction === 'navigate'
-                      ? 'Going...'
-                      : 'Executing...'
-                    : targetAction === 'navigate'
-                      ? 'Go there'
-                      : 'Do it'}
+                {isDoRunning || isCurrentlyExecuting
+                  ? targetAction === 'navigate'
+                    ? 'Going...'
+                    : 'Executing...'
+                  : targetAction === 'navigate'
+                    ? 'Go there'
+                    : 'Do it'}
               </Button>
             )}
 

@@ -25,6 +25,7 @@ import {
   type JsonVideoBlock,
   type JsonQuizBlock,
   type JsonAssistantBlock,
+  type JsonInputBlock,
   type JsonStep,
   type AssistantProps,
 } from '../types/json-guide.types';
@@ -237,6 +238,8 @@ function convertBlockByType(
       return convertVideoBlock(block, path);
     case 'quiz':
       return convertQuizBlock(block, path);
+    case 'input':
+      return convertInputBlock(block, path);
     case 'assistant':
       // Legacy wrapper format - pass surrounding context for better AI understanding
       return convertAssistantBlock(block, path, baseUrl, surroundingContext);
@@ -1016,6 +1019,35 @@ function convertQuizBlock(block: JsonQuizBlock, path: string): ConversionResult 
   };
 }
 
+function convertInputBlock(block: JsonInputBlock, path: string): ConversionResult {
+  // Parse prompt as markdown for the content
+  const promptElements = parseMarkdownToElements(block.prompt);
+
+  // Convert requirements array to comma-separated string
+  const requirements = block.requirements?.join(',') || undefined;
+
+  return {
+    element: {
+      type: 'input-block',
+      props: {
+        prompt: block.prompt,
+        inputType: block.inputType,
+        variableName: block.variableName,
+        placeholder: block.placeholder,
+        checkboxLabel: block.checkboxLabel,
+        defaultValue: block.defaultValue,
+        required: block.required ?? false,
+        pattern: block.pattern,
+        validationMessage: block.validationMessage,
+        requirements,
+        skippable: block.skippable ?? false,
+      },
+      children: promptElements,
+    },
+    hasInteractive: true,
+  };
+}
+
 /**
  * Extract the customizable default value from a block based on its type.
  * This value is what gets stored in localStorage and customized by the assistant.
@@ -1049,6 +1081,8 @@ function extractDefaultValueFromBlock(block: JsonBlock): string {
     }
     case 'quiz':
       return block.question;
+    case 'input':
+      return block.prompt;
     case 'section':
       // Sections contain nested blocks - extract from title if available
       return block.title || '';
