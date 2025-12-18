@@ -67,6 +67,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Guided',
     description: 'User-performed sequence with detection',
   },
+  quiz: {
+    type: 'quiz',
+    icon: '❓',
+    grafanaIcon: 'question-circle',
+    name: 'Quiz',
+    description: 'Knowledge assessment with single or multiple choice',
+  },
 };
 
 /**
@@ -81,6 +88,7 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
   'interactive',
   'multistep',
   'guided',
+  'quiz',
 ];
 
 /**
