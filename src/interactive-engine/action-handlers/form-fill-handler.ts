@@ -258,27 +258,29 @@ export class FormFillHandler {
     }
 
     // Tokenization strategy:
-    // 1) If spaces exist, split on spaces but keep quoted substrings intact.
-    // 2) If no spaces, split by common operators (!=, =~, !~, =) into [key, op, value].
-    // 3) Otherwise, treat as a single token.
+    // 1) If value contains operators (!=, =~, !~, =), split into [key, op, value] tokens.
+    // 2) If value has whitespace AND contains operators, split by whitespace preserving quoted strings.
+    // 3) Otherwise, treat the entire value as a single token (e.g., "New York" stays as one token).
 
     const stripQuotes = (s: string) =>
       (s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))
         ? s.substring(1, s.length - 1)
         : s;
 
+    // Check if value contains label-style operators
+    const hasOperator = /!=|=~|!~|=/.test(fullValue);
     const hasWhitespace = /\s/.test(fullValue);
 
     let tokens: string[] = [];
 
-    if (hasWhitespace) {
-      // Split by whitespace while preserving quoted strings
+    if (hasWhitespace && hasOperator) {
+      // Split by whitespace while preserving quoted strings (for multi-part label queries)
       const regex = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\S+/g;
       const matches = fullValue.match(regex) || [];
       // Preserve quotes as typed by author to better match UI parsing
       tokens = matches;
-    } else {
-      // Try to split by operator if present
+    } else if (hasOperator) {
+      // Try to split by operator if present (for single label expressions like "walker=jack")
       // SECURITY: Safe regex - [^!=~]* prevents backtracking (no nested quantifiers)
       const opMatch = fullValue.match(/^([^!=~]*)(!=|=~|!~|=)(.*)$/);
       if (opMatch) {
@@ -289,6 +291,9 @@ export class FormFillHandler {
       } else {
         tokens = [stripQuotes(fullValue.trim())];
       }
+    } else {
+      // No operators - treat entire value as a single token (e.g., "New York" for dropdown selection)
+      tokens = [stripQuotes(fullValue.trim())];
     }
 
     // Helper to set value and fire input event

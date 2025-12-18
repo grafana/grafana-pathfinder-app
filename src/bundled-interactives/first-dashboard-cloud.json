@@ -195,7 +195,7 @@
             },
             {
               "action": "highlight",
-              "reftarget": "div[data-testid=\"Plugin visualization item Bar chart\"]",
+              "reftarget": "div[data-testid=\"data-testid Plugin visualization item Bar chart\"]",
               "requirements": ["exists-reftarget"],
               "tooltip": "Choosing the right visualization is key to telling your data's story. Time series graphs show trends over time, stat panels display single values, tables show raw data, and bar charts compare values side by side. For comparing Jack and Jill's final altitudes, a bar chart makes the difference instantly clear - you can see at a glance who climbed higher!"
             }

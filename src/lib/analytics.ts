@@ -8,6 +8,7 @@
 import { reportInteraction } from '@grafana/runtime';
 import packageJson from '../../package.json';
 import { isInteractiveLearningUrl } from '../security';
+import { getExperimentConfig, FeatureFlags } from '../utils/openfeature';
 
 // ============================================================================
 // USER INTERACTION TYPES
@@ -59,9 +60,6 @@ export enum UserInteraction {
   LearningPathProgress = 'learning_path_progress',
   BadgeUnlocked = 'badge_unlocked',
 
-  // A/B Experiment Tracking
-  ExperimentPageEntered = 'experiment_page_entered',
-
   // Feature Flag Tracking
   FeatureFlagEvaluated = 'feature_flag_evaluated',
 }
@@ -76,6 +74,49 @@ export enum UserInteraction {
 const createInteractionName = (type: UserInteraction): string => {
   return `pathfinder_${type}`;
 };
+
+/**
+ * Experiment entry for analytics enrichment
+ * Each experiment includes its flag name and the raw config from GOFF
+ */
+interface ExperimentAnalyticsEntry {
+  flag: string;
+  [key: string]: unknown; // Allow any additional properties from GOFF
+}
+
+/**
+ * Gets the current experiments state as an array for analytics enrichment
+ *
+ * This captures all active experiments at the time of the analytics event,
+ * enabling analysis of experiment impact on user behavior.
+ *
+ * Each experiment config is included as-is from GOFF, allowing flexibility for any
+ * experiment structure without requiring code changes.
+ *
+ * @returns Array of experiment configs, or null if experiments cannot be retrieved
+ */
+function getExperimentsForAnalytics(): ExperimentAnalyticsEntry[] | null {
+  try {
+    const experiments: ExperimentAnalyticsEntry[] = [];
+
+    // Add experiment variant config
+    // Structure comes directly from GOFF - allows any experiment configuration
+    const experimentVariantConfig = getExperimentConfig(FeatureFlags.EXPERIMENT_VARIANT);
+    experiments.push({
+      flag: FeatureFlags.EXPERIMENT_VARIANT,
+      ...experimentVariantConfig,
+    });
+
+    // Add additional experiments here as needed:
+    // const anotherExperiment = getExperimentConfig(FeatureFlags.ANOTHER_EXPERIMENT);
+    // experiments.push({ flag: FeatureFlags.ANOTHER_EXPERIMENT, ...anotherExperiment });
+
+    return experiments;
+  } catch (error) {
+    // Silently fail - feature flags may not be initialized yet
+    return null;
+  }
+}
 
 /**
  * Determines the appropriate content_type for analytics based on URL
@@ -109,6 +150,7 @@ export function getContentTypeForAnalytics(url: string | undefined | null, fallb
  *
  * All events automatically include:
  * - plugin_version: The current plugin version from plugin.json
+ * - feature_flags: JSON object containing current feature flag state (except for FeatureFlagEvaluated events)
  *
  * @param type - The type of interaction from UserInteraction enum
  * @param properties - Additional properties to attach to the event
@@ -120,10 +162,17 @@ export function reportAppInteraction(
   try {
     const interactionName = createInteractionName(type);
 
+    // Skip experiment enrichment for FeatureFlagEvaluated events to avoid recursion
+    // (those events already contain the flag info in their properties)
+    const shouldEnrichWithExperiments = type !== UserInteraction.FeatureFlagEvaluated;
+    const experiments = shouldEnrichWithExperiments ? getExperimentsForAnalytics() : null;
+
     // Add global attributes to all events
-    const enrichedProperties = {
+    const enrichedProperties: Record<string, unknown> = {
       plugin_version: packageJson.version,
       ...properties,
+      // Include experiments array if available (null check for graceful degradation)
+      ...(experiments && { experiments }),
     };
 
     reportInteraction(interactionName, enrichedProperties);

@@ -1,15 +1,15 @@
 /**
  * Import Guide Modal
  *
- * Modal for importing JSON guide files with drag-and-drop and file picker support.
+ * Modal for importing JSON guide files with drag-and-drop, file picker, and paste support.
  */
 
 import React, { useState, useCallback, useRef } from 'react';
-import { Button, Modal, Alert, useStyles2 } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
+import { Button, Modal, Alert, useStyles2, TextArea, RadioButtonGroup } from '@grafana/ui';
+import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { css, cx } from '@emotion/css';
 import type { JsonGuide } from './types';
-import { importGuideFromFile, type ImportValidationResult } from './utils/block-import';
+import { importGuideFromFile, parseAndValidateGuide, type ImportValidationResult } from './utils/block-import';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
@@ -126,6 +126,36 @@ const getStyles = (theme: GrafanaTheme2) => ({
   resetButton: css({
     marginRight: 'auto',
   }),
+
+  modeSelector: css({
+    marginBottom: theme.spacing(1),
+  }),
+
+  pasteContainer: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+  }),
+
+  pasteTextArea: css({
+    fontFamily: theme.typography.fontFamilyMonospace,
+    fontSize: '12px',
+    minHeight: '200px',
+    resize: 'vertical',
+  }),
+
+  pasteHint: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
+
+  pasteValidating: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    color: theme.colors.text.secondary,
+    fontSize: theme.typography.bodySmall.fontSize,
+  }),
 });
 
 export interface ImportGuideModalProps {
@@ -139,22 +169,32 @@ export interface ImportGuideModalProps {
   hasUnsavedChanges?: boolean;
 }
 
+type ImportMode = 'file' | 'paste';
+
+const MODE_OPTIONS: Array<SelectableValue<ImportMode>> = [
+  { label: 'Upload file', value: 'file' },
+  { label: 'Paste JSON', value: 'paste' },
+];
+
 interface ImportState {
   file: File | null;
   result: ImportValidationResult | null;
   isDragging: boolean;
   isProcessing: boolean;
+  pastedJson: string;
 }
 
 export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges = false }: ImportGuideModalProps) {
   const styles = useStyles2(getStyles);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [mode, setMode] = useState<ImportMode>('file');
   const [state, setState] = useState<ImportState>({
     file: null,
     result: null,
     isDragging: false,
     isProcessing: false,
+    pastedJson: '',
   });
 
   // Process file
@@ -163,12 +203,38 @@ export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges 
 
     const result = await importGuideFromFile(file);
 
-    setState({
+    setState((prev) => ({
+      ...prev,
       file,
       result,
       isDragging: false,
       isProcessing: false,
-    });
+    }));
+  }, []);
+
+  // Process pasted JSON
+  const processPastedJson = useCallback((json: string) => {
+    setState((prev) => ({ ...prev, pastedJson: json, isProcessing: true }));
+
+    // Validate after a short debounce
+    const trimmed = json.trim();
+    if (!trimmed) {
+      setState((prev) => ({
+        ...prev,
+        result: null,
+        isProcessing: false,
+      }));
+      return;
+    }
+
+    // Parse and validate the JSON
+    const result = parseAndValidateGuide(trimmed);
+
+    setState((prev) => ({
+      ...prev,
+      result,
+      isProcessing: false,
+    }));
   }, []);
 
   // Handle file input change
@@ -227,8 +293,24 @@ export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges 
       result: null,
       isDragging: false,
       isProcessing: false,
+      pastedJson: '',
     });
     // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
+
+  // Handle mode change
+  const handleModeChange = useCallback((newMode: ImportMode) => {
+    setMode(newMode);
+    // Clear result when switching modes
+    setState((prev) => ({
+      ...prev,
+      result: null,
+      file: null,
+      pastedJson: '',
+    }));
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -313,32 +395,71 @@ export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges 
   };
 
   return (
-    <Modal title="Import Guide" isOpen={isOpen} onDismiss={handleClose}>
+    <Modal title="Import guide" isOpen={isOpen} onDismiss={handleClose}>
       <div className={styles.container}>
-        {/* Drop zone */}
-        <div
-          className={getDropZoneClassName()}
-          onClick={handleDropZoneClick}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-          role="button"
-          tabIndex={0}
-          aria-label="Drop zone for JSON file upload"
-        >
-          {renderDropZoneContent()}
-        </div>
-
-        {/* Hidden file input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,application/json"
-          onChange={handleFileChange}
-          className={styles.hiddenInput}
-          aria-hidden="true"
+        {/* Mode selector */}
+        <RadioButtonGroup
+          options={MODE_OPTIONS}
+          value={mode}
+          onChange={handleModeChange}
+          className={styles.modeSelector}
         />
+
+        {/* File upload mode */}
+        {mode === 'file' && (
+          <>
+            {/* Drop zone */}
+            <div
+              className={getDropZoneClassName()}
+              onClick={handleDropZoneClick}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              role="button"
+              tabIndex={0}
+              aria-label="Drop zone for JSON file upload"
+            >
+              {renderDropZoneContent()}
+            </div>
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleFileChange}
+              className={styles.hiddenInput}
+              aria-hidden="true"
+            />
+          </>
+        )}
+
+        {/* Paste JSON mode */}
+        {mode === 'paste' && (
+          <div className={styles.pasteContainer}>
+            <TextArea
+              value={state.pastedJson}
+              onChange={(e) => processPastedJson(e.currentTarget.value)}
+              placeholder='Paste your JSON guide here, e.g. {"id": "my-guide", "title": "My Guide", "blocks": [...]}'
+              className={styles.pasteTextArea}
+              rows={10}
+            />
+            <div className={styles.pasteHint}>
+              {state.isProcessing ? (
+                <span className={styles.pasteValidating}>⟳ Validating...</span>
+              ) : state.result?.isValid ? (
+                <span style={{ color: 'var(--primary-text-link)' }}>
+                  ✓ Valid guide: {state.result.guide?.title} ({state.result.guide?.blocks.length} blocks)
+                </span>
+              ) : state.pastedJson.trim() && state.result ? (
+                <span style={{ color: 'var(--error-text-color)' }}>✗ Invalid JSON - see errors below</span>
+              ) : (
+                'Paste a valid JSON guide to import'
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Validation errors */}
         {state.result && !state.result.isValid && state.result.errors.length > 0 && (
@@ -371,16 +492,16 @@ export function ImportGuideModal({ isOpen, onImport, onClose, hasUnsavedChanges 
 
         {/* Footer */}
         <div className={styles.footer}>
-          {state.file && (
+          {(state.file || state.pastedJson.trim()) && (
             <Button variant="secondary" onClick={handleReset} className={styles.resetButton}>
-              Choose Different File
+              {mode === 'file' ? 'Choose different file' : 'Clear'}
             </Button>
           )}
           <Button variant="secondary" onClick={handleClose}>
             Cancel
           </Button>
           <Button variant="primary" onClick={handleImportClick} disabled={!state.result?.isValid}>
-            {showUnsavedWarning ? 'Confirm Import' : 'Import'}
+            {showUnsavedWarning ? 'Confirm import' : 'Import'}
           </Button>
         </div>
       </div>

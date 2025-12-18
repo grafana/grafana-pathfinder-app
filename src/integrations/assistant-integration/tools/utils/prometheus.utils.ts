@@ -48,6 +48,74 @@ const MAX_LABEL_VALUES = 20;
 const MAX_METRICS = 30;
 
 /**
+ * Common metric suffixes that indicate standard Prometheus metrics
+ * These are preferred over recording rules (which contain colons)
+ */
+const COMMON_METRIC_SUFFIXES = ['_total', '_count', '_sum', '_bucket', '_seconds', '_bytes', '_info', '_created'];
+
+/**
+ * Well-known base metrics that are commonly available
+ */
+const WELL_KNOWN_METRICS = [
+  'up',
+  'process_cpu_seconds_total',
+  'process_resident_memory_bytes',
+  'go_goroutines',
+  'go_gc_duration_seconds',
+  'prometheus_http_requests_total',
+  'http_requests_total',
+  'http_request_duration_seconds',
+  'node_cpu_seconds_total',
+  'container_cpu_usage_seconds_total',
+];
+
+/**
+ * Sort metrics to prioritize common/standard metrics over recording rules
+ * Recording rules contain colons (e.g., "job:http_requests:rate5m")
+ */
+const sortMetricsByPriority = (metrics: string[]): string[] => {
+  return metrics.sort((a, b) => {
+    // Well-known metrics first
+    const aWellKnown = WELL_KNOWN_METRICS.includes(a);
+    const bWellKnown = WELL_KNOWN_METRICS.includes(b);
+    if (aWellKnown && !bWellKnown) {
+      return -1;
+    }
+    if (bWellKnown && !aWellKnown) {
+      return 1;
+    }
+
+    // Recording rules (with colons) go last
+    const aHasColon = a.includes(':');
+    const bHasColon = b.includes(':');
+    if (!aHasColon && bHasColon) {
+      return -1;
+    }
+    if (aHasColon && !bHasColon) {
+      return 1;
+    }
+
+    // Metrics with common suffixes preferred
+    const aHasCommonSuffix = COMMON_METRIC_SUFFIXES.some((s) => a.endsWith(s));
+    const bHasCommonSuffix = COMMON_METRIC_SUFFIXES.some((s) => b.endsWith(s));
+    if (aHasCommonSuffix && !bHasCommonSuffix) {
+      return -1;
+    }
+    if (bHasCommonSuffix && !aHasCommonSuffix) {
+      return 1;
+    }
+
+    // Shorter names typically more common
+    if (a.length !== b.length) {
+      return a.length - b.length;
+    }
+
+    // Alphabetical as tiebreaker
+    return a.localeCompare(b);
+  });
+};
+
+/**
  * Fetch label names from Prometheus
  */
 const fetchLabelNames = async (ds: PrometheusDatasource, timeRange: TimeRange): Promise<string[]> => {
@@ -121,8 +189,11 @@ export const fetchPrometheusMetadata = async (ds: DataSourceApi): Promise<Metric
     }
   }
 
-  // Fetch metrics (via __name__ label)
-  const metrics = await fetchLabelValues(ds, timeRange, '__name__', MAX_METRICS);
+  // Fetch metrics (via __name__ label) - get more than we need so we can sort
+  const allMetrics = await fetchLabelValues(ds, timeRange, '__name__', MAX_METRICS * 3);
 
-  return { labels, metrics };
+  // Sort by priority (standard metrics first, recording rules last)
+  const sortedMetrics = sortMetricsByPriority(allMetrics).slice(0, MAX_METRICS);
+
+  return { labels, metrics: sortedMetrics };
 };

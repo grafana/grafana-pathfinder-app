@@ -10,21 +10,23 @@ import { parseHTMLToComponents } from './html-parser';
 import { validateGuide } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
 import DOMPurify from 'dompurify';
-import type {
-  JsonGuide,
-  JsonBlock,
-  JsonMarkdownBlock,
-  JsonHtmlBlock,
-  JsonSectionBlock,
-  JsonConditionalBlock,
-  JsonInteractiveBlock,
-  JsonMultistepBlock,
-  JsonGuidedBlock,
-  JsonImageBlock,
-  JsonVideoBlock,
-  JsonQuizBlock,
-  JsonAssistantBlock,
-  JsonStep,
+import {
+  hasAssistantEnabled,
+  type JsonGuide,
+  type JsonBlock,
+  type JsonMarkdownBlock,
+  type JsonHtmlBlock,
+  type JsonSectionBlock,
+  type JsonConditionalBlock,
+  type JsonInteractiveBlock,
+  type JsonMultistepBlock,
+  type JsonGuidedBlock,
+  type JsonImageBlock,
+  type JsonVideoBlock,
+  type JsonQuizBlock,
+  type JsonAssistantBlock,
+  type JsonStep,
+  type AssistantProps,
 } from '../types/json-guide.types';
 
 const MARKDOWN_ALLOWED_TAGS = [
@@ -126,7 +128,25 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
   for (let i = 0; i < guide.blocks.length; i++) {
     const block = guide.blocks[i];
     try {
-      const result = convertBlockToParsedElement(block, `blocks[${i}]`, baseUrl);
+      // For assistant blocks, extract context from adjacent sibling blocks
+      // This helps the AI understand the educational purpose of the content
+      let surroundingContext: SurroundingContext | undefined;
+      if (block.type === 'assistant') {
+        const prevBlock = i > 0 ? guide.blocks[i - 1] : undefined;
+        const nextBlock = i < guide.blocks.length - 1 ? guide.blocks[i + 1] : undefined;
+
+        const beforeContext = prevBlock ? extractContextFromBlock(prevBlock) : undefined;
+        const afterContext = nextBlock ? extractContextFromBlock(nextBlock) : undefined;
+
+        if (beforeContext || afterContext) {
+          surroundingContext = {
+            ...(beforeContext && { before: beforeContext }),
+            ...(afterContext && { after: afterContext }),
+          };
+        }
+      }
+
+      const result = convertBlockToParsedElement(block, `blocks[${i}]`, baseUrl, surroundingContext);
       if (result.element) {
         elements.push(result.element);
       }
@@ -187,9 +207,15 @@ interface ConversionResult {
 }
 
 /**
- * Convert a JsonBlock to a ParsedElement.
+ * Convert a JsonBlock to a ParsedElement by type.
+ * Internal helper that handles the actual conversion without assistant wrapper logic.
  */
-function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: string): ConversionResult {
+function convertBlockByType(
+  block: JsonBlock,
+  path: string,
+  baseUrl?: string,
+  surroundingContext?: SurroundingContext
+): ConversionResult {
   switch (block.type) {
     case 'markdown':
       return convertMarkdownBlock(block, path);
@@ -212,7 +238,8 @@ function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: s
     case 'quiz':
       return convertQuizBlock(block, path);
     case 'assistant':
-      return convertAssistantBlock(block, path, baseUrl);
+      // Legacy wrapper format - pass surrounding context for better AI understanding
+      return convertAssistantBlock(block, path, baseUrl, surroundingContext);
     default:
       return {
         element: null,
@@ -222,12 +249,63 @@ function convertBlockToParsedElement(block: JsonBlock, path: string, baseUrl?: s
 }
 
 /**
+ * Convert a JsonBlock to a ParsedElement.
+ * Handles both attribute-based assistant (assistantEnabled: true) and legacy wrapper format.
+ *
+ * @param block - The block to convert
+ * @param path - The JSON path for debugging
+ * @param baseUrl - Optional base URL for resolving relative paths
+ * @param surroundingContext - Optional context from sibling blocks (for assistant blocks)
+ */
+function convertBlockToParsedElement(
+  block: JsonBlock,
+  path: string,
+  baseUrl?: string,
+  surroundingContext?: SurroundingContext
+): ConversionResult {
+  // Check for attribute-based assistant customization (new format)
+  if (hasAssistantEnabled(block)) {
+    const assistantBlock = block as JsonBlock & AssistantProps;
+    const innerResult = convertBlockByType(block, path, baseUrl, surroundingContext);
+
+    if (innerResult.element) {
+      // Wrap with assistant-block-wrapper
+      const wrappedElement: ParsedElement = {
+        type: 'assistant-block-wrapper',
+        props: {
+          assistantId: assistantBlock.assistantId || `${path}-assistant`,
+          assistantType: assistantBlock.assistantType || 'query',
+          defaultValue: extractDefaultValueFromBlock(block),
+          blockType: block.type,
+          // Pass surrounding context for better AI understanding
+          ...(surroundingContext && { surroundingContext }),
+        },
+        children: [innerResult.element],
+      };
+
+      return {
+        ...innerResult,
+        element: wrappedElement,
+        hasAssistant: true,
+      };
+    }
+
+    return innerResult;
+  }
+
+  // Standard conversion (no assistant wrapper)
+  return convertBlockByType(block, path, baseUrl, surroundingContext);
+}
+
+/**
  * Convert markdown content to ParsedElement children.
  * Handles basic markdown syntax: headings, bold, italic, code, links, lists, code blocks, tables.
  * SECURITY: Input is sanitized with a safe allowlist of structural tags before parsing (F1, F4).
  * We allow basic content tags (div, span, headings, lists, tables, code) while stripping scripts/events.
+ *
+ * @public Exported for use in AssistantBlockWrapper to render customized content
  */
-function parseMarkdownToElements(content: string): ParsedElement[] {
+export function parseMarkdownToElements(content: string): ParsedElement[] {
   // SECURITY: Sanitize with a safe allowlist so basic HTML content survives while stripping dangerous markup
   const sanitizedContent = DOMPurify.sanitize(content, {
     ALLOWED_TAGS: MARKDOWN_ALLOWED_TAGS,
@@ -768,6 +846,8 @@ function convertInteractiveBlock(block: JsonInteractiveBlock, path: string): Con
         objectives,
         skippable: block.skippable ?? false,
         hints: block.hint,
+        formHint: block.formHint,
+        validateInput: block.validateInput,
         // Button visibility - default to true if not specified
         showMe: block.showMe ?? true,
         doIt: block.doIt ?? true,
@@ -939,6 +1019,9 @@ function convertQuizBlock(block: JsonQuizBlock, path: string): ConversionResult 
 /**
  * Extract the customizable default value from a block based on its type.
  * This value is what gets stored in localStorage and customized by the assistant.
+ *
+ * For multistep/guided blocks, extracts all step targetvalues (queries) and joins them.
+ * This gives the assistant context about all the queries in the block.
  */
 function extractDefaultValueFromBlock(block: JsonBlock): string {
   switch (block.type) {
@@ -949,21 +1032,83 @@ function extractDefaultValueFromBlock(block: JsonBlock): string {
       // Prefer targetvalue for queries, fall back to content
       return block.targetvalue || block.content;
     case 'multistep':
-    case 'guided':
+    case 'guided': {
+      // Extract all step targetvalues (queries) for better assistant context
+      const stepQueries = block.steps
+        .filter((step) => step.targetvalue)
+        .map((step) => step.targetvalue)
+        .filter((value): value is string => value !== undefined);
+
+      if (stepQueries.length > 0) {
+        // If we have step queries, combine them with the content
+        // Format: content + queries (useful for assistant to customize all)
+        const queriesText = stepQueries.join('\n');
+        return block.content ? `${block.content}\n\nQueries:\n${queriesText}` : queriesText;
+      }
       return block.content;
+    }
     case 'quiz':
       return block.question;
+    case 'section':
+      // Sections contain nested blocks - extract from title if available
+      return block.title || '';
+    case 'image':
+      // Images have alt text which could be customized
+      return block.alt || '';
+    case 'video':
+      // Videos have title which could be customized
+      return block.title || '';
     default:
       return '';
   }
 }
 
 /**
+ * Extract readable context text from a block for assistant prompts.
+ * Strips markdown syntax and returns plain text summary.
+ * Used to provide surrounding context to help the assistant understand the purpose of a step.
+ *
+ * @param block - The block to extract context from
+ * @returns Plain text context string, or undefined if block has no useful context
+ */
+function extractContextFromBlock(block: JsonBlock): string | undefined {
+  if (block.type === 'markdown' || block.type === 'html') {
+    // Strip markdown headings and normalize whitespace
+    return block.content
+      .replace(/#{1,6}\s*/g, '') // Remove heading markers
+      .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold markers
+      .replace(/_([^_]+)_/g, '$1') // Remove italic markers
+      .replace(/`([^`]+)`/g, '$1') // Remove inline code markers
+      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
+      .replace(/\n+/g, ' ') // Normalize newlines to spaces
+      .trim();
+  }
+  return undefined;
+}
+
+/** Surrounding context for assistant blocks */
+interface SurroundingContext {
+  before?: string;
+  after?: string;
+}
+
+/**
  * Convert assistant wrapper block to wrapped child blocks.
  * Each child block gets its own assistant-customizable wrapper.
  * Enables AI-powered customization of content based on user's datasources.
+ *
+ * @param block - The assistant block to convert
+ * @param path - The JSON path for debugging
+ * @param baseUrl - Optional base URL for resolving relative paths
+ * @param surroundingContext - Optional context from sibling blocks
  */
-function convertAssistantBlock(block: JsonAssistantBlock, path: string, baseUrl?: string): ConversionResult {
+function convertAssistantBlock(
+  block: JsonAssistantBlock,
+  path: string,
+  baseUrl?: string,
+  surroundingContext?: SurroundingContext
+): ConversionResult {
   const wrappedChildren: ParsedElement[] = [];
   let hasInteractive = false;
   let hasCode = false;
@@ -978,7 +1123,7 @@ function convertAssistantBlock(block: JsonAssistantBlock, path: string, baseUrl?
     const childResult = convertBlockToParsedElement(childBlock, childPath, baseUrl);
 
     if (childResult.element) {
-      // Wrap with assistant-block-wrapper
+      // Wrap with assistant-block-wrapper, including surrounding context for better AI understanding
       const wrappedElement: ParsedElement = {
         type: 'assistant-block-wrapper',
         props: {
@@ -986,6 +1131,8 @@ function convertAssistantBlock(block: JsonAssistantBlock, path: string, baseUrl?
           assistantType: block.assistantType || 'query',
           defaultValue: extractDefaultValueFromBlock(childBlock),
           blockType: childBlock.type,
+          // Pass surrounding context if available (helps assistant understand purpose)
+          ...(surroundingContext && { surroundingContext }),
         },
         children: [childResult.element],
       };

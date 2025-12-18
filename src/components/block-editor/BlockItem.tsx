@@ -107,7 +107,13 @@ export function BlockItem({
 }: BlockItemProps) {
   const styles = useStyles2(getBlockItemStyles);
   const blockType = block.block.type as BlockType;
-  const meta = BLOCK_TYPE_METADATA[blockType];
+  const meta = BLOCK_TYPE_METADATA[blockType] ?? {
+    type: blockType,
+    icon: '❓',
+    grafanaIcon: 'question-circle',
+    name: blockType || 'Unknown',
+    description: 'Unknown block type',
+  };
   const preview = useMemo(() => getBlockPreview(block.block), [block.block]);
 
   const isSection = isSectionBlock(block.block);

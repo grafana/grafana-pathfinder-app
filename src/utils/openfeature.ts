@@ -189,10 +189,9 @@ export async function initializeOpenFeature(): Promise<void> {
     }
   );
 
-  // Add TrackingHook once after provider is ready
-  // This tracks ALL flag evaluations (sync and async) to analytics
-  const client = OpenFeature.getClient(OPENFEATURE_DOMAIN);
-  client.addHooks(new TrackingHook());
+  // Add TrackingHook at API level (not client level) so it applies to ALL clients
+  // This is necessary because OpenFeature.getClient() may return different instances
+  OpenFeature.addHooks(new TrackingHook());
 }
 
 // ============================================================================

@@ -53,6 +53,23 @@ export type JsonBlock =
   | JsonQuizBlock
   | JsonAssistantBlock;
 
+// ============ ASSISTANT CUSTOMIZATION PROPS ============
+
+/**
+ * Assistant customization properties.
+ * Can be added to blocks that support AI-powered customization.
+ * When assistantEnabled is true, the block will show a "Customize" button
+ * that uses Grafana Assistant to adapt content to the user's environment.
+ */
+export interface AssistantProps {
+  /** Enable AI customization for this block */
+  assistantEnabled?: boolean;
+  /** Unique ID for localStorage persistence (auto-generated if not provided) */
+  assistantId?: string;
+  /** Type of content - affects AI prompts and customization behavior */
+  assistantType?: 'query' | 'config' | 'code' | 'text';
+}
+
 // ============ CONTENT BLOCKS ============
 
 /**
@@ -60,7 +77,7 @@ export type JsonBlock =
  * Content is rendered as formatted text with support for
  * headings, bold, italic, code, links, and lists.
  */
-export interface JsonMarkdownBlock {
+export interface JsonMarkdownBlock extends AssistantProps {
   type: 'markdown';
   /** Markdown-formatted content */
   content: string;
@@ -198,8 +215,9 @@ export type JsonInteractiveAction = 'highlight' | 'button' | 'formfill' | 'navig
  * Single-action interactive step.
  * Renders with "Show me" and "Do it" buttons by default.
  * Use showMe/doIt to control button visibility.
+ * Supports AI customization via AssistantProps.
  */
-export interface JsonInteractiveBlock {
+export interface JsonInteractiveBlock extends AssistantProps {
   type: 'interactive';
   /** The action to perform */
   action: JsonInteractiveAction;
@@ -421,4 +439,11 @@ export function isQuizBlock(block: JsonBlock): block is JsonQuizBlock {
  */
 export function isAssistantBlock(block: JsonBlock): block is JsonAssistantBlock {
   return block.type === 'assistant';
+}
+
+/**
+ * Type guard to check if a block has assistant customization enabled
+ */
+export function hasAssistantEnabled(block: JsonBlock): block is JsonBlock & AssistantProps {
+  return 'assistantEnabled' in block && block.assistantEnabled === true;
 }

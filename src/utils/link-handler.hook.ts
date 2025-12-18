@@ -335,37 +335,58 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             }
           }
 
-          // Validate the resolved URL before opening
-          if (!isValidGrafanaContentUrl(fullUrl)) {
-            console.warn('Side journey link resolved to non-allowed URL, ignoring:', fullUrl);
-            return;
-          }
+          // Check if URL passes security validation for in-app opening
+          if (isValidGrafanaContentUrl(fullUrl)) {
+            // Open side journey links in new app tabs (as docs pages)
+            if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
+              (model as any).openDocsPage(fullUrl, linkTitle);
+            } else {
+              // Fallback to learning journey handler
+              model.openLearningJourney(fullUrl, linkTitle);
+            }
 
-          // Open side journey links in new app tabs (as docs pages)
-          if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-            (model as any).openDocsPage(fullUrl, linkTitle);
-          } else {
-            // Fallback to learning journey handler
-            model.openLearningJourney(fullUrl, linkTitle);
-          }
-
-          // Track analytics for side journey clicks as extra resource
-          reportAppInteraction(
-            UserInteraction.OpenExtraResource,
-            enrichWithStepContext(
-              enrichWithJourneyContext(
-                {
-                  content_url: fullUrl,
-                  content_type: getContentTypeForAnalytics(fullUrl, 'docs'),
-                  link_text: linkTitle,
-                  source_page: activeTab?.content?.url || 'unknown',
-                  link_type: 'side_journey',
-                  interaction_location: 'side_journey_link',
-                },
-                activeTab?.content
+            // Track analytics for side journey clicks as extra resource
+            reportAppInteraction(
+              UserInteraction.OpenExtraResource,
+              enrichWithStepContext(
+                enrichWithJourneyContext(
+                  {
+                    content_url: fullUrl,
+                    content_type: getContentTypeForAnalytics(fullUrl, 'docs'),
+                    link_text: linkTitle,
+                    source_page: activeTab?.content?.url || 'unknown',
+                    link_type: 'side_journey',
+                    interaction_location: 'side_journey_link',
+                  },
+                  activeTab?.content
+                )
               )
-            )
-          );
+            );
+          } else if (fullUrl.startsWith('http')) {
+            // External URL - open in browser tab instead of blocking
+            // Track analytics for external side journey link clicks
+            reportAppInteraction(
+              UserInteraction.OpenExtraResource,
+              enrichWithStepContext(
+                enrichWithJourneyContext(
+                  {
+                    content_url: fullUrl,
+                    content_type: getContentTypeForAnalytics(fullUrl, 'docs'),
+                    link_text: linkTitle,
+                    source_page: activeTab?.content?.url || 'unknown',
+                    link_type: 'side_journey_external',
+                    interaction_location: 'side_journey_link',
+                  },
+                  activeTab?.content
+                )
+              )
+            );
+
+            // Delay to ensure analytics event is sent before opening new tab
+            setTimeout(() => {
+              window.open(fullUrl, '_blank', 'noopener,noreferrer');
+            }, 100);
+          }
         }
       }
 
@@ -402,31 +423,52 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             }
           }
 
-          // Validate the resolved URL before opening
-          if (!isValidGrafanaContentUrl(fullUrl)) {
-            console.warn('Related journey link resolved to non-allowed URL, ignoring:', fullUrl);
-            return;
-          }
+          // Check if URL passes security validation for in-app opening
+          if (isValidGrafanaContentUrl(fullUrl)) {
+            model.openLearningJourney(fullUrl, linkTitle);
 
-          model.openLearningJourney(fullUrl, linkTitle);
-
-          // Track analytics for related journey clicks
-          reportAppInteraction(
-            UserInteraction.OpenExtraResource,
-            enrichWithStepContext(
-              enrichWithJourneyContext(
-                {
-                  content_url: fullUrl,
-                  content_type: getContentTypeForAnalytics(fullUrl, 'learning-journey'),
-                  link_text: linkTitle,
-                  source_page: activeTab?.content?.url || 'unknown',
-                  link_type: 'related_journey',
-                  interaction_location: 'related_journey_link',
-                },
-                activeTab?.content
+            // Track analytics for related journey clicks
+            reportAppInteraction(
+              UserInteraction.OpenExtraResource,
+              enrichWithStepContext(
+                enrichWithJourneyContext(
+                  {
+                    content_url: fullUrl,
+                    content_type: getContentTypeForAnalytics(fullUrl, 'learning-journey'),
+                    link_text: linkTitle,
+                    source_page: activeTab?.content?.url || 'unknown',
+                    link_type: 'related_journey',
+                    interaction_location: 'related_journey_link',
+                  },
+                  activeTab?.content
+                )
               )
-            )
-          );
+            );
+          } else if (fullUrl.startsWith('http')) {
+            // External URL - open in browser tab instead of blocking
+            // Track analytics for external related journey link clicks
+            reportAppInteraction(
+              UserInteraction.OpenExtraResource,
+              enrichWithStepContext(
+                enrichWithJourneyContext(
+                  {
+                    content_url: fullUrl,
+                    content_type: getContentTypeForAnalytics(fullUrl, 'docs'),
+                    link_text: linkTitle,
+                    source_page: activeTab?.content?.url || 'unknown',
+                    link_type: 'related_journey_external',
+                    interaction_location: 'related_journey_link',
+                  },
+                  activeTab?.content
+                )
+              )
+            );
+
+            // Delay to ensure analytics event is sent before opening new tab
+            setTimeout(() => {
+              window.open(fullUrl, '_blank', 'noopener,noreferrer');
+            }, 100);
+          }
         }
       }
 

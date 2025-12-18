@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.3
+
+### Added
+
+- **Import by paste**: Added ability to paste JSON directly into the block editor import modal (#453)
+
+### Fixed
+
+- Fixed external links in side journey and related journey sections now correctly open in a new browser tab instead of being blocked (#452)
+
+### Chore
+
+- Updated grafana/plugin-actions digest to b33da83 (#434)
+
+## 1.3.1
+
+### Fixed
+
+- Fixed issue with OpenFeature experiment tracking (#444)
+
 ## 1.3.0
 
 ### Added
@@ -13,6 +33,10 @@
   - **Badges display**: View all earned badges and progress toward locked ones
   - **Legacy support**: Existing guide completions are migrated to the new learning paths system
 - **Experiment tools**: Added experiment management tools to dev tools panel (#442)
+- **Formfill validation toggle**: Added `validateInput` option for formfill actions in guided blocks
+  - When `validateInput: false` (default): Any non-empty input completes the step - ensures backward compatibility
+  - When `validateInput: true`: Requires input to match `targetvalue` (supports regex patterns)
+  - Block editor updated with checkbox to enable/disable strict validation
 
 ### Changed
 
@@ -20,7 +44,7 @@
 
 ### Fixed
 
-- Fixed security issue with guide handler
+- Fixed security issue with unsanitized HTML in guided handler comment display (defense-in-depth)
 
 ## 1.2.2
 

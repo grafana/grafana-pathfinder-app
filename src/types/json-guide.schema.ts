@@ -88,15 +88,30 @@ export const JsonStepSchema = z
     { error: "formfill with validateInput requires 'targetvalue'" }
   );
 
+// ============ ASSISTANT PROPS SCHEMA ============
+
+/**
+ * Schema for assistant customization properties.
+ * Can be added to blocks that support AI-powered customization.
+ * @coupling Type: AssistantProps
+ */
+export const AssistantPropsSchema = z.object({
+  assistantEnabled: z.boolean().optional(),
+  assistantId: z.string().optional(),
+  assistantType: z.enum(['query', 'config', 'code', 'text']).optional(),
+});
+
 // ============ CONTENT BLOCK SCHEMAS ============
 
 /**
- * Schema for markdown block.
+ * Schema for markdown block with assistant props.
  * @coupling Type: JsonMarkdownBlock
  */
 export const JsonMarkdownBlockSchema = z.object({
   type: z.literal('markdown'),
   content: z.string().min(1, 'Markdown content is required'),
+  // Assistant customization props
+  ...AssistantPropsSchema.shape,
 });
 
 /**
@@ -134,7 +149,7 @@ export const JsonVideoBlockSchema = z.object({
 // ============ INTERACTIVE BLOCK SCHEMAS ============
 
 /**
- * Schema for single-action interactive block.
+ * Schema for single-action interactive block with assistant props.
  * @coupling Type: JsonInteractiveBlock
  */
 export const JsonInteractiveBlockSchema = z
@@ -155,6 +170,8 @@ export const JsonInteractiveBlockSchema = z
     doIt: z.boolean().optional(),
     completeEarly: z.boolean().optional(),
     verify: z.string().optional(),
+    // Assistant customization props
+    ...AssistantPropsSchema.shape,
   })
   .refine(
     (block) => {
@@ -385,9 +402,10 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'description',
     'skippable',
     'formHint',
+    'validateInput',
   ]),
   _choice: new Set(['id', 'text', 'correct', 'hint']),
-  markdown: new Set(['type', 'content']),
+  markdown: new Set(['type', 'content', 'assistantEnabled', 'assistantId', 'assistantType']),
   html: new Set(['type', 'content']),
   image: new Set(['type', 'src', 'alt', 'width', 'height']),
   video: new Set(['type', 'src', 'provider', 'title']),
@@ -403,10 +421,14 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'skippable',
     'hint',
     'formHint',
+    'validateInput',
     'showMe',
     'doIt',
     'completeEarly',
     'verify',
+    'assistantEnabled',
+    'assistantId',
+    'assistantType',
   ]),
   multistep: new Set(['type', 'content', 'steps', 'requirements', 'objectives', 'skippable']),
   guided: new Set([

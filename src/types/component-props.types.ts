@@ -37,6 +37,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   skippable?: boolean; // Whether this step can be skipped if requirements fail
   completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
   formHint?: string; // Hint shown when form validation fails (for formfill with regex patterns)
+  validateInput?: boolean; // Enable strict validation for formfill (require targetValue match). Default: false
   title?: string;
   description?: string;
   children?: React.ReactNode;

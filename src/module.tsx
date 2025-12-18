@@ -3,6 +3,7 @@ import { LoadingPlaceholder } from '@grafana/ui';
 import { getAppEvents, locationService } from '@grafana/runtime';
 import React, { Suspense, lazy, useEffect, useMemo } from 'react';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
+
 // TODO: Re-enable Faro once collector CORS is configured correctly
 // import { initializeFaroMetrics } from './lib/faro';
 import { initPluginTranslations } from '@grafana/i18n';
@@ -89,49 +90,6 @@ const targetPages = experimentConfig.pages;
 
 // Log experiment config for debugging (warning level so it's visible)
 logExperimentConfig(experimentConfig);
-
-// Track experiment entry for BOTH control and treatment variants
-// This fires when users visit target pages, enabling experiment measurement
-// Control group users also get tracked even though they don't see Pathfinder
-if ((experimentVariant === 'control' || experimentVariant === 'treatment') && targetPages.length > 0) {
-  // Check initial page load
-  const initialPath = locationService.getLocation().pathname || window.location.pathname || '';
-  const isOnTargetPage = targetPages.some((targetPath) => matchPathPattern(targetPath, initialPath));
-
-  if (isOnTargetPage) {
-    reportAppInteraction(UserInteraction.ExperimentPageEntered, {
-      experiment_variant: experimentVariant,
-      target_page: initialPath,
-    });
-  }
-
-  // Set up navigation listener for SPA navigation to target pages
-  const trackExperimentNavigation = () => {
-    const newPath = locationService.getLocation().pathname || window.location.pathname || '';
-    const isNewPathTarget = targetPages.some((targetPath) => matchPathPattern(targetPath, newPath));
-
-    if (isNewPathTarget) {
-      reportAppInteraction(UserInteraction.ExperimentPageEntered, {
-        experiment_variant: experimentVariant,
-        target_page: newPath,
-      });
-    }
-  };
-
-  // Listen for Grafana location changes (works across SPA navigation)
-  document.addEventListener('grafana:location-changed', trackExperimentNavigation);
-
-  // Also listen via locationService history API (more reliable for some navigation types)
-  try {
-    const history = locationService.getHistory();
-    if (history) {
-      history.listen(trackExperimentNavigation);
-    }
-  } catch {
-    // Fallback to popstate if history API not available
-    window.addEventListener('popstate', trackExperimentNavigation);
-  }
-}
 
 // Initialize translations
 await initPluginTranslations(pluginJson.id);
