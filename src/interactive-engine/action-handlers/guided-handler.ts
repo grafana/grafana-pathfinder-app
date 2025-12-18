@@ -563,12 +563,16 @@ export class GuidedHandler {
       const handleSkip = (event: Event) => {
         const customEvent = event as CustomEvent<{ stepIndex: number }>;
         if (customEvent.detail.stepIndex === stepIndex) {
-          document.removeEventListener('guided-step-skipped', handleSkip);
           resolve('skipped');
         }
       };
 
       document.addEventListener('guided-step-skipped', handleSkip);
+      this.activeListeners.push({
+        target: document,
+        type: 'guided-step-skipped',
+        handler: handleSkip,
+      });
     });
   }
 
@@ -580,7 +584,6 @@ export class GuidedHandler {
       const handleCancel = (event: Event) => {
         const customEvent = event as CustomEvent<{ stepIndex: number }>;
         if (customEvent.detail.stepIndex === stepIndex) {
-          document.removeEventListener('guided-step-cancelled', handleCancel);
           // Clear highlights when cancelled from comment box
           this.navigationManager.clearAllHighlights();
           resolve('cancelled');
@@ -588,6 +591,11 @@ export class GuidedHandler {
       };
 
       document.addEventListener('guided-step-cancelled', handleCancel);
+      this.activeListeners.push({
+        target: document,
+        type: 'guided-step-cancelled',
+        handler: handleCancel,
+      });
     });
   }
 

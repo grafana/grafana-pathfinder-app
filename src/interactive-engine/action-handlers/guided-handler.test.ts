@@ -97,6 +97,52 @@ describe('GuidedHandler', () => {
       // Should not throw
       expect(true).toBe(true);
     });
+
+    it('should remove all tracked event listeners when cancel is called', () => {
+      // Spy on document event listener methods
+      const addEventListenerSpy = jest.spyOn(document, 'addEventListener');
+      const removeEventListenerSpy = jest.spyOn(document, 'removeEventListener');
+
+      // Access private activeListeners array via any cast to simulate tracked listeners
+      // This tests that cleanupListeners() properly removes all tracked listeners
+      const handler = guidedHandler as any;
+
+      // Manually add listeners to activeListeners to simulate what createSkipListener/createCancelListener do
+      const skipHandler = jest.fn();
+      const cancelHandler = jest.fn();
+
+      document.addEventListener('guided-step-skipped', skipHandler);
+      handler.activeListeners.push({
+        target: document,
+        type: 'guided-step-skipped',
+        handler: skipHandler,
+      });
+
+      document.addEventListener('guided-step-cancelled', cancelHandler);
+      handler.activeListeners.push({
+        target: document,
+        type: 'guided-step-cancelled',
+        handler: cancelHandler,
+      });
+
+      // Verify listeners were added
+      expect(addEventListenerSpy).toHaveBeenCalledWith('guided-step-skipped', skipHandler);
+      expect(addEventListenerSpy).toHaveBeenCalledWith('guided-step-cancelled', cancelHandler);
+
+      // Call cancel which should clean up all listeners
+      guidedHandler.cancel();
+
+      // Verify listeners were removed
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('guided-step-skipped', skipHandler);
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('guided-step-cancelled', cancelHandler);
+
+      // Verify activeListeners array is empty after cleanup
+      expect(handler.activeListeners).toHaveLength(0);
+
+      // Cleanup spies
+      addEventListenerSpy.mockRestore();
+      removeEventListenerSpy.mockRestore();
+    });
   });
 
   describe('ActiveListener type safety', () => {
