@@ -300,7 +300,7 @@ describe('useLinkClickHandler', () => {
   });
 
   describe('Side Journey Links', () => {
-    it('should handle side journey links', () => {
+    it('should handle side journey links to allowed domains in app', () => {
       renderHook(() =>
         useLinkClickHandler({
           contentRef,
@@ -319,6 +319,106 @@ describe('useLinkClickHandler', () => {
       fireEvent.click(sideJourneyLink);
 
       expect(mockModel.openDocsPage).toHaveBeenCalledWith('https://grafana.com/docs/side-journey', 'Side Journey');
+    });
+
+    it('should open external side journey links in browser tab', () => {
+      jest.useFakeTimers();
+      const windowOpen = jest.spyOn(window, 'open').mockImplementation();
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const sideJourneyLink = document.createElement('a');
+      sideJourneyLink.setAttribute('data-side-journey-link', 'true');
+      sideJourneyLink.href = 'https://external-docs.example.com/guide';
+      sideJourneyLink.textContent = 'External Guide';
+      contentDiv.appendChild(sideJourneyLink);
+
+      fireEvent.click(sideJourneyLink);
+
+      // Advance timers to execute the setTimeout delay
+      jest.advanceTimersByTime(100);
+
+      // Should open in browser, not in app
+      expect(windowOpen).toHaveBeenCalledWith(
+        'https://external-docs.example.com/guide',
+        '_blank',
+        'noopener,noreferrer'
+      );
+      expect(mockModel.openDocsPage).not.toHaveBeenCalled();
+      expect(mockModel.openLearningJourney).not.toHaveBeenCalled();
+
+      windowOpen.mockRestore();
+      jest.useRealTimers();
+    });
+  });
+
+  describe('Related Journey Links', () => {
+    it('should handle related journey links to allowed domains in app', () => {
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const relatedJourneyLink = document.createElement('a');
+      relatedJourneyLink.setAttribute('data-related-journey-link', 'true');
+      relatedJourneyLink.href = '/docs/grafana/latest/related-journey';
+      relatedJourneyLink.textContent = 'Related Journey';
+      contentDiv.appendChild(relatedJourneyLink);
+
+      fireEvent.click(relatedJourneyLink);
+
+      expect(mockModel.openLearningJourney).toHaveBeenCalledWith(
+        'https://grafana.com/docs/grafana/latest/related-journey',
+        'Related Journey'
+      );
+    });
+
+    it('should open external related journey links in browser tab', () => {
+      jest.useFakeTimers();
+      const windowOpen = jest.spyOn(window, 'open').mockImplementation();
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const relatedJourneyLink = document.createElement('a');
+      relatedJourneyLink.setAttribute('data-related-journey-link', 'true');
+      relatedJourneyLink.href = 'https://external-learning.example.com/course';
+      relatedJourneyLink.textContent = 'External Course';
+      contentDiv.appendChild(relatedJourneyLink);
+
+      fireEvent.click(relatedJourneyLink);
+
+      // Advance timers to execute the setTimeout delay
+      jest.advanceTimersByTime(100);
+
+      // Should open in browser, not in app
+      expect(windowOpen).toHaveBeenCalledWith(
+        'https://external-learning.example.com/course',
+        '_blank',
+        'noopener,noreferrer'
+      );
+      expect(mockModel.openLearningJourney).not.toHaveBeenCalled();
+      expect(mockModel.openDocsPage).not.toHaveBeenCalled();
+
+      windowOpen.mockRestore();
+      jest.useRealTimers();
     });
   });
 
