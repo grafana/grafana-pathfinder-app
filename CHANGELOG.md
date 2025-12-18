@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.3
+
+### Added
+
+- **Import by paste**: Added ability to paste JSON directly into the block editor import modal (#453)
+
+### Fixed
+
+- Fixed external links in side journey and related journey sections now correctly open in a new browser tab instead of being blocked (#452)
+
+### Chore
+
+- Updated grafana/plugin-actions digest to b33da83 (#434)
+
 ## 1.3.1
 
 ### Fixed
