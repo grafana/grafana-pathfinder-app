@@ -36,6 +36,9 @@ describe('Condition Validator', () => {
         ['min-version:11.0.0', ParameterizedRequirementPrefix.MIN_VERSION],
         ['min-version:9.5.2', ParameterizedRequirementPrefix.MIN_VERSION],
         ['section-completed:setup-datasource', ParameterizedRequirementPrefix.SECTION_COMPLETED],
+        ['var-policyAccepted:true', ParameterizedRequirementPrefix.VARIABLE],
+        ['var-datasourceName:*', ParameterizedRequirementPrefix.VARIABLE],
+        ['var-region:us-east-1', ParameterizedRequirementPrefix.VARIABLE],
       ];
 
       it.each(validParameterizedConditions)('accepts parameterized: %s', (condition) => {
@@ -398,6 +401,7 @@ describe('Condition Types Coverage', () => {
     ParameterizedRequirementPrefix.IN_ENVIRONMENT,
     ParameterizedRequirementPrefix.MIN_VERSION,
     ParameterizedRequirementPrefix.SECTION_COMPLETED,
+    ParameterizedRequirementPrefix.VARIABLE,
   ]);
 
   it('all FixedRequirementType values should be tested', () => {
