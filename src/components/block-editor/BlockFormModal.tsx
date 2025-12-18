@@ -27,6 +27,7 @@ import { InteractiveBlockForm } from './forms/InteractiveBlockForm';
 import { MultistepBlockForm } from './forms/MultistepBlockForm';
 import { GuidedBlockForm } from './forms/GuidedBlockForm';
 import { QuizBlockForm } from './forms/QuizBlockForm';
+import { InputBlockForm } from './forms/InputBlockForm';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   modal: css({
@@ -78,6 +79,7 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = 
   multistep: MultistepBlockForm,
   guided: GuidedBlockForm,
   quiz: QuizBlockForm,
+  input: InputBlockForm,
 };
 
 /**

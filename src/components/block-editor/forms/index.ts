@@ -13,3 +13,4 @@ export { InteractiveBlockForm } from './InteractiveBlockForm';
 export { MultistepBlockForm } from './MultistepBlockForm';
 export { GuidedBlockForm } from './GuidedBlockForm';
 export { QuizBlockForm } from './QuizBlockForm';
+export { InputBlockForm } from './InputBlockForm';
